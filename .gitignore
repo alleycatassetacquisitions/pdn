@@ -1,4 +1,49 @@
-pdn-internals/PDN-backups/*
+pdn-pcb/PDN-backups/*
 desktop.ini
 fp-info-cache
 
+*.000
+*.bak
+*.bck
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*-backups
+*.kicad_prl
+*.sch-bak
+*~
+_autosave-*
+*.tmp
+*-save.pro
+*-save.kicad_pcb
+
+# Netlist files (exported from Eeschema)
+*.net
+
+# Autorouter files (exported from Pcbnew)
+*.dsn
+*.ses
+
+# Exported BOM files
+*.xml
+*.csv
+
+.pioenvs
+.piolibdeps
+.clang_complete
+.gcc-flags.json
+pdn-code/.pio/*
+
+pdn-code/.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+pdn-code/.sconsign.dblite
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
