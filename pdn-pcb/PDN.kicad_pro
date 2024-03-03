@@ -444,7 +444,7 @@
       "netlist": "",
       "specctra_dsn": "",
       "step": "PDN.step",
-      "vrml": "PDN.wrl"
+      "vrml": "brain.wrl"
     },
     "page_layout_descr_file": ""
   },
