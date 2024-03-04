@@ -12,6 +12,7 @@ fp-info-cache
 *.sch-bak
 *~
 _autosave-*
+pdn-pcb/#auto_saved_files#
 *.tmp
 *-save.pro
 *-save.kicad_pcb
