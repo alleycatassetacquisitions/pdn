@@ -23,7 +23,7 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-boolean isHunter = false;
+boolean isHunter = true;
 
 byte deviceID = 49;
 
@@ -327,6 +327,7 @@ void setup(void)
 
   initializePins();
 
+  Serial.begin(19200, SERIAL_8N1);
   Serial1.begin(19200, SERIAL_8N1, TXr, TXt);
 
   Serial2.begin(19200, SERIAL_8N1, RXr, RXt);
@@ -369,23 +370,6 @@ void loop(void)
 {
   now = millis();
   uiRefresh.tick();
-  // primary.tick();
-  // secondary.tick();
-
-  // monitorRX();
-  // monitorTX();
-
-  // drawDebugLabels();
-  // updatePrimaryButtonState();
-  // updateSecondaryButtonState();
-  // updateMotorState();
-  // updateTXState();
-  // updateRXState();
-  // updateFramerate();
-
-  // setMotorOutput(motorSpeed);
-  // display.sendBuffer();
-  // FastLED.show();
 
   if (APP_STATE == QD_GAME)
   {
@@ -400,127 +384,6 @@ void loop(void)
 
 // DISPLAY
 
-void drawDebugLabels()
-{
-  display.drawStr(16, 10, "BTN 1:");
-  display.drawStr(16, 20, "BTN 2:");
-  display.drawStr(16, 30, "TX:");
-  display.drawStr(16, 40, "RX:");
-  display.drawStr(16, 50, "MOTOR:");
-  display.drawStr(16, 60, "FRAME:");
-}
-
-void drawDebugState(char *button1State, char *button2State, char *txData, char *rxData, char *motorSpeed, char *led1Pattern, char *fps)
-{
-  display.drawStr(80, 10, button1State);
-  display.drawStr(80, 20, button2State);
-  display.drawStr(80, 30, txData);
-  display.drawStr(80, 40, rxData);
-  display.drawStr(80, 50, motorSpeed);
-  display.drawStr(80, 60, fps);
-}
-
-void updatePrimaryButtonState()
-{
-  display.setCursor(80, 10);
-  display.print(u8x8_u8toa(primaryPresses, 3));
-}
-
-void updateSecondaryButtonState()
-{
-  display.setCursor(80, 20);
-  display.print(u8x8_u8toa(secondaryPresses, 3));
-}
-
-void updateMotorState()
-{
-  display.setCursor(80, 50);
-  display.print(u8x8_u8toa(motorSpeed, 3));
-}
-
-void updateTXState()
-{
-  display.setCursor(80, 30);
-  display.print(u8x8_u8toa(lastTxPacket, 3));
-}
-
-void updateRXState()
-{
-  display.setCursor(80, 40);
-  display.print(u8x8_u8toa(lastRxPacket, 3));
-}
-
-void updateFramerate()
-{
-  int duration = frameDuration;
-  display.setCursor(80, 60);
-  display.print(u8x8_u8toa(duration, 3));
-}
-
-// BUTTONS
-
-void primaryButtonClick()
-{
-  primaryPresses += 1;
-  setGraphLeft(primaryPresses % 7);
-}
-
-void secondaryButtonClick()
-{
-  secondaryPresses += 1;
-  setGraphRight(secondaryPresses % 7);
-}
-
-void primaryButtonDoubleClick()
-{
-  setTransmitLight(!displayLightsOnOff[12]);
-}
-
-void secondaryButtonDoubleClick()
-{
-  if (motorSpeed == 0)
-  {
-    motorSpeed = 65;
-  }
-  else if (motorSpeed == 65)
-  {
-    motorSpeed = 155;
-  }
-  else if (motorSpeed == 155)
-  {
-    motorSpeed = 255;
-  }
-  else if (motorSpeed == 255)
-  {
-    motorSpeed = 0;
-  }
-}
-
-void primaryButtonLongPress()
-{
-  isHunter = !isHunter;
-
-  if (isHunter)
-  {
-    currentPalette = hunterColors;
-  }
-  else
-  {
-    currentPalette = bountyColors;
-  }
-}
-
-void secondaryButtonLongPress()
-{
-  if (isHunter)
-  {
-    writeTxTransaction(1);
-  }
-  else
-  {
-    writeRxTransaction(1);
-  }
-}
 
 // LEDS
 byte leftIndex = 9;
@@ -744,32 +607,6 @@ byte peekComms() {
 
 bool commsAvailable() {
   return (isHunter && Serial1.available()) || (!isHunter && Serial2.available());
-}
-
-void monitorTX()
-{
-  if (Serial1.available())
-  {
-    lastTxPacket += Serial1.read();
-  }
-}
-
-void monitorRX()
-{
-  if (Serial2.available())
-  {
-    lastRxPacket += Serial2.read();
-  }
-}
-
-void writeTxTransaction(byte command)
-{
-  Serial1.write(command);
-}
-
-void writeRxTransaction(byte command)
-{
-  Serial2.write(command);
 }
 
 void quickDrawGame()
@@ -1009,68 +846,6 @@ void activationIdle()
   }
   msgDelay = msgDelay + 1;
 }
-
-// void activationOvercharge() {
-//   if(msgDelay == 0) {
-//     comms().write(BATTLE_MESSAGE);
-//   }
-//   msgDelay = msgDelay + 1;
-
-//   if (timerExpired()) {
-//     if(overchargeStep == 0) {
-//       if ((millis() % 20) == 0) {
-
-//         buttonBrightness++;
-
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness / smoothingPoints)) - 1.0));
-//         setAllLED(pwm_val);
-
-//         if (buttonBrightness == 255) {
-//           overchargeStep = 1;
-//         }
-//       }
-//     } else if(overchargeStep == 1) {
-//       setAllLED(0);
-//       setTimer(200);
-//       overchargeStep = 2;
-//     } else if(overchargeStep == 2) {
-//       setAllLED(0);
-//       if(overchargeFlickers % 2 == 0) {
-//         setLED(buttonLED, random(0,50));
-//         setLED(loseLED, random(50,100));
-//         setTimer(50);
-//       } else {
-//         setLED(winLED, random(0, 125));
-//         setLED(interiorLED, random(200,255));
-//         setTimer(50);
-//       }
-//       if(overchargeFlickers == 9) {
-//         overchargeStep = 3;
-//         overchargeFlickers = 0;
-//         buttonBrightness = 255;
-//         breatheUp = true;
-//       } else {
-//         overchargeFlickers = overchargeFlickers + 1;
-//       }
-//     } else if(overchargeStep == 3) {
-//       if(overchargeFlickers < 2 && (millis() % 10) == 0) {
-//         buttonBrightness--;
-
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness / smoothingPoints)) - 1.0));
-//         setAllLED(pwm_val);
-
-//         if (buttonBrightness == 0) {
-//           overchargeStep = 4;
-//         }
-//       }
-//     } else if(overchargeStep == 4) {
-//       setTimer(idleLEDBreak/2);
-//       overchargeStep = 0;
-//       overchargeFlickers = 0;
-//       buttonBrightness = 0;
-//     }
-//   }
-// }
 
 bool initiateHandshake()
 {
@@ -1513,4 +1288,214 @@ void resetState()
   flushComms();
   invalidateTimer();
   setMotorOutput(0);
+}
+
+// void monitorTX()
+// {
+//   if (Serial1.available())
+//   {
+//     lastTxPacket += Serial1.read();
+//   }
+// }
+
+// void monitorRX()
+// {
+//   if (Serial2.available())
+//   {
+//     lastRxPacket += Serial2.read();
+//   }
+// }
+
+// void writeTxTransaction(byte command)
+// {
+//   Serial1.write(command);
+// }
+
+// void writeRxTransaction(byte command)
+// {
+//   Serial2.write(command);
+// }
+
+// void activationOvercharge() {
+//   if(msgDelay == 0) {
+//     comms().write(BATTLE_MESSAGE);
+//   }
+//   msgDelay = msgDelay + 1;
+
+//   if (timerExpired()) {
+//     if(overchargeStep == 0) {
+//       if ((millis() % 20) == 0) {
+
+//         buttonBrightness++;
+
+//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness / smoothingPoints)) - 1.0));
+//         setAllLED(pwm_val);
+
+//         if (buttonBrightness == 255) {
+//           overchargeStep = 1;
+//         }
+//       }
+//     } else if(overchargeStep == 1) {
+//       setAllLED(0);
+//       setTimer(200);
+//       overchargeStep = 2;
+//     } else if(overchargeStep == 2) {
+//       setAllLED(0);
+//       if(overchargeFlickers % 2 == 0) {
+//         setLED(buttonLED, random(0,50));
+//         setLED(loseLED, random(50,100));
+//         setTimer(50);
+//       } else {
+//         setLED(winLED, random(0, 125));
+//         setLED(interiorLED, random(200,255));
+//         setTimer(50);
+//       }
+//       if(overchargeFlickers == 9) {
+//         overchargeStep = 3;
+//         overchargeFlickers = 0;
+//         buttonBrightness = 255;
+//         breatheUp = true;
+//       } else {
+//         overchargeFlickers = overchargeFlickers + 1;
+//       }
+//     } else if(overchargeStep == 3) {
+//       if(overchargeFlickers < 2 && (millis() % 10) == 0) {
+//         buttonBrightness--;
+
+//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness / smoothingPoints)) - 1.0));
+//         setAllLED(pwm_val);
+
+//         if (buttonBrightness == 0) {
+//           overchargeStep = 4;
+//         }
+//       }
+//     } else if(overchargeStep == 4) {
+//       setTimer(idleLEDBreak/2);
+//       overchargeStep = 0;
+//       overchargeFlickers = 0;
+//       buttonBrightness = 0;
+//     }
+//   }
+// }
+
+void drawDebugLabels()
+{
+  display.drawStr(16, 10, "BTN 1:");
+  display.drawStr(16, 20, "BTN 2:");
+  display.drawStr(16, 30, "TX:");
+  display.drawStr(16, 40, "RX:");
+  display.drawStr(16, 50, "MOTOR:");
+  display.drawStr(16, 60, "FRAME:");
+}
+
+void drawDebugState(char *button1State, char *button2State, char *txData, char *rxData, char *motorSpeed, char *led1Pattern, char *fps)
+{
+  display.drawStr(80, 10, button1State);
+  display.drawStr(80, 20, button2State);
+  display.drawStr(80, 30, txData);
+  display.drawStr(80, 40, rxData);
+  display.drawStr(80, 50, motorSpeed);
+  display.drawStr(80, 60, fps);
+}
+
+void updatePrimaryButtonState()
+{
+  display.setCursor(80, 10);
+  display.print(u8x8_u8toa(primaryPresses, 3));
+}
+
+void updateSecondaryButtonState()
+{
+  display.setCursor(80, 20);
+  display.print(u8x8_u8toa(secondaryPresses, 3));
+}
+
+void updateMotorState()
+{
+  display.setCursor(80, 50);
+  display.print(u8x8_u8toa(motorSpeed, 3));
+}
+
+void updateTXState()
+{
+  display.setCursor(80, 30);
+  display.print(u8x8_u8toa(lastTxPacket, 3));
+}
+
+void updateRXState()
+{
+  display.setCursor(80, 40);
+  display.print(u8x8_u8toa(lastRxPacket, 3));
+}
+
+void updateFramerate()
+{
+  int duration = frameDuration;
+  display.setCursor(80, 60);
+  display.print(u8x8_u8toa(duration, 3));
+}
+
+// BUTTONS
+
+void primaryButtonClick()
+{
+  primaryPresses += 1;
+  setGraphLeft(primaryPresses % 7);
+}
+
+void secondaryButtonClick()
+{
+  secondaryPresses += 1;
+  setGraphRight(secondaryPresses % 7);
+}
+
+void primaryButtonDoubleClick()
+{
+  setTransmitLight(!displayLightsOnOff[12]);
+}
+
+void secondaryButtonDoubleClick()
+{
+  if (motorSpeed == 0)
+  {
+    motorSpeed = 65;
+  }
+  else if (motorSpeed == 65)
+  {
+    motorSpeed = 155;
+  }
+  else if (motorSpeed == 155)
+  {
+    motorSpeed = 255;
+  }
+  else if (motorSpeed == 255)
+  {
+    motorSpeed = 0;
+  }
+}
+
+void primaryButtonLongPress()
+{
+  isHunter = !isHunter;
+
+  if (isHunter)
+  {
+    currentPalette = hunterColors;
+  }
+  else
+  {
+    currentPalette = bountyColors;
+  }
+}
+
+void secondaryButtonLongPress()
+{
+  if (isHunter)
+  {
+    writeTxTransaction(1);
+  }
+  else
+  {
+    writeRxTransaction(1);
+  }
 }
