@@ -123,7 +123,11 @@ void setMotorOutput(int value);
 int motorSpeed = 0;
 
 // SERIAL
-HardwareSerial& comms();
+void writeComms(byte command);
+void writeCommsString(String command);
+byte readComms();
+String readCommsString(char terminator);
+byte peekComms();
 
 void monitorTX();
 void monitorRX();
@@ -698,12 +702,48 @@ void setMotorOutput(int value)
 
 // SERIAL
 
-HardwareSerial& comms() {
+void writeComms(byte command) {
   if(isHunter) {
-    return Serial1;
+    Serial1.write(command);
   } else {
-    return Serial2;
+    Serial2.write(command);
   }
+}
+
+void writeCommsString(String command) {
+  if(isHunter) {
+    Serial1.println(command);
+  } else {
+    Serial2.println(command);
+  }
+}
+
+byte readComms() {
+  if(isHunter) {
+    return Serial1.read();
+  } else {
+    return Serial2.read();
+  }
+}
+
+String readCommsString(char terminator) {
+  if(isHunter) {
+    return Serial1.readStringUntil(terminator);
+  } else { 
+    return Serial2.readStringUntil(terminator);
+  }
+}
+
+byte peekComms() {
+  if(isHunter) {
+    return Serial1.peek();
+  } else {
+    return Serial2.peek();
+  }
+}
+
+bool commsAvailable() {
+  return (isHunter && Serial1.available()) || (!isHunter && Serial2.available());
 }
 
 void monitorTX()
@@ -848,8 +888,8 @@ void checkForAppState()
     {
       Serial.println("Switching to Debug");
       APP_STATE = DEBUG;
-      comms().write(DEBUG_DELIMITER);
-      comms().write(deviceID);
+      writeComms(DEBUG_DELIMITER);
+      writeComms(deviceID);
       resetState();
     }
     else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG)
@@ -965,7 +1005,7 @@ void activationIdle()
 {
   // msgDelay was to prevent this from broadcasting every loop.
   if(msgDelay == 0) {
-    comms().write(BATTLE_MESSAGE);
+    writeComms(BATTLE_MESSAGE);
   }
   msgDelay = msgDelay + 1;
 }
@@ -1034,10 +1074,10 @@ void activationIdle()
 
 bool initiateHandshake()
 {
-  if (comms().available() > 0 && Serial1.peek() == BATTLE_MESSAGE)
+  if (commsAvailable() > 0 && peekComms() == BATTLE_MESSAGE)
   {
-    comms().read();
-    comms().write(BATTLE_MESSAGE);
+    readComms();
+    writeComms(BATTLE_MESSAGE);
     return true;
   }
 
@@ -1078,24 +1118,24 @@ bool handshake()
 
     if (isHunter)
     {
-      comms().write(HUNTER_SHAKE);
+      writeComms(HUNTER_SHAKE);
     }
     else
     {
-      comms().write(BOUNTY_SHAKE);
+      writeComms(BOUNTY_SHAKE);
     }
   }
 
-  byte command = comms().peek();
+  byte command = peekComms();
   if (isHunter && command == BOUNTY_SHAKE)
   {
-    comms().write(HUNTER_SHAKE);
+    writeComms(HUNTER_SHAKE);
     return true;
   }
   else if (!isHunter && command == BOUNTY_SHAKE || command == HUNTER_SHAKE)
   {
     bvbDuel = (command == BOUNTY_SHAKE);
-    comms().write(BOUNTY_SHAKE);
+    writeComms(BOUNTY_SHAKE);
     return true;
   }
 
@@ -1166,28 +1206,28 @@ void duel()
 {
   FastLED.setBrightness(255);
 
-  if (comms().peek() == ZAP)
+  if (peekComms() == ZAP)
   {
-    comms().read();
-    comms().write(YOU_DEFEATED_ME);
+    readComms();
+    writeComms(YOU_DEFEATED_ME);
     captured = true;
     return;
   }
-  else if (comms().peek() == YOU_DEFEATED_ME)
+  else if (peekComms() == YOU_DEFEATED_ME)
   {
-    comms().read();
+    readComms();
     wonBattle = true;
     return;
   }
-  else if (comms().peek() != -1)
+  else if (peekComms() != -1)
   {
-    comms().read();
+    readComms();
   }
 
   if (isButtonPressed() && sendZapSignal)
   {
     sendZapSignal = false;
-    comms().write(ZAP);
+    writeComms(ZAP);
   }
 
   if (startDuelTimer)
@@ -1262,22 +1302,22 @@ void updateScore(boolean win)
 
 void flushComms()
 {
-  comms().flush();
-  comms().flush();
+  Serial1.flush();
+  Serial2.flush();
 }
 
 bool requestSwitchAppState()
 {
-  if (comms().available())
+  if (commsAvailable())
   {
-    char command = (char)comms().peek();
+    char command = (char)peekComms();
     Serial.print("Checking App State: ");
     Serial.print(" Current buffer size: ");
-    Serial.print(comms().available());
+    Serial.print(commsAvailable());
     Serial.print(" Command: ");
     Serial.print(command);
     Serial.print(" As Byte: ");
-    Serial.println(comms().peek());
+    Serial.println(peekComms());
     return (command == ENTER_DEBUG || command == START_GAME);
   }
   else
@@ -1288,7 +1328,7 @@ bool requestSwitchAppState()
 
 void flushGarbageData()
 {
-  while (comms().available() && !isValidMessage())
+  while (commsAvailable() && !isValidMessage())
   {
     flushComms();
   }
@@ -1296,7 +1336,7 @@ void flushGarbageData()
 
 bool isValidMessage()
 {
-  byte command = comms().peek();
+  byte command = peekComms();
   if ((char)command == ENTER_DEBUG || (char)command == START_GAME)
   {
     return true;
@@ -1329,9 +1369,9 @@ bool isValidMessage()
 
 bool commandReceived()
 {
-  if (comms().available())
+  if (commsAvailable())
   {
-    char command = (char)comms().peek();
+    char command = (char)peekComms();
     return (command == SETUP_DEVICE || command == SET_ACTIVATION || command == CHECK_IN);
   }
   else
@@ -1349,9 +1389,9 @@ bool validateCommand(String a, char b)
 
 String fetchDebugData()
 {
-  if (comms().available())
+  if (commsAvailable())
   {
-    return comms().readStringUntil('\n');
+    return readCommsString('\n');
   }
   else
   {
@@ -1361,9 +1401,9 @@ String fetchDebugData()
 
 String fetchDebugCommand()
 {
-  if (comms().available())
+  if (commsAvailable())
   {
-    return comms().readStringUntil(DEBUG_DELIMITER);
+    return readCommsString(DEBUG_DELIMITER);
   }
   else
   {
@@ -1375,7 +1415,7 @@ void setupDevice()
 {
   EEPROM.put(winPointsAddress, 0);
   EEPROM.put(losePointsAddress, 0);
-  comms().write(deviceID);
+  writeComms(deviceID);
 }
 
 void checkInDevice()
@@ -1393,14 +1433,15 @@ void checkInDevice()
   Serial.print(" Losses: ");
   Serial.println(losePoints);
 
-  comms().println(deviceID);
-  comms().write(DEBUG_DELIMITER);
-  comms().write(winPoints);
-  comms().write(DEBUG_DELIMITER);
-  comms().write(losePoints);
-  comms().write(DEBUG_DELIMITER);
-  comms().write(isHunter);
-  comms().write(DEBUG_DELIMITER);
+  writeComms(deviceID);
+
+  writeComms(DEBUG_DELIMITER);
+  writeComms(winPoints);
+  writeComms(DEBUG_DELIMITER);
+  writeComms(losePoints);
+  writeComms(DEBUG_DELIMITER);
+  writeComms(isHunter);
+  writeComms(DEBUG_DELIMITER);
 }
 
 void setActivationDelay()
