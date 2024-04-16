@@ -1384,7 +1384,7 @@ bool isButtonPressed()
 void updateScore(String match_id, String opponent, boolean win)
 {
         String hunter_uuid = isHunter ? userID : opponent; 
-        String bounty_uuid = isHunter ? userID : opponent; 
+        String bounty_uuid = !isHunter ? userID : opponent; 
         addMatch(match_id, hunter_uuid, bounty_uuid, win);
 }
 
