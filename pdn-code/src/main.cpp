@@ -281,11 +281,10 @@ struct Match {
 #define EEPROM_MATCH_SIZE sizeof(Match)
 #define EEPROM_NUM_MATCHES_ADDRESS 0
 #define EEPROM_USERID_ADDRESS (EEPROM_NUM_MATCHES_ADDRESS + sizeof(int))
-#define EEPROM_MATCHES_ADDRESS (EEPROM_USERID_ADDRESS + sizeof(userID))
+#define EEPROM_MATCHES_ADDRESS (EEPROM_USERID_ADDRESS + (38*sizeof(char)))
 
 Match matches[MAX_MATCHES];
 int numMatches = 0;
-String userID; // Global variable to store the userID UUID
 
 String generateUUIDv4() {
     // Generates a random UUIDv4 string
@@ -316,9 +315,6 @@ void writeMatchArrayToEEPROM() {
 
     // Write the number of matches to EEPROM
     EEPROM.put(EEPROM_NUM_MATCHES_ADDRESS, numMatches);
-
-    // Write the userID to EEPROM
-    EEPROM.put(EEPROM_USERID_ADDRESS, userID);
 }
 
 void readMatchArrayFromEEPROM() {
@@ -333,9 +329,6 @@ void readMatchArrayFromEEPROM() {
 
     // Read the number of matches from EEPROM
     EEPROM.get(EEPROM_NUM_MATCHES_ADDRESS, numMatches);
-
-    // Read the userID from EEPROM
-    EEPROM.get(EEPROM_USERID_ADDRESS, userID);
 }
 
 void addMatch(const String& match_id, const String& hunter, const String& bounty, bool winner_is_hunter) {
@@ -372,12 +365,25 @@ String dumpMatchesToJson() {
 }
 
 void setUserID() {
-    userID = generateUUIDv4(); // Set the userID UUID using the generateUUIDv4() function
+    String userID = generateUUIDv4(); // Set the userID UUID using the generateUUIDv4() function
+
+    // Write the userID to EEPROM
+    EEPROM.put(EEPROM_USERID_ADDRESS, userID);
+}
+
+String getUserID() {
+    String userID;
+    // Read the userID from EEPROM
+    EEPROM.get(EEPROM_USERID_ADDRESS, userID);
+    return userID;
 }
 
 void clearUserID() {
-    userID = ""; // Clear the userID UUID by assigning an empty string
+    // Clear the userID in EEPROM by writing an empty String
+    String emptyString;
+    EEPROM.put(EEPROM_USERID_ADDRESS, emptyString);
 }
+
 void clearMatchesFromEEPROM() {
     // Clear the Match array in EEPROM by writing default values
     for (int i = 0; i < MAX_MATCHES; i++) {
@@ -389,13 +395,8 @@ void clearMatchesFromEEPROM() {
     int zero = 0;
     EEPROM.put(EEPROM_NUM_MATCHES_ADDRESS, zero);
 
-    // Clear the userID in EEPROM by writing an empty String
-    String emptyString;
-    EEPROM.put(EEPROM_USERID_ADDRESS, emptyString);
-
     // Reset the global variables
     numMatches = 0;
-    clearUserID();
 }
 
 void quickDrawGame();
@@ -903,7 +904,7 @@ void quickDrawGame()
     // }
 
 
-    if (initiateHandshake(userID))
+    if (initiateHandshake(getUserID()))
     {
       updateQDState(HANDSHAKE);
     }
@@ -991,7 +992,7 @@ void checkForAppState()
       APP_STATE = DEBUG;
       comms().write(DEBUG_DELIMITER);
       comms().write(deviceID);
-      comms().print(userID);
+      comms().print(getUserID());
       resetState();
     }
     else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG)
@@ -1212,7 +1213,7 @@ bool handshake(String& match_id, String& opponentID) {
             match_id.toCharArray(uuid_str, 37); // Convert String to char array
             Serial.write(HUNTER_SHAKE);
             Serial.write(uuid_str, 36); // Sending match_id
-            Serial.write(userID.c_str(), 36); // Sending userID
+            Serial.write(getUserID().c_str(), 36); // Sending userID
         } else {
             Serial.write(BOUNTY_SHAKE);
         }
@@ -1383,9 +1384,10 @@ bool isButtonPressed()
 // EEPROM functions
 void updateScore(String match_id, String opponent, boolean win)
 {
-        String hunter_uuid = isHunter ? userID : opponent; 
-        String bounty_uuid = !isHunter ? userID : opponent; 
-        addMatch(match_id, hunter_uuid, bounty_uuid, win);
+    String userID = getUserID();
+    String hunter_uuid = isHunter ? userID : opponent; 
+    String bounty_uuid = !isHunter ? userID : opponent; 
+    addMatch(match_id, hunter_uuid, bounty_uuid, win);
 }
 
 // serial functions
@@ -1503,8 +1505,10 @@ String fetchDebugCommand()
 void setupDevice()
 {
   clearMatchesFromEEPROM();
+  clearUserID();
+  setUserID();
   comms().write(deviceID);
-  comms().print(userID);
+  comms().print(getUserID());
 }
 
 void checkInDevice() {
