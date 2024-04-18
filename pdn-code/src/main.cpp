@@ -334,7 +334,7 @@ void initializePins()
 
 void setup(void)
 {
-  delay(3000);
+
   initializePins();
 
   Serial1.begin(19200, SERIAL_8N1, TXr, TXt, true);
@@ -371,6 +371,8 @@ void setup(void)
   display.sendBuffer();
 
   uiRefresh.every(16, updateUi);
+
+  flushComms();
 }
 
 void loop(void)
@@ -454,6 +456,7 @@ void animateLights()
   }
   else if (QD_STATE == DUEL_ALERT)
   {
+    FastLED.showColor(bountyColors[1]);
   }
   else if (QD_STATE == DUEL_COUNTDOWN)
   {
@@ -506,7 +509,7 @@ bool updateUi(void *)
     }
     display.setCursor(0, 64);
     if(Serial2.available() > 1) {
-      display.print(u8x8_u8toa(Serial2.read(), 3));
+      display.print(u8x8_u8toa(Serial2.peek(), 3));
       display.setCursor(36, 64);
       display.print(u8x8_u8toa(Serial2.available(), 3));
     } else {
@@ -516,6 +519,27 @@ bool updateUi(void *)
   else if (QD_STATE == HANDSHAKE)
   {
     display.print("HANDSHAKE");
+    display.setCursor(0, 16);
+    display.print(u8x8_u8toa(screenCounter++, 3));
+    display.setCursor(0, 48);
+    display.print(u8x8_u8toa(getElapsedTime()))
+    // if(Serial1.available() > 1) {
+    //   display.print(u8x8_u8toa(Serial1.peek(), 3));
+    //   display.setCursor(36, 48);
+    //   display.print(u8x8_u8toa(Serial1.available(), 3));
+    // } else {
+    //   display.print("Serial1 Empty");
+    // }
+    // display.setCursor(0, 64);
+    // if(Serial2.available() > 1) {
+    //   display.print(u8x8_u8toa(Serial2.peek(), 3));
+    //   display.setCursor(36, 64);
+    //   display.print(u8x8_u8toa(Serial2.available(), 3));
+    // } else {
+    //   display.print("Serial2 Empty");
+    // }
+    display.setCursor(64, 14);
+    display.print(u8x8_u8toa(handshakeState, 3));
   }
   else if (QD_STATE == DUEL_ALERT)
   {
@@ -805,7 +829,7 @@ void setupActivation()
   if (isHunter)
   {
     // hunters have minimal activation delay
-    setTimer(5000);
+    setTimer(100);
   }
   else
   {
@@ -890,7 +914,6 @@ bool handshake()
 
   if (handshakeState == 0)
   {
-
     setTimer(HANDSHAKE_DELAY);
     handshakeState = 1;
   }
@@ -925,19 +948,21 @@ bool handshake()
     {
       writeComms(BOUNTY_SHAKE);
     }
-  }
+    handshakeState = 4;
+  } else if(handshakeState == 4) {
 
-  byte command = peekComms();
-  if (isHunter && command == BOUNTY_SHAKE)
-  {
-    writeComms(HUNTER_SHAKE);
-    return true;
-  }
-  else if (!isHunter && command == HUNTER_SHAKE)
-  {
-    // bvbDuel = (command == BOUNTY_SHAKE);
-    writeComms(BOUNTY_SHAKE);
-    return true;
+    byte command = peekComms();
+    if (isHunter && command == BOUNTY_SHAKE)
+    {
+      writeComms(HUNTER_SHAKE);
+      return true;
+    }
+    else if (!isHunter && command == HUNTER_SHAKE)
+    {
+      // bvbDuel = (command == BOUNTY_SHAKE);
+      writeComms(BOUNTY_SHAKE);
+      return true;
+    }
   }
 
   return false;
