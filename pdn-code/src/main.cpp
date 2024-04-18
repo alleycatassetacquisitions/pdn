@@ -1,11 +1,12 @@
 #include <Arduino.h>
-#include <U8g2lib.h>
-#include <SPI.h>
+#include <ArduinoJson.h>
+#include <EEPROM.h>
 #include <FastLED.h>
 #include <HardwareSerial.h>
 #include <OneButton.h>
+#include <SPI.h>
+#include <U8g2lib.h>
 #include <arduino-timer.h>
-#include <EEPROM.h>
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -23,19 +24,24 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-boolean isHunter = true;
+const int BAUDRATE = 115200;
+
+boolean isHunter = false;
 
 byte deviceID = 49;
 
 // DISPLAY
 
-U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI display(U8G2_R0, displayCS, displayDC, displayRST);
+U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI display(U8G2_R0, displayCS, displayDC,
+                                               displayRST);
 
 unsigned long frameBegin = 0;
 unsigned long frameDuration = 0;
 
 void drawDebugLabels();
-void drawDebugState(char *button1State, char *button2State, char *txData, char *rxData, char *motorSpeed, char *led1Pattern, char *led2Pattern);
+void drawDebugState(char *button1State, char *button2State, char *txData,
+                    char *rxData, char *motorSpeed, char *led1Pattern,
+                    char *led2Pattern);
 void updatePrimaryButtonState();
 void updateSecondaryButtonState();
 void updateMotorState();
@@ -64,7 +70,9 @@ bool isButtonPressed();
 // LEDs
 
 CRGB displayLights[numDisplayLights];
-boolean displayLightsOnOff[numDisplayLights] = {true, true, true, true, true, true, true, true, true, true, true, true, true};
+boolean displayLightsOnOff[numDisplayLights] = {true, true, true, true, true,
+                                                true, true, true, true, true,
+                                                true, true, true};
 CRGB gripLights[numGripLights];
 boolean gripLightsOnOff[numGripLights] = {true, true, true, true, true, true};
 
@@ -72,40 +80,15 @@ uint8_t displayColorIndex = 0;
 uint8_t gripColorIndex = 0;
 
 CRGBPalette16 bountyColors = CRGBPalette16(
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Orange,
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Orange,
-    CRGB::Orange,
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Orange,
-    CRGB::Red,
-    CRGB::Red,
-    CRGB::Red);
+    CRGB::Red, CRGB::Red, CRGB::Red, CRGB::Orange, CRGB::Red, CRGB::Red,
+    CRGB::Red, CRGB::Orange, CRGB::Orange, CRGB::Red, CRGB::Red, CRGB::Red,
+    CRGB::Orange, CRGB::Red, CRGB::Red, CRGB::Red);
 
 CRGBPalette16 hunterColors = CRGBPalette16(
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkBlue,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkBlue,
-    CRGB::DarkBlue,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkBlue,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen,
-    CRGB::DarkGreen);
+    CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkBlue,
+    CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkBlue,
+    CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen,
+    CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen);
 
 CRGBPalette16 currentPalette = bountyColors;
 
@@ -254,6 +237,8 @@ bool stateChangeReady = false;
 // APPLICATION STATES
 const byte DEBUG = 10;
 const byte QD_GAME = 11;
+const byte SET_USER = 12;
+const byte CLEAR_USER = 13;
 
 // SERIAL COMMANDS
 const char ENTER_DEBUG = '!';
@@ -265,6 +250,144 @@ const char DEBUG_DELIMITER = '-';
 
 byte APP_STATE = QD_GAME;
 
+// ScoreDataStructureThings
+String current_match_id;
+String current_opponent_id;
+
+struct Match {
+  String match_id;
+  String hunter;
+  String bounty;
+  bool winner_is_hunter; // Indicates if the winner is the hunter
+};
+
+#define MAX_MATCHES 1000 // Maximum number of matches allowed
+
+// EEPROM
+#define EEPROM_MATCH_SIZE sizeof(Match)
+#define EEPROM_NUM_MATCHES_ADDRESS 0
+#define EEPROM_USERID_ADDRESS (EEPROM_NUM_MATCHES_ADDRESS + sizeof(int))
+#define EEPROM_MATCHES_ADDRESS (EEPROM_USERID_ADDRESS + (38 * sizeof(char)))
+
+Match matches[MAX_MATCHES];
+int numMatches = 0;
+
+String generateUUIDv4() {
+  // Generates a random UUIDv4 string
+  String uuid = "";
+  for (int i = 0; i < 36; i++) {
+    if (i == 8 || i == 13 || i == 18 || i == 23) {
+      uuid += "-";
+    } else if (i == 14) {
+      uuid += "4";
+    } else if (i == 19) {
+      uuid +=
+          char(random(8) % 4 + 8); // Generates a random hex character in [89ab]
+    } else {
+      uuid += char(random(16) % 16 + (i < 20 ? 0 : 8));
+    }
+  }
+  return uuid;
+}
+
+void writeMatchArrayToEEPROM() {
+  // Calculate the EEPROM address
+  int address = EEPROM_MATCHES_ADDRESS;
+
+  // Write the Match array to EEPROM
+  for (int i = 0; i < numMatches; i++) {
+    EEPROM.put(address, matches[i]);
+    address += EEPROM_MATCH_SIZE;
+  }
+
+  // Write the number of matches to EEPROM
+  EEPROM.put(EEPROM_NUM_MATCHES_ADDRESS, numMatches);
+}
+
+void readMatchArrayFromEEPROM() {
+  // Calculate the EEPROM address
+  int address = EEPROM_MATCHES_ADDRESS;
+
+  // Read the Match array from EEPROM
+  for (int i = 0; i < numMatches; i++) {
+    EEPROM.get(address, matches[i]);
+    address += EEPROM_MATCH_SIZE;
+  }
+
+  // Read the number of matches from EEPROM
+  EEPROM.get(EEPROM_NUM_MATCHES_ADDRESS, numMatches);
+}
+
+void addMatch(const String &match_id, const String &hunter,
+              const String &bounty, bool winner_is_hunter) {
+  if (numMatches < MAX_MATCHES) {
+    // Sync matches
+    readMatchArrayFromEEPROM();
+    // Create a Match object
+    matches[numMatches].match_id = match_id;
+    matches[numMatches].hunter = hunter;
+    matches[numMatches].bounty = bounty;
+    matches[numMatches].winner_is_hunter = winner_is_hunter;
+    numMatches++;
+    // Sync matches
+    writeMatchArrayToEEPROM();
+  }
+}
+
+String dumpMatchesToJson() {
+  // Sync State
+  readMatchArrayFromEEPROM();
+
+  StaticJsonDocument<512> doc;
+  JsonArray matchesArray = doc.to<JsonArray>();
+  for (int i = 0; i < numMatches; i++) {
+    JsonObject matchObj = matchesArray.createNestedObject();
+    matchObj["match_id"] = matches[i].match_id;
+    matchObj["hunter"] = matches[i].hunter;
+    matchObj["bounty"] = matches[i].bounty;
+    matchObj["capture"] = matches[i].winner_is_hunter;
+  }
+  String output;
+  serializeJson(matchesArray, output);
+  return output;
+}
+
+void setUserID() {
+  String userID = generateUUIDv4(); // Set the userID UUID using the
+                                    // generateUUIDv4() function
+
+  // Write the userID to EEPROM
+  EEPROM.put(EEPROM_USERID_ADDRESS, userID);
+}
+
+String getUserID() {
+  String userID;
+  // Read the userID from EEPROM
+  EEPROM.get(EEPROM_USERID_ADDRESS, userID);
+  return userID;
+}
+
+void clearUserID() {
+  // Clear the userID in EEPROM by writing an empty String
+  String emptyString;
+  EEPROM.put(EEPROM_USERID_ADDRESS, emptyString);
+}
+
+void clearMatchesFromEEPROM() {
+  // Clear the Match array in EEPROM by writing default values
+  for (int i = 0; i < MAX_MATCHES; i++) {
+    Match emptyMatch;
+    EEPROM.put(EEPROM_MATCHES_ADDRESS + i * EEPROM_MATCH_SIZE, emptyMatch);
+  }
+
+  // Clear the number of matches in EEPROM by writing zero
+  int zero = 0;
+  EEPROM.put(EEPROM_NUM_MATCHES_ADDRESS, zero);
+
+  // Reset the global variables
+  numMatches = 0;
+}
+
 void quickDrawGame();
 void checkForAppState();
 void debugEvents();
@@ -274,18 +397,13 @@ bool activationSequence();
 void activationIdle();
 void activationOvercharge();
 bool initiateHandshake();
-bool handshake();
+bool handshake(String &match_id, String &opponentID);
 void alertDuel();
 void duelCountdown();
 void duel();
 void duelOver();
 
-// EEPROM
-
-byte winPointsAddress = 0;
-byte losePointsAddress = 0;
-
-void updateScore(bool win);
+void updateScore(String match_id, String opponent, boolean win);
 
 bool requestSwitchAppState();
 bool isValidMessageSerial1();
@@ -301,8 +419,7 @@ void updateQDState(byte futureState);
 void commitQDState();
 void resetState();
 
-void initializePins()
-{
+void initializePins() {
 
   gpio_reset_pin(GPIO_NUM_38);
   gpio_reset_pin(GPIO_NUM_39);
@@ -332,21 +449,17 @@ void initializePins()
   pinMode(gripLightsPin, OUTPUT);
 }
 
-void setup(void)
-{
+void setup(void) {
 
   initializePins();
 
-  Serial1.begin(19200, SERIAL_8N1, TXr, TXt, true);
+  Serial1.begin(BAUDRATE, SERIAL_8N1, TXr, TXt, true);
 
-  Serial2.begin(19200, SERIAL_8N1, RXr, RXt, true);
+  Serial2.begin(BAUDRATE, SERIAL_8N1, RXr, RXt, true);
 
-  if (isHunter)
-  {
+  if (isHunter) {
     currentPalette = hunterColors;
-  }
-  else
-  {
+  } else {
     currentPalette = bountyColors;
   }
 
@@ -357,8 +470,11 @@ void setup(void)
   // secondary.attachDoubleClick(secondaryButtonDoubleClick);
   // secondary.attachLongPressStop(secondaryButtonLongPress);
 
-  FastLED.addLeds<WS2812B, displayLightsPin, GRB>(displayLights, numDisplayLights).setCorrection(TypicalSMD5050);
-  FastLED.addLeds<WS2812B, gripLightsPin, GRB>(gripLights, numGripLights).setCorrection(TypicalSMD5050);
+  FastLED
+      .addLeds<WS2812B, displayLightsPin, GRB>(displayLights, numDisplayLights)
+      .setCorrection(TypicalSMD5050);
+  FastLED.addLeds<WS2812B, gripLightsPin, GRB>(gripLights, numGripLights)
+      .setCorrection(TypicalSMD5050);
   FastLED.setBrightness(65);
 
   display.begin();
@@ -375,191 +491,155 @@ void setup(void)
   flushComms();
 }
 
-void loop(void)
-{
+void loop(void) {
   now = millis();
   uiRefresh.tick();
   primary.tick();
 
-  if (APP_STATE == QD_GAME)
-  {
+  if (APP_STATE == QD_GAME) {
     quickDrawGame();
-  }
-  else if (APP_STATE == DEBUG)
-  {
+  } else if (APP_STATE == DEBUG) {
     debugEvents();
+  } else if (APP_STATE == SET_USER) {
+    setUserID();
+  } else if (APP_STATE == CLEAR_USER) {
+    clearUserID();
   }
   checkForAppState();
 }
 
 // DISPLAY
 
-
 // LEDS
 byte leftIndex = 9;
 byte rightIndex = 0;
 
-void activationIdleAnimation(int brightness)
-{
+void activationIdleAnimation(int brightness) {
   if (random8() % 7 == 0) {
-    displayLights[random8() % (numDisplayLights-1)] += ColorFromPalette(currentPalette, random8(), brightness, LINEARBLEND);
+    displayLights[random8() % (numDisplayLights - 1)] +=
+        ColorFromPalette(currentPalette, random8(), brightness, LINEARBLEND);
   }
   fadeToBlackBy(displayLights, numDisplayLights, 2);
 
-  for (int i = 0; i < numGripLights; i++)
-  {
+  for (int i = 0; i < numGripLights; i++) {
     if (random8() % 65 == 0) {
-      gripLights[i] += ColorFromPalette(currentPalette, random8(), brightness, LINEARBLEND);
+      gripLights[i] +=
+          ColorFromPalette(currentPalette, random8(), brightness, LINEARBLEND);
     }
   }
   fadeToBlackBy(gripLights, numGripLights, 2);
 }
 
+void animateLights() {
 
-void animateLights()
-{
-
-  if (QD_STATE == INITIATE)
-  {
+  if (QD_STATE == INITIATE) {
     FastLED.showColor(currentPalette[0]);
-  }
-  else if (QD_STATE == DORMANT)
-  {
+  } else if (QD_STATE == DORMANT) {
     FastLED.showColor(currentPalette[0]);
-  }
-  else if (QD_STATE == ACTIVATED)
-  {
-    if (breatheUp)
-    {
+  } else if (QD_STATE == ACTIVATED) {
+    if (breatheUp) {
       ledBrightness++;
-    }
-    else
-    {
+    } else {
       ledBrightness--;
     }
-    pwm_val = 255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+    pwm_val =
+        255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
 
-    if (ledBrightness == 255)
-    {
+    if (ledBrightness == 255) {
       breatheUp = false;
-    }
-    else if (ledBrightness == 0)
-    {
+    } else if (ledBrightness == 0) {
       breatheUp = true;
     }
 
     activationIdleAnimation((int)pwm_val);
-  }
-  else if (QD_STATE == HANDSHAKE)
-  {
+  } else if (QD_STATE == HANDSHAKE) {
     FastLED.showColor(currentPalette[3]);
-  }
-  else if (QD_STATE == DUEL_ALERT)
-  {
+  } else if (QD_STATE == DUEL_ALERT) {
     FastLED.showColor(bountyColors[1]);
-  }
-  else if (QD_STATE == DUEL_COUNTDOWN)
-  {
-  }
-  else if (QD_STATE == DUEL)
-  {
-  }
-  else if (QD_STATE == WIN)
-  {
-  }
-  else if (QD_STATE == LOSE)
-  {
+  } else if (QD_STATE == DUEL_COUNTDOWN) {
+  } else if (QD_STATE == DUEL) {
+  } else if (QD_STATE == WIN) {
+  } else if (QD_STATE == LOSE) {
   }
 }
 
 byte screenCounter = 0;
-bool updateUi(void *)
-{
-
+bool updateUi(void *) {
   animateLights();
 
   display.clearBuffer();
-
   display.setCursor(16, 32);
 
-  if (QD_STATE == INITIATE)
-  {
+  switch (QD_STATE) {
+  case INITIATE:
     display.print("INITIATE");
     display.setCursor(16, 48);
     display.print(u8x8_utoa(screenCounter++));
-  }
-  else if (QD_STATE == DORMANT)
-  {
+    break;
+
+  case DORMANT:
     display.print("DORMANT");
     display.setCursor(16, 48);
     display.print(u8x8_utoa(screenCounter++));
-  }
-  else if (QD_STATE == ACTIVATED)
-  {
+    break;
+
+  case ACTIVATED:
     display.print("ACTIVATED");
     display.setCursor(0, 16);
     display.print(u8x8_u8toa(screenCounter++, 3));
     display.setCursor(0, 48);
-    if(Serial1.available() > 1) {
+    if (Serial1.available() > 1) {
       display.print(u8x8_u8toa(Serial1.peek(), 3));
       display.setCursor(36, 48);
       display.print(u8x8_u8toa(Serial1.available(), 3));
-    } else {
-      display.print("Serial1 Empty");
     }
     display.setCursor(0, 64);
-    if(Serial2.available() > 1) {
+    if (Serial2.available() > 1) {
       display.print(u8x8_u8toa(Serial2.peek(), 3));
       display.setCursor(36, 64);
       display.print(u8x8_u8toa(Serial2.available(), 3));
-    } else {
-      display.print("Serial2 Empty");
     }
-  }
-  else if (QD_STATE == HANDSHAKE)
-  {
+    break;
+
+  case HANDSHAKE:
     display.print("HANDSHAKE");
     display.setCursor(0, 16);
     display.print(u8x8_u8toa(screenCounter++, 3));
-    display.setCursor(0, 48);
-    display.print(u8x8_u8toa(getElapsedTime()))
-    // if(Serial1.available() > 1) {
-    //   display.print(u8x8_u8toa(Serial1.peek(), 3));
-    //   display.setCursor(36, 48);
-    //   display.print(u8x8_u8toa(Serial1.available(), 3));
-    // } else {
-    //   display.print("Serial1 Empty");
-    // }
-    // display.setCursor(0, 64);
-    // if(Serial2.available() > 1) {
-    //   display.print(u8x8_u8toa(Serial2.peek(), 3));
-    //   display.setCursor(36, 64);
-    //   display.print(u8x8_u8toa(Serial2.available(), 3));
-    // } else {
-    //   display.print("Serial2 Empty");
-    // }
     display.setCursor(64, 14);
     display.print(u8x8_u8toa(handshakeState, 3));
-  }
-  else if (QD_STATE == DUEL_ALERT)
-  {
+    display.setCursor(0, 48);
+    if (Serial1.available() > 1) {
+      display.print(u8x8_u8toa(Serial1.peek(), 3));
+      display.setCursor(36, 48);
+      display.print(u8x8_u8toa(Serial1.available(), 3));
+    }
+    display.setCursor(0, 64);
+    if (Serial2.available() > 1) {
+      display.print(u8x8_u8toa(Serial2.peek(), 3));
+      display.setCursor(36, 64);
+      display.print(u8x8_u8toa(Serial2.available(), 3));
+    }
+    break;
+
+  case DUEL_ALERT:
     display.print("ALERT");
-  }
-  else if (QD_STATE == DUEL_COUNTDOWN)
-  {
+    break;
+
+  case DUEL_COUNTDOWN:
     display.print("COUNTDOWN");
-  }
-  else if (QD_STATE == DUEL)
-  {
+    break;
+
+  case DUEL:
     display.print("DUEL");
-  }
-  else if (QD_STATE == WIN)
-  {
+    break;
+
+  case WIN:
     display.print("WIN");
-  }
-  else if (QD_STATE == LOSE)
-  {
+    break;
+
+  case LOSE:
     display.print("LOSE");
+    break;
   }
 
   display.sendBuffer();
@@ -568,8 +648,7 @@ bool updateUi(void *)
   return true; // for our timer to continue repeating.
 }
 
-void setGraphRight(int value)
-{
+void setGraphRight(int value) {
   gripLightsOnOff[3] = value < 1;
   gripLightsOnOff[4] = value < 2;
   gripLightsOnOff[5] = value < 3;
@@ -581,8 +660,7 @@ void setGraphRight(int value)
   displayLightsOnOff[6] = value < 9;
 }
 
-void setGraphLeft(int value)
-{
+void setGraphLeft(int value) {
   gripLightsOnOff[2] = value < 1;
   gripLightsOnOff[1] = value < 2;
   gripLightsOnOff[0] = value < 3;
@@ -594,22 +672,15 @@ void setGraphLeft(int value)
   displayLightsOnOff[5] = value < 9;
 }
 
-void setTransmitLight(boolean on)
-{
-  displayLightsOnOff[12] = on;
-}
+void setTransmitLight(boolean on) { displayLightsOnOff[12] = on; }
 
 // MOTOR
 
-void setMotorOutput(int value)
-{
+void setMotorOutput(int value) {
 
-  if (value > 255)
-  {
+  if (value > 255) {
     value = 255;
-  }
-  else if (value < 0)
-  {
+  } else if (value < 0) {
     value = 0;
   }
 
@@ -619,7 +690,7 @@ void setMotorOutput(int value)
 // SERIAL
 
 void writeComms(byte command) {
-  if(isHunter) {
+  if (isHunter) {
     Serial1.write(command);
   } else {
     Serial2.write(command);
@@ -627,7 +698,7 @@ void writeComms(byte command) {
 }
 
 void writeCommsString(String command) {
-  if(isHunter) {
+  if (isHunter) {
     Serial1.println(command);
   } else {
     Serial2.println(command);
@@ -635,132 +706,97 @@ void writeCommsString(String command) {
 }
 
 byte readComms() {
-  if(isHunter) {
+  if (isHunter) {
     return Serial1.read();
   }
-  //else they are a bounty.  
+  // else they are a bounty.
   return Serial2.read();
 }
 
 String readCommsString(char terminator) {
-  if(isHunter) {
+  if (isHunter) {
     return Serial1.readStringUntil(terminator);
   }
-    
+
   return Serial2.readStringUntil(terminator);
 }
 
 byte peekComms() {
-  if(isHunter) {
+  if (isHunter) {
     return Serial1.peek();
-  } 
-  
+  }
+
   return Serial2.peek();
 }
 
 bool commsAvailable() {
-  return (isHunter && (Serial1.available() > 1)) || (!isHunter && (Serial2.available() > 1));
+  return (isHunter && (Serial1.available() > 1)) ||
+         (!isHunter && (Serial2.available() > 1));
 }
 
-void quickDrawGame()
-{
-  if (QD_STATE == DORMANT)
-  {
-    if (!activationInitiated)
-    {
+void quickDrawGame() {
+  if (QD_STATE == DORMANT) {
+    if (!activationInitiated) {
       setupActivation();
     }
 
-    if (shouldActivate() && !beginActivationSequence)
-    {
+    if (shouldActivate() && !beginActivationSequence) {
       beginActivationSequence = true;
     }
 
-    if (beginActivationSequence)
-    {
-      if (activationSequence())
-      {
+    if (beginActivationSequence) {
+      if (activationSequence()) {
         updateQDState(ACTIVATED);
       }
     }
-  }
-  else if (QD_STATE == ACTIVATED)
-  {
+  } else if (QD_STATE == ACTIVATED) {
     // if(bvbDuel) {
     //   activationOvercharge();
     // } else {
+    // this is sending BATTLE_MSG
     activationIdle();
     // }
 
-    if (initiateHandshake())
-    {
+    if (initiateHandshake()) {
       updateQDState(HANDSHAKE);
     }
-  }
-  else if (QD_STATE == HANDSHAKE)
-  {
-    if (handshake())
-    {
+  } else if (QD_STATE == HANDSHAKE) {
+    if (handshake(current_match_id, current_opponent_id)) {
       updateQDState(DUEL_ALERT);
-    }
-    else if (handshakeTimedOut)
-    {
+    } else if (handshakeTimedOut) {
       updateQDState(ACTIVATED);
     }
-  }
-  else if (QD_STATE == DUEL_ALERT)
-  {
+  } else if (QD_STATE == DUEL_ALERT) {
     alertDuel();
-    if (alertCount == 10)
-    {
+    if (alertCount == 10) {
       updateQDState(DUEL_COUNTDOWN);
     }
-  }
-  else if (QD_STATE == DUEL_COUNTDOWN)
-  {
+  } else if (QD_STATE == DUEL_COUNTDOWN) {
     duelCountdown();
-    if (doBattle)
-    {
+    if (doBattle) {
       updateQDState(DUEL);
     }
-  }
-  else if (QD_STATE == DUEL)
-  {
+  } else if (QD_STATE == DUEL) {
     duel();
-    if (captured)
-    {
+    if (captured) {
       updateQDState(LOSE);
-    }
-    else if (wonBattle)
-    {
+    } else if (wonBattle) {
       updateQDState(WIN);
-    }
-    else if (duelTimedOut)
-    {
+    } else if (duelTimedOut) {
       updateQDState(ACTIVATED);
     }
-  }
-  else if (QD_STATE == WIN)
-  {
-    if (!reset)
-    {
+  } else if (QD_STATE == WIN) {
+    if (!reset) {
       duelOver();
-    }
-    else
-    {
-      updateScore(true);
+    } else {
+      updateScore(current_match_id, current_opponent_id, true);
       updateQDState(DORMANT);
     }
-  }
-  else if (QD_STATE == LOSE)
-  {
-    if (!reset)
-    {
+  } else if (QD_STATE == LOSE) {
+    if (!reset) {
       duelOver();
-    }
-    else
-    {
-      updateScore(false);
+    } else {
+      updateScore(current_match_id, current_opponent_id, false);
       updateQDState(DORMANT);
     }
   }
@@ -768,23 +804,19 @@ void quickDrawGame()
   commitQDState();
 }
 
-void checkForAppState()
-{
+void checkForAppState() {
 
-  if (requestSwitchAppState())
-  {
-    if(commsAvailable()) {
+  if (requestSwitchAppState()) {
+    if (commsAvailable()) {
       String command = fetchDebugCommand();
-      if (validateCommand(command, ENTER_DEBUG))
-      {
+      if (validateCommand(command, ENTER_DEBUG)) {
         Serial.println("Switching to Debug");
         APP_STATE = DEBUG;
         writeComms(DEBUG_DELIMITER);
         writeComms(deviceID);
+        writeCommsString(getUserID());
         resetState();
-      }
-      else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG)
-      {
+      } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
         Serial.println("Switching to Game");
         APP_STATE = QD_GAME;
         QD_STATE = DORMANT;
@@ -798,47 +830,33 @@ void checkForAppState()
 
 byte brt = 255;
 
-void debugEvents()
-{
+void debugEvents() {
   // todo: Debug Display
 
-  if (commandReceived())
-  {
+  if (commandReceived()) {
     String command = fetchDebugCommand();
     Serial.print("Command Received: ");
     Serial.println(command);
-    if (validateCommand(command, SETUP_DEVICE))
-    {
+    if (validateCommand(command, SETUP_DEVICE)) {
       setupDevice();
-    }
-    else if (validateCommand(command, CHECK_IN))
-    {
+    } else if (validateCommand(command, CHECK_IN)) {
       Serial.println("CHECK_IN");
       checkInDevice();
-    }
-    else if (validateCommand(command, SET_ACTIVATION))
-    {
+    } else if (validateCommand(command, SET_ACTIVATION)) {
       Serial.println("SET_ACTIVATION");
       setActivationDelay();
     }
   }
 }
 
-void setupActivation()
-{
-  if (isHunter)
-  {
+void setupActivation() {
+  if (isHunter) {
     // hunters have minimal activation delay
     setTimer(100);
-  }
-  else
-  {
-    if (debugDelay > 0)
-    {
+  } else {
+    if (debugDelay > 0) {
       setTimer(debugDelay);
-    }
-    else
-    {
+    } else {
       randomSeed(analogRead(A0));
       long timer = random(bountyDelay[0], bountyDelay[1]);
       Serial.print("timer: ");
@@ -850,26 +868,17 @@ void setupActivation()
   activationInitiated = true;
 }
 
-bool shouldActivate()
-{
-  return timerExpired();
-}
+bool shouldActivate() { return timerExpired(); }
 
 byte activateMotorCount = 0;
 bool activateMotor = false;
 
-bool activationSequence()
-{
-  if (timerExpired())
-  {
-    if (activateMotorCount < 20)
-    {
-      if (activateMotor)
-      {
+bool activationSequence() {
+  if (timerExpired()) {
+    if (activateMotorCount < 20) {
+      if (activateMotor) {
         setMotorOutput(255);
-      }
-      else
-      {
+      } else {
         setMotorOutput(0);
       }
 
@@ -877,9 +886,7 @@ bool activationSequence()
       activateMotorCount++;
       activateMotor = !activateMotor;
       return false;
-    }
-    else
-    {
+    } else {
       activateMotorCount = 0;
       activateMotor = false;
       return true;
@@ -888,19 +895,16 @@ bool activationSequence()
   return false;
 }
 
-void activationIdle()
-{
-  //msgDelay was to prevent this from broadcasting every loop.
-  if(msgDelay == 0) {
+void activationIdle() {
+  // msgDelay was to prevent this from broadcasting every loop.
+  if (msgDelay == 0) {
     writeComms(BATTLE_MESSAGE);
   }
   msgDelay = msgDelay + 1;
 }
 
-bool initiateHandshake()
-{
-  if (commsAvailable() && peekComms() == BATTLE_MESSAGE)
-  {
+bool initiateHandshake() {
+  if (commsAvailable() && peekComms() == BATTLE_MESSAGE) {
     readComms();
     writeComms(BATTLE_MESSAGE);
     return true;
@@ -909,80 +913,65 @@ bool initiateHandshake()
   return false;
 }
 
-bool handshake()
-{
-
-  if (handshakeState == 0)
-  {
-    setTimer(HANDSHAKE_DELAY);
-    handshakeState = 1;
-  }
-  else if (handshakeState == 1)
-  {
-
-    if (timerExpired())
-    {
-      handshakeState = 2;
-    }
-  }
-  else if (handshakeState == 2)
-  {
-
+byte HANDSHAKE_TIMEOUT_START_STATE = 0;
+byte HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1;
+byte HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2;
+byte HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE = 3;
+// when this functions returns true, its the signal to change state
+bool handshake(String &match_id, String &opponent_id) {
+  // dont transition gamestate, just handshake sub-fsm
+  if (handshakeState == HANDSHAKE_TIMEOUT_START_STATE) {
     setTimer(HANDSHAKE_TIMEOUT);
-    handshakeState = 3;
-  }
-  else if (handshakeState == 3)
-  {
-    if (timerExpired())
-    {
+    handshakeState = HANDSHAKE_SEND_ROLE_SHAKE_STATE;
+    return false;
+  } else if (handshakeState == HANDSHAKE_SEND_ROLE_SHAKE_STATE) {
+    if (timerExpired()) {
       FastLED.setBrightness(0);
       handshakeTimedOut = true;
       return false;
     }
 
-    if (isHunter)
-    {
+    if (isHunter) {
       writeComms(HUNTER_SHAKE);
-    }
-    else
-    {
+    } else {
       writeComms(BOUNTY_SHAKE);
     }
-    handshakeState = 4;
-  } else if(handshakeState == 4) {
+
+    handshakeState = HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE;
+    return true;
+  } else if (handshakeState == HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE) {
 
     byte command = peekComms();
-    if (isHunter && command == BOUNTY_SHAKE)
-    {
+    if (isHunter && command == BOUNTY_SHAKE) {
+      char match_uuid_str[37];
+      match_id = generateUUIDv4();              // Generate match_id UUID
+      match_id.toCharArray(match_uuid_str, 37); // Convert String to char array
       writeComms(HUNTER_SHAKE);
+      writeCommsString(match_uuid_str);      // Sending match_id
+      writeCommsString(getUserID().c_str()); // Sending userID
       return true;
-    }
-    else if (!isHunter && command == HUNTER_SHAKE)
-    {
+    } else if (!isHunter && command == HUNTER_SHAKE) {
       // bvbDuel = (command == BOUNTY_SHAKE);
       writeComms(BOUNTY_SHAKE);
+      match_id = readCommsString('\0');
+      opponent_id = readCommsString('\0');
       return true;
     }
+    return false;
   }
 
   return false;
 }
 
-void alertDuel()
-{
-  if (alertCount == 0)
-  {
+void alertDuel() {
+  if (alertCount == 0) {
     buttonBrightness = 255;
   }
 
-  if (timerExpired())
-  {
-    if (buttonBrightness == 255)
-    {
+  if (timerExpired()) {
+    if (buttonBrightness == 255) {
       buttonBrightness = 0;
-    }
-    else
-    {
+    } else {
       buttonBrightness = 255;
     }
 
@@ -992,155 +981,113 @@ void alertDuel()
   }
 }
 
-void duelCountdown()
-{
-  if (timerExpired())
-  {
-    if (countdownStage == 4)
-    {
+void duelCountdown() {
+  if (timerExpired()) {
+    if (countdownStage == 4) {
       setTimer(FOUR);
       FastLED.setBrightness(255);
       countdownStage = 3;
-    }
-    else if (countdownStage == 3)
-    {
+    } else if (countdownStage == 3) {
       setTimer(THREE);
       // setLED(buttonLED, 0);
       // setLED(interiorLED, 0);
       countdownStage = 2;
-    }
-    else if (countdownStage == 2)
-    {
+    } else if (countdownStage == 2) {
       setTimer(TWO);
       // setLED(loseLED, 0);
       countdownStage = 1;
-    }
-    else if (countdownStage == 1)
-    {
+    } else if (countdownStage == 1) {
       setTimer(ONE);
       // setLED(winLED, 0);
       countdownStage = 0;
-    }
-    else if (countdownStage == 0)
-    {
+    } else if (countdownStage == 0) {
       doBattle = true;
     }
   }
 }
 
-void duel()
-{
+void duel() {
   FastLED.setBrightness(255);
 
-  if (peekComms() == ZAP)
-  {
+  if (peekComms() == ZAP) {
     readComms();
     writeComms(YOU_DEFEATED_ME);
     captured = true;
     return;
-  }
-  else if (peekComms() == YOU_DEFEATED_ME)
-  {
+  } else if (peekComms() == YOU_DEFEATED_ME) {
     readComms();
     wonBattle = true;
     return;
-  }
-  else if (peekComms() != -1)
-  {
+  } else if (peekComms() != -1) {
     readComms();
   }
 
-  if (isButtonPressed() && sendZapSignal)
-  {
+  if (isButtonPressed() && sendZapSignal) {
     sendZapSignal = false;
     writeComms(ZAP);
   }
 
-  if (startDuelTimer)
-  {
+  if (startDuelTimer) {
     setTimer(DUEL_TIMEOUT);
     startDuelTimer = false;
   }
 
-  if (timerExpired())
-  {
+  if (timerExpired()) {
     FastLED.setBrightness(0);
     bvbDuel = false;
     duelTimedOut = true;
   }
 }
 
-void duelOver()
-{
-  if (startBattleFinish)
-  {
+void duelOver() {
+  if (startBattleFinish) {
     startBattleFinish = false;
     FastLED.setBrightness(0);
     setMotorOutput(255);
   }
 
-  if (timerExpired())
-  {
+  if (timerExpired()) {
     setTimer(500);
-    if (finishBattleBlinkCount < FINISH_BLINKS)
-    {
-      if (finishBattleBlinkCount % 2 == 0)
-      {
+    if (finishBattleBlinkCount < FINISH_BLINKS) {
+      if (finishBattleBlinkCount % 2 == 0) {
         setMotorOutput(0);
-      }
-      else
-      {
+      } else {
         setMotorOutput(255);
       }
       finishBattleBlinkCount = finishBattleBlinkCount + 1;
-    }
-    else
-    {
+    } else {
       setMotorOutput(0);
       reset = true;
     }
   }
 }
 
-bool isButtonPressed()
-{
-  return digitalRead(primaryButtonPin) == LOW || digitalRead(secondaryButtonPin) == LOW;
+bool isButtonPressed() {
+  return digitalRead(primaryButtonPin) == LOW ||
+         digitalRead(secondaryButtonPin) == LOW;
 }
 
 // EEPROM functions
-void updateScore(boolean win)
-{
-  byte address;
-  if (win)
-  {
-    address = winPointsAddress;
-  }
-  else
-  {
-    address = losePointsAddress;
-  }
-  byte currentScore = EEPROM.read(address);
-  currentScore = currentScore + 1;
-  EEPROM.write(address, currentScore);
+void updateScore(String match_id, String opponent, boolean win) {
+  String userID = getUserID();
+  String hunter_uuid = isHunter ? userID : opponent;
+  String bounty_uuid = !isHunter ? userID : opponent;
+  addMatch(match_id, hunter_uuid, bounty_uuid, win);
 }
 
 // serial functions
-
-void flushComms()
-{
-  while(Serial1.available() > 1 && !isValidMessageSerial1()) {
+void flushComms() {
+  while (Serial1.available() > 1 && !isValidMessageSerial1()) {
     Serial1.read();
   }
 
-  while(Serial2.available() > 1 && !isValidMessageSerial2()) {
+  while (Serial2.available() > 1 && !isValidMessageSerial2()) {
     Serial2.read();
   }
 }
 
-bool requestSwitchAppState()
-{
-  if (commsAvailable())
-  {
+bool requestSwitchAppState() {
+  if (commsAvailable()) {
     char command = (char)peekComms();
     Serial.print("Checking App State: ");
     Serial.print(" Current buffer size: ");
@@ -1150,39 +1097,28 @@ bool requestSwitchAppState()
     Serial.print(" As Byte: ");
     Serial.println(peekComms());
     return (command == ENTER_DEBUG || command == START_GAME);
-  }
-  else
-  {
+  } else {
     return false;
   }
 }
 
-bool isValidMessageSerial1()
-{
+bool isValidMessageSerial1() {
   byte command = Serial1.peek();
-  if ((char)command == ENTER_DEBUG || (char)command == START_GAME)
-  {
+  if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
     return true;
   }
 
-  if (APP_STATE == DEBUG)
-  {
+  if (APP_STATE == DEBUG) {
     Serial.print("Validating DEBUG: ");
     Serial.println((char)command);
-    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION || (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
-  }
-  else
-  {
-    if (QD_STATE == ACTIVATED)
-    {
+    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
+            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
+  } else {
+    if (QD_STATE == ACTIVATED) {
       return command == BATTLE_MESSAGE;
-    }
-    else if (QD_STATE == HANDSHAKE)
-    {
+    } else if (QD_STATE == HANDSHAKE) {
       return (command == BOUNTY_SHAKE || command == HUNTER_SHAKE);
-    }
-    else if (QD_STATE == DUEL)
-    {
+    } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
   }
@@ -1190,32 +1126,23 @@ bool isValidMessageSerial1()
   return false;
 }
 
-bool isValidMessageSerial2()
-{
+bool isValidMessageSerial2() {
   byte command = Serial2.peek();
-  if ((char)command == ENTER_DEBUG || (char)command == START_GAME)
-  {
+  if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
     return true;
   }
 
-  if (APP_STATE == DEBUG)
-  {
+  if (APP_STATE == DEBUG) {
     Serial.print("Validating DEBUG: ");
     Serial.println((char)command);
-    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION || (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
-  }
-  else
-  {
-    if (QD_STATE == ACTIVATED)
-    {
+    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
+            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
+  } else {
+    if (QD_STATE == ACTIVATED) {
       return command == BATTLE_MESSAGE;
-    }
-    else if (QD_STATE == HANDSHAKE)
-    {
+    } else if (QD_STATE == HANDSHAKE) {
       return (command == BOUNTY_SHAKE || command == HUNTER_SHAKE);
-    }
-    else if (QD_STATE == DUEL)
-    {
+    } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
   }
@@ -1223,72 +1150,48 @@ bool isValidMessageSerial2()
   return false;
 }
 
-bool commandReceived()
-{
-  if (commsAvailable())
-  {
+bool commandReceived() {
+  if (commsAvailable()) {
     char command = (char)peekComms();
-    return (command == SETUP_DEVICE || command == SET_ACTIVATION || command == CHECK_IN);
-  }
-  else
-  {
+    return (command == SETUP_DEVICE || command == SET_ACTIVATION ||
+            command == CHECK_IN);
+  } else {
     return false;
   }
 }
 
-bool validateCommand(String a, char b)
-{
+bool validateCommand(String a, char b) {
   char array[a.length() + 1];
   a.toCharArray(array, a.length() + 1);
   return b == array[0];
 }
 
-String fetchDebugData()
-{
-  return readCommsString('\n');
-}
+String fetchDebugData() { return readCommsString('\n'); }
 
-String fetchDebugCommand()
-{
-  return readCommsString(DEBUG_DELIMITER);
-}
+String fetchDebugCommand() { return readCommsString(DEBUG_DELIMITER); }
 
-void setupDevice()
-{
-  EEPROM.put(winPointsAddress, 0);
-  EEPROM.put(losePointsAddress, 0);
+void setupDevice() {
+  clearMatchesFromEEPROM();
+  clearUserID();
+  setUserID();
   writeComms(deviceID);
+  writeCommsString(getUserID());
 }
 
-void checkInDevice()
-{
-  byte winPoints;
-  byte losePoints;
-
-  EEPROM.get(winPointsAddress, winPoints);
-  EEPROM.get(losePointsAddress, losePoints);
-
-  Serial.print(" Checking In: ");
-  Serial.print(deviceID);
-  Serial.print(" Win Points: ");
-  Serial.print(winPoints);
-  Serial.print(" Losses: ");
-  Serial.println(losePoints);
-
+void checkInDevice() {
   writeComms(deviceID);
 
   writeComms(DEBUG_DELIMITER);
-  writeComms(winPoints);
-  writeComms(DEBUG_DELIMITER);
-  writeComms(losePoints);
+  // Print JSON string to serial
+  String jsonStr = dumpMatchesToJson();
+  writeCommsString(jsonStr);
   writeComms(DEBUG_DELIMITER);
   writeComms(isHunter);
   writeComms(DEBUG_DELIMITER);
 }
 
-void setActivationDelay()
-{
-  if(commsAvailable()) {
+void setActivationDelay() {
+  if (commsAvailable()) {
     String activationDelay = fetchDebugData();
     debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
     Serial.print("Set Activation Delay: ");
@@ -1297,46 +1200,32 @@ void setActivationDelay()
 }
 
 // time functions
-unsigned long getElapsedTime()
-{
-  return now - start;
-}
+unsigned long getElapsedTime() { return now - start; }
 
-bool timerExpired()
-{
-  return timer <= getElapsedTime();
-}
+bool timerExpired() { return timer <= getElapsedTime(); }
 
-void invalidateTimer()
-{
-  timer = 0;
-}
+void invalidateTimer() { timer = 0; }
 
-void setTimer(unsigned long timerDelay)
-{
+void setTimer(unsigned long timerDelay) {
   timer = timerDelay;
   start = millis();
 }
 
 // state functions
-void updateQDState(byte futureState)
-{
+void updateQDState(byte futureState) {
   newState = futureState;
   stateChangeReady = true;
 }
 
-void commitQDState()
-{
-  if (stateChangeReady)
-  {
+void commitQDState() {
+  if (stateChangeReady) {
     QD_STATE = newState;
     resetState();
   }
   stateChangeReady = false;
 }
 
-void resetState()
-{
+void resetState() {
   reset = false;
   activationInitiated = false;
   countdownStage = COUNTDOWN_STAGES;
@@ -1397,8 +1286,8 @@ void resetState()
 
 //         buttonBrightness++;
 
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness / smoothingPoints)) - 1.0));
-//         setAllLED(pwm_val);
+//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness /
+//         smoothingPoints)) - 1.0)); setAllLED(pwm_val);
 
 //         if (buttonBrightness == 255) {
 //           overchargeStep = 1;
@@ -1431,8 +1320,8 @@ void resetState()
 //       if(overchargeFlickers < 2 && (millis() % 10) == 0) {
 //         buttonBrightness--;
 
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness / smoothingPoints)) - 1.0));
-//         setAllLED(pwm_val);
+//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness /
+//         smoothingPoints)) - 1.0)); setAllLED(pwm_val);
 
 //         if (buttonBrightness == 0) {
 //           overchargeStep = 4;
@@ -1447,8 +1336,7 @@ void resetState()
 //   }
 // }
 
-void drawDebugLabels()
-{
+void drawDebugLabels() {
   display.drawStr(16, 10, "BTN 1:");
   display.drawStr(16, 20, "BTN 2:");
   display.drawStr(16, 30, "TX:");
@@ -1457,8 +1345,9 @@ void drawDebugLabels()
   display.drawStr(16, 60, "FRAME:");
 }
 
-void drawDebugState(char *button1State, char *button2State, char *txData, char *rxData, char *motorSpeed, char *led1Pattern, char *fps)
-{
+void drawDebugState(char *button1State, char *button2State, char *txData,
+                    char *rxData, char *motorSpeed, char *led1Pattern,
+                    char *fps) {
   display.drawStr(80, 10, button1State);
   display.drawStr(80, 20, button2State);
   display.drawStr(80, 30, txData);
@@ -1467,38 +1356,32 @@ void drawDebugState(char *button1State, char *button2State, char *txData, char *
   display.drawStr(80, 60, fps);
 }
 
-void updatePrimaryButtonState()
-{
+void updatePrimaryButtonState() {
   display.setCursor(80, 10);
   display.print(u8x8_u8toa(primaryPresses, 3));
 }
 
-void updateSecondaryButtonState()
-{
+void updateSecondaryButtonState() {
   display.setCursor(80, 20);
   display.print(u8x8_u8toa(secondaryPresses, 3));
 }
 
-void updateMotorState()
-{
+void updateMotorState() {
   display.setCursor(80, 50);
   display.print(u8x8_u8toa(motorSpeed, 3));
 }
 
-void updateTXState()
-{
+void updateTXState() {
   display.setCursor(80, 30);
   display.print(u8x8_u8toa(lastTxPacket, 3));
 }
 
-void updateRXState()
-{
+void updateRXState() {
   display.setCursor(80, 40);
   display.print(u8x8_u8toa(lastRxPacket, 3));
 }
 
-void updateFramerate()
-{
+void updateFramerate() {
   int duration = frameDuration;
   display.setCursor(80, 60);
   display.print(u8x8_u8toa(duration, 3));
@@ -1506,65 +1389,44 @@ void updateFramerate()
 
 // BUTTONS
 
-void primaryButtonClick()
-{
+void primaryButtonClick() {
   primaryPresses += 1;
   setGraphLeft(primaryPresses % 7);
 }
 
-void secondaryButtonClick()
-{
+void secondaryButtonClick() {
   secondaryPresses += 1;
   setGraphRight(secondaryPresses % 7);
 }
 
-void primaryButtonDoubleClick()
-{
-  setTransmitLight(!displayLightsOnOff[12]);
-}
+void primaryButtonDoubleClick() { setTransmitLight(!displayLightsOnOff[12]); }
 
-void secondaryButtonDoubleClick()
-{
-  if (motorSpeed == 0)
-  {
+void secondaryButtonDoubleClick() {
+  if (motorSpeed == 0) {
     motorSpeed = 65;
-  }
-  else if (motorSpeed == 65)
-  {
+  } else if (motorSpeed == 65) {
     motorSpeed = 155;
-  }
-  else if (motorSpeed == 155)
-  {
+  } else if (motorSpeed == 155) {
     motorSpeed = 255;
-  }
-  else if (motorSpeed == 255)
-  {
+  } else if (motorSpeed == 255) {
     motorSpeed = 0;
   }
 }
 
-void primaryButtonLongPress()
-{
+void primaryButtonLongPress() {
   isHunter = !isHunter;
 
-  if (isHunter)
-  {
+  if (isHunter) {
     currentPalette = hunterColors;
-  }
-  else
-  {
+  } else {
     currentPalette = bountyColors;
   }
 }
 
-void secondaryButtonLongPress()
-{
-  if (isHunter)
-  {
+void secondaryButtonLongPress() {
+  if (isHunter) {
     writeTxTransaction(1);
-  }
-  else
-  {
+  } else {
     writeRxTransaction(1);
   }
 }
