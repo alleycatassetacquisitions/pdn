@@ -807,21 +807,19 @@ void quickDrawGame() {
 void checkForAppState() {
 
   if (requestSwitchAppState()) {
-    if (commsAvailable()) {
-      String command = fetchDebugCommand();
-      if (validateCommand(command, ENTER_DEBUG)) {
-        Serial.println("Switching to Debug");
-        APP_STATE = DEBUG;
-        writeComms(DEBUG_DELIMITER);
-        writeComms(deviceID);
-        writeCommsString(getUserID());
-        resetState();
-      } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
-        Serial.println("Switching to Game");
-        APP_STATE = QD_GAME;
-        QD_STATE = DORMANT;
-        resetState();
-      }
+    String command = fetchDebugCommand();
+    if (validateCommand(command, ENTER_DEBUG)) {
+      Serial.println("Switching to Debug");
+      APP_STATE = DEBUG;
+      writeComms(DEBUG_DELIMITER);
+      writeComms(deviceID);
+      writeCommsString(getUserID());
+      resetState();
+    } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
+      Serial.println("Switching to Game");
+      APP_STATE = QD_GAME;
+      QD_STATE = DORMANT;
+      resetState();
     }
   }
 
