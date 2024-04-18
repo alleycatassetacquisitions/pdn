@@ -107,7 +107,7 @@ CRGBPalette16 hunterColors = CRGBPalette16(
     CRGB::DarkGreen,
     CRGB::DarkGreen);
 
-CRGBPalette16 currentPalette = hunterColors;
+CRGBPalette16 currentPalette = bountyColors;
 
 void animateLights();
 void activationIdleAnimation(int brightness);
@@ -160,7 +160,7 @@ byte winBrightness = 0;
 // STATE - DORMANT
 long bountyDelay[] = {300000, 900000};
 long overchargeDelay[] = {180000, 300000};
-unsigned long debugDelay = 3000;
+long debugDelay = 3000;
 bool activationInitiated = false;
 bool beginActivationSequence = false;
 
@@ -228,7 +228,7 @@ unsigned long start = 0;
 unsigned long now = 0;
 unsigned long timer = 0;
 
-void setTimer(long timerDelay);
+void setTimer(unsigned long timerDelay);
 bool timerExpired();
 void invalidateTimer();
 unsigned long getElapsedTime();
@@ -288,8 +288,8 @@ byte losePointsAddress = 0;
 void updateScore(bool win);
 
 bool requestSwitchAppState();
-void flushGarbageData();
-bool isValidMessage();
+bool isValidMessageSerial1();
+bool isValidMessageSerial2();
 bool commandReceived();
 bool validateCommand(String a, char b);
 String fetchDebugData();
@@ -303,6 +303,16 @@ void resetState();
 
 void initializePins()
 {
+
+  gpio_reset_pin(GPIO_NUM_38);
+  gpio_reset_pin(GPIO_NUM_39);
+  gpio_reset_pin(GPIO_NUM_40);
+  gpio_reset_pin(GPIO_NUM_41);
+
+  gpio_pad_select_gpio(GPIO_NUM_38);
+  gpio_pad_select_gpio(GPIO_NUM_39);
+  gpio_pad_select_gpio(GPIO_NUM_40);
+  gpio_pad_select_gpio(GPIO_NUM_41);
 
   // init display
   pinMode(displayCS, OUTPUT);
@@ -324,23 +334,20 @@ void initializePins()
 
 void setup(void)
 {
-
+  delay(3000);
   initializePins();
 
-  Serial.begin(19200, SERIAL_8N1);
-  Serial1.begin(19200, SERIAL_8N1, TXr, TXt);
+  Serial1.begin(19200, SERIAL_8N1, TXr, TXt, true);
 
-  Serial2.begin(19200, SERIAL_8N1, RXr, RXt);
+  Serial2.begin(19200, SERIAL_8N1, RXr, RXt, true);
 
   if (isHunter)
   {
-    // comms = Serial1;
     currentPalette = hunterColors;
   }
   else
   {
     currentPalette = bountyColors;
-    // comms = Serial2;
   }
 
   // primary.attachClick(primaryButtonClick);
@@ -351,13 +358,13 @@ void setup(void)
   // secondary.attachLongPressStop(secondaryButtonLongPress);
 
   FastLED.addLeds<WS2812B, displayLightsPin, GRB>(displayLights, numDisplayLights).setCorrection(TypicalSMD5050);
-  FastLED.addLeds<WS2812B, gripLightsPin, GRB>(gripLights, numGripLights);
+  FastLED.addLeds<WS2812B, gripLightsPin, GRB>(gripLights, numGripLights).setCorrection(TypicalSMD5050);
   FastLED.setBrightness(65);
 
   display.begin();
 
   display.clearBuffer();
-  display.setContrast(255);
+  display.setContrast(125);
   display.setFont(u8g2_font_smart_patrol_nbp_tf);
   drawDebugLabels();
   drawDebugState("OFF", "OFF", "N/A", "N/A", "00%", "OFF", "OFF");
@@ -370,6 +377,7 @@ void loop(void)
 {
   now = millis();
   uiRefresh.tick();
+  primary.tick();
 
   if (APP_STATE == QD_GAME)
   {
@@ -411,9 +419,11 @@ void animateLights()
 
   if (QD_STATE == INITIATE)
   {
+    FastLED.showColor(currentPalette[0]);
   }
   else if (QD_STATE == DORMANT)
   {
+    FastLED.showColor(currentPalette[0]);
   }
   else if (QD_STATE == ACTIVATED)
   {
@@ -440,6 +450,7 @@ void animateLights()
   }
   else if (QD_STATE == HANDSHAKE)
   {
+    FastLED.showColor(currentPalette[3]);
   }
   else if (QD_STATE == DUEL_ALERT)
   {
@@ -471,6 +482,8 @@ bool updateUi(void *)
   if (QD_STATE == INITIATE)
   {
     display.print("INITIATE");
+    display.setCursor(16, 48);
+    display.print(u8x8_utoa(screenCounter++));
   }
   else if (QD_STATE == DORMANT)
   {
@@ -481,8 +494,24 @@ bool updateUi(void *)
   else if (QD_STATE == ACTIVATED)
   {
     display.print("ACTIVATED");
-    display.setCursor(16, 48);
-    display.print(u8x8_utoa(screenCounter++));
+    display.setCursor(0, 16);
+    display.print(u8x8_u8toa(screenCounter++, 3));
+    display.setCursor(0, 48);
+    if(Serial1.available() > 1) {
+      display.print(u8x8_u8toa(Serial1.peek(), 3));
+      display.setCursor(36, 48);
+      display.print(u8x8_u8toa(Serial1.available(), 3));
+    } else {
+      display.print("Serial1 Empty");
+    }
+    display.setCursor(0, 64);
+    if(Serial2.available() > 1) {
+      display.print(u8x8_u8toa(Serial2.read(), 3));
+      display.setCursor(36, 64);
+      display.print(u8x8_u8toa(Serial2.available(), 3));
+    } else {
+      display.print("Serial2 Empty");
+    }
   }
   else if (QD_STATE == HANDSHAKE)
   {
@@ -584,29 +613,29 @@ void writeCommsString(String command) {
 byte readComms() {
   if(isHunter) {
     return Serial1.read();
-  } else {
-    return Serial2.read();
   }
+  //else they are a bounty.  
+  return Serial2.read();
 }
 
 String readCommsString(char terminator) {
   if(isHunter) {
     return Serial1.readStringUntil(terminator);
-  } else { 
-    return Serial2.readStringUntil(terminator);
   }
+    
+  return Serial2.readStringUntil(terminator);
 }
 
 byte peekComms() {
   if(isHunter) {
     return Serial1.peek();
-  } else {
-    return Serial2.peek();
-  }
+  } 
+  
+  return Serial2.peek();
 }
 
 bool commsAvailable() {
-  return (isHunter && Serial1.available()) || (!isHunter && Serial2.available());
+  return (isHunter && (Serial1.available() > 1)) || (!isHunter && (Serial2.available() > 1));
 }
 
 void quickDrawGame()
@@ -720,25 +749,27 @@ void checkForAppState()
 
   if (requestSwitchAppState())
   {
-    String command = fetchDebugCommand();
-    if (validateCommand(command, ENTER_DEBUG))
-    {
-      Serial.println("Switching to Debug");
-      APP_STATE = DEBUG;
-      writeComms(DEBUG_DELIMITER);
-      writeComms(deviceID);
-      resetState();
-    }
-    else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG)
-    {
-      Serial.println("Switching to Game");
-      APP_STATE = QD_GAME;
-      QD_STATE = DORMANT;
-      resetState();
+    if(commsAvailable()) {
+      String command = fetchDebugCommand();
+      if (validateCommand(command, ENTER_DEBUG))
+      {
+        Serial.println("Switching to Debug");
+        APP_STATE = DEBUG;
+        writeComms(DEBUG_DELIMITER);
+        writeComms(deviceID);
+        resetState();
+      }
+      else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG)
+      {
+        Serial.println("Switching to Game");
+        APP_STATE = QD_GAME;
+        QD_STATE = DORMANT;
+        resetState();
+      }
     }
   }
 
-  flushGarbageData();
+  flushComms();
 }
 
 byte brt = 255;
@@ -781,11 +812,6 @@ void setupActivation()
     if (debugDelay > 0)
     {
       setTimer(debugDelay);
-    }
-    else if (bvbDuel)
-    {
-      randomSeed(analogRead(A0));
-      setTimer(random(overchargeDelay[0], overchargeDelay[1]));
     }
     else
     {
@@ -840,7 +866,7 @@ bool activationSequence()
 
 void activationIdle()
 {
-  // msgDelay was to prevent this from broadcasting every loop.
+  //msgDelay was to prevent this from broadcasting every loop.
   if(msgDelay == 0) {
     writeComms(BATTLE_MESSAGE);
   }
@@ -849,7 +875,7 @@ void activationIdle()
 
 bool initiateHandshake()
 {
-  if (commsAvailable() > 0 && peekComms() == BATTLE_MESSAGE)
+  if (commsAvailable() && peekComms() == BATTLE_MESSAGE)
   {
     readComms();
     writeComms(BATTLE_MESSAGE);
@@ -907,9 +933,9 @@ bool handshake()
     writeComms(HUNTER_SHAKE);
     return true;
   }
-  else if (!isHunter && command == BOUNTY_SHAKE || command == HUNTER_SHAKE)
+  else if (!isHunter && command == HUNTER_SHAKE)
   {
-    bvbDuel = (command == BOUNTY_SHAKE);
+    // bvbDuel = (command == BOUNTY_SHAKE);
     writeComms(BOUNTY_SHAKE);
     return true;
   }
@@ -1077,8 +1103,13 @@ void updateScore(boolean win)
 
 void flushComms()
 {
-  Serial1.flush();
-  Serial2.flush();
+  while(Serial1.available() > 1 && !isValidMessageSerial1()) {
+    Serial1.read();
+  }
+
+  while(Serial2.available() > 1 && !isValidMessageSerial2()) {
+    Serial2.read();
+  }
 }
 
 bool requestSwitchAppState()
@@ -1101,17 +1132,42 @@ bool requestSwitchAppState()
   }
 }
 
-void flushGarbageData()
+bool isValidMessageSerial1()
 {
-  while (commsAvailable() && !isValidMessage())
+  byte command = Serial1.peek();
+  if ((char)command == ENTER_DEBUG || (char)command == START_GAME)
   {
-    flushComms();
+    return true;
   }
+
+  if (APP_STATE == DEBUG)
+  {
+    Serial.print("Validating DEBUG: ");
+    Serial.println((char)command);
+    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION || (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
+  }
+  else
+  {
+    if (QD_STATE == ACTIVATED)
+    {
+      return command == BATTLE_MESSAGE;
+    }
+    else if (QD_STATE == HANDSHAKE)
+    {
+      return (command == BOUNTY_SHAKE || command == HUNTER_SHAKE);
+    }
+    else if (QD_STATE == DUEL)
+    {
+      return (command == ZAP || command == YOU_DEFEATED_ME);
+    }
+  }
+
+  return false;
 }
 
-bool isValidMessage()
+bool isValidMessageSerial2()
 {
-  byte command = peekComms();
+  byte command = Serial2.peek();
   if ((char)command == ENTER_DEBUG || (char)command == START_GAME)
   {
     return true;
@@ -1164,26 +1220,12 @@ bool validateCommand(String a, char b)
 
 String fetchDebugData()
 {
-  if (commsAvailable())
-  {
-    return readCommsString('\n');
-  }
-  else
-  {
-    return "";
-  }
+  return readCommsString('\n');
 }
 
 String fetchDebugCommand()
 {
-  if (commsAvailable())
-  {
-    return readCommsString(DEBUG_DELIMITER);
-  }
-  else
-  {
-    return "";
-  }
+  return readCommsString(DEBUG_DELIMITER);
 }
 
 void setupDevice()
@@ -1221,10 +1263,12 @@ void checkInDevice()
 
 void setActivationDelay()
 {
-  String activationDelay = fetchDebugData();
-  debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
-  Serial.print("Set Activation Delay: ");
-  Serial.println(debugDelay);
+  if(commsAvailable()) {
+    String activationDelay = fetchDebugData();
+    debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
+    Serial.print("Set Activation Delay: ");
+    Serial.println(debugDelay);
+  }
 }
 
 // time functions
@@ -1243,7 +1287,7 @@ void invalidateTimer()
   timer = 0;
 }
 
-void setTimer(long timerDelay)
+void setTimer(unsigned long timerDelay)
 {
   timer = timerDelay;
   start = millis();
