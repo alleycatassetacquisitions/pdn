@@ -113,6 +113,7 @@ void setMotorOutput(int value);
 int motorSpeed = 0;
 
 // SERIAL
+bool commsAvailable();
 void writeComms(byte command);
 void writeCommsString(String command);
 byte readComms();
@@ -395,6 +396,8 @@ void clearMatchesFromEEPROM() {
   numMatches = 0;
 }
 
+String debugOutput = "";
+
 void quickDrawGame();
 void checkForAppState();
 void debugEvents();
@@ -581,76 +584,89 @@ bool updateUi(void *) {
   display.clearBuffer();
   display.setCursor(16, 32);
 
-  switch (QD_STATE) {
-  case INITIATE:
-    display.print("INITIATE");
-    display.setCursor(16, 48);
-    display.print(u8x8_utoa(screenCounter++));
-    break;
+  switch(APP_STATE) {
+    case DEBUG:
+      display.print("DEBUG");
+      display.setCursor(2, 48);
+      display.print("1:");
+      if(commsAvailable()) {
+        display.print(readDebugString('\n'));
+      }
+      break;
 
-  case DORMANT:
-    display.print("DORMANT");
-    display.setCursor(16, 48);
-    display.print(u8x8_utoa(screenCounter++));
-    break;
+    case QD_GAME:
+      switch (QD_STATE) {
+        case INITIATE:
+          display.print("INITIATE");
+          display.setCursor(16, 48);
+          display.print(u8x8_utoa(screenCounter++));
+          break;
 
-  case ACTIVATED:
-    display.print("ACTIVATED");
-    display.setCursor(0, 16);
-    display.print(u8x8_u8toa(screenCounter++, 3));
-    display.setCursor(0, 48);
-    if (Serial1.available() > 1) {
-      display.print(u8x8_u8toa(Serial1.peek(), 3));
-      display.setCursor(36, 48);
-      display.print(u8x8_u8toa(Serial1.available(), 3));
-    }
-    display.setCursor(0, 64);
-    if (Serial2.available() > 1) {
-      display.print(u8x8_u8toa(Serial2.peek(), 3));
-      display.setCursor(36, 64);
-      display.print(u8x8_u8toa(Serial2.available(), 3));
-    }
-    break;
+        case DORMANT:
+          display.print("DORMANT");
+          display.setCursor(16, 48);
+          display.print(u8x8_utoa(screenCounter++));
+          break;
 
-  case HANDSHAKE:
-    display.print("HANDSHAKE");
-    display.setCursor(0, 16);
-    display.print(u8x8_u8toa(screenCounter++, 3));
-    display.setCursor(64, 14);
-    display.print(u8x8_u8toa(handshakeState, 3));
-    display.setCursor(0, 48);
-    if (Serial1.available() > 1) {
-      display.print(u8x8_u8toa(Serial1.peek(), 3));
-      display.setCursor(36, 48);
-      display.print(u8x8_u8toa(Serial1.available(), 3));
-    }
-    display.setCursor(0, 64);
-    if (Serial2.available() > 1) {
-      display.print(u8x8_u8toa(Serial2.peek(), 3));
-      display.setCursor(36, 64);
-      display.print(u8x8_u8toa(Serial2.available(), 3));
-    }
-    break;
+        case ACTIVATED:
+          display.print("ACTIVATED");
+          display.setCursor(0, 16);
+          display.print(u8x8_u8toa(screenCounter++, 3));
+          display.setCursor(0, 48);
+          if (Serial1.available() > 1) {
+            display.print(u8x8_u8toa(Serial1.peek(), 3));
+            display.setCursor(36, 48);
+            display.print(u8x8_u8toa(Serial1.available(), 3));
+          }
+          display.setCursor(0, 64);
+          if (Serial2.available() > 1) {
+            display.print(u8x8_u8toa(Serial2.peek(), 3));
+            display.setCursor(36, 64);
+            display.print(u8x8_u8toa(Serial2.available(), 3));
+          }
+          break;
 
-  case DUEL_ALERT:
-    display.print("ALERT");
-    break;
+        case HANDSHAKE:
+          display.print("HANDSHAKE");
+          display.setCursor(0, 16);
+          display.print(u8x8_u8toa(screenCounter++, 3));
+          display.setCursor(64, 14);
+          display.print(u8x8_u8toa(handshakeState, 3));
+          display.setCursor(0, 48);
+          if (Serial1.available() > 1) {
+            display.print(u8x8_u8toa(Serial1.peek(), 3));
+            display.setCursor(36, 48);
+            display.print(u8x8_u8toa(Serial1.available(), 3));
+          }
+          display.setCursor(0, 64);
+          if (Serial2.available() > 1) {
+            display.print(u8x8_u8toa(Serial2.peek(), 3));
+            display.setCursor(36, 64);
+            display.print(u8x8_u8toa(Serial2.available(), 3));
+          }
+          break;
 
-  case DUEL_COUNTDOWN:
-    display.print("COUNTDOWN");
-    break;
+        case DUEL_ALERT:
+          display.print("ALERT");
+          break;
 
-  case DUEL:
-    display.print("DUEL");
-    break;
+        case DUEL_COUNTDOWN:
+          display.print("COUNTDOWN");
+          break;
 
-  case WIN:
-    display.print("WIN");
-    break;
+        case DUEL:
+          display.print("DUEL");
+          break;
 
-  case LOSE:
-    display.print("LOSE");
-    break;
+        case WIN:
+          display.print("WIN");
+          break;
+
+        case LOSE:
+          display.print("LOSE");
+          break;
+        }
+
   }
 
   display.sendBuffer();
@@ -844,9 +860,9 @@ void debugEvents() {
   // todo: Debug Display
 
   if (commandReceived()) {
-    setTimer(HANDSHAKE_TIMEOUT);
+    // setTimer(HANDSHAKE_TIMEOUT);
     bool clean_cmd_queue = false;
-    while(!clean_cmd_queue && !timerExpired())
+    while(!clean_cmd_queue) // && !timerExpired())
     {
       String command = fetchDebugCommand();
       Serial.print("Command Received: ");
