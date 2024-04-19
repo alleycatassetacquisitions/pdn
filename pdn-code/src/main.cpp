@@ -90,6 +90,13 @@ CRGBPalette16 hunterColors = CRGBPalette16(
     CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen,
     CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen);
 
+CRGBPalette16 idleColors = CRGBPalette16(
+  CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue, 
+  CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow, 
+  CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue, 
+  CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
+);
+
 CRGBPalette16 currentPalette = bountyColors;
 
 void animateLights();
@@ -532,34 +539,38 @@ void activationIdleAnimation(int brightness) {
 
 void animateLights() {
 
-  if (QD_STATE == INITIATE) {
-    FastLED.showColor(currentPalette[0]);
-  } else if (QD_STATE == DORMANT) {
-    FastLED.showColor(currentPalette[0]);
-  } else if (QD_STATE == ACTIVATED) {
-    if (breatheUp) {
-      ledBrightness++;
-    } else {
-      ledBrightness--;
-    }
-    pwm_val =
-        255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+  if(APP_STATE == DEBUG) {
+    activationIdleAnimation(35);
+  } else {
+    if (QD_STATE == INITIATE) {
+      FastLED.showColor(currentPalette[0]);
+    } else if (QD_STATE == DORMANT) {
+      FastLED.showColor(currentPalette[0]);
+    } else if (QD_STATE == ACTIVATED) {
+      if (breatheUp) {
+        ledBrightness++;
+      } else {
+        ledBrightness--;
+      }
+      pwm_val =
+          255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
 
-    if (ledBrightness == 255) {
-      breatheUp = false;
-    } else if (ledBrightness == 0) {
-      breatheUp = true;
-    }
+      if (ledBrightness == 255) {
+        breatheUp = false;
+      } else if (ledBrightness == 0) {
+        breatheUp = true;
+      }
 
-    activationIdleAnimation((int)pwm_val);
-  } else if (QD_STATE == HANDSHAKE) {
-    FastLED.showColor(currentPalette[3]);
-  } else if (QD_STATE == DUEL_ALERT) {
-    FastLED.showColor(bountyColors[1]);
-  } else if (QD_STATE == DUEL_COUNTDOWN) {
-  } else if (QD_STATE == DUEL) {
-  } else if (QD_STATE == WIN) {
-  } else if (QD_STATE == LOSE) {
+      activationIdleAnimation((int)pwm_val);
+    } else if (QD_STATE == HANDSHAKE) {
+      FastLED.showColor(currentPalette[3]);
+    } else if (QD_STATE == DUEL_ALERT) {
+      FastLED.showColor(bountyColors[1]);
+    } else if (QD_STATE == DUEL_COUNTDOWN) {
+    } else if (QD_STATE == DUEL) {
+    } else if (QD_STATE == WIN) {
+    } else if (QD_STATE == LOSE) {
+    }
   }
 }
 
@@ -814,6 +825,7 @@ void checkForAppState() {
       writeComms(DEBUG_DELIMITER);
       writeComms(deviceID);
       writeCommsString(getUserID());
+      currentPalette = idleColors;
       resetState();
     } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
       Serial.println("Switching to Game");
