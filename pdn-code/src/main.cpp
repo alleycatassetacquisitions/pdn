@@ -24,9 +24,9 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-const int BAUDRATE = 9600;
+const int BAUDRATE = 115200;
 
-boolean isHunter = true;
+boolean isHunter = false;
 
 byte deviceID = 49;
 
@@ -127,6 +127,7 @@ void writeTxTransaction(byte command);
 void writeRxTransaction(byte command);
 
 void flushComms();
+void clearComms();
 
 byte lastTxPacket = 0;
 byte lastRxPacket = 0;
@@ -259,8 +260,8 @@ const char DEBUG_DELIMITER = '-';
 byte APP_STATE = QD_GAME;
 
 // ScoreDataStructureThings
-String current_match_id;
-String current_opponent_id;
+String current_match_id = "default_match_id";
+String current_opponent_id = "default_opponent_id";
 
 struct Match {
   String match_id;
@@ -342,9 +343,7 @@ void addMatch(const String &match_id, const String &hunter,
   }
 }
 
-String dumpMatchesToJson() {
-  // Sync State
-  readMatchArrayFromEEPROM();
+String dumpMatchesToJson() { // Sync State readMatchArrayFromEEPROM();
 
   StaticJsonDocument<512> doc;
   JsonArray matchesArray = doc.to<JsonArray>();
@@ -369,7 +368,7 @@ void setUserID() {
 }
 
 String getUserID() {
-  String userID;
+  String userID = "default_user_id";
   // Read the userID from EEPROM
   EEPROM.get(EEPROM_USERID_ADDRESS, userID);
   return userID;
@@ -377,7 +376,7 @@ String getUserID() {
 
 void clearUserID() {
   // Clear the userID in EEPROM by writing an empty String
-  String emptyString;
+  String emptyString = "clearedUserID";
   EEPROM.put(EEPROM_USERID_ADDRESS, emptyString);
 }
 
@@ -498,16 +497,10 @@ void setup(void) {
 
   uiRefresh.every(16, updateUi);
 
+  setupDevice();
   delay(3000);
 
-  // flushComms();
-  while (Serial1.available() > 0) {
-    Serial1.read();
-  }
-
-  while (Serial2.available() > 0) {
-    Serial2.read();
-  }
+  clearComms();
 }
 
 void loop(void) {
@@ -588,17 +581,18 @@ void animateLights() {
 
 byte screenCounter = 0;
 bool updateUi(void *) {
+  byte rx1_recieved_count = 0;
   animateLights();
 
   display.clearBuffer();
   display.setCursor(0, 48);
-  if (Serial1.available() > 1) {
+  if (Serial1.available() > 0) {
     display.print(u8x8_u8toa(Serial1.peek(), 3));
     display.setCursor(36, 48);
     display.print(u8x8_u8toa(Serial1.available(), 3));
   }
   display.setCursor(0, 64);
-  if (Serial2.available() > 1) {
+  if (Serial2.available() > 0) {
     display.print(u8x8_u8toa(Serial2.peek(), 3));
     display.setCursor(36, 64);
     display.print(u8x8_u8toa(Serial2.available(), 3));
@@ -638,13 +632,13 @@ bool updateUi(void *) {
           display.setCursor(64, 14);
           display.print(u8x8_u8toa(handshakeState, 3));
           display.setCursor(0, 48);
-          if (Serial1.available() > 1) {
+          if (Serial1.available() > 0) {
             display.print(u8x8_u8toa(Serial1.peek(), 3));
             display.setCursor(36, 48);
             display.print(u8x8_u8toa(Serial1.available(), 3));
           }
           display.setCursor(0, 64);
-          if (Serial2.available() > 1) {
+          if (Serial2.available() > 0) {
             display.print(u8x8_u8toa(Serial2.peek(), 3));
             display.setCursor(36, 64);
             display.print(u8x8_u8toa(Serial2.available(), 3));
@@ -764,8 +758,8 @@ byte peekComms() {
 }
 
 bool commsAvailable() {
-  return (isHunter && (Serial1.available() > 1)) ||
-         (!isHunter && (Serial2.available() > 1));
+  return (isHunter && (Serial1.available() > 0)) ||
+         (!isHunter && (Serial2.available() > 0));
 }
 
 void quickDrawGame() {
@@ -851,6 +845,13 @@ void checkForAppState() {
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
         Serial.println("Switching to Game");
+
+        if (isHunter) {
+          currentPalette = hunterColors;
+        } else {
+          currentPalette = bountyColors;
+        }
+
         APP_STATE = QD_GAME;
         QD_STATE = DORMANT;
         resetState();
@@ -867,25 +868,17 @@ void debugEvents() {
   // todo: Debug Display
 
   if (commandReceived()) {
-    // setTimer(HANDSHAKE_TIMEOUT);
-    bool clean_cmd_queue = false;
-    while(!clean_cmd_queue) // && !timerExpired())
-    {
-      String command = fetchDebugCommand();
-      Serial.print("Command Received: ");
-      Serial.println(command);
-      if (validateCommand(command, SETUP_DEVICE)) {
-        clean_cmd_queue = true;
-        setupDevice();
-      } else if (validateCommand(command, CHECK_IN)) {
-        clean_cmd_queue = true;
-        Serial.println("CHECK_IN");
-        checkInDevice();
-      } else if (validateCommand(command, SET_ACTIVATION)) {
-        clean_cmd_queue = true;
-        Serial.println("SET_ACTIVATION");
-        setActivationDelay();
-      }
+    String command = fetchDebugCommand();
+    Serial.print("Command Received: ");
+    Serial.println(command);
+    if (validateCommand(command, SETUP_DEVICE)) {
+      setupDevice();
+    } else if (validateCommand(command, CHECK_IN)) {
+      Serial.println("CHECK_IN");
+      checkInDevice();
+    } else if (validateCommand(command, SET_ACTIVATION)) {
+      Serial.println("SET_ACTIVATION");
+      setActivationDelay();
     }
   }
 }
@@ -983,18 +976,18 @@ bool handshake(String &match_id, String &opponent_id) {
   } else if (handshakeState == HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE) {
 
     byte command = peekComms();
-    if (isHunter && command == BOUNTY_SHAKE) {
-      char match_uuid_str[37];
-      match_id = generateUUIDv4();              // Generate match_id UUID
-      match_id.toCharArray(match_uuid_str, 37); // Convert String to char array
+    if (isHunter && command == BOUNTY_SHAKE) 
+    {
+      String match_uuid_str = generateUUIDv4(); // Generate match_id UUID
       writeComms(HUNTER_SHAKE);
-      writeCommsString(match_uuid_str);      // Sending match_id
-      writeCommsString(getUserID().c_str()); // Sending userID
+      writeCommsString(match_uuid_str);         // Sending match_id
+      writeCommsString(getUserID());            // Sending userID
       return true;
-    } else if (!isHunter && command == HUNTER_SHAKE) {
-      // bvbDuel = (command == BOUNTY_SHAKE);
+    }
+    else if (!isHunter && command == HUNTER_SHAKE) 
+    {
       writeComms(BOUNTY_SHAKE);
-      match_id = readDebugString('\0');
+      match_id    = readDebugString('\0');
       opponent_id = readDebugString('\0');
       return true;
     }
@@ -1127,6 +1120,17 @@ void flushComms() {
   }
 }
 
+void clearComms()
+{
+  while (Serial1.available() > 0) {
+    Serial1.read();
+  }
+
+  while (Serial2.available() > 0) {
+    Serial2.read();
+  }
+}
+
 bool requestSwitchAppState() {
   if (commsAvailable()) {
     char command = (char)peekComms();
@@ -1220,14 +1224,19 @@ void setupDevice() {
 }
 
 void checkInDevice() {
-  writeComms(deviceID);
+  writeComms(DEBUG_DELIMITER);
+  String id = "DeviceID: " + String(deviceID);
+  writeCommsString(id);
 
   writeComms(DEBUG_DELIMITER);
   // Print JSON string to serial
+  readMatchArrayFromEEPROM();
   String jsonStr = dumpMatchesToJson();
+  writeCommsString("jsonStr:");
   writeCommsString(jsonStr);
   writeComms(DEBUG_DELIMITER);
-  writeComms(isHunter);
+  String hunter_str = isHunter? "H" : "B";
+  writeCommsString(hunter_str);
   writeComms(DEBUG_DELIMITER);
 }
 
