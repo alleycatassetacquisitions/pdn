@@ -24,9 +24,9 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-const int BAUDRATE = 115200;
+const int BAUDRATE = 9600;
 
-boolean isHunter = false;
+boolean isHunter = true;
 
 byte deviceID = 49;
 
@@ -463,9 +463,9 @@ void setup(void) {
 
   initializePins();
 
-  Serial1.begin(BAUDRATE, SERIAL_8N1, TXr, TXt, true);
+  Serial1.begin(BAUDRATE, SERIAL_8N2, TXr, TXt, true);
 
-  Serial2.begin(BAUDRATE, SERIAL_8N1, RXr, RXt, true);
+  Serial2.begin(BAUDRATE, SERIAL_8N2, RXr, RXt, true);
 
   if (isHunter) {
     currentPalette = hunterColors;
@@ -498,13 +498,22 @@ void setup(void) {
 
   uiRefresh.every(16, updateUi);
 
-  flushComms();
+  delay(3000);
+
+  // flushComms();
+  while (Serial1.available() > 0) {
+    Serial1.read();
+  }
+
+  while (Serial2.available() > 0) {
+    Serial2.read();
+  }
 }
 
 void loop(void) {
   now = millis();
   uiRefresh.tick();
-  primary.tick();
+  // primary.tick();
 
   if (APP_STATE == QD_GAME) {
     quickDrawGame();
@@ -582,18 +591,26 @@ bool updateUi(void *) {
   animateLights();
 
   display.clearBuffer();
+  display.setCursor(0, 48);
+  if (Serial1.available() > 1) {
+    display.print(u8x8_u8toa(Serial1.peek(), 3));
+    display.setCursor(36, 48);
+    display.print(u8x8_u8toa(Serial1.available(), 3));
+  }
+  display.setCursor(0, 64);
+  if (Serial2.available() > 1) {
+    display.print(u8x8_u8toa(Serial2.peek(), 3));
+    display.setCursor(36, 64);
+    display.print(u8x8_u8toa(Serial2.available(), 3));
+  }
   display.setCursor(16, 32);
 
   switch(APP_STATE) {
     case DEBUG:
       display.print("DEBUG");
-      display.setCursor(2, 48);
-      display.print("1:");
-      if(commsAvailable()) {
-        display.print(readDebugString('\n'));
-      }
+      display.setCursor(0, 16);
+      display.print(u8x8_u8toa(screenCounter++, 3));
       break;
-
     case QD_GAME:
       switch (QD_STATE) {
         case INITIATE:
@@ -612,18 +629,6 @@ bool updateUi(void *) {
           display.print("ACTIVATED");
           display.setCursor(0, 16);
           display.print(u8x8_u8toa(screenCounter++, 3));
-          display.setCursor(0, 48);
-          if (Serial1.available() > 1) {
-            display.print(u8x8_u8toa(Serial1.peek(), 3));
-            display.setCursor(36, 48);
-            display.print(u8x8_u8toa(Serial1.available(), 3));
-          }
-          display.setCursor(0, 64);
-          if (Serial2.available() > 1) {
-            display.print(u8x8_u8toa(Serial2.peek(), 3));
-            display.setCursor(36, 64);
-            display.print(u8x8_u8toa(Serial2.available(), 3));
-          }
           break;
 
         case HANDSHAKE:
@@ -661,12 +666,14 @@ bool updateUi(void *) {
         case WIN:
           display.print("WIN");
           break;
+        case WIN:
+          display.print("WIN");
+          break;
 
         case LOSE:
           display.print("LOSE");
           break;
         }
-
   }
 
   display.sendBuffer();
@@ -1111,11 +1118,11 @@ void updateScore(String match_id, String opponent, boolean win) {
 
 // serial functions
 void flushComms() {
-  while (Serial1.available() > 1 && !isValidMessageSerial1()) {
+  while (Serial1.available() > 0 && !isValidMessageSerial1()) {
     Serial1.read();
   }
 
-  while (Serial2.available() > 1 && !isValidMessageSerial2()) {
+  while (Serial2.available() > 0 && !isValidMessageSerial2()) {
     Serial2.read();
   }
 }
