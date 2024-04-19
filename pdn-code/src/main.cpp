@@ -109,7 +109,7 @@ int motorSpeed = 0;
 void writeComms(byte command);
 void writeCommsString(String command);
 byte readComms();
-String readCommsString(char terminator);
+String readDebugString(char terminator);
 byte peekComms();
 
 void monitorTX();
@@ -713,7 +713,7 @@ byte readComms() {
   return Serial2.read();
 }
 
-String readCommsString(char terminator) {
+String readDebugString(char terminator) {
   if (isHunter) {
     return Serial1.readStringUntil(terminator);
   }
@@ -813,8 +813,6 @@ void checkForAppState() {
         Serial.println("Switching to Debug");
         APP_STATE = DEBUG;
         writeComms(DEBUG_DELIMITER);
-        writeComms(deviceID);
-        writeCommsString(getUserID());
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
         Serial.println("Switching to Game");
@@ -834,17 +832,25 @@ void debugEvents() {
   // todo: Debug Display
 
   if (commandReceived()) {
-    String command = fetchDebugCommand();
-    Serial.print("Command Received: ");
-    Serial.println(command);
-    if (validateCommand(command, SETUP_DEVICE)) {
-      setupDevice();
-    } else if (validateCommand(command, CHECK_IN)) {
-      Serial.println("CHECK_IN");
-      checkInDevice();
-    } else if (validateCommand(command, SET_ACTIVATION)) {
-      Serial.println("SET_ACTIVATION");
-      setActivationDelay();
+    setTimer(HANDSHAKE_TIMEOUT);
+    bool clean_cmd_queue = false;
+    while(!clean_cmd_queue && !timerExpired())
+    {
+      String command = fetchDebugCommand();
+      Serial.print("Command Received: ");
+      Serial.println(command);
+      if (validateCommand(command, SETUP_DEVICE)) {
+        clean_cmd_queue = true;
+        setupDevice();
+      } else if (validateCommand(command, CHECK_IN)) {
+        clean_cmd_queue = true;
+        Serial.println("CHECK_IN");
+        checkInDevice();
+      } else if (validateCommand(command, SET_ACTIVATION)) {
+        clean_cmd_queue = true;
+        Serial.println("SET_ACTIVATION");
+        setActivationDelay();
+      }
     }
   }
 }
@@ -953,8 +959,8 @@ bool handshake(String &match_id, String &opponent_id) {
     } else if (!isHunter && command == HUNTER_SHAKE) {
       // bvbDuel = (command == BOUNTY_SHAKE);
       writeComms(BOUNTY_SHAKE);
-      match_id = readCommsString('\0');
-      opponent_id = readCommsString('\0');
+      match_id = readDebugString('\0');
+      opponent_id = readDebugString('\0');
       return true;
     }
     return false;
@@ -1166,9 +1172,9 @@ bool validateCommand(String a, char b) {
   return b == array[0];
 }
 
-String fetchDebugData() { return readCommsString('\n'); }
+String fetchDebugData() { return readDebugString('\n'); }
 
-String fetchDebugCommand() { return readCommsString(DEBUG_DELIMITER); }
+String fetchDebugCommand() { return readDebugString(DEBUG_DELIMITER); }
 
 void setupDevice() {
   clearMatchesFromEEPROM();
