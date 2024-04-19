@@ -1261,6 +1261,7 @@ void resetState() {
   doBattle = false;
   alertCount = 0;
   finishBattleBlinkCount = 0;
+  ledBrightness = 65;
   flushComms();
   invalidateTimer();
   setMotorOutput(0);
