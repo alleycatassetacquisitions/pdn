@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <EEPROM.h>
 #include <FastLED.h>
 #include <HardwareSerial.h>
 #include <OneButton.h>
@@ -24,11 +23,12 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-const int BAUDRATE = 115200;
+const int BAUDRATE = 9600;
 
-boolean isHunter = false;
+boolean isHunter = true;
 
 byte deviceID = 49;
+String DEBUG_MODE_SUBSTR = "";
 
 // DISPLAY
 
@@ -127,6 +127,7 @@ void writeTxTransaction(byte command);
 void writeRxTransaction(byte command);
 
 void flushComms();
+void clearComms();
 
 byte lastTxPacket = 0;
 byte lastRxPacket = 0;
@@ -259,101 +260,87 @@ const char DEBUG_DELIMITER = '-';
 byte APP_STATE = QD_GAME;
 
 // ScoreDataStructureThings
-String current_match_id;
-String current_opponent_id;
+String userID = "init_uuid";
+String current_match_id = "init_match_uuid";
+String current_opponent_id = "init_opponent_uuid";
 
 struct Match {
   String match_id;
   String hunter;
   String bounty;
   bool winner_is_hunter; // Indicates if the winner is the hunter
+
+  String toJson() const {
+    // Create a JSON object for the match
+    StaticJsonDocument<128> doc;
+    JsonObject matchObj = doc.to<JsonObject>();
+    matchObj["match_id"] = match_id;
+    matchObj["hunter"] = hunter;
+    matchObj["bounty"] = bounty;
+    matchObj["winner_is_hunter"] = winner_is_hunter;
+
+    // Serialize the JSON object to a string
+    String json;
+    serializeJson(matchObj, json);
+    return json;
+  }
+
+  void fromJson(const String &json) {
+    // Parse the JSON string into a JSON object
+    StaticJsonDocument<128> doc;
+    DeserializationError error = deserializeJson(doc, json);
+
+    // Check if parsing was successful
+    if (!error) {
+      // Retrieve values from the JSON object
+      match_id = doc["match_id"].as<String>();
+      hunter = doc["hunter"].as<String>();
+      bounty = doc["bounty"].as<String>();
+      winner_is_hunter = doc["winner_is_hunter"];
+    } else {
+      Serial.println("Failed to parse JSON");
+    }
+  }
 };
 
 #define MAX_MATCHES 1000 // Maximum number of matches allowed
 
-// EEPROM
-#define EEPROM_MATCH_SIZE sizeof(Match)
-#define EEPROM_NUM_MATCHES_ADDRESS 0
-#define EEPROM_USERID_ADDRESS (EEPROM_NUM_MATCHES_ADDRESS + sizeof(int))
-#define EEPROM_MATCHES_ADDRESS (EEPROM_USERID_ADDRESS + (38 * sizeof(char)))
+#define MATCH_SIZE sizeof(Match)
 
 Match matches[MAX_MATCHES];
 int numMatches = 0;
 
 String generateUUIDv4() {
-  // Generates a random UUIDv4 string
-  String uuid = "";
-  for (int i = 0; i < 36; i++) {
-    if (i == 8 || i == 13 || i == 18 || i == 23) {
-      uuid += "-";
-    } else if (i == 14) {
-      uuid += "4";
-    } else if (i == 19) {
-      uuid +=
-          char(random(8) % 4 + 8); // Generates a random hex character in [89ab]
+  // Generate a random UUIDv4
+  char uuid[37]; // 36 characters for the UUID + null terminator
+  
+  // Generate random bytes
+  for (int i = 0; i < 16; i++) {
+    if (i == 6) {
+      // Set the version (4) in the 7th byte
+      uuid[i] = 0x40 | (random(0, 16) & 0x0F);
+    } else if (i == 8) {
+      // Set the variant (RFC 4122) in the 9th byte
+      uuid[i] = 0x80 | (random(0, 16) & 0x3F);
     } else {
-      uuid += char(random(16) % 16 + (i < 20 ? 0 : 8));
+      // Generate random byte
+      uuid[i] = random(0, 256);
     }
   }
-  return uuid;
+  
+  // Format UUID as string
+  snprintf(uuid + 16, 21, "-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
+           uuid[6], uuid[7], uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
+
+  return String(uuid);
 }
 
-void writeMatchArrayToEEPROM() {
-  // Calculate the EEPROM address
-  int address = EEPROM_MATCHES_ADDRESS;
-
-  // Write the Match array to EEPROM
-  for (int i = 0; i < numMatches; i++) {
-    EEPROM.put(address, matches[i]);
-    address += EEPROM_MATCH_SIZE;
-  }
-
-  // Write the number of matches to EEPROM
-  EEPROM.put(EEPROM_NUM_MATCHES_ADDRESS, numMatches);
-}
-
-void readMatchArrayFromEEPROM() {
-  // Calculate the EEPROM address
-  int address = EEPROM_MATCHES_ADDRESS;
-
-  // Read the Match array from EEPROM
-  for (int i = 0; i < numMatches; i++) {
-    EEPROM.get(address, matches[i]);
-    address += EEPROM_MATCH_SIZE;
-  }
-
-  // Read the number of matches from EEPROM
-  EEPROM.get(EEPROM_NUM_MATCHES_ADDRESS, numMatches);
-}
-
-void addMatch(const String &match_id, const String &hunter,
-              const String &bounty, bool winner_is_hunter) {
-  if (numMatches < MAX_MATCHES) {
-    // Sync matches
-    readMatchArrayFromEEPROM();
-    // Create a Match object
-    matches[numMatches].match_id = match_id;
-    matches[numMatches].hunter = hunter;
-    matches[numMatches].bounty = bounty;
-    matches[numMatches].winner_is_hunter = winner_is_hunter;
-    numMatches++;
-    // Sync matches
-    writeMatchArrayToEEPROM();
-  }
-}
 
 String dumpMatchesToJson() {
-  // Sync State
-  readMatchArrayFromEEPROM();
-
   StaticJsonDocument<512> doc;
   JsonArray matchesArray = doc.to<JsonArray>();
   for (int i = 0; i < numMatches; i++) {
-    JsonObject matchObj = matchesArray.createNestedObject();
-    matchObj["match_id"] = matches[i].match_id;
-    matchObj["hunter"] = matches[i].hunter;
-    matchObj["bounty"] = matches[i].bounty;
-    matchObj["capture"] = matches[i].winner_is_hunter;
+    matchesArray.add(matches[i].toJson());
   }
   String output;
   serializeJson(matchesArray, output);
@@ -361,39 +348,27 @@ String dumpMatchesToJson() {
 }
 
 void setUserID() {
-  String userID = generateUUIDv4(); // Set the userID UUID using the
-                                    // generateUUIDv4() function
-
-  // Write the userID to EEPROM
-  EEPROM.put(EEPROM_USERID_ADDRESS, userID);
+  userID = generateUUIDv4(); // Set the userID UUID using the generateUUIDv4() function
 }
 
 String getUserID() {
-  String userID;
-  // Read the userID from EEPROM
-  EEPROM.get(EEPROM_USERID_ADDRESS, userID);
   return userID;
 }
 
 void clearUserID() {
-  // Clear the userID in EEPROM by writing an empty String
-  String emptyString;
-  EEPROM.put(EEPROM_USERID_ADDRESS, emptyString);
+  userID = "default";
 }
 
-void clearMatchesFromEEPROM() {
-  // Clear the Match array in EEPROM by writing default values
-  for (int i = 0; i < MAX_MATCHES; i++) {
-    Match emptyMatch;
-    EEPROM.put(EEPROM_MATCHES_ADDRESS + i * EEPROM_MATCH_SIZE, emptyMatch);
+void addMatch(const String &match_id, const String &hunter,
+              const String &bounty, bool winner_is_hunter) {
+  if (numMatches < MAX_MATCHES) {
+    // Create a Match object
+    matches[numMatches].match_id = match_id;
+    matches[numMatches].hunter = hunter;
+    matches[numMatches].bounty = bounty;
+    matches[numMatches].winner_is_hunter = winner_is_hunter;
+    numMatches++;
   }
-
-  // Clear the number of matches in EEPROM by writing zero
-  int zero = 0;
-  EEPROM.put(EEPROM_NUM_MATCHES_ADDRESS, zero);
-
-  // Reset the global variables
-  numMatches = 0;
 }
 
 String debugOutput = "";
@@ -462,10 +437,11 @@ void initializePins() {
 void setup(void) {
 
   initializePins();
+  setupDevice();
 
-  Serial1.begin(BAUDRATE, SERIAL_8N1, TXr, TXt, true);
+  Serial1.begin(BAUDRATE, SERIAL_8N2, TXr, TXt, true);
 
-  Serial2.begin(BAUDRATE, SERIAL_8N1, RXr, RXt, true);
+  Serial2.begin(BAUDRATE, SERIAL_8N2, RXr, RXt, true);
 
   if (isHunter) {
     currentPalette = hunterColors;
@@ -498,13 +474,15 @@ void setup(void) {
 
   uiRefresh.every(16, updateUi);
 
-  flushComms();
+  delay(3000);
+
+  clearComms();
 }
 
 void loop(void) {
   now = millis();
   uiRefresh.tick();
-  primary.tick();
+  // primary.tick();
 
   if (APP_STATE == QD_GAME) {
     quickDrawGame();
@@ -582,18 +560,26 @@ bool updateUi(void *) {
   animateLights();
 
   display.clearBuffer();
+  display.setCursor(0, 48);
+  if (Serial1.available() > 0) {
+    display.print(u8x8_u8toa(Serial1.peek(), 3));
+    display.setCursor(36, 48);
+    display.print(u8x8_u8toa(Serial1.available(), 3));
+  }
+  display.setCursor(0, 64);
+  if (Serial2.available() > 0) {
+    display.print(u8x8_u8toa(Serial2.peek(), 3));
+    display.setCursor(36, 64);
+    display.print(u8x8_u8toa(Serial2.available(), 3));
+  }
   display.setCursor(16, 32);
 
   switch(APP_STATE) {
     case DEBUG:
-      display.print("DEBUG");
-      display.setCursor(2, 48);
-      display.print("1:");
-      if(commsAvailable()) {
-        display.print(readDebugString('\n'));
-      }
+      display.print("DEBUG: " + DEBUG_MODE_SUBSTR);
+      display.setCursor(0, 16);
+      display.print(u8x8_u8toa(screenCounter++, 3));
       break;
-
     case QD_GAME:
       switch (QD_STATE) {
         case INITIATE:
@@ -612,18 +598,10 @@ bool updateUi(void *) {
           display.print("ACTIVATED");
           display.setCursor(0, 16);
           display.print(u8x8_u8toa(screenCounter++, 3));
-          display.setCursor(0, 48);
-          if (Serial1.available() > 1) {
-            display.print(u8x8_u8toa(Serial1.peek(), 3));
-            display.setCursor(36, 48);
-            display.print(u8x8_u8toa(Serial1.available(), 3));
-          }
-          display.setCursor(0, 64);
-          if (Serial2.available() > 1) {
-            display.print(u8x8_u8toa(Serial2.peek(), 3));
-            display.setCursor(36, 64);
-            display.print(u8x8_u8toa(Serial2.available(), 3));
-          }
+          
+          display.setCursor(64, 16);
+          display.print(getUserID());
+
           break;
 
         case HANDSHAKE:
@@ -633,13 +611,13 @@ bool updateUi(void *) {
           display.setCursor(64, 14);
           display.print(u8x8_u8toa(handshakeState, 3));
           display.setCursor(0, 48);
-          if (Serial1.available() > 1) {
+          if (Serial1.available() > 0) {
             display.print(u8x8_u8toa(Serial1.peek(), 3));
             display.setCursor(36, 48);
             display.print(u8x8_u8toa(Serial1.available(), 3));
           }
           display.setCursor(0, 64);
-          if (Serial2.available() > 1) {
+          if (Serial2.available() > 0) {
             display.print(u8x8_u8toa(Serial2.peek(), 3));
             display.setCursor(36, 64);
             display.print(u8x8_u8toa(Serial2.available(), 3));
@@ -666,7 +644,6 @@ bool updateUi(void *) {
           display.print("LOSE");
           break;
         }
-
   }
 
   display.sendBuffer();
@@ -757,8 +734,8 @@ byte peekComms() {
 }
 
 bool commsAvailable() {
-  return (isHunter && (Serial1.available() > 1)) ||
-         (!isHunter && (Serial2.available() > 1));
+  return (isHunter && (Serial1.available() > 0)) ||
+         (!isHunter && (Serial2.available() > 0));
 }
 
 void quickDrawGame() {
@@ -817,6 +794,7 @@ void quickDrawGame() {
       duelOver();
     } else {
       updateScore(current_match_id, current_opponent_id, true);
+      clearComms();
       updateQDState(DORMANT);
     }
   } else if (QD_STATE == LOSE) {
@@ -824,6 +802,7 @@ void quickDrawGame() {
       duelOver();
     } else {
       updateScore(current_match_id, current_opponent_id, false);
+      clearComms();
       updateQDState(DORMANT);
     }
   }
@@ -844,6 +823,13 @@ void checkForAppState() {
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
         Serial.println("Switching to Game");
+
+        if (isHunter) {
+          currentPalette = hunterColors;
+        } else {
+          currentPalette = bountyColors;
+        }
+
         APP_STATE = QD_GAME;
         QD_STATE = DORMANT;
         resetState();
@@ -860,25 +846,23 @@ void debugEvents() {
   // todo: Debug Display
 
   if (commandReceived()) {
-    // setTimer(HANDSHAKE_TIMEOUT);
-    bool clean_cmd_queue = false;
-    while(!clean_cmd_queue) // && !timerExpired())
-    {
-      String command = fetchDebugCommand();
-      Serial.print("Command Received: ");
-      Serial.println(command);
-      if (validateCommand(command, SETUP_DEVICE)) {
-        clean_cmd_queue = true;
-        setupDevice();
-      } else if (validateCommand(command, CHECK_IN)) {
-        clean_cmd_queue = true;
-        Serial.println("CHECK_IN");
-        checkInDevice();
-      } else if (validateCommand(command, SET_ACTIVATION)) {
-        clean_cmd_queue = true;
-        Serial.println("SET_ACTIVATION");
-        setActivationDelay();
-      }
+    String command = fetchDebugCommand();
+    Serial.print("Command Received: ");
+    Serial.println(command);
+    if (validateCommand(command, SETUP_DEVICE)) {
+      DEBUG_MODE_SUBSTR = "SETUP";
+      setupDevice();
+    } else if (validateCommand(command, CHECK_IN)) {
+      DEBUG_MODE_SUBSTR = "CHECK_IN";
+      Serial.println("CHECK_IN");
+      checkInDevice();
+    } else if (validateCommand(command, SET_ACTIVATION)) {
+      DEBUG_MODE_SUBSTR = "SET_ACTIVATION";
+      Serial.println("SET_ACTIVATION");
+      setActivationDelay();
+    }
+    else {
+      DEBUG_MODE_SUBSTR = "wait";
     }
   }
 }
@@ -976,18 +960,18 @@ bool handshake(String &match_id, String &opponent_id) {
   } else if (handshakeState == HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE) {
 
     byte command = peekComms();
-    if (isHunter && command == BOUNTY_SHAKE) {
-      char match_uuid_str[37];
-      match_id = generateUUIDv4();              // Generate match_id UUID
-      match_id.toCharArray(match_uuid_str, 37); // Convert String to char array
+    if (isHunter && command == BOUNTY_SHAKE) 
+    {
+      String match_uuid_str = generateUUIDv4(); // Generate match_id UUID
       writeComms(HUNTER_SHAKE);
-      writeCommsString(match_uuid_str);      // Sending match_id
-      writeCommsString(getUserID().c_str()); // Sending userID
+      writeCommsString(match_uuid_str);         // Sending match_id
+      writeCommsString(getUserID());            // Sending userID
       return true;
-    } else if (!isHunter && command == HUNTER_SHAKE) {
-      // bvbDuel = (command == BOUNTY_SHAKE);
+    }
+    else if (!isHunter && command == HUNTER_SHAKE) 
+    {
       writeComms(BOUNTY_SHAKE);
-      match_id = readDebugString('\0');
+      match_id    = readDebugString('\0');
       opponent_id = readDebugString('\0');
       return true;
     }
@@ -1101,21 +1085,30 @@ bool isButtonPressed() {
          digitalRead(secondaryButtonPin) == LOW;
 }
 
-// EEPROM functions
 void updateScore(String match_id, String opponent, boolean win) {
-  String userID = getUserID();
-  String hunter_uuid = isHunter ? userID : opponent;
-  String bounty_uuid = !isHunter ? userID : opponent;
+  String hunter_uuid = isHunter ? getUserID() : opponent;
+  String bounty_uuid = !isHunter ? getUserID() : opponent;
   addMatch(match_id, hunter_uuid, bounty_uuid, win);
 }
 
 // serial functions
 void flushComms() {
-  while (Serial1.available() > 1 && !isValidMessageSerial1()) {
+  while (Serial1.available() > 0 && !isValidMessageSerial1()) {
     Serial1.read();
   }
 
-  while (Serial2.available() > 1 && !isValidMessageSerial2()) {
+  while (Serial2.available() > 0 && !isValidMessageSerial2()) {
+    Serial2.read();
+  }
+}
+
+void clearComms()
+{
+  while (Serial1.available() > 0) {
+    Serial1.read();
+  }
+
+  while (Serial2.available() > 0) {
     Serial2.read();
   }
 }
@@ -1205,22 +1198,25 @@ String fetchDebugData() { return readDebugString('\n'); }
 String fetchDebugCommand() { return readDebugString(DEBUG_DELIMITER); }
 
 void setupDevice() {
-  clearMatchesFromEEPROM();
   clearUserID();
   setUserID();
-  writeComms(deviceID);
-  writeCommsString(getUserID());
+  //writeComms(deviceID);
+  //writeCommsString(getUserID());
 }
 
 void checkInDevice() {
-  writeComms(deviceID);
+  writeComms(DEBUG_DELIMITER);
+  String id = "DeviceID: " + String(deviceID);
+  writeCommsString(id);
 
   writeComms(DEBUG_DELIMITER);
   // Print JSON string to serial
   String jsonStr = dumpMatchesToJson();
+  writeCommsString("jsonStr:");
   writeCommsString(jsonStr);
   writeComms(DEBUG_DELIMITER);
-  writeComms(isHunter);
+  String hunter_str = isHunter? "H" : "B";
+  writeCommsString(hunter_str);
   writeComms(DEBUG_DELIMITER);
 }
 
@@ -1277,7 +1273,7 @@ void resetState() {
   doBattle = false;
   alertCount = 0;
   finishBattleBlinkCount = 0;
-  flushComms();
+  ledBrightness = 65;
   invalidateTimer();
   setMotorOutput(0);
 }
