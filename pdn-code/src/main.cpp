@@ -25,8 +25,8 @@
 
 const int BAUDRATE = 9600;
 
-boolean isHunter = !true;
-// boolean isHunter = true;
+// boolean isHunter = !true;
+boolean isHunter = true;
 
 byte deviceID = 49;
 String DEBUG_MODE_SUBSTR = "";
@@ -1185,16 +1185,16 @@ bool isValidMessageSerial1() {
 
 bool isValidMessageSerial2() {
   byte command = Serial2.peek();
-  if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
-    return true;
-  }
+  // if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
+  //   return true;
+  // }
 
-  if (APP_STATE == DEBUG) {
-    Serial.print("Validating DEBUG: ");
-    Serial.println((char)command);
-    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
-            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
-  } else {
+  // if (APP_STATE == DEBUG) {
+  //   Serial.print("Validating DEBUG: ");
+  //   Serial.println((char)command);
+  //   return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
+  //           (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
+  // } else {
     if (QD_STATE == ACTIVATED) {
       return command == BATTLE_MESSAGE;
     } else if (QD_STATE == HANDSHAKE) {
@@ -1202,7 +1202,7 @@ bool isValidMessageSerial2() {
     } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
-  }
+  // }
 
   return false;
 }
