@@ -25,7 +25,8 @@
 
 const int BAUDRATE = 9600;
 
-boolean isHunter = true;
+boolean isHunter = !true;
+// boolean isHunter = true;
 
 byte deviceID = 49;
 String DEBUG_MODE_SUBSTR = "";
@@ -113,10 +114,13 @@ void setMotorOutput(int value);
 int motorSpeed = 0;
 
 // SERIAL
+bool debugCommsAvailable();
 bool commsAvailable();
 void writeComms(byte command);
 void writeCommsString(String command);
 byte readComms();
+void writeDebugString(String command);
+String readGameString(char terminator);
 String readDebugString(char terminator);
 byte peekComms();
 
@@ -691,53 +695,6 @@ void setMotorOutput(int value) {
   analogWrite(motorPin, value);
 }
 
-// SERIAL
-
-void writeComms(byte command) {
-  if (isHunter) {
-    Serial1.write(command);
-  } else {
-    Serial2.write(command);
-  }
-}
-
-void writeCommsString(String command) {
-  if (isHunter) {
-    Serial1.println(command);
-  } else {
-    Serial2.println(command);
-  }
-}
-
-byte readComms() {
-  if (isHunter) {
-    return Serial1.read();
-  }
-  // else they are a bounty.
-  return Serial2.read();
-}
-
-String readDebugString(char terminator) {
-  if (isHunter) {
-    return Serial1.readStringUntil(terminator);
-  }
-
-  return Serial2.readStringUntil(terminator);
-}
-
-byte peekComms() {
-  if (isHunter) {
-    return Serial1.peek();
-  }
-
-  return Serial2.peek();
-}
-
-bool commsAvailable() {
-  return (isHunter && (Serial1.available() > 0)) ||
-         (!isHunter && (Serial2.available() > 0));
-}
-
 void quickDrawGame() {
   if (QD_STATE == DORMANT) {
     if (!activationInitiated) {
@@ -813,7 +770,7 @@ void quickDrawGame() {
 void checkForAppState() {
 
   if (requestSwitchAppState()) {
-    if (commsAvailable()) {
+    if (debugCommsAvailable()) {
       String command = fetchDebugCommand();
       if (validateCommand(command, ENTER_DEBUG)) {
         Serial.println("Switching to Debug");
@@ -971,8 +928,8 @@ bool handshake(String &match_id, String &opponent_id) {
     else if (!isHunter && command == HUNTER_SHAKE) 
     {
       writeComms(BOUNTY_SHAKE);
-      match_id    = readDebugString('\0');
-      opponent_id = readDebugString('\0');
+      match_id    = readGameString('\0');
+      opponent_id = readGameString('\0');
       return true;
     }
     return false;
@@ -1091,7 +1048,67 @@ void updateScore(String match_id, String opponent, boolean win) {
   addMatch(match_id, hunter_uuid, bounty_uuid, win);
 }
 
-// serial functions
+// SERIAL
+
+byte peekComms() {
+  if (isHunter) {
+    return Serial1.peek();
+  }
+
+  return Serial2.peek();
+}
+
+bool commsAvailable() {
+  return (isHunter && (Serial1.available() > 0)) ||
+         (!isHunter && (Serial2.available() > 0));
+}
+
+
+void writeComms(byte command) {
+  if (isHunter) {
+    Serial1.write(command);
+  } else {
+    Serial2.write(command);
+  }
+}
+
+void writeCommsString(String command) {
+  if (isHunter) {
+    Serial1.println(command);
+  } else {
+    Serial2.println(command);
+  }
+}
+
+byte readComms() {
+  if (isHunter) {
+    return Serial1.read();
+  }
+  // else they are a bounty.
+  return Serial2.read();
+}
+
+String readDebugString(char terminator) {
+    return Serial1.readStringUntil(terminator);
+}
+
+String readGameString(char terminator) {
+  if(isHunter) 
+  {
+    return Serial1.readStringUntil(terminator);
+  } 
+    
+  return Serial2.readStringUntil(terminator);
+}
+
+bool debugCommsAvailable() {
+  return Serial1.available() > 0;
+}
+
+void writeDebugString(String command) {
+  Serial1.println(command);
+}
+
 void flushComms() {
   while (Serial1.available() > 0 && !isValidMessageSerial1()) {
     Serial1.read();
@@ -1278,94 +1295,6 @@ void resetState() {
   setMotorOutput(0);
 }
 
-// void monitorTX()
-// {
-//   if (Serial1.available())
-//   {
-//     lastTxPacket += Serial1.read();
-//   }
-// }
-
-// void monitorRX()
-// {
-//   if (Serial2.available())
-//   {
-//     lastRxPacket += Serial2.read();
-//   }
-// }
-
-// void writeTxTransaction(byte command)
-// {
-//   Serial1.write(command);
-// }
-
-// void writeRxTransaction(byte command)
-// {
-//   Serial2.write(command);
-// }
-
-// void activationOvercharge() {
-//   if(msgDelay == 0) {
-//     comms().write(BATTLE_MESSAGE);
-//   }
-//   msgDelay = msgDelay + 1;
-
-//   if (timerExpired()) {
-//     if(overchargeStep == 0) {
-//       if ((millis() % 20) == 0) {
-
-//         buttonBrightness++;
-
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness /
-//         smoothingPoints)) - 1.0)); setAllLED(pwm_val);
-
-//         if (buttonBrightness == 255) {
-//           overchargeStep = 1;
-//         }
-//       }
-//     } else if(overchargeStep == 1) {
-//       setAllLED(0);
-//       setTimer(200);
-//       overchargeStep = 2;
-//     } else if(overchargeStep == 2) {
-//       setAllLED(0);
-//       if(overchargeFlickers % 2 == 0) {
-//         setLED(buttonLED, random(0,50));
-//         setLED(loseLED, random(50,100));
-//         setTimer(50);
-//       } else {
-//         setLED(winLED, random(0, 125));
-//         setLED(interiorLED, random(200,255));
-//         setTimer(50);
-//       }
-//       if(overchargeFlickers == 9) {
-//         overchargeStep = 3;
-//         overchargeFlickers = 0;
-//         buttonBrightness = 255;
-//         breatheUp = true;
-//       } else {
-//         overchargeFlickers = overchargeFlickers + 1;
-//       }
-//     } else if(overchargeStep == 3) {
-//       if(overchargeFlickers < 2 && (millis() % 10) == 0) {
-//         buttonBrightness--;
-
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness /
-//         smoothingPoints)) - 1.0)); setAllLED(pwm_val);
-
-//         if (buttonBrightness == 0) {
-//           overchargeStep = 4;
-//         }
-//       }
-//     } else if(overchargeStep == 4) {
-//       setTimer(idleLEDBreak/2);
-//       overchargeStep = 0;
-//       overchargeFlickers = 0;
-//       buttonBrightness = 0;
-//     }
-//   }
-// }
-
 void drawDebugLabels() {
   display.drawStr(16, 10, "BTN 1:");
   display.drawStr(16, 20, "BTN 2:");
@@ -1420,8 +1349,7 @@ void updateFramerate() {
 // BUTTONS
 
 void primaryButtonClick() {
-  primaryPresses += 1;
-  setGraphLeft(primaryPresses % 7);
+  
 }
 
 void secondaryButtonClick() {
