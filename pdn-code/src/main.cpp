@@ -25,6 +25,7 @@
 
 const int BAUDRATE = 9600;
 
+// boolean isHunter = !true;
 boolean isHunter = true;
 
 byte deviceID = 49;
@@ -113,12 +114,17 @@ void setMotorOutput(int value);
 int motorSpeed = 0;
 
 // SERIAL
-bool commsAvailable();
-void writeComms(byte command);
-void writeCommsString(String command);
-byte readComms();
+bool debugCommsAvailable();
+bool gameCommsAvailable();
+void writeGameComms(byte command);
+void writeGameString(String command);
+byte readGameComms();
+void writeDebugString(String command);
+String readGameString(char terminator);
 String readDebugString(char terminator);
-byte peekComms();
+byte peekGameComms();
+byte peekDebugComms();
+void writeDebugByte(byte command);
 
 void monitorTX();
 void monitorRX();
@@ -393,7 +399,7 @@ void updateScore(String match_id, String opponent, boolean win);
 bool requestSwitchAppState();
 bool isValidMessageSerial1();
 bool isValidMessageSerial2();
-bool commandReceived();
+bool debugCommandReceived();
 bool validateCommand(String a, char b);
 String fetchDebugData();
 String fetchDebugCommand();
@@ -691,53 +697,6 @@ void setMotorOutput(int value) {
   analogWrite(motorPin, value);
 }
 
-// SERIAL
-
-void writeComms(byte command) {
-  if (isHunter) {
-    Serial1.write(command);
-  } else {
-    Serial2.write(command);
-  }
-}
-
-void writeCommsString(String command) {
-  if (isHunter) {
-    Serial1.println(command);
-  } else {
-    Serial2.println(command);
-  }
-}
-
-byte readComms() {
-  if (isHunter) {
-    return Serial1.read();
-  }
-  // else they are a bounty.
-  return Serial2.read();
-}
-
-String readDebugString(char terminator) {
-  if (isHunter) {
-    return Serial1.readStringUntil(terminator);
-  }
-
-  return Serial2.readStringUntil(terminator);
-}
-
-byte peekComms() {
-  if (isHunter) {
-    return Serial1.peek();
-  }
-
-  return Serial2.peek();
-}
-
-bool commsAvailable() {
-  return (isHunter && (Serial1.available() > 0)) ||
-         (!isHunter && (Serial2.available() > 0));
-}
-
 void quickDrawGame() {
   if (QD_STATE == DORMANT) {
     if (!activationInitiated) {
@@ -813,12 +772,12 @@ void quickDrawGame() {
 void checkForAppState() {
 
   if (requestSwitchAppState()) {
-    if (commsAvailable()) {
+    if (debugCommsAvailable()) {
       String command = fetchDebugCommand();
       if (validateCommand(command, ENTER_DEBUG)) {
         Serial.println("Switching to Debug");
         APP_STATE = DEBUG;
-        writeComms(DEBUG_DELIMITER);
+        writeDebugByte(DEBUG_DELIMITER);
         currentPalette = idleColors;
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
@@ -840,12 +799,10 @@ void checkForAppState() {
   flushComms();
 }
 
-byte brt = 255;
-
 void debugEvents() {
   // todo: Debug Display
 
-  if (commandReceived()) {
+  if (debugCommandReceived()) {
     String command = fetchDebugCommand();
     Serial.print("Command Received: ");
     Serial.println(command);
@@ -916,15 +873,15 @@ bool activationSequence() {
 void activationIdle() {
   // msgDelay was to prevent this from broadcasting every loop.
   if (msgDelay == 0) {
-    writeComms(BATTLE_MESSAGE);
+    writeGameComms(BATTLE_MESSAGE);
   }
   msgDelay = msgDelay + 1;
 }
 
 bool initiateHandshake() {
-  if (commsAvailable() && peekComms() == BATTLE_MESSAGE) {
-    readComms();
-    writeComms(BATTLE_MESSAGE);
+  if (gameCommsAvailable() && peekGameComms() == BATTLE_MESSAGE) {
+    readGameComms();
+    writeGameComms(BATTLE_MESSAGE);
     return true;
   }
 
@@ -950,29 +907,29 @@ bool handshake(String &match_id, String &opponent_id) {
     }
 
     if (isHunter) {
-      writeComms(HUNTER_SHAKE);
+      writeGameComms(HUNTER_SHAKE);
     } else {
-      writeComms(BOUNTY_SHAKE);
+      writeGameComms(BOUNTY_SHAKE);
     }
 
     handshakeState = HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE;
     return true;
   } else if (handshakeState == HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE) {
 
-    byte command = peekComms();
+    byte command = peekGameComms();
     if (isHunter && command == BOUNTY_SHAKE) 
     {
       String match_uuid_str = generateUUIDv4(); // Generate match_id UUID
-      writeComms(HUNTER_SHAKE);
-      writeCommsString(match_uuid_str);         // Sending match_id
-      writeCommsString(getUserID());            // Sending userID
+      writeGameComms(HUNTER_SHAKE);
+      writeGameString(match_uuid_str);         // Sending match_id
+      writeGameString(getUserID());            // Sending userID
       return true;
     }
     else if (!isHunter && command == HUNTER_SHAKE) 
     {
-      writeComms(BOUNTY_SHAKE);
-      match_id    = readDebugString('\0');
-      opponent_id = readDebugString('\0');
+      writeGameComms(BOUNTY_SHAKE);
+      match_id    = readGameString('\0');
+      opponent_id = readGameString('\0');
       return true;
     }
     return false;
@@ -1027,22 +984,22 @@ void duelCountdown() {
 void duel() {
   FastLED.setBrightness(255);
 
-  if (peekComms() == ZAP) {
-    readComms();
-    writeComms(YOU_DEFEATED_ME);
+  if (peekGameComms() == ZAP) {
+    readGameComms();
+    writeGameComms(YOU_DEFEATED_ME);
     captured = true;
     return;
-  } else if (peekComms() == YOU_DEFEATED_ME) {
-    readComms();
+  } else if (peekGameComms() == YOU_DEFEATED_ME) {
+    readGameComms();
     wonBattle = true;
     return;
-  } else if (peekComms() != -1) {
-    readComms();
+  } else if (peekGameComms() != -1) {
+    readGameComms();
   }
 
   if (isButtonPressed() && sendZapSignal) {
     sendZapSignal = false;
-    writeComms(ZAP);
+    writeGameComms(ZAP);
   }
 
   if (startDuelTimer) {
@@ -1091,7 +1048,80 @@ void updateScore(String match_id, String opponent, boolean win) {
   addMatch(match_id, hunter_uuid, bounty_uuid, win);
 }
 
-// serial functions
+// SERIAL
+// GAME COMMS
+
+byte peekGameComms() {
+  if (isHunter) {
+    return Serial1.peek();
+  }
+
+  return Serial2.peek();
+}
+
+bool gameCommsAvailable() {
+  return (isHunter && (Serial1.available() > 0)) ||
+         (!isHunter && (Serial2.available() > 0));
+}
+
+void writeGameComms(byte command) {
+  if (isHunter) {
+    Serial1.write(command);
+  } else {
+    Serial2.write(command);
+  }
+}
+
+byte readGameComms() {
+  if (isHunter) {
+    return Serial1.read();
+  }
+  // else they are a bounty.
+  return Serial2.read();
+}
+
+void writeGameString(String command) {
+  if (isHunter) {
+    Serial1.println(command);
+  } else {
+    Serial2.println(command);
+  }
+}
+
+String readGameString(char terminator) {
+  if(isHunter) 
+  {
+    return Serial1.readStringUntil(terminator);
+  } 
+    
+  return Serial2.readStringUntil(terminator);
+}
+
+//DEBUG SERIAL
+byte peekDebugComms() {
+  return Serial1.peek();
+}
+
+bool debugCommsAvailable() {
+  return Serial1.available() > 0;
+}
+
+void writeDebugByte(byte data) {
+  Serial1.write(data);
+}
+
+byte readDebugByte() {
+  return Serial1.read();
+}
+
+void writeDebugString(String command) {
+  Serial1.println(command);
+}
+
+String readDebugString(char terminator) {
+    return Serial1.readStringUntil(terminator);
+}
+
 void flushComms() {
   while (Serial1.available() > 0 && !isValidMessageSerial1()) {
     Serial1.read();
@@ -1114,15 +1144,15 @@ void clearComms()
 }
 
 bool requestSwitchAppState() {
-  if (commsAvailable()) {
-    char command = (char)peekComms();
+  if (debugCommsAvailable()) {
+    char command = (char)peekDebugComms();
     Serial.print("Checking App State: ");
     Serial.print(" Current buffer size: ");
-    Serial.print(commsAvailable());
+    Serial.print(debugCommsAvailable());
     Serial.print(" Command: ");
     Serial.print(command);
     Serial.print(" As Byte: ");
-    Serial.println(peekComms());
+    Serial.println(peekDebugComms());
     return (command == ENTER_DEBUG || command == START_GAME);
   } else {
     return false;
@@ -1155,16 +1185,16 @@ bool isValidMessageSerial1() {
 
 bool isValidMessageSerial2() {
   byte command = Serial2.peek();
-  if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
-    return true;
-  }
+  // if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
+  //   return true;
+  // }
 
-  if (APP_STATE == DEBUG) {
-    Serial.print("Validating DEBUG: ");
-    Serial.println((char)command);
-    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
-            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
-  } else {
+  // if (APP_STATE == DEBUG) {
+  //   Serial.print("Validating DEBUG: ");
+  //   Serial.println((char)command);
+  //   return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
+  //           (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
+  // } else {
     if (QD_STATE == ACTIVATED) {
       return command == BATTLE_MESSAGE;
     } else if (QD_STATE == HANDSHAKE) {
@@ -1172,14 +1202,14 @@ bool isValidMessageSerial2() {
     } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
-  }
+  // }
 
   return false;
 }
 
-bool commandReceived() {
-  if (commsAvailable()) {
-    char command = (char)peekComms();
+bool debugCommandReceived() {
+  if (debugCommsAvailable()) {
+    char command = (char)peekDebugComms();
     return (command == SETUP_DEVICE || command == SET_ACTIVATION ||
             command == CHECK_IN);
   } else {
@@ -1205,23 +1235,23 @@ void setupDevice() {
 }
 
 void checkInDevice() {
-  writeComms(DEBUG_DELIMITER);
+  writeDebugByte(DEBUG_DELIMITER);
   String id = "DeviceID: " + String(deviceID);
-  writeCommsString(id);
+  writeDebugString(id);
 
-  writeComms(DEBUG_DELIMITER);
+  writeDebugByte(DEBUG_DELIMITER);
   // Print JSON string to serial
   String jsonStr = dumpMatchesToJson();
-  writeCommsString("jsonStr:");
-  writeCommsString(jsonStr);
-  writeComms(DEBUG_DELIMITER);
+  writeDebugString("jsonStr:");
+  writeDebugString(jsonStr);
+  writeDebugByte(DEBUG_DELIMITER);
   String hunter_str = isHunter? "H" : "B";
-  writeCommsString(hunter_str);
-  writeComms(DEBUG_DELIMITER);
+  writeDebugString(hunter_str);
+  writeDebugByte(DEBUG_DELIMITER);
 }
 
 void setActivationDelay() {
-  if (commsAvailable()) {
+  if (debugCommsAvailable()) {
     String activationDelay = fetchDebugData();
     debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
     Serial.print("Set Activation Delay: ");
@@ -1278,94 +1308,6 @@ void resetState() {
   setMotorOutput(0);
 }
 
-// void monitorTX()
-// {
-//   if (Serial1.available())
-//   {
-//     lastTxPacket += Serial1.read();
-//   }
-// }
-
-// void monitorRX()
-// {
-//   if (Serial2.available())
-//   {
-//     lastRxPacket += Serial2.read();
-//   }
-// }
-
-// void writeTxTransaction(byte command)
-// {
-//   Serial1.write(command);
-// }
-
-// void writeRxTransaction(byte command)
-// {
-//   Serial2.write(command);
-// }
-
-// void activationOvercharge() {
-//   if(msgDelay == 0) {
-//     comms().write(BATTLE_MESSAGE);
-//   }
-//   msgDelay = msgDelay + 1;
-
-//   if (timerExpired()) {
-//     if(overchargeStep == 0) {
-//       if ((millis() % 20) == 0) {
-
-//         buttonBrightness++;
-
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness /
-//         smoothingPoints)) - 1.0)); setAllLED(pwm_val);
-
-//         if (buttonBrightness == 255) {
-//           overchargeStep = 1;
-//         }
-//       }
-//     } else if(overchargeStep == 1) {
-//       setAllLED(0);
-//       setTimer(200);
-//       overchargeStep = 2;
-//     } else if(overchargeStep == 2) {
-//       setAllLED(0);
-//       if(overchargeFlickers % 2 == 0) {
-//         setLED(buttonLED, random(0,50));
-//         setLED(loseLED, random(50,100));
-//         setTimer(50);
-//       } else {
-//         setLED(winLED, random(0, 125));
-//         setLED(interiorLED, random(200,255));
-//         setTimer(50);
-//       }
-//       if(overchargeFlickers == 9) {
-//         overchargeStep = 3;
-//         overchargeFlickers = 0;
-//         buttonBrightness = 255;
-//         breatheUp = true;
-//       } else {
-//         overchargeFlickers = overchargeFlickers + 1;
-//       }
-//     } else if(overchargeStep == 3) {
-//       if(overchargeFlickers < 2 && (millis() % 10) == 0) {
-//         buttonBrightness--;
-
-//         float pwm_val = 255.0 * (1.0 - abs((2.0 * (buttonBrightness /
-//         smoothingPoints)) - 1.0)); setAllLED(pwm_val);
-
-//         if (buttonBrightness == 0) {
-//           overchargeStep = 4;
-//         }
-//       }
-//     } else if(overchargeStep == 4) {
-//       setTimer(idleLEDBreak/2);
-//       overchargeStep = 0;
-//       overchargeFlickers = 0;
-//       buttonBrightness = 0;
-//     }
-//   }
-// }
-
 void drawDebugLabels() {
   display.drawStr(16, 10, "BTN 1:");
   display.drawStr(16, 20, "BTN 2:");
@@ -1420,8 +1362,7 @@ void updateFramerate() {
 // BUTTONS
 
 void primaryButtonClick() {
-  primaryPresses += 1;
-  setGraphLeft(primaryPresses % 7);
+  
 }
 
 void secondaryButtonClick() {
