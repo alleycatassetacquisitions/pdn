@@ -115,14 +115,16 @@ int motorSpeed = 0;
 
 // SERIAL
 bool debugCommsAvailable();
-bool commsAvailable();
-void writeComms(byte command);
-void writeCommsString(String command);
-byte readComms();
+bool gameCommsAvailable();
+void writeGameComms(byte command);
+void writeGameString(String command);
+byte readGameComms();
 void writeDebugString(String command);
 String readGameString(char terminator);
 String readDebugString(char terminator);
-byte peekComms();
+byte peekGameComms();
+byte peekDebugComms();
+void writeDebugByte(byte command);
 
 void monitorTX();
 void monitorRX();
@@ -397,7 +399,7 @@ void updateScore(String match_id, String opponent, boolean win);
 bool requestSwitchAppState();
 bool isValidMessageSerial1();
 bool isValidMessageSerial2();
-bool commandReceived();
+bool debugCommandReceived();
 bool validateCommand(String a, char b);
 String fetchDebugData();
 String fetchDebugCommand();
@@ -775,7 +777,7 @@ void checkForAppState() {
       if (validateCommand(command, ENTER_DEBUG)) {
         Serial.println("Switching to Debug");
         APP_STATE = DEBUG;
-        writeComms(DEBUG_DELIMITER);
+        writeDebugByte(DEBUG_DELIMITER);
         currentPalette = idleColors;
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
@@ -797,12 +799,10 @@ void checkForAppState() {
   flushComms();
 }
 
-byte brt = 255;
-
 void debugEvents() {
   // todo: Debug Display
 
-  if (commandReceived()) {
+  if (debugCommandReceived()) {
     String command = fetchDebugCommand();
     Serial.print("Command Received: ");
     Serial.println(command);
@@ -873,15 +873,15 @@ bool activationSequence() {
 void activationIdle() {
   // msgDelay was to prevent this from broadcasting every loop.
   if (msgDelay == 0) {
-    writeComms(BATTLE_MESSAGE);
+    writeGameComms(BATTLE_MESSAGE);
   }
   msgDelay = msgDelay + 1;
 }
 
 bool initiateHandshake() {
-  if (commsAvailable() && peekComms() == BATTLE_MESSAGE) {
-    readComms();
-    writeComms(BATTLE_MESSAGE);
+  if (gameCommsAvailable() && peekGameComms() == BATTLE_MESSAGE) {
+    readGameComms();
+    writeGameComms(BATTLE_MESSAGE);
     return true;
   }
 
@@ -907,27 +907,27 @@ bool handshake(String &match_id, String &opponent_id) {
     }
 
     if (isHunter) {
-      writeComms(HUNTER_SHAKE);
+      writeGameComms(HUNTER_SHAKE);
     } else {
-      writeComms(BOUNTY_SHAKE);
+      writeGameComms(BOUNTY_SHAKE);
     }
 
     handshakeState = HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE;
     return true;
   } else if (handshakeState == HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE) {
 
-    byte command = peekComms();
+    byte command = peekGameComms();
     if (isHunter && command == BOUNTY_SHAKE) 
     {
       String match_uuid_str = generateUUIDv4(); // Generate match_id UUID
-      writeComms(HUNTER_SHAKE);
-      writeCommsString(match_uuid_str);         // Sending match_id
-      writeCommsString(getUserID());            // Sending userID
+      writeGameComms(HUNTER_SHAKE);
+      writeGameString(match_uuid_str);         // Sending match_id
+      writeGameString(getUserID());            // Sending userID
       return true;
     }
     else if (!isHunter && command == HUNTER_SHAKE) 
     {
-      writeComms(BOUNTY_SHAKE);
+      writeGameComms(BOUNTY_SHAKE);
       match_id    = readGameString('\0');
       opponent_id = readGameString('\0');
       return true;
@@ -984,22 +984,22 @@ void duelCountdown() {
 void duel() {
   FastLED.setBrightness(255);
 
-  if (peekComms() == ZAP) {
-    readComms();
-    writeComms(YOU_DEFEATED_ME);
+  if (peekGameComms() == ZAP) {
+    readGameComms();
+    writeGameComms(YOU_DEFEATED_ME);
     captured = true;
     return;
-  } else if (peekComms() == YOU_DEFEATED_ME) {
-    readComms();
+  } else if (peekGameComms() == YOU_DEFEATED_ME) {
+    readGameComms();
     wonBattle = true;
     return;
-  } else if (peekComms() != -1) {
-    readComms();
+  } else if (peekGameComms() != -1) {
+    readGameComms();
   }
 
   if (isButtonPressed() && sendZapSignal) {
     sendZapSignal = false;
-    writeComms(ZAP);
+    writeGameComms(ZAP);
   }
 
   if (startDuelTimer) {
@@ -1049,8 +1049,9 @@ void updateScore(String match_id, String opponent, boolean win) {
 }
 
 // SERIAL
+// GAME COMMS
 
-byte peekComms() {
+byte peekGameComms() {
   if (isHunter) {
     return Serial1.peek();
   }
@@ -1058,13 +1059,12 @@ byte peekComms() {
   return Serial2.peek();
 }
 
-bool commsAvailable() {
+bool gameCommsAvailable() {
   return (isHunter && (Serial1.available() > 0)) ||
          (!isHunter && (Serial2.available() > 0));
 }
 
-
-void writeComms(byte command) {
+void writeGameComms(byte command) {
   if (isHunter) {
     Serial1.write(command);
   } else {
@@ -1072,15 +1072,7 @@ void writeComms(byte command) {
   }
 }
 
-void writeCommsString(String command) {
-  if (isHunter) {
-    Serial1.println(command);
-  } else {
-    Serial2.println(command);
-  }
-}
-
-byte readComms() {
+byte readGameComms() {
   if (isHunter) {
     return Serial1.read();
   }
@@ -1088,8 +1080,12 @@ byte readComms() {
   return Serial2.read();
 }
 
-String readDebugString(char terminator) {
-    return Serial1.readStringUntil(terminator);
+void writeGameString(String command) {
+  if (isHunter) {
+    Serial1.println(command);
+  } else {
+    Serial2.println(command);
+  }
 }
 
 String readGameString(char terminator) {
@@ -1101,12 +1097,29 @@ String readGameString(char terminator) {
   return Serial2.readStringUntil(terminator);
 }
 
+//DEBUG SERIAL
+byte peekDebugComms() {
+  return Serial1.peek();
+}
+
 bool debugCommsAvailable() {
   return Serial1.available() > 0;
 }
 
+void writeDebugByte(byte data) {
+  Serial1.write(data);
+}
+
+byte readDebugByte() {
+  return Serial1.read();
+}
+
 void writeDebugString(String command) {
   Serial1.println(command);
+}
+
+String readDebugString(char terminator) {
+    return Serial1.readStringUntil(terminator);
 }
 
 void flushComms() {
@@ -1131,15 +1144,15 @@ void clearComms()
 }
 
 bool requestSwitchAppState() {
-  if (commsAvailable()) {
-    char command = (char)peekComms();
+  if (debugCommsAvailable()) {
+    char command = (char)peekDebugComms();
     Serial.print("Checking App State: ");
     Serial.print(" Current buffer size: ");
-    Serial.print(commsAvailable());
+    Serial.print(debugCommsAvailable());
     Serial.print(" Command: ");
     Serial.print(command);
     Serial.print(" As Byte: ");
-    Serial.println(peekComms());
+    Serial.println(peekDebugComms());
     return (command == ENTER_DEBUG || command == START_GAME);
   } else {
     return false;
@@ -1194,9 +1207,9 @@ bool isValidMessageSerial2() {
   return false;
 }
 
-bool commandReceived() {
-  if (commsAvailable()) {
-    char command = (char)peekComms();
+bool debugCommandReceived() {
+  if (debugCommsAvailable()) {
+    char command = (char)peekDebugComms();
     return (command == SETUP_DEVICE || command == SET_ACTIVATION ||
             command == CHECK_IN);
   } else {
@@ -1222,23 +1235,23 @@ void setupDevice() {
 }
 
 void checkInDevice() {
-  writeComms(DEBUG_DELIMITER);
+  writeDebugByte(DEBUG_DELIMITER);
   String id = "DeviceID: " + String(deviceID);
-  writeCommsString(id);
+  writeDebugString(id);
 
-  writeComms(DEBUG_DELIMITER);
+  writeDebugByte(DEBUG_DELIMITER);
   // Print JSON string to serial
   String jsonStr = dumpMatchesToJson();
-  writeCommsString("jsonStr:");
-  writeCommsString(jsonStr);
-  writeComms(DEBUG_DELIMITER);
+  writeDebugString("jsonStr:");
+  writeDebugString(jsonStr);
+  writeDebugByte(DEBUG_DELIMITER);
   String hunter_str = isHunter? "H" : "B";
-  writeCommsString(hunter_str);
-  writeComms(DEBUG_DELIMITER);
+  writeDebugString(hunter_str);
+  writeDebugByte(DEBUG_DELIMITER);
 }
 
 void setActivationDelay() {
-  if (commsAvailable()) {
+  if (debugCommsAvailable()) {
     String activationDelay = fetchDebugData();
     debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
     Serial.print("Set Activation Delay: ");
