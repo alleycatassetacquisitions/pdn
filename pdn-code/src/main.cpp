@@ -639,9 +639,6 @@ bool updateUi(void *) {
         case WIN:
           display.print("WIN");
           break;
-        case WIN:
-          display.print("WIN");
-          break;
 
         case LOSE:
           display.print("LOSE");
