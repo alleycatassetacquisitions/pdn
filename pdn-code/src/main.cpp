@@ -23,11 +23,12 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-const int BAUDRATE = 115200;
+const int BAUDRATE = 9600;
 
-boolean isHunter = !true;
+boolean isHunter = true;
 
 byte deviceID = 49;
+String DEBUG_MODE_SUBSTR = "";
 
 // DISPLAY
 
@@ -575,7 +576,7 @@ bool updateUi(void *) {
 
   switch(APP_STATE) {
     case DEBUG:
-      display.print("DEBUG");
+      display.print("DEBUG: " + DEBUG_MODE_SUBSTR);
       display.setCursor(0, 16);
       display.print(u8x8_u8toa(screenCounter++, 3));
       break;
@@ -852,13 +853,19 @@ void debugEvents() {
     Serial.print("Command Received: ");
     Serial.println(command);
     if (validateCommand(command, SETUP_DEVICE)) {
+      DEBUG_MODE_SUBSTR = "SETUP";
       setupDevice();
     } else if (validateCommand(command, CHECK_IN)) {
+      DEBUG_MODE_SUBSTR = "CHECK_IN";
       Serial.println("CHECK_IN");
       checkInDevice();
     } else if (validateCommand(command, SET_ACTIVATION)) {
+      DEBUG_MODE_SUBSTR = "SET_ACTIVATION";
       Serial.println("SET_ACTIVATION");
       setActivationDelay();
+    }
+    else {
+      DEBUG_MODE_SUBSTR = "wait";
     }
   }
 }
