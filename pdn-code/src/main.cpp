@@ -24,7 +24,7 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-const int BAUDRATE = 57600;
+const int BAUDRATE = 19200;
 
 //GAME ROLE
 boolean isHunter = !true;
@@ -465,10 +465,10 @@ void setup(void) {
     currentPalette = bountyColors;
   }
 
-  // primary.attachClick(primaryButtonClick);
+  primary.attachClick(primaryButtonClick);
   // primary.attachDoubleClick(primaryButtonDoubleClick);
   // primary.attachLongPressStop(primaryButtonLongPress);
-  // secondary.attachClick(secondaryButtonClick);
+  secondary.attachClick(primaryButtonClick);
   // secondary.attachDoubleClick(secondaryButtonDoubleClick);
   // secondary.attachLongPressStop(secondaryButtonLongPress);
 
@@ -498,7 +498,6 @@ void setup(void) {
 void loop(void) {
   now = millis();
   uiRefresh.tick();
-  // primary.tick();
 
   if (APP_STATE == QD_GAME) {
     quickDrawGame();
@@ -509,6 +508,8 @@ void loop(void) {
   } else if (APP_STATE == CLEAR_USER) {
     clearUserID();
   }
+  primary.tick();
+  secondary.tick();
   checkForAppState();
 }
 
@@ -1100,14 +1101,11 @@ void duel() {
     readGameComms();
     wonBattle = true;
     return;
-  } else if (peekGameComms() != -1) {
+  } else {
     readGameComms();
   }
 
-  if (isButtonPressed() && sendZapSignal) {
-    sendZapSignal = false;
-    writeGameComms(ZAP);
-  }
+  // primary.tick();
 
   if (startDuelTimer) {
     setTimer(DUEL_TIMEOUT);
@@ -1477,7 +1475,16 @@ void updateFramerate() {
 // BUTTONS
 
 void primaryButtonClick() {
-  
+  switch(QD_STATE) {
+    case DUEL:
+      if(sendZapSignal) {
+        sendZapSignal = false;
+        writeGameComms(ZAP);
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 void secondaryButtonClick() {
