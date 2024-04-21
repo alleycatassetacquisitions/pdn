@@ -10,10 +10,10 @@
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
 #define motorPin 17
-#define RXt 41
-#define RXr 40
-#define TXr 39 //MIDDLE BAND ON AUDIO CABLE
-#define TXt 38 //TIP OF AUDIO CABLE
+#define RXr 41
+#define RXt 40
+#define TXt 39 //MIDDLE BAND ON AUDIO CABLE
+#define TXr 38 //TIP OF AUDIO CABLE
 #define displayLightsPin 13
 #define gripLightsPin 21
 #define displayCS 10
