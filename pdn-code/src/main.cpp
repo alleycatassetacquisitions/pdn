@@ -6,14 +6,15 @@
 #include <SPI.h>
 #include <U8g2lib.h>
 #include <arduino-timer.h>
+#include <UUID.h>
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
 #define motorPin 17
-#define RXt 41
-#define RXr 40
-#define TXr 39
-#define TXt 38
+#define RXr 41
+#define RXt 40
+#define TXt 39 //MIDDLE BAND ON AUDIO CABLE
+#define TXr 38 //TIP OF AUDIO CABLE
 #define displayLightsPin 13
 #define gripLightsPin 21
 #define displayCS 10
@@ -23,10 +24,11 @@
 #define numDisplayLights 13
 #define numGripLights 6
 
-const int BAUDRATE = 9600;
+const int BAUDRATE = 57600;
 
-// boolean isHunter = !true;
-boolean isHunter = true;
+//GAME ROLE
+boolean isHunter = !true;
+// boolean isHunter = true;
 
 byte deviceID = 49;
 String DEBUG_MODE_SUBSTR = "";
@@ -138,11 +140,14 @@ void clearComms();
 byte lastTxPacket = 0;
 byte lastRxPacket = 0;
 
-const byte BATTLE_MESSAGE = 100;
-const byte BOUNTY_SHAKE = 101;
-const byte HUNTER_SHAKE = 102;
-const byte ZAP = 103;
-const byte YOU_DEFEATED_ME = 104;
+const byte BOUNTY_BATTLE_MESSAGE = 128;
+const byte HUNTER_BATTLE_MESSAGE = 129;
+const byte BOUNTY_SHAKE = 130;
+const byte HUNTER_SHAKE = 131;
+const byte HUNTER_HANDSHAKE_FINAL_ACK = 132;
+const byte BOUNTY_HANDSHAKE_FINAL_ACK = 133;
+const byte ZAP = 134;
+const byte YOU_DEFEATED_ME = 135;
 
 // TIMERS
 auto uiRefresh = timer_create_default();
@@ -186,11 +191,10 @@ Handshake states:
 
 bool handshakeTimedOut = false;
 
-const int HANDSHAKE_DELAY = 1000;
-const int HANDSHAKE_TIMEOUT = 1000;
+const int HANDSHAKE_TIMEOUT = 5000;
 
 // STATE - DUEL_ALERT
-int alertFlashTime = 75;
+int alertFlashTime = 250;
 byte alertCount = 0;
 
 // STATE - DUEL_COUNTDOWN
@@ -261,7 +265,7 @@ const char START_GAME = '@';
 const char SETUP_DEVICE = '#';
 const char SET_ACTIVATION = '^';
 const char CHECK_IN = '%';
-const char DEBUG_DELIMITER = '-';
+const char DEBUG_DELIMITER = '&';
 
 byte APP_STATE = QD_GAME;
 
@@ -269,6 +273,9 @@ byte APP_STATE = QD_GAME;
 String userID = "init_uuid";
 String current_match_id = "init_match_uuid";
 String current_opponent_id = "init_opponent_uuid";
+
+UUID uuidGenerator;
+String generateUuid();
 
 struct Match {
   String match_id;
@@ -283,7 +290,7 @@ struct Match {
     matchObj["match_id"] = match_id;
     matchObj["hunter"] = hunter;
     matchObj["bounty"] = bounty;
-    matchObj["winner_is_hunter"] = winner_is_hunter;
+    matchObj["capture"] = winner_is_hunter;
 
     // Serialize the JSON object to a string
     String json;
@@ -302,12 +309,28 @@ struct Match {
       match_id = doc["match_id"].as<String>();
       hunter = doc["hunter"].as<String>();
       bounty = doc["bounty"].as<String>();
-      winner_is_hunter = doc["winner_is_hunter"];
+      winner_is_hunter = doc["capture"];
     } else {
       Serial.println("Failed to parse JSON");
     }
   }
 };
+
+String stripWhitespace(String input) {
+  String output;
+  for (int i = 0; i < input.length(); i++) {
+    char c = input.charAt(i);
+    // Check if the character is not a whitespace
+    if (!isWhitespace(c)) {
+      output += c; // Append non-whitespace character to the output string
+    }
+  }
+  return output;
+}
+
+bool isWhitespace(char c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
 
 #define MAX_MATCHES 1000 // Maximum number of matches allowed
 
@@ -315,32 +338,6 @@ struct Match {
 
 Match matches[MAX_MATCHES];
 int numMatches = 0;
-
-String generateUUIDv4() {
-  // Generate a random UUIDv4
-  char uuid[37]; // 36 characters for the UUID + null terminator
-  
-  // Generate random bytes
-  for (int i = 0; i < 16; i++) {
-    if (i == 6) {
-      // Set the version (4) in the 7th byte
-      uuid[i] = 0x40 | (random(0, 16) & 0x0F);
-    } else if (i == 8) {
-      // Set the variant (RFC 4122) in the 9th byte
-      uuid[i] = 0x80 | (random(0, 16) & 0x3F);
-    } else {
-      // Generate random byte
-      uuid[i] = random(0, 256);
-    }
-  }
-  
-  // Format UUID as string
-  snprintf(uuid + 16, 21, "-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", 
-           uuid[6], uuid[7], uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
-
-  return String(uuid);
-}
-
 
 String dumpMatchesToJson() {
   StaticJsonDocument<512> doc;
@@ -354,7 +351,12 @@ String dumpMatchesToJson() {
 }
 
 void setUserID() {
-  userID = generateUUIDv4(); // Set the userID UUID using the generateUUIDv4() function
+  userID = generateUuid();
+}
+
+String generateUuid() {
+  uuidGenerator.generate();
+  return uuidGenerator.toCharArray();
 }
 
 String getUserID() {
@@ -365,13 +367,17 @@ void clearUserID() {
   userID = "default";
 }
 
-void addMatch(const String &match_id, const String &hunter,
-              const String &bounty, bool winner_is_hunter) {
+void addMatch(bool winner_is_hunter) {
   if (numMatches < MAX_MATCHES) {
     // Create a Match object
-    matches[numMatches].match_id = match_id;
-    matches[numMatches].hunter = hunter;
-    matches[numMatches].bounty = bounty;
+    if(isHunter) {
+      matches[numMatches].hunter = getUserID();
+      matches[numMatches].bounty = current_opponent_id;
+    } else {
+      matches[numMatches].hunter = current_opponent_id;
+      matches[numMatches].bounty = getUserID();
+    }
+    matches[numMatches].match_id = current_match_id;
     matches[numMatches].winner_is_hunter = winner_is_hunter;
     numMatches++;
   }
@@ -388,13 +394,13 @@ bool activationSequence();
 void activationIdle();
 void activationOvercharge();
 bool initiateHandshake();
-bool handshake(String &match_id, String &opponentID);
+bool handshake();
 void alertDuel();
 void duelCountdown();
 void duel();
 void duelOver();
 
-void updateScore(String match_id, String opponent, boolean win);
+void updateScore(boolean win);
 
 bool requestSwitchAppState();
 bool isValidMessageSerial1();
@@ -443,11 +449,15 @@ void initializePins() {
 void setup(void) {
 
   initializePins();
+
+  uuidGenerator.setVariant4Mode();
+  uuidGenerator.seed(random(999999999), random(999999999));
+
   setupDevice();
 
-  Serial1.begin(BAUDRATE, SERIAL_8N2, TXr, TXt, true);
+  Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
 
-  Serial2.begin(BAUDRATE, SERIAL_8N2, RXr, RXt, true);
+  Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
 
   if (isHunter) {
     currentPalette = hunterColors;
@@ -529,11 +539,15 @@ void animateLights() {
   if(APP_STATE == DEBUG) {
     activationIdleAnimation(35);
   } else {
-    if (QD_STATE == INITIATE) {
+    switch(QD_STATE) {
+
+    case INITIATE:
       FastLED.showColor(currentPalette[0]);
-    } else if (QD_STATE == DORMANT) {
+      break;
+    case DORMANT:
       FastLED.showColor(currentPalette[0]);
-    } else if (QD_STATE == ACTIVATED) {
+      break;
+    case ACTIVATED:
       if (breatheUp) {
         ledBrightness++;
       } else {
@@ -549,14 +563,21 @@ void animateLights() {
       }
 
       activationIdleAnimation((int)pwm_val);
-    } else if (QD_STATE == HANDSHAKE) {
+      break;
+    case HANDSHAKE:
       FastLED.showColor(currentPalette[3]);
-    } else if (QD_STATE == DUEL_ALERT) {
+      break;
+    case DUEL_ALERT:
       FastLED.showColor(bountyColors[1]);
-    } else if (QD_STATE == DUEL_COUNTDOWN) {
-    } else if (QD_STATE == DUEL) {
-    } else if (QD_STATE == WIN) {
-    } else if (QD_STATE == LOSE) {
+      break;
+    case DUEL_COUNTDOWN:
+      break;
+    case DUEL:
+      break;
+    case WIN:
+      break;
+    case LOSE:
+      break;
     }
   }
 }
@@ -628,6 +649,13 @@ bool updateUi(void *) {
             display.setCursor(36, 64);
             display.print(u8x8_u8toa(Serial2.available(), 3));
           }
+
+          display.setCursor(80, 64);
+          // if(current_match_id[current_match_id.length()-1] == '\0'){
+          //   display.print(");
+          // } else {
+            display.print(current_match_id.length());
+          // }
           break;
 
         case DUEL_ALERT:
@@ -724,14 +752,14 @@ void quickDrawGame() {
       updateQDState(HANDSHAKE);
     }
   } else if (QD_STATE == HANDSHAKE) {
-    if (handshake(current_match_id, current_opponent_id)) {
+    if (handshake()) {
       updateQDState(DUEL_ALERT);
     } else if (handshakeTimedOut) {
       updateQDState(ACTIVATED);
     }
   } else if (QD_STATE == DUEL_ALERT) {
     alertDuel();
-    if (alertCount == 10) {
+    if (alertCount == 9) {
       updateQDState(DUEL_COUNTDOWN);
     }
   } else if (QD_STATE == DUEL_COUNTDOWN) {
@@ -752,7 +780,7 @@ void quickDrawGame() {
     if (!reset) {
       duelOver();
     } else {
-      updateScore(current_match_id, current_opponent_id, true);
+      updateScore(true);
       clearComms();
       updateQDState(DORMANT);
     }
@@ -760,7 +788,7 @@ void quickDrawGame() {
     if (!reset) {
       duelOver();
     } else {
-      updateScore(current_match_id, current_opponent_id, false);
+      updateScore(false);
       clearComms();
       updateQDState(DORMANT);
     }
@@ -828,6 +856,8 @@ void setupActivation() {
   if (isHunter) {
     // hunters have minimal activation delay
     setTimer(100);
+    //also go ahead and initialize the next match id here.
+    current_match_id = generateUuid();
   } else {
     if (debugDelay > 0) {
       setTimer(debugDelay);
@@ -873,16 +903,29 @@ bool activationSequence() {
 void activationIdle() {
   // msgDelay was to prevent this from broadcasting every loop.
   if (msgDelay == 0) {
-    writeGameComms(BATTLE_MESSAGE);
+    if(isHunter) 
+    {
+      writeGameComms(HUNTER_BATTLE_MESSAGE);
+    } 
+    else
+    {
+      writeGameComms(BOUNTY_BATTLE_MESSAGE);
+    } 
   }
   msgDelay = msgDelay + 1;
 }
 
 bool initiateHandshake() {
-  if (gameCommsAvailable() && peekGameComms() == BATTLE_MESSAGE) {
-    readGameComms();
-    writeGameComms(BATTLE_MESSAGE);
-    return true;
+  if (gameCommsAvailable()) {
+    if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) {
+      readGameComms();
+      writeGameComms(HUNTER_BATTLE_MESSAGE);
+      return true;
+    } else if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !isHunter) {
+      readGameComms();
+      writeGameComms(BOUNTY_BATTLE_MESSAGE);
+      return true;
+    }
   }
 
   return false;
@@ -891,17 +934,16 @@ bool initiateHandshake() {
 byte HANDSHAKE_TIMEOUT_START_STATE = 0;
 byte HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1;
 byte HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2;
-byte HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE = 3;
+byte HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3;
+byte HANDSHAKE_STATE_FINAL_ACK = 4;
 // when this functions returns true, its the signal to change state
-bool handshake(String &match_id, String &opponent_id) {
+bool handshake() {
   // dont transition gamestate, just handshake sub-fsm
   if (handshakeState == HANDSHAKE_TIMEOUT_START_STATE) {
     setTimer(HANDSHAKE_TIMEOUT);
     handshakeState = HANDSHAKE_SEND_ROLE_SHAKE_STATE;
-    return false;
   } else if (handshakeState == HANDSHAKE_SEND_ROLE_SHAKE_STATE) {
     if (timerExpired()) {
-      FastLED.setBrightness(0);
       handshakeTimedOut = true;
       return false;
     }
@@ -912,27 +954,92 @@ bool handshake(String &match_id, String &opponent_id) {
       writeGameComms(BOUNTY_SHAKE);
     }
 
-    handshakeState = HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE;
-    return true;
-  } else if (handshakeState == HANDSHAKE_RECIEVE_ROLE_SHAKE_STATE) {
-
-    byte command = peekGameComms();
-    if (isHunter && command == BOUNTY_SHAKE) 
-    {
-      String match_uuid_str = generateUUIDv4(); // Generate match_id UUID
-      writeGameComms(HUNTER_SHAKE);
-      writeGameString(match_uuid_str);         // Sending match_id
-      writeGameString(getUserID());            // Sending userID
-      return true;
+    handshakeState = HANDSHAKE_WAIT_ROLE_SHAKE_STATE;
+  } else if(handshakeState == HANDSHAKE_WAIT_ROLE_SHAKE_STATE) {
+    if(timerExpired()) {
+      handshakeTimedOut = true;
+      return false;
     }
-    else if (!isHunter && command == HUNTER_SHAKE) 
+    //While waiting to see the shake, if we get battle message,
+    //then the other device is behind, we need to send it another
+    //battle message ack.
+    if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !isHunter) 
     {
+      //it's confused.
+      while(peekGameComms() == HUNTER_BATTLE_MESSAGE) {
+        readGameComms();
+      }
+      writeGameComms(BOUNTY_BATTLE_MESSAGE);
       writeGameComms(BOUNTY_SHAKE);
-      match_id    = readGameString('\0');
-      opponent_id = readGameString('\0');
+    } 
+    
+    else if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) 
+    {
+      //also confused.
+      while(peekGameComms() == BOUNTY_BATTLE_MESSAGE) {
+        readGameComms();
+      }
+      writeGameComms(HUNTER_BATTLE_MESSAGE);
+      writeGameComms(HUNTER_SHAKE);
+    } 
+    
+    if(peekGameComms() == BOUNTY_SHAKE && isHunter) 
+    {
+      writeGameString(current_match_id);         // Sending match_id
+      writeGameString(getUserID());              // Sending userID
+      while(peekGameComms() == BOUNTY_SHAKE) {
+          readGameComms();
+      } 
+      handshakeState = HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
+    }
+    else if(peekGameComms() == HUNTER_SHAKE && !isHunter)
+    {
+      writeGameString(getUserID());
+      while(peekGameComms() == HUNTER_SHAKE) {
+        readGameComms();
+      }
+      handshakeState = HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
+    }
+
+  } else if (handshakeState == HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) {
+    if (timerExpired()) {
+      handshakeTimedOut = true;
+      return false;
+    }
+
+    if (isHunter) 
+    {
+      if(gameCommsAvailable()) {
+        current_opponent_id = readGameString('\r');
+        writeGameComms(HUNTER_HANDSHAKE_FINAL_ACK);
+        handshakeState = HANDSHAKE_STATE_FINAL_ACK;
+        return false;
+      }
+    }
+    else if (!isHunter) 
+    {
+      if(gameCommsAvailable()) {
+        current_match_id    = readGameString('\r');
+        readGameString('\n');
+        current_opponent_id = readGameString('\r');
+        writeGameComms(BOUNTY_HANDSHAKE_FINAL_ACK);
+        handshakeState = HANDSHAKE_STATE_FINAL_ACK;
+        return false;
+      }
+    }
+  } else if (handshakeState == HANDSHAKE_STATE_FINAL_ACK) {
+    if (timerExpired()) {
+      handshakeTimedOut = true;
+      return false;
+    }
+    
+    if(!isHunter && peekGameComms() == HUNTER_HANDSHAKE_FINAL_ACK) {
       return true;
     }
-    return false;
+
+    if(isHunter && peekGameComms() == BOUNTY_HANDSHAKE_FINAL_ACK) {
+      return true;
+    }
   }
 
   return false;
@@ -1008,7 +1115,7 @@ void duel() {
   }
 
   if (timerExpired()) {
-    FastLED.setBrightness(0);
+    // FastLED.setBrightness(0);
     bvbDuel = false;
     duelTimedOut = true;
   }
@@ -1017,7 +1124,6 @@ void duel() {
 void duelOver() {
   if (startBattleFinish) {
     startBattleFinish = false;
-    FastLED.setBrightness(0);
     setMotorOutput(255);
   }
 
@@ -1042,10 +1148,8 @@ bool isButtonPressed() {
          digitalRead(secondaryButtonPin) == LOW;
 }
 
-void updateScore(String match_id, String opponent, boolean win) {
-  String hunter_uuid = isHunter ? getUserID() : opponent;
-  String bounty_uuid = !isHunter ? getUserID() : opponent;
-  addMatch(match_id, hunter_uuid, bounty_uuid, win);
+void updateScore(boolean win) {
+  addMatch(win);
 }
 
 // SERIAL
@@ -1159,6 +1263,17 @@ bool requestSwitchAppState() {
   }
 }
 
+
+/*
+  the two validation methods are quite similar, with some notable differences.
+  Serial1 is used for hunter communications and for debug events.
+  Serial2 is used for bounty communications.
+
+  Debug events on Serial2 are assumed to be invalid.
+  
+  During the quick draw game, we validate the battle and handshake messages against what role
+  the device is currently in.
+*/
 bool isValidMessageSerial1() {
   byte command = Serial1.peek();
   if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
@@ -1171,10 +1286,10 @@ bool isValidMessageSerial1() {
     return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
             (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
   } else {
-    if (QD_STATE == ACTIVATED) {
-      return command == BATTLE_MESSAGE;
+    if (QD_STATE == ACTIVATED) { 
+      return (command == BOUNTY_BATTLE_MESSAGE && isHunter);
     } else if (QD_STATE == HANDSHAKE) {
-      return (command == BOUNTY_SHAKE || command == HUNTER_SHAKE);
+      return (command == BOUNTY_SHAKE && handshakeState < HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || (command == BOUNTY_HANDSHAKE_FINAL_ACK);
     } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
@@ -1182,6 +1297,12 @@ bool isValidMessageSerial1() {
 
   return false;
 }
+
+// byte HANDSHAKE_TIMEOUT_START_STATE = 0;
+// byte HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1;
+// byte HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2;
+// byte HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3;
+// byte HANDSHAKE_STATE_FINAL_ACK = 4;
 
 bool isValidMessageSerial2() {
   byte command = Serial2.peek();
@@ -1196,9 +1317,9 @@ bool isValidMessageSerial2() {
   //           (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
   // } else {
     if (QD_STATE == ACTIVATED) {
-      return command == BATTLE_MESSAGE;
+      return (command == HUNTER_BATTLE_MESSAGE && !isHunter);
     } else if (QD_STATE == HANDSHAKE) {
-      return (command == BOUNTY_SHAKE || command == HUNTER_SHAKE);
+      return (command == HUNTER_SHAKE && handshakeState < HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || (command == HUNTER_HANDSHAKE_FINAL_ACK);
     } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
@@ -1235,18 +1356,11 @@ void setupDevice() {
 }
 
 void checkInDevice() {
-  writeDebugByte(DEBUG_DELIMITER);
-  String id = "DeviceID: " + String(deviceID);
-  writeDebugString(id);
-
-  writeDebugByte(DEBUG_DELIMITER);
   // Print JSON string to serial
   String jsonStr = dumpMatchesToJson();
+  writeDebugByte(DEBUG_DELIMITER);
   writeDebugString("jsonStr:");
   writeDebugString(jsonStr);
-  writeDebugByte(DEBUG_DELIMITER);
-  String hunter_str = isHunter? "H" : "B";
-  writeDebugString(hunter_str);
   writeDebugByte(DEBUG_DELIMITER);
 }
 
@@ -1304,6 +1418,7 @@ void resetState() {
   alertCount = 0;
   finishBattleBlinkCount = 0;
   ledBrightness = 65;
+  clearComms();
   invalidateTimer();
   setMotorOutput(0);
 }
