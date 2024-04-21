@@ -31,6 +31,13 @@ const int BAUDRATE = 19200;
 // boolean isHunter = !true;
 boolean isHunter = true;
 
+byte ALLEYCAT = 0;
+byte HELIX = 1;
+byte ENDLINE = 2;
+byte RESISTANCE = 3;
+
+byte allegiance = HELIX;
+
 byte deviceID = 49;
 String DEBUG_MODE_SUBSTR = "";
 
@@ -106,6 +113,7 @@ CRGBPalette16 currentPalette = bountyColors;
 void animateLights();
 void activationIdleAnimation(int brightness);
 bool updateUi(void *);
+const unsigned char* getImageForAllegiance(int index);
 
 void setGraphRight(int value);
 void setGraphLeft(int value);
@@ -486,8 +494,8 @@ void setup(void) {
   display.setContrast(125);
   display.setFont(u8g2_font_smart_patrol_nbp_tf);
   drawDebugLabels();
-  display.drawXBM(0, 0, 128, 64, alleycatImages[indexLogo]);
-  display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+  display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
+  display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
   display.sendBuffer();
 
   uiRefresh.every(16, updateUi);
@@ -586,6 +594,20 @@ void animateLights() {
 }
 
 byte screenCounter = 0;
+
+const unsigned char* getImageForAllegiance(int index) {
+  switch(allegiance) {
+    case 1:
+      return helixImages[index];
+    case 2:
+      return endlineImages[index];
+    case 3:
+      return resistanceImages[index];
+    default:
+      return alleycatImages[index];
+  }
+}
+
 bool updateUi(void *) {
   animateLights();
 
@@ -613,24 +635,24 @@ bool updateUi(void *) {
     case QD_GAME:
       switch (QD_STATE) {
         case INITIATE:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexLogo]);
-          display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
+          display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
           // display.print("INITIATE");
           // display.setCursor(16, 48);
           // display.print(u8x8_utoa(screenCounter++));
           break;
 
         case DORMANT:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexLogo]);
-          display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
+          display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
           // display.print("DORMANT");
           // display.setCursor(16, 48);
           // display.print(u8x8_utoa(screenCounter++));
           break;
 
         case ACTIVATED:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexIdle]);
-          display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexIdle));
+          display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
           // display.print("ACTIVATED");
           // display.setCursor(0, 16);
           // display.print(u8x8_u8toa(screenCounter++, 3));
@@ -641,7 +663,7 @@ bool updateUi(void *) {
           break;
 
         case HANDSHAKE:
-        display.drawXBM(0, 0, 128, 64, alleycatImages[indexConnect]);
+        display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
           // display.print("HANDSHAKE");
           // display.setCursor(0, 16);
           // display.print(u8x8_u8toa(screenCounter++, 3));
@@ -669,33 +691,33 @@ bool updateUi(void *) {
           break;
 
         case DUEL_ALERT:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexConnect]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
           break;
 
         case DUEL_COUNTDOWN:
           if(countdownStage > 3) {
-            display.drawXBM(0, 0, 128, 64, alleycatImages[indexConnect]); 
+            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect)); 
           } else if(countdownStage == 3) {
-            display.drawXBM(0, 0, 128, 64, alleycatImages[indexThree]); 
+            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexThree)); 
           } else if(countdownStage == 2) {
-            display.drawXBM(0, 0, 128, 64, alleycatImages[indexTwo]);
+            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexTwo));
           } else if(countdownStage <= 1) {
-            display.drawXBM(0, 0, 128, 64, alleycatImages[indexOne]);
+            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexOne));
           }
           break;
 
         case DUEL:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexDraw]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexDraw));
           // display.print("DUEL");
           // updatePrimaryButtonState();
           break;
 
         case WIN:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexWin]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexWin));
           break;
 
         case LOSE:
-          display.drawXBM(0, 0, 128, 64, alleycatImages[indexLose]);
+          display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLose));
           break;
         }
   }
