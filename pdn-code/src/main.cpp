@@ -7,6 +7,7 @@
 #include <U8g2lib.h>
 #include <arduino-timer.h>
 #include <UUID.h>
+#include <images.h>
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -27,8 +28,8 @@
 const int BAUDRATE = 19200;
 
 //GAME ROLE
-boolean isHunter = !true;
-// boolean isHunter = true;
+// boolean isHunter = !true;
+boolean isHunter = true;
 
 byte deviceID = 49;
 String DEBUG_MODE_SUBSTR = "";
@@ -485,7 +486,8 @@ void setup(void) {
   display.setContrast(125);
   display.setFont(u8g2_font_smart_patrol_nbp_tf);
   drawDebugLabels();
-  drawDebugState("OFF", "OFF", "N/A", "N/A", "00%", "OFF", "OFF");
+  display.drawXBM(0, 0, 128, 64, alleycatImages[indexLogo]);
+  display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
   display.sendBuffer();
 
   uiRefresh.every(16, updateUi);
@@ -588,19 +590,19 @@ bool updateUi(void *) {
   animateLights();
 
   display.clearBuffer();
-  display.setCursor(0, 48);
-  if (Serial1.available() > 0) {
-    display.print(u8x8_u8toa(Serial1.peek(), 3));
-    display.setCursor(36, 48);
-    display.print(u8x8_u8toa(Serial1.available(), 3));
-  }
-  display.setCursor(0, 64);
-  if (Serial2.available() > 0) {
-    display.print(u8x8_u8toa(Serial2.peek(), 3));
-    display.setCursor(36, 64);
-    display.print(u8x8_u8toa(Serial2.available(), 3));
-  }
-  display.setCursor(16, 32);
+  // display.setCursor(0, 48);
+  // if (Serial1.available() > 0) {
+  //   display.print(u8x8_u8toa(Serial1.peek(), 3));
+  //   display.setCursor(36, 48);
+  //   display.print(u8x8_u8toa(Serial1.available(), 3));
+  // }
+  // display.setCursor(0, 64);
+  // if (Serial2.available() > 0) {
+  //   display.print(u8x8_u8toa(Serial2.peek(), 3));
+  //   display.setCursor(36, 64);
+  //   display.print(u8x8_u8toa(Serial2.available(), 3));
+  // }
+  // display.setCursor(16, 32);
 
   switch(APP_STATE) {
     case DEBUG:
@@ -611,72 +613,89 @@ bool updateUi(void *) {
     case QD_GAME:
       switch (QD_STATE) {
         case INITIATE:
-          display.print("INITIATE");
-          display.setCursor(16, 48);
-          display.print(u8x8_utoa(screenCounter++));
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexLogo]);
+          display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+          // display.print("INITIATE");
+          // display.setCursor(16, 48);
+          // display.print(u8x8_utoa(screenCounter++));
           break;
 
         case DORMANT:
-          display.print("DORMANT");
-          display.setCursor(16, 48);
-          display.print(u8x8_utoa(screenCounter++));
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexLogo]);
+          display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+          // display.print("DORMANT");
+          // display.setCursor(16, 48);
+          // display.print(u8x8_utoa(screenCounter++));
           break;
 
         case ACTIVATED:
-          display.print("ACTIVATED");
-          display.setCursor(0, 16);
-          display.print(u8x8_u8toa(screenCounter++, 3));
-          
-          display.setCursor(64, 16);
-          display.print(getUserID());
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexIdle]);
+          display.drawXBM(64, 0, 128, 64, alleycatImages[indexStamp]);
+          // display.print("ACTIVATED");
+          // display.setCursor(0, 16);
+          // display.print(u8x8_u8toa(screenCounter++, 3));
+          // display.setCursor(64, 16);
+          // display.print(getUserID());
+
 
           break;
 
         case HANDSHAKE:
-          display.print("HANDSHAKE");
-          display.setCursor(0, 16);
-          display.print(u8x8_u8toa(screenCounter++, 3));
-          display.setCursor(64, 14);
-          display.print(u8x8_u8toa(handshakeState, 3));
-          display.setCursor(0, 48);
-          if (Serial1.available() > 0) {
-            display.print(u8x8_u8toa(Serial1.peek(), 3));
-            display.setCursor(36, 48);
-            display.print(u8x8_u8toa(Serial1.available(), 3));
-          }
-          display.setCursor(0, 64);
-          if (Serial2.available() > 0) {
-            display.print(u8x8_u8toa(Serial2.peek(), 3));
-            display.setCursor(36, 64);
-            display.print(u8x8_u8toa(Serial2.available(), 3));
-          }
-
-          display.setCursor(80, 64);
-          // if(current_match_id[current_match_id.length()-1] == '\0'){
-          //   display.print(");
-          // } else {
-            display.print(current_match_id.length());
+        display.drawXBM(0, 0, 128, 64, alleycatImages[indexConnect]);
+          // display.print("HANDSHAKE");
+          // display.setCursor(0, 16);
+          // display.print(u8x8_u8toa(screenCounter++, 3));
+          // display.setCursor(64, 14);
+          // display.print(u8x8_u8toa(handshakeState, 3));
+          // display.setCursor(0, 48);
+          // if (Serial1.available() > 0) {
+          //   display.print(u8x8_u8toa(Serial1.peek(), 3));
+          //   display.setCursor(36, 48);
+          //   display.print(u8x8_u8toa(Serial1.available(), 3));
           // }
+          // display.setCursor(0, 64);
+          // if (Serial2.available() > 0) {
+          //   display.print(u8x8_u8toa(Serial2.peek(), 3));
+          //   display.setCursor(36, 64);
+          //   display.print(u8x8_u8toa(Serial2.available(), 3));
+          // }
+
+          // display.setCursor(80, 64);
+          // // if(current_match_id[current_match_id.length()-1] == '\0'){
+          // //   display.print(");
+          // // } else {
+          //   display.print(current_match_id.length());
+          // // }
           break;
 
         case DUEL_ALERT:
-          display.print("ALERT");
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexConnect]);
           break;
 
         case DUEL_COUNTDOWN:
-          display.print("COUNTDOWN");
+          if(countdownStage > 3) {
+            display.drawXBM(0, 0, 128, 64, alleycatImages[indexConnect]); 
+          } else if(countdownStage == 3) {
+            display.drawXBM(0, 0, 128, 64, alleycatImages[indexThree]); 
+          } else if(countdownStage == 2) {
+            display.drawXBM(0, 0, 128, 64, alleycatImages[indexTwo]);
+          } else if(countdownStage <= 1) {
+            display.drawXBM(0, 0, 128, 64, alleycatImages[indexOne]);
+          }
           break;
 
         case DUEL:
-          display.print("DUEL");
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexDraw]);
+          // display.print("DUEL");
+          // updatePrimaryButtonState();
           break;
 
         case WIN:
-          display.print("WIN");
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexWin]);
           break;
 
         case LOSE:
-          display.print("LOSE");
+          display.drawXBM(0, 0, 128, 64, alleycatImages[indexLose]);
           break;
         }
   }
@@ -1442,7 +1461,7 @@ void drawDebugState(char *button1State, char *button2State, char *txData,
 }
 
 void updatePrimaryButtonState() {
-  display.setCursor(80, 10);
+  display.setCursor(2, 48);
   display.print(u8x8_u8toa(primaryPresses, 3));
 }
 
@@ -1475,6 +1494,7 @@ void updateFramerate() {
 // BUTTONS
 
 void primaryButtonClick() {
+  primaryPresses++;
   switch(QD_STATE) {
     case DUEL:
       if(sendZapSignal) {
