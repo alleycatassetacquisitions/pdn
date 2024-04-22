@@ -28,8 +28,8 @@
 const int BAUDRATE = 19200;
 
 //GAME ROLE
-// boolean isHunter = !true;
-boolean isHunter = true;
+boolean isHunter = !true;
+// boolean isHunter = true;
 
 byte ALLEYCAT = 0;
 byte HELIX = 1;
@@ -118,6 +118,7 @@ const unsigned char* getImageForAllegiance(int index);
 
 void setGraphRight(int value);
 void setGraphLeft(int value);
+void updateCountdownState();
 void setTransmitLight(boolean on);
 
 // MOTOR
@@ -352,8 +353,15 @@ int numMatches = 0;
 String dumpMatchesToJson() {
   StaticJsonDocument<512> doc;
   JsonArray matchesArray = doc.to<JsonArray>();
+  StaticJsonDocument<128> match;
+  JsonObject matchObj;
   for (int i = 0; i < numMatches; i++) {
-    matchesArray.add(matches[i].toJson());
+    matchObj = match.to<JsonObject>();
+    matchObj["match_id"] = matches[i].match_id;
+    matchObj["hunter"] = matches[i].hunter;
+    matchObj["bounty"] = matches[i].bounty;
+    matchObj["capture"] = matches[i].winner_is_hunter;
+    matchesArray.add(matchObj);
   }
   String output;
   serializeJson(matchesArray, output);
@@ -509,6 +517,8 @@ void setup(void) {
 void loop(void) {
   now = millis();
   uiRefresh.tick();
+  primary.tick();
+  secondary.tick();
 
   if (APP_STATE == QD_GAME) {
     quickDrawGame();
@@ -519,8 +529,6 @@ void loop(void) {
   } else if (APP_STATE == CLEAR_USER) {
     clearUserID();
   }
-  primary.tick();
-  secondary.tick();
   checkForAppState();
 }
 
@@ -584,35 +592,30 @@ void animateLights() {
     activationIdleAnimation();
   } else {
     switch(QD_STATE) {
-    case INITIATE:
-      break;
-    case DORMANT:
-      dormantAnimation();
-      break;
-    case ACTIVATED:
-      activationIdleAnimation();
-      break;
-    case HANDSHAKE:
-      displayLights[numDisplayLights -1] = ColorFromPalette(hunterColors, 0);
-      break;
-    case DUEL_ALERT:
-      displayLights[numDisplayLights -1] = ColorFromPalette(hunterColors, 0);
-      break;
-    case DUEL_COUNTDOWN:
-      if(countdownStage == 3) {
-        fadeToBlackBy(gripLights, numGripLights, 1);
-      } else if(countdownStage == 2) {
-        fadeToBlackBy(gripLights, numGripLights, 1);
-      } else if(countdownStage <= 1) {
-        fadeToBlackBy(gripLights, numGripLights, 1);
-      }
-      break;
-    case DUEL:
-      break;
-    case WIN:
-      break;
-    case LOSE:
-      break;
+      case INITIATE:
+        break;
+      case DORMANT:
+        dormantAnimation();
+        break;
+      case ACTIVATED:
+        activationIdleAnimation();
+        break;
+      case HANDSHAKE:
+        displayLights[numDisplayLights -1] = ColorFromPalette(hunterColors, 0);
+        break;
+      case DUEL_ALERT:
+        displayLights[numDisplayLights -1] = ColorFromPalette(hunterColors, 0);
+        break;
+      case DUEL_COUNTDOWN:
+        updateCountdownState();
+        // fadeToBlackBy(gripLights, numGripLights, map())
+      case DUEL:
+        FastLED.setBrightness(255);
+        break;
+      case WIN:
+        break;
+      case LOSE:
+        break;
     }
   }
 }
@@ -698,6 +701,7 @@ bool updateUi(void *) {
     display.sendBuffer();
     displayIsDirty = false;
   }
+
   FastLED.show();
 
   return true; // for our timer to continue repeating.
@@ -725,6 +729,25 @@ void setGraphLeft(int value) {
   displayLightsOnOff[3] = value < 7;
   displayLightsOnOff[4] = value < 8;
   displayLightsOnOff[5] = value < 9;
+}
+
+void updateCountdownState() {
+  if(countdownStage == 3) {
+    displayLights[11] = CRGB::Black;
+    displayLights[10] = CRGB::Black;
+    displayLights[0] = CRGB::Black;
+    displayLights[1] = CRGB::Black;
+  } else if(countdownStage == 2) {
+    displayLights[9] = CRGB::Black;
+    displayLights[8] = CRGB::Black;
+    displayLights[2] = CRGB::Black;
+    displayLights[3] = CRGB::Black;
+  } else if(countdownStage == 1) {
+    displayLights[7] = CRGB::Black;
+    displayLights[6] = CRGB::Black;
+    displayLights[4] = CRGB::Black;
+    displayLights[5] = CRGB::Black;
+  }
 }
 
 void setTransmitLight(boolean on) { displayLightsOnOff[12] = on; }
@@ -1085,18 +1108,14 @@ void duelCountdown() {
     } else if (countdownStage == 3) {
       setTimer(THREE);
       displayIsDirty = true;
-      // setLED(buttonLED, 0);
-      // setLED(interiorLED, 0);
       countdownStage = 2;
     } else if (countdownStage == 2) {
       setTimer(TWO);
       displayIsDirty = true;
-      // setLED(loseLED, 0);
       countdownStage = 1;
     } else if (countdownStage == 1) {
       setTimer(ONE);
       displayIsDirty = true;
-      // setLED(winLED, 0);
       countdownStage = 0;
     } else if (countdownStage == 0) {
       doBattle = true;
@@ -1105,7 +1124,6 @@ void duelCountdown() {
 }
 
 void duel() {
-  FastLED.setBrightness(255);
 
   if (peekGameComms() == ZAP) {
     readGameComms();
@@ -1362,8 +1380,6 @@ String fetchDebugData() { return readDebugString('\n'); }
 String fetchDebugCommand() { return readDebugString(DEBUG_DELIMITER); }
 
 void setupDevice() {
-  clearUserID();
-  setUserID();
   //writeComms(deviceID);
   //writeCommsString(getUserID());
 }
@@ -1372,7 +1388,6 @@ void checkInDevice() {
   // Print JSON string to serial
   String jsonStr = dumpMatchesToJson();
   writeDebugByte(DEBUG_DELIMITER);
-  writeDebugString("jsonStr:");
   writeDebugString(jsonStr);
   writeDebugByte(DEBUG_DELIMITER);
 }
@@ -1433,8 +1448,7 @@ void resetState() {
   finishBattleBlinkCount = 0;
   ledBrightness = 65;
   displayIsDirty = true;
-  fadeToBlackBy(displayLights, numDisplayLights, 255);
-  fadeToBlackBy(gripLights, numGripLights, 255);
+  FastLED.clear(true);
   FastLED.setBrightness(65);
   clearComms();
   invalidateTimer();
