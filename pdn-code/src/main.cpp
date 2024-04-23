@@ -28,8 +28,8 @@
 const int BAUDRATE = 19200;
 
 //GAME ROLE
-boolean isHunter = !true;
-// boolean isHunter = true;
+// boolean isHunter = !true;
+boolean isHunter = true;
 
 byte ALLEYCAT = 0;
 byte ENDLINE = 1;
@@ -516,7 +516,6 @@ void setup(void) {
 
 void loop(void) {
   now = millis();
-  uiRefresh.tick();
   primary.tick();
   secondary.tick();
 
@@ -530,6 +529,7 @@ void loop(void) {
     clearUserID();
   }
   checkForAppState();
+  uiRefresh.tick();
 }
 
 // DISPLAY
@@ -837,20 +837,16 @@ void checkForAppState() {
     if (debugCommsAvailable()) {
       String command = fetchDebugCommand();
       if (validateCommand(command, ENTER_DEBUG)) {
-        // Serial.println("Switching to Debug");
         APP_STATE = DEBUG;
         writeDebugByte(DEBUG_DELIMITER);
         currentPalette = idleColors;
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
-        // Serial.println("Switching to Game");
-
         if (isHunter) {
           currentPalette = hunterColors;
         } else {
           currentPalette = bountyColors;
         }
-
         APP_STATE = QD_GAME;
         QD_STATE = DORMANT;
         resetState();
@@ -866,18 +862,14 @@ void debugEvents() {
 
   if (debugCommandReceived()) {
     String command = fetchDebugCommand();
-    // Serial.print("Command Received: ");
-    // Serial.println(command);
     if (validateCommand(command, SETUP_DEVICE)) {
       DEBUG_MODE_SUBSTR = "SETUP";
       setupDevice();
     } else if (validateCommand(command, CHECK_IN)) {
       DEBUG_MODE_SUBSTR = "CHECK_IN";
-      // Serial.println("CHECK_IN");
       checkInDevice();
     } else if (validateCommand(command, SET_ACTIVATION)) {
       DEBUG_MODE_SUBSTR = "SET_ACTIVATION";
-      // Serial.println("SET_ACTIVATION");
       setActivationDelay();
     }
     else {
@@ -896,10 +888,7 @@ void setupActivation() {
     if (debugDelay > 0) {
       setTimer(debugDelay);
     } else {
-      // randomSeed(analogRead(A0));
       long timer = random(bountyDelay[0], bountyDelay[1]);
-      // Serial.print("timer: ");
-      // Serial.println(timer);
       setTimer(timer);
     }
   }
@@ -1101,7 +1090,6 @@ void alertDuel() {
 void duelCountdown() {
   if (timerExpired()) {
     if (countdownStage == 4) {
-      FastLED.showColor(currentPalette[0]);
       setTimer(FOUR);
       displayIsDirty = true;
       countdownStage = 3;
@@ -1269,13 +1257,8 @@ void flushComms() {
 
 void clearComms()
 {
-  while (Serial1.available() > 0) {
-    Serial1.read();
-  }
-
-  while (Serial2.available() > 0) {
-    Serial2.read();
-  }
+  Serial1.flush();
+  Serial2.flush();
 }
 
 bool requestSwitchAppState() {
