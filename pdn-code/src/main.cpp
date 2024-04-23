@@ -32,8 +32,8 @@ boolean isHunter = !true;
 // boolean isHunter = true;
 
 byte ALLEYCAT = 0;
-byte HELIX = 1;
-byte ENDLINE = 2;
+byte ENDLINE = 1;
+byte HELIX = 2;
 byte RESISTANCE = 3;
 
 byte allegiance = ALLEYCAT;
@@ -625,9 +625,9 @@ byte screenCounter = 0;
 const unsigned char* getImageForAllegiance(int index) {
   switch(allegiance) {
     case 1:
-      return helixImages[index];
-    case 2:
       return endlineImages[index];
+    case 2:
+      return helixImages[index];
     case 3:
       return resistanceImages[index];
     default:
