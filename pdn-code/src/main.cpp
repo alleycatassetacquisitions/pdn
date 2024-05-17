@@ -8,6 +8,8 @@
 #include <arduino-timer.h>
 #include <UUID.h>
 #include <images.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -31,14 +33,14 @@ const int BAUDRATE = 19200;
 // boolean isHunter = !true;
 boolean isHunter = true;
 
-byte ALLEYCAT = 0;
-byte ENDLINE = 1;
-byte HELIX = 2;
-byte RESISTANCE = 3;
+int ALLEYCAT = 0;
+int ENDLINE = 1;
+int HELIX = 2;
+int RESISTANCE = 3;
 
-byte allegiance = ALLEYCAT;
+int allegiance = ALLEYCAT;
 
-byte deviceID = 49;
+String deviceID = "";
 String DEBUG_MODE_SUBSTR = "";
 
 // DISPLAY
@@ -174,7 +176,7 @@ byte winBrightness = 0;
 // STATE - DORMANT
 unsigned long bountyDelay[] = {300000, 900000};
 unsigned long overchargeDelay[] = {180000, 300000};
-unsigned long debugDelay = 3000;
+unsigned long debugDelay = 0;
 bool activationInitiated = false;
 bool beginActivationSequence = true;
 
@@ -277,6 +279,7 @@ const char SETUP_DEVICE = '#';
 const char SET_ACTIVATION = '^';
 const char CHECK_IN = '%';
 const char DEBUG_DELIMITER = '&';
+const char GET_DEVICE_ID = '*';
 
 byte APP_STATE = QD_GAME;
 
@@ -287,6 +290,43 @@ String current_opponent_id = "init_opponent_uuid";
 
 UUID uuidGenerator;
 String generateUuid();
+
+struct Player {
+  String id;
+  int allegiance;
+  bool hunter;
+
+  String toJson() const {
+    // Create a JSON object for player
+    StaticJsonDocument<128> doc;
+    JsonObject playerObj = doc.to<JsonObject>();
+    playerObj["id"] = id;
+    playerObj["allegiance"] = allegiance;
+    playerObj["hunter"] = hunter;
+
+    // Serialize the JSON object to a string
+    String json;
+    serializeJson(playerObj, json);
+    return json;
+  }
+
+  void fromJson(const String &json) {
+    // Parse the JSON string into a JSON object
+    StaticJsonDocument<128> doc;
+    DeserializationError error = deserializeJson(doc, json);
+
+    // Check if parsing was successful
+    if (!error) {
+      // Retrieve values from the JSON object
+      id = doc["id"].as<String>();
+      allegiance = (int)doc["allegiance"];
+      hunter = doc["hunter"];
+    } else {
+      // Serial.println("Failed to parse JSON");
+    }
+  }
+
+};
 
 struct Match {
   String match_id;
@@ -332,7 +372,7 @@ String stripWhitespace(String input) {
   for (int i = 0; i < input.length(); i++) {
     char c = input.charAt(i);
     // Check if the character is not a whitespace
-    if (!isWhitespace(c)) {
+    if (!isWhitespace(c) || c > 127) {
       output += c; // Append non-whitespace character to the output string
     }
   }
@@ -430,9 +470,12 @@ String fetchDebugCommand();
 void setupDevice();
 void checkInDevice();
 void setActivationDelay();
+void getDeviceId();
 void updateQDState(byte futureState);
 void commitQDState();
 void resetState();
+
+int wins = 10;
 
 void initializePins() {
 
@@ -468,10 +511,10 @@ void setup(void) {
 
   initializePins();
 
-  uuidGenerator.setVariant4Mode();
-  uuidGenerator.seed(random(999999999), random(999999999));
+  WiFi.begin();
 
-  setupDevice();
+  uuidGenerator.setVariant4Mode();
+  uuidGenerator.seed(random(999999999), random(999999999)); 
 
   Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
 
@@ -501,7 +544,7 @@ void setup(void) {
 
   display.clearBuffer();
   display.setContrast(125);
-  display.setFont(u8g2_font_smart_patrol_nbp_tf);
+  display.setFont(u8g2_font_prospero_nbp_tf);
   drawDebugLabels();
   display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
   display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
@@ -530,6 +573,7 @@ void loop(void) {
   }
   checkForAppState();
   uiRefresh.tick();
+  animateLights();
 }
 
 // DISPLAY
@@ -589,35 +633,57 @@ void activationIdleAnimation() {
 void animateLights() {
 
   if(APP_STATE == DEBUG) {
-    activationIdleAnimation();
+    EVERY_N_MILLIS(16) {
+      activationIdleAnimation();
+    }
   } else {
     switch(QD_STATE) {
       case INITIATE:
         break;
       case DORMANT:
-        dormantAnimation();
+        EVERY_N_MILLIS(16) {
+          dormantAnimation();
+        }
         break;
       case ACTIVATED:
-        activationIdleAnimation();
+        EVERY_N_MILLIS(16) {
+          activationIdleAnimation();
+        }
         break;
       case HANDSHAKE:
-        displayLights[numDisplayLights -1] = ColorFromPalette(hunterColors, 0);
+        displayLights[numDisplayLights -1] = ColorFromPalette(currentPalette, 0);
         break;
       case DUEL_ALERT:
-        displayLights[numDisplayLights -1] = ColorFromPalette(hunterColors, 0);
+        displayLights[numDisplayLights -1] = ColorFromPalette(currentPalette, 0);
         break;
       case DUEL_COUNTDOWN:
+        EVERY_N_MILLIS(200) {
+          fadeToBlackBy(gripLights, numGripLights, 3);
+        }
         updateCountdownState();
-        // fadeToBlackBy(gripLights, numGripLights, map())
+        break;
       case DUEL:
         FastLED.setBrightness(255);
+        FastLED.showColor(currentPalette[0], 255);
         break;
       case WIN:
+        EVERY_N_MILLIS(4) {
+          activationIdleAnimation();
+          if(random8() % 20 < 2) {
+            displayLights[random() % 13] += CRGB::White;
+            gripLights[random() % 6] += CRGB::White;
+          }
+        }
         break;
       case LOSE:
+        EVERY_N_MILLIS(750) {
+          FastLED.setBrightness(FastLED.getBrightness()-2);
+        }
         break;
     }
   }
+
+  FastLED.show();
 }
 
 byte screenCounter = 0;
@@ -635,8 +701,11 @@ const unsigned char* getImageForAllegiance(int index) {
   }
 }
 
+int width = 0;
+int offset = 0;
+String winString = "";
+
 bool updateUi(void *) {
-  animateLights();
 
   if(displayIsDirty){
     display.clearBuffer();
@@ -661,7 +730,26 @@ bool updateUi(void *) {
 
           case ACTIVATED:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexIdle));
-            display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
+            display.setFont(u8g2_font_prospero_nbp_tf);
+            display.setDrawColor(0);
+            winString = String(wins);
+            if(isHunter) {
+              width = display.getStrWidth("CAPTURES");
+              offset = 64+(64-width)/2;
+              display.setCursor(offset, 24);
+              display.print("CAPTURES");
+            } else {
+              width = display.getStrWidth("EVADES");
+              offset = 64+(64-width)/2;
+              display.setCursor(offset, 24);
+              display.print("EVADES");
+            }
+            
+            display.setFont(u8g2_font_smart_patrol_nbp_tf);
+            width = display.getUTF8Width(winString.c_str());
+            offset = 64+(64-width)/2;
+            display.setCursor(92, 50);
+            display.print(winString);
             break;
 
           case HANDSHAKE:
@@ -701,8 +789,6 @@ bool updateUi(void *) {
     display.sendBuffer();
     displayIsDirty = false;
   }
-
-  FastLED.show();
 
   return true; // for our timer to continue repeating.
 }
@@ -871,6 +957,8 @@ void debugEvents() {
     } else if (validateCommand(command, SET_ACTIVATION)) {
       DEBUG_MODE_SUBSTR = "SET_ACTIVATION";
       setActivationDelay();
+    } else if(validateCommand(command, GET_DEVICE_ID)) {
+      getDeviceId();
     }
     else {
       DEBUG_MODE_SUBSTR = "wait";
@@ -881,7 +969,7 @@ void debugEvents() {
 void setupActivation() {
   if (isHunter) {
     // hunters have minimal activation delay
-    setTimer(100);
+    setTimer(5000);
     //also go ahead and initialize the next match id here.
     current_match_id = generateUuid();
   } else {
@@ -1090,18 +1178,22 @@ void alertDuel() {
 void duelCountdown() {
   if (timerExpired()) {
     if (countdownStage == 4) {
+      FastLED.showColor(currentPalette[0], 255);
       setTimer(FOUR);
       displayIsDirty = true;
       countdownStage = 3;
     } else if (countdownStage == 3) {
+      FastLED.showColor(currentPalette[0], 150);
       setTimer(THREE);
       displayIsDirty = true;
       countdownStage = 2;
     } else if (countdownStage == 2) {
+      FastLED.showColor(currentPalette[0], 75);
       setTimer(TWO);
       displayIsDirty = true;
       countdownStage = 1;
     } else if (countdownStage == 1) {
+      FastLED.showColor(currentPalette[0], 0);
       setTimer(ONE);
       displayIsDirty = true;
       countdownStage = 0;
@@ -1298,7 +1390,7 @@ bool isValidMessageSerial1() {
     // Serial.print("Validating DEBUG: ");
     // Serial.println((char)command);
     return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
-            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
+            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER  || (char)command == GET_DEVICE_ID);
   } else {
     if (QD_STATE == ACTIVATED) { 
       return (command == BOUNTY_BATTLE_MESSAGE && isHunter);
@@ -1346,7 +1438,7 @@ bool debugCommandReceived() {
   if (debugCommsAvailable()) {
     char command = (char)peekDebugComms();
     return (command == SETUP_DEVICE || command == SET_ACTIVATION ||
-            command == CHECK_IN);
+            command == CHECK_IN || command == GET_DEVICE_ID);
   } else {
     return false;
   }
@@ -1363,8 +1455,44 @@ String fetchDebugData() { return readDebugString('\n'); }
 String fetchDebugCommand() { return readDebugString(DEBUG_DELIMITER); }
 
 void setupDevice() {
-  //writeComms(deviceID);
-  //writeCommsString(getUserID());
+  if(debugCommsAvailable) {
+    writeDebugByte(DEBUG_DELIMITER);
+
+    Player player;
+    String playerJson = readDebugString('\n');
+    playerJson = stripWhitespace(playerJson);
+    player.fromJson(playerJson);
+
+    userID = player.id;
+    isHunter = player.hunter;
+    allegiance = player.allegiance;
+
+    memset(matches, 0, sizeof(matches));
+    wins = 0;
+
+    writeDebugByte(DEBUG_DELIMITER);
+  }
+}
+
+String mac2String(byte ar[]) {
+  String s;
+  for (byte i = 0; i < 6; ++i)
+  {
+    char buf[3];
+    sprintf(buf, "%02X", ar[i]); // J-M-L: slight modification, added the 0 in the format for padding 
+    s += buf;
+    if (i < 5) s += ':';
+  }
+  return s;
+}
+
+void getDeviceId() {
+  writeDebugByte(DEBUG_DELIMITER);
+  // uint8_t mac[6]; 
+  // esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  writeDebugString(WiFi.macAddress());
+  writeDebugByte(DEBUG_DELIMITER);
+
 }
 
 void checkInDevice() {
