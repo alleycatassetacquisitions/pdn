@@ -38,7 +38,7 @@ int ENDLINE = 1;
 int HELIX = 2;
 int RESISTANCE = 3;
 
-int allegiance = ALLEYCAT;
+int allegiance = RESISTANCE;
 
 String deviceID = "";
 String DEBUG_MODE_SUBSTR = "";
@@ -176,7 +176,7 @@ byte winBrightness = 0;
 // STATE - DORMANT
 unsigned long bountyDelay[] = {300000, 900000};
 unsigned long overchargeDelay[] = {180000, 300000};
-unsigned long debugDelay = 0;
+unsigned long debugDelay = 3000;
 bool activationInitiated = false;
 bool beginActivationSequence = true;
 
@@ -475,7 +475,7 @@ void updateQDState(byte futureState);
 void commitQDState();
 void resetState();
 
-int wins = 10;
+int wins = 0;
 
 void initializePins() {
 
@@ -750,6 +750,8 @@ bool updateUi(void *) {
             offset = 64+(64-width)/2;
             display.setCursor(92, 50);
             display.print(winString);
+
+            display.setDrawColor(1);
             break;
 
           case HANDSHAKE:
