@@ -1,13 +1,14 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <FastLED.h>
-#include <HardwareSerial.h>
 #include <OneButton.h>
 #include <SPI.h>
 #include <U8g2lib.h>
 #include <arduino-timer.h>
 #include <UUID.h>
 #include <images.h>
+
+#include "../include/comms.hpp"
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -126,27 +127,9 @@ void setTransmitLight(boolean on);
 void setMotorOutput(int value);
 int motorSpeed = 0;
 
-// SERIAL
-bool debugCommsAvailable();
-bool gameCommsAvailable();
-void writeGameComms(byte command);
-void writeGameString(String command);
-byte readGameComms();
-void writeDebugString(String command);
-String readGameString(char terminator);
-String readDebugString(char terminator);
-byte peekGameComms();
-byte peekDebugComms();
-void writeDebugByte(byte command);
-
-void monitorTX();
-void monitorRX();
-
-void writeTxTransaction(byte command);
-void writeRxTransaction(byte command);
-
+//FIXME: This requires stream validation so can't easily
+//be moved to separate file yet, but should eventually be.
 void flushComms();
-void clearComms();
 
 byte lastTxPacket = 0;
 byte lastRxPacket = 0;
@@ -1171,79 +1154,11 @@ void updateScore(boolean win) {
   addMatch(win);
 }
 
-// SERIAL
-// GAME COMMS
-
-byte peekGameComms() {
-  if (isHunter) {
-    return Serial1.peek();
-  }
-
-  return Serial2.peek();
-}
-
-bool gameCommsAvailable() {
-  return (isHunter && (Serial1.available() > 0)) ||
-         (!isHunter && (Serial2.available() > 0));
-}
-
-void writeGameComms(byte command) {
-  if (isHunter) {
-    Serial1.write(command);
-  } else {
-    Serial2.write(command);
-  }
-}
-
-byte readGameComms() {
-  if (isHunter) {
-    return Serial1.read();
-  }
-  // else they are a bounty.
-  return Serial2.read();
-}
-
-void writeGameString(String command) {
-  if (isHunter) {
-    Serial1.println(command);
-  } else {
-    Serial2.println(command);
-  }
-}
-
-String readGameString(char terminator) {
-  if(isHunter) 
-  {
-    return Serial1.readStringUntil(terminator);
-  } 
-    
-  return Serial2.readStringUntil(terminator);
-}
-
-//DEBUG SERIAL
-byte peekDebugComms() {
-  return Serial1.peek();
-}
-
-bool debugCommsAvailable() {
-  return Serial1.available() > 0;
-}
-
-void writeDebugByte(byte data) {
-  Serial1.write(data);
-}
-
+/*
 byte readDebugByte() {
   return Serial1.read();
 }
-
-void writeDebugString(String command) {
-  Serial1.println(command);
-}
-
-String readDebugString(char terminator) {
-    return Serial1.readStringUntil(terminator);
-}
+*/
 
 void flushComms() {
   while (Serial1.available() > 0 && !isValidMessageSerial1()) {
@@ -1255,11 +1170,6 @@ void flushComms() {
   }
 }
 
-void clearComms()
-{
-  Serial1.flush();
-  Serial2.flush();
-}
 
 bool requestSwitchAppState() {
   if (debugCommsAvailable()) {
