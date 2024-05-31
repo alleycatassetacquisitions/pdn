@@ -341,15 +341,11 @@ String stripWhitespace(String input) {
   for (int i = 0; i < input.length(); i++) {
     char c = input.charAt(i);
     // Check if the character is not a whitespace
-    if (!isWhitespace(c)) {
+    if (!isspace(c)) {
       output += c; // Append non-whitespace character to the output string
     }
   }
   return output;
-}
-
-bool isWhitespace(char c) {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 #define MAX_MATCHES 1000 // Maximum number of matches allowed
