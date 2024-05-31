@@ -191,7 +191,16 @@ byte overchargeStep = 0;
 byte overchargeFlickers = 0;
 
 // STATE - HANDSHAKE
-byte handshakeState = 0;
+enum class HandshakeState : byte
+{
+  HANDSHAKE_TIMEOUT_START_STATE = 0,
+  HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1,
+  HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2,
+  HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3,
+  HANDSHAKE_STATE_FINAL_ACK = 4
+};
+
+HandshakeState handshakeState = HandshakeState::HANDSHAKE_TIMEOUT_START_STATE;
 /**
 Handshake states:
 0 - start timer to delay sending handshake signal for 1000 ms
@@ -955,18 +964,13 @@ bool initiateHandshake() {
   return false;
 }
 
-byte HANDSHAKE_TIMEOUT_START_STATE = 0;
-byte HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1;
-byte HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2;
-byte HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3;
-byte HANDSHAKE_STATE_FINAL_ACK = 4;
 // when this functions returns true, its the signal to change state
 bool handshake() {
   // dont transition gamestate, just handshake sub-fsm
-  if (handshakeState == HANDSHAKE_TIMEOUT_START_STATE) {
+  if (handshakeState == HandshakeState::HANDSHAKE_TIMEOUT_START_STATE) {
     setTimer(HANDSHAKE_TIMEOUT);
-    handshakeState = HANDSHAKE_SEND_ROLE_SHAKE_STATE;
-  } else if (handshakeState == HANDSHAKE_SEND_ROLE_SHAKE_STATE) {
+    handshakeState = HandshakeState::HANDSHAKE_SEND_ROLE_SHAKE_STATE;
+  } else if (handshakeState == HandshakeState::HANDSHAKE_SEND_ROLE_SHAKE_STATE) {
     if (timerExpired()) {
       handshakeTimedOut = true;
       return false;
@@ -978,8 +982,8 @@ bool handshake() {
       writeGameComms(BOUNTY_SHAKE);
     }
 
-    handshakeState = HANDSHAKE_WAIT_ROLE_SHAKE_STATE;
-  } else if(handshakeState == HANDSHAKE_WAIT_ROLE_SHAKE_STATE) {
+    handshakeState = HandshakeState::HANDSHAKE_WAIT_ROLE_SHAKE_STATE;
+  } else if(handshakeState == HandshakeState::HANDSHAKE_WAIT_ROLE_SHAKE_STATE) {
     if(timerExpired()) {
       handshakeTimedOut = true;
       return false;
@@ -1014,7 +1018,7 @@ bool handshake() {
       while(peekGameComms() == BOUNTY_SHAKE) {
           readGameComms();
       } 
-      handshakeState = HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
+      handshakeState = HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
     }
     else if(peekGameComms() == HUNTER_SHAKE && !isHunter)
     {
@@ -1022,10 +1026,10 @@ bool handshake() {
       while(peekGameComms() == HUNTER_SHAKE) {
         readGameComms();
       }
-      handshakeState = HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
+      handshakeState = HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
     }
 
-  } else if (handshakeState == HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) {
+  } else if (handshakeState == HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) {
     if (timerExpired()) {
       handshakeTimedOut = true;
       return false;
@@ -1036,7 +1040,7 @@ bool handshake() {
       if(gameCommsAvailable()) {
         current_opponent_id = readGameString('\r');
         writeGameComms(HUNTER_HANDSHAKE_FINAL_ACK);
-        handshakeState = HANDSHAKE_STATE_FINAL_ACK;
+        handshakeState = HandshakeState::HANDSHAKE_STATE_FINAL_ACK;
         return false;
       }
     }
@@ -1047,11 +1051,11 @@ bool handshake() {
         readGameString('\n');
         current_opponent_id = readGameString('\r');
         writeGameComms(BOUNTY_HANDSHAKE_FINAL_ACK);
-        handshakeState = HANDSHAKE_STATE_FINAL_ACK;
+        handshakeState = HandshakeState::HANDSHAKE_STATE_FINAL_ACK;
         return false;
       }
     }
-  } else if (handshakeState == HANDSHAKE_STATE_FINAL_ACK) {
+  } else if (handshakeState == HandshakeState::HANDSHAKE_STATE_FINAL_ACK) {
     if (timerExpired()) {
       handshakeTimedOut = true;
       return false;
@@ -1303,7 +1307,8 @@ bool isValidMessageSerial1() {
     if (QD_STATE == ACTIVATED) { 
       return (command == BOUNTY_BATTLE_MESSAGE && isHunter);
     } else if (QD_STATE == HANDSHAKE) {
-      return (command == BOUNTY_SHAKE && handshakeState < HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || (command == BOUNTY_HANDSHAKE_FINAL_ACK);
+      return (command == BOUNTY_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) ||
+        (command == BOUNTY_HANDSHAKE_FINAL_ACK);
     } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
@@ -1333,7 +1338,8 @@ bool isValidMessageSerial2() {
     if (QD_STATE == ACTIVATED) {
       return (command == HUNTER_BATTLE_MESSAGE && !isHunter);
     } else if (QD_STATE == HANDSHAKE) {
-      return (command == HUNTER_SHAKE && handshakeState < HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || (command == HUNTER_HANDSHAKE_FINAL_ACK);
+      return (command == HUNTER_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || 
+        (command == HUNTER_HANDSHAKE_FINAL_ACK);
     } else if (QD_STATE == DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
@@ -1415,7 +1421,7 @@ void resetState() {
   activationInitiated = false;
   beginActivationSequence = true;
   countdownStage = COUNTDOWN_STAGES;
-  handshakeState = 0;
+  handshakeState = HandshakeState::HANDSHAKE_TIMEOUT_START_STATE;
   handshakeTimedOut = false;
   startDuelTimer = true;
   sendZapSignal = true;
