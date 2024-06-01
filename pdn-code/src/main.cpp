@@ -30,8 +30,8 @@
 const int BAUDRATE = 19200;
 
 //GAME ROLE
-// boolean isHunter = !true;
-boolean isHunter = true;
+boolean isHunter = !true;
+// boolean isHunter = true;
 
 int ALLEYCAT = 0;
 int ENDLINE = 1;
