@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 
+#include "../include/player.hpp"
 #include "../include/comms.hpp"
 
 #define primaryButtonPin 15
@@ -31,15 +32,7 @@
 const int BAUDRATE = 19200;
 
 //GAME ROLE
-boolean isHunter = !true;
-// boolean isHunter = true;
-
-int ALLEYCAT = 0;
-int ENDLINE = 1;
-int HELIX = 2;
-int RESISTANCE = 3;
-
-int allegiance = RESISTANCE;
+Player playerInfo;
 
 String deviceID = "";
 String DEBUG_MODE_SUBSTR = "";
@@ -276,49 +269,13 @@ const char GET_DEVICE_ID = '*';
 byte APP_STATE = QD_GAME;
 
 // ScoreDataStructureThings
-String userID = "init_uuid";
+//String userID = "init_uuid";
 String current_match_id = "init_match_uuid";
 String current_opponent_id = "init_opponent_uuid";
 
 UUID uuidGenerator;
 String generateUuid();
 
-struct Player {
-  String id;
-  int allegiance;
-  bool hunter;
-
-  String toJson() const {
-    // Create a JSON object for player
-    StaticJsonDocument<128> doc;
-    JsonObject playerObj = doc.to<JsonObject>();
-    playerObj["id"] = id;
-    playerObj["allegiance"] = allegiance;
-    playerObj["hunter"] = hunter;
-
-    // Serialize the JSON object to a string
-    String json;
-    serializeJson(playerObj, json);
-    return json;
-  }
-
-  void fromJson(const String &json) {
-    // Parse the JSON string into a JSON object
-    StaticJsonDocument<128> doc;
-    DeserializationError error = deserializeJson(doc, json);
-
-    // Check if parsing was successful
-    if (!error) {
-      // Retrieve values from the JSON object
-      id = doc["id"].as<String>();
-      allegiance = (int)doc["allegiance"];
-      hunter = doc["hunter"];
-    } else {
-      // Serial.println("Failed to parse JSON");
-    }
-  }
-
-};
 
 struct Match {
   String match_id;
@@ -396,32 +353,20 @@ String dumpMatchesToJson() {
   return output;
 }
 
-void setUserID() {
-  userID = generateUuid();
-}
-
 String generateUuid() {
   uuidGenerator.generate();
   return uuidGenerator.toCharArray();
 }
 
-String getUserID() {
-  return userID;
-}
-
-void clearUserID() {
-  userID = "default";
-}
-
 void addMatch(bool winner_is_hunter) {
   if (numMatches < MAX_MATCHES) {
     // Create a Match object
-    if(isHunter) {
-      matches[numMatches].hunter = getUserID();
+    if(playerInfo.isHunter()) {
+      matches[numMatches].hunter = playerInfo.getUserID();
       matches[numMatches].bounty = current_opponent_id;
     } else {
       matches[numMatches].hunter = current_opponent_id;
-      matches[numMatches].bounty = getUserID();
+      matches[numMatches].bounty = playerInfo.getUserID();
     }
     matches[numMatches].match_id = current_match_id;
     matches[numMatches].winner_is_hunter = winner_is_hunter;
@@ -508,7 +453,7 @@ void setup(void) {
 
   Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
 
-  if (isHunter) {
+  if (playerInfo.isHunter()) {
     currentPalette = hunterColors;
   } else {
     currentPalette = bountyColors;
@@ -555,9 +500,9 @@ void loop(void) {
   } else if (APP_STATE == DEBUG) {
     debugEvents();
   } else if (APP_STATE == SET_USER) {
-    setUserID();
+    playerInfo.setUserID(uuidGenerator);
   } else if (APP_STATE == CLEAR_USER) {
-    clearUserID();
+    playerInfo.clearUserID();
   }
   checkForAppState();
   uiRefresh.tick();
@@ -677,12 +622,12 @@ void animateLights() {
 byte screenCounter = 0;
 
 const unsigned char* getImageForAllegiance(int index) {
-  switch(allegiance) {
-    case 1:
+  switch(playerInfo.getAllegiance()) {
+    case Allegiance::ENDLINE:
       return endlineImages[index];
-    case 2:
+    case Allegiance::HELIX:
       return helixImages[index];
-    case 3:
+    case Allegiance::RESISTANCE:
       return resistanceImages[index];
     default:
       return alleycatImages[index];
@@ -721,7 +666,7 @@ bool updateUi(void *) {
             display.setFont(u8g2_font_prospero_nbp_tf);
             display.setDrawColor(0);
             winString = String(wins);
-            if(isHunter) {
+            if(playerInfo.isHunter()) {
               width = display.getStrWidth("CAPTURES");
               offset = 64+(64-width)/2;
               display.setCursor(offset, 24);
@@ -918,7 +863,7 @@ void checkForAppState() {
         currentPalette = idleColors;
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
-        if (isHunter) {
+        if (playerInfo.isHunter()) {
           currentPalette = hunterColors;
         } else {
           currentPalette = bountyColors;
@@ -957,7 +902,7 @@ void debugEvents() {
 }
 
 void setupActivation() {
-  if (isHunter) {
+  if (playerInfo.isHunter()) {
     // hunters have minimal activation delay
     setTimer(5000);
     //also go ahead and initialize the next match id here.
@@ -1005,7 +950,7 @@ bool activationSequence() {
 void activationIdle() {
   // msgDelay was to prevent this from broadcasting every loop.
   if (msgDelay == 0) {
-    if(isHunter) 
+    if(playerInfo.isHunter()) 
     {
       writeGameComms(HUNTER_BATTLE_MESSAGE);
     } 
@@ -1018,6 +963,7 @@ void activationIdle() {
 }
 
 bool initiateHandshake() {
+  bool isHunter = playerInfo.isHunter();
   if (gameCommsAvailable()) {
     if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) {
       readGameComms();
@@ -1045,7 +991,7 @@ bool handshake() {
       return false;
     }
 
-    if (isHunter) {
+    if (playerInfo.isHunter()) {
       writeGameComms(HUNTER_SHAKE);
     } else {
       writeGameComms(BOUNTY_SHAKE);
@@ -1060,7 +1006,7 @@ bool handshake() {
     //While waiting to see the shake, if we get battle message,
     //then the other device is behind, we need to send it another
     //battle message ack.
-    if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !isHunter) 
+    if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !playerInfo.isHunter()) 
     {
       //it's confused.
       while(peekGameComms() == HUNTER_BATTLE_MESSAGE) {
@@ -1070,7 +1016,7 @@ bool handshake() {
       writeGameComms(BOUNTY_SHAKE);
     } 
     
-    else if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) 
+    else if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && playerInfo.isHunter()) 
     {
       //also confused.
       while(peekGameComms() == BOUNTY_BATTLE_MESSAGE) {
@@ -1080,18 +1026,18 @@ bool handshake() {
       writeGameComms(HUNTER_SHAKE);
     } 
     
-    if(peekGameComms() == BOUNTY_SHAKE && isHunter) 
+    if(peekGameComms() == BOUNTY_SHAKE && playerInfo.isHunter()) 
     {
       writeGameString(current_match_id);         // Sending match_id
-      writeGameString(getUserID());              // Sending userID
+      writeGameString(playerInfo.getUserID());              // Sending userID
       while(peekGameComms() == BOUNTY_SHAKE) {
           readGameComms();
       } 
       handshakeState = HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
     }
-    else if(peekGameComms() == HUNTER_SHAKE && !isHunter)
+    else if(peekGameComms() == HUNTER_SHAKE && !playerInfo.isHunter())
     {
-      writeGameString(getUserID());
+      writeGameString(playerInfo.getUserID());
       while(peekGameComms() == HUNTER_SHAKE) {
         readGameComms();
       }
@@ -1104,7 +1050,7 @@ bool handshake() {
       return false;
     }
 
-    if (isHunter) 
+    if (playerInfo.isHunter()) 
     {
       if(gameCommsAvailable()) {
         current_opponent_id = readGameString('\r');
@@ -1113,7 +1059,7 @@ bool handshake() {
         return false;
       }
     }
-    else if (!isHunter) 
+    else if (!playerInfo.isHunter()) 
     {
       if(gameCommsAvailable()) {
         current_match_id    = readGameString('\r');
@@ -1130,11 +1076,11 @@ bool handshake() {
       return false;
     }
     
-    if(!isHunter && peekGameComms() == HUNTER_HANDSHAKE_FINAL_ACK) {
+    if(!playerInfo.isHunter() && peekGameComms() == HUNTER_HANDSHAKE_FINAL_ACK) {
       return true;
     }
 
-    if(isHunter && peekGameComms() == BOUNTY_HANDSHAKE_FINAL_ACK) {
+    if(playerInfo.isHunter() && peekGameComms() == BOUNTY_HANDSHAKE_FINAL_ACK) {
       return true;
     }
   }
@@ -1305,7 +1251,7 @@ bool isValidMessageSerial1() {
             (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER  || (char)command == GET_DEVICE_ID);
   } else {
     if (QD_STATE == ACTIVATED) { 
-      return (command == BOUNTY_BATTLE_MESSAGE && isHunter);
+      return (command == BOUNTY_BATTLE_MESSAGE && playerInfo.isHunter());
     } else if (QD_STATE == HANDSHAKE) {
       return (command == BOUNTY_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) ||
         (command == BOUNTY_HANDSHAKE_FINAL_ACK);
@@ -1336,7 +1282,7 @@ bool isValidMessageSerial2() {
   //           (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
   // } else {
     if (QD_STATE == ACTIVATED) {
-      return (command == HUNTER_BATTLE_MESSAGE && !isHunter);
+      return (command == HUNTER_BATTLE_MESSAGE && !playerInfo.isHunter());
     } else if (QD_STATE == HANDSHAKE) {
       return (command == HUNTER_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || 
         (command == HUNTER_HANDSHAKE_FINAL_ACK);
@@ -1372,14 +1318,9 @@ void setupDevice() {
   if(debugCommsAvailable) {
     writeDebugByte(DEBUG_DELIMITER);
 
-    Player player;
     String playerJson = readDebugString('\n');
     playerJson = stripWhitespace(playerJson);
-    player.fromJson(playerJson);
-
-    userID = player.id;
-    isHunter = player.hunter;
-    allegiance = player.allegiance;
+    playerInfo.fromJson(playerJson);
 
     memset(matches, 0, sizeof(matches));
     wins = 0;
@@ -1567,9 +1508,9 @@ void secondaryButtonDoubleClick() {
 }
 
 void primaryButtonLongPress() {
-  isHunter = !isHunter;
+  playerInfo.toggleHunter();
 
-  if (isHunter) {
+  if (playerInfo.isHunter()) {
     currentPalette = hunterColors;
   } else {
     currentPalette = bountyColors;
@@ -1577,7 +1518,7 @@ void primaryButtonLongPress() {
 }
 
 void secondaryButtonLongPress() {
-  if (isHunter) {
+  if (playerInfo.isHunter()) {
     writeTxTransaction(1);
   } else {
     writeRxTransaction(1);

@@ -4,14 +4,17 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 
-extern bool isHunter;
+#include "../include/player.hpp"
+extern Player playerInfo;
 
 bool gameCommsAvailable() {
+  bool isHunter = playerInfo.isHunter();
   return (isHunter && (Serial1.available() > 0)) ||
          (!isHunter && (Serial2.available() > 0));
 }
 
 void writeGameComms(byte command) {
+  bool isHunter = playerInfo.isHunter();
   if (isHunter) {
     Serial1.write(command);
   } else {
@@ -20,6 +23,7 @@ void writeGameComms(byte command) {
 }
 
 void writeGameString(String command) {
+  bool isHunter = playerInfo.isHunter();
   if (isHunter) {
     Serial1.println(command);
   } else {
@@ -28,6 +32,7 @@ void writeGameString(String command) {
 }
 
 byte readGameComms() {
+  bool isHunter = playerInfo.isHunter();
   if (isHunter) {
     return Serial1.read();
   }
@@ -36,6 +41,7 @@ byte readGameComms() {
 }
 
 String readGameString(char terminator) {
+  bool isHunter = playerInfo.isHunter();
   if(isHunter) 
   {
     return Serial1.readStringUntil(terminator);
@@ -45,6 +51,7 @@ String readGameString(char terminator) {
 }
 
 byte peekGameComms() {
+  bool isHunter = playerInfo.isHunter();
   if (isHunter) {
     return Serial1.peek();
   }
