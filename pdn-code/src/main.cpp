@@ -11,6 +11,7 @@
 #include <esp_wifi.h>
 
 #include "../include/player.hpp"
+#include "../include/match.hpp"
 #include "../include/comms.hpp"
 
 #define primaryButtonPin 15
@@ -277,44 +278,6 @@ UUID uuidGenerator;
 String generateUuid();
 
 
-struct Match {
-  String match_id;
-  String hunter;
-  String bounty;
-  bool winner_is_hunter; // Indicates if the winner is the hunter
-
-  String toJson() const {
-    // Create a JSON object for the match
-    StaticJsonDocument<128> doc;
-    JsonObject matchObj = doc.to<JsonObject>();
-    matchObj["match_id"] = match_id;
-    matchObj["hunter"] = hunter;
-    matchObj["bounty"] = bounty;
-    matchObj["capture"] = winner_is_hunter;
-
-    // Serialize the JSON object to a string
-    String json;
-    serializeJson(matchObj, json);
-    return json;
-  }
-
-  void fromJson(const String &json) {
-    // Parse the JSON string into a JSON object
-    StaticJsonDocument<128> doc;
-    DeserializationError error = deserializeJson(doc, json);
-
-    // Check if parsing was successful
-    if (!error) {
-      // Retrieve values from the JSON object
-      match_id = doc["match_id"].as<String>();
-      hunter = doc["hunter"].as<String>();
-      bounty = doc["bounty"].as<String>();
-      winner_is_hunter = doc["capture"];
-    } else {
-      // Serial.println("Failed to parse JSON");
-    }
-  }
-};
 
 String stripWhitespace(String input) {
   String output;
@@ -342,10 +305,7 @@ String dumpMatchesToJson() {
   JsonObject matchObj;
   for (int i = 0; i < numMatches; i++) {
     matchObj = match.to<JsonObject>();
-    matchObj["match_id"] = matches[i].match_id;
-    matchObj["hunter"] = matches[i].hunter;
-    matchObj["bounty"] = matches[i].bounty;
-    matchObj["capture"] = matches[i].winner_is_hunter;
+    matches[i].fillJsonObject(matchObj);
     matchesArray.add(matchObj);
   }
   String output;
@@ -362,14 +322,11 @@ void addMatch(bool winner_is_hunter) {
   if (numMatches < MAX_MATCHES) {
     // Create a Match object
     if(playerInfo.isHunter()) {
-      matches[numMatches].hunter = playerInfo.getUserID();
-      matches[numMatches].bounty = current_opponent_id;
+      matches[numMatches].setupMatch(current_match_id, playerInfo.getUserID(), current_opponent_id);
     } else {
-      matches[numMatches].hunter = current_opponent_id;
-      matches[numMatches].bounty = playerInfo.getUserID();
+      matches[numMatches].setupMatch(current_match_id, current_opponent_id, playerInfo.getUserID());
     }
-    matches[numMatches].match_id = current_match_id;
-    matches[numMatches].winner_is_hunter = winner_is_hunter;
+    matches[numMatches].setWinner(winner_is_hunter);
     numMatches++;
   }
 }
