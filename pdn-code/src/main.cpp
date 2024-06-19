@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 
+#include "../include/simple-timer.hpp"
 #include "../include/player.hpp"
 #include "../include/match.hpp"
 #include "../include/comms.hpp"
@@ -225,14 +226,7 @@ bool initiatePowerDown = true;
 bool reset = false;
 
 // TIMER
-unsigned long start = 0;
-unsigned long now = 0;
-unsigned long timer = 0;
-
-void setTimer(unsigned long timerDelay);
-bool timerExpired();
-void invalidateTimer();
-unsigned long getElapsedTime();
+SimpleTimer stateTimer;
 
 // GAME STATE MACHINE
 const byte INITIATE = 0;
@@ -448,7 +442,7 @@ void setup(void) {
 }
 
 void loop(void) {
-  now = millis();
+  SimpleTimer::updateTime();
   primary.tick();
   secondary.tick();
 
@@ -861,28 +855,28 @@ void debugEvents() {
 void setupActivation() {
   if (playerInfo.isHunter()) {
     // hunters have minimal activation delay
-    setTimer(5000);
+    stateTimer.setTimer(5000);
     //also go ahead and initialize the next match id here.
     current_match_id = generateUuid();
   } else {
     if (debugDelay > 0) {
-      setTimer(debugDelay);
+      stateTimer.setTimer(debugDelay);
     } else {
       long timer = random(bountyDelay[0], bountyDelay[1]);
-      setTimer(timer);
+      stateTimer.setTimer(timer);
     }
   }
 
   activationInitiated = true;
 }
 
-bool shouldActivate() { return timerExpired(); }
+bool shouldActivate() { return stateTimer.expired(); }
 
 byte activateMotorCount = 0;
 bool activateMotor = false;
 
 bool activationSequence() {
-  if (timerExpired()) {
+  if (stateTimer.expired()) {
     if (activateMotorCount < 19) {
       if (activateMotor) {
         setMotorOutput(255);
@@ -890,7 +884,7 @@ bool activationSequence() {
         setMotorOutput(0);
       }
 
-      setTimer(100);
+      stateTimer.setTimer(100);
       activateMotorCount++;
       activateMotor = !activateMotor;
       return false;
@@ -940,10 +934,10 @@ bool initiateHandshake() {
 bool handshake() {
   // dont transition gamestate, just handshake sub-fsm
   if (handshakeState == HandshakeState::HANDSHAKE_TIMEOUT_START_STATE) {
-    setTimer(HANDSHAKE_TIMEOUT);
+    stateTimer.setTimer(HANDSHAKE_TIMEOUT);
     handshakeState = HandshakeState::HANDSHAKE_SEND_ROLE_SHAKE_STATE;
   } else if (handshakeState == HandshakeState::HANDSHAKE_SEND_ROLE_SHAKE_STATE) {
-    if (timerExpired()) {
+    if (stateTimer.expired()) {
       handshakeTimedOut = true;
       return false;
     }
@@ -956,7 +950,7 @@ bool handshake() {
 
     handshakeState = HandshakeState::HANDSHAKE_WAIT_ROLE_SHAKE_STATE;
   } else if(handshakeState == HandshakeState::HANDSHAKE_WAIT_ROLE_SHAKE_STATE) {
-    if(timerExpired()) {
+    if(stateTimer.expired()) {
       handshakeTimedOut = true;
       return false;
     }
@@ -1002,7 +996,7 @@ bool handshake() {
     }
 
   } else if (handshakeState == HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) {
-    if (timerExpired()) {
+    if (stateTimer.expired()) {
       handshakeTimedOut = true;
       return false;
     }
@@ -1028,7 +1022,7 @@ bool handshake() {
       }
     }
   } else if (handshakeState == HandshakeState::HANDSHAKE_STATE_FINAL_ACK) {
-    if (timerExpired()) {
+    if (stateTimer.expired()) {
       handshakeTimedOut = true;
       return false;
     }
@@ -1050,7 +1044,7 @@ void alertDuel() {
     buttonBrightness = 255;
   }
 
-  if (timerExpired()) {
+  if (stateTimer.expired()) {
     if (buttonBrightness == 255) {
       buttonBrightness = 0;
     } else {
@@ -1059,30 +1053,30 @@ void alertDuel() {
 
     alertCount++;
     FastLED.setBrightness(buttonBrightness);
-    setTimer(alertFlashTime);
+    stateTimer.setTimer(alertFlashTime);
   }
 }
 
 void duelCountdown() {
-  if (timerExpired()) {
+  if (stateTimer.expired()) {
     if (countdownStage == 4) {
       FastLED.showColor(currentPalette[0], 255);
-      setTimer(FOUR);
+      stateTimer.setTimer(FOUR);
       displayIsDirty = true;
       countdownStage = 3;
     } else if (countdownStage == 3) {
       FastLED.showColor(currentPalette[0], 150);
-      setTimer(THREE);
+      stateTimer.setTimer(THREE);
       displayIsDirty = true;
       countdownStage = 2;
     } else if (countdownStage == 2) {
       FastLED.showColor(currentPalette[0], 75);
-      setTimer(TWO);
+      stateTimer.setTimer(TWO);
       displayIsDirty = true;
       countdownStage = 1;
     } else if (countdownStage == 1) {
       FastLED.showColor(currentPalette[0], 0);
-      setTimer(ONE);
+      stateTimer.setTimer(ONE);
       displayIsDirty = true;
       countdownStage = 0;
     } else if (countdownStage == 0) {
@@ -1109,11 +1103,11 @@ void duel() {
   // primary.tick();
 
   if (startDuelTimer) {
-    setTimer(DUEL_TIMEOUT);
+    stateTimer.setTimer(DUEL_TIMEOUT);
     startDuelTimer = false;
   }
 
-  if (timerExpired()) {
+  if (stateTimer.expired()) {
     // FastLED.setBrightness(0);
     bvbDuel = false;
     duelTimedOut = true;
@@ -1126,8 +1120,8 @@ void duelOver() {
     setMotorOutput(255);
   }
 
-  if (timerExpired()) {
-    setTimer(500);
+  if (stateTimer.expired()) {
+    stateTimer.setTimer(500);
     if (finishBattleBlinkCount < FINISH_BLINKS) {
       if (finishBattleBlinkCount % 2 == 0) {
         setMotorOutput(0);
@@ -1324,18 +1318,6 @@ void setActivationDelay() {
   }
 }
 
-// time functions
-unsigned long getElapsedTime() { return now - start; }
-
-bool timerExpired() { return timer <= getElapsedTime(); }
-
-void invalidateTimer() { timer = 0; }
-
-void setTimer(unsigned long timerDelay) {
-  timer = timerDelay;
-  start = millis();
-}
-
 // state functions
 void updateQDState(byte futureState) {
   newState = futureState;
@@ -1374,7 +1356,7 @@ void resetState() {
   FastLED.clear(true);
   FastLED.setBrightness(65);
   clearComms();
-  invalidateTimer();
+  stateTimer.invalidate();
   setMotorOutput(0);
 }
 
