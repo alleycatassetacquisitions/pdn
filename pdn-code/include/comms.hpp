@@ -14,13 +14,6 @@ String readDebugString(char terminator);
 byte peekDebugComms();
 void writeDebugByte(byte command);
 
-// FIXME: These appear to be unused so should be safe to remove
-// but it would be best for whomever first added them to be consulted
-// if possible.
-
-//void monitorTX();
-//void monitorRX();
-
 void writeTxTransaction(byte command);
 void writeRxTransaction(byte command);
 
