@@ -15,6 +15,7 @@
 #include "../include/match.hpp"
 #include "../include/comms.hpp"
 #include "../include/states.hpp"
+#include "../include/device-states/example1-state.hpp"
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -140,6 +141,9 @@ byte loseBrightness = 0;
 byte winBrightness = 0;
 
 // GAME
+
+// STATE - STATE MACHINE
+BaseDeviceState* deviceState;
 
 // STATE - DORMANT
 unsigned long bountyDelay[] = {300000, 900000};
@@ -377,6 +381,8 @@ void setup(void) {
 
   uiRefresh.every(16, updateUi);
 
+  deviceState = new Example1State();
+
   delay(3000);
 
   clearComms();
@@ -386,6 +392,20 @@ void loop(void) {
   SimpleTimer::updateTime();
   primary.tick();
   secondary.tick();
+
+  //TODO: Uncomment below when ready to switch to using state machine
+/*   if(deviceState) {
+    deviceState->Update();
+    deviceState->Render(display, displayLights, numDisplayLights,
+                        gripLights, numGripLights);
+  } */
+
+  //TODO: Uncomment below when ready to switch to using state machine
+/*   if(deviceState) {
+    deviceState->Update();
+    deviceState->Render(display, displayLights, numDisplayLights,
+                        gripLights, numGripLights);
+  } */
 
   if (APP_STATE == AppState::QD_GAME) {
     quickDrawGame();
