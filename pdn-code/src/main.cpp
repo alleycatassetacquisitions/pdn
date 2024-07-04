@@ -14,6 +14,7 @@
 #include "../include/player.hpp"
 #include "../include/match.hpp"
 #include "../include/comms.hpp"
+#include "../include/states.hpp"
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -228,20 +229,7 @@ bool reset = false;
 // TIMER
 SimpleTimer stateTimer;
 
-// GAME STATE MACHINE
-const byte INITIATE = 0;
-const byte DORMANT = 1;
-const byte ACTIVATED = 2;
-const byte HANDSHAKE = 3;
-const byte DUEL_ALERT = 4;
-const byte DUEL_COUNTDOWN = 5;
-const byte DUEL = 6;
-const byte WIN = 7;
-const byte LOSE = 8;
-
-byte QD_STATE = DORMANT;
-
-byte newState = 0;
+QdState newState = QdState::INITIATE;
 bool stateChangeReady = false;
 
 // CONFIGURATION & DEBUG
@@ -355,7 +343,7 @@ void setupDevice();
 void checkInDevice();
 void setActivationDelay();
 void getDeviceId();
-void updateQDState(byte futureState);
+void updateQDState(QdState futureState);
 void commitQDState();
 void resetState();
 
@@ -522,35 +510,35 @@ void animateLights() {
     }
   } else {
     switch(QD_STATE) {
-      case INITIATE:
+      case QdState::INITIATE :
         break;
-      case DORMANT:
+      case QdState::DORMANT:
         EVERY_N_MILLIS(16) {
           dormantAnimation();
         }
         break;
-      case ACTIVATED:
+      case QdState::ACTIVATED:
         EVERY_N_MILLIS(16) {
           activationIdleAnimation();
         }
         break;
-      case HANDSHAKE:
+      case QdState::HANDSHAKE:
         displayLights[numDisplayLights -1] = ColorFromPalette(currentPalette, 0);
         break;
-      case DUEL_ALERT:
+      case QdState::DUEL_ALERT:
         displayLights[numDisplayLights -1] = ColorFromPalette(currentPalette, 0);
         break;
-      case DUEL_COUNTDOWN:
+      case QdState::DUEL_COUNTDOWN:
         EVERY_N_MILLIS(200) {
           fadeToBlackBy(gripLights, numGripLights, 3);
         }
         updateCountdownState();
         break;
-      case DUEL:
+      case QdState::DUEL:
         FastLED.setBrightness(255);
         FastLED.showColor(currentPalette[0], 255);
         break;
-      case WIN:
+      case QdState::WIN:
         EVERY_N_MILLIS(4) {
           activationIdleAnimation();
           if(random8() % 20 < 2) {
@@ -559,7 +547,7 @@ void animateLights() {
           }
         }
         break;
-      case LOSE:
+      case QdState::LOSE:
         EVERY_N_MILLIS(750) {
           FastLED.setBrightness(FastLED.getBrightness()-2);
         }
@@ -602,17 +590,17 @@ bool updateUi(void *) {
         break;
       case QD_GAME:
         switch (QD_STATE) {
-          case INITIATE:
+          case QdState::INITIATE:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
             display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
             break;
 
-          case DORMANT:
+          case QdState::DORMANT:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
             display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
             break;
 
-          case ACTIVATED:
+          case QdState::ACTIVATED:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexIdle));
             display.setFont(u8g2_font_prospero_nbp_tf);
             display.setDrawColor(0);
@@ -638,15 +626,15 @@ bool updateUi(void *) {
             display.setDrawColor(1);
             break;
 
-          case HANDSHAKE:
+          case QdState::HANDSHAKE:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
             break;
 
-          case DUEL_ALERT:
+          case QdState::DUEL_ALERT:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
             break;
 
-          case DUEL_COUNTDOWN:
+          case QdState::DUEL_COUNTDOWN:
             if(countdownStage > 3) {
               display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect)); 
             } else if(countdownStage == 3) {
@@ -658,15 +646,15 @@ bool updateUi(void *) {
             }
             break;
 
-          case DUEL:
+          case QdState::DUEL:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexDraw));
             break;
 
-          case WIN:
+          case QdState::WIN:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexWin));
             break;
 
-          case LOSE:
+          case QdState::LOSE:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLose));
             break;
           }
@@ -738,15 +726,15 @@ void setMotorOutput(int value) {
 }
 
 void quickDrawGame() {
-  if (QD_STATE == DORMANT) {
+  if (QD_STATE == QdState::DORMANT) {
     if (!activationInitiated) {
       setupActivation();
     }
 
     if (shouldActivate()) {
-      updateQDState(ACTIVATED);
+      updateQDState(QdState::ACTIVATED);
     }
-  } else if (QD_STATE == ACTIVATED) {
+  } else if (QD_STATE == QdState::ACTIVATED) {
     if (beginActivationSequence) {
       if (activationSequence()) {
         beginActivationSequence = false; 
@@ -755,48 +743,48 @@ void quickDrawGame() {
 
     activationIdle();
     if (initiateHandshake()) {
-      updateQDState(HANDSHAKE);
+      updateQDState(QdState::HANDSHAKE);
     }
-  } else if (QD_STATE == HANDSHAKE) {
+  } else if (QD_STATE == QdState::HANDSHAKE) {
     if (handshake()) {
-      updateQDState(DUEL_ALERT);
+      updateQDState(QdState::DUEL_ALERT);
     } else if (handshakeTimedOut) {
-      updateQDState(ACTIVATED);
+      updateQDState(QdState::ACTIVATED);
     }
-  } else if (QD_STATE == DUEL_ALERT) {
+  } else if (QD_STATE == QdState::DUEL_ALERT) {
     alertDuel();
     if (alertCount == 9) {
-      updateQDState(DUEL_COUNTDOWN);
+      updateQDState(QdState::DUEL_COUNTDOWN);
     }
-  } else if (QD_STATE == DUEL_COUNTDOWN) {
+  } else if (QD_STATE == QdState::DUEL_COUNTDOWN) {
     duelCountdown();
     if (doBattle) {
-      updateQDState(DUEL);
+      updateQDState(QdState::DUEL);
     }
-  } else if (QD_STATE == DUEL) {
+  } else if (QD_STATE == QdState::DUEL) {
     duel();
     if (captured) {
-      updateQDState(LOSE);
+      updateQDState(QdState::LOSE);
     } else if (wonBattle) {
-      updateQDState(WIN);
+      updateQDState(QdState::WIN);
     } else if (duelTimedOut) {
-      updateQDState(ACTIVATED);
+      updateQDState(QdState::ACTIVATED);
     }
-  } else if (QD_STATE == WIN) {
+  } else if (QD_STATE == QdState::WIN) {
     if (!reset) {
       duelOver();
     } else {
       updateScore(true);
       clearComms();
-      updateQDState(DORMANT);
+      updateQDState(QdState::DORMANT);
     }
-  } else if (QD_STATE == LOSE) {
+  } else if (QD_STATE == QdState::LOSE) {
     if (!reset) {
       duelOver();
     } else {
       updateScore(false);
       clearComms();
-      updateQDState(DORMANT);
+      updateQDState(QdState::DORMANT);
     }
   }
 
@@ -820,7 +808,7 @@ void checkForAppState() {
           currentPalette = bountyColors;
         }
         APP_STATE = QD_GAME;
-        QD_STATE = DORMANT;
+        QD_STATE = QdState::DORMANT;
         resetState();
       }
     }
@@ -1201,12 +1189,12 @@ bool isValidMessageSerial1() {
     return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
             (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER  || (char)command == GET_DEVICE_ID);
   } else {
-    if (QD_STATE == ACTIVATED) { 
+    if (QD_STATE == QdState::ACTIVATED) { 
       return (command == BOUNTY_BATTLE_MESSAGE && playerInfo.isHunter());
-    } else if (QD_STATE == HANDSHAKE) {
+    } else if (QD_STATE == QdState::HANDSHAKE) {
       return (command == BOUNTY_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) ||
         (command == BOUNTY_HANDSHAKE_FINAL_ACK);
-    } else if (QD_STATE == DUEL) {
+    } else if (QD_STATE == QdState::DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
   }
@@ -1232,12 +1220,12 @@ bool isValidMessageSerial2() {
   //   return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
   //           (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
   // } else {
-    if (QD_STATE == ACTIVATED) {
+    if (QD_STATE == QdState::ACTIVATED) {
       return (command == HUNTER_BATTLE_MESSAGE && !playerInfo.isHunter());
-    } else if (QD_STATE == HANDSHAKE) {
+    } else if (QD_STATE == QdState::HANDSHAKE) {
       return (command == HUNTER_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || 
         (command == HUNTER_HANDSHAKE_FINAL_ACK);
-    } else if (QD_STATE == DUEL) {
+    } else if (QD_STATE == QdState::DUEL) {
       return (command == ZAP || command == YOU_DEFEATED_ME);
     }
   // }
@@ -1319,7 +1307,7 @@ void setActivationDelay() {
 }
 
 // state functions
-void updateQDState(byte futureState) {
+void updateQDState(QdState futureState) {
   newState = futureState;
   stateChangeReady = true;
 }
@@ -1416,7 +1404,7 @@ void updateFramerate() {
 void primaryButtonClick() {
   primaryPresses++;
   switch(QD_STATE) {
-    case DUEL:
+    case QdState::DUEL:
       if(sendZapSignal) {
         sendZapSignal = false;
         writeGameComms(ZAP);
