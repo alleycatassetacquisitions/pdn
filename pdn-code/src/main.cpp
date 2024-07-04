@@ -234,12 +234,6 @@ bool stateChangeReady = false;
 
 // CONFIGURATION & DEBUG
 
-// APPLICATION STATES
-const byte DEBUG = 10;
-const byte QD_GAME = 11;
-const byte SET_USER = 12;
-const byte CLEAR_USER = 13;
-
 // SERIAL COMMANDS
 const char ENTER_DEBUG = '!';
 const char START_GAME = '@';
@@ -249,7 +243,6 @@ const char CHECK_IN = '%';
 const char DEBUG_DELIMITER = '&';
 const char GET_DEVICE_ID = '*';
 
-byte APP_STATE = QD_GAME;
 
 // ScoreDataStructureThings
 //String userID = "init_uuid";
@@ -434,13 +427,13 @@ void loop(void) {
   primary.tick();
   secondary.tick();
 
-  if (APP_STATE == QD_GAME) {
+  if (APP_STATE == AppState::QD_GAME) {
     quickDrawGame();
-  } else if (APP_STATE == DEBUG) {
+  } else if (APP_STATE == AppState::DEBUG) {
     debugEvents();
-  } else if (APP_STATE == SET_USER) {
+  } else if (APP_STATE == AppState::SET_USER) {
     playerInfo.setUserID(uuidGenerator);
-  } else if (APP_STATE == CLEAR_USER) {
+  } else if (APP_STATE == AppState::CLEAR_USER) {
     playerInfo.clearUserID();
   }
   checkForAppState();
@@ -504,7 +497,7 @@ void activationIdleAnimation() {
 
 void animateLights() {
 
-  if(APP_STATE == DEBUG) {
+  if(APP_STATE == AppState::DEBUG) {
     EVERY_N_MILLIS(16) {
       activationIdleAnimation();
     }
@@ -583,12 +576,12 @@ bool updateUi(void *) {
     display.clearBuffer();
 
     switch(APP_STATE) {
-      case DEBUG:
+      case AppState::DEBUG:
         display.print("DEBUG: " + DEBUG_MODE_SUBSTR);
         display.setCursor(0, 16);
         display.print(u8x8_u8toa(screenCounter++, 3));
         break;
-      case QD_GAME:
+      case AppState::QD_GAME:
         switch (QD_STATE) {
           case QdState::INITIATE:
             display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
@@ -797,17 +790,17 @@ void checkForAppState() {
     if (debugCommsAvailable()) {
       String command = fetchDebugCommand();
       if (validateCommand(command, ENTER_DEBUG)) {
-        APP_STATE = DEBUG;
+        APP_STATE = AppState::DEBUG;
         writeDebugByte(DEBUG_DELIMITER);
         currentPalette = idleColors;
         resetState();
-      } else if (validateCommand(command, START_GAME) && APP_STATE == DEBUG) {
+      } else if (validateCommand(command, START_GAME) && APP_STATE == AppState::DEBUG) {
         if (playerInfo.isHunter()) {
           currentPalette = hunterColors;
         } else {
           currentPalette = bountyColors;
         }
-        APP_STATE = QD_GAME;
+        APP_STATE = AppState::QD_GAME;
         QD_STATE = QdState::DORMANT;
         resetState();
       }
@@ -1183,7 +1176,7 @@ bool isValidMessageSerial1() {
     return true;
   }
 
-  if (APP_STATE == DEBUG) {
+  if (APP_STATE == AppState::DEBUG) {
     // Serial.print("Validating DEBUG: ");
     // Serial.println((char)command);
     return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||

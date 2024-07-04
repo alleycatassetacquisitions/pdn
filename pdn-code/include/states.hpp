@@ -20,3 +20,13 @@ enum class QdState : uint8_t {
 };
 
 extern QdState QD_STATE;
+
+// APPLICATION STATES
+enum class AppState : uint8_t {
+    DEBUG = 10,
+    QD_GAME = 11,
+    SET_USER = 12,
+    CLEAR_USER = 13,
+};
+
+extern AppState APP_STATE;
