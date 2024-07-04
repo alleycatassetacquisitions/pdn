@@ -125,21 +125,10 @@ void setTransmitLight(boolean on);
 void setMotorOutput(int value);
 int motorSpeed = 0;
 
-//FIXME: This requires stream validation so can't easily
-//be moved to separate file yet, but should eventually be.
-void flushComms();
-
 byte lastTxPacket = 0;
 byte lastRxPacket = 0;
 
-const byte BOUNTY_BATTLE_MESSAGE = 128;
-const byte HUNTER_BATTLE_MESSAGE = 129;
-const byte BOUNTY_SHAKE = 130;
-const byte HUNTER_SHAKE = 131;
-const byte HUNTER_HANDSHAKE_FINAL_ACK = 132;
-const byte BOUNTY_HANDSHAKE_FINAL_ACK = 133;
-const byte ZAP = 134;
-const byte YOU_DEFEATED_ME = 135;
+
 
 // TIMERS
 auto uiRefresh = timer_create_default();
@@ -170,25 +159,6 @@ byte msgDelay = 0;
 // STATE - ACTIVATED OVERCHARGE
 byte overchargeStep = 0;
 byte overchargeFlickers = 0;
-
-// STATE - HANDSHAKE
-enum class HandshakeState : byte
-{
-  HANDSHAKE_TIMEOUT_START_STATE = 0,
-  HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1,
-  HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2,
-  HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3,
-  HANDSHAKE_STATE_FINAL_ACK = 4
-};
-
-HandshakeState handshakeState = HandshakeState::HANDSHAKE_TIMEOUT_START_STATE;
-/**
-Handshake states:
-0 - start timer to delay sending handshake signal for 1000 ms
-1 - wait for handshake delay to expire
-2 - start timeout timer
-3 - begin sending shake message and check for timeout
-**/
 
 bool handshakeTimedOut = false;
 
@@ -233,16 +203,6 @@ QdState newState = QdState::INITIATE;
 bool stateChangeReady = false;
 
 // CONFIGURATION & DEBUG
-
-// SERIAL COMMANDS
-const char ENTER_DEBUG = '!';
-const char START_GAME = '@';
-const char SETUP_DEVICE = '#';
-const char SET_ACTIVATION = '^';
-const char CHECK_IN = '%';
-const char DEBUG_DELIMITER = '&';
-const char GET_DEVICE_ID = '*';
-
 
 // ScoreDataStructureThings
 //String userID = "init_uuid";
@@ -1126,23 +1086,6 @@ void updateScore(boolean win) {
   addMatch(win);
 }
 
-/*
-byte readDebugByte() {
-  return Serial1.read();
-}
-*/
-
-void flushComms() {
-  while (Serial1.available() > 0 && !isValidMessageSerial1()) {
-    Serial1.read();
-  }
-
-  while (Serial2.available() > 0 && !isValidMessageSerial2()) {
-    Serial2.read();
-  }
-}
-
-
 bool requestSwitchAppState() {
   if (debugCommsAvailable()) {
     char command = (char)peekDebugComms();
@@ -1157,73 +1100,6 @@ bool requestSwitchAppState() {
   } else {
     return false;
   }
-}
-
-
-/*
-  the two validation methods are quite similar, with some notable differences.
-  Serial1 is used for hunter communications and for debug events.
-  Serial2 is used for bounty communications.
-
-  Debug events on Serial2 are assumed to be invalid.
-  
-  During the quick draw game, we validate the battle and handshake messages against what role
-  the device is currently in.
-*/
-bool isValidMessageSerial1() {
-  byte command = Serial1.peek();
-  if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
-    return true;
-  }
-
-  if (APP_STATE == AppState::DEBUG) {
-    // Serial.print("Validating DEBUG: ");
-    // Serial.println((char)command);
-    return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
-            (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER  || (char)command == GET_DEVICE_ID);
-  } else {
-    if (QD_STATE == QdState::ACTIVATED) { 
-      return (command == BOUNTY_BATTLE_MESSAGE && playerInfo.isHunter());
-    } else if (QD_STATE == QdState::HANDSHAKE) {
-      return (command == BOUNTY_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) ||
-        (command == BOUNTY_HANDSHAKE_FINAL_ACK);
-    } else if (QD_STATE == QdState::DUEL) {
-      return (command == ZAP || command == YOU_DEFEATED_ME);
-    }
-  }
-
-  return false;
-}
-
-// byte HANDSHAKE_TIMEOUT_START_STATE = 0;
-// byte HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1;
-// byte HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2;
-// byte HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3;
-// byte HANDSHAKE_STATE_FINAL_ACK = 4;
-
-bool isValidMessageSerial2() {
-  byte command = Serial2.peek();
-  // if ((char)command == ENTER_DEBUG || (char)command == START_GAME) {
-  //   return true;
-  // }
-
-  // if (APP_STATE == DEBUG) {
-  //   Serial.print("Validating DEBUG: ");
-  //   Serial.println((char)command);
-  //   return ((char)command == SETUP_DEVICE || (char)command == SET_ACTIVATION ||
-  //           (char)command == CHECK_IN || (char)command == DEBUG_DELIMITER);
-  // } else {
-    if (QD_STATE == QdState::ACTIVATED) {
-      return (command == HUNTER_BATTLE_MESSAGE && !playerInfo.isHunter());
-    } else if (QD_STATE == QdState::HANDSHAKE) {
-      return (command == HUNTER_SHAKE && handshakeState < HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) || 
-        (command == HUNTER_HANDSHAKE_FINAL_ACK);
-    } else if (QD_STATE == QdState::DUEL) {
-      return (command == ZAP || command == YOU_DEFEATED_ME);
-    }
-  // }
-
-  return false;
 }
 
 bool debugCommandReceived() {

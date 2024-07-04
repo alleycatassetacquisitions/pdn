@@ -30,3 +30,32 @@ enum class AppState : uint8_t {
 };
 
 extern AppState APP_STATE;
+
+// STATE - HANDSHAKE
+/**
+Handshake states:
+0 - start timer to delay sending handshake signal for 1000 ms
+1 - wait for handshake delay to expire
+2 - start timeout timer
+3 - begin sending shake message and check for timeout
+**/
+enum class HandshakeState : uint8_t
+{
+  HANDSHAKE_TIMEOUT_START_STATE = 0,
+  HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1,
+  HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2,
+  HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3,
+  HANDSHAKE_STATE_FINAL_ACK = 4
+};
+
+extern HandshakeState handshakeState;
+
+
+// SERIAL COMMANDS
+const char ENTER_DEBUG = '!';
+const char START_GAME = '@';
+const char SETUP_DEVICE = '#';
+const char SET_ACTIVATION = '^';
+const char CHECK_IN = '%';
+const char DEBUG_DELIMITER = '&';
+const char GET_DEVICE_ID = '*';
