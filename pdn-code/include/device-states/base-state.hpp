@@ -18,7 +18,10 @@ To change states, change instance that base pointer points to. See main.cpp for 
 //a state actually is, sometimes useful for control flow or upcasting
 enum class DeviceState {
     kExample1, //TODO: Remove once we have a few real states
-    kNumDeviceStates //NOTE: Not a real state
+    kNumDeviceStates, //NOTE: Not a real state
+    debug,
+    game,
+    externalCommand
 };
 
 class BaseDeviceState {

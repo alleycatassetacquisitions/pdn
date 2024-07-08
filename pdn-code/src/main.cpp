@@ -400,13 +400,6 @@ void loop(void) {
                         gripLights, numGripLights);
   } */
 
-  //TODO: Uncomment below when ready to switch to using state machine
-/*   if(deviceState) {
-    deviceState->Update();
-    deviceState->Render(display, displayLights, numDisplayLights,
-                        gripLights, numGripLights);
-  } */
-
   if (APP_STATE == AppState::QD_GAME) {
     quickDrawGame();
   } else if (APP_STATE == AppState::DEBUG) {
