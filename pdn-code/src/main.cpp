@@ -1,9 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <FastLED.h>
-#include <OneButton.h>
 #include <SPI.h>
-#include <U8g2lib.h>
 #include <arduino-timer.h>
 #include <UUID.h>
 #include <images.h>
@@ -15,24 +12,7 @@
 #include "../include/match.hpp"
 #include "../include/comms.hpp"
 #include "../include/states.hpp"
-
-#define primaryButtonPin 15
-#define secondaryButtonPin 16
-#define motorPin 17
-#define RXr 41
-#define RXt 40
-#define TXt 39 //MIDDLE BAND ON AUDIO CABLE
-#define TXr 38 //TIP OF AUDIO CABLE
-#define displayLightsPin 13
-#define gripLightsPin 21
-#define displayCS 10
-#define displayDC 9
-#define displayRST 14
-
-#define numDisplayLights 13
-#define numGripLights 6
-
-const int BAUDRATE = 19200;
+#include "../include/device/device.hpp"
 
 //GAME ROLE
 Player playerInfo;
