@@ -3,7 +3,9 @@
 #include <OneButton.h>
 #include <U8g2lib.h>
 #include <FastLED.h>
+#include <functional>
 #include "light-strip.hpp"
+#include "haptics.hpp"
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -24,7 +26,19 @@
 class Device {
 
     public:
+        Device();
+        int begin();
+        void tick();
         const int BAUDRATE = 19200;
+        String getDeviceId();
+
+        void attachPrimaryButtonClick(callbackFunction click);
+        void attachPrimaryButtonDoubleClick(callbackFunction doubleClick);
+        void attachPrimaryButtonLongPress(callbackFunction longPress);
+        
+        void attachSecondaryButtonClick(callbackFunction click);
+        void attachSecondaryButtonDoubleClick(callbackFunction doubleClick);
+        void attachSecondaryButtonLongPress(callbackFunction longPress);
         
 
     private:
@@ -33,6 +47,12 @@ class Device {
         OneButton secondary;
         CRGB displayLights[numDisplayLights];
         CRGB gripLights[numGripLights];
+        Haptics vibrationMotor;
+        String deviceID = "";
     
+        HardwareSerial outputJack();
+        HardwareSerial inputJack();
+        
+        void initializePins();
 
 };

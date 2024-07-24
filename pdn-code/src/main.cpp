@@ -16,14 +16,11 @@
 
 //GAME ROLE
 Player playerInfo;
+Device PDN = Device();
 
-String deviceID = "";
 String DEBUG_MODE_SUBSTR = "";
 
 // DISPLAY
-
-U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI display(U8G2_R0, displayCS, displayDC,
-                                               displayRST);
 
 unsigned long frameBegin = 0;
 unsigned long frameDuration = 0;
@@ -41,10 +38,6 @@ void updateRXState();
 void updateFramerate();
 
 // BUTTONS
-
-OneButton primary = OneButton(primaryButtonPin, true, true);
-OneButton secondary = OneButton(secondaryButtonPin, true, true);
-
 int primaryPresses = 0;
 int secondaryPresses = 0;
 
@@ -282,48 +275,14 @@ void resetState();
 
 int wins = 0;
 
-void initializePins() {
-
-  gpio_reset_pin(GPIO_NUM_38);
-  gpio_reset_pin(GPIO_NUM_39);
-  gpio_reset_pin(GPIO_NUM_40);
-  gpio_reset_pin(GPIO_NUM_41);
-
-  gpio_pad_select_gpio(GPIO_NUM_38);
-  gpio_pad_select_gpio(GPIO_NUM_39);
-  gpio_pad_select_gpio(GPIO_NUM_40);
-  gpio_pad_select_gpio(GPIO_NUM_41);
-
-  // init display
-  pinMode(displayCS, OUTPUT);
-  pinMode(displayDC, OUTPUT);
-  digitalWrite(displayCS, 0);
-  digitalWrite(displayDC, 0);
-
-  pinMode(motorPin, OUTPUT);
-
-  pinMode(TXt, OUTPUT);
-  pinMode(TXr, INPUT);
-
-  pinMode(RXt, OUTPUT);
-  pinMode(RXr, INPUT);
-
-  pinMode(displayLightsPin, OUTPUT);
-  pinMode(gripLightsPin, OUTPUT);
-}
-
 void setup(void) {
-
-  initializePins();
 
   WiFi.begin();
 
   uuidGenerator.setVariant4Mode();
   uuidGenerator.seed(random(999999999), random(999999999)); 
 
-  Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
 
-  Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
 
   if (playerInfo.isHunter()) {
     currentPalette = hunterColors;
@@ -331,10 +290,10 @@ void setup(void) {
     currentPalette = bountyColors;
   }
 
-  primary.attachClick(primaryButtonClick);
+  PDN.attachPrimaryButtonClick(primaryButtonClick);
   // primary.attachDoubleClick(primaryButtonDoubleClick);
   // primary.attachLongPressStop(primaryButtonLongPress);
-  secondary.attachClick(primaryButtonClick);
+  PDN.attachSecondaryButtonClick(primaryButtonClick);
   // secondary.attachDoubleClick(secondaryButtonDoubleClick);
   // secondary.attachLongPressStop(secondaryButtonLongPress);
 

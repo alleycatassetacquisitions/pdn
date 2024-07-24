@@ -5,7 +5,15 @@
 class LightStrip {
 
     public:
+        LightStrip();
+        void begin(
+            int numLights,
+            int pinNumber
+        );
 
-    private:
-        CRGB 
-}
+    protected:
+        CRGB* lightStrip;
+        CRGBPalette16 currentPalette;
+        int colorIndex;
+        int brightness;
+};
