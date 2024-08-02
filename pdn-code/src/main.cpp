@@ -15,6 +15,7 @@
 #include "../include/match.hpp"
 #include "../include/comms.hpp"
 #include "../include/states.hpp"
+#include "../include/esp-now-comms.hpp"
 
 #define primaryButtonPin 15
 #define secondaryButtonPin 16
@@ -337,6 +338,8 @@ void setup(void) {
   initializePins();
 
   WiFi.begin();
+  WiFi.enableSTA(true);
+  WiFi.channel(6);
 
   uuidGenerator.setVariant4Mode();
   uuidGenerator.seed(random(999999999), random(999999999)); 
@@ -344,6 +347,10 @@ void setup(void) {
   Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
 
   Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
+
+  Serial.println("Serial comms initialized");
+
+  EspNowManager::GetInstance()->StartBroadcastingPlayerInfo(&playerInfo, 1000);
 
   if (playerInfo.isHunter()) {
     currentPalette = hunterColors;
@@ -384,6 +391,7 @@ void setup(void) {
 
 void loop(void) {
   SimpleTimer::updateTime();
+  EspNowManager::GetInstance()->Update();
   primary.tick();
   secondary.tick();
 
