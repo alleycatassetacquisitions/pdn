@@ -178,9 +178,11 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
         
         manager->m_remotePlayers.emplace_back(mac_addr, pkt->id, pkt->allegiance, pkt->hunter,
             millis(), 0);
-        remotePlayer = manager->m_remotePlayers.end()--;
-        Serial.printf("Added discovered player %s at addr %X:%X:%X:%X:%X:%X\n", 
+        remotePlayer = manager->m_remotePlayers.end() - 1;
+        Serial.printf("Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
             remotePlayer->playerInfo.getUserID().c_str(),
+            remotePlayer->playerInfo.getAllegiance(),
+            remotePlayer->playerInfo.isHunter() ? "Hunter" : "Not Hunter",
             mac_addr[0], mac_addr[1], mac_addr[2],
             mac_addr[3], mac_addr[4], mac_addr[5]);
     }
