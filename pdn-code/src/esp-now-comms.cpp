@@ -111,6 +111,14 @@ int EspNowManager::BroadcastPlayerInfo()
     broadcastPkt.allegiance = m_localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = m_localPlayerInfo->isHunter();
 
+#if DEBUG_PRINT_ESP_NOW
+    Serial.printf("Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
+                  broadcastPkt.id,
+                  broadcastPkt.allegiance,
+                  broadcastPkt.hunter ? "Hunter" : "Not Hunter",
+                  sizeof(broadcastPkt));
+#endif
+
     int ret = SendData(BROADCAST_ADDR, (uint8_t*)&broadcastPkt, sizeof(broadcastPkt));
     m_lastBroadcastTime = millis();
     return ret;
@@ -151,9 +159,15 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
 {
     EspNowManager* manager = EspNowManager::GetInstance();
 
+#if DEBUG_PRINT_ESP_NOW
     Serial.printf("ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
         mac_addr[0], mac_addr[1], mac_addr[2],
         mac_addr[3], mac_addr[4], mac_addr[5]);
+
+    // for(int i = 0; i < data_len; ++i)
+    //     Serial.printf("0x%X ", data[i]);
+    // Serial.printf("\n");
+#endif
 
     //Make sure received packet is at least min length
     if(data_len < sizeof(DataPktHdr))
@@ -165,7 +179,9 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
     const DataPktHdr* pktHdr = (const DataPktHdr*)data;
     //auto rssi = esp_now_info->rx_ctrl->rssi;
 
+#if DEBUG_PRINT_ESP_NOW
     Serial.printf("Packet Type: %i\n", pktHdr->packetType);
+#endif
 
     //Find our remote player record in local list
     auto remotePlayer = std::find_if(manager->m_remotePlayers.begin(), manager->m_remotePlayers.end(),
@@ -175,7 +191,11 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
     if(pktHdr->packetType == PktType::kPlayerInfoBroadcast && remotePlayer == manager->m_remotePlayers.end())
     {
         const PlayerInfoPkt* pkt = (const PlayerInfoPkt*)data;
-        
+
+#if DEBUG_PRINT_ESP_NOW
+        Serial.printf("Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
+#endif
+
         manager->m_remotePlayers.emplace_back(mac_addr, pkt->id, pkt->allegiance, pkt->hunter,
             millis(), 0);
         remotePlayer = manager->m_remotePlayers.end() - 1;
@@ -198,7 +218,9 @@ void EspNowManager::EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_sta
 {
     EspNowManager* manager = EspNowManager::GetInstance();
 
-    //Serial.println("ESPNOW Callback");
+#if DEBUG_PRINT_ESP_NOW
+    Serial.println("ESPNOW Send Callback");
+#endif
 
     if(status == ESP_NOW_SEND_SUCCESS)
     {
