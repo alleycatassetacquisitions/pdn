@@ -54,10 +54,9 @@ Allegiance Player::getAllegiance() const
     return allegiance;
 }
 
-void Player::setUserID(UUID &generator)
+void Player::setUserID(char* newId)
 {
-  generator.generate();
-  id = generator.toCharArray();
+  id = newId;
 }
 
 String Player::getUserID() const

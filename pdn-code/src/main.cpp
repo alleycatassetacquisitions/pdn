@@ -11,19 +11,19 @@
 #include "../include/player.hpp"
 #include "../include/match.hpp"
 #include "../include/comms.hpp"
-#include "../include/states.hpp"
+#include "../include/state-machine/state-machine.hpp"
 #include "../include/device/device.hpp"
+#include "../include/game/quickdraw.hpp"
+#include "../include/id-generator.hpp"
 
 //GAME ROLE
-Player playerInfo;
-Device PDN = Device();
+Device* PDN = Device::GetInstance();
+IdGenerator* idGenerator = IdGenerator::GetInstance();
+Quickdraw game = Quickdraw();
 
 String DEBUG_MODE_SUBSTR = "";
 
 // DISPLAY
-
-unsigned long frameBegin = 0;
-unsigned long frameDuration = 0;
 bool displayIsDirty = false;
 
 void drawDebugLabels();
@@ -32,36 +32,16 @@ void drawDebugState(char *button1State, char *button2State, char *txData,
                     char *led2Pattern);
 void updatePrimaryButtonState();
 void updateSecondaryButtonState();
-void updateMotorState();
 void updateTXState();
 void updateRXState();
-void updateFramerate();
 
 // BUTTONS
 int primaryPresses = 0;
 int secondaryPresses = 0;
 
 void primaryButtonClick();
-void primaryButtonDoubleClick();
-void primaryButtonLongPress();
-
-void secondaryButtonClick();
-void secondaryButtonDoubleClick();
-void secondaryButtonLongPress();
-
-bool isButtonPressed();
 
 // LEDs
-
-CRGB displayLights[numDisplayLights];
-boolean displayLightsOnOff[numDisplayLights] = {true, true, true, true, true,
-                                                true, true, true, true, true,
-                                                true, true, true};
-CRGB gripLights[numGripLights];
-boolean gripLightsOnOff[numGripLights] = {true, true, true, true, true, true};
-
-uint8_t displayColorIndex = 0;
-uint8_t gripColorIndex = 0;
 
 CRGBPalette16 bountyColors = CRGBPalette16(
     CRGB::Red, CRGB::Red, CRGB::Red, CRGB::Orange, CRGB::Red, CRGB::Red,
@@ -88,103 +68,10 @@ void activationIdleAnimation();
 bool updateUi(void *);
 const unsigned char* getImageForAllegiance(int index);
 
-void setGraphRight(int value);
-void setGraphLeft(int value);
 void updateCountdownState();
-void setTransmitLight(boolean on);
-
-// MOTOR
-
-void setMotorOutput(int value);
-int motorSpeed = 0;
-
-byte lastTxPacket = 0;
-byte lastRxPacket = 0;
-
-
 
 // TIMERS
 auto uiRefresh = timer_create_default();
-
-// LED Variables
-byte buttonBrightness = 0;
-byte interiorBrightness = 0;
-byte loseBrightness = 0;
-byte winBrightness = 0;
-
-// GAME
-
-// STATE - DORMANT
-unsigned long bountyDelay[] = {300000, 900000};
-unsigned long overchargeDelay[] = {180000, 300000};
-unsigned long debugDelay = 3000;
-bool activationInitiated = false;
-bool beginActivationSequence = true;
-
-// STATE - ACTIVATED
-const float smoothingPoints = 255;
-byte ledBrightness = 65;
-float pwm_val = 0;
-bool breatheUp = true;
-long idleLEDBreak = 5000;
-byte msgDelay = 0;
-
-// STATE - ACTIVATED OVERCHARGE
-byte overchargeStep = 0;
-byte overchargeFlickers = 0;
-
-bool handshakeTimedOut = false;
-
-const int HANDSHAKE_TIMEOUT = 5000;
-
-// STATE - DUEL_ALERT
-int alertFlashTime = 250;
-byte alertCount = 0;
-
-// STATE - DUEL_COUNTDOWN
-bool doBattle = false;
-const byte COUNTDOWN_STAGES = 4;
-byte countdownStage = COUNTDOWN_STAGES;
-int FOUR = 2000;
-int THREE = 2000;
-int TWO = 1000;
-int ONE = 3000;
-
-// STATE - DUEL
-bool captured = false;
-bool wonBattle = false;
-bool startDuelTimer = true;
-bool sendZapSignal = true;
-bool duelTimedOut = false;
-bool bvbDuel = false;
-const int DUEL_TIMEOUT = 4000;
-
-// STATE - WIN
-bool startBattleFinish = true;
-byte finishBattleBlinkCount = 0;
-byte FINISH_BLINKS = 10;
-
-// STATE - LOSE
-bool initiatePowerDown = true;
-
-bool reset = false;
-
-// TIMER
-SimpleTimer stateTimer;
-
-QdState newState = QdState::INITIATE;
-bool stateChangeReady = false;
-
-// CONFIGURATION & DEBUG
-
-// ScoreDataStructureThings
-//String userID = "init_uuid";
-String current_match_id = "init_match_uuid";
-String current_opponent_id = "init_opponent_uuid";
-
-UUID uuidGenerator;
-String generateUuid();
-
 
 
 String stripWhitespace(String input) {
@@ -198,13 +85,6 @@ String stripWhitespace(String input) {
   }
   return output;
 }
-
-#define MAX_MATCHES 1000 // Maximum number of matches allowed
-
-#define MATCH_SIZE sizeof(Match)
-
-Match matches[MAX_MATCHES];
-int numMatches = 0;
 
 String dumpMatchesToJson() {
   StaticJsonDocument<512> doc;
@@ -221,18 +101,13 @@ String dumpMatchesToJson() {
   return output;
 }
 
-String generateUuid() {
-  uuidGenerator.generate();
-  return uuidGenerator.toCharArray();
-}
-
 void addMatch(bool winner_is_hunter) {
   if (numMatches < MAX_MATCHES) {
     // Create a Match object
-    if(playerInfo.isHunter()) {
-      matches[numMatches].setupMatch(current_match_id, playerInfo.getUserID(), current_opponent_id);
+    if(game.playerInfo.isHunter()) {
+      matches[numMatches].setupMatch(current_match_id, game.playerInfo.getUserID(), current_opponent_id);
     } else {
-      matches[numMatches].setupMatch(current_match_id, current_opponent_id, playerInfo.getUserID());
+      matches[numMatches].setupMatch(current_match_id, current_opponent_id, game.playerInfo.getUserID());
     }
     matches[numMatches].setWinner(winner_is_hunter);
     numMatches++;
@@ -240,21 +115,6 @@ void addMatch(bool winner_is_hunter) {
 }
 
 String debugOutput = "";
-
-void quickDrawGame();
-void checkForAppState();
-void debugEvents();
-void setupActivation();
-bool shouldActivate();
-bool activationSequence();
-void activationIdle();
-void activationOvercharge();
-bool initiateHandshake();
-bool handshake();
-void alertDuel();
-void duelCountdown();
-void duel();
-void duelOver();
 
 void updateScore(boolean win);
 
@@ -269,71 +129,49 @@ void setupDevice();
 void checkInDevice();
 void setActivationDelay();
 void getDeviceId();
-void updateQDState(QdState futureState);
-void commitQDState();
-void resetState();
+
 
 int wins = 0;
 
 void setup(void) {
 
+  PDN->begin();
+
   WiFi.begin();
 
-  uuidGenerator.setVariant4Mode();
-  uuidGenerator.seed(random(999999999), random(999999999)); 
-
-
-
-  if (playerInfo.isHunter()) {
+  if (game.playerInfo.isHunter()) {
     currentPalette = hunterColors;
   } else {
     currentPalette = bountyColors;
   }
 
-  PDN.attachPrimaryButtonClick(primaryButtonClick);
-  // primary.attachDoubleClick(primaryButtonDoubleClick);
-  // primary.attachLongPressStop(primaryButtonLongPress);
-  PDN.attachSecondaryButtonClick(primaryButtonClick);
-  // secondary.attachDoubleClick(secondaryButtonDoubleClick);
-  // secondary.attachLongPressStop(secondaryButtonLongPress);
+  PDN->attachPrimaryButtonClick(primaryButtonClick);
+  PDN->attachSecondaryButtonClick(primaryButtonClick);
 
-  FastLED
-      .addLeds<WS2812B, displayLightsPin, GRB>(displayLights, numDisplayLights)
-      .setCorrection(TypicalSMD5050);
-  FastLED.addLeds<WS2812B, gripLightsPin, GRB>(gripLights, numGripLights)
-      .setCorrection(TypicalSMD5050);
-  FastLED.setBrightness(65);
-
-  display.begin();
-
-  display.clearBuffer();
-  display.setContrast(125);
-  display.setFont(u8g2_font_prospero_nbp_tf);
   drawDebugLabels();
-  display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
-  display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
-  display.sendBuffer();
+  PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
+  PDN->getDisplay().getScreen().drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
+  PDN->getDisplay().sendBuffer();
 
   uiRefresh.every(16, updateUi);
 
   delay(3000);
 
-  clearComms();
+  PDN->clearComms();
 }
 
 void loop(void) {
   SimpleTimer::updateTime();
-  primary.tick();
-  secondary.tick();
+  PDN->tick();
 
   if (APP_STATE == AppState::QD_GAME) {
-    quickDrawGame();
+    game.quickDrawGame();
   } else if (APP_STATE == AppState::DEBUG) {
     debugEvents();
   } else if (APP_STATE == AppState::SET_USER) {
-    playerInfo.setUserID(uuidGenerator);
+    game.playerInfo.setUserID(idGenerator->generateId());
   } else if (APP_STATE == AppState::CLEAR_USER) {
-    playerInfo.clearUserID();
+    game.playerInfo.clearUserID();
   }
   checkForAppState();
   uiRefresh.tick();
@@ -342,56 +180,56 @@ void loop(void) {
 
 // DISPLAY
 
-// LEDS
-byte leftIndex = 9;
-byte rightIndex = 0;
-
 void dormantAnimation() {
-  if (breatheUp) {
-    ledBrightness++;
+  if (game.breatheUp) {
+    game.ledBrightness++;
   } else {
-    ledBrightness--;
+    game.ledBrightness--;
   }
-  pwm_val =
-      255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+  game.pwm_val =
+      255.0 * (1.0 - abs((2.0 * (game.ledBrightness / game.smoothingPoints)) - 1.0));
 
-  if (ledBrightness == 255) {
-    breatheUp = false;
-  } else if (ledBrightness == 0) {
-    breatheUp = true;
+  if (game.ledBrightness == 255) {
+    game.breatheUp = false;
+  } else if (game.ledBrightness == 0) {
+    game.breatheUp = true;
   }
 
-  displayLights[numDisplayLights-1] = ColorFromPalette(bountyColors, 0, pwm_val, LINEARBLEND);
+  PDN->getDisplayLights().setTransmitLight(ColorFromPalette(bountyColors, 0, game.pwm_val, LINEARBLEND));
 }
 
 void activationIdleAnimation() {
-  if (breatheUp) {
-    ledBrightness++;
+  if (game.breatheUp) {
+    game.ledBrightness++;
   } else {
-    ledBrightness--;
+    game.ledBrightness--;
   }
-  pwm_val =
-      255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+  game.pwm_val =
+      255.0 * (1.0 - abs((2.0 * (game.ledBrightness / game.smoothingPoints)) - 1.0));
 
-  if (ledBrightness == 255) {
-    breatheUp = false;
-  } else if (ledBrightness == 0) {
-    breatheUp = true;
+  if (game.ledBrightness == 255) {
+    game.breatheUp = false;
+  } else if (game.ledBrightness == 0) {
+    game.breatheUp = true;
   }
 
   if (random8() % 7 == 0) {
-    displayLights[random8() % (numDisplayLights - 1)] +=
-        ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+    PDN->getDisplayLights().addToLight(
+        random8() % (numDisplayLights - 1), 
+        ColorFromPalette(currentPalette, random8(), game.pwm_val, LINEARBLEND)
+      );
   }
-  fadeToBlackBy(displayLights, numDisplayLights, 2);
+  PDN->getDisplayLights().fade(2);
 
   for (int i = 0; i < numGripLights; i++) {
     if (random8() % 65 == 0) {
-      gripLights[i] +=
-          ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+      PDN->getGripLights().addToLight(
+        i,
+        ColorFromPalette(currentPalette, random8(), game.pwm_val, LINEARBLEND)
+      );
     }
   }
-  fadeToBlackBy(gripLights, numGripLights, 2);
+  PDN->getGripLights().fade(2);
 }
 
 void animateLights() {
@@ -415,33 +253,33 @@ void animateLights() {
         }
         break;
       case QdState::HANDSHAKE:
-        displayLights[numDisplayLights -1] = ColorFromPalette(currentPalette, 0);
+        PDN->getDisplayLights().setTransmitLight(ColorFromPalette(currentPalette, 0));
         break;
       case QdState::DUEL_ALERT:
-        displayLights[numDisplayLights -1] = ColorFromPalette(currentPalette, 0);
+        PDN->getDisplayLights().setTransmitLight(ColorFromPalette(currentPalette, 0));
         break;
       case QdState::DUEL_COUNTDOWN:
         EVERY_N_MILLIS(200) {
-          fadeToBlackBy(gripLights, numGripLights, 3);
+          PDN->getGripLights().fade(3);
         }
         updateCountdownState();
         break;
       case QdState::DUEL:
-        FastLED.setBrightness(255);
-        FastLED.showColor(currentPalette[0], 255);
+        PDN->setGlobalBrightness(255);
+        PDN->setGlobablLightColor(currentPalette[0]);
         break;
       case QdState::WIN:
         EVERY_N_MILLIS(4) {
           activationIdleAnimation();
           if(random8() % 20 < 2) {
-            displayLights[random() % 13] += CRGB::White;
-            gripLights[random() % 6] += CRGB::White;
+            PDN->getDisplayLights().addToLight(random() % 13, CRGB::White);
+            PDN->getGripLights().addToLight(random() % 6, CRGB::White);
           }
         }
         break;
       case QdState::LOSE:
         EVERY_N_MILLIS(750) {
-          FastLED.setBrightness(FastLED.getBrightness()-2);
+          PDN->setGlobalBrightness(FastLED.getBrightness()-2);
         }
         break;
     }
@@ -453,7 +291,7 @@ void animateLights() {
 byte screenCounter = 0;
 
 const unsigned char* getImageForAllegiance(int index) {
-  switch(playerInfo.getAllegiance()) {
+  switch(game.playerInfo.getAllegiance()) {
     case Allegiance::ENDLINE:
       return endlineImages[index];
     case Allegiance::HELIX:
@@ -472,216 +310,113 @@ String winString = "";
 bool updateUi(void *) {
 
   if(displayIsDirty){
-    display.clearBuffer();
+    PDN->getDisplay().clearBuffer();
 
     switch(APP_STATE) {
       case AppState::DEBUG:
-        display.print("DEBUG: " + DEBUG_MODE_SUBSTR);
-        display.setCursor(0, 16);
-        display.print(u8x8_u8toa(screenCounter++, 3));
+        PDN->getDisplay().getScreen().print("DEBUG: " + DEBUG_MODE_SUBSTR);
+        PDN->getDisplay().getScreen().setCursor(0, 16);
+        PDN->getDisplay().getScreen().print(u8x8_u8toa(screenCounter++, 3));
         break;
       case AppState::QD_GAME:
         switch (QD_STATE) {
           case QdState::INITIATE:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
-            display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
+            PDN->getDisplay().getScreen().drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
             break;
 
           case QdState::DORMANT:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
-            display.drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
+            PDN->getDisplay().getScreen().drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
             break;
 
           case QdState::ACTIVATED:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexIdle));
-            display.setFont(u8g2_font_prospero_nbp_tf);
-            display.setDrawColor(0);
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexIdle));
+            PDN->getDisplay().getScreen().setFont(u8g2_font_prospero_nbp_tf);
+            PDN->getDisplay().getScreen().setDrawColor(0);
             winString = String(wins);
-            if(playerInfo.isHunter()) {
-              width = display.getStrWidth("CAPTURES");
+            if(game.playerInfo.isHunter()) {
+              width = PDN->getDisplay().getScreen().getStrWidth("CAPTURES");
               offset = 64+(64-width)/2;
-              display.setCursor(offset, 24);
-              display.print("CAPTURES");
+              PDN->getDisplay().getScreen().setCursor(offset, 24);
+              PDN->getDisplay().getScreen().print("CAPTURES");
             } else {
-              width = display.getStrWidth("EVADES");
+              width = PDN->getDisplay().getScreen().getStrWidth("EVADES");
               offset = 64+(64-width)/2;
-              display.setCursor(offset, 24);
-              display.print("EVADES");
+              PDN->getDisplay().getScreen().setCursor(offset, 24);
+              PDN->getDisplay().getScreen().print("EVADES");
             }
             
-            display.setFont(u8g2_font_smart_patrol_nbp_tf);
-            width = display.getUTF8Width(winString.c_str());
+            PDN->getDisplay().getScreen().setFont(u8g2_font_smart_patrol_nbp_tf);
+            width = PDN->getDisplay().getScreen().getUTF8Width(winString.c_str());
             offset = 64+(64-width)/2;
-            display.setCursor(92, 50);
-            display.print(winString);
+            PDN->getDisplay().getScreen().setCursor(92, 50);
+            PDN->getDisplay().getScreen().print(winString);
 
-            display.setDrawColor(1);
+            PDN->getDisplay().getScreen().setDrawColor(1);
             break;
 
           case QdState::HANDSHAKE:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
             break;
 
           case QdState::DUEL_ALERT:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect));
             break;
 
           case QdState::DUEL_COUNTDOWN:
-            if(countdownStage > 3) {
-              display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect)); 
-            } else if(countdownStage == 3) {
-              display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexThree)); 
-            } else if(countdownStage == 2) {
-              display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexTwo));
-            } else if(countdownStage <= 1) {
-              display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexOne));
+            if(game.countdownStage > 3) {
+              PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexConnect)); 
+            } else if(game.countdownStage == 3) {
+              PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexThree)); 
+            } else if(game.countdownStage == 2) {
+              PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexTwo));
+            } else if(game.countdownStage <= 1) {
+              PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexOne));
             }
             break;
 
           case QdState::DUEL:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexDraw));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexDraw));
             break;
 
           case QdState::WIN:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexWin));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexWin));
             break;
 
           case QdState::LOSE:
-            display.drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLose));
+            PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLose));
             break;
           }
     }
 
-    display.sendBuffer();
+    PDN->getDisplay().getScreen().sendBuffer();
     displayIsDirty = false;
   }
 
   return true; // for our timer to continue repeating.
 }
 
-void setGraphRight(int value) {
-  gripLightsOnOff[3] = value < 1;
-  gripLightsOnOff[4] = value < 2;
-  gripLightsOnOff[5] = value < 3;
-  displayLightsOnOff[11] = value < 4;
-  displayLightsOnOff[10] = value < 5;
-  displayLightsOnOff[9] = value < 6;
-  displayLightsOnOff[8] = value < 7;
-  displayLightsOnOff[7] = value < 8;
-  displayLightsOnOff[6] = value < 9;
-}
-
-void setGraphLeft(int value) {
-  gripLightsOnOff[2] = value < 1;
-  gripLightsOnOff[1] = value < 2;
-  gripLightsOnOff[0] = value < 3;
-  displayLightsOnOff[0] = value < 4;
-  displayLightsOnOff[1] = value < 5;
-  displayLightsOnOff[2] = value < 6;
-  displayLightsOnOff[3] = value < 7;
-  displayLightsOnOff[4] = value < 8;
-  displayLightsOnOff[5] = value < 9;
-}
-
 void updateCountdownState() {
-  if(countdownStage == 3) {
-    displayLights[11] = CRGB::Black;
-    displayLights[10] = CRGB::Black;
-    displayLights[0] = CRGB::Black;
-    displayLights[1] = CRGB::Black;
-  } else if(countdownStage == 2) {
-    displayLights[9] = CRGB::Black;
-    displayLights[8] = CRGB::Black;
-    displayLights[2] = CRGB::Black;
-    displayLights[3] = CRGB::Black;
-  } else if(countdownStage == 1) {
-    displayLights[7] = CRGB::Black;
-    displayLights[6] = CRGB::Black;
-    displayLights[4] = CRGB::Black;
-    displayLights[5] = CRGB::Black;
-  }
+  // if(countdownStage == 3) {
+  //   displayLights[11] = CRGB::Black;
+  //   displayLights[10] = CRGB::Black;
+  //   displayLights[0] = CRGB::Black;
+  //   displayLights[1] = CRGB::Black;
+  // } else if(countdownStage == 2) {
+  //   displayLights[9] = CRGB::Black;
+  //   displayLights[8] = CRGB::Black;
+  //   displayLights[2] = CRGB::Black;
+  //   displayLights[3] = CRGB::Black;
+  // } else if(countdownStage == 1) {
+  //   displayLights[7] = CRGB::Black;
+  //   displayLights[6] = CRGB::Black;
+  //   displayLights[4] = CRGB::Black;
+  //   displayLights[5] = CRGB::Black;
+  // }
 }
 
-void setTransmitLight(boolean on) { displayLightsOnOff[12] = on; }
-
-// MOTOR
-
-void setMotorOutput(int value) {
-
-  if (value > 255) {
-    value = 255;
-  } else if (value < 0) {
-    value = 0;
-  }
-
-  analogWrite(motorPin, value);
-}
-
-void quickDrawGame() {
-  if (QD_STATE == QdState::DORMANT) {
-    if (!activationInitiated) {
-      setupActivation();
-    }
-
-    if (shouldActivate()) {
-      updateQDState(QdState::ACTIVATED);
-    }
-  } else if (QD_STATE == QdState::ACTIVATED) {
-    if (beginActivationSequence) {
-      if (activationSequence()) {
-        beginActivationSequence = false; 
-      }
-    }
-
-    activationIdle();
-    if (initiateHandshake()) {
-      updateQDState(QdState::HANDSHAKE);
-    }
-  } else if (QD_STATE == QdState::HANDSHAKE) {
-    if (handshake()) {
-      updateQDState(QdState::DUEL_ALERT);
-    } else if (handshakeTimedOut) {
-      updateQDState(QdState::ACTIVATED);
-    }
-  } else if (QD_STATE == QdState::DUEL_ALERT) {
-    alertDuel();
-    if (alertCount == 9) {
-      updateQDState(QdState::DUEL_COUNTDOWN);
-    }
-  } else if (QD_STATE == QdState::DUEL_COUNTDOWN) {
-    duelCountdown();
-    if (doBattle) {
-      updateQDState(QdState::DUEL);
-    }
-  } else if (QD_STATE == QdState::DUEL) {
-    duel();
-    if (captured) {
-      updateQDState(QdState::LOSE);
-    } else if (wonBattle) {
-      updateQDState(QdState::WIN);
-    } else if (duelTimedOut) {
-      updateQDState(QdState::ACTIVATED);
-    }
-  } else if (QD_STATE == QdState::WIN) {
-    if (!reset) {
-      duelOver();
-    } else {
-      updateScore(true);
-      clearComms();
-      updateQDState(QdState::DORMANT);
-    }
-  } else if (QD_STATE == QdState::LOSE) {
-    if (!reset) {
-      duelOver();
-    } else {
-      updateScore(false);
-      clearComms();
-      updateQDState(QdState::DORMANT);
-    }
-  }
-
-  commitQDState();
-}
+void setTransmitLight(boolean on) { PDN->getDisplayLights().setTransmitLight(on); }
 
 void checkForAppState() {
 
@@ -694,7 +429,7 @@ void checkForAppState() {
         currentPalette = idleColors;
         resetState();
       } else if (validateCommand(command, START_GAME) && APP_STATE == AppState::DEBUG) {
-        if (playerInfo.isHunter()) {
+        if (game.playerInfo.isHunter()) {
           currentPalette = hunterColors;
         } else {
           currentPalette = bountyColors;
@@ -706,7 +441,7 @@ void checkForAppState() {
     }
   }
 
-  flushComms();
+  PDN->flushComms();
 }
 
 void debugEvents() {
@@ -730,295 +465,6 @@ void debugEvents() {
       DEBUG_MODE_SUBSTR = "wait";
     }
   }
-}
-
-void setupActivation() {
-  if (playerInfo.isHunter()) {
-    // hunters have minimal activation delay
-    stateTimer.setTimer(5000);
-    //also go ahead and initialize the next match id here.
-    current_match_id = generateUuid();
-  } else {
-    if (debugDelay > 0) {
-      stateTimer.setTimer(debugDelay);
-    } else {
-      long timer = random(bountyDelay[0], bountyDelay[1]);
-      stateTimer.setTimer(timer);
-    }
-  }
-
-  activationInitiated = true;
-}
-
-bool shouldActivate() { return stateTimer.expired(); }
-
-byte activateMotorCount = 0;
-bool activateMotor = false;
-
-bool activationSequence() {
-  if (stateTimer.expired()) {
-    if (activateMotorCount < 19) {
-      if (activateMotor) {
-        setMotorOutput(255);
-      } else {
-        setMotorOutput(0);
-      }
-
-      stateTimer.setTimer(100);
-      activateMotorCount++;
-      activateMotor = !activateMotor;
-      return false;
-    } else {
-      activateMotorCount = 0;
-      setMotorOutput(0);
-      activateMotor = false;
-      return true;
-    }
-  }
-  return false;
-}
-
-void activationIdle() {
-  // msgDelay was to prevent this from broadcasting every loop.
-  if (msgDelay == 0) {
-    if(playerInfo.isHunter()) 
-    {
-      writeGameComms(HUNTER_BATTLE_MESSAGE);
-    } 
-    else
-    {
-      writeGameComms(BOUNTY_BATTLE_MESSAGE);
-    } 
-  }
-  msgDelay = msgDelay + 1;
-}
-
-bool initiateHandshake() {
-  bool isHunter = playerInfo.isHunter();
-  if (gameCommsAvailable()) {
-    if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) {
-      readGameComms();
-      writeGameComms(HUNTER_BATTLE_MESSAGE);
-      return true;
-    } else if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !isHunter) {
-      readGameComms();
-      writeGameComms(BOUNTY_BATTLE_MESSAGE);
-      return true;
-    }
-  }
-
-  return false;
-}
-
-// when this functions returns true, its the signal to change state
-bool handshake() {
-  // dont transition gamestate, just handshake sub-fsm
-  if (handshakeState == HandshakeState::HANDSHAKE_TIMEOUT_START_STATE) {
-    stateTimer.setTimer(HANDSHAKE_TIMEOUT);
-    handshakeState = HandshakeState::HANDSHAKE_SEND_ROLE_SHAKE_STATE;
-  } else if (handshakeState == HandshakeState::HANDSHAKE_SEND_ROLE_SHAKE_STATE) {
-    if (stateTimer.expired()) {
-      handshakeTimedOut = true;
-      return false;
-    }
-
-    if (playerInfo.isHunter()) {
-      writeGameComms(HUNTER_SHAKE);
-    } else {
-      writeGameComms(BOUNTY_SHAKE);
-    }
-
-    handshakeState = HandshakeState::HANDSHAKE_WAIT_ROLE_SHAKE_STATE;
-  } else if(handshakeState == HandshakeState::HANDSHAKE_WAIT_ROLE_SHAKE_STATE) {
-    if(stateTimer.expired()) {
-      handshakeTimedOut = true;
-      return false;
-    }
-    //While waiting to see the shake, if we get battle message,
-    //then the other device is behind, we need to send it another
-    //battle message ack.
-    if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !playerInfo.isHunter()) 
-    {
-      //it's confused.
-      while(peekGameComms() == HUNTER_BATTLE_MESSAGE) {
-        readGameComms();
-      }
-      writeGameComms(BOUNTY_BATTLE_MESSAGE);
-      writeGameComms(BOUNTY_SHAKE);
-    } 
-    
-    else if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && playerInfo.isHunter()) 
-    {
-      //also confused.
-      while(peekGameComms() == BOUNTY_BATTLE_MESSAGE) {
-        readGameComms();
-      }
-      writeGameComms(HUNTER_BATTLE_MESSAGE);
-      writeGameComms(HUNTER_SHAKE);
-    } 
-    
-    if(peekGameComms() == BOUNTY_SHAKE && playerInfo.isHunter()) 
-    {
-      writeGameString(current_match_id);         // Sending match_id
-      writeGameString(playerInfo.getUserID());              // Sending userID
-      while(peekGameComms() == BOUNTY_SHAKE) {
-          readGameComms();
-      } 
-      handshakeState = HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
-    }
-    else if(peekGameComms() == HUNTER_SHAKE && !playerInfo.isHunter())
-    {
-      writeGameString(playerInfo.getUserID());
-      while(peekGameComms() == HUNTER_SHAKE) {
-        readGameComms();
-      }
-      handshakeState = HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE;
-    }
-
-  } else if (handshakeState == HandshakeState::HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE) {
-    if (stateTimer.expired()) {
-      handshakeTimedOut = true;
-      return false;
-    }
-
-    if (playerInfo.isHunter()) 
-    {
-      if(gameCommsAvailable()) {
-        current_opponent_id = readGameString('\r');
-        writeGameComms(HUNTER_HANDSHAKE_FINAL_ACK);
-        handshakeState = HandshakeState::HANDSHAKE_STATE_FINAL_ACK;
-        return false;
-      }
-    }
-    else if (!playerInfo.isHunter()) 
-    {
-      if(gameCommsAvailable()) {
-        current_match_id    = readGameString('\r');
-        readGameString('\n');
-        current_opponent_id = readGameString('\r');
-        writeGameComms(BOUNTY_HANDSHAKE_FINAL_ACK);
-        handshakeState = HandshakeState::HANDSHAKE_STATE_FINAL_ACK;
-        return false;
-      }
-    }
-  } else if (handshakeState == HandshakeState::HANDSHAKE_STATE_FINAL_ACK) {
-    if (stateTimer.expired()) {
-      handshakeTimedOut = true;
-      return false;
-    }
-    
-    if(!playerInfo.isHunter() && peekGameComms() == HUNTER_HANDSHAKE_FINAL_ACK) {
-      return true;
-    }
-
-    if(playerInfo.isHunter() && peekGameComms() == BOUNTY_HANDSHAKE_FINAL_ACK) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-void alertDuel() {
-  if (alertCount == 0) {
-    buttonBrightness = 255;
-  }
-
-  if (stateTimer.expired()) {
-    if (buttonBrightness == 255) {
-      buttonBrightness = 0;
-    } else {
-      buttonBrightness = 255;
-    }
-
-    alertCount++;
-    FastLED.setBrightness(buttonBrightness);
-    stateTimer.setTimer(alertFlashTime);
-  }
-}
-
-void duelCountdown() {
-  if (stateTimer.expired()) {
-    if (countdownStage == 4) {
-      FastLED.showColor(currentPalette[0], 255);
-      stateTimer.setTimer(FOUR);
-      displayIsDirty = true;
-      countdownStage = 3;
-    } else if (countdownStage == 3) {
-      FastLED.showColor(currentPalette[0], 150);
-      stateTimer.setTimer(THREE);
-      displayIsDirty = true;
-      countdownStage = 2;
-    } else if (countdownStage == 2) {
-      FastLED.showColor(currentPalette[0], 75);
-      stateTimer.setTimer(TWO);
-      displayIsDirty = true;
-      countdownStage = 1;
-    } else if (countdownStage == 1) {
-      FastLED.showColor(currentPalette[0], 0);
-      stateTimer.setTimer(ONE);
-      displayIsDirty = true;
-      countdownStage = 0;
-    } else if (countdownStage == 0) {
-      doBattle = true;
-    }
-  }
-}
-
-void duel() {
-
-  if (peekGameComms() == ZAP) {
-    readGameComms();
-    writeGameComms(YOU_DEFEATED_ME);
-    captured = true;
-    return;
-  } else if (peekGameComms() == YOU_DEFEATED_ME) {
-    readGameComms();
-    wonBattle = true;
-    return;
-  } else {
-    readGameComms();
-  }
-
-  // primary.tick();
-
-  if (startDuelTimer) {
-    stateTimer.setTimer(DUEL_TIMEOUT);
-    startDuelTimer = false;
-  }
-
-  if (stateTimer.expired()) {
-    // FastLED.setBrightness(0);
-    bvbDuel = false;
-    duelTimedOut = true;
-  }
-}
-
-void duelOver() {
-  if (startBattleFinish) {
-    startBattleFinish = false;
-    setMotorOutput(255);
-  }
-
-  if (stateTimer.expired()) {
-    stateTimer.setTimer(500);
-    if (finishBattleBlinkCount < FINISH_BLINKS) {
-      if (finishBattleBlinkCount % 2 == 0) {
-        setMotorOutput(0);
-      } else {
-        setMotorOutput(255);
-      }
-      finishBattleBlinkCount = finishBattleBlinkCount + 1;
-    } else {
-      setMotorOutput(0);
-      reset = true;
-    }
-  }
-}
-
-bool isButtonPressed() {
-  return digitalRead(primaryButtonPin) == LOW ||
-         digitalRead(secondaryButtonPin) == LOW;
 }
 
 void updateScore(boolean win) {
@@ -1067,7 +513,7 @@ void setupDevice() {
 
     String playerJson = readDebugString('\n');
     playerJson = stripWhitespace(playerJson);
-    playerInfo.fromJson(playerJson);
+    game.setPlayerInfo(playerJson);
 
     memset(matches, 0, sizeof(matches));
     wins = 0;
@@ -1105,106 +551,43 @@ void checkInDevice() {
   writeDebugByte(DEBUG_DELIMITER);
 }
 
-void setActivationDelay() {
-  if (debugCommsAvailable()) {
-    String activationDelay = fetchDebugData();
-    debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
-    // Serial.print("Set Activation Delay: ");
-    // Serial.println(debugDelay);
-  }
-}
-
-// state functions
-void updateQDState(QdState futureState) {
-  newState = futureState;
-  stateChangeReady = true;
-}
-
-void commitQDState() {
-  if (stateChangeReady) {
-    QD_STATE = newState;
-    resetState();
-  }
-  stateChangeReady = false;
-}
-
-void resetState() {
-  reset = false;
-  activationInitiated = false;
-  beginActivationSequence = true;
-  countdownStage = COUNTDOWN_STAGES;
-  handshakeState = HandshakeState::HANDSHAKE_TIMEOUT_START_STATE;
-  handshakeTimedOut = false;
-  startDuelTimer = true;
-  sendZapSignal = true;
-  duelTimedOut = false;
-  captured = false;
-  wonBattle = false;
-  overchargeStep = 0;
-  overchargeFlickers = 0;
-  startBattleFinish = true;
-  initiatePowerDown = true;
-  doBattle = false;
-  alertCount = 0;
-  finishBattleBlinkCount = 0;
-  ledBrightness = 65;
-  displayIsDirty = true;
-  FastLED.clear(true);
-  FastLED.setBrightness(65);
-  clearComms();
-  stateTimer.invalidate();
-  setMotorOutput(0);
-}
+// void setActivationDelay() {
+//   if (debugCommsAvailable()) {
+//     String activationDelay = fetchDebugData();
+//     debugDelay = strtoul(activationDelay.c_str(), NULL, 10);
+//     // Serial.print("Set Activation Delay: ");
+//     // Serial.println(debugDelay);
+//   }
+// }
 
 void drawDebugLabels() {
-  display.drawStr(16, 10, "BTN 1:");
-  display.drawStr(16, 20, "BTN 2:");
-  display.drawStr(16, 30, "TX:");
-  display.drawStr(16, 40, "RX:");
-  display.drawStr(16, 50, "MOTOR:");
-  display.drawStr(16, 60, "FRAME:");
+  PDN->getDisplay().getScreen().drawStr(16, 10, "BTN 1:");
+  PDN->getDisplay().getScreen().drawStr(16, 20, "BTN 2:");
+  PDN->getDisplay().getScreen().drawStr(16, 30, "TX:");
+  PDN->getDisplay().getScreen().drawStr(16, 40, "RX:");
+  PDN->getDisplay().getScreen().drawStr(16, 50, "MOTOR:");
+  PDN->getDisplay().getScreen().drawStr(16, 60, "FRAME:");
 }
 
 void drawDebugState(char *button1State, char *button2State, char *txData,
                     char *rxData, char *motorSpeed, char *led1Pattern,
                     char *fps) {
-  display.drawStr(80, 10, button1State);
-  display.drawStr(80, 20, button2State);
-  display.drawStr(80, 30, txData);
-  display.drawStr(80, 40, rxData);
-  display.drawStr(80, 50, motorSpeed);
-  display.drawStr(80, 60, fps);
+  PDN->getDisplay().getScreen().drawStr(80, 10, button1State);
+  PDN->getDisplay().getScreen().drawStr(80, 20, button2State);
+  PDN->getDisplay().getScreen().drawStr(80, 30, txData);
+  PDN->getDisplay().getScreen().drawStr(80, 40, rxData);
+  PDN->getDisplay().getScreen().drawStr(80, 50, motorSpeed);
+  PDN->getDisplay().getScreen().drawStr(80, 60, fps);
 }
 
 void updatePrimaryButtonState() {
-  display.setCursor(2, 48);
-  display.print(u8x8_u8toa(primaryPresses, 3));
+  PDN->getDisplay().getScreen().setCursor(2, 48);
+  PDN->getDisplay().getScreen().print(u8x8_u8toa(primaryPresses, 3));
 }
 
 void updateSecondaryButtonState() {
-  display.setCursor(80, 20);
-  display.print(u8x8_u8toa(secondaryPresses, 3));
-}
-
-void updateMotorState() {
-  display.setCursor(80, 50);
-  display.print(u8x8_u8toa(motorSpeed, 3));
-}
-
-void updateTXState() {
-  display.setCursor(80, 30);
-  display.print(u8x8_u8toa(lastTxPacket, 3));
-}
-
-void updateRXState() {
-  display.setCursor(80, 40);
-  display.print(u8x8_u8toa(lastRxPacket, 3));
-}
-
-void updateFramerate() {
-  int duration = frameDuration;
-  display.setCursor(80, 60);
-  display.print(u8x8_u8toa(duration, 3));
+  PDN->getDisplay().getScreen().setCursor(80, 20);
+  PDN->getDisplay().getScreen().print(u8x8_u8toa(secondaryPresses, 3));
 }
 
 // BUTTONS
@@ -1220,42 +603,5 @@ void primaryButtonClick() {
       break;
     default:
       break;
-  }
-}
-
-void secondaryButtonClick() {
-  secondaryPresses += 1;
-  setGraphRight(secondaryPresses % 7);
-}
-
-void primaryButtonDoubleClick() { setTransmitLight(!displayLightsOnOff[12]); }
-
-void secondaryButtonDoubleClick() {
-  if (motorSpeed == 0) {
-    motorSpeed = 65;
-  } else if (motorSpeed == 65) {
-    motorSpeed = 155;
-  } else if (motorSpeed == 155) {
-    motorSpeed = 255;
-  } else if (motorSpeed == 255) {
-    motorSpeed = 0;
-  }
-}
-
-void primaryButtonLongPress() {
-  playerInfo.toggleHunter();
-
-  if (playerInfo.isHunter()) {
-    currentPalette = hunterColors;
-  } else {
-    currentPalette = bountyColors;
-  }
-}
-
-void secondaryButtonLongPress() {
-  if (playerInfo.isHunter()) {
-    writeTxTransaction(1);
-  } else {
-    writeRxTransaction(1);
   }
 }

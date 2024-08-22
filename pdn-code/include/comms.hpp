@@ -27,6 +27,3 @@ void writeDebugByte(byte command);
 
 void writeTxTransaction(byte command);
 void writeRxTransaction(byte command);
-
-void clearComms();
-void flushComms();

@@ -22,7 +22,7 @@ public:
 
   Allegiance getAllegiance() const;
   
-  void setUserID(UUID& generator);
+  void setUserID(char* newId);
   String getUserID() const;
   void clearUserID();
 

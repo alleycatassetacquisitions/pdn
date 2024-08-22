@@ -1,8 +1,6 @@
-
 #include <ArduinoJson.h>
 
 #include "../include/match.hpp"
-#include "match.hpp"
 
 void Match::setupMatch(UUID id_generator, String hunter, String bounty)
 {
