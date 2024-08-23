@@ -14,6 +14,9 @@ class StateMachine {
         }
         
         virtual std::vector<State> populateStateMap();
+        virtual void onStateMounting(State* state) = 0;
+        virtual void onStateDismounting(State* state) = 0;
+        virtual void onStateLooping(State* state) = 0;
 
         void checkStateTransitions()
         {
@@ -22,14 +25,20 @@ class StateMachine {
         };
         
         void commitState() {
+
+            onStateDismounting(*currentState);
+            currentState.onStateDismounted(PDN);
+            
             currentState = newState;
             stateChangeReady = false;
-            newState.onStateDismounted(&PDN);
-            currentState.onStateMounted(&PDN);
+            
+            onStateMounting(*currentState);
+            currentState.onStateMounted(PDN);
         };
 
         void loop() {
-            currentState.onStateLoop(&PDN);
+            onStateLooping(*currentState);
+            currentState.onStateLoop(PDN);
             checkStateTransitions();
             if(stateChangeReady) {
                 commitState();

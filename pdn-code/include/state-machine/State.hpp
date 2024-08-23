@@ -9,7 +9,7 @@
 class State;
 
 struct StateId {
-    StateId(int stateid) {
+    explicit StateId(int stateid) {
         id = stateid;
     }
     int id;
@@ -34,14 +34,14 @@ class StateTransition
 class State
 {
 public:
-    State(StateId stateId);
+    explicit State(StateId stateId);
     void addTransition(StateTransition* transition);
     State* checkTransitions();
     StateId getName();
 
-    virtual void onStateMounted(Device PDN);
-    virtual void onStateLoop(Device PDN);
-    virtual void onStateDismounted(Device PDN);
+    virtual void onStateMounted(Device* PDN);
+    virtual void onStateLoop(Device* PDN);
+    virtual void onStateDismounted(Device* PDN);
 
 private:
     StateId name;

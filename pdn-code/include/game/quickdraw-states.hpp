@@ -1,4 +1,5 @@
-#include <vector>
+#pragma once
+
 #include "../state-machine/State.hpp"
 
 // Quickdraw States
@@ -29,34 +30,48 @@ enum class HandshakeState : uint8_t
   HANDSHAKE_STATE_FINAL_ACK = 4
 };
 
+class QuickdrawStateData{};
+
+template <class QuickdrawStateData>
 class QuickdrawState : public State {
   public:
+    QuickdrawState();
+    ~QuickdrawState();
+    QuickdrawStateData payload;
     QuickdrawState(StateId stateId) : State(stateId) {};
 };
 
-class Initiate : public QuickdrawState {
+class InitiateStateData : QuickdrawStateData {
+
+};
+
+class Initiate : public QuickdrawState<InitiateStateData> {
   
   public:
     Initiate() : QuickdrawState(INITIATE){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
     
 };
 
-class Dormant : public QuickdrawState {
+class DormantStateData : QuickdrawStateData {
+
+};
+
+class Dormant : public QuickdrawState<DormantStateData> {
   
   public:
     Dormant() : QuickdrawState(DORMANT){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     unsigned long bountyDelay[2] = {300000, 900000};
@@ -70,16 +85,18 @@ class Dormant : public QuickdrawState {
     
 };
 
-class Activated : public QuickdrawState {
+class ActivateStateData : QuickdrawStateData {};
+
+class Activated : public QuickdrawState<ActivateStateData> {
   
   public:
     Activated() : QuickdrawState(ACTIVATED){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     const float smoothingPoints = 255;
@@ -91,16 +108,18 @@ class Activated : public QuickdrawState {
     
 };
 
-class Handshake : public QuickdrawState {
+class HandshakeStateData : QuickdrawStateData {};
+
+class Handshake : public QuickdrawState<HandshakeStateData> {
   
   public:
     Handshake() : QuickdrawState(HANDSHAKE){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     HandshakeState handshakeState = HandshakeState::HANDSHAKE_TIMEOUT_START_STATE;
@@ -109,16 +128,18 @@ class Handshake : public QuickdrawState {
     
 };
 
-class DuelAlert : public QuickdrawState {
+class DuelAlertStateData : QuickdrawStateData {};
+
+class DuelAlert : public QuickdrawState<DuelAlertStateData> {
   
   public:
     DuelAlert() : QuickdrawState(DUEL_ALERT){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     int alertFlashTime = 250;
@@ -126,16 +147,18 @@ class DuelAlert : public QuickdrawState {
     
 };
 
-class DuelCountdown : public QuickdrawState {
+class DuelCountdownStateData : QuickdrawStateData {};
+
+class DuelCountdown : public QuickdrawState<DuelCountdownStateData> {
   
   public:
     DuelCountdown() : QuickdrawState(DUEL_COUNTDOWN){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     bool doBattle = false;
@@ -148,16 +171,18 @@ class DuelCountdown : public QuickdrawState {
     
 };
 
-class Duel : public QuickdrawState {
+class DuelStateData : QuickdrawStateData {};
+
+class Duel : public QuickdrawState<DuelStateData> {
   
   public:
     Duel() : QuickdrawState(DUEL){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     bool captured = false;
@@ -170,16 +195,18 @@ class Duel : public QuickdrawState {
     
 };
 
-class Win : public QuickdrawState {
+class WinStateData : QuickdrawStateData {};
+
+class Win : public QuickdrawState<WinStateData> {
   
   public:
     Win() : QuickdrawState(WIN){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
   private:
     bool startBattleFinish = true;
@@ -188,16 +215,18 @@ class Win : public QuickdrawState {
     
 };
 
-class Lose : public QuickdrawState {
+class LoseStateData : QuickdrawStateData {};
+
+class Lose : public QuickdrawState<LoseStateData> {
   
   public:
     Lose() : QuickdrawState(LOSE){
       
     };
 
-    void onStateMounted(Device PDN);
-    void onStateLoop(Device PDN);
-    void onStateDismounted(Device PDN);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
     
     private:
       bool initiatePowerDown = true;

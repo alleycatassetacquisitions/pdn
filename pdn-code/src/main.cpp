@@ -41,26 +41,6 @@ int secondaryPresses = 0;
 
 void primaryButtonClick();
 
-// LEDs
-
-CRGBPalette16 bountyColors = CRGBPalette16(
-    CRGB::Red, CRGB::Red, CRGB::Red, CRGB::Orange, CRGB::Red, CRGB::Red,
-    CRGB::Red, CRGB::Orange, CRGB::Orange, CRGB::Red, CRGB::Red, CRGB::Red,
-    CRGB::Orange, CRGB::Red, CRGB::Red, CRGB::Red);
-
-CRGBPalette16 hunterColors = CRGBPalette16(
-    CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkBlue,
-    CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkBlue,
-    CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen,
-    CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen);
-
-CRGBPalette16 idleColors = CRGBPalette16(
-  CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue, 
-  CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow, 
-  CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue, 
-  CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
-);
-
 CRGBPalette16 currentPalette = bountyColors;
 
 void animateLights();
@@ -99,19 +79,6 @@ String dumpMatchesToJson() {
   String output;
   serializeJson(matchesArray, output);
   return output;
-}
-
-void addMatch(bool winner_is_hunter) {
-  if (numMatches < MAX_MATCHES) {
-    // Create a Match object
-    if(game.playerInfo.isHunter()) {
-      matches[numMatches].setupMatch(current_match_id, game.playerInfo.getUserID(), current_opponent_id);
-    } else {
-      matches[numMatches].setupMatch(current_match_id, current_opponent_id, game.playerInfo.getUserID());
-    }
-    matches[numMatches].setWinner(winner_is_hunter);
-    numMatches++;
-  }
 }
 
 String debugOutput = "";
