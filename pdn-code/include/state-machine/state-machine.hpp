@@ -45,6 +45,10 @@ class StateMachine {
             }
         }
 
+        State getCurrentState() {
+            return currentState;
+        }
+
     private:
         Device* PDN = Device::GetInstance();
 
