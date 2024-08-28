@@ -14,7 +14,8 @@ Device::Device() :
     secondary(secondaryButtonPin, true, true),
     displayLights(numDisplayLights),
     gripLights(numGripLights) 
-{                       
+{
+
 
 };
 

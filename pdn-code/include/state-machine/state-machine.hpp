@@ -12,7 +12,7 @@ class StateMachine {
             stateMap = populateStateMap();
             currentState = &stateMap[0];
         }
-        
+
         virtual std::vector<State> populateStateMap();
         virtual void onStateMounting(State* state) = 0;
         virtual void onStateDismounting(State* state) = 0;
