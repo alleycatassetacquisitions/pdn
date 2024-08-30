@@ -1,7 +1,7 @@
 #pragma once
 
 #include <inttypes.h>
-#include "State.hpp"
+#include "state.hpp"
 
 // APPLICATION STATES
 enum class AppStates : uint8_t {
@@ -12,7 +12,7 @@ enum class AppStates : uint8_t {
 };
 
 template <AppStates state>
-class AppState : public State{};
+class AppState : public state{};
 
 
 // SERIAL COMMANDS

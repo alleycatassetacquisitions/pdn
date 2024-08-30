@@ -1,19 +1,25 @@
 #pragma once
 
 #include <vector>
-#include "State.hpp"
+#include "state.hpp"
 #include "../device/device.hpp"
 
 template <class State>
 class StateMachine {
     
     public:
-        StateMachine() {
+        typedef State state;
+
+        StateMachine() = default;
+
+        virtual ~StateMachine() = default;
+
+        void initialize() {
             stateMap = populateStateMap();
             currentState = &stateMap[0];
         }
 
-        virtual std::vector<State> populateStateMap();
+        virtual std::vector<state> populateStateMap() = 0;
         virtual void onStateMounting(State* state) = 0;
         virtual void onStateDismounting(State* state) = 0;
         virtual void onStateLooping(State* state) = 0;

@@ -1,10 +1,11 @@
 #pragma once
 
-#include "../state-machine/State.hpp"
+#include "simple-timer.hpp"
+#include "../state-machine/state.hpp"
 
 // Quickdraw States
-StateId INITIATE = StateId(0);
-StateId DORMANT = StateId(1);
+StateId DORMANT = StateId(0);
+StateId ACTIVATION_SEQUENCE = StateId(1);
 StateId ACTIVATED = StateId(2);
 StateId HANDSHAKE = StateId(3);
 StateId DUEL_ALERT = StateId(4);
@@ -35,68 +36,77 @@ class QuickdrawStateData{};
 template <class QuickdrawStateData>
 class QuickdrawState : public State {
   public:
-    QuickdrawState();
+  typedef QuickdrawStateData stateDataType;
+    explicit QuickdrawState(StateId stateId) : State(stateId) {
+      payload = new stateDataType();
+    }
     ~QuickdrawState();
-    QuickdrawStateData payload;
-    QuickdrawState(StateId stateId) : State(stateId) {};
-};
+    QuickdrawStateData* payload;
 
-class InitiateStateData : QuickdrawStateData {
-
-};
-
-class Initiate : public QuickdrawState<InitiateStateData> {
-  
-  public:
-    Initiate() : QuickdrawState(INITIATE){
-      
-    };
-
-    void onStateMounted(Device* PDN) override;
-    void onStateLoop(Device* PDN) override;
-    void onStateDismounted(Device* PDN) override;
-    
 };
 
 class DormantStateData : QuickdrawStateData {
-
+public:
+  bool isHunter = false;
+  unsigned long bountyDelay[2] = {300000, 900000};
+  unsigned long overchargeDelay[2] = {180000, 300000};
+  unsigned long debugDelay = 3000;
 };
 
 class Dormant : public QuickdrawState<DormantStateData> {
   
   public:
-    Dormant() : QuickdrawState(DORMANT){
-      
-    };
+    Dormant();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
-  private:
-    unsigned long bountyDelay[2] = {300000, 900000};
-    unsigned long overchargeDelay[2] = {180000, 300000};
-    unsigned long debugDelay = 3000;
-    bool activationInitiated = false;
-    bool beginActivationSequence = true;
+    bool transitionToActivationSequence();
 
-    byte activateMotorCount = 0;
-    bool activateMotor = false;
+  private:
+    SimpleTimer dormantTimer;
     
 };
 
-class ActivateStateData : QuickdrawStateData {};
+class ActivationSequenceStateData : QuickdrawStateData {
+public:
+  byte activateMotorCount = 0;
+  bool activateMotor = false;
+  const int activationStepDuration = 100;
+};
 
-class Activated : public QuickdrawState<ActivateStateData> {
+class ActivationSequence : public QuickdrawState<ActivationSequenceStateData> {
+  public:
+  ActivationSequence();
+  void onStateMounted(Device* PDN) override;
+  void onStateLoop(Device* PDN) override;
+  void onStateDismounted(Device* PDN) override;
+
+  bool transitionToActivated();
+
+private:
+  SimpleTimer activationSequenceTimer;
+};
+
+class ActivatedStateData : QuickdrawStateData {
+  public:
+  bool isHunter = false;
+};
+
+class Activated : public QuickdrawState<ActivatedStateData> {
   
   public:
-    Activated() : QuickdrawState(ACTIVATED){
-      
-    };
+    Activated();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
+
+    void broadcast();
+    void ledAnimation(Device* PDN);
+
+    bool transitionToHandshake();
 
   private:
     const float smoothingPoints = 255;
@@ -104,8 +114,7 @@ class Activated : public QuickdrawState<ActivateStateData> {
     float pwm_val = 0;
     bool breatheUp = true;
     long idleLEDBreak = 5000;
-    byte msgDelay = 0;
-    
+    CRGBPalette16 currentPalette;
 };
 
 class HandshakeStateData : QuickdrawStateData {};
@@ -113,9 +122,7 @@ class HandshakeStateData : QuickdrawStateData {};
 class Handshake : public QuickdrawState<HandshakeStateData> {
   
   public:
-    Handshake() : QuickdrawState(HANDSHAKE){
-      
-    };
+    Handshake();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -133,9 +140,7 @@ class DuelAlertStateData : QuickdrawStateData {};
 class DuelAlert : public QuickdrawState<DuelAlertStateData> {
   
   public:
-    DuelAlert() : QuickdrawState(DUEL_ALERT){
-      
-    };
+    DuelAlert();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -152,9 +157,7 @@ class DuelCountdownStateData : QuickdrawStateData {};
 class DuelCountdown : public QuickdrawState<DuelCountdownStateData> {
   
   public:
-    DuelCountdown() : QuickdrawState(DUEL_COUNTDOWN){
-      
-    };
+    DuelCountdown();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -176,9 +179,7 @@ class DuelStateData : QuickdrawStateData {};
 class Duel : public QuickdrawState<DuelStateData> {
   
   public:
-    Duel() : QuickdrawState(DUEL){
-      
-    };
+    Duel();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -200,9 +201,7 @@ class WinStateData : QuickdrawStateData {};
 class Win : public QuickdrawState<WinStateData> {
   
   public:
-    Win() : QuickdrawState(WIN){
-      
-    };
+    Win();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -220,9 +219,7 @@ class LoseStateData : QuickdrawStateData {};
 class Lose : public QuickdrawState<LoseStateData> {
   
   public:
-    Lose() : QuickdrawState(LOSE){
-      
-    };
+    Lose();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;

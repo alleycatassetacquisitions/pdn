@@ -43,7 +43,7 @@ class Quickdraw : public StateMachine<QuickdrawState<QuickdrawStateData>>
 
     public:
         Quickdraw();
-        ~Quickdraw();
+        ~Quickdraw() override;
         std::vector<QuickdrawState<QuickdrawStateData>> populateStateMap() override;
         void onStateMounting(QuickdrawState<QuickdrawStateData>* state) override;
         void onStateDismounting(QuickdrawState<QuickdrawStateData>* state) override;

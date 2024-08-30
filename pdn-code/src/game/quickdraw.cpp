@@ -1,14 +1,69 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw() {
+Quickdraw::Quickdraw(): StateMachine(), matches{} {
     PDN = Device::GetInstance();
 }
 
-std::vector<QuickdrawState> Quickdraw::populateStateMap() {
-    
+Quickdraw::~Quickdraw() {
 }
 
+std::vector<QuickdrawState<QuickdrawStateData>> Quickdraw::populateStateMap() {
 
+}
+
+void Quickdraw::onStateMounting(QuickdrawState<QuickdrawStateData> *state) {
+}
+
+void Quickdraw::onStateDismounting(QuickdrawState<QuickdrawStateData> *state) {
+}
+
+void Quickdraw::onStateLooping(QuickdrawState<QuickdrawStateData> *state) {
+}
+
+void Quickdraw::addMatch(String currentMatchId, String currentOpponentId) {
+}
+
+void Quickdraw::setupActivation() {
+}
+
+bool Quickdraw::shouldActivate() {
+}
+
+bool Quickdraw::activationSequence() {
+}
+
+void Quickdraw::activationIdle() {
+}
+
+void Quickdraw::activationOvercharge() {
+}
+
+bool Quickdraw::initiateHandshake() {
+}
+
+bool Quickdraw::handshake() {
+}
+
+void Quickdraw::alertDuel() {
+}
+
+void Quickdraw::duelCountdown() {
+}
+
+void Quickdraw::duel() {
+}
+
+void Quickdraw::duelOver() {
+}
+
+void Quickdraw::updateScore(boolean win) {
+}
+
+void Quickdraw::setPlayerInfo(Player player) {
+}
+
+void Quickdraw::setPlayerInfo(String playerJson) {
+}
 
 void Quickdraw::quickDrawGame() {
   StateMachine::loop();

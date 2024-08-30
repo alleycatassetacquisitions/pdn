@@ -1,4 +1,4 @@
-#include "../include/state-machine/State.hpp"
+#include "../include/state-machine/state.hpp"
 
 StateTransition::StateTransition(std::function<bool()> condition, State* nextState)
         : condition(condition), nextState(nextState) {}
