@@ -49,13 +49,13 @@ void HandshakeWaitState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeWaitState::onStateLoop(Device *PDN) {
-    if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && player->isHunter) {
+    if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && player->isHunter()) {
         while(peekGameComms() == BOUNTY_BATTLE_MESSAGE) {
             readGameComms();
         }
         writeGameComms(HUNTER_BATTLE_MESSAGE);
         writeGameComms(HUNTER_SHAKE);
-    } else if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !player->isHunter) {
+    } else if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !player->isHunter()) {
         while(peekGameComms() == HUNTER_BATTLE_MESSAGE) {
             readGameComms();
         }
@@ -63,7 +63,7 @@ void HandshakeWaitState::onStateLoop(Device *PDN) {
         writeGameComms(BOUNTY_SHAKE);
     }
 
-    if(peekGameComms() == BOUNTY_SHAKE && player->isHunter) {
+    if(peekGameComms() == BOUNTY_SHAKE && player->isHunter()) {
         writeGameString(player->getCurrentMatchId());
         writeGameString(player->getUserID());
         while(peekGameComms() == BOUNTY_SHAKE) {
@@ -161,9 +161,9 @@ bool HandshakeFinalAckState::handshakeSuccessful() {
 
 bool HandshakeStateMachine::handshakeSuccessful() {
     if(getCurrentState()->getName() == HANDSHAKE_FINAL_ACK_STATE) {
-        HandshakeFinalAckState* currentState = dynamic_cast<HandshakeFinalAckState*>(getCurrentState());
+        State* currentState = getCurrentState();
         if(currentState != nullptr) {
-            return currentState->handshakeSuccessful();
+            return static_cast<HandshakeFinalAckState*>(currentState)->handshakeSuccessful();
         }
     }
 }

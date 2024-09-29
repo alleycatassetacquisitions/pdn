@@ -2,8 +2,9 @@
 // Created by Elli Furedy on 8/30/2024.
 //
 #pragma once
-#include "quickdraw-states.hpp"
+#include "../player.hpp"
 #include "../state-machine/state-machine.hpp"
+#include "../comms.hpp"
 
 // STATE - HANDSHAKE
 /**

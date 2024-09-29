@@ -1,10 +1,10 @@
 #pragma once
 
 #include "handshake-machine.hpp"
-#include "handshake-machine.hpp"
 #include "../player.hpp"
 #include "simple-timer.hpp"
 #include "../state-machine/state.hpp"
+#include "../comms.hpp"
 
 
 // Quickdraw States
