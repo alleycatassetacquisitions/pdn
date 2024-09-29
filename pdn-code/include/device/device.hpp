@@ -28,6 +28,9 @@ class Device {
         void attachSecondaryButtonDoubleClick(callbackFunction doubleClick);
         void attachSecondaryButtonLongPress(callbackFunction longPress);
 
+        OneButton getPrimaryButton();
+        OneButton getSecondaryButton();
+
         Haptics getVibrator();
         Display getDisplay();
         DisplayLights getDisplayLights();

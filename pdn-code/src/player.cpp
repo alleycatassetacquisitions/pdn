@@ -63,3 +63,19 @@ String Player::getUserID() const
 {
     return id;
 }
+
+void Player::setCurrentMatchId(String* matchId) {
+    currentMatchId = *matchId;
+}
+
+String Player::getCurrentMatchId() {
+    return currentMatchId;
+}
+
+void Player::setCurrentOpponentId(String* opponentId) {
+    currentOpponentId = *opponentId;
+}
+
+String Player::getCurrentOpponentId() {
+    return currentOpponentId;
+}

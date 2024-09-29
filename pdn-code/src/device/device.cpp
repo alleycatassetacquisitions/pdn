@@ -61,6 +61,10 @@ void Device::initializePins() {
     pinMode(gripLightsPin, OUTPUT);
 }
 
+String Device::getDeviceId() {
+    return deviceID;
+}
+
 void Device::attachPrimaryButtonClick(callbackFunction click) {
     primary.attachClick(click);
 }
@@ -83,6 +87,14 @@ void Device::attachSecondaryButtonDoubleClick(callbackFunction doubleClick) {
 
 void Device::attachSecondaryButtonLongPress(callbackFunction longPress) {
     secondary.attachLongPressStop(longPress);
+}
+
+OneButton Device::getPrimaryButton() {
+    return primary;
+}
+
+OneButton Device::getSecondaryButton() {
+    return secondary;
 }
 
 Haptics Device::getVibrator()

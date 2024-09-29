@@ -1,10 +1,9 @@
 #pragma once
 
-#include <iostream>
 #include <functional>
+#include <utility>
 #include <vector>
 
-#include "state-machine.hpp"
 #include "../device/device.hpp"
 
 class State;
@@ -20,13 +19,18 @@ struct StateId {
 class StateTransition {
 public:
     // Constructor
-    StateTransition(std::function<bool()> condition, State *nextState);
+    StateTransition(std::function<bool()> condition, State *nextState)
+        : condition(std::move(condition)), nextState(nextState) {};
 
     // Method to check if the transition condition is met
-    bool isConditionMet();
+    bool isConditionMet() const {
+        return condition();
+    }
 
     // Getter for the next state
-    State *getNextState();
+    State *getNextState() const {
+        return nextState;
+    };
 
     std::function<bool()> condition; // Function pointer that returns true based on the global state
     State *nextState; // Pointer to the next state
@@ -36,10 +40,10 @@ class State {
 public:
     virtual ~State() = default;
 
-    explicit State(StateId stateId): name(stateId) {
+    explicit State(int stateId): name(stateId) {
     }
 
-    void addTransition(StateTransition *transition) {
+    virtual void addTransition(StateTransition *transition) {
         transitions.push_back(transition);
     };
 
@@ -52,35 +56,15 @@ public:
         return nullptr;
     };
 
-    StateId getName() { return name; };
+    int getName() const { return name; };
 
-    virtual void onStateMounted(Device *PDN) = 0;
+    virtual void onStateMounted(Device *PDN) {};
 
-    virtual void onStateLoop(Device *PDN) = 0;
+    virtual void onStateLoop(Device *PDN) {};
 
-    virtual void onStateDismounted(Device *PDN) = 0;
+    virtual void onStateDismounted(Device *PDN) {};
 
 private:
-    StateId name;
+    int name;
     std::vector<StateTransition *> transitions;
 };
-
-// Leaving this here for now, but I don't think it's actually needed.
-// template<class StateMachine>
-// class StateWithStateMachine : public State {
-//
-// public:
-//     explicit StateWithStateMachine(StateMachine stateMachineForState, StateId stateId) : State(stateId) {
-//         stateMachine = stateMachineForState;
-//     };
-//
-//     virtual void onStateMounted(Device *PDN) {};
-//     virtual void onStateLoop(Device *PDN) {
-//         stateMachine.loop();
-//     };
-//     virtual void onStateDismounted(Device *PDN);
-//
-// private:
-//     StateMachine stateMachine;
-//
-// };

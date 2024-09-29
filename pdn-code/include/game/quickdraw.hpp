@@ -30,46 +30,15 @@ CRGBPalette16 idleColors = CRGBPalette16(
   CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
 );
 
-class Quickdraw : public StateMachine<QuickdrawState<QuickdrawStateData>>
+class Quickdraw : public StateMachine
 {
-        SimpleTimer stateTimer;
-        Device* PDN;
-
         Match matches[MAX_MATCHES];
         int numMatches = 0;
 
-        String currentMatchId;
-        String currentOpponentId;
+        Player* player;
 
     public:
-        Quickdraw();
-        ~Quickdraw() override;
-        std::vector<QuickdrawState<QuickdrawStateData>> populateStateMap() override;
-        void onStateMounting(QuickdrawState<QuickdrawStateData>* state) override;
-        void onStateDismounting(QuickdrawState<QuickdrawStateData>* state) override;
-        void onStateLooping(QuickdrawState<QuickdrawStateData>* state) override;
-
-        Player playerInfo;
-
-        void addMatch(String currentMatchId, String currentOpponentId);
-
-        void quickDrawGame();
-        void setupActivation();
-        bool shouldActivate();
-        bool activationSequence();
-        void activationIdle();
-        void activationOvercharge();
-        bool initiateHandshake();
-        bool handshake();
-        void alertDuel();
-        void duelCountdown();
-        void duel();
-        void duelOver();
-
-        void updateScore(boolean win);
-
-        int wins = 0;
-
-        void setPlayerInfo(Player player);
-        void setPlayerInfo(String playerJson);
+        Quickdraw(Player* player);
+        ~Quickdraw();
+        std::vector<State*> populateStateMap() override;
 };

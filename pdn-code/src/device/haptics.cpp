@@ -20,6 +20,10 @@ void Haptics::max()
     analogWrite(pinNumber, 255);
 }
 
+int Haptics::getIntensity() {
+    return intensity;
+}
+
 void Haptics::setIntensity(int intensity)
 {
     if(intensity > 255) this->intensity = 255;

@@ -39,6 +39,7 @@ class Haptics {
         bool isOn();
         void max();
         void setIntensity(int intensity);
+        int getIntensity();
         void off();
         // void loadPattern(HapticsPattern pattern);
         // int playPattern();

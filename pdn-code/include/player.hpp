@@ -26,10 +26,19 @@ public:
   String getUserID() const;
   void clearUserID();
 
+  void setCurrentMatchId(String* matchId);
+  String getCurrentMatchId();
+
+  void setCurrentOpponentId(String* opponentId);
+  String getCurrentOpponentId();
+
 private:
   String id = "default";
 
   Allegiance allegiance = Allegiance::RESISTANCE;
+
+  String currentMatchId = "";
+  String currentOpponentId = "";
 
   bool hunter = false;
 };

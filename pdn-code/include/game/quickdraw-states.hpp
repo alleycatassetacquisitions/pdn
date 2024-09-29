@@ -1,62 +1,31 @@
 #pragma once
 
+#include "handshake-machine.hpp"
+#include "handshake-machine.hpp"
+#include "../player.hpp"
 #include "simple-timer.hpp"
 #include "../state-machine/state.hpp"
 
+
 // Quickdraw States
-StateId DORMANT = StateId(0);
-StateId ACTIVATION_SEQUENCE = StateId(1);
-StateId ACTIVATED = StateId(2);
-StateId HANDSHAKE = StateId(3);
-StateId DUEL_ALERT = StateId(4);
-StateId DUEL_COUNTDOWN = StateId(5);
-StateId DUEL = StateId(6);
-StateId WIN = StateId(7);
-StateId LOSE = StateId(8);
 
-// STATE - HANDSHAKE
-/**
-Handshake states:
-0 - start timer to delay sending handshake signal for 1000 ms
-1 - wait for handshake delay to expire
-2 - start timeout timer
-3 - begin sending shake message and check for timeout
-**/
-enum class HandshakeState : uint8_t
-{
-  HANDSHAKE_TIMEOUT_START_STATE = 0,
-  HANDSHAKE_SEND_ROLE_SHAKE_STATE = 1,
-  HANDSHAKE_WAIT_ROLE_SHAKE_STATE = 2,
-  HANDSHAKE_RECEIVED_ROLE_SHAKE_STATE = 3,
-  HANDSHAKE_STATE_FINAL_ACK = 4
+enum QuickdrawStateId {
+  DORMANT = 0,
+  ACTIVATION_SEQUENCE = 1,
+  ACTIVATED = 2,
+  HANDSHAKE = 3,
+  DUEL_ALERT = 4,
+  DUEL_COUNTDOWN = 5,
+  DUEL = 6,
+  WIN = 7,
+  LOSE = 8
 };
 
-class QuickdrawStateData{};
 
-template <class QuickdrawStateData>
-class QuickdrawState : public State {
-  public:
-  typedef QuickdrawStateData stateDataType;
-    explicit QuickdrawState(StateId stateId) : State(stateId) {
-      payload = new stateDataType();
-    }
-    ~QuickdrawState();
-    QuickdrawStateData* payload;
-
-};
-
-class DormantStateData : QuickdrawStateData {
-public:
-  bool isHunter = false;
-  unsigned long bountyDelay[2] = {300000, 900000};
-  unsigned long overchargeDelay[2] = {180000, 300000};
-  unsigned long debugDelay = 3000;
-};
-
-class Dormant : public QuickdrawState<DormantStateData> {
+class Dormant : public State {
   
   public:
-    Dormant();
+    Dormant(bool isHunter, long debugDelay);
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -66,17 +35,16 @@ class Dormant : public QuickdrawState<DormantStateData> {
 
   private:
     SimpleTimer dormantTimer;
-    
+
+    bool isHunter = false;
+    unsigned long bountyDelay[2] = {300000, 900000};
+    unsigned long overchargeDelay[2] = {180000, 300000};
+    unsigned long debugDelay = 3000;
 };
 
-class ActivationSequenceStateData : QuickdrawStateData {
-public:
-  byte activateMotorCount = 0;
-  bool activateMotor = false;
-  const int activationStepDuration = 100;
-};
 
-class ActivationSequence : public QuickdrawState<ActivationSequenceStateData> {
+
+class ActivationSequence : public State {
   public:
   ActivationSequence();
   void onStateMounted(Device* PDN) override;
@@ -87,17 +55,15 @@ class ActivationSequence : public QuickdrawState<ActivationSequenceStateData> {
 
 private:
   SimpleTimer activationSequenceTimer;
+  byte activateMotorCount = 0;
+  bool activateMotor = true;
+  const int activationStepDuration = 100;
 };
 
-class ActivatedStateData : QuickdrawStateData {
-  public:
-  bool isHunter = false;
-};
-
-class Activated : public QuickdrawState<ActivatedStateData> {
+class Activated : public State {
   
   public:
-    Activated();
+    Activated(bool isHunter);
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
@@ -115,46 +81,53 @@ class Activated : public QuickdrawState<ActivatedStateData> {
     bool breatheUp = true;
     long idleLEDBreak = 5000;
     CRGBPalette16 currentPalette;
+    bool isHunter = false;
 };
 
-class HandshakeStateData : QuickdrawStateData {};
-
-class Handshake : public QuickdrawState<HandshakeStateData> {
+class Handshake : public State {
   
   public:
-    Handshake();
+    Handshake(Player* player);
+    ~Handshake();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
+    bool transitionToActivated();
+    bool transitionToDuelAlert();
+
   private:
-    HandshakeState handshakeState = HandshakeState::HANDSHAKE_TIMEOUT_START_STATE;
-    bool handshakeTimedOut = false;
-    const int HANDSHAKE_TIMEOUT = 5000;
+    Player* player;
+    SimpleTimer handshakeTimeout;
+    long timeout = 5000;
+    HandshakeStateMachine stateMachine;
+    bool resetToActivated = false;
     
 };
 
-class DuelAlertStateData : QuickdrawStateData {};
-
-class DuelAlert : public QuickdrawState<DuelAlertStateData> {
+class DuelAlert : public State {
   
   public:
-    DuelAlert();
+    DuelAlert(Player* player);
+    ~DuelAlert();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
+    bool transitionToCountdown();
+
   private:
-    int alertFlashTime = 250;
+    Player* player;
+    bool lightsOn = true;
+    byte flashDelay = 400;
+    byte transitionThreshold = 12;
     byte alertCount = 0;
     
 };
 
-class DuelCountdownStateData : QuickdrawStateData {};
-
-class DuelCountdown : public QuickdrawState<DuelCountdownStateData> {
+class DuelCountdown : public State {
   
   public:
     DuelCountdown();
@@ -163,7 +136,10 @@ class DuelCountdown : public QuickdrawState<DuelCountdownStateData> {
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
+    bool shallWeBattle();
+
   private:
+    SimpleTimer countdownTimer;
     bool doBattle = false;
     const byte COUNTDOWN_STAGES = 4;
     byte countdownStage = COUNTDOWN_STAGES;
@@ -174,9 +150,8 @@ class DuelCountdown : public QuickdrawState<DuelCountdownStateData> {
     
 };
 
-class DuelStateData : QuickdrawStateData {};
 
-class Duel : public QuickdrawState<DuelStateData> {
+class Duel : public State {
   
   public:
     Duel();
@@ -185,47 +160,51 @@ class Duel : public QuickdrawState<DuelStateData> {
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
+    bool transitionToActivated();
+    bool transitionToWin();
+    bool transitionToLose();
+
   private:
+    SimpleTimer duelTimer;
     bool captured = false;
     bool wonBattle = false;
-    bool startDuelTimer = true;
-    bool sendZapSignal = true;
-    bool duelTimedOut = false;
-    bool bvbDuel = false;
     const int DUEL_TIMEOUT = 4000;
     
 };
 
-class WinStateData : QuickdrawStateData {};
 
-class Win : public QuickdrawState<WinStateData> {
+class Win : public State {
   
   public:
-    Win();
+    Win(Player* player);
+    ~Win();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
+    bool resetGame();
+
   private:
-    bool startBattleFinish = true;
-    byte finishBattleBlinkCount = 0;
-    byte FINISH_BLINKS = 10;
+    Player* player;
+    bool reset = false;
     
 };
 
-class LoseStateData : QuickdrawStateData {};
-
-class Lose : public QuickdrawState<LoseStateData> {
+class Lose : public State {
   
   public:
-    Lose();
+    Lose(Player* player);
+    ~Lose();
 
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
+
+    bool resetGame();
     
     private:
-      bool initiatePowerDown = true;
+      Player* player;
+      bool reset = false;
 
 };

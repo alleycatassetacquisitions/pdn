@@ -1,14 +1,17 @@
 #pragma once
 
 #include <vector>
-#include "state.hpp"
 #include "../device/device.hpp"
+#include "state.hpp"
 
-template <class State>
+/* state -> onStateMounted
+ * statemachine -> onStateMounting
+ *
+*/
+
 class StateMachine {
     
     public:
-        typedef State state;
 
         StateMachine() = default;
 
@@ -16,53 +19,50 @@ class StateMachine {
 
         void initialize() {
             stateMap = populateStateMap();
-            currentState = &stateMap[0];
+            currentState = stateMap[0];
         }
 
-        virtual std::vector<state> populateStateMap() = 0;
-        virtual void onStateMounting(State* state) = 0;
-        virtual void onStateDismounting(State* state) = 0;
-        virtual void onStateLooping(State* state) = 0;
+        virtual std::vector<State *> populateStateMap() = 0;
 
         void checkStateTransitions()
         {
-            newState = currentState.checkTransitions();
+            newState = currentState->checkTransitions();
             stateChangeReady = (newState != nullptr);
         };
         
         void commitState() {
 
-            onStateDismounting(*currentState);
-            currentState.onStateDismounted(PDN);
+            currentState->onStateDismounted(PDN);
             
             currentState = newState;
             stateChangeReady = false;
-            
-            onStateMounting(*currentState);
-            currentState.onStateMounted(PDN);
+
+            currentState->onStateMounted(PDN);
         };
 
         void loop() {
-            onStateLooping(*currentState);
-            currentState.onStateLoop(PDN);
+            currentState->onStateLoop(PDN);
             checkStateTransitions();
             if(stateChangeReady) {
                 commitState();
             }
         }
 
-        State getCurrentState() {
+        State* getCurrentState() {
             return currentState;
         }
+
+    protected:
+        // initial state is 0 in the list here
+        std::vector<State*> stateMap;
 
     private:
         Device* PDN = Device::GetInstance();
 
         bool stateChangeReady = false;
 
-        State newState;
-        State currentState;
-        // initial state is 0 in the list here
-        std::vector<State> stateMap;
+        State* newState;
+        State* currentState;
+
 
 };
