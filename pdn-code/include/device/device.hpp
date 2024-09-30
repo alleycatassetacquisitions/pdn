@@ -1,16 +1,17 @@
 #pragma once
 
-#include "device-constants.hpp"
 #include <OneButton.h>
 #include <FastLED.h>
-#include <functional>
-#include "light-strip.hpp"
 #include "display-lights.hpp"
 #include "grip-lights.hpp"
 #include "haptics.hpp"
 #include "display.hpp"
 
 
+enum {
+    OUTPUT_JACK = 1,
+    INPUT_JACK = 2
+};
 
 class Device {
 
@@ -35,18 +36,28 @@ class Device {
         Display getDisplay();
         DisplayLights getDisplayLights();
         GripLights getGripLights();
-        
+
+
+        //Serial comms methods
         HardwareSerial outputJack(); 
         HardwareSerial inputJack();
 
-        void clearComms();
-        void flushComms();
+        void writeString(String* msg);
+        void writeString(const String* msg);
+        String readString();
+
+        void setActiveComms(int whichJack);
+
+        String* peekComms();
+        bool commsAvailable();
+        int getTrxBufferedMessagesSize();
 
         void setGlobablLightColor(CRGB color);
         void setGlobalBrightness(int brightness);
         
 
     private:
+
         Device();
 
         Display display;
@@ -56,7 +67,12 @@ class Device {
         GripLights gripLights;
         Haptics vibrationMotor;
         String deviceID = "";
-        
+
+        const char STRING_TERM = '\r';
+        const char STRING_START = '*';
+        int currentCommsJack = 1;
+        String head;
+
         void initializePins();
 
 };

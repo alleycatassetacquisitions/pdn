@@ -3,7 +3,7 @@
 //
 #include "../../include/game/quickdraw-states.hpp"
 
-#include "comms.hpp"
+#include "comms_constants.hpp"
 #include "game/quickdraw.hpp"
 
 Dormant::Dormant(bool isHunter, long debugDelay) : State(DORMANT) {
@@ -13,7 +13,7 @@ Dormant::Dormant(bool isHunter, long debugDelay) : State(DORMANT) {
 
 void Dormant::onStateMounted(Device *PDN) {
     if(isHunter) {
-        dormantTimer.setTimer(5000);
+        dormantTimer.setTimer(defaultDelay);
     } else if(debugDelay > 0) {
         dormantTimer.setTimer(debugDelay);
     } else {
@@ -73,6 +73,19 @@ bool ActivationSequence::transitionToActivated() {
 
 Activated::Activated(bool isHunter) : State(ACTIVATED) {
     this->isHunter = isHunter;
+    std::vector<const String*> writing;
+    std::vector<const String*> reading;
+
+    if(isHunter) {
+        reading.push_back(&BOUNTY_BATTLE_MESSAGE);
+        writing.push_back(&HUNTER_BATTLE_MESSAGE);
+    } else {
+        reading.push_back(&HUNTER_BATTLE_MESSAGE);
+        writing.push_back(&BOUNTY_BATTLE_MESSAGE);
+    }
+
+    registerValidMessages(reading);
+    registerResponseMessage(writing);
 }
 
 void Activated::onStateMounted(Device *PDN) {
@@ -85,24 +98,23 @@ void Activated::onStateMounted(Device *PDN) {
 
 void Activated::onStateLoop(Device *PDN) {
 
-    EVERY_N_MILLIS(255) {
-        broadcast();
+    //This may be totally bad, but trying to figure out how to not spam Serial.
+    if(PDN->getTrxBufferedMessagesSize() == 0) {
+        PDN->writeString(&responseStringMessages[0]);
     }
 
     EVERY_N_MILLIS(16) {
         ledAnimation(PDN);
     }
+
+    String* validMessage = waitForValidMessage(PDN);
+    if(validMessage != nullptr) {
+        transitionToHandshakeState = true;
+    }
 }
 
 void Activated::onStateDismounted(Device *PDN) {
-}
-
-void Activated::broadcast() {
-    if(isHunter) {
-        writeGameComms(HUNTER_BATTLE_MESSAGE);
-    } else {
-        writeGameComms(BOUNTY_BATTLE_MESSAGE);
-    }
+    transitionToHandshakeState = false;
 }
 
 void Activated::ledAnimation(Device *PDN) {
@@ -140,20 +152,7 @@ void Activated::ledAnimation(Device *PDN) {
 }
 
 bool Activated::transitionToHandshake() {
-    if (gameCommsAvailable()) {
-        if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) {
-            readGameComms();
-            writeGameComms(HUNTER_BATTLE_MESSAGE);
-            return true;
-        }
-        if(peekGameComms() == HUNTER_BATTLE_MESSAGE && isHunter) {
-            readGameComms();
-            writeGameComms(BOUNTY_BATTLE_MESSAGE);
-            return true;
-        }
-    }
-
-    return false;
+    return transitionToHandshakeState;
 }
 
 Handshake::Handshake(Player* player) : State(HANDSHAKE), stateMachine(player) {
@@ -171,6 +170,8 @@ void Handshake::onStateMounted(Device *PDN) {
 }
 
 void Handshake::onStateLoop(Device *PDN) {
+    handshakeTimeout.updateTime();
+
     if(handshakeTimeout.expired()) {
         resetToActivated = true;
     } else {
@@ -201,6 +202,7 @@ DuelAlert::~DuelAlert() {
 
 
 void DuelAlert::onStateMounted(Device *PDN) {
+    //colors to indicate different powerups, types of players.
     if(player->isHunter()) {
         PDN->setGlobablLightColor(hunterColors[random8(16)]);
     } else {
@@ -233,7 +235,13 @@ bool DuelAlert::transitionToCountdown() {
 
 DuelCountdown::DuelCountdown() : State(DUEL_COUNTDOWN) {}
 
+void DuelCountdown::onStateMounted(Device *PDN) {
+    
+}
+
+
 void DuelCountdown::onStateLoop(Device *PDN) {
+    countdownTimer.updateTime();
     if(countdownTimer.expired()) {
         switch(countdownStage) {
             case 4: {
@@ -279,37 +287,31 @@ bool DuelCountdown::shallWeBattle() {
 
 
 Duel::Duel() : State(DUEL) {
+    std::vector<const String*> reading;
+
+    reading.push_back(&ZAP);
+    reading.push_back(&YOU_DEFEATED_ME);
 }
 
 void Duel::onStateMounted(Device *PDN) {
-    PDN->attachPrimaryButtonClick([]() {
-        writeGameComms(ZAP);
-    });
-    PDN->attachSecondaryButtonClick([]() {
-        writeGameComms(ZAP);
-    });
+    PDN->attachPrimaryButtonClick(Quickdraw::DuelButtonPress);
+    PDN->attachSecondaryButtonClick(Quickdraw::DuelButtonPress);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 }
 
 void Duel::onStateLoop(Device *PDN) {
-    if(peekGameComms() == ZAP) {
-        readGameComms();
-        writeGameComms(YOU_DEFEATED_ME);
-        captured = true;
-        return;
-    }
-    if(peekGameComms() == YOU_DEFEATED_ME) {
-        readGameComms();
-        wonBattle = true;
-        return;
-    }
+    duelTimer.updateTime();
 
-    //only enable the button if they haven't been defeated.
-    if(!captured) {
-        PDN->getPrimaryButton().tick();
+    String* validMessage = waitForValidMessage(PDN);
+    if(validMessage != nullptr) {
+        if(*validMessage == ZAP) {
+            PDN->writeString(&YOU_DEFEATED_ME);
+            captured = true;
+        } else if(*validMessage == YOU_DEFEATED_ME) {
+            wonBattle = true;
+        }
     }
-
 }
 
 bool Duel::transitionToActivated() {

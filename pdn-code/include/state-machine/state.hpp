@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -38,7 +39,11 @@ public:
 
 class State {
 public:
-    virtual ~State() = default;
+    virtual ~State() {
+        validStringMessages.erase(validStringMessages.begin(), validStringMessages.end());
+        responseStringMessages.erase(responseStringMessages.begin(), responseStringMessages.end());
+        transitions.erase(transitions.begin(), transitions.end());
+    };
 
     explicit State(int stateId): name(stateId) {
     }
@@ -63,6 +68,37 @@ public:
     virtual void onStateLoop(Device *PDN) {};
 
     virtual void onStateDismounted(Device *PDN) {};
+
+    virtual void registerValidMessages(std::vector<const String*> msgs) {
+        for (auto msg : msgs) {
+            validStringMessages.insert(*msg);
+        }
+    };
+
+    virtual void registerResponseMessage(std::vector<const String*> msgs) {
+        for (int i = 0; i < msgs.size(); i++) {
+            responseStringMessages.push_back(*msgs.at(i));
+        }
+    };
+
+    bool isMessageValid(String* msg) {
+        return validStringMessages.find(*msg) != validStringMessages.end();
+    }
+
+    String* waitForValidMessage(Device *PDN) {
+        while(PDN->commsAvailable()) {
+            if (!isMessageValid(PDN->peekComms())) {
+                PDN->readString();
+            } else {
+                return new String(PDN->readString());
+            }
+        }
+        return nullptr;
+    }
+
+protected:
+    std::set<String> validStringMessages;
+    std::vector<String> responseStringMessages;
 
 private:
     int name;

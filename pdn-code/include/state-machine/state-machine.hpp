@@ -15,14 +15,18 @@ class StateMachine {
 
         StateMachine() = default;
 
-        virtual ~StateMachine() = default;
+        virtual ~StateMachine() {
+            for (auto state : stateMap) {
+                delete state;
+            }
+        };
 
         void initialize() {
-            stateMap = populateStateMap();
+            populateStateMap();
             currentState = stateMap[0];
         }
 
-        virtual std::vector<State *> populateStateMap() = 0;
+        virtual void populateStateMap() = 0;
 
         void checkStateTransitions()
         {

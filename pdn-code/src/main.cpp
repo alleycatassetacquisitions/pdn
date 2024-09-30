@@ -10,7 +10,7 @@
 #include "../include/simple-timer.hpp"
 #include "../include/player.hpp"
 #include "../include/match.hpp"
-#include "../include/comms.hpp"
+#include "../include/comms_constants.hpp"
 #include "../include/state-machine/state-machine.hpp"
 #include "../include/device/device.hpp"
 #include "../include/game/quickdraw.hpp"
@@ -124,8 +124,6 @@ void setup(void) {
   // uiRefresh.every(16, updateUi);
   //
   delay(3000);
-
-  PDN->clearComms();
 }
 
 void loop(void) {

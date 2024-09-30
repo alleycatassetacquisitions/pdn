@@ -2,14 +2,16 @@
 
 Quickdraw::Quickdraw(Player* player): StateMachine(), matches{} {
     this->player = player;
+    Device::GetInstance()->setActiveComms(player->isHunter() ? OUTPUT_JACK : INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {
     player = nullptr;
-
+    matches->clear();
 }
 
-std::vector<State*> Quickdraw::populateStateMap() {
+void Quickdraw::populateStateMap() {
+
     Dormant* dormant = new Dormant(player->isHunter(), 0);
     ActivationSequence* activationSequence = new ActivationSequence();
     Activated* activated = new Activated(player->isHunter());

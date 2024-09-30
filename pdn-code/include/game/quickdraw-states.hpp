@@ -4,7 +4,7 @@
 #include "../player.hpp"
 #include "simple-timer.hpp"
 #include "../state-machine/state.hpp"
-#include "../comms.hpp"
+#include "../comms_constants.hpp"
 
 
 // Quickdraw States
@@ -37,6 +37,7 @@ class Dormant : public State {
     SimpleTimer dormantTimer;
 
     bool isHunter = false;
+  unsigned long defaultDelay = 5000;
     unsigned long bountyDelay[2] = {300000, 900000};
     unsigned long overchargeDelay[2] = {180000, 300000};
     unsigned long debugDelay = 3000;
@@ -69,12 +70,12 @@ class Activated : public State {
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
-    void broadcast();
     void ledAnimation(Device* PDN);
 
     bool transitionToHandshake();
 
   private:
+    bool transitionToHandshakeState = false;
     const float smoothingPoints = 255;
     byte ledBrightness = 65;
     float pwm_val = 0;
@@ -121,7 +122,7 @@ class DuelAlert : public State {
   private:
     Player* player;
     bool lightsOn = true;
-    byte flashDelay = 400;
+    int flashDelay = 400;
     byte transitionThreshold = 12;
     byte alertCount = 0;
     
