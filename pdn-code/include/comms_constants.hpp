@@ -1,5 +1,8 @@
 #ifndef COMMS_CONSTANTS_H_
 #define COMMS_CONSTANTS_H_
+/*
+ * monkey with a crowbar. Figure out how to do this correctly.
+ */
 
 // COMMANDS
 const String BOUNTY_BATTLE_MESSAGE = "bbm";
