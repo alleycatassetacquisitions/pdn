@@ -4,6 +4,6 @@
 //
 HandshakeTerminalState::HandshakeTerminalState() : State(HANDSHAKE_TERMINAL_STATE){}
 
-bool HandshakeStateMachine::handshakeSuccessful() {
-    return getCurrentState()->getName() == HANDSHAKE_TERMINAL_STATE;
+bool HandshakeTerminalState::isTerminalState() {
+    return true;
 }

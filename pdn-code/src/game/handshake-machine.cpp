@@ -14,6 +14,10 @@ HandshakeStateMachine::~HandshakeStateMachine() {
     player = nullptr;
 }
 
+bool HandshakeStateMachine::handshakeSuccessful() {
+    return getCurrentState()->getStateId() == HANDSHAKE_TERMINAL_STATE;
+}
+
 void HandshakeStateMachine::populateStateMap() {
 
     HandshakeInitiateState* initiateState = new HandshakeInitiateState(this->player);

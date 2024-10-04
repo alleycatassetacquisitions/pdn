@@ -186,6 +186,8 @@ class Win : public State {
 
     bool resetGame();
 
+    bool isTerminalState() override;
+
   private:
     Player* player;
     bool reset = false;
@@ -203,6 +205,8 @@ class Lose : public State {
     void onStateDismounted(Device* PDN) override;
 
     bool resetGame();
+
+    bool isTerminalState() override;
     
     private:
       Player* player;

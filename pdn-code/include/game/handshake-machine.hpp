@@ -104,6 +104,7 @@ private:
 class HandshakeTerminalState : public State {
 public:
     HandshakeTerminalState();
+    bool isTerminalState() override;
 };
 
 class HandshakeStateMachine : public StateMachine {
