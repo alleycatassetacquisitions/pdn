@@ -6,7 +6,7 @@
 #include "../../include/comms_constants.hpp"
 #include "../../include/id-generator.hpp"
 
-HandshakeStateMachine::HandshakeStateMachine(Player* player) {
+HandshakeStateMachine::HandshakeStateMachine(Player* player, Device* PDN) : StateMachine(PDN) {
     this->player = player;
 }
 

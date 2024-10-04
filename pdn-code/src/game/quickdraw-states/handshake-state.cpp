@@ -2,17 +2,19 @@
 //
 // Created by Elli Furedy on 9/30/2024.
 //
-Handshake::Handshake(Player* player) : State(HANDSHAKE), stateMachine(player) {
+Handshake::Handshake(Player* player) : State(HANDSHAKE) {
     this->player = player;
 }
 
 Handshake::~Handshake() {
     player = nullptr;
+    stateMachine = nullptr;
 }
 
 
 void Handshake::onStateMounted(Device *PDN) {
-    stateMachine.initialize();
+    stateMachine = new HandshakeStateMachine(player, PDN);
+    stateMachine->initialize();
     handshakeTimeout.setTimer(timeout);
 }
 
@@ -22,7 +24,7 @@ void Handshake::onStateLoop(Device *PDN) {
     if(handshakeTimeout.expired()) {
         resetToActivated = true;
     } else {
-        stateMachine.loop();
+        stateMachine->loop();
     }
 }
 
@@ -36,5 +38,5 @@ bool Handshake::transitionToActivated() {
 }
 
 bool Handshake::transitionToDuelAlert() {
-    return stateMachine.handshakeSuccessful();
+    return stateMachine->handshakeSuccessful();
 }

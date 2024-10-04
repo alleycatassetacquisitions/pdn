@@ -102,7 +102,7 @@ class Handshake : public State {
     Player* player;
     SimpleTimer handshakeTimeout;
     long timeout = 5000;
-    HandshakeStateMachine stateMachine;
+    HandshakeStateMachine* stateMachine;
     bool resetToActivated = false;
     
 };

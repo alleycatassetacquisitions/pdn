@@ -1,6 +1,6 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player): StateMachine(), matches{} {
+Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN), matches{} {
     this->player = player;
     Device::GetInstance()->setActiveComms(player->isHunter() ? OUTPUT_JACK : INPUT_JACK);
 }

@@ -110,7 +110,7 @@ public:
 class HandshakeStateMachine : public StateMachine {
 
 public:
-    explicit HandshakeStateMachine(Player* player);
+    explicit HandshakeStateMachine(Player* player, Device* PDN);
     ~HandshakeStateMachine() override;
     void populateStateMap() override;
     bool handshakeSuccessful();

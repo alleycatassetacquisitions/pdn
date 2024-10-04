@@ -38,7 +38,9 @@ class StateMachine {
     
     public:
 
-        StateMachine() = default;
+        StateMachine(Device* PDN) {
+            this->PDN = PDN;
+        }
 
         virtual ~StateMachine() {
             for (auto state : stateMap) {
@@ -86,7 +88,7 @@ class StateMachine {
         std::vector<State*> stateMap;
 
     private:
-        Device* PDN = Device::GetInstance();
+        Device* PDN;
 
         bool stateChangeReady = false;
 

@@ -38,7 +38,7 @@ class Quickdraw : public StateMachine
         Player* player;
 
     public:
-        Quickdraw(Player* player);
+        Quickdraw(Player* player, Device* PDN);
         ~Quickdraw();
         void populateStateMap() override;
 

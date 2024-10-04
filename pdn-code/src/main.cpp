@@ -20,7 +20,7 @@
 Device* PDN = Device::GetInstance();
 IdGenerator* idGenerator = IdGenerator::GetInstance();
 Player* player;
-Quickdraw game = Quickdraw(player);
+Quickdraw game = Quickdraw(player, PDN);
 
 String DEBUG_MODE_SUBSTR = "";
 
