@@ -32,16 +32,11 @@ pdn-pcb/#auto_saved_files#
 .piolibdeps
 .clang_complete
 .gcc-flags.json
-pdn-code/.pio/*
+.pio/*
 
-pdn-code/.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+.vscode/*
 
-pdn-code/.sconsign.dblite
+.sconsign.dblite
 
 # Local History for Visual Studio Code
 .history/
