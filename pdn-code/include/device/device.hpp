@@ -21,14 +21,6 @@ class Device {
         void tick();
         String getDeviceId();
 
-        void attachPrimaryButtonClick(callbackFunction click);
-        void attachPrimaryButtonDoubleClick(callbackFunction doubleClick);
-        void attachPrimaryButtonLongPress(callbackFunction longPress);
-        
-        void attachSecondaryButtonClick(callbackFunction click);
-        void attachSecondaryButtonDoubleClick(callbackFunction doubleClick);
-        void attachSecondaryButtonLongPress(callbackFunction longPress);
-
         OneButton getPrimaryButton();
         OneButton getSecondaryButton();
 

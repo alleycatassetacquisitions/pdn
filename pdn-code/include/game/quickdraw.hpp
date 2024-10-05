@@ -41,8 +41,4 @@ class Quickdraw : public StateMachine
         Quickdraw(Player* player, Device* PDN);
         ~Quickdraw();
         void populateStateMap() override;
-
-    static void DuelButtonPress() {
-        Device::GetInstance()->writeString(&ZAP);
-    }
 };

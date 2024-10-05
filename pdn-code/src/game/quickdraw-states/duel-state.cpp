@@ -31,15 +31,24 @@ if (peekGameComms() == ZAP) {
   }
  */
 Duel::Duel() : State(DUEL) {
-    std::vector<const String*> reading;
+    std::vector<const String *> reading;
 
     reading.push_back(&ZAP);
     reading.push_back(&YOU_DEFEATED_ME);
 }
 
 void Duel::onStateMounted(Device *PDN) {
-    PDN->attachPrimaryButtonClick(Quickdraw::DuelButtonPress);
-    PDN->attachSecondaryButtonClick(Quickdraw::DuelButtonPress);
+    PDN->getPrimaryButton().attachClick(
+        [](void *PDN) {
+            ButtonPress(static_cast<Device *>(PDN));
+        },
+        PDN);
+
+    PDN->getSecondaryButton().attachClick(
+        [](void *PDN) {
+            ButtonPress(static_cast<Device *>(PDN));
+        },
+        PDN);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 }
@@ -47,12 +56,12 @@ void Duel::onStateMounted(Device *PDN) {
 void Duel::onStateLoop(Device *PDN) {
     duelTimer.updateTime();
 
-    String* validMessage = waitForValidMessage(PDN);
-    if(validMessage != nullptr) {
-        if(*validMessage == ZAP) {
+    String *validMessage = waitForValidMessage(PDN);
+    if (validMessage != nullptr) {
+        if (*validMessage == ZAP) {
             PDN->writeString(&YOU_DEFEATED_ME);
             captured = true;
-        } else if(*validMessage == YOU_DEFEATED_ME) {
+        } else if (*validMessage == YOU_DEFEATED_ME) {
             wonBattle = true;
         }
     }

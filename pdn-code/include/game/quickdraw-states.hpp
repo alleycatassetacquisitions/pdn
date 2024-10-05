@@ -165,6 +165,10 @@ class Duel : public State {
     bool transitionToWin();
     bool transitionToLose();
 
+  static void ButtonPress(Device* PDN) {
+    PDN->writeString(&ZAP);
+  }
+
   private:
     SimpleTimer duelTimer;
     bool captured = false;
