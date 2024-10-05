@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include "../device/device.hpp"
 #include "state.hpp"
 
 /*

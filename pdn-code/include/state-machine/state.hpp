@@ -5,7 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include "../device/device.hpp"
+#include "device/device-interface/device.hpp"
+
 
 class State;
 
