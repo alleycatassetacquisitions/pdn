@@ -12,10 +12,10 @@
       return true;
     }
  */
-HandshakeFinalAckState::HandshakeFinalAckState(Player* player) : State(HANDSHAKE_FINAL_ACK_STATE) {
+HandshakeFinalAckState::HandshakeFinalAckState(Player *player) : State(HANDSHAKE_FINAL_ACK_STATE) {
     this->player = player;
-    std::vector<const String*> reading;
-    if(player->isHunter()) {
+    std::vector<const String *> reading;
+    if (player->isHunter()) {
         reading.push_back(&BOUNTY_HANDSHAKE_FINAL_ACK);
     } else {
         reading.push_back(&HUNTER_HANDSHAKE_FINAL_ACK);
@@ -27,13 +27,12 @@ HandshakeFinalAckState::~HandshakeFinalAckState() {
 }
 
 void HandshakeFinalAckState::onStateMounted(Device *PDN) {
-
 }
 
 
 void HandshakeFinalAckState::onStateLoop(Device *PDN) {
-    String* incomingMessage = waitForValidMessage(PDN);
-    if(incomingMessage != nullptr) {
+    String *incomingMessage = waitForValidMessage(PDN);
+    if (incomingMessage != nullptr) {
         handshakeSuccessfulFlag = true;
     }
 

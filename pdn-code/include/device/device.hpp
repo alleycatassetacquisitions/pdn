@@ -14,57 +14,69 @@ enum {
 };
 
 class Device {
+public:
+    static Device *GetInstance();
 
-    public:
-        static Device* GetInstance();
-        int begin();
-        void tick();
-        String getDeviceId();
+    int begin();
 
-        OneButton getPrimaryButton();
-        OneButton getSecondaryButton();
+    void tick();
 
-        Haptics getVibrator();
-        Display getDisplay();
-        DisplayLights getDisplayLights();
-        GripLights getGripLights();
+    String getDeviceId();
+
+    OneButton getPrimaryButton();
+
+    OneButton getSecondaryButton();
+
+    Haptics getVibrator();
+
+    Display getDisplay();
+
+    DisplayLights getDisplayLights();
+
+    GripLights getGripLights();
 
 
-        //Serial comms methods
-        HardwareSerial outputJack(); 
-        HardwareSerial inputJack();
+    //Serial comms methods
+    HardwareSerial outputJack();
 
-        void writeString(String* msg);
-        void writeString(const String* msg);
-        String readString();
+    HardwareSerial inputJack();
 
-        void setActiveComms(int whichJack);
+    void writeString(String *msg);
 
-        String* peekComms();
-        bool commsAvailable();
-        int getTrxBufferedMessagesSize();
+    void writeString(const String *msg);
 
-        void setGlobablLightColor(CRGB color);
-        void setGlobalBrightness(int brightness);
-        
+    String readString();
 
-    private:
+    void setActiveComms(int whichJack);
 
-        Device();
+    String *peekComms();
 
-        Display display;
-        OneButton primary;
-        OneButton secondary;
-        DisplayLights displayLights;
-        GripLights gripLights;
-        Haptics vibrationMotor;
-        String deviceID = "";
+    bool commsAvailable();
 
-        const char STRING_TERM = '\r';
-        const char STRING_START = '*';
-        int currentCommsJack = 1;
-        String head;
+    int getTrxBufferedMessagesSize();
 
-        void initializePins();
+    void setGlobablLightColor(CRGB color);
 
+    void setGlobalBrightness(int brightness);
+
+private:
+    Device();
+
+    /*
+     * I think these need to be wrapped in some kind of "PeripheralInterface" so that
+     * we can inject mock peripherals in unit tests.
+     */
+    Display display;
+    OneButton primary;
+    OneButton secondary;
+    DisplayLights displayLights;
+    GripLights gripLights;
+    Haptics vibrationMotor;
+    String deviceID = "";
+
+    //do we need a full blow serial comms manager? I think so.
+    int currentCommsJack = 1;
+    String head;
+
+    void initializePins();
 };

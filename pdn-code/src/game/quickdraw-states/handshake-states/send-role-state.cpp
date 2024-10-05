@@ -24,10 +24,10 @@ if(peekGameComms() == BOUNTY_SHAKE && isHunter)
  */
 HandshakeSendRoleState::HandshakeSendRoleState(Player *player) : State(HANDSHAKE_SEND_ROLE_STATE) {
     this->player = player;
-    std::vector<const String*> reading;
-    std::vector<const String*> writing;
+    std::vector<const String *> reading;
+    std::vector<const String *> writing;
     String userId = player->getUserID();
-    if(player->isHunter()) {
+    if (player->isHunter()) {
         reading.push_back(&BOUNTY_SHAKE);
 
         String currentMatchId = *player->getCurrentMatchId();
@@ -54,10 +54,9 @@ void HandshakeSendRoleState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeSendRoleState::onStateLoop(Device *PDN) {
-
-    String* incomingMessage = waitForValidMessage(PDN);
-    if(incomingMessage != nullptr) {
-        for(int i = 0; i < responseStringMessages.size(); i++) {
+    String *incomingMessage = waitForValidMessage(PDN);
+    if (incomingMessage != nullptr) {
+        for (int i = 0; i < responseStringMessages.size(); i++) {
             PDN->writeString(&responseStringMessages[i]);
         }
         transitionToReceiveRoleState = true;

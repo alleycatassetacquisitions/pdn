@@ -23,7 +23,7 @@ if (startBattleFinish) {
     }
   }
  */
-Lose::Lose(Player* player) : State(LOSE) {
+Lose::Lose(Player *player) : State(LOSE) {
     this->player = player;
 }
 
@@ -39,10 +39,10 @@ void Lose::onStateMounted(Device *PDN) {
 
 void Lose::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(150) {
-        PDN->getVibrator().setIntensity(PDN->getVibrator().getIntensity()-10);
+        PDN->getVibrator().setIntensity(PDN->getVibrator().getIntensity() - 10);
     }
 
-    if(PDN->getVibrator().getIntensity() <= 0) {
+    if (PDN->getVibrator().getIntensity() <= 0) {
         reset = true;
     }
 }

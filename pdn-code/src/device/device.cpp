@@ -2,30 +2,24 @@
 
 #include "comms_constants.hpp"
 
-Device *Device::GetInstance()
-{
+Device *Device::GetInstance() {
     static Device instance;
     return &instance;
 }
 
 
-Device::Device() :
-    display(displayCS, displayDC, displayRST), 
-    vibrationMotor(motorPin),
-    primary(primaryButtonPin, true, true),
-    secondary(secondaryButtonPin, true, true),
-    displayLights(numDisplayLights),
-    gripLights(numGripLights),
-    head("")
-{
-
+Device::Device() : display(displayCS, displayDC, displayRST),
+                   vibrationMotor(motorPin),
+                   primary(primaryButtonPin, true, true),
+                   secondary(secondaryButtonPin, true, true),
+                   displayLights(numDisplayLights),
+                   gripLights(numGripLights),
+                   head("") {
 };
 
-int Device::begin() 
-{
-
+int Device::begin() {
     initializePins();
-        
+
     Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
 
     Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
@@ -33,11 +27,10 @@ int Device::begin()
     Serial1.setTxBufferSize(TRANSMIT_QUEUE_MAX_SIZE);
     Serial2.setTxBufferSize(TRANSMIT_QUEUE_MAX_SIZE);
 
-    return 1;   
+    return 1;
 }
 
 void Device::initializePins() {
-
     gpio_reset_pin(GPIO_NUM_38);
     gpio_reset_pin(GPIO_NUM_39);
     gpio_reset_pin(GPIO_NUM_40);
@@ -78,28 +71,24 @@ OneButton Device::getSecondaryButton() {
     return secondary;
 }
 
-Haptics Device::getVibrator()
-{
+Haptics Device::getVibrator() {
     return vibrationMotor;
 }
 
-Display Device::getDisplay()
-{
+Display Device::getDisplay() {
     return display;
 }
 
-DisplayLights Device::getDisplayLights()
-{
+DisplayLights Device::getDisplayLights() {
     return displayLights;
 }
 
-GripLights Device::getGripLights()
-{
+GripLights Device::getGripLights() {
     return gripLights;
 }
 
 void Device::writeString(String *msg) {
-    switch(currentCommsJack) {
+    switch (currentCommsJack) {
         case OUTPUT_JACK: {
             outputJack().print(STRING_START);
             outputJack().println(*msg);
@@ -113,13 +102,12 @@ void Device::writeString(String *msg) {
     }
 }
 
-void Device::writeString(const String* msg) {
+void Device::writeString(const String *msg) {
     writeString(new String(*msg));
 }
 
-String *Device::peekComms()
-{
-    if(head == "") {
+String *Device::peekComms() {
+    if (head == "") {
         head = readString();
     }
     return &head;
@@ -132,23 +120,23 @@ String Device::readString() {
     head = "";
 
     if (return_me == "") {
-        switch(currentCommsJack) {
-            case OUTPUT_JACK : {
-                while(outputJack().available() && outputJack().peek() != STRING_START) {
+        switch (currentCommsJack) {
+            case OUTPUT_JACK: {
+                while (outputJack().available() && outputJack().peek() != STRING_START) {
                     outputJack().read();
                 }
-                if(outputJack().peek() == STRING_START) {
+                if (outputJack().peek() == STRING_START) {
                     outputJack().read();
                     return_me = outputJack().readStringUntil(STRING_TERM);
                 } else {
                     return_me = "No valid message during output jack read";
                 }
             }
-            case INPUT_JACK : {
-                while(inputJack().available() && inputJack().peek() != STRING_START) {
+            case INPUT_JACK: {
+                while (inputJack().available() && inputJack().peek() != STRING_START) {
                     inputJack().read();
                 }
-                if(inputJack().peek() == STRING_START) {
+                if (inputJack().peek() == STRING_START) {
                     inputJack().read();
                     return_me = inputJack().readStringUntil(STRING_TERM);
                 } else {
@@ -163,10 +151,10 @@ String Device::readString() {
 
 bool Device::commsAvailable() {
     switch (currentCommsJack) {
-        case OUTPUT_JACK : {
+        case OUTPUT_JACK: {
             return outputJack().available() > 0;
         }
-        case INPUT_JACK : {
+        case INPUT_JACK: {
             return inputJack().available() > 0;
         }
     }
@@ -174,9 +162,9 @@ bool Device::commsAvailable() {
 
 int Device::getTrxBufferedMessagesSize() {
     switch (currentCommsJack) {
-        case OUTPUT_JACK :
+        case OUTPUT_JACK:
             return TRANSMIT_QUEUE_MAX_SIZE - outputJack().availableForWrite();
-        case INPUT_JACK :
+        case INPUT_JACK:
             return TRANSMIT_QUEUE_MAX_SIZE - inputJack().availableForWrite();
     }
 }
@@ -193,19 +181,15 @@ HardwareSerial Device::inputJack() {
     return Serial2;
 }
 
-void Device::tick()
-{
+void Device::tick() {
     primary.tick();
     secondary.tick();
 }
 
-void Device::setGlobablLightColor(CRGB color)
-{
+void Device::setGlobablLightColor(CRGB color) {
     FastLED.showColor(color, 255);
 };
 
-void Device::setGlobalBrightness(int brightness)
-{
+void Device::setGlobalBrightness(int brightness) {
     FastLED.setBrightness(brightness);
 };
-

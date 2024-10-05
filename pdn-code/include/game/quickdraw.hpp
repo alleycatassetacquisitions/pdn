@@ -24,21 +24,22 @@ const CRGBPalette16 hunterColors = CRGBPalette16(
     CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen);
 
 const CRGBPalette16 idleColors = CRGBPalette16(
-  CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
-  CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow,
-  CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
-  CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
+    CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
+    CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow,
+    CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
+    CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
 );
 
-class Quickdraw : public StateMachine
-{
-        std::vector<Match> matches[MAX_MATCHES];
-        int numMatches = 0;
+class Quickdraw : public StateMachine {
+    std::vector<Match> matches[MAX_MATCHES];
+    int numMatches = 0;
 
-        Player* player;
+    Player *player;
 
-    public:
-        Quickdraw(Player* player, Device* PDN);
-        ~Quickdraw();
-        void populateStateMap() override;
+public:
+    Quickdraw(Player *player, Device *PDN);
+
+    ~Quickdraw();
+
+    void populateStateMap() override;
 };

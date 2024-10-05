@@ -4,8 +4,7 @@
 #include "light-strip.hpp"
 
 class GripLights : public LightStrip<gripLightsPin> {
-
-    public:
-        GripLights(int numLights) : LightStrip(numLights) {};
-
+public:
+    GripLights(int numLights) : LightStrip(numLights) {
+    };
 };

@@ -25,11 +25,11 @@
       }
     }
  */
-HandshakeReceiveRoleState::HandshakeReceiveRoleState(Player* player) : State(HANDSHAKE_RECEIVED_ROLE_STATE) {
+HandshakeReceiveRoleState::HandshakeReceiveRoleState(Player *player) : State(HANDSHAKE_RECEIVED_ROLE_STATE) {
     this->player = player;
-    std::vector<const String*> writing;
-    std::vector<const String*> reading;
-    if(player->isHunter()) {
+    std::vector<const String *> writing;
+    std::vector<const String *> reading;
+    if (player->isHunter()) {
         reading.push_back(&SEND_USER_ID);
 
         writing.push_back(&HUNTER_HANDSHAKE_FINAL_ACK);
@@ -47,24 +47,24 @@ HandshakeReceiveRoleState::~HandshakeReceiveRoleState() {
     player = nullptr;
 }
 
-void HandshakeReceiveRoleState::onStateMounted(Device *PDN) {}
+void HandshakeReceiveRoleState::onStateMounted(Device *PDN) {
+}
 
 void HandshakeReceiveRoleState::onStateLoop(Device *PDN) {
-
-    String* incomingMessage = waitForValidMessage(PDN);
-    if(incomingMessage != nullptr) {
-        if(*incomingMessage == SEND_USER_ID) {
+    String *incomingMessage = waitForValidMessage(PDN);
+    if (incomingMessage != nullptr) {
+        if (*incomingMessage == SEND_USER_ID) {
             String userId = PDN->readString();
             player->setCurrentOpponentId(userId);
         }
-        if(*incomingMessage == SEND_MATCH_ID) {
+        if (*incomingMessage == SEND_MATCH_ID) {
             String matchId = PDN->readString();
             player->setCurrentMatchId(matchId);
         }
     }
 
-    if(player->getCurrentMatchId() != nullptr && player->getCurrentOpponentId() != nullptr) {
-        for(int i = 0; i < responseStringMessages.size(); i++) {
+    if (player->getCurrentMatchId() != nullptr && player->getCurrentOpponentId() != nullptr) {
+        for (int i = 0; i < responseStringMessages.size(); i++) {
             PDN->writeString(&responseStringMessages[i]);
         }
         transitionToFinalAckState = true;

@@ -35,65 +35,60 @@
 */
 
 class StateMachine {
-    
-    public:
+public:
+    StateMachine(Device *PDN) {
+        this->PDN = PDN;
+    }
 
-        StateMachine(Device* PDN) {
-            this->PDN = PDN;
+    virtual ~StateMachine() {
+        for (auto state: stateMap) {
+            delete state;
         }
+    };
 
-        virtual ~StateMachine() {
-            for (auto state : stateMap) {
-                delete state;
-            }
-        };
+    void initialize() {
+        populateStateMap();
+        currentState = stateMap[0];
+        currentState->onStateMounted(PDN);
+    }
 
-        void initialize() {
-            populateStateMap();
-            currentState = stateMap[0];
-            currentState->onStateMounted(PDN);
+    virtual void populateStateMap() = 0;
+
+    void checkStateTransitions() {
+        newState = currentState->checkTransitions();
+        stateChangeReady = (newState != nullptr);
+    };
+
+    void commitState() {
+        currentState->onStateDismounted(PDN);
+
+        currentState = newState;
+        stateChangeReady = false;
+
+        currentState->onStateMounted(PDN);
+    };
+
+    void loop() {
+        currentState->onStateLoop(PDN);
+        checkStateTransitions();
+        if (stateChangeReady) {
+            commitState();
         }
+    }
 
-        virtual void populateStateMap() = 0;
+    State *getCurrentState() {
+        return currentState;
+    }
 
-        void checkStateTransitions()
-        {
-            newState = currentState->checkTransitions();
-            stateChangeReady = (newState != nullptr);
-        };
-        
-        void commitState() {
-            currentState->onStateDismounted(PDN);
-            
-            currentState = newState;
-            stateChangeReady = false;
+protected:
+    // initial state is 0 in the list here
+    std::vector<State *> stateMap;
 
-            currentState->onStateMounted(PDN);
-        };
+private:
+    Device *PDN;
 
-        void loop() {
-            currentState->onStateLoop(PDN);
-            checkStateTransitions();
-            if(stateChangeReady) {
-                commitState();
-            }
-        }
+    bool stateChangeReady = false;
 
-        State* getCurrentState() {
-            return currentState;
-        }
-
-    protected:
-        // initial state is 0 in the list here
-        std::vector<State*> stateMap;
-
-    private:
-        Device* PDN;
-
-        bool stateChangeReady = false;
-
-        State* newState;
-        State* currentState;
-
-
+    State *newState;
+    State *currentState;
 };

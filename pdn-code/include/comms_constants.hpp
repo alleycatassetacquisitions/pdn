@@ -17,6 +17,9 @@ const String YOU_DEFEATED_ME = "ydm";
 const String SEND_MATCH_ID = "smid";
 const String SEND_USER_ID = "suid";
 
+const char STRING_TERM = '\r';
+const char STRING_START = '*';
+
 const int TRANSMIT_QUEUE_MAX_SIZE = 1024;
 
 #endif

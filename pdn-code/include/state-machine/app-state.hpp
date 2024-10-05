@@ -11,8 +11,9 @@ enum class AppStates : uint8_t {
     CLEAR_USER = 13,
 };
 
-template <AppStates state>
-class AppState : public state{};
+template<AppStates state>
+class AppState : public state {
+};
 
 
 // SERIAL COMMANDS

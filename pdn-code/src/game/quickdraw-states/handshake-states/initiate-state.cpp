@@ -29,11 +29,11 @@ bool initiateHandshake()
         }
       }
  */
-HandshakeInitiateState::HandshakeInitiateState(Player* player) : State(HANDSHAKE_INITIATE_STATE) {
+HandshakeInitiateState::HandshakeInitiateState(Player *player) : State(HANDSHAKE_INITIATE_STATE) {
     isHunter = player->isHunter();
-    std::vector<const String*> writing;
+    std::vector<const String *> writing;
 
-    if(isHunter) {
+    if (isHunter) {
         writing.push_back(&HUNTER_BATTLE_MESSAGE);
     } else {
         writing.push_back(&BOUNTY_BATTLE_MESSAGE);
@@ -46,7 +46,7 @@ HandshakeInitiateState::~HandshakeInitiateState() {
 }
 
 void HandshakeInitiateState::onStateMounted(Device *PDN) {
-    for(int i = 0; i < responseStringMessages.size(); i++) {
+    for (int i = 0; i < responseStringMessages.size(); i++) {
         PDN->writeString(&responseStringMessages[i]);
     }
 

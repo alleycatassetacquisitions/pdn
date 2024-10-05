@@ -2,7 +2,7 @@
 //
 // Created by Elli Furedy on 9/30/2024.
 //
-Handshake::Handshake(Player* player) : State(HANDSHAKE) {
+Handshake::Handshake(Player *player) : State(HANDSHAKE) {
     this->player = player;
 }
 
@@ -21,7 +21,7 @@ void Handshake::onStateMounted(Device *PDN) {
 void Handshake::onStateLoop(Device *PDN) {
     handshakeTimeout.updateTime();
 
-    if(handshakeTimeout.expired()) {
+    if (handshakeTimeout.expired()) {
         resetToActivated = true;
     } else {
         stateMachine->loop();

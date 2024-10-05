@@ -31,7 +31,8 @@ class StateTransition {
 public:
     // Constructor
     StateTransition(std::function<bool()> condition, State *nextState)
-        : condition(std::move(condition)), nextState(nextState) {};
+        : condition(std::move(condition)), nextState(nextState) {
+    };
 
     // Method to check if the transition condition is met
     bool isConditionMet() const {
@@ -86,7 +87,7 @@ public:
     };
 
     State *checkTransitions() {
-        for (StateTransition* transition : transitions) {
+        for (StateTransition *transition: transitions) {
             if (transition->isConditionMet()) {
                 return transition->nextState;
             }
@@ -96,11 +97,14 @@ public:
 
     int getStateId() const { return name.id; };
 
-    virtual void onStateMounted(Device *PDN) {};
+    virtual void onStateMounted(Device *PDN) {
+    };
 
-    virtual void onStateLoop(Device *PDN) {};
+    virtual void onStateLoop(Device *PDN) {
+    };
 
-    virtual void onStateDismounted(Device *PDN) {};
+    virtual void onStateDismounted(Device *PDN) {
+    };
 
     virtual bool isTerminalState() {
         return false;
@@ -111,8 +115,8 @@ public:
      * Any message that is received that is *not* in this set
      * will be discarded.
      */
-    virtual void registerValidMessages(std::vector<const String*> msgs) {
-        for (auto msg : msgs) {
+    virtual void registerValidMessages(std::vector<const String *> msgs) {
+        for (auto msg: msgs) {
             validStringMessages.insert(*msg);
         }
     };
@@ -120,14 +124,14 @@ public:
     /*
      * This method registers valid messages that can be *sent* during this state's lifecycle.
      */
-    virtual void registerResponseMessage(std::vector<const String*> msgs) {
+    virtual void registerResponseMessage(std::vector<const String *> msgs) {
         for (int i = 0; i < msgs.size(); i++) {
             responseStringMessages.push_back(*msgs.at(i));
         }
     };
 
     //Checks if the currently received String message is a part of the set of valid messages.
-    bool isMessageValid(String* msg) {
+    bool isMessageValid(String *msg) {
         return validStringMessages.find(*msg) != validStringMessages.end();
     }
 
@@ -135,8 +139,8 @@ public:
      * This message will consume the incoming Serial stream until a valid
      * message is found, at which point, that message will be returned.
      */
-    String* waitForValidMessage(Device *PDN) {
-        while(PDN->commsAvailable()) {
+    String *waitForValidMessage(Device *PDN) {
+        while (PDN->commsAvailable()) {
             if (!isMessageValid(PDN->peekComms())) {
                 PDN->readString();
             } else {

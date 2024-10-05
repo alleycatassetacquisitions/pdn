@@ -20,7 +20,7 @@
     setTimer(alertFlashTime);
   }
  */
-DuelAlert::DuelAlert(Player* player) : State(DUEL_ALERT) {
+DuelAlert::DuelAlert(Player *player) : State(DUEL_ALERT) {
     this->player = player;
 }
 
@@ -31,7 +31,7 @@ DuelAlert::~DuelAlert() {
 
 void DuelAlert::onStateMounted(Device *PDN) {
     //colors to indicate different powerups, types of players.
-    if(player->isHunter()) {
+    if (player->isHunter()) {
         PDN->setGlobablLightColor(hunterColors[random8(16)]);
     } else {
         PDN->setGlobablLightColor(bountyColors[random8(16)]);
@@ -40,7 +40,7 @@ void DuelAlert::onStateMounted(Device *PDN) {
 
 void DuelAlert::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(flashDelay) {
-        if(lightsOn) {
+        if (lightsOn) {
             PDN->setGlobalBrightness(255);
         } else {
             PDN->setGlobalBrightness(0);

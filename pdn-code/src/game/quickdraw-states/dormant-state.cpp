@@ -42,9 +42,9 @@ Dormant::Dormant(bool isHunter, long debugDelay) : State(DORMANT) {
 }
 
 void Dormant::onStateMounted(Device *PDN) {
-    if(isHunter) {
+    if (isHunter) {
         dormantTimer.setTimer(defaultDelay);
-    } else if(debugDelay > 0) {
+    } else if (debugDelay > 0) {
         dormantTimer.setTimer(debugDelay);
     } else {
         unsigned long dormantTime = random(bountyDelay[0], bountyDelay[1]);

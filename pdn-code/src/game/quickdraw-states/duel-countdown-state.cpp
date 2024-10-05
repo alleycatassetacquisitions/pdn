@@ -29,17 +29,17 @@
     }
   }
  */
-DuelCountdown::DuelCountdown() : State(DUEL_COUNTDOWN) {}
+DuelCountdown::DuelCountdown() : State(DUEL_COUNTDOWN) {
+}
 
 void DuelCountdown::onStateMounted(Device *PDN) {
-
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
     countdownTimer.updateTime();
-    if(countdownTimer.expired()) {
-        switch(countdownStage) {
+    if (countdownTimer.expired()) {
+        switch (countdownStage) {
             case 4: {
                 PDN->setGlobalBrightness(255);
                 countdownTimer.setTimer(FOUR);

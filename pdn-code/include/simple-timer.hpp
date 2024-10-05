@@ -1,12 +1,15 @@
 #pragma once
 
-class SimpleTimer
-{
+class SimpleTimer {
 public:
     static void updateTime();
+
     unsigned long getElapsedTime();
+
     bool expired();
+
     void invalidate();
+
     void setTimer(unsigned long timerDelay);
 
 private:

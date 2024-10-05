@@ -43,9 +43,9 @@ void ActivationSequence::onStateMounted(Device *PDN) {
 void ActivationSequence::onStateLoop(Device *PDN) {
     activationSequenceTimer.updateTime();
 
-    if(activationSequenceTimer.expired()) {
-        if(activateMotorCount < 19) {
-            if(activateMotor) {
+    if (activationSequenceTimer.expired()) {
+        if (activateMotorCount < 19) {
+            if (activateMotor) {
                 PDN->getVibrator().max();
             } else {
                 PDN->getVibrator().off();

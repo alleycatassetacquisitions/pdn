@@ -21,7 +21,7 @@
 //         int getSize();
 //         bool lastKeyFrame();
 //         int totalDuration();
-    
+
 //     private:
 //         int duration;
 //         int currentKeyFrame;
@@ -33,21 +33,25 @@
 
 
 class Haptics {
-    
-    public:
-        Haptics(int pin);
-        bool isOn();
-        void max();
-        void setIntensity(int intensity);
-        int getIntensity();
-        void off();
-        // void loadPattern(HapticsPattern pattern);
-        // int playPattern();
+public:
+    Haptics(int pin);
 
-    private:
-        int pinNumber;
-        int intensity;
-        // HapticsPattern currentPattern;
-        bool active = false;
+    bool isOn();
 
+    void max();
+
+    void setIntensity(int intensity);
+
+    int getIntensity();
+
+    void off();
+
+    // void loadPattern(HapticsPattern pattern);
+    // int playPattern();
+
+private:
+    int pinNumber;
+    int intensity;
+    // HapticsPattern currentPattern;
+    bool active = false;
 };

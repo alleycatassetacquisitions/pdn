@@ -16,10 +16,10 @@
  */
 Activated::Activated(bool isHunter) : State(ACTIVATED) {
     this->isHunter = isHunter;
-    std::vector<const String*> writing;
-    std::vector<const String*> reading;
+    std::vector<const String *> writing;
+    std::vector<const String *> reading;
 
-    if(isHunter) {
+    if (isHunter) {
         reading.push_back(&BOUNTY_BATTLE_MESSAGE);
         writing.push_back(&HUNTER_BATTLE_MESSAGE);
     } else {
@@ -32,7 +32,7 @@ Activated::Activated(bool isHunter) : State(ACTIVATED) {
 }
 
 void Activated::onStateMounted(Device *PDN) {
-    if(isHunter) {
+    if (isHunter) {
         currentPalette = hunterColors;
     } else {
         currentPalette = bountyColors;
@@ -40,9 +40,8 @@ void Activated::onStateMounted(Device *PDN) {
 }
 
 void Activated::onStateLoop(Device *PDN) {
-
     //This may be totally bad, but trying to figure out how to not spam Serial.
-    if(PDN->getTrxBufferedMessagesSize() == 0) {
+    if (PDN->getTrxBufferedMessagesSize() == 0) {
         PDN->writeString(&responseStringMessages[0]);
     }
 
@@ -50,8 +49,8 @@ void Activated::onStateLoop(Device *PDN) {
         ledAnimation(PDN);
     }
 
-    String* validMessage = waitForValidMessage(PDN);
-    if(validMessage != nullptr) {
+    String *validMessage = waitForValidMessage(PDN);
+    if (validMessage != nullptr) {
         transitionToHandshakeState = true;
     }
 }
@@ -67,7 +66,7 @@ void Activated::ledAnimation(Device *PDN) {
         ledBrightness--;
     }
     pwm_val =
-        255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+            255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
 
     if (ledBrightness == 255) {
         breatheUp = false;
@@ -79,15 +78,15 @@ void Activated::ledAnimation(Device *PDN) {
         PDN->getDisplayLights().addToLight(
             random8() % (numDisplayLights - 1),
             ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND)
-          );
+        );
     }
     PDN->getDisplayLights().fade(2);
 
     for (int i = 0; i < numGripLights; i++) {
         if (random8() % 65 == 0) {
             PDN->getGripLights().addToLight(
-              i,
-              ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND)
+                i,
+                ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND)
             );
         }
     }

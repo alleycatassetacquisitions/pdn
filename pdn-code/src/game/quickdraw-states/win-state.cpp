@@ -23,7 +23,7 @@ if (startBattleFinish) {
     }
   }
  */
-Win::Win(Player* player) : State(WIN) {
+Win::Win(Player *player) : State(WIN) {
     this->player = player;
 }
 
@@ -39,9 +39,9 @@ void Win::onStateMounted(Device *PDN) {
 
 void Win::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(150) {
-        PDN->getVibrator().setIntensity(PDN->getVibrator().getIntensity()+10);
+        PDN->getVibrator().setIntensity(PDN->getVibrator().getIntensity() + 10);
     }
-    if(PDN->getVibrator().getIntensity() > 255) {
+    if (PDN->getVibrator().getIntensity() > 255) {
         reset = true;
     }
 }
