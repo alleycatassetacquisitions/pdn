@@ -14,7 +14,7 @@
       msgDelay = msgDelay + 1;
     }
  */
-Activated::Activated(bool isHunter) : State(ACTIVATED) {
+Idle::Idle(bool isHunter) : State(IDLE) {
     this->isHunter = isHunter;
     std::vector<const String *> writing;
     std::vector<const String *> reading;
@@ -31,7 +31,7 @@ Activated::Activated(bool isHunter) : State(ACTIVATED) {
     registerResponseMessage(writing);
 }
 
-void Activated::onStateMounted(Device *PDN) {
+void Idle::onStateMounted(Device *PDN) {
     if (isHunter) {
         currentPalette = hunterColors;
     } else {
@@ -39,7 +39,7 @@ void Activated::onStateMounted(Device *PDN) {
     }
 }
 
-void Activated::onStateLoop(Device *PDN) {
+void Idle::onStateLoop(Device *PDN) {
     //This may be totally bad, but trying to figure out how to not spam Serial.
     if (PDN->getSerialWriteQueueSize() == 0) {
         PDN->writeString(&responseStringMessages[0]);
@@ -55,11 +55,11 @@ void Activated::onStateLoop(Device *PDN) {
     }
 }
 
-void Activated::onStateDismounted(Device *PDN) {
+void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
 }
 
-void Activated::ledAnimation(Device *PDN) {
+void Idle::ledAnimation(Device *PDN) {
     if (breatheUp) {
         ledBrightness++;
     } else {
@@ -93,6 +93,6 @@ void Activated::ledAnimation(Device *PDN) {
     PDN->getGripLights().fade(2);
 }
 
-bool Activated::transitionToHandshake() {
+bool Idle::transitionToHandshake() {
     return transitionToHandshakeState;
 }

@@ -20,16 +20,16 @@
     setTimer(alertFlashTime);
   }
  */
-DuelAlert::DuelAlert(Player *player) : State(DUEL_ALERT) {
+ConnectionSuccessful::ConnectionSuccessful(Player *player) : State(CONNECTION_SUCCESSFUL) {
     this->player = player;
 }
 
-DuelAlert::~DuelAlert() {
+ConnectionSuccessful::~ConnectionSuccessful() {
     player = nullptr;
 }
 
 
-void DuelAlert::onStateMounted(Device *PDN) {
+void ConnectionSuccessful::onStateMounted(Device *PDN) {
     //colors to indicate different powerups, types of players.
     if (player->isHunter()) {
         PDN->setGlobablLightColor(hunterColors[random8(16)]);
@@ -38,7 +38,7 @@ void DuelAlert::onStateMounted(Device *PDN) {
     }
 }
 
-void DuelAlert::onStateLoop(Device *PDN) {
+void ConnectionSuccessful::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(flashDelay) {
         if (lightsOn) {
             PDN->setGlobalBrightness(255);
@@ -51,12 +51,12 @@ void DuelAlert::onStateLoop(Device *PDN) {
     }
 }
 
-void DuelAlert::onStateDismounted(Device *PDN) {
+void ConnectionSuccessful::onStateDismounted(Device *PDN) {
     PDN->setGlobalBrightness(255);
     lightsOn = false;
     alertCount = 0;
 }
 
-bool DuelAlert::transitionToCountdown() {
+bool ConnectionSuccessful::transitionToCountdown() {
     return alertCount > transitionThreshold;
 }

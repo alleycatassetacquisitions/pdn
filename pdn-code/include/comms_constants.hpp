@@ -3,6 +3,7 @@
 /*
  * monkey with a crowbar. Figure out how to do this correctly.
  */
+#include "Arduino.h"
 
 // COMMANDS
 const String BOUNTY_BATTLE_MESSAGE = "bbm";

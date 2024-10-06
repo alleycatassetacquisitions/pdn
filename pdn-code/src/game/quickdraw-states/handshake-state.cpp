@@ -33,10 +33,10 @@ void Handshake::onStateDismounted(Device *PDN) {
     resetToActivated = false;
 }
 
-bool Handshake::transitionToActivated() {
+bool Handshake::transitionToIdle() {
     return resetToActivated;
 }
 
-bool Handshake::transitionToDuelAlert() {
+bool Handshake::transitionToConnectionSuccessful() {
     return stateMachine->handshakeSuccessful();
 }

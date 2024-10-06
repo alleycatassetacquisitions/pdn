@@ -12,11 +12,11 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
-    Dormant* dormant = new Dormant(player->isHunter(), 0);
-    ActivationSequence* activationSequence = new ActivationSequence();
-    Activated* activated = new Activated(player->isHunter());
+    Sleep* dormant = new Sleep(player->isHunter(), 0);
+    AwakenSequence* activationSequence = new AwakenSequence();
+    Idle* activated = new Idle(player->isHunter());
     Handshake* handshake = new Handshake(player);
-    DuelAlert* duelAlert = new DuelAlert(player);
+    ConnectionSuccessful* duelAlert = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown();
     Duel* duel = new Duel();
     Win* win = new Win(player);
@@ -24,32 +24,32 @@ void Quickdraw::populateStateMap() {
 
     dormant->addTransition(
         new StateTransition(
-            std::bind(&Dormant::transitionToActivationSequence,
+            std::bind(&Sleep::transitionToAwakenSequence,
                 dormant),
                 activationSequence));
     activationSequence->addTransition(
         new StateTransition(
-            std::bind(&ActivationSequence::transitionToActivated,
+            std::bind(&AwakenSequence::transitionToIdle,
                 activationSequence),
                 activated));
     activated->addTransition(
         new StateTransition(
-            std::bind(&Activated::transitionToHandshake,
+            std::bind(&Idle::transitionToHandshake,
                 activated),
             handshake));
     handshake->addTransition(
         new StateTransition(
-            std::bind(&Handshake::transitionToDuelAlert,
+            std::bind(&Handshake::transitionToConnectionSuccessful,
                 handshake),
                 duelAlert));
     handshake->addTransition(
         new StateTransition(
-            std::bind(&Handshake::transitionToActivated,
+            std::bind(&Handshake::transitionToIdle,
             handshake),
             activated));
     duelAlert->addTransition(
         new StateTransition(
-            std::bind(&DuelAlert::transitionToCountdown,
+            std::bind(&ConnectionSuccessful::transitionToCountdown,
                 duelAlert),
             duelCountdown));
     duelCountdown->addTransition(

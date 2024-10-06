@@ -36,12 +36,12 @@
     }
  */
 
-Dormant::Dormant(bool isHunter, long debugDelay) : State(DORMANT) {
+Sleep::Sleep(bool isHunter, long debugDelay) : State(SLEEP) {
     this->isHunter = isHunter;
     this->debugDelay = debugDelay;
 }
 
-void Dormant::onStateMounted(Device *PDN) {
+void Sleep::onStateMounted(Device *PDN) {
     if (isHunter) {
         dormantTimer.setTimer(defaultDelay);
     } else if (debugDelay > 0) {
@@ -52,14 +52,14 @@ void Dormant::onStateMounted(Device *PDN) {
     }
 }
 
-void Dormant::onStateLoop(Device *PDN) {
+void Sleep::onStateLoop(Device *PDN) {
     dormantTimer.updateTime();
 }
 
-void Dormant::onStateDismounted(Device *PDN) {
+void Sleep::onStateDismounted(Device *PDN) {
     dormantTimer.invalidate();
 }
 
-bool Dormant::transitionToActivationSequence() {
+bool Sleep::transitionToAwakenSequence() {
     return dormantTimer.expired();
 }

@@ -10,11 +10,11 @@
 // Quickdraw States
 
 enum QuickdrawStateId {
-    DORMANT = 0,
-    ACTIVATION_SEQUENCE = 1,
-    ACTIVATED = 2,
+    SLEEP = 0,
+    AWAKEN_SEQUENCE = 1,
+    IDLE = 2,
     HANDSHAKE = 3,
-    DUEL_ALERT = 4,
+    CONNECTION_SUCCESSFUL = 4,
     DUEL_COUNTDOWN = 5,
     DUEL = 6,
     WIN = 7,
@@ -22,9 +22,9 @@ enum QuickdrawStateId {
 };
 
 
-class Dormant : public State {
+class Sleep : public State {
 public:
-    Dormant(bool isHunter, long debugDelay);
+    Sleep(bool isHunter, long debugDelay);
 
     void onStateMounted(Device *PDN) override;
 
@@ -32,7 +32,7 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToActivationSequence();
+    bool transitionToAwakenSequence();
 
 private:
     SimpleTimer dormantTimer;
@@ -47,9 +47,9 @@ private:
 /*
  * TODO: Could this become a more generic alarm state?
  */
-class ActivationSequence : public State {
+class AwakenSequence : public State {
 public:
-    ActivationSequence();
+    AwakenSequence();
 
     void onStateMounted(Device *PDN) override;
 
@@ -57,7 +57,7 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToActivated();
+    bool transitionToIdle();
 
 private:
     SimpleTimer activationSequenceTimer;
@@ -66,9 +66,9 @@ private:
     const int activationStepDuration = 100;
 };
 
-class Activated : public State {
+class Idle : public State {
 public:
-    Activated(bool isHunter);
+    Idle(bool isHunter);
 
     void onStateMounted(Device *PDN) override;
 
@@ -103,9 +103,9 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToActivated();
+    bool transitionToIdle();
 
-    bool transitionToDuelAlert();
+    bool transitionToConnectionSuccessful();
 
 private:
     Player *player;
@@ -118,11 +118,11 @@ private:
 /*
  * TODO: Lockdown gets cleared in this state.
  */
-class DuelAlert : public State {
+class ConnectionSuccessful : public State {
 public:
-    DuelAlert(Player *player);
+    ConnectionSuccessful(Player *player);
 
-    ~DuelAlert();
+    ~ConnectionSuccessful();
 
     void onStateMounted(Device *PDN) override;
 

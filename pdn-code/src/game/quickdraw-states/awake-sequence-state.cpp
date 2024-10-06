@@ -32,15 +32,15 @@
     }
  */
 
-ActivationSequence::ActivationSequence() : State(ACTIVATION_SEQUENCE) {
+AwakenSequence::AwakenSequence() : State(AWAKEN_SEQUENCE) {
 }
 
-void ActivationSequence::onStateMounted(Device *PDN) {
+void AwakenSequence::onStateMounted(Device *PDN) {
     activationSequenceTimer.setTimer(activationStepDuration);
     PDN->getVibrator().max();
 }
 
-void ActivationSequence::onStateLoop(Device *PDN) {
+void AwakenSequence::onStateLoop(Device *PDN) {
     activationSequenceTimer.updateTime();
 
     if (activationSequenceTimer.expired()) {
@@ -58,13 +58,13 @@ void ActivationSequence::onStateLoop(Device *PDN) {
     }
 }
 
-void ActivationSequence::onStateDismounted(Device *PDN) {
+void AwakenSequence::onStateDismounted(Device *PDN) {
     activationSequenceTimer.invalidate();
     PDN->getVibrator().off();
     activateMotorCount = 0;
     activateMotor = true;
 }
 
-bool ActivationSequence::transitionToActivated() {
+bool AwakenSequence::transitionToIdle() {
     return activateMotorCount > 19;
 }
