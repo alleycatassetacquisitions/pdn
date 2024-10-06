@@ -5,7 +5,6 @@
 
 class Match {
 public:
-    void setupMatch(UUID id_generator, String hunter, String bounty);
 
     void setupMatch(String id, String hunter, String bounty);
 

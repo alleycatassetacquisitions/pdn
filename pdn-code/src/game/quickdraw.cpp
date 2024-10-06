@@ -1,13 +1,13 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN), matches{} {
+Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
     this->player = player;
     Device::GetInstance()->setActiveComms(player->isHunter() ? OUTPUT_JACK : INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {
     player = nullptr;
-    matches->clear();
+    matches.clear();
 }
 
 void Quickdraw::populateStateMap() {

@@ -160,7 +160,7 @@ bool Device::commsAvailable() {
     }
 }
 
-int Device::getTrxBufferedMessagesSize() {
+int Device::getSerialWriteQueueSize() {
     switch (currentCommsJack) {
         case OUTPUT_JACK:
             return TRANSMIT_QUEUE_MAX_SIZE - outputJack().availableForWrite();

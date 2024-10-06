@@ -41,7 +41,7 @@ void Activated::onStateMounted(Device *PDN) {
 
 void Activated::onStateLoop(Device *PDN) {
     //This may be totally bad, but trying to figure out how to not spam Serial.
-    if (PDN->getTrxBufferedMessagesSize() == 0) {
+    if (PDN->getSerialWriteQueueSize() == 0) {
         PDN->writeString(&responseStringMessages[0]);
     }
 

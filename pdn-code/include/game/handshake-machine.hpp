@@ -8,18 +8,20 @@
 // STATE - HANDSHAKE
 /**
 Handshake states:
-0 - start timer to delay sending handshake signal for 1000 ms
-1 - wait for handshake delay to expire
-2 - start timeout timer
-3 - begin sending shake message and check for timeout
+0 - Send battle message once.
+1 - Wait for battle message, once received send battle_message & shake.
+2 - Hunter - send matchId & playerId. Bounty - send player id.
+3 - Read matchId/playerId, send final ack.
+4 - Wait for receive final ack.
+5 - Terminal state to signal success to outer state-machine.
 **/
 enum HandshakeStateId {
-    HANDSHAKE_INITIATE_STATE = 1,
-    HANDSHAKE_RECEIVE_BATTLE_STATE = 2,
-    HANDSHAKE_SEND_ROLE_STATE = 3,
-    HANDSHAKE_RECEIVED_ROLE_STATE = 4,
-    HANDSHAKE_FINAL_ACK_STATE = 5,
-    HANDSHAKE_TERMINAL_STATE = 6
+    HANDSHAKE_INITIATE_STATE = 0,
+    HANDSHAKE_RECEIVE_BATTLE_STATE = 1,
+    HANDSHAKE_SEND_ROLE_STATE = 2,
+    HANDSHAKE_RECEIVED_ROLE_STATE = 3,
+    HANDSHAKE_FINAL_ACK_STATE = 4,
+    HANDSHAKE_TERMINAL_STATE = 5
 };
 
 

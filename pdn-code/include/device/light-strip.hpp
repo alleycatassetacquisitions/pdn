@@ -7,29 +7,33 @@ class LightStrip {
 public:
     LightStrip(int numLights) {
         this->numLights = numLights;
-        lightStrip = new CRGB[numLights];
-        FastLED.addLeds<WS2812B, pinNumber, GRB>(lightStrip, numLights);
+        lights = new CRGB[numLights];
+        FastLED.addLeds<WS2812B, pinNumber, GRB>(lights, numLights);
     }
 
     ~LightStrip() {
-        delete []lightStrip;
+        delete []lights;
     }
 
     void setLight(int index, CRGB color) {
-        lightStrip[index] = color;
+        lights[index] = color;
     };
 
+    CRGB getLightColor(int index) {
+        return lights[index];
+    }
+
     void fade(int fadeAmount) {
-        fadeToBlackBy(lightStrip, numLights, fadeAmount);
+        fadeToBlackBy(lights, numLights, fadeAmount);
     };
 
     void addToLight(int index, CRGB color) {
-        lightStrip[index] += color;
+        lights[index] += color;
     };
 
 protected:
     int numLights;
-    CRGB *lightStrip;
+    CRGB *lights;
     CRGBPalette16 currentPalette;
     int colorIndex;
     int brightness;

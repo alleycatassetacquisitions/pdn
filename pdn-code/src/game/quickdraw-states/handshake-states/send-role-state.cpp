@@ -32,6 +32,7 @@ HandshakeSendRoleState::HandshakeSendRoleState(Player *player) : State(HANDSHAKE
 
         String currentMatchId = *player->getCurrentMatchId();
 
+        //TODO: is there a better way to append these "headers"?
         writing.push_back(&SEND_MATCH_ID);
         writing.push_back(&currentMatchId);
         writing.push_back(&SEND_USER_ID);

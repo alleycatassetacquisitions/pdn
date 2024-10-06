@@ -53,7 +53,7 @@ public:
 
     bool commsAvailable();
 
-    int getTrxBufferedMessagesSize();
+    int getSerialWriteQueueSize();
 
     void setGlobablLightColor(CRGB color);
 

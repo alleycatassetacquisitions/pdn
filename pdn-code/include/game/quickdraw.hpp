@@ -7,8 +7,6 @@
 #include "../comms_constants.hpp"
 #include "quickdraw-states.hpp"
 
-#define MAX_MATCHES 1000 // Maximum number of matches allowed
-
 #define MATCH_SIZE sizeof(Match)
 
 // Global includes
@@ -31,7 +29,7 @@ const CRGBPalette16 idleColors = CRGBPalette16(
 );
 
 class Quickdraw : public StateMachine {
-    std::vector<Match> matches[MAX_MATCHES];
+    std::vector<Match> matches;
     int numMatches = 0;
 
     Player *player;

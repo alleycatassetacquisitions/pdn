@@ -4,9 +4,9 @@
 #include "state-machine/state-machine.hpp"
 
 enum TestStateId {
-    INITIAL_STATE = 1,
-    SECOND_STATE = 2,
-    THIRD_STATE = 3,
+    INITIAL_STATE = 0,
+    SECOND_STATE = 1,
+    THIRD_STATE = 2,
     TERMINAL_STATE = 99
 };
 

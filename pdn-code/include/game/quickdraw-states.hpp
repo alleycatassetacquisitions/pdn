@@ -44,7 +44,9 @@ private:
     unsigned long debugDelay = 3000;
 };
 
-
+/*
+ * TODO: Could this become a more generic alarm state?
+ */
 class ActivationSequence : public State {
 public:
     ActivationSequence();
@@ -113,6 +115,9 @@ private:
     bool resetToActivated = false;
 };
 
+/*
+ * TODO: Lockdown gets cleared in this state.
+ */
 class DuelAlert : public State {
 public:
     DuelAlert(Player *player);
@@ -135,6 +140,9 @@ private:
     byte alertCount = 0;
 };
 
+/*
+ * TODO: User Powerup prompt.
+ */
 class DuelCountdown : public State {
 public:
     DuelCountdown();
@@ -158,7 +166,9 @@ private:
     int ONE = 3000;
 };
 
-
+/*
+ * TODO: Add logic for spending LED here.
+ */
 class Duel : public State {
 public:
     Duel();
@@ -187,6 +197,11 @@ private:
 };
 
 
+/*
+ * TODO: Implement Score update here.
+ * TODO: Allow for score multipliers here.
+ * TODO: Add Score change display.
+ */
 class Win : public State {
 public:
     Win(Player *player);
@@ -208,6 +223,9 @@ private:
     bool reset = false;
 };
 
+/*
+ * TODO: Add Score change display.
+ */
 class Lose : public State {
 public:
     Lose(Player *player);
