@@ -15,6 +15,7 @@ class MockDevice : public Device {
     MOCK_METHOD(void, setButtonClick, (int, parameterizedCallbackFunction, void*), (override));
     MOCK_METHOD(void, removeButtonCallbacks, (), (override));
     MOCK_METHOD(void, writeString, (string*), (override));
+    MOCK_METHOD(void, writeString, (const string*), (override));
     MOCK_METHOD(string, readString, (), (override));
     MOCK_METHOD(void, setActiveComms, (int), (override));
     MOCK_METHOD(string*, peekComms, (), (override));

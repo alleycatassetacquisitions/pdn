@@ -1,6 +1,7 @@
 //
 // Created by Elli Furedy on 10/4/2024.
 //
+#include "device-mock.hpp"
 #include "state-machine.hpp"
 
 enum TestStateId {
@@ -10,8 +11,14 @@ enum TestStateId {
     TERMINAL_STATE = 99
 };
 
+const int INITIAL_TRANSITION_THRESHOLD = 1;
+const int THIRD_TRANSITION_THRESHOLD = 3;
+const int SECOND_TRANSITION_THRESHOLD = 2;
+const int LOOPS_TO_COMPLETE_MACHINE = INITIAL_TRANSITION_THRESHOLD + SECOND_TRANSITION_THRESHOLD + THIRD_TRANSITION_THRESHOLD;
+
 class InitialTestState : public State {
 public:
+
     InitialTestState() : State(INITIAL_STATE) {
     }
 
@@ -24,7 +31,7 @@ public:
 
     void onStateLoop(Device *PDN) override {
         stateLoopInvoked++;
-        if (stateLoopInvoked == 1) {
+        if (stateLoopInvoked == INITIAL_TRANSITION_THRESHOLD) {
             transitionToSecond = true;
         }
     }
@@ -46,6 +53,7 @@ public:
 
 class SecondTestState : public State {
 public:
+
     SecondTestState() : State(SECOND_STATE) {
     }
 
@@ -58,7 +66,7 @@ public:
 
     void onStateLoop(Device *PDN) override {
         stateLoopInvoked++;
-        if (stateLoopInvoked == 2) {
+        if (stateLoopInvoked == SECOND_TRANSITION_THRESHOLD) {
             transitionToThird = true;
         }
     }
@@ -81,6 +89,7 @@ public:
 
 class ThirdTestState : public State {
 public:
+
     ThirdTestState() : State(THIRD_STATE) {
     }
 
@@ -93,7 +102,7 @@ public:
 
     void onStateLoop(Device *PDN) override {
         stateLoopInvoked++;
-        if (stateLoopInvoked == 3) {
+        if (stateLoopInvoked == THIRD_TRANSITION_THRESHOLD) {
             transitionToFourth = true;
         }
     }
@@ -128,6 +137,12 @@ public:
 
     void onStateLoop(Device *PDN) override {
         stateLoopInvoked++;
+        if(PDN->getCurrentVibrationIntensity() == VIBRATION_MAX) {
+            transitionToSecond = true;
+        }
+        if(PDN->getCurrentVibrationIntensity() == VIBRATION_MAX) {
+            transitionToFirst = true;
+        }
     }
 
     void onStateDismounted(Device *PDN) override {
@@ -139,16 +154,22 @@ public:
         return transitionToSecond;
     }
 
+    bool transitionToFirstState() {
+        return transitionToFirst;
+    }
+
 
     bool stateMountedInvoked = false;
     int stateLoopInvoked = 0;
     bool stateDismountedInvoked = false;
     bool transitionToSecond = false;
+    bool transitionToFirst = false;
 };
 
 
 class TestStateMachine : public StateMachine {
 public:
+
     TestStateMachine(MockDevice *PDN) : StateMachine(PDN) {
     }
 
@@ -162,6 +183,10 @@ public:
 
         return stateMap[position];
     }
+
+    std::vector<State *> getStateMap() {
+        return stateMap;
+    };
 
     void populateStateMap() override {
         InitialTestState *initialState = new InitialTestState();
@@ -196,6 +221,12 @@ public:
                     &TerminalTestState::transitionToSecondState,
                     terminalState),
                 secondState));
+
+        terminalState->addTransition(
+            new StateTransition(
+                std::bind(&TerminalTestState::transitionToFirstState,
+                    terminalState),
+                    initialState));
 
         stateMap.push_back(initialState);
         stateMap.push_back(secondState);

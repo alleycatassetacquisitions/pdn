@@ -1,17 +1,6 @@
-//
-// Created by Elli Furedy on 8/28/2024.
-//
-//
-// Created by Elli Furedy on 8/27/2024.
-//
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>\
-
-
-#include "device-mock.hpp"
-#include "test-objects.hpp"
-// TEST(...)
-// TEST_F(...)
+#include <gmock/gmock.h>
+#include "state-machine-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -39,15 +28,133 @@ void loop()
 
 #else
 
-TEST(StateMachineTestSuite, testStateMachine) {
-    MockDevice* device;
-    TestStateMachine* stateMachine = new TestStateMachine(device);
+TEST_F(StateMachineTestSuite, testInitialize) {
 
     stateMachine->initialize();
 
     State* currentState = stateMachine->getCurrentState();
 
-    ASSERT_TRUE(static_cast<InitialTestState*>(currentState)->stateMountedInvoked);
+    ASSERT_TRUE(dynamic_cast<InitialTestState*>(currentState)->stateMountedInvoked);
+}
+
+TEST_F(StateMachineTestSuite, initializePopulatesStateMap) {
+    stateMachine->initialize();
+
+    std::vector<State *> populatedStates = stateMachine->getStateMap();
+
+    ASSERT_EQ(populatedStates.size(), 4);
+}
+
+TEST_F(StateMachineTestSuite, stateMapIsEmptyWhenStateMachineNotInitialized) {
+
+    State* shouldBeNull = stateMachine->getCurrentState();
+
+    ASSERT_EQ(nullptr, shouldBeNull);
+}
+
+TEST_F(StateMachineTestSuite, stateShouldTransitionAfterConditionMet) {
+
+    stateMachine->initialize();
+
+    advanceStateMachineToState(SECOND_STATE);
+
+    State* currentState = stateMachine->getCurrentState();
+
+    ASSERT_TRUE(static_cast<SecondTestState*>(currentState)->stateMountedInvoked);
+}
+
+TEST_F(StateMachineTestSuite, whenTransitionIsMetStateDismounts) {
+
+    stateMachine->initialize();
+
+    advanceStateMachineToState(SECOND_STATE);
+
+    State* initialState = stateMachine->getStateFromStateMap(0);
+
+    ASSERT_TRUE(static_cast<SecondTestState*>(initialState)->stateDismountedInvoked);
+}
+
+TEST_F(StateMachineTestSuite, stateMachineTransitionsThroughAllStates) {
+
+    stateMachine->initialize();
+
+    advanceStateMachineToState(TERMINAL_STATE);
+
+    State* currentState = stateMachine->getCurrentState();
+    ASSERT_TRUE(static_cast<TerminalTestState*>(currentState)->stateMountedInvoked);
+}
+
+TEST_F(StateMachineTestSuite, stateLifecyclesAreInvoked) {
+    stateMachine->initialize();
+
+    InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
+    SecondTestState* second = dynamic_cast<SecondTestState*>(stateMachine->getStateFromStateMap(1));
+    ThirdTestState* third = dynamic_cast<ThirdTestState*>(stateMachine->getStateFromStateMap(2));
+    TerminalTestState* terminal = dynamic_cast<TerminalTestState*>(stateMachine->getStateFromStateMap(3));
+
+    advanceStateMachineToState(SECOND_STATE);
+
+    ASSERT_TRUE(initial->stateMountedInvoked);
+    ASSERT_EQ(initial->stateLoopInvoked, INITIAL_TRANSITION_THRESHOLD);
+    ASSERT_TRUE(initial->stateDismountedInvoked);
+    ASSERT_TRUE(second->stateMountedInvoked);
+
+    advanceStateMachineToState(THIRD_STATE);
+
+    ASSERT_EQ(second->stateLoopInvoked, SECOND_TRANSITION_THRESHOLD);
+    ASSERT_TRUE(second->stateDismountedInvoked);
+    ASSERT_TRUE(third->stateMountedInvoked);
+
+    advanceStateMachineToState(TERMINAL_STATE);
+
+    ASSERT_EQ(third->stateLoopInvoked, THIRD_TRANSITION_THRESHOLD);
+    ASSERT_TRUE(third->stateDismountedInvoked);
+    ASSERT_TRUE(terminal->stateMountedInvoked);
+}
+
+TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
+    stateMachine->initialize();
+
+    advanceStateMachineToState(TERMINAL_STATE);
+
+    int numLoopsBeforeTransition = 5;
+
+    testing::InSequence sequence;
+
+    EXPECT_CALL(device, getCurrentVibrationIntensity())
+    .Times(numLoopsBeforeTransition*2)
+    .WillRepeatedly(testing::Return(0))
+    .RetiresOnSaturation();
+
+    while(numLoopsBeforeTransition--) {
+        stateMachine->loop();
+        ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == TERMINAL_STATE);
+    }
+
+    EXPECT_CALL(device, getCurrentVibrationIntensity())
+    .Times(2)
+    .WillRepeatedly(testing::Return(VIBRATION_MAX))
+    .RetiresOnSaturation();
+
+    stateMachine->loop();
+
+    ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
+}
+
+TEST_F(StateMachineTestSuite, whenTwoTransitionsAreMetSimultaneouslyThenTheFirstTransitionAddedTriggersFirst) {
+    stateMachine->initialize();
+
+    advanceStateMachineToState(TERMINAL_STATE);
+
+    testing::InSequence sequence;
+
+    EXPECT_CALL(device, getCurrentVibrationIntensity())
+    .Times(2)
+    .WillRepeatedly(testing::Return(VIBRATION_MAX));
+
+    stateMachine->loop();
+
+    ASSERT_FALSE(stateMachine->getCurrentState()->getStateId() == INITIAL_STATE);
 }
 
 int main(int argc, char **argv)
