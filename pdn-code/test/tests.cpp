@@ -60,7 +60,7 @@ TEST_F(StateMachineTestSuite, stateShouldTransitionAfterConditionMet) {
 
     State* currentState = stateMachine->getCurrentState();
 
-    ASSERT_TRUE(static_cast<SecondTestState*>(currentState)->stateMountedInvoked);
+    ASSERT_TRUE(dynamic_cast<SecondTestState*>(currentState)->stateMountedInvoked);
 }
 
 TEST_F(StateMachineTestSuite, whenTransitionIsMetStateDismounts) {
@@ -71,7 +71,7 @@ TEST_F(StateMachineTestSuite, whenTransitionIsMetStateDismounts) {
 
     State* initialState = stateMachine->getStateFromStateMap(0);
 
-    ASSERT_TRUE(static_cast<SecondTestState*>(initialState)->stateDismountedInvoked);
+    ASSERT_TRUE(dynamic_cast<InitialTestState*>(initialState)->stateDismountedInvoked);
 }
 
 TEST_F(StateMachineTestSuite, stateMachineTransitionsThroughAllStates) {
@@ -81,7 +81,7 @@ TEST_F(StateMachineTestSuite, stateMachineTransitionsThroughAllStates) {
     advanceStateMachineToState(TERMINAL_STATE);
 
     State* currentState = stateMachine->getCurrentState();
-    ASSERT_TRUE(static_cast<TerminalTestState*>(currentState)->stateMountedInvoked);
+    ASSERT_TRUE(dynamic_cast<TerminalTestState*>(currentState)->stateMountedInvoked);
 }
 
 TEST_F(StateMachineTestSuite, stateLifecyclesAreInvoked) {
@@ -164,7 +164,6 @@ int main(int argc, char **argv)
     // ::testing::InitGoogleMock(&argc, argv);
 
     if (RUN_ALL_TESTS())
-        ;
 
     // Always return zero-code and allow PlatformIO to parse results
     return 0;
