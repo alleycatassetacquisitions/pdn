@@ -41,7 +41,7 @@ void DuelCountdown::onStateLoop(Device *PDN) {
     if (countdownTimer.expired()) {
         switch (countdownStage) {
             case 4: {
-                PDN->setGlobalBrightness(255);
+                PDN->setGlobalBrightness(BRIGHTNESS_MAX);
                 countdownTimer.setTimer(FOUR);
                 countdownStage = 3;
                 break;
@@ -59,7 +59,7 @@ void DuelCountdown::onStateLoop(Device *PDN) {
                 break;
             }
             case 1: {
-                PDN->setGlobalBrightness(0);
+                PDN->setGlobalBrightness(BRIGHTNESS_OFF);
                 countdownTimer.setTimer(ONE);
                 countdownStage = 0;
                 break;

@@ -34,14 +34,14 @@ Win::~Win() {
 
 void Win::onStateMounted(Device *PDN) {
     //Write to EEPROM. Don't have that figured out yet.
-    PDN->getVibrator().off();
+    PDN->setVibration(VIBRATION_OFF);
 }
 
 void Win::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(150) {
-        PDN->getVibrator().setIntensity(PDN->getVibrator().getIntensity() + 10);
+        PDN->setVibration(PDN->getCurrentVibrationIntensity() + 10);
     }
-    if (PDN->getVibrator().getIntensity() > 255) {
+    if (PDN->getCurrentVibrationIntensity() > VIBRATION_MAX) {
         reset = true;
     }
 }

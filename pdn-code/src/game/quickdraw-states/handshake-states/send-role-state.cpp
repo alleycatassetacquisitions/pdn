@@ -24,13 +24,13 @@ if(peekGameComms() == BOUNTY_SHAKE && isHunter)
  */
 HandshakeSendRoleState::HandshakeSendRoleState(Player *player) : State(HANDSHAKE_SEND_ROLE_STATE) {
     this->player = player;
-    std::vector<const String *> reading;
-    std::vector<const String *> writing;
-    String userId = player->getUserID();
+    std::vector<const string *> reading;
+    std::vector<const string *> writing;
+    string userId = player->getUserID();
     if (player->isHunter()) {
         reading.push_back(&BOUNTY_SHAKE);
 
-        String currentMatchId = *player->getCurrentMatchId();
+        string currentMatchId = *player->getCurrentMatchId();
 
         //TODO: is there a better way to append these "headers"?
         writing.push_back(&SEND_MATCH_ID);
@@ -55,7 +55,7 @@ void HandshakeSendRoleState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeSendRoleState::onStateLoop(Device *PDN) {
-    String *incomingMessage = waitForValidMessage(PDN);
+    string *incomingMessage = waitForValidMessage(PDN);
     if (incomingMessage != nullptr) {
         for (int i = 0; i < responseStringMessages.size(); i++) {
             PDN->writeString(&responseStringMessages[i]);

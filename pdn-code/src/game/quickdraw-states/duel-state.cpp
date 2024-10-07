@@ -31,20 +31,20 @@ if (peekGameComms() == ZAP) {
   }
  */
 Duel::Duel() : State(DUEL) {
-    std::vector<const String *> reading;
+    std::vector<const string *> reading;
 
     reading.push_back(&ZAP);
     reading.push_back(&YOU_DEFEATED_ME);
 }
 
 void Duel::onStateMounted(Device *PDN) {
-    PDN->getPrimaryButton().attachClick(
+    PDN->setButtonClick(PRIMARY_BUTTON,
         [](void *PDN) {
             ButtonPress(static_cast<Device *>(PDN));
         },
         PDN);
 
-    PDN->getSecondaryButton().attachClick(
+    PDN->setButtonClick(SECONDARY_BUTTON,
         [](void *PDN) {
             ButtonPress(static_cast<Device *>(PDN));
         },
@@ -56,7 +56,7 @@ void Duel::onStateMounted(Device *PDN) {
 void Duel::onStateLoop(Device *PDN) {
     duelTimer.updateTime();
 
-    String *validMessage = waitForValidMessage(PDN);
+    string *validMessage = waitForValidMessage(PDN);
     if (validMessage != nullptr) {
         if (*validMessage == ZAP) {
             PDN->writeString(&YOU_DEFEATED_ME);

@@ -1,7 +1,7 @@
 //
 // Created by Elli Furedy on 10/4/2024.
 //
-#include "state-machine/state-machine.hpp"
+#include "state-machine.hpp"
 
 enum TestStateId {
     INITIAL_STATE = 0,
@@ -149,7 +149,7 @@ public:
 
 class TestStateMachine : public StateMachine {
 public:
-    TestStateMachine(Device *PDN) : StateMachine(PDN) {
+    TestStateMachine(MockDevice *PDN) : StateMachine(PDN) {
     }
 
     ~TestStateMachine() {

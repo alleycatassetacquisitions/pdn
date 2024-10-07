@@ -3,7 +3,7 @@
 //
 #pragma once
 #include "../player.hpp"
-#include "../state-machine/state-machine.hpp"
+#include "state-machine.hpp"
 
 // STATE - HANDSHAKE
 /**

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../device/device.hpp"
+#include "device.hpp"
 #include "../player.hpp"
 #include "../match.hpp"
-#include "../include/state-machine/state-machine.hpp"
-#include "../comms_constants.hpp"
+#include "state-machine.hpp"
+#include <FastLED.h>
 #include "quickdraw-states.hpp"
 
 #define MATCH_SIZE sizeof(Match)

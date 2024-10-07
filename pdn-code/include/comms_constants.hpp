@@ -3,20 +3,22 @@
 /*
  * monkey with a crowbar. Figure out how to do this correctly.
  */
-#include "Arduino.h"
+#include <string>
+
+using namespace std;
 
 // COMMANDS
-const String BOUNTY_BATTLE_MESSAGE = "bbm";
-const String HUNTER_BATTLE_MESSAGE = "hbm";
-const String BOUNTY_SHAKE = "bs";
-const String HUNTER_SHAKE = "hs";
-const String HUNTER_HANDSHAKE_FINAL_ACK = "hhfa";
-const String BOUNTY_HANDSHAKE_FINAL_ACK = "bhfa";
-const String ZAP = "zap";
-const String YOU_DEFEATED_ME = "ydm";
+const string BOUNTY_BATTLE_MESSAGE = "bbm";
+const string HUNTER_BATTLE_MESSAGE = "hbm";
+const string BOUNTY_SHAKE = "bs";
+const string HUNTER_SHAKE = "hs";
+const string HUNTER_HANDSHAKE_FINAL_ACK = "hhfa";
+const string BOUNTY_HANDSHAKE_FINAL_ACK = "bhfa";
+const string ZAP = "zap";
+const string YOU_DEFEATED_ME = "ydm";
 
-const String SEND_MATCH_ID = "smid";
-const String SEND_USER_ID = "suid";
+const string SEND_MATCH_ID = "smid";
+const string SEND_USER_ID = "suid";
 
 const char STRING_TERM = '\r';
 const char STRING_START = '*';

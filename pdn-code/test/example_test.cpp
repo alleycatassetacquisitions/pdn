@@ -4,24 +4,62 @@
 //
 // Created by Elli Furedy on 8/27/2024.
 //
-#include <unity.h>
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>\
 
-bool success = false;
 
-void setUp(void) {
-    success = true;
+#include "device-mock.hpp"
+#include "test-objects.hpp"
+// TEST(...)
+// TEST_F(...)
+
+#if defined(ARDUINO)
+#include <Arduino.h>
+
+void setup()
+{
+    // should be the same value as for the `test_speed` option in "platformio.ini"
+    // default value is test_speed=115200
+    Serial.begin(115200);
+
+    ::testing::InitGoogleTest();
+    // if you plan to use GMock, replace the line above with
+    // ::testing::InitGoogleMock();
 }
 
-void tearDown(void) {
-    // clean stuff up here
+void loop()
+{
+    // Run tests
+    if (RUN_ALL_TESTS())
+        ;
+
+    // sleep for 1 sec
+    delay(1000);
 }
 
-void testFunction(void) {
-    TEST_ASSERT_TRUE(success);
+#else
+
+TEST(StateMachineTestSuite, testStateMachine) {
+    MockDevice* device;
+    TestStateMachine* stateMachine = new TestStateMachine(device);
+
+    stateMachine->initialize();
+
+    State* currentState = stateMachine->getCurrentState();
+
+    ASSERT_TRUE(static_cast<InitialTestState*>(currentState)->stateMountedInvoked);
 }
 
-int main(void) {
-    UNITY_BEGIN();
-    RUN_TEST(testFunction);
-    UNITY_END();
+int main(int argc, char **argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
+    // if you plan to use GMock, replace the line above with
+    // ::testing::InitGoogleMock(&argc, argv);
+
+    if (RUN_ALL_TESTS())
+        ;
+
+    // Always return zero-code and allow PlatformIO to parse results
+    return 0;
 }
+#endif

@@ -14,7 +14,7 @@
  */
 HandshakeFinalAckState::HandshakeFinalAckState(Player *player) : State(HANDSHAKE_FINAL_ACK_STATE) {
     this->player = player;
-    std::vector<const String *> reading;
+    std::vector<const string *> reading;
     if (player->isHunter()) {
         reading.push_back(&BOUNTY_HANDSHAKE_FINAL_ACK);
     } else {
@@ -31,7 +31,7 @@ void HandshakeFinalAckState::onStateMounted(Device *PDN) {
 
 
 void HandshakeFinalAckState::onStateLoop(Device *PDN) {
-    String *incomingMessage = waitForValidMessage(PDN);
+    string *incomingMessage = waitForValidMessage(PDN);
     if (incomingMessage != nullptr) {
         handshakeSuccessfulFlag = true;
     }

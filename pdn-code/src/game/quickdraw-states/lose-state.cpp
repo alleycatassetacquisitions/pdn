@@ -34,15 +34,15 @@ Lose::~Lose() {
 
 void Lose::onStateMounted(Device *PDN) {
     //Write match to eeprom.
-    PDN->getVibrator().max();
+    PDN->setVibration(VIBRATION_MAX);
 }
 
 void Lose::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(150) {
-        PDN->getVibrator().setIntensity(PDN->getVibrator().getIntensity() - 10);
+        PDN->setVibration(PDN->getCurrentVibrationIntensity() - 10);
     }
 
-    if (PDN->getVibrator().getIntensity() <= 0) {
+    if (PDN->getCurrentVibrationIntensity() <= 0) {
         reset = true;
     }
 }

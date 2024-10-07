@@ -31,19 +31,21 @@ ConnectionSuccessful::~ConnectionSuccessful() {
 
 void ConnectionSuccessful::onStateMounted(Device *PDN) {
     //colors to indicate different powerups, types of players.
+    CRGB color;
     if (player->isHunter()) {
-        PDN->setGlobablLightColor(hunterColors[random8(16)]);
+        color = hunterColors[random8(16)];
     } else {
-        PDN->setGlobablLightColor(bountyColors[random8(16)]);
+        color = bountyColors[random8(16)];
     }
+    PDN->setGlobablLightColor(PDNColor(color.r, color.g, color.b));
 }
 
 void ConnectionSuccessful::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(flashDelay) {
         if (lightsOn) {
-            PDN->setGlobalBrightness(255);
+            PDN->setGlobalBrightness(BRIGHTNESS_MAX);
         } else {
-            PDN->setGlobalBrightness(0);
+            PDN->setGlobalBrightness(BRIGHTNESS_OFF);
         }
 
         lightsOn = !lightsOn;
@@ -52,7 +54,7 @@ void ConnectionSuccessful::onStateLoop(Device *PDN) {
 }
 
 void ConnectionSuccessful::onStateDismounted(Device *PDN) {
-    PDN->setGlobalBrightness(255);
+    PDN->setGlobalBrightness(BRIGHTNESS_MAX);
     lightsOn = false;
     alertCount = 0;
 }

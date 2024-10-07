@@ -16,8 +16,8 @@
  */
 Idle::Idle(bool isHunter) : State(IDLE) {
     this->isHunter = isHunter;
-    std::vector<const String *> writing;
-    std::vector<const String *> reading;
+    std::vector<const string *> writing;
+    std::vector<const string *> reading;
 
     if (isHunter) {
         reading.push_back(&BOUNTY_BATTLE_MESSAGE);
@@ -49,7 +49,7 @@ void Idle::onStateLoop(Device *PDN) {
         ledAnimation(PDN);
     }
 
-    String *validMessage = waitForValidMessage(PDN);
+    string *validMessage = waitForValidMessage(PDN);
     if (validMessage != nullptr) {
         transitionToHandshakeState = true;
     }
@@ -75,22 +75,24 @@ void Idle::ledAnimation(Device *PDN) {
     }
 
     if (random8() % 7 == 0) {
-        PDN->getDisplayLights().addToLight(
+        CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+        PDN->addToLight(DISPLAY_LIGHTS,
             random8() % (numDisplayLights - 1),
-            ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND)
+            PDNColor(color.r, color.g, color.b)
         );
     }
-    PDN->getDisplayLights().fade(2);
+    PDN->fadeLightsBy(DISPLAY_LIGHTS, 2);
 
     for (int i = 0; i < numGripLights; i++) {
         if (random8() % 65 == 0) {
-            PDN->getGripLights().addToLight(
+            CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+            PDN->addToLight(GRIP_LIGHTS,
                 i,
-                ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND)
+                PDNColor(color.r, color.g, color.b)
             );
         }
     }
-    PDN->getGripLights().fade(2);
+    PDN->fadeLightsBy(GRIP_LIGHTS, 2);
 }
 
 bool Idle::transitionToHandshake() {

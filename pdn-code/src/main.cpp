@@ -11,13 +11,13 @@
 #include "../include/player.hpp"
 #include "../include/match.hpp"
 #include "../include/comms_constants.hpp"
-#include "../include/state-machine/state-machine.hpp"
-#include "../include/device/device.hpp"
+#include "state-machine.hpp"
+#include "../include/device/pdn.hpp"
 #include "../include/game/quickdraw.hpp"
 #include "../include/id-generator.hpp"
 
 //GAME ROLE
-Device* PDN = Device::GetInstance();
+Device* PDN = PDN::GetInstance();
 IdGenerator* idGenerator = IdGenerator::GetInstance();
 Player* player;
 Quickdraw game = Quickdraw(player, PDN);
@@ -527,34 +527,34 @@ String mac2String(byte ar[]) {
 //   }
 // }
 
-void drawDebugLabels() {
-  PDN->getDisplay().getScreen().drawStr(16, 10, "BTN 1:");
-  PDN->getDisplay().getScreen().drawStr(16, 20, "BTN 2:");
-  PDN->getDisplay().getScreen().drawStr(16, 30, "TX:");
-  PDN->getDisplay().getScreen().drawStr(16, 40, "RX:");
-  PDN->getDisplay().getScreen().drawStr(16, 50, "MOTOR:");
-  PDN->getDisplay().getScreen().drawStr(16, 60, "FRAME:");
-}
-
-void drawDebugState(char *button1State, char *button2State, char *txData,
-                    char *rxData, char *motorSpeed, char *led1Pattern,
-                    char *fps) {
-  PDN->getDisplay().getScreen().drawStr(80, 10, button1State);
-  PDN->getDisplay().getScreen().drawStr(80, 20, button2State);
-  PDN->getDisplay().getScreen().drawStr(80, 30, txData);
-  PDN->getDisplay().getScreen().drawStr(80, 40, rxData);
-  PDN->getDisplay().getScreen().drawStr(80, 50, motorSpeed);
-  PDN->getDisplay().getScreen().drawStr(80, 60, fps);
-}
-
-void updatePrimaryButtonState() {
-  PDN->getDisplay().getScreen().setCursor(2, 48);
-  PDN->getDisplay().getScreen().print(u8x8_u8toa(primaryPresses, 3));
-}
-
-void updateSecondaryButtonState() {
-  PDN->getDisplay().getScreen().setCursor(80, 20);
-  PDN->getDisplay().getScreen().print(u8x8_u8toa(secondaryPresses, 3));
-}
+// void drawDebugLabels() {
+//   PDN->getDisplay().getScreen().drawStr(16, 10, "BTN 1:");
+//   PDN->getDisplay().getScreen().drawStr(16, 20, "BTN 2:");
+//   PDN->getDisplay().getScreen().drawStr(16, 30, "TX:");
+//   PDN->getDisplay().getScreen().drawStr(16, 40, "RX:");
+//   PDN->getDisplay().getScreen().drawStr(16, 50, "MOTOR:");
+//   PDN->getDisplay().getScreen().drawStr(16, 60, "FRAME:");
+// }
+//
+// void drawDebugState(char *button1State, char *button2State, char *txData,
+//                     char *rxData, char *motorSpeed, char *led1Pattern,
+//                     char *fps) {
+//   PDN->getDisplay().getScreen().drawStr(80, 10, button1State);
+//   PDN->getDisplay().getScreen().drawStr(80, 20, button2State);
+//   PDN->getDisplay().getScreen().drawStr(80, 30, txData);
+//   PDN->getDisplay().getScreen().drawStr(80, 40, rxData);
+//   PDN->getDisplay().getScreen().drawStr(80, 50, motorSpeed);
+//   PDN->getDisplay().getScreen().drawStr(80, 60, fps);
+// }
+//
+// void updatePrimaryButtonState() {
+//   PDN->getDisplay().getScreen().setCursor(2, 48);
+//   PDN->getDisplay().getScreen().print(u8x8_u8toa(primaryPresses, 3));
+// }
+//
+// void updateSecondaryButtonState() {
+//   PDN->getDisplay().getScreen().setCursor(80, 20);
+//   PDN->getDisplay().getScreen().print(u8x8_u8toa(secondaryPresses, 3));
+// }
 
 // BUTTONS

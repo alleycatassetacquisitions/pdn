@@ -2,7 +2,6 @@
 
 #include "../include/match.hpp"
 
-
 void Match::setupMatch(String id, String hunter, String bounty)
 {
     match_id = id;

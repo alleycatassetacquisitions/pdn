@@ -31,7 +31,7 @@ bool initiateHandshake()
  */
 HandshakeInitiateState::HandshakeInitiateState(Player *player) : State(HANDSHAKE_INITIATE_STATE) {
     isHunter = player->isHunter();
-    std::vector<const String *> writing;
+    std::vector<const string *> writing;
 
     if (isHunter) {
         writing.push_back(&HUNTER_BATTLE_MESSAGE);

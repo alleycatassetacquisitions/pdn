@@ -37,7 +37,7 @@ AwakenSequence::AwakenSequence() : State(AWAKEN_SEQUENCE) {
 
 void AwakenSequence::onStateMounted(Device *PDN) {
     activationSequenceTimer.setTimer(activationStepDuration);
-    PDN->getVibrator().max();
+    PDN->setVibration(VIBRATION_MAX);
 }
 
 void AwakenSequence::onStateLoop(Device *PDN) {
@@ -46,9 +46,9 @@ void AwakenSequence::onStateLoop(Device *PDN) {
     if (activationSequenceTimer.expired()) {
         if (activateMotorCount < 19) {
             if (activateMotor) {
-                PDN->getVibrator().max();
+                PDN->setVibration(VIBRATION_MAX);
             } else {
-                PDN->getVibrator().off();
+                PDN->setVibration(VIBRATION_OFF);
             }
 
             activationSequenceTimer.setTimer(activationStepDuration);
@@ -60,7 +60,7 @@ void AwakenSequence::onStateLoop(Device *PDN) {
 
 void AwakenSequence::onStateDismounted(Device *PDN) {
     activationSequenceTimer.invalidate();
-    PDN->getVibrator().off();
+    PDN->setVibration(VIBRATION_OFF);
     activateMotorCount = 0;
     activateMotor = true;
 }

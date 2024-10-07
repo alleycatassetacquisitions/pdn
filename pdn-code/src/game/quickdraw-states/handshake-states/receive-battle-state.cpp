@@ -39,8 +39,8 @@
  */
 HandshakeReceiveBattleState::HandshakeReceiveBattleState(Player *player) : State(HANDSHAKE_RECEIVE_BATTLE_STATE) {
     this->player = player;
-    std::vector<const String *> reading;
-    std::vector<const String *> writing;
+    std::vector<const string *> reading;
+    std::vector<const string *> writing;
     if (player->isHunter()) {
         reading.push_back(&BOUNTY_BATTLE_MESSAGE);
 
@@ -67,7 +67,7 @@ void HandshakeReceiveBattleState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeReceiveBattleState::onStateLoop(Device *PDN) {
-    String *incomingMessage = waitForValidMessage(PDN);
+    string *incomingMessage = waitForValidMessage(PDN);
     if (incomingMessage != nullptr) {
         for (int i = 0; i < responseStringMessages.size(); i++) {
             PDN->writeString(&responseStringMessages[i]);

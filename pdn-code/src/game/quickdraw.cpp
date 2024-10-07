@@ -2,7 +2,7 @@
 
 Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
     this->player = player;
-    Device::GetInstance()->setActiveComms(player->isHunter() ? OUTPUT_JACK : INPUT_JACK);
+    PDN->setActiveComms(player->isHunter() ? OUTPUT_JACK : INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {

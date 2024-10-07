@@ -4,7 +4,7 @@
 #include "player.hpp"
 
 
-String Player::toJson() const {
+string Player::toJson() const {
     // Create a JSON object for player
     StaticJsonDocument<128> doc;
     JsonObject playerObj = doc.to<JsonObject>();
@@ -13,12 +13,12 @@ String Player::toJson() const {
     playerObj["hunter"] = hunter;
 
     // Serialize the JSON object to a string
-    String json;
+    string json;
     serializeJson(playerObj, json);
     return json;
   }
 
-void Player::fromJson(const String &json) {
+void Player::fromJson(const string &json) {
     // Parse the JSON string into a JSON object
     StaticJsonDocument<128> doc;
     DeserializationError error = deserializeJson(doc, json);
@@ -26,7 +26,7 @@ void Player::fromJson(const String &json) {
     // Check if parsing was successful
     if (!error) {
       // Retrieve values from the JSON object
-      id = doc["id"].as<String>();
+      id = doc["id"].as<string>();
       allegiance = (Allegiance)(int)doc["allegiance"];
       hunter = doc["hunter"];
     } else {
@@ -59,23 +59,23 @@ void Player::setUserID(char* newId)
   id = newId;
 }
 
-String Player::getUserID() const
+string Player::getUserID() const
 {
     return id;
 }
 
-void Player::setCurrentMatchId(String matchId) {
+void Player::setCurrentMatchId(string matchId) {
     *currentMatchId = matchId;
 }
 
-String* Player::getCurrentMatchId() {
+string* Player::getCurrentMatchId() {
     return currentMatchId;
 }
 
-void Player::setCurrentOpponentId(String opponentId) {
+void Player::setCurrentOpponentId(string opponentId) {
     *currentOpponentId = opponentId;
 }
 
-String* Player::getCurrentOpponentId() {
+string* Player::getCurrentOpponentId() {
     return currentOpponentId;
 }

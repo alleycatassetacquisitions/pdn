@@ -3,8 +3,9 @@
 #include "handshake-machine.hpp"
 #include "../player.hpp"
 #include "simple-timer.hpp"
-#include "../state-machine/state.hpp"
+#include "state.hpp"
 #include "../comms_constants.hpp"
+#include <FastLED.h>
 
 
 // Quickdraw States

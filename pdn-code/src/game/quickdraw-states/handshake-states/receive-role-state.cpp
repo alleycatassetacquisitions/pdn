@@ -27,8 +27,8 @@
  */
 HandshakeReceiveRoleState::HandshakeReceiveRoleState(Player *player) : State(HANDSHAKE_RECEIVED_ROLE_STATE) {
     this->player = player;
-    std::vector<const String *> writing;
-    std::vector<const String *> reading;
+    std::vector<const string *> writing;
+    std::vector<const string *> reading;
     if (player->isHunter()) {
         reading.push_back(&SEND_USER_ID);
 
@@ -51,14 +51,14 @@ void HandshakeReceiveRoleState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeReceiveRoleState::onStateLoop(Device *PDN) {
-    String *incomingMessage = waitForValidMessage(PDN);
+    string *incomingMessage = waitForValidMessage(PDN);
     if (incomingMessage != nullptr) {
         if (*incomingMessage == SEND_USER_ID) {
-            String userId = PDN->readString();
+            string userId = PDN->readString();
             player->setCurrentOpponentId(userId);
         }
         if (*incomingMessage == SEND_MATCH_ID) {
-            String matchId = PDN->readString();
+            string matchId = PDN->readString();
             player->setCurrentMatchId(matchId);
         }
     }

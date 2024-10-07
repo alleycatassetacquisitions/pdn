@@ -1,8 +1,9 @@
 #pragma once
 
-#include <Arduino.h>
+#include <string>
 #include <UUID.h>
 
+using namespace std;
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -13,9 +14,9 @@ enum class Allegiance {
 
 class Player {
 public:
-    String toJson() const;
+    string toJson() const;
 
-    void fromJson(const String &json);
+    void fromJson(const string &json);
 
     bool isHunter() const;
 
@@ -25,25 +26,25 @@ public:
 
     void setUserID(char *newId);
 
-    String getUserID() const;
+    string getUserID() const;
 
     void clearUserID();
 
-    void setCurrentMatchId(String matchId);
+    void setCurrentMatchId(string matchId);
 
-    String *getCurrentMatchId();
+    string *getCurrentMatchId();
 
-    void setCurrentOpponentId(String opponentId);
+    void setCurrentOpponentId(string opponentId);
 
-    String *getCurrentOpponentId();
+    string *getCurrentOpponentId();
 
 private:
-    String id = "default";
+    string id = "default";
 
     Allegiance allegiance = Allegiance::RESISTANCE;
 
-    String *currentMatchId = nullptr;
-    String *currentOpponentId = nullptr;
+    string *currentMatchId = nullptr;
+    string *currentOpponentId = nullptr;
 
     bool hunter = false;
 };
