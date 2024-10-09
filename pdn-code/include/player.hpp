@@ -5,31 +5,45 @@
 
 
 enum class Allegiance {
-  ALLEYCAT = 0,
-  ENDLINE = 1,
-  HELIX = 2,
-  RESISTANCE = 3
+    ALLEYCAT = 0,
+    ENDLINE = 1,
+    HELIX = 2,
+    RESISTANCE = 3
 };
 
 class Player {
 public:
-  String toJson() const;
+    String toJson() const;
 
-  void fromJson(const String &json);
+    void fromJson(const String &json);
 
-  bool isHunter() const;
-  void toggleHunter();
+    bool isHunter() const;
 
-  Allegiance getAllegiance() const;
-  
-  void setUserID(UUID& generator);
-  String getUserID() const;
-  void clearUserID();
+    void toggleHunter();
+
+    Allegiance getAllegiance() const;
+
+    void setUserID(char *newId);
+
+    String getUserID() const;
+
+    void clearUserID();
+
+    void setCurrentMatchId(String matchId);
+
+    String *getCurrentMatchId();
+
+    void setCurrentOpponentId(String opponentId);
+
+    String *getCurrentOpponentId();
 
 private:
-  String id = "default";
+    String id = "default";
 
-  Allegiance allegiance = Allegiance::RESISTANCE;
+    Allegiance allegiance = Allegiance::RESISTANCE;
 
-  bool hunter = false;
+    String *currentMatchId = nullptr;
+    String *currentOpponentId = nullptr;
+
+    bool hunter = false;
 };

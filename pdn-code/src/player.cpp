@@ -54,13 +54,28 @@ Allegiance Player::getAllegiance() const
     return allegiance;
 }
 
-void Player::setUserID(UUID &generator)
+void Player::setUserID(char* newId)
 {
-  generator.generate();
-  id = generator.toCharArray();
+  id = newId;
 }
 
 String Player::getUserID() const
 {
     return id;
+}
+
+void Player::setCurrentMatchId(String matchId) {
+    *currentMatchId = matchId;
+}
+
+String* Player::getCurrentMatchId() {
+    return currentMatchId;
+}
+
+void Player::setCurrentOpponentId(String opponentId) {
+    *currentOpponentId = opponentId;
+}
+
+String* Player::getCurrentOpponentId() {
+    return currentOpponentId;
 }
