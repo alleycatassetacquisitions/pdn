@@ -154,8 +154,8 @@ public:
 protected:
     std::set<string> validStringMessages;
     std::vector<string> responseStringMessages;
+    std::vector<StateTransition *> transitions;
 
 private:
     StateId name;
-    std::vector<StateTransition *> transitions;
 };

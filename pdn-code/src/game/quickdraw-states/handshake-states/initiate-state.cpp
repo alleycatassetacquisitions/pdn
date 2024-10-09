@@ -1,5 +1,4 @@
 #include "game/handshake-machine.hpp"
-#include "comms_constants.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //

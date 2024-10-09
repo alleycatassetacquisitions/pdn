@@ -1,5 +1,4 @@
 #include "game/handshake-machine.hpp"
-#include "comms_constants.hpp"
 //
 // Created by Elli Furedy on 10/1/2024.
 //
@@ -35,11 +34,6 @@ void HandshakeFinalAckState::onStateLoop(Device *PDN) {
     if (incomingMessage != nullptr) {
         handshakeSuccessfulFlag = true;
     }
-
-    // if((player->isHunter() && peekGameComms() == BOUNTY_HANDSHAKE_FINAL_ACK) ||
-    //     (!player->isHunter() && peekGameComms() == HUNTER_HANDSHAKE_FINAL_ACK)) {
-    //     handshakeSuccessfulFlag = true;
-    // }
 }
 
 void HandshakeFinalAckState::onStateDismounted(Device *PDN) {

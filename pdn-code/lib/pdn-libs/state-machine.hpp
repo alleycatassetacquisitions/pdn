@@ -65,6 +65,7 @@ public:
 
         currentState = newState;
         stateChangeReady = false;
+        newState = nullptr;
 
         currentState->onStateMounted(PDN);
     };
@@ -85,11 +86,11 @@ protected:
     // initial state is 0 in the list here
     std::vector<State *> stateMap;
 
-private:
-    Device *PDN;
-
     bool stateChangeReady = false;
 
-    State *newState;
+    State *newState = nullptr;
     State *currentState = nullptr;
+
+private:
+    Device *PDN;
 };

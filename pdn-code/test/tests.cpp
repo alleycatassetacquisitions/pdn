@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "state-machine-tests.hpp"
+#include "state-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -28,6 +29,8 @@ void loop()
 
 #else
 
+//begin State Machine Tests
+
 TEST_F(StateMachineTestSuite, testInitialize) {
 
     stateMachine->initialize();
@@ -35,6 +38,21 @@ TEST_F(StateMachineTestSuite, testInitialize) {
     State* currentState = stateMachine->getCurrentState();
 
     ASSERT_TRUE(dynamic_cast<InitialTestState*>(currentState)->stateMountedInvoked);
+}
+
+TEST_F(StateMachineTestSuite, initializeAddsTransitions) {
+    stateMachine->initialize();
+
+    InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
+    SecondTestState* second = dynamic_cast<SecondTestState*>(stateMachine->getStateFromStateMap(1));
+    ThirdTestState* third = dynamic_cast<ThirdTestState*>(stateMachine->getStateFromStateMap(2));
+    TerminalTestState* terminal = dynamic_cast<TerminalTestState*>(stateMachine->getStateFromStateMap(3));
+
+    ASSERT_NE(initial->getTransitions().size(), 0);
+    ASSERT_NE(second->getTransitions().size(), 0);
+    ASSERT_NE(third->getTransitions().size(), 0);
+    ASSERT_NE(terminal->getTransitions().size(), 0);
+
 }
 
 TEST_F(StateMachineTestSuite, initializePopulatesStateMap) {
@@ -121,7 +139,7 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
 
     testing::InSequence sequence;
 
-    EXPECT_CALL(device, getCurrentVibrationIntensity())
+    EXPECT_CALL(stateMachineDevice, getCurrentVibrationIntensity())
     .Times(numLoopsBeforeTransition*2)
     .WillRepeatedly(testing::Return(0))
     .RetiresOnSaturation();
@@ -131,7 +149,7 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
         ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == TERMINAL_STATE);
     }
 
-    EXPECT_CALL(device, getCurrentVibrationIntensity())
+    EXPECT_CALL(stateMachineDevice, getCurrentVibrationIntensity())
     .Times(2)
     .WillRepeatedly(testing::Return(VIBRATION_MAX))
     .RetiresOnSaturation();
@@ -148,13 +166,76 @@ TEST_F(StateMachineTestSuite, whenTwoTransitionsAreMetSimultaneouslyThenTheFirst
 
     testing::InSequence sequence;
 
-    EXPECT_CALL(device, getCurrentVibrationIntensity())
+    EXPECT_CALL(stateMachineDevice, getCurrentVibrationIntensity())
     .Times(2)
     .WillRepeatedly(testing::Return(VIBRATION_MAX));
 
     stateMachine->loop();
 
     ASSERT_FALSE(stateMachine->getCurrentState()->getStateId() == INITIAL_STATE);
+}
+
+TEST_F(StateMachineTestSuite, whenCurrentStateTransitionIsValidCheckTransitionsSetsNewState) {
+    stateMachine->initialize();
+
+    InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getCurrentState());
+
+    initial->transitionToSecond = true;
+
+    ASSERT_FALSE(stateMachine->getTransitionReadyFlag());
+    ASSERT_EQ(stateMachine->getNewState(), nullptr);
+
+    stateMachine->checkStateTransitions();
+
+    ASSERT_TRUE(stateMachine->getTransitionReadyFlag());
+    ASSERT_NE(stateMachine->getNewState(), nullptr);
+}
+
+TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
+    stateMachine->initialize();
+
+    InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getCurrentState());
+
+    initial->transitionToSecond = true;
+
+    stateMachine->checkStateTransitions();
+
+    ASSERT_TRUE(stateMachine->getTransitionReadyFlag());
+    ASSERT_NE(stateMachine->getNewState(), nullptr);
+
+    stateMachine->commitState();
+
+    ASSERT_FALSE(stateMachine->getTransitionReadyFlag());
+    ASSERT_EQ(stateMachine->getNewState(), nullptr);
+    ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
+}
+
+//end State Machine Tests
+
+//begin State Tests
+
+TEST_F(StateTestSuite, validMessagesAreCorrectlyReceived) {
+    prepareValidMessageTest();
+
+    readValidMessageState.onStateLoop(&stateTestDevice);
+
+    ASSERT_TRUE(readValidMessageState.didReadValidMessage);
+}
+
+TEST_F(StateTestSuite, invalidMessagesAreDiscarded) {
+    prepareInvalidMessageTest();
+
+    readValidMessageState.onStateLoop(&stateTestDevice);
+
+    ASSERT_FALSE(readValidMessageState.didReadValidMessage);
+}
+
+TEST_F(StateTestSuite, correctMessageIsDeliveredEvenIfGarbageInFront) {
+    prepareGarbageFirstTest();
+
+    readValidMessageState.onStateLoop(&stateTestDevice);
+
+    ASSERT_TRUE(readValidMessageState.didReadValidMessage);
 }
 
 int main(int argc, char **argv)

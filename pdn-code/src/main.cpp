@@ -9,8 +9,6 @@
 
 #include "../include/simple-timer.hpp"
 #include "../include/player.hpp"
-#include "../include/match.hpp"
-#include "../include/comms_constants.hpp"
 #include "state-machine.hpp"
 #include "../include/device/pdn.hpp"
 #include "../include/game/quickdraw.hpp"

@@ -1,7 +1,5 @@
 #include "../../include/device/pdn.hpp"
 
-#include "../../include/comms_constants.hpp"
-
 PDN *PDN::GetInstance() {
     static PDN instance;
     return &instance;
