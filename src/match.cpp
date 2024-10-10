@@ -1,8 +1,8 @@
+#include "../lib/pdn-libs/match.hpp"
+
 #include <ArduinoJson.h>
 
-#include "../include/match.hpp"
-
-void Match::setupMatch(String id, String hunter, String bounty)
+void Match::setupMatch(string id, string hunter, string bounty)
 {
     match_id = id;
     this->hunter = hunter;
@@ -14,7 +14,7 @@ void Match::setWinner(bool winner_is_hunter)
     this->winner_is_hunter = winner_is_hunter;
 }
 
-String Match::toJson() const
+string Match::toJson() const
 {
     // Create a JSON object for the match
     StaticJsonDocument<128> doc;
@@ -25,12 +25,12 @@ String Match::toJson() const
     matchObj["capture"] = winner_is_hunter;
 
     // Serialize the JSON object to a string
-    String json;
+    string json;
     serializeJson(matchObj, json);
     return json;
 }
 
-void Match::fromJson(const String &json) {
+void Match::fromJson(const string &json) {
     // Parse the JSON string into a JSON object
     StaticJsonDocument<128> doc;
     DeserializationError error = deserializeJson(doc, json);
@@ -38,19 +38,11 @@ void Match::fromJson(const String &json) {
     // Check if parsing was successful
     if (!error) {
       // Retrieve values from the JSON object
-      match_id = doc["match_id"].as<String>();
-      hunter = doc["hunter"].as<String>();
-      bounty = doc["bounty"].as<String>();
+      match_id = doc["match_id"].as<string>();
+      hunter = doc["hunter"].as<string>();
+      bounty = doc["bounty"].as<string>();
       winner_is_hunter = doc["capture"];
     } else {
       // Serial.println("Failed to parse JSON");
     }
   }
-
-void Match::fillJsonObject(JsonObject& matchObj)
-{
-    matchObj["match_id"] = match_id;
-    matchObj["hunter"] = hunter;
-    matchObj["bounty"] = bounty;
-    matchObj["capture"] = winner_is_hunter;
-}

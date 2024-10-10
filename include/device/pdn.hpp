@@ -8,11 +8,13 @@
 #include <OneButton.h>
 #include <string>
 
+#include "device-serial.hpp"
 #include "../../lib/pdn-libs/device.hpp"
 #include "display-lights.hpp"
 #include "display.hpp"
 #include "grip-lights.hpp"
 #include "haptics.hpp"
+#include "pdn-serial.hpp"
 
 class PDN : public Device {
 
@@ -33,20 +35,6 @@ public:
 
     void removeButtonCallbacks() override;
 
-    void writeString(string *msg) override;
-
-    void writeString(const string *msg) override;
-
-    string readString() override;
-
-    void setActiveComms(int whichJack) override;
-
-    string * peekComms() override;
-
-    bool commsAvailable() override;
-
-    int getSerialWriteQueueSize() override;
-
     void setGlobablLightColor(PDNColor color) override;
 
     void setGlobalBrightness(int brightness) override;
@@ -64,9 +52,9 @@ protected:
 
     void initializePins() override;
 
-    HardwareSerial outputJack();
+    HWSerialWrapper* outputJack() override;
 
-    HardwareSerial inputJack();
+    HWSerialWrapper* inputJack() override;
 
     Display display;
     OneButton primary;
@@ -75,9 +63,8 @@ protected:
     GripLights gripLights;
     Haptics vibrationMotor;
 
+    PDNSerialOut serialOut;
+    PDNSerialIn serialIn;
+
     string deviceId = "";
-
-    string head = "";
-
-    int currentCommsJack = 1;
 };

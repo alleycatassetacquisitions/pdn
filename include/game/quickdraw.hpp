@@ -1,8 +1,8 @@
 #pragma once
 
 #include "device.hpp"
-#include "../player.hpp"
-#include "../match.hpp"
+#include "../../lib/pdn-libs/player.hpp"
+#include "../../lib/pdn-libs/match.hpp"
 #include "state-machine.hpp"
 #include <FastLED.h>
 #include "quickdraw-states.hpp"

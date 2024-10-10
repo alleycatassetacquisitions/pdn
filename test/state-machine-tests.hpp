@@ -264,7 +264,8 @@ public:
 class StateMachineTestSuite : public testing::Test {
 
 protected:
-    StateMachineTestSuite() {}
+    StateMachineTestSuite() {
+    }
 
     void SetUp() override {
         stateMachine = new TestStateMachine(&stateMachineDevice);
