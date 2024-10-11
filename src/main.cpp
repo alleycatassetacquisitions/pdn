@@ -8,7 +8,7 @@
 #include <esp_wifi.h>
 
 #include "../include/simple-timer.hpp"
-#include "../include/player.hpp"
+#include "../lib/pdn-libs/player.hpp"
 #include "state-machine.hpp"
 #include "../include/device/pdn.hpp"
 #include "../include/game/quickdraw.hpp"

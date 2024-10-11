@@ -1,7 +1,6 @@
-#include "../include/player.hpp"
+#include "player.hpp"
 
 #include <ArduinoJson.h>
-#include "player.hpp"
 
 
 string Player::toJson() const {

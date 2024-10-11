@@ -2,7 +2,7 @@
 // Created by Elli Furedy on 8/30/2024.
 //
 #pragma once
-#include "../player.hpp"
+#include "../../lib/pdn-libs/player.hpp"
 #include "state-machine.hpp"
 
 // STATE - HANDSHAKE

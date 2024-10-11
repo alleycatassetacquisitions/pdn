@@ -49,49 +49,26 @@ protected:
 
     void SetUp() override {
         readValidMessageState = TestReadingValidMessageState();
+        stateTestDevice.setActiveComms(INPUT_JACK);
     }
 
     void prepareValidMessageTest() {
         readValidMessageState.onStateMounted(&stateTestDevice);
 
-        EXPECT_CALL(stateTestDevice, commsAvailable())
-        .WillOnce(testing::Return(true));
-
-        EXPECT_CALL(stateTestDevice, peekComms())
-        .WillOnce(testing::Return(new string(*TEST_INCOMING_STRING)));
-
-        EXPECT_CALL(stateTestDevice, readString())
-        .WillOnce(testing::Return(string(*TEST_INCOMING_STRING)));
+        stateTestDevice.writeString(new string(*TEST_INCOMING_STRING));
     }
 
     void prepareInvalidMessageTest() {
         readValidMessageState.onStateMounted(&stateTestDevice);
 
-        EXPECT_CALL(stateTestDevice, commsAvailable())
-        .WillOnce(testing::Return(true))
-        .WillOnce(testing::Return(false));
-
-        EXPECT_CALL(stateTestDevice, peekComms())
-        .WillOnce(testing::Return(new string(*GARBAGE_STRING)));
-
-        EXPECT_CALL(stateTestDevice, readString())
-        .WillOnce(testing::Return(string(*GARBAGE_STRING)));
+        stateTestDevice.writeString(new string(*INVALID_INCOMING_STRING));
     }
 
     void prepareGarbageFirstTest() {
         readValidMessageState.onStateMounted(&stateTestDevice);
 
-        EXPECT_CALL(stateTestDevice, commsAvailable())
-        .WillOnce(testing::Return(true))
-        .WillOnce(testing::Return(true));
-
-        EXPECT_CALL(stateTestDevice, peekComms())
-        .WillOnce(testing::Return(new string(*INVALID_INCOMING_STRING)))
-        .WillOnce(testing::Return(new string(*TEST_INCOMING_STRING)));
-
-        EXPECT_CALL(stateTestDevice, readString())
-        .WillOnce(testing::Return(string(*INVALID_INCOMING_STRING)))
-        .WillOnce(testing::Return(string(*TEST_INCOMING_STRING)));
+        stateTestDevice.writeString(new string(*INVALID_INCOMING_STRING));
+        stateTestDevice.writeString(new string(*TEST_INCOMING_STRING));
     }
 
     MockDevice stateTestDevice;

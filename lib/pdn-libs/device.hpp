@@ -1,13 +1,9 @@
 #pragma once
 #include <string>
 #include "device-constants.hpp"
+#include "device-serial.hpp"
 
 using namespace std;
-
-enum {
-    OUTPUT_JACK = 0,
-    INPUT_JACK = 1
-};
 
 enum {
     GLOBAL = 0,
@@ -34,10 +30,9 @@ struct PDNColor {
 
 typedef void (*parameterizedCallbackFunction)(void *);
 
-class Device {
+class Device : public DeviceSerial {
 public:
-
-    virtual ~Device() {}
+    ~Device() override {};
 
     virtual int begin() = 0;
 
@@ -50,20 +45,6 @@ public:
     virtual void setButtonClick(int whichButton, parameterizedCallbackFunction newFunction, void *parameter) = 0;
 
     virtual void removeButtonCallbacks() = 0;
-
-    virtual void writeString(string *msg) = 0;
-
-    virtual void writeString(const string *msg) = 0;
-
-    virtual string readString() = 0;
-
-    virtual void setActiveComms(int whichJack) = 0;
-
-    virtual string *peekComms() = 0;
-
-    virtual bool commsAvailable() = 0;
-
-    virtual int getSerialWriteQueueSize() = 0;
 
     virtual void setGlobablLightColor(PDNColor color) = 0;
 
