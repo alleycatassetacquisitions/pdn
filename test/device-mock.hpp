@@ -19,35 +19,35 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
     }
 
     int availableForWrite() override {
-        return 1024 - outputQueue.size();
+        return 1024 - msgQueue.size();
     }
 
     int available() override {
-        return inputQueue.size() > 0;
+        return msgQueue.size() > 0;
     }
 
     int peek() override {
-        return atoi(&inputQueue.front());
+        return msgQueue.front();
     }
 
     int read() override {
-        int val = atoi(&inputQueue.front());
-        inputQueue.pop_front();
+        char val = msgQueue.front();
+        msgQueue.pop_front();
         return val;
     }
 
     string readStringUntil(char terminator) override {
         vector<char> buffer;
-        while (inputQueue.size() != terminator) {
-            buffer.push_back(inputQueue.front());
-            inputQueue.pop_front();
+        while (msgQueue.front() != terminator) {
+            buffer.push_back(msgQueue.front());
+            msgQueue.pop_front();
         }
-        inputQueue.pop_front();
+        msgQueue.pop_front();
         return string(&buffer.front(), buffer.size());
     }
 
     void print(char msg) override {
-        outputQueue.emplace_back(msg);
+        msgQueue.emplace_back(msg);
     }
 
     void println(char* msg) override {
@@ -65,32 +65,23 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         print(STRING_TERM);
     }
 
-    deque<char> outputQueue;
-    deque<char> inputQueue;
+    deque<char> msgQueue;
 
-private:
-    int getOutputQueueSize() {
-        return outputQueue.size();
-    }
-
-    int getInputQueueSize() {
-        return inputQueue.size();
-    }
 };
 
-// class FakeDevice : public Device {
-// protected:
-//     HWSerialWrapper* outputJackSerial;
-//     HWSerialWrapper* inputJackSerial;
-//
-//     HWSerialWrapper* outputJack() override {
-//         return outputJackSerial;
-//     }
-//
-//     HWSerialWrapper* inputJack() override {
-//         return inputJackSerial;
-//     }
-// };
+class FakeDevice : public Device {
+protected:
+    HWSerialWrapper* outputJackSerial;
+    HWSerialWrapper* inputJackSerial;
+
+    HWSerialWrapper* outputJack() override {
+        return outputJackSerial;
+    }
+
+    HWSerialWrapper* inputJack() override {
+        return inputJackSerial;
+    }
+};
 
 class MockDevice : public Device {
     public:
