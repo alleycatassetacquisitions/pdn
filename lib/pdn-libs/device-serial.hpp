@@ -116,8 +116,9 @@ protected:
 
     virtual HWSerialWrapper* inputJack() = 0;
 
-private:
     string head = "";
+
+private:
 
     int currentCommsJack = 1;
 };

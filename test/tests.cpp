@@ -2,6 +2,7 @@
 #include <gmock/gmock.h>
 #include "state-machine-tests.hpp"
 #include "state-tests.hpp"
+#include "serial-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -236,6 +237,22 @@ TEST_F(StateTestSuite, correctMessageIsDeliveredEvenIfGarbageInFront) {
     readValidMessageState.onStateLoop(&stateTestDevice);
 
     ASSERT_TRUE(readValidMessageState.didReadValidMessage);
+}
+
+// END state tests
+
+// BEGIN Serial Tests
+
+TEST_F(SerialTestSuite, serialWriteAppendsStringStart) {
+    serialWriteAppendsStringStart();
+}
+
+TEST_F(SerialTestSuite, headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue) {
+    headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue();
+}
+
+TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
+    whenHeadIsEmptyReadStringStillReturnsNextString();
 }
 
 int main(int argc, char **argv)

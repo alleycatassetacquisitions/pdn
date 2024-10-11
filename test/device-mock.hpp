@@ -107,6 +107,10 @@ class MockDevice : public Device {
         return &inputJackSerial;
     }
 
+    string getHead() {
+        return head;
+    }
+
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
 
