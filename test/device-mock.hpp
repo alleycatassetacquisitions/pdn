@@ -98,6 +98,8 @@ class MockDevice : public Device {
     MOCK_METHOD(void, setVibration, (int), (override));
     MOCK_METHOD(int, getCurrentVibrationIntensity, (), (override));
     MOCK_METHOD(void, initializePins, (), (override));
+    MOCK_METHOD(void, drawText, (char*, int, int), (override));
+    MOCK_METHOD(void, drawImage, (Image, int, int), (override));
 
     HWSerialWrapper* outputJack() override {
         return &outputJackSerial;

@@ -145,3 +145,11 @@ void PDN::setDeviceId(string deviceId) {
     this->deviceId = deviceId;
 }
 
+void PDN::drawText(char *text, int xStart, int yStart) {
+    display.drawText(text, xStart, yStart);
+}
+
+void PDN::drawImage(Image image, int xStart, int yStart) {
+    display.drawImage(image, xStart, yStart);
+}
+

@@ -47,6 +47,10 @@ public:
 
     int getCurrentVibrationIntensity() override;
 
+    void drawText(char *text, int xStart, int yStart) override;
+
+    void drawImage(Image image, int xStart, int yStart) override;
+
 protected:
     PDN();
 

@@ -4,24 +4,45 @@ U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI Display::getScreen() {
     return screen;
 }
 
-void Display::drawTextToDisplay(char *text, int xStart = -1, int yStart = -1) {
+void Display::drawText(char *text, int xStart, int yStart) {
     int x = 8;
     int y = 8;
 
     if (xStart != -1) {
-        x *= xStart;
-    } else {
-        x = screen.getCursorX();
+        cursor.x = x*xStart;
     }
 
     if (yStart != -1) {
-        y *= yStart;
-    } else {
-        y = screen.getCursorY();
+        cursor.y = y*yStart;
     }
 
-    screen.setCursor(x, y);
-    screen.print(text);
+    while(*text != '\0') {
+        if(cursor.x >= maxCharX) {
+            cursor.y += y;
+            cursor.x = 0;
+        } else if(cursor.y > maxCharY) {
+            cursor.x = 0;
+            cursor.y = y;
+        }
+
+        screen.drawStr(cursor.x, cursor.y, text);
+        text++;
+        cursor.x += x;
+    }
+}
+
+void Display::drawImage(Image image, int xStart, int yStart) {
+    int x = image.defaultStartX;
+    int y = image.defaultStartY;
+
+    if(xStart != -1) {
+        x = xStart;
+    }
+    if (yStart != -1) {
+        y = yStart;
+    }
+
+    screen.drawXBMP(x, y, image.width, image.height, image.rawImage);
 }
 
 Display::Display(int displayCS, int displayDC, int displayRST) : screen(U8G2_R0, displayCS, displayDC, displayRST) {

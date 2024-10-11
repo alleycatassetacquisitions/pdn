@@ -2,6 +2,7 @@
 #include <string>
 #include "device-constants.hpp"
 #include "device-serial.hpp"
+#include "image.hpp"
 
 using namespace std;
 
@@ -57,6 +58,10 @@ public:
     virtual void setVibration(int value) = 0;
 
     virtual int getCurrentVibrationIntensity() = 0;
+
+    virtual void drawText(char *text, int xStart, int yStart) = 0;
+
+    virtual void drawImage(Image image, int xStart, int yStart) = 0;
 
 protected:
     Device() {}

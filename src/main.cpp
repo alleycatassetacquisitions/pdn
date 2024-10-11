@@ -3,7 +3,7 @@
 #include <SPI.h>
 #include <arduino-timer.h>
 #include <UUID.h>
-#include <images.h>
+#include <../include/images-raw.hpp>
 #include <WiFi.h>
 #include <esp_wifi.h>
 

@@ -2,13 +2,22 @@
 
 #include <U8g2lib.h>
 
+#include "../../lib/pdn-libs/image.hpp"
+
+struct Cursor {
+    int x = 0;
+    int y = 0;
+};
+
 class Display {
 public:
     Display(int displayCS, int displayDC, int displayRST);
 
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI getScreen();
 
-    void drawTextToDisplay(char *text, int xStart, int yStart);
+    void drawText(char *text, int xStart = -1, int yStart = -1);
+
+    void drawImage(Image image, int xStart = -1, int yStart = -1);
 
     void reset();
 
@@ -20,5 +29,6 @@ public:
     void clearBuffer();
 
 private:
+    Cursor cursor;
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI screen;
 };
