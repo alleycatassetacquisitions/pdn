@@ -10,9 +10,9 @@ PDN::~PDN() {
 
 
 PDN::PDN() : display(displayCS, displayDC, displayRST),
-             vibrationMotor(motorPin),
-             primary(primaryButtonPin, true, true),
-             secondary(secondaryButtonPin, true, true),
+             haptics(motorPin),
+             primary(primaryButtonPin),
+             secondary(secondaryButtonPin),
              displayLights(numDisplayLights),
              gripLights(numGripLights) {
 };
@@ -72,7 +72,7 @@ void PDN::tick() {
     secondary.tick();
 }
 
-void PDN::setGlobablLightColor(PDNColor color) {
+void PDN::setGlobablLightColor(LEDColor color) {
     FastLED.showColor(CRGB(color.red, color.green, color.blue), 255);
 };
 
@@ -98,7 +98,7 @@ void PDN::fadeLightsBy(int whichLights, int value) {
     }
 }
 
-void PDN::addToLight(int whichLights, int ledNum, PDNColor color) {
+void PDN::addToLight(int whichLights, int ledNum, LEDColor color) {
     switch(whichLights) {
         case GLOBAL:
             break;
@@ -149,7 +149,7 @@ void PDN::drawText(char *text, int xStart, int yStart) {
     display.drawText(text, xStart, yStart);
 }
 
-void PDN::drawImage(Image image, int xStart, int yStart) {
-    display.drawImage(image, xStart, yStart);
+void PDN::drawImage(Image image) {
+    display.drawImage(image);
 }
 

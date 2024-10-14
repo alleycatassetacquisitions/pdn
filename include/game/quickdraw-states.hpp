@@ -1,7 +1,7 @@
 #pragma once
 
 #include "handshake-machine.hpp"
-#include "../../lib/pdn-libs/player.hpp"
+#include "player.hpp"
 #include "simple-timer.hpp"
 #include "state.hpp"
 #include <FastLED.h>

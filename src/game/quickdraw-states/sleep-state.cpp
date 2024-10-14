@@ -50,6 +50,8 @@ void Sleep::onStateMounted(Device *PDN) {
         unsigned long dormantTime = random(bountyDelay[0], bountyDelay[1]);
         dormantTimer.setTimer(dormantTime);
     }
+
+    PDN->
 }
 
 void Sleep::onStateLoop(Device *PDN) {

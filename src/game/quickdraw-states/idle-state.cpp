@@ -78,7 +78,7 @@ void Idle::ledAnimation(Device *PDN) {
         CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
         PDN->addToLight(DISPLAY_LIGHTS,
             random8() % (numDisplayLights - 1),
-            PDNColor(color.r, color.g, color.b)
+            LEDColor(color.r, color.g, color.b)
         );
     }
     PDN->fadeLightsBy(DISPLAY_LIGHTS, 2);
@@ -88,7 +88,7 @@ void Idle::ledAnimation(Device *PDN) {
             CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
             PDN->addToLight(GRIP_LIGHTS,
                 i,
-                PDNColor(color.r, color.g, color.b)
+                LEDColor(color.r, color.g, color.b)
             );
         }
     }

@@ -9,6 +9,9 @@ public:
         this->numLights = numLights;
         lights = new CRGB[numLights];
         FastLED.addLeds<WS2812B, pinNumber, GRB>(lights, numLights);
+
+        lightMask = new CRGB[numLights];
+        std::fill_n(lightMask, numLights, CRGB::White);
     }
 
     ~LightStrip() {
@@ -31,8 +34,15 @@ public:
         lights[index] += color;
     };
 
+    void loop() {
+        for (int i = 0; i < numLights; i++) {
+            lights[i] -= lightMask[i];
+        }
+    }
+
 protected:
     int numLights;
+    CRGB *lightMask;
     CRGB *lights;
     CRGBPalette16 currentPalette;
     int colorIndex;

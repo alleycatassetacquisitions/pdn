@@ -1,10 +1,16 @@
-#include "../../include/device/display.hpp"
+#include "device/pdn-display.hpp"
 
-U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI Display::getScreen() {
-    return screen;
+Display* PDNDisplay::invalidateScreen() {
+    screen.clearBuffer();
+
+    return this;
 }
 
-void Display::drawText(char *text, int xStart, int yStart) {
+void PDNDisplay::render() {
+    screen.sendBuffer();
+}
+
+Display* PDNDisplay::drawText(char *text, int xStart, int yStart) {
     int x = 8;
     int y = 8;
 
@@ -29,9 +35,11 @@ void Display::drawText(char *text, int xStart, int yStart) {
         text++;
         cursor.x += x;
     }
+
+    return this;
 }
 
-void Display::drawImage(Image image, int xStart, int yStart) {
+Display* PDNDisplay::drawImage(Image image, int xStart, int yStart) {
     int x = image.defaultStartX;
     int y = image.defaultStartY;
 
@@ -43,23 +51,13 @@ void Display::drawImage(Image image, int xStart, int yStart) {
     }
 
     screen.drawXBMP(x, y, image.width, image.height, image.rawImage);
+
+    return this;
 }
 
-Display::Display(int displayCS, int displayDC, int displayRST) : screen(U8G2_R0, displayCS, displayDC, displayRST) {
+PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8G2_R0, displayCS, displayDC, displayRST) {
     screen.begin();
     screen.clearBuffer();
     screen.setContrast(125);
     screen.setFont(u8g2_font_prospero_nbp_tf);
-}
-
-void Display::sendBuffer() {
-    screen.sendBuffer();
-}
-
-void Display::clearBuffer() {
-    screen.clearBuffer();
-}
-
-void Display::reset() {
-    screen.clearDisplay();
 }

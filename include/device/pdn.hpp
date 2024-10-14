@@ -3,17 +3,15 @@
 //
 #pragma once
 
-#include <Arduino.h>
-
 #include <OneButton.h>
 #include <string>
 
-#include "device-serial.hpp"
-#include "../../lib/pdn-libs/device.hpp"
+#include "device.hpp"
 #include "display-lights.hpp"
-#include "display.hpp"
 #include "grip-lights.hpp"
-#include "haptics.hpp"
+#include "pdn-button.hpp"
+#include "pdn-display.hpp"
+#include "pdn-haptics.hpp"
 #include "pdn-serial.hpp"
 
 class PDN : public Device {
@@ -31,25 +29,38 @@ public:
 
     string getDeviceId() override;
 
-    void setButtonClick(int whichButton, parameterizedCallbackFunction newFunction, void *parameter) override;
-
-    void removeButtonCallbacks() override;
-
-    void setGlobablLightColor(PDNColor color) override;
+    void setGlobablLightColor(LEDColor color) override;
 
     void setGlobalBrightness(int brightness) override;
 
-    void addToLight(int whichLights, int ledNum, PDNColor color) override;
+    void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction) override;
 
-    void fadeLightsBy(int whichLights, int value) override;
+    void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
+        parameterizedCallbackFunction newFunction, void *parameter) override;
+
+    void removeButtonCallbacks(ButtonIdentifier whichButton) override;
+
+    bool isLongPressed(ButtonIdentifier whichButton) override;
+
+    long longPressedMillis(ButtonIdentifier whichButton) override;
+
+    void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
+
+    void fadeLightsBy(LightIdentifier whichLights, int value) override;
+
+    Display * invalidateScreen() override;
+
+    void render() override;
+
+    Display * drawText(char *text, int xStart, int yStart) override;
+
+    Display * drawImage(Image image) override;
+
+    Display * drawImage(Image image, int xStart, int yStart) override;
 
     void setVibration(int value) override;
 
     int getCurrentVibrationIntensity() override;
-
-    void drawText(char *text, int xStart, int yStart) override;
-
-    void drawImage(Image image, int xStart, int yStart) override;
 
 protected:
     PDN();
@@ -60,15 +71,17 @@ protected:
 
     HWSerialWrapper* inputJack() override;
 
-    Display display;
-    OneButton primary;
-    OneButton secondary;
+
+private:
+    PDNDisplay display;
+    PDNHaptics haptics;
+    PDNButton primary;
+    PDNButton secondary;
     DisplayLights displayLights;
     GripLights gripLights;
-    Haptics vibrationMotor;
 
     PDNSerialOut serialOut;
     PDNSerialIn serialIn;
 
-    string deviceId = "";
+    string deviceId;
 };

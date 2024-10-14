@@ -4,16 +4,17 @@
 #pragma once
 
 enum class ImageType {
-    LOGO = 0,
-    IDLE = 1,
-    STAMP = 2,
-    CONNECT = 3,
-    COUNTDOWN_THREE = 4,
-    COUNTDOWN_TWO = 5,
-    COUNTDOWN_ONE = 6,
-    DRAW = 7,
-    WIN = 8,
-    LOSE = 9,
+    LOGO_RIGHT = 0,
+    LOGO_LEFT = 1,
+    IDLE = 2,
+    STAMP = 3,
+    CONNECT = 4,
+    COUNTDOWN_THREE = 5,
+    COUNTDOWN_TWO = 6,
+    COUNTDOWN_ONE = 7,
+    DRAW = 8,
+    WIN = 9,
+    LOSE = 10,
 };
 
 struct Image {

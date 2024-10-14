@@ -132,7 +132,7 @@ public:
     };
 
     //Checks if the currently received String message is a part of the set of valid messages.
-    bool isMessageValid(string *msg) {
+    bool isMessageValidForState(string *msg) {
         return validStringMessages.find(*msg) != validStringMessages.end();
     }
 
@@ -142,7 +142,7 @@ public:
      */
     string *waitForValidMessage(Device *PDN) {
         while (PDN->commsAvailable()) {
-            if (!isMessageValid(PDN->peekComms())) {
+            if (!isMessageValidForState(PDN->peekComms())) {
                 PDN->readString();
             } else {
                 return new string(PDN->readString());

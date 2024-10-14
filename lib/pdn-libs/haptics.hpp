@@ -34,22 +34,23 @@
 
 class Haptics {
 public:
-    Haptics(int pin);
 
-    bool isOn();
+    virtual ~Haptics() = 0;
 
-    void max();
+    virtual bool isOn() = 0;
 
-    void setIntensity(int intensity);
+    virtual void max() = 0;
 
-    int getIntensity();
+    virtual void setIntensity(int intensity) = 0;
 
-    void off();
+    virtual int getIntensity() = 0;
+
+    virtual void off() = 0;
 
     // void loadPattern(HapticsPattern pattern);
     // int playPattern();
 
-private:
+protected:
     int pinNumber;
     int intensity;
     // HapticsPattern currentPattern;
