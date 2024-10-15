@@ -1,11 +1,6 @@
 #include <Arduino.h>
-#include <ArduinoJson.h>
-#include <SPI.h>
 #include <arduino-timer.h>
-#include <UUID.h>
-#include <../include/images-raw.hpp>
 #include <WiFi.h>
-#include <esp_wifi.h>
 
 #include "../include/simple-timer.hpp"
 #include "../lib/pdn-libs/player.hpp"
@@ -126,7 +121,7 @@ void setup(void) {
 
 void loop(void) {
   SimpleTimer::updateTime();
-  PDN->tick();
+  PDN->loop();
 
   // if (APP_STATE == AppState::QD_GAME) {
   //   game.quickDrawGame();

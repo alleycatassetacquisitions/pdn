@@ -10,7 +10,7 @@
 
 using namespace std;
 
-enum {
+enum class SerialIdentifier {
     OUTPUT_JACK = 0,
     INPUT_JACK = 1
 };
@@ -20,18 +20,8 @@ class DeviceSerial {
     virtual ~DeviceSerial() {}
 
     void writeString(string *msg) {
-        switch (currentCommsJack) {
-            case OUTPUT_JACK: {
-                outputJack()->print(STRING_START);
-                outputJack()->println(*msg);
-                break;
-            }
-            case INPUT_JACK: {
-                inputJack()->print(STRING_START);
-                inputJack()->println(*msg);
-                break;
-            }
-        }
+        getCurrentCommsJack()->print(STRING_START);
+        getCurrentCommsJack()->println(*msg);
     }
 
     void writeString(const string* msg) {
@@ -45,38 +35,20 @@ class DeviceSerial {
         head = "";
 
         if (return_me.empty()) {
-            switch (currentCommsJack) {
-                case OUTPUT_JACK: {
-                    while (outputJack()->available() && outputJack()->peek() != STRING_START) {
-                        outputJack()->read();
-                    }
-                    if (outputJack()->peek() == STRING_START) {
-                        outputJack()->read();
-                        return_me = string(outputJack()->readStringUntil(STRING_TERM).c_str());
-                    } else {
-                        return_me = "No valid message during output jack read";
-                    }
-                    break;
-                }
-                case INPUT_JACK: {
-                    while (inputJack()->available() && inputJack()->peek() != STRING_START) {
-                        inputJack()->read();
-                    }
-                    if (inputJack()->peek() == STRING_START) {
-                        inputJack()->read();
-                        return_me = string(inputJack()->readStringUntil(STRING_TERM).c_str());
-                    } else {
-                        return_me = "No valid message during input jack read";
-                    }
-                    break;
-                }
-                default: return_me = "";
+            while (getCurrentCommsJack()->available() && getCurrentCommsJack()->peek() != STRING_START) {
+                getCurrentCommsJack()->read();
+            }
+            if (getCurrentCommsJack()->peek() == STRING_START) {
+                getCurrentCommsJack()->read();
+                return_me = string(getCurrentCommsJack()->readStringUntil(STRING_TERM).c_str());
+            } else {
+                return_me = "No valid message during output jack read";
             }
         }
         return return_me;
     }
 
-    void setActiveComms(int whichJack) {
+    void setActiveComms(SerialIdentifier whichJack) {
         currentCommsJack = whichJack;
     }
 
@@ -88,29 +60,25 @@ class DeviceSerial {
     }
 
     bool commsAvailable() {
-        switch (currentCommsJack) {
-            case OUTPUT_JACK: {
-                return outputJack()->available() > 0;
-            }
-            case INPUT_JACK: {
-                return inputJack()->available() > 0;
-            }
-            default:
-                return false;
-        }
+                return getCurrentCommsJack()->available() > 0;
     }
 
     int getSerialWriteQueueSize() {
-        switch (currentCommsJack) {
-            case OUTPUT_JACK:
-                return TRANSMIT_QUEUE_MAX_SIZE - outputJack()->availableForWrite();
-            case INPUT_JACK:
-                return TRANSMIT_QUEUE_MAX_SIZE - inputJack()->availableForWrite();
-        }
-        return -1;
+        return TRANSMIT_QUEUE_MAX_SIZE - getCurrentCommsJack()->availableForWrite();
     }
 
+
+
 protected:
+
+    HWSerialWrapper* getCurrentCommsJack() {
+        switch(currentCommsJack) {
+            case SerialIdentifier::OUTPUT_JACK:
+                return outputJack();
+            case SerialIdentifier::INPUT_JACK:
+                return inputJack();
+        }
+    }
 
     virtual HWSerialWrapper* outputJack() = 0;
 
@@ -120,5 +88,5 @@ protected:
 
 private:
 
-    int currentCommsJack = 1;
+    SerialIdentifier currentCommsJack = SerialIdentifier::OUTPUT_JACK;
 };

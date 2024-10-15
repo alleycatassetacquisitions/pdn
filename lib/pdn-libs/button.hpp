@@ -6,9 +6,9 @@
 //Button Resources
 
 enum class ButtonIdentifier {
-    PRIMARY_BUTTON = 0,
-    SECONDARY_BUTTON = 1,
-    ALL = 3
+    ALL = 0,
+    PRIMARY_BUTTON = 1,
+    SECONDARY_BUTTON = 2,
 };
 
 enum class ButtonInteraction {

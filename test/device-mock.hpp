@@ -88,7 +88,7 @@ class MockDevice : public Device {
 
     //Device Methods
     MOCK_METHOD(int, begin, (), (override));
-    MOCK_METHOD(void, tick, (), (override));
+    MOCK_METHOD(void, loop, (), (override));
     MOCK_METHOD(void, setDeviceId, (string), (override));
     MOCK_METHOD(string, getDeviceId, (), (override));
     MOCK_METHOD(void, initializePins, (), (override));

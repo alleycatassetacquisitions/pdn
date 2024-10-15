@@ -33,7 +33,7 @@ public:
 
     virtual int begin() = 0;
 
-    virtual void tick() = 0;
+    virtual void loop() = 0;
 
     virtual void setDeviceId(string deviceId) = 0;
 

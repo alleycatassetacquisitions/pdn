@@ -23,7 +23,7 @@ public:
 
     int begin() override;
 
-    void tick() override;
+    void loop() override;
 
     void setDeviceId(string deviceId) override;
 

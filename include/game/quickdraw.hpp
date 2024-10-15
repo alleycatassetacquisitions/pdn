@@ -5,6 +5,7 @@
 #include "match.hpp"
 #include "state-machine.hpp"
 #include "quickdraw-states.hpp"
+#include "quickdraw-resources.hpp"
 
 #define MATCH_SIZE sizeof(Match)
 

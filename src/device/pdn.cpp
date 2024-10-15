@@ -67,9 +67,9 @@ HWSerialWrapper* PDN::inputJack() {
     return &serialIn;
 }
 
-void PDN::tick() {
-    primary.tick();
-    secondary.tick();
+void PDN::loop() {
+    primary.loop();
+    secondary.loop();
 }
 
 void PDN::setGlobablLightColor(LEDColor color) {
@@ -80,25 +80,25 @@ void PDN::setGlobalBrightness(int brightness) {
     FastLED.setBrightness(brightness);
 };
 
-void PDN::fadeLightsBy(int whichLights, int value) {
+void PDN::fadeLightsBy(LightIdentifier whichLights, int value) {
     switch(whichLights) {
-        case GLOBAL: {
+        case LightIdentifier::GLOBAL: {
             displayLights.fade(value);
             gripLights.fade(value);
             break;
         }
-        case DISPLAY_LIGHTS: {
+        case LightIdentifier::DISPLAY_LIGHTS: {
             displayLights.fade(value);
             break;
         }
-        case GRIP_LIGHTS: {
+        case LightIdentifier::GRIP_LIGHTS: {
             gripLights.fade(value);
             break;
         }
     }
 }
 
-void PDN::addToLight(int whichLights, int ledNum, LEDColor color) {
+void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
     switch(whichLights) {
         case GLOBAL:
             break;
