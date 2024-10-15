@@ -1,4 +1,4 @@
-name: Native Unit Tests
+name: PR Checks
 
 # Controls when the action will run. Triggers the workflow on push or pull request
 # events but only for the master branch
@@ -29,3 +29,5 @@ jobs:
       run: pio lib install
     - name: Run Platformio Tests
       run:  platformio test -e native
+    - name: Build ESP32-s3 Image
+      run:  platformio run -e esp32-s3-devkitc-1
