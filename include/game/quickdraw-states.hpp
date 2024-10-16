@@ -187,7 +187,6 @@ private:
 
     Player* player;
     SimpleTimer countdownTimer;
-    CountdownStage* currentStage;
     bool doBattle = false;
     const CountdownStage* THREE = new CountdownStage(CountdownStep::THREE, 2000, 255);
     const CountdownStage* TWO = new CountdownStage(CountdownStep::TWO, 2000, 155);
