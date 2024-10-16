@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -35,6 +36,10 @@ Win::~Win() {
 void Win::onStateMounted(Device *PDN) {
     //Write to EEPROM. Don't have that figured out yet.
     PDN->setVibration(VIBRATION_OFF);
+
+    PDN->invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::WIN))->
+    render();
 }
 
 void Win::onStateLoop(Device *PDN) {

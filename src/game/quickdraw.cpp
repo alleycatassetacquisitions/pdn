@@ -12,13 +12,13 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
-    Sleep* dormant = new Sleep(player->isHunter(), 0);
+    Sleep* dormant = new Sleep(player, 0);
     AwakenSequence* activationSequence = new AwakenSequence();
-    Idle* activated = new Idle(player->isHunter());
+    Idle* activated = new Idle(player);
     Handshake* handshake = new Handshake(player);
     ConnectionSuccessful* duelAlert = new ConnectionSuccessful(player);
-    DuelCountdown* duelCountdown = new DuelCountdown();
-    Duel* duel = new Duel();
+    DuelCountdown* duelCountdown = new DuelCountdown(player);
+    Duel* duel = new Duel(player);
     Win* win = new Win(player);
     Lose* lose = new Lose(player);
 
@@ -94,3 +94,6 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(lose);
 }
 
+Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
+    return getCollectionForAllegiance(allegiance)->at(whichImage);
+}

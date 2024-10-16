@@ -2,6 +2,7 @@
 // Created by Elli Furedy on 9/30/2024.
 //
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw.hpp"
 
 /*
     void setupActivation()
@@ -36,13 +37,17 @@
     }
  */
 
-Sleep::Sleep(bool isHunter, long debugDelay) : State(SLEEP) {
-    this->isHunter = isHunter;
+Sleep::Sleep(Player* player, long debugDelay) : State(SLEEP) {
+    this->player = player;
     this->debugDelay = debugDelay;
 }
 
+Sleep::~Sleep() {
+    this->player = nullptr;
+}
+
 void Sleep::onStateMounted(Device *PDN) {
-    if (isHunter) {
+    if (player->isHunter()) {
         dormantTimer.setTimer(defaultDelay);
     } else if (debugDelay > 0) {
         dormantTimer.setTimer(debugDelay);
@@ -50,6 +55,12 @@ void Sleep::onStateMounted(Device *PDN) {
         unsigned long dormantTime = random(bountyDelay[0], bountyDelay[1]);
         dormantTimer.setTimer(dormantTime);
     }
+
+    PDN->
+    invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
+    render();
 }
 
 void Sleep::onStateLoop(Device *PDN) {

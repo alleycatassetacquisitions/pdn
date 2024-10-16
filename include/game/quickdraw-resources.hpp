@@ -86,4 +86,18 @@ const CRGBPalette16 idleColors = CRGBPalette16(
     CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
     CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
 );
+
+static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) {
+    switch(allegiance) {
+        case Allegiance::HELIX:
+            return &helixImageCollection;
+        case Allegiance::ENDLINE:
+            return &endlineImageCollection;
+        case Allegiance::RESISTANCE:
+            return &resistanceImageCollection;
+        default:
+            return &alleycatImageCollection;
+    }
+}
+
 #endif

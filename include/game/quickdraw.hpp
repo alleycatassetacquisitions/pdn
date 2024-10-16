@@ -13,15 +13,19 @@
 
 
 class Quickdraw : public StateMachine {
-    std::vector<Match> matches;
-    int numMatches = 0;
-
-    Player *player;
-
 public:
     Quickdraw(Player *player, Device *PDN);
 
     ~Quickdraw();
 
     void populateStateMap() override;
+
+    static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
+
+private:
+
+    std::vector<Match> matches;
+    int numMatches = 0;
+
+    Player *player;
 };

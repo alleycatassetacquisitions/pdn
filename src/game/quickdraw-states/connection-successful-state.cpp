@@ -38,6 +38,11 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
         color = bountyColors[random8(16)];
     }
     PDN->setGlobablLightColor(LEDColor(color.r, color.g, color.b));
+
+    PDN->
+    invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::CONNECT))->
+    render();
 }
 
 void ConnectionSuccessful::onStateLoop(Device *PDN) {
