@@ -35,7 +35,7 @@
 class Haptics {
 public:
 
-    virtual ~Haptics() = 0;
+    virtual ~Haptics(){}
 
     virtual bool isOn() = 0;
 

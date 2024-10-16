@@ -3,10 +3,11 @@
 //
 
 #pragma once
+
+#include "serial-wrapper.hpp"
 #include <string>
 
 #include "device-constants.hpp"
-#include "serial-wrapper.hpp"
 
 using namespace std;
 

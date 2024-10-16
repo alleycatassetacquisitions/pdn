@@ -48,7 +48,7 @@ public:
 
     virtual bool isLongPressed(ButtonIdentifier whichButton) = 0;
 
-    virtual long longPressedMillis(ButtonIdentifier whichButton) = 0;
+    virtual unsigned long longPressedMillis(ButtonIdentifier whichButton) = 0;
 
     // LED Methods
     virtual void setGlobablLightColor(LEDColor color) = 0;
@@ -69,7 +69,7 @@ public:
 
     virtual void render() = 0;
 
-    virtual Display* drawText(char *text);
+    virtual Display* drawText(char *text) = 0;
 
     virtual Display* drawText(char *text, int xStart, int yStart) = 0;
 

@@ -2,7 +2,8 @@
 // Created by Elli Furedy on 10/9/2024.
 //
 
-#include "../include/device/pdn-serial.hpp"
+#include "device/pdn-serial.hpp"
+#include <HardwareSerial.h>
 
 #include "device-constants.hpp"
 

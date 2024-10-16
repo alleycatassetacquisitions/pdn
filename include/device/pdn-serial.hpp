@@ -4,7 +4,6 @@
 
 #pragma once
 #include "serial-wrapper.hpp"
-#include <HardwareSerial.h>
 #include <string>
 
 using namespace std;

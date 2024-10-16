@@ -38,13 +38,17 @@ Duel::Duel() : State(DUEL) {
 }
 
 void Duel::onStateMounted(Device *PDN) {
-    PDN->setButtonClick(PRIMARY_BUTTON,
+    PDN->setButtonClick(
+        ButtonInteraction::PRESS,
+        ButtonIdentifier::PRIMARY_BUTTON,
         [](void *PDN) {
             ButtonPress(static_cast<Device *>(PDN));
         },
         PDN);
 
-    PDN->setButtonClick(SECONDARY_BUTTON,
+    PDN->setButtonClick(
+        ButtonInteraction::PRESS,
+        ButtonIdentifier::SECONDARY_BUTTON,
         [](void *PDN) {
             ButtonPress(static_cast<Device *>(PDN));
         },

@@ -3,9 +3,6 @@
 //
 #pragma once
 
-#include <OneButton.h>
-#include <string>
-
 #include "device.hpp"
 #include "display-lights.hpp"
 #include "grip-lights.hpp"
@@ -13,6 +10,10 @@
 #include "pdn-display.hpp"
 #include "pdn-haptics.hpp"
 #include "pdn-serial.hpp"
+
+#include <string>
+
+using namespace std;
 
 class PDN : public Device {
 
@@ -42,7 +43,7 @@ public:
 
     bool isLongPressed(ButtonIdentifier whichButton) override;
 
-    long longPressedMillis(ButtonIdentifier whichButton) override;
+    unsigned long longPressedMillis(ButtonIdentifier whichButton) override;
 
     void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
 
@@ -53,6 +54,8 @@ public:
     void render() override;
 
     Display * drawText(char *text, int xStart, int yStart) override;
+
+    Display* drawText(char *text) override;
 
     Display * drawImage(Image image) override;
 
@@ -73,6 +76,29 @@ protected:
 
 
 private:
+    PDNButton* getButton(ButtonIdentifier whichButton);
+
+    void attachSingleClick(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachSingleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachDoubleClick(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachDoubleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachMultiClick(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachMultiClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachPress(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachLongPress(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachDuringLongPress(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachDuringLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
     PDNDisplay display;
     PDNHaptics haptics;
     PDNButton primary;

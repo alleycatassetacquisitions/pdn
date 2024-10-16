@@ -11,7 +11,7 @@ public:
         FastLED.addLeds<WS2812B, pinNumber, GRB>(lights, numLights);
 
         lightMask = new CRGB[numLights];
-        std::fill_n(lightMask, numLights, CRGB::White);
+        std::fill_n(lightMask, numLights, CRGB::Black);
     }
 
     ~LightStrip() {
@@ -37,6 +37,20 @@ public:
     void loop() {
         for (int i = 0; i < numLights; i++) {
             lights[i] -= lightMask[i];
+        }
+    }
+
+    void setLightOn(int index, bool on) {
+        if(on) {
+            lightMask[index] = CRGB::Black;
+        } else {
+            lightMask[index] = CRGB::White;
+        }
+    }
+
+    void resetMask() {
+        for (int i = 0; i < numLights; i++) {
+            lightMask[i] = CRGB::Black;
         }
     }
 

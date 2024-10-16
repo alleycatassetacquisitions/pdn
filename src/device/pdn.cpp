@@ -1,4 +1,4 @@
-#include "../../include/device/pdn.hpp"
+#include "device/pdn.hpp"
 
 PDN *PDN::GetInstance() {
     static PDN instance;
@@ -95,61 +95,214 @@ void PDN::fadeLightsBy(LightIdentifier whichLights, int value) {
             gripLights.fade(value);
             break;
         }
+        case LightIdentifier::TRANSMIT_LIGHT: {
+            break;
+        }
     }
 }
 
 void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
     switch(whichLights) {
-        case GLOBAL:
+        case LightIdentifier::GLOBAL:
             break;
-        case DISPLAY_LIGHTS: {
+        case LightIdentifier::DISPLAY_LIGHTS: {
             displayLights.addToLight(ledNum, CRGB(color.red, color.green, color.blue));
             break;
         }
-        case GRIP_LIGHTS: {
+        case LightIdentifier::GRIP_LIGHTS: {
             gripLights.addToLight(ledNum, CRGB(color.red, color.green, color.blue));
             break;
         }
+        case LightIdentifier::TRANSMIT_LIGHT: {
+            displayLights.setTransmitLight(CRGB(color.red, color.green, color.blue));
+            break;
+        }
     }
 
 
 }
 
-void PDN::setButtonClick(int whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    switch(whichButton) {
-        case PRIMARY_BUTTON: {
-            primary.attachClick(newFunction, parameter);
+//Button Functions
+
+void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction newFunction) {
+    switch(interactionType) {
+        case ButtonInteraction::CLICK: {
+            attachSingleClick(whichButton, newFunction);
             break;
         }
-        case SECONDARY_BUTTON: {
-            secondary.attachClick(newFunction, parameter);
+        case ButtonInteraction::RELEASE: {
+            attachLongPressRelease(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::PRESS: {
+            attachPress(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::DOUBLE_CLICK: {
+            attachDoubleClick(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::MULTI_CLICK: {
+            attachMultiClick(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::LONG_PRESS: {
+            attachLongPress(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::DURING_LONG_PRESS: {
+            attachDuringLongPress(whichButton, newFunction);
             break;
         }
     }
 }
 
-void PDN::removeButtonCallbacks() {
-    primary.reset();
-    secondary.reset();
+
+
+void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
+    parameterizedCallbackFunction newFunction, void *parameter) {
+    switch(interactionType) {
+        case ButtonInteraction::CLICK: {
+            attachSingleClick(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::RELEASE: {
+            attachLongPressRelease(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::PRESS: {
+            attachPress(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::DOUBLE_CLICK: {
+            attachDoubleClick(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::MULTI_CLICK: {
+            attachMultiClick(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::LONG_PRESS: {
+            attachLongPress(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::DURING_LONG_PRESS: {
+            attachDuringLongPress(whichButton, newFunction, parameter);
+            break;
+        }
+    }
+}
+
+void PDN::removeButtonCallbacks(ButtonIdentifier whichButton) {
+    getButton(whichButton)->removeButtonCallbacks();
+}
+
+bool PDN::isLongPressed(ButtonIdentifier whichButton) {
+    return getButton(whichButton)->isLongPressed();
+}
+
+unsigned long PDN::longPressedMillis(ButtonIdentifier whichButton) {
+    return getButton(whichButton)->longPressedMillis();
+}
+
+Display * PDN::invalidateScreen() {
+    return display.invalidateScreen();
+}
+
+void PDN::render() {
+    display.render();
+}
+
+Display* PDN::drawImage(Image image, int xStart, int yStart) {
+    return display.drawImage(image, xStart, yStart);
 }
 
 void PDN::setVibration(int value) {
-    vibrationMotor.setIntensity(value);
+    haptics.setIntensity(value);
 }
 
 int PDN::getCurrentVibrationIntensity() {
-    return vibrationMotor.getIntensity();
+    return haptics.getIntensity();
 }
 
 void PDN::setDeviceId(string deviceId) {
     this->deviceId = deviceId;
 }
 
-void PDN::drawText(char *text, int xStart, int yStart) {
-    display.drawText(text, xStart, yStart);
+Display* PDN::drawImage(Image image) {
+    return display.drawImage(image);
 }
 
-void PDN::drawImage(Image image) {
-    display.drawImage(image);
+Display* PDN::drawText(char *text, int xStart, int yStart) {
+    return display.drawText(text, xStart, yStart);
 }
 
+Display* PDN::drawText(char *text) {
+    return display.drawText(text);
+}
+
+PDNButton * PDN::getButton(ButtonIdentifier whichButton) {
+    switch(whichButton) {
+        case ButtonIdentifier::PRIMARY_BUTTON:
+            return &primary;
+        case ButtonIdentifier::SECONDARY_BUTTON:
+            return &secondary;
+    }
+}
+
+void PDN::attachSingleClick(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonSingleClick(newFunction);
+}
+
+void PDN::attachSingleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
+    getButton(whichButton)->setButtonSingleClick(newFunction, parameter);
+}
+
+void PDN::attachDoubleClick(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonDoubleClick(newFunction);
+}
+
+void PDN::attachDoubleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
+    getButton(whichButton)->setButtonDoubleClick(newFunction, parameter);
+}
+
+void PDN::attachMultiClick(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonMultiClick(newFunction);
+}
+
+void PDN::attachMultiClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
+    getButton(whichButton)->setButtonMultiClick(newFunction, parameter);
+}
+
+void PDN::attachPress(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonPress(newFunction);
+}
+
+void PDN::attachPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
+    getButton(whichButton)->setButtonPress(newFunction, parameter);
+}
+
+void PDN::attachLongPress(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonLongPress(newFunction);
+}
+
+void PDN::attachLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
+    getButton(whichButton)->setButtonLongPress(newFunction, parameter);
+}
+
+void PDN::attachDuringLongPress(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonDuringLongPress(newFunction);
+}
+
+void PDN::attachDuringLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction,
+    void *parameter) {
+    getButton(whichButton)->setButtonDuringLongPress(newFunction, parameter);
+}
+
+void PDN::attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction) {
+    getButton(whichButton)->setButtonLongPressRelease(newFunction);
+}
+
+void PDN::attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
+    getButton(whichButton)->setButtonLongPressRelease(newFunction, parameter);
+}

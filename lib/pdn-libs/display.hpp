@@ -10,7 +10,7 @@ struct Cursor {
 class Display {
 public:
 
-    virtual ~Display() = 0;
+    virtual ~Display() {}
 
     virtual Display* invalidateScreen() = 0;
 

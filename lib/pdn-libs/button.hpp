@@ -6,9 +6,8 @@
 //Button Resources
 
 enum class ButtonIdentifier {
-    ALL = 0,
-    PRIMARY_BUTTON = 1,
-    SECONDARY_BUTTON = 2,
+    PRIMARY_BUTTON = 0,
+    SECONDARY_BUTTON = 1,
 };
 
 enum class ButtonInteraction {
@@ -26,7 +25,7 @@ typedef void (*parameterizedCallbackFunction)(void *);
 
 class Button {
     public:
-    virtual ~Button() = 0;
+    virtual ~Button() {}
 
     virtual void setButtonPress(callbackFunction newFunction) = 0;
     virtual void setButtonSingleClick(callbackFunction newFunction) = 0;

@@ -98,7 +98,7 @@ class MockDevice : public Device {
     MOCK_METHOD(void, setButtonClick, (ButtonInteraction, ButtonIdentifier, callbackFunction), (override));
     MOCK_METHOD(void, removeButtonCallbacks, (ButtonIdentifier), (override));
     MOCK_METHOD(bool, isLongPressed, (ButtonIdentifier), (override));
-    MOCK_METHOD(long, longPressedMillis, (ButtonIdentifier), (override));
+    MOCK_METHOD(unsigned long, longPressedMillis, (ButtonIdentifier), (override));
 
     //LED Methods
     MOCK_METHOD(void, setGlobablLightColor, (LEDColor), (override));

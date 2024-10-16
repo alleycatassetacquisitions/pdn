@@ -55,6 +55,21 @@ Display* PDNDisplay::drawImage(Image image, int xStart, int yStart) {
     return this;
 }
 
+Display * PDNDisplay::drawText(char *text) {
+    drawText(text, -1, -1);
+    return this;
+}
+
+Display * PDNDisplay::drawImage(Image image) {
+    drawImage(image, -1, -1);
+    return this;
+}
+
+void PDNDisplay::reset() {
+    screen.clearBuffer();
+    screen.clearDisplay();
+}
+
 PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8G2_R0, displayCS, displayDC, displayRST) {
     screen.begin();
     screen.clearBuffer();

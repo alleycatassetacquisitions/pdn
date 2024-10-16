@@ -1,13 +1,13 @@
 #include <Arduino.h>
-#include <arduino-timer.h>
 #include <WiFi.h>
 
-#include "../include/simple-timer.hpp"
-#include "../lib/pdn-libs/player.hpp"
+#include <FastLED.h>
+#include "simple-timer.hpp"
+#include "player.hpp"
 #include "state-machine.hpp"
-#include "../include/device/pdn.hpp"
-#include "../include/game/quickdraw.hpp"
-#include "../include/id-generator.hpp"
+#include "device/pdn.hpp"
+#include "game/quickdraw.hpp"
+#include "id-generator.hpp"
 
 //GAME ROLE
 Device* PDN = PDN::GetInstance();
@@ -45,7 +45,7 @@ const unsigned char* getImageForAllegiance(int index);
 void updateCountdownState();
 
 // TIMERS
-auto uiRefresh = timer_create_default();
+// auto uiRefresh = timer_create_default();
 
 
 String stripWhitespace(String input) {

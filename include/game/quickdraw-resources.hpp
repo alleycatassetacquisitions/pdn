@@ -1,7 +1,8 @@
 //
 // Created by Elli Furedy on 10/11/2024.
 //
-#pragma once
+#ifndef QUICKDRAW_RESOURCES_H
+#define QUICKDRAW_RESOURCES_H
 
 #include <map>
 #include "images-raw.hpp"
@@ -10,62 +11,62 @@
 
 using namespace std;
 
-typedef map<ImageType, Image> ImageCollection;
+typedef std::map<ImageType, Image> ImageCollection;
 
-ImageCollection alleycatImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(alleycatImages[indexLogo], 128, 64, 64, 0)},
-{ImageType::LOGO_LEFT, Image(alleycatImages[indexLogo], 128, 64, 0, 0)},
-{ImageType::IDLE, Image(alleycatImages[indexIdle], 128, 64, 0, 0)},
-{ImageType::STAMP, Image(alleycatImages[indexStamp], 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(alleycatImages[indexConnect], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(alleycatImages[indexThree], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(alleycatImages[indexTwo], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(alleycatImages[indexOne], 128, 64, 0, 0)},
-{ImageType::DRAW, Image(alleycatImages[indexDraw], 128, 64, 0, 0)},
-{ImageType::WIN, Image(alleycatImages[indexWin], 128, 64, 0, 0)},
-{ImageType::LOSE, Image(alleycatImages[indexLose], 128, 64, 0, 0)},
+const ImageCollection alleycatImageCollection = {
+    {ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
+{ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},
+{ImageType::IDLE, Image(image_alley_0, 128, 64, 0, 0)},
+{ImageType::STAMP, Image(image_alley_stamp, 128, 64, 64, 0)},
+{ImageType::CONNECT, Image(image_alley_connect, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_THREE, Image(image_alley_count3, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_TWO, Image(image_alley_count2, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_ONE, Image(image_alley_count1, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_alley_draw, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_alley_victor, 128, 64, 0, 0)},
+{ImageType::LOSE, Image(image_alley_loser, 128, 64, 0, 0)},
 };
 
-ImageCollection helixImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(helixImages[indexLogo], 128, 64, 64, 0)},
-    {ImageType::LOGO_LEFT, Image(helixImages[indexLogo], 128, 64, 0, 0)},
-{ImageType::IDLE, Image(helixImages[indexIdle], 128, 64, 0, 0)},
-{ImageType::STAMP, Image(helixImages[indexStamp], 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(helixImages[indexConnect], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(helixImages[indexThree], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(helixImages[indexTwo], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(helixImages[indexOne], 128, 64, 0, 0)},
-{ImageType::DRAW, Image(helixImages[indexDraw], 128, 64, 0, 0)},
-{ImageType::WIN, Image(helixImages[indexWin], 128, 64, 0, 0)},
-{ImageType::LOSE, Image(helixImages[indexLose], 128, 64, 0, 0)},
+const ImageCollection helixImageCollection = {
+    {ImageType::LOGO_RIGHT, Image(image_logo_helix, 128, 64, 64, 0)},
+    {ImageType::LOGO_LEFT, Image(image_logo_helix, 128, 64, 0, 0)},
+{ImageType::IDLE, Image(image_helix_0, 128, 64, 0, 0)},
+{ImageType::STAMP, Image(image_helix_stamp, 128, 64, 64, 0)},
+{ImageType::CONNECT, Image(image_helix_connect, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_THREE, Image(image_helix_count3, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_TWO, Image(image_helix_count2, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_ONE, Image(image_helix_count1, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_helix_draw, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_helix_victor, 128, 64, 0, 0)},
+{ImageType::LOSE, Image(image_helix_loser, 128, 64, 0, 0)},
 };
 
-ImageCollection endlineImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(endlineImages[indexLogo], 128, 64, 64, 0)},
-{ImageType::LOGO_LEFT, Image(endlineImages[indexLogo], 128, 64, 0, 0)},
-{ImageType::IDLE, Image(endlineImages[indexIdle], 128, 64, 0, 0)},
-{ImageType::STAMP, Image(endlineImages[indexStamp], 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(endlineImages[indexConnect], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(endlineImages[indexThree], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(endlineImages[indexTwo], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(endlineImages[indexOne], 128, 64, 0, 0)},
-{ImageType::DRAW, Image(endlineImages[indexDraw], 128, 64, 0, 0)},
-{ImageType::WIN, Image(endlineImages[indexWin], 128, 64, 0, 0)},
-{ImageType::LOSE, Image(endlineImages[indexLose], 128, 64, 0, 0)},
+const ImageCollection endlineImageCollection = {
+    {ImageType::LOGO_RIGHT, Image(image_logo_endline, 128, 64, 64, 0)},
+{ImageType::LOGO_LEFT, Image(image_logo_endline, 128, 64, 0, 0)},
+{ImageType::IDLE, Image(image_endline_0, 128, 64, 0, 0)},
+{ImageType::STAMP, Image(image_endline_stamp, 128, 64, 64, 0)},
+{ImageType::CONNECT, Image(image_endline_connect, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_THREE, Image(image_endline_count3, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_TWO, Image(image_endline_count2, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_ONE, Image(image_endline_count1, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_endline_draw, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_endline_victor, 128, 64, 0, 0)},
+{ImageType::LOSE, Image(image_endline_loser, 128, 64, 0, 0)},
 };
 
-ImageCollection resistanceImageCollection = {
-    {ImageType::LOGO_RIGHT, Image(resistanceImages[indexLogo], 128, 64, 64, 0)},
-{ImageType::LOGO_LEFT, Image(resistanceImages[indexLogo], 128, 64, 0, 0)},
-{ImageType::IDLE, Image(resistanceImages[indexIdle], 128, 64, 0, 0)},
-{ImageType::STAMP, Image(resistanceImages[indexStamp], 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(resistanceImages[indexConnect], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(resistanceImages[indexThree], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(resistanceImages[indexTwo], 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(resistanceImages[indexOne], 128, 64, 0, 0)},
-{ImageType::DRAW, Image(resistanceImages[indexDraw], 128, 64, 0, 0)},
-{ImageType::WIN, Image(resistanceImages[indexWin], 128, 64, 0, 0)},
-{ImageType::LOSE, Image(resistanceImages[indexLose], 128, 64, 0, 0)},
+const ImageCollection resistanceImageCollection = {
+    {ImageType::LOGO_RIGHT, Image(image_resistance_stamp, 128, 64, 64, 0)},
+{ImageType::LOGO_LEFT, Image(image_resistance_stamp, 128, 64, 0, 0)},
+{ImageType::IDLE, Image(image_resistance_0, 128, 64, 0, 0)},
+{ImageType::STAMP, Image(image_resistance_stamp, 128, 64, 64, 0)},
+{ImageType::CONNECT, Image(image_resistance_connect, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_THREE, Image(image_resistance_count3, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_TWO, Image(image_resistance_count2, 128, 64, 0, 0)},
+{ImageType::COUNTDOWN_ONE, Image(image_resistance_count1, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_resistance_draw, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_resistance_victor, 128, 64, 0, 0)},
+{ImageType::LOSE, Image(image_resistance_loser, 128, 64, 0, 0)},
 };
 
 const CRGBPalette16 bountyColors = CRGBPalette16(
@@ -85,3 +86,4 @@ const CRGBPalette16 idleColors = CRGBPalette16(
     CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
     CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow
 );
+#endif
