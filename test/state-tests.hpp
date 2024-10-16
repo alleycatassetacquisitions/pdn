@@ -49,7 +49,7 @@ protected:
 
     void SetUp() override {
         readValidMessageState = TestReadingValidMessageState();
-        stateTestDevice.setActiveComms(INPUT_JACK);
+        stateTestDevice.setActiveComms(SerialIdentifier::INPUT_JACK);
     }
 
     void prepareValidMessageTest() {

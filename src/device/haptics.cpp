@@ -1,27 +1,27 @@
 #include "Arduino.h"
-#include "../include/device/haptics.hpp"
+#include "device/pdn-haptics.hpp"
 
-Haptics::Haptics(int pin) {
+PDNHaptics::PDNHaptics(int pin) {
     pinNumber = pin;
     intensity = 0;
     active = false;
 }
 
-bool Haptics::isOn() {
+bool PDNHaptics::isOn() {
     return active;
 }
 
-void Haptics::max() {
+void PDNHaptics::max() {
     intensity = 255;
     active = true;
     analogWrite(pinNumber, 255);
 }
 
-int Haptics::getIntensity() {
+int PDNHaptics::getIntensity() {
     return intensity;
 }
 
-void Haptics::setIntensity(int intensity) {
+void PDNHaptics::setIntensity(int intensity) {
     if (intensity > 255) this->intensity = 255;
     else if (intensity < 0) this->intensity = 0;
     else this->intensity = intensity;
@@ -29,7 +29,7 @@ void Haptics::setIntensity(int intensity) {
     analogWrite(pinNumber, intensity);
 }
 
-void Haptics::off() {
+void PDNHaptics::off() {
     intensity = 0;
     active = false;
     analogWrite(pinNumber, 0);

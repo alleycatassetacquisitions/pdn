@@ -3,18 +3,17 @@
 //
 #pragma once
 
-#include <Arduino.h>
+#include "device.hpp"
+#include "display-lights.hpp"
+#include "grip-lights.hpp"
+#include "pdn-button.hpp"
+#include "pdn-display.hpp"
+#include "pdn-haptics.hpp"
+#include "pdn-serial.hpp"
 
-#include <OneButton.h>
 #include <string>
 
-#include "device-serial.hpp"
-#include "../../lib/pdn-libs/device.hpp"
-#include "display-lights.hpp"
-#include "display.hpp"
-#include "grip-lights.hpp"
-#include "haptics.hpp"
-#include "pdn-serial.hpp"
+using namespace std;
 
 class PDN : public Device {
 
@@ -25,23 +24,42 @@ public:
 
     int begin() override;
 
-    void tick() override;
+    void loop() override;
 
     void setDeviceId(string deviceId) override;
 
     string getDeviceId() override;
 
-    void setButtonClick(int whichButton, parameterizedCallbackFunction newFunction, void *parameter) override;
-
-    void removeButtonCallbacks() override;
-
-    void setGlobablLightColor(PDNColor color) override;
+    void setGlobablLightColor(LEDColor color) override;
 
     void setGlobalBrightness(int brightness) override;
 
-    void addToLight(int whichLights, int ledNum, PDNColor color) override;
+    void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction) override;
 
-    void fadeLightsBy(int whichLights, int value) override;
+    void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
+        parameterizedCallbackFunction newFunction, void *parameter) override;
+
+    void removeButtonCallbacks(ButtonIdentifier whichButton) override;
+
+    bool isLongPressed(ButtonIdentifier whichButton) override;
+
+    unsigned long longPressedMillis(ButtonIdentifier whichButton) override;
+
+    void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
+
+    void fadeLightsBy(LightIdentifier whichLights, int value) override;
+
+    Display * invalidateScreen() override;
+
+    void render() override;
+
+    Display * drawText(char *text, int xStart, int yStart) override;
+
+    Display* drawText(char *text) override;
+
+    Display * drawImage(Image image) override;
+
+    Display * drawImage(Image image, int xStart, int yStart) override;
 
     void setVibration(int value) override;
 
@@ -56,15 +74,40 @@ protected:
 
     HWSerialWrapper* inputJack() override;
 
-    Display display;
-    OneButton primary;
-    OneButton secondary;
+
+private:
+    PDNButton* getButton(ButtonIdentifier whichButton);
+
+    void attachSingleClick(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachSingleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachDoubleClick(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachDoubleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachMultiClick(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachMultiClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachPress(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachLongPress(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachDuringLongPress(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachDuringLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    void attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction);
+    void attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+
+    PDNDisplay display;
+    PDNHaptics haptics;
+    PDNButton primary;
+    PDNButton secondary;
     DisplayLights displayLights;
     GripLights gripLights;
-    Haptics vibrationMotor;
 
     PDNSerialOut serialOut;
     PDNSerialIn serialIn;
 
-    string deviceId = "";
+    string deviceId;
 };

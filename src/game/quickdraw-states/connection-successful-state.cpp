@@ -37,7 +37,7 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
     } else {
         color = bountyColors[random8(16)];
     }
-    PDN->setGlobablLightColor(PDNColor(color.r, color.g, color.b));
+    PDN->setGlobablLightColor(LEDColor(color.r, color.g, color.b));
 }
 
 void ConnectionSuccessful::onStateLoop(Device *PDN) {

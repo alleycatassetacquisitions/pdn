@@ -76,23 +76,23 @@ void Idle::ledAnimation(Device *PDN) {
 
     if (random8() % 7 == 0) {
         CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
-        PDN->addToLight(DISPLAY_LIGHTS,
-            random8() % (numDisplayLights - 1),
-            PDNColor(color.r, color.g, color.b)
+        PDN->addToLight(LightIdentifier::DISPLAY_LIGHTS,
+                        random8() % (numDisplayLights - 1),
+                        LEDColor(color.r, color.g, color.b)
         );
     }
-    PDN->fadeLightsBy(DISPLAY_LIGHTS, 2);
+    PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 2);
 
     for (int i = 0; i < numGripLights; i++) {
         if (random8() % 65 == 0) {
             CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
-            PDN->addToLight(GRIP_LIGHTS,
-                i,
-                PDNColor(color.r, color.g, color.b)
+            PDN->addToLight(LightIdentifier::GRIP_LIGHTS,
+                            i,
+                            LEDColor(color.r, color.g, color.b)
             );
         }
     }
-    PDN->fadeLightsBy(GRIP_LIGHTS, 2);
+    PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 2);
 }
 
 bool Idle::transitionToHandshake() {

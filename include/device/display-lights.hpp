@@ -8,9 +8,9 @@ public:
     DisplayLights(int numLights) : LightStrip(numLights) {
     };
 
-    void setGraphRight(int value);
+    void setLEDBarLeft(int value);
 
-    void setGraphLeft(int value);
+    void setLEDBarRight(int value);
 
     void setTransmitLight(boolean on);
 
