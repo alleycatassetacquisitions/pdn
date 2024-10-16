@@ -5,7 +5,9 @@
 #include "simple-timer.hpp"
 #include "state.hpp"
 #include <FastLED.h>
+#include <queue>
 
+using namespace std;
 
 // Quickdraw States
 
@@ -24,7 +26,9 @@ enum QuickdrawStateId {
 
 class Sleep : public State {
 public:
-    Sleep(bool isHunter, long debugDelay);
+    Sleep(Player* player, long debugDelay);
+
+    ~Sleep();
 
     void onStateMounted(Device *PDN) override;
 
@@ -36,8 +40,8 @@ public:
 
 private:
     SimpleTimer dormantTimer;
+    Player* player;
 
-    bool isHunter = false;
     unsigned long defaultDelay = 5000;
     unsigned long bountyDelay[2] = {300000, 900000};
     unsigned long overchargeDelay[2] = {180000, 300000};
@@ -68,7 +72,9 @@ private:
 
 class Idle : public State {
 public:
-    Idle(bool isHunter);
+    Idle(Player* player);
+
+    ~Idle();
 
     void onStateMounted(Device *PDN) override;
 
@@ -81,6 +87,7 @@ public:
     bool transitionToHandshake();
 
 private:
+    Player* player;
     bool transitionToHandshakeState = false;
     const float smoothingPoints = 255;
     byte ledBrightness = 65;
@@ -88,7 +95,6 @@ private:
     bool breatheUp = true;
     long idleLEDBreak = 5000;
     CRGBPalette16 currentPalette;
-    bool isHunter = false;
 };
 
 class Handshake : public State {
@@ -145,7 +151,9 @@ private:
  */
 class DuelCountdown : public State {
 public:
-    DuelCountdown();
+    DuelCountdown(Player* player);
+
+    ~DuelCountdown();
 
     void onStateMounted(Device *PDN) override;
 
@@ -156,14 +164,35 @@ public:
     bool shallWeBattle();
 
 private:
+
+    enum class CountdownStep {
+        THREE = 3,
+        TWO = 2,
+        ONE = 1,
+    };
+
+    struct CountdownStage {
+        CountdownStage(CountdownStep step, unsigned long countdownTimer, byte ledBrightness) {
+            this->step = step;
+            this->countdownTimer = countdownTimer;
+            this->ledBrightness = ledBrightness;
+        }
+
+        CountdownStep step;
+        unsigned long countdownTimer = 0;
+        byte ledBrightness = 0;
+    };
+
+    ImageType getImageIdForStep(CountdownStep step);
+
+    Player* player;
     SimpleTimer countdownTimer;
+    CountdownStage* currentStage;
     bool doBattle = false;
-    const byte COUNTDOWN_STAGES = 4;
-    byte countdownStage = COUNTDOWN_STAGES;
-    int FOUR = 2000;
-    int THREE = 2000;
-    int TWO = 1000;
-    int ONE = 3000;
+    const CountdownStage* THREE = new CountdownStage(CountdownStep::THREE, 2000, 255);
+    const CountdownStage* TWO = new CountdownStage(CountdownStep::TWO, 2000, 155);
+    const CountdownStage* ONE = new CountdownStage(CountdownStep::ONE, 3000, 75);
+    deque<const CountdownStage*> countdownQueue;
 };
 
 /*
@@ -171,7 +200,9 @@ private:
  */
 class Duel : public State {
 public:
-    Duel();
+    Duel(Player* player);
+
+    ~Duel();
 
     void onStateMounted(Device *PDN) override;
 
@@ -190,6 +221,7 @@ public:
     }
 
 private:
+    Player* player;
     SimpleTimer duelTimer;
     bool captured = false;
     bool wonBattle = false;

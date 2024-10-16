@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -35,6 +36,9 @@ Lose::~Lose() {
 void Lose::onStateMounted(Device *PDN) {
     //Write match to eeprom.
     PDN->setVibration(VIBRATION_MAX);
+    PDN->invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
+    render();
 }
 
 void Lose::onStateLoop(Device *PDN) {

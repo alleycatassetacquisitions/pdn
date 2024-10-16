@@ -14,12 +14,12 @@
       msgDelay = msgDelay + 1;
     }
  */
-Idle::Idle(bool isHunter) : State(IDLE) {
-    this->isHunter = isHunter;
+Idle::Idle(Player* player) : State(IDLE) {
+    this->player = player;
     std::vector<const string *> writing;
     std::vector<const string *> reading;
 
-    if (isHunter) {
+    if (player->isHunter()) {
         reading.push_back(&BOUNTY_BATTLE_MESSAGE);
         writing.push_back(&HUNTER_BATTLE_MESSAGE);
     } else {
@@ -31,12 +31,21 @@ Idle::Idle(bool isHunter) : State(IDLE) {
     registerResponseMessage(writing);
 }
 
+Idle::~Idle() {
+    player = nullptr;
+}
+
 void Idle::onStateMounted(Device *PDN) {
-    if (isHunter) {
+    if (player->isHunter()) {
         currentPalette = hunterColors;
     } else {
         currentPalette = bountyColors;
     }
+
+    PDN->
+    invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
+    render();
 }
 
 void Idle::onStateLoop(Device *PDN) {

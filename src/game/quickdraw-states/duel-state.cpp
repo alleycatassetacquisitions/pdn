@@ -30,11 +30,17 @@ if (peekGameComms() == ZAP) {
     duelTimedOut = true;
   }
  */
-Duel::Duel() : State(DUEL) {
+Duel::Duel(Player* player) : State(DUEL) {
+    this->player = player;
+
     std::vector<const string *> reading;
 
     reading.push_back(&ZAP);
     reading.push_back(&YOU_DEFEATED_ME);
+}
+
+Duel::~Duel() {
+    this->player = nullptr;
 }
 
 void Duel::onStateMounted(Device *PDN) {
@@ -55,6 +61,10 @@ void Duel::onStateMounted(Device *PDN) {
         PDN);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
+
+    PDN->invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
+    render();
 }
 
 void Duel::onStateLoop(Device *PDN) {

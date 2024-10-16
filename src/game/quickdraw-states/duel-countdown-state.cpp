@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -29,50 +30,55 @@
     }
   }
  */
-DuelCountdown::DuelCountdown() : State(DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player) : State(DUEL_COUNTDOWN) {
+    this->player = player;
 }
 
+DuelCountdown::~DuelCountdown() {
+    player = nullptr;
+}
+
+
 void DuelCountdown::onStateMounted(Device *PDN) {
+    countdownQueue.push_back(THREE);
+    countdownQueue.push_back(TWO);
+    countdownQueue.push_back(ONE);
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
     countdownTimer.updateTime();
     if (countdownTimer.expired()) {
-        switch (countdownStage) {
-            case 4: {
-                PDN->setGlobalBrightness(BRIGHTNESS_MAX);
-                countdownTimer.setTimer(FOUR);
-                countdownStage = 3;
-                break;
-            }
-            case 3: {
-                PDN->setGlobalBrightness(150);
-                countdownTimer.setTimer(THREE);
-                countdownStage = 2;
-                break;
-            }
-            case 2: {
-                PDN->setGlobalBrightness(75);
-                countdownTimer.setTimer(TWO);
-                countdownStage = 1;
-                break;
-            }
-            case 1: {
-                PDN->setGlobalBrightness(BRIGHTNESS_OFF);
-                countdownTimer.setTimer(ONE);
-                countdownStage = 0;
-                break;
-            }
-            case 0: {
-                doBattle = true;
-            }
+        const CountdownStage* current = countdownQueue.front();
+        if(current == nullptr) {
+            doBattle = true;
+        } else {
+            PDN->setGlobalBrightness(current->ledBrightness);
+
+            PDN->
+            invalidateScreen()->
+            drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(current->step)))->
+            render();
+
+            countdownTimer.setTimer(current->countdownTimer);
+            countdownQueue.pop_front();
         }
     }
 }
 
+ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
+    switch(step) {
+        case CountdownStep::THREE:
+            return ImageType::COUNTDOWN_THREE;
+        case CountdownStep::TWO:
+            return ImageType::COUNTDOWN_TWO;
+        default:
+            return ImageType::COUNTDOWN_ONE;
+    }
+}
+
+
 void DuelCountdown::onStateDismounted(Device *PDN) {
-    countdownStage = COUNTDOWN_STAGES;
     doBattle = false;
     countdownTimer.invalidate();
 }
