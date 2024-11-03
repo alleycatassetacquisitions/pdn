@@ -2,6 +2,9 @@
 
 Welcome to the official repository for Alleycat Asset Acquisitions' **Portable Data Node (PDN)** project. The PDN is a cutting-edge, interactive device used in live-action role-playing (LARP) environments like [Neotropolis](https://www.neotropolis.com). It leverages real-time technology and augmented reality to create immersive gameplay experiences. The PDN serves as a versatile tool for communication, mission tracking, and player interaction.
 
+Fusion Files for the case can be found [here](https://a360.co/4a2WvzV).
+PCB's were designed in KiCad 8 and will be uploaded to a separate repository soon.
+
 ## Table of Contents
 
 - [About the Project](#about-the-project)
