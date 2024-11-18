@@ -67,6 +67,8 @@ public:
         stateChangeReady = false;
         newState = nullptr;
 
+        PDN->onStateChange();
+
         currentState->onStateMounted(PDN);
     };
 

@@ -45,5 +45,5 @@ private:
     string *currentMatchId = nullptr;
     string *currentOpponentId = nullptr;
 
-    bool hunter = false;
+    bool hunter = true;
 };

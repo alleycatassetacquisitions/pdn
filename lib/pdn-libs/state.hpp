@@ -32,7 +32,7 @@ class StateTransition {
 public:
     // Constructor
     StateTransition(std::function<bool()> condition, State *nextState)
-        : condition(std::move(condition)), nextState(nextState) {
+        : condition(condition), nextState(nextState) {
     };
 
     // Method to check if the transition condition is met

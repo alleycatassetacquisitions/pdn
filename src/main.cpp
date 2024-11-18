@@ -10,10 +10,10 @@
 #include "id-generator.hpp"
 
 //GAME ROLE
-Device* PDN = PDN::GetInstance();
+Device* pdn = PDN::GetInstance();
 IdGenerator* idGenerator = IdGenerator::GetInstance();
-Player* player;
-Quickdraw game = Quickdraw(player, PDN);
+Player* player = new Player();
+Quickdraw game = Quickdraw(player, pdn);
 
 String DEBUG_MODE_SUBSTR = "";
 
@@ -95,11 +95,8 @@ void getDeviceId();
 int wins = 0;
 
 void setup(void) {
-
-  PDN->begin();
-
-  WiFi.begin();
-
+  pdn->begin();
+  game.initialize();
   // if (game.playerInfo.isHunter()) {
   //   currentPalette = hunterColors;
   // } else {
@@ -120,8 +117,7 @@ void setup(void) {
 }
 
 void loop(void) {
-  SimpleTimer::updateTime();
-  PDN->loop();
+  pdn->loop();
 
   // if (APP_STATE == AppState::QD_GAME) {
   //   game.quickDrawGame();

@@ -1,9 +1,6 @@
 #include <Arduino.h>
 
-#include "../include/simple-timer.hpp"
 #include "simple-timer.hpp"
-
-unsigned long SimpleTimer::now = 0;
 
 void SimpleTimer::updateTime()
 {
@@ -12,21 +9,29 @@ void SimpleTimer::updateTime()
 
 unsigned long SimpleTimer::getElapsedTime()
 {
+    updateTime();
     return now - start;
 }
 
 bool SimpleTimer::expired()
 {
-    return duration < getElapsedTime();
+    if(running) {
+        return duration < getElapsedTime();
+    }
+
+    return false;
 }
 
 void SimpleTimer::invalidate()
 {
     duration = 0;
+    running = false;
 }
 
 void SimpleTimer::setTimer(unsigned long timerDelay)
 {
+    running = true;
     duration = timerDelay;
-    start = millis();
+    updateTime();
+    start = now;
 }

@@ -13,11 +13,11 @@ public:
 
     void render() override;
 
-    Display* drawText(char *text) override;
+    Display* drawText(const char *text) override;
 
     Display* drawImage(Image image) override;
 
-    Display* drawText(char *text, int xStart, int yStart) override;
+    Display* drawText(const char *text, int xStart, int yStart) override;
 
     Display* drawImage(Image image, int xStart, int yStart) override;
 

@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw.hpp"
 
 /*
     bool activationSequence()
@@ -37,14 +38,19 @@ AwakenSequence::AwakenSequence() : State(AWAKEN_SEQUENCE) {
 
 void AwakenSequence::onStateMounted(Device *PDN) {
     activationSequenceTimer.setTimer(activationStepDuration);
-    PDN->setVibration(VIBRATION_MAX);
+    activateMotor= true;
+    PDN->setVibration(125);
+
+    PDN->
+    invalidateScreen()->
+        drawImage(Quickdraw::getImageForAllegiance(Allegiance::ENDLINE, ImageType::LOGO_LEFT))->
+        drawImage(Quickdraw::getImageForAllegiance(Allegiance::HELIX, ImageType::LOGO_RIGHT))->
+        render();
 }
 
 void AwakenSequence::onStateLoop(Device *PDN) {
-    activationSequenceTimer.updateTime();
-
     if (activationSequenceTimer.expired()) {
-        if (activateMotorCount < 19) {
+        if (activateMotorCount <= AWAKEN_THRESHOLD) {
             if (activateMotor) {
                 PDN->setVibration(VIBRATION_MAX);
             } else {
@@ -62,9 +68,10 @@ void AwakenSequence::onStateDismounted(Device *PDN) {
     activationSequenceTimer.invalidate();
     PDN->setVibration(VIBRATION_OFF);
     activateMotorCount = 0;
-    activateMotor = true;
+    activateMotor = false;
 }
 
 bool AwakenSequence::transitionToIdle() {
-    return activateMotorCount > 19;
+    return activateMotorCount > AWAKEN_THRESHOLD;
+    // return false;
 }

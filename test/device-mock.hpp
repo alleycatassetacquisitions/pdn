@@ -89,6 +89,7 @@ class MockDevice : public Device {
     //Device Methods
     MOCK_METHOD(int, begin, (), (override));
     MOCK_METHOD(void, loop, (), (override));
+    MOCK_METHOD(void, onStateChange, (), (override));
     MOCK_METHOD(void, setDeviceId, (string), (override));
     MOCK_METHOD(string, getDeviceId, (), (override));
     MOCK_METHOD(void, initializePins, (), (override));
@@ -99,6 +100,7 @@ class MockDevice : public Device {
     MOCK_METHOD(void, removeButtonCallbacks, (ButtonIdentifier), (override));
     MOCK_METHOD(bool, isLongPressed, (ButtonIdentifier), (override));
     MOCK_METHOD(unsigned long, longPressedMillis, (ButtonIdentifier), (override));
+    MOCK_METHOD(void, setLight, (LightIdentifier, int, LEDColor), (override));
 
     //LED Methods
     MOCK_METHOD(void, setGlobablLightColor, (LEDColor), (override));
@@ -111,8 +113,8 @@ class MockDevice : public Device {
     MOCK_METHOD(int, getCurrentVibrationIntensity, (), (override));
 
     //Display Methods
-    MOCK_METHOD(Display*, drawText, (char*, int, int), (override));
-    MOCK_METHOD(Display*, drawText, (char*), (override));
+    MOCK_METHOD(Display*, drawText, (const char*, int, int), (override));
+    MOCK_METHOD(Display*, drawText, (const char*), (override));
     MOCK_METHOD(Display*, drawImage, (Image), (override));
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
     MOCK_METHOD(Display*, invalidateScreen, (), (override));

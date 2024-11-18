@@ -26,6 +26,8 @@ public:
 
     void loop() override;
 
+    void onStateChange() override;
+
     void setDeviceId(string deviceId) override;
 
     string getDeviceId() override;
@@ -49,13 +51,15 @@ public:
 
     void fadeLightsBy(LightIdentifier whichLights, int value) override;
 
+    void setLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
+
     Display * invalidateScreen() override;
 
     void render() override;
 
-    Display * drawText(char *text, int xStart, int yStart) override;
+    Display * drawText(const char *text, int xStart, int yStart) override;
 
-    Display* drawText(char *text) override;
+    Display* drawText(const char *text) override;
 
     Display * drawImage(Image image) override;
 

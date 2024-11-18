@@ -22,6 +22,10 @@ public:
         lights[index] = color;
     };
 
+    void setLightBrightness(int index, int brightness) {
+        lights[index].nscale8(brightness);
+    }
+
     CRGB getLightColor(int index) {
         return lights[index];
     }

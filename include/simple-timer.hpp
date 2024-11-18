@@ -2,7 +2,11 @@
 
 class SimpleTimer {
 public:
-    static void updateTime();
+    SimpleTimer() {
+        updateTime();
+    }
+
+    void updateTime();
 
     unsigned long getElapsedTime();
 
@@ -12,8 +16,9 @@ public:
 
     void setTimer(unsigned long timerDelay);
 
+    unsigned long now = 0;
 private:
-    static unsigned long now;
+    bool running = false;
     unsigned long start = 0;
     unsigned long duration = 0;
 };

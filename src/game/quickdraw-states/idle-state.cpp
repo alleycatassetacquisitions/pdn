@@ -79,21 +79,21 @@ void Idle::ledAnimation(Device *PDN) {
 
     if (ledBrightness == 255) {
         breatheUp = false;
-    } else if (ledBrightness == 0) {
+    } else if (ledBrightness == 80) {
         breatheUp = true;
     }
 
-    if (random8() % 7 == 0) {
+    if (random8() % 8 == 0) {
         CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
         PDN->addToLight(LightIdentifier::DISPLAY_LIGHTS,
                         random8() % (numDisplayLights - 1),
                         LEDColor(color.r, color.g, color.b)
         );
     }
-    PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 2);
+
 
     for (int i = 0; i < numGripLights; i++) {
-        if (random8() % 65 == 0) {
+        if (random8() % 130 == 0) {
             CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
             PDN->addToLight(LightIdentifier::GRIP_LIGHTS,
                             i,
@@ -101,7 +101,11 @@ void Idle::ledAnimation(Device *PDN) {
             );
         }
     }
-    PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 2);
+
+    if(random8() % 2) {
+        PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 1);
+        PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 1);
+    }
 }
 
 bool Idle::transitionToHandshake() {
