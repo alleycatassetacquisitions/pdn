@@ -8,6 +8,8 @@
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
 #include "id-generator.hpp"
+#include "wireless/esp-now-comms.hpp"
+#include "wireless/remote-player-manager.hpp"
 
 //GAME ROLE
 Device* pdn = PDN::GetInstance();
@@ -16,6 +18,9 @@ Player* player = new Player();
 Quickdraw game = Quickdraw(player, pdn);
 
 String DEBUG_MODE_SUBSTR = "";
+
+// REMOTE PLAYERS
+RemotePlayerManager remotePlayers;
 
 // DISPLAY
 bool displayIsDirty = false;
@@ -97,6 +102,28 @@ int wins = 0;
 void setup(void) {
   pdn->begin();
   game.initialize();
+  //TODO: Move this
+  Serial.begin(115200);
+  delay(5000);
+
+  Serial.println("Debug Serial started");
+
+  // Initialize WiFi for ESP-NOW use
+  WiFi.begin();
+  // STA mode is required for ESP-NOW
+  WiFi.enableSTA(true);
+  // This could be any Wi-Fi channel, the only requirement is that all devices
+  // communicating together on ESP-NOW must use the same channel
+  WiFi.channel(6);
+  
+  remotePlayers.StartBroadcastingPlayerInfo(player, 1000);
+  EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
+      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+        {
+          RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
+          manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
+        },
+        &remotePlayers);
   // if (game.playerInfo.isHunter()) {
   //   currentPalette = hunterColors;
   // } else {
@@ -118,7 +145,9 @@ void setup(void) {
 
 void loop(void) {
   pdn->loop();
-
+  EspNowManager::GetInstance()->Update();
+  remotePlayers.Update();
+  
   // if (APP_STATE == AppState::QD_GAME) {
   //   game.quickDrawGame();
   // } else if (APP_STATE == AppState::DEBUG) {

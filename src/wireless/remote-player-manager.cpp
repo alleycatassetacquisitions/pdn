@@ -1,5 +1,6 @@
-#include "../include/remote-player-manager.hpp"
-#include "../include/esp-now-comms.hpp"
+#include <Arduino.h>
+#include "wireless/remote-player-manager.hpp"
+#include "wireless/esp-now-comms.hpp"
 
 #define DEBUG_REMOTE_PLAYER_MANAGER 0
 

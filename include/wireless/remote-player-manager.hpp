@@ -1,5 +1,6 @@
 #include <vector>
 #include <esp_now.h>
+#include <cstring>  // For memcpy
 
 #include "player.hpp"
 
@@ -10,7 +11,7 @@ struct RemotePlayer
     unsigned long lastSeenTime;
     signed rssi;
 
-    RemotePlayer(const uint8_t* macAddr, String id, Allegiance allegiance, bool isHunter,
+    RemotePlayer(const uint8_t* macAddr, string id, Allegiance allegiance, bool isHunter,
                  unsigned long lastSeen, signed rssiDb) :
                  playerInfo(id, allegiance, isHunter),
                  lastSeenTime(lastSeen),

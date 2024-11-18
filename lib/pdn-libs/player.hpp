@@ -15,6 +15,10 @@ enum class Allegiance {
 
 class Player {
 public:
+    Player() = default;
+    
+    Player(const string id0, const Allegiance allegiance0, const bool isHunter0);
+    
     string toJson() const;
 
     void fromJson(const string &json);

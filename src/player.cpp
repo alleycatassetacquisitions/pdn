@@ -2,6 +2,12 @@
 #include <memory>
 #include <ArduinoJson.h>
 
+Player::Player(const string id0, const Allegiance allegiance0, const bool isHunter0) :
+  id(id0),
+  allegiance(allegiance0),
+  hunter(isHunter0)
+{
+}
 
 
 string Player::toJson() const {

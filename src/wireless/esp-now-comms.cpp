@@ -3,8 +3,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 
-#include "../include/esp-now-comms.hpp"
-#include "esp-now-comms.hpp"
+#include "wireless/esp-now-comms.hpp"
 
 #define DEBUG_PRINT_ESP_NOW 0
 
