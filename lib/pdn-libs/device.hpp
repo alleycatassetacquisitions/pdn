@@ -35,6 +35,8 @@ public:
 
     virtual void loop() = 0;
 
+    virtual void onStateChange() = 0;
+
     virtual void setDeviceId(string deviceId) = 0;
 
     virtual string getDeviceId() = 0;
@@ -59,6 +61,8 @@ public:
 
     virtual void fadeLightsBy(LightIdentifier whichLights, int value) = 0;
 
+    virtual void setLight(LightIdentifier whichLights, int ledNum, LEDColor color) = 0;
+
     //Vibration Motor Methods
     virtual void setVibration(int value) = 0;
 
@@ -69,9 +73,9 @@ public:
 
     virtual void render() = 0;
 
-    virtual Display* drawText(char *text) = 0;
+    virtual Display* drawText(const char *text) = 0;
 
-    virtual Display* drawText(char *text, int xStart, int yStart) = 0;
+    virtual Display* drawText(const char *text, int xStart, int yStart) = 0;
 
     virtual Display* drawImage(Image image) = 0;
 

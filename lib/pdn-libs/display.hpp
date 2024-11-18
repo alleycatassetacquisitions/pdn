@@ -16,9 +16,9 @@ public:
 
     virtual void render() = 0;
 
-    virtual Display* drawText(char *text);
+    virtual Display* drawText(const char *text);
 
-    virtual Display* drawText(char *text, int xStart, int yStart) = 0;
+    virtual Display* drawText(const char *text, int xStart, int yStart) = 0;
 
     virtual Display* drawImage(Image image) = 0;
 

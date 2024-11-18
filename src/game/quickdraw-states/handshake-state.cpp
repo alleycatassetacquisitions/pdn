@@ -19,7 +19,6 @@ void Handshake::onStateMounted(Device *PDN) {
 }
 
 void Handshake::onStateLoop(Device *PDN) {
-    handshakeTimeout.updateTime();
 
     if (handshakeTimeout.expired()) {
         resetToActivated = true;

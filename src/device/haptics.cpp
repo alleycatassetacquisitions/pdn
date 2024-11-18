@@ -5,6 +5,8 @@ PDNHaptics::PDNHaptics(int pin) {
     pinNumber = pin;
     intensity = 0;
     active = false;
+
+    pinMode(pinNumber, OUTPUT);
 }
 
 bool PDNHaptics::isOn() {

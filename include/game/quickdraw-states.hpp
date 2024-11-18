@@ -26,7 +26,7 @@ enum QuickdrawStateId {
 
 class Sleep : public State {
 public:
-    Sleep(Player* player, long debugDelay);
+    Sleep(Player* player);
 
     ~Sleep();
 
@@ -42,10 +42,14 @@ private:
     SimpleTimer dormantTimer;
     Player* player;
 
-    unsigned long defaultDelay = 5000;
-    unsigned long bountyDelay[2] = {300000, 900000};
-    unsigned long overchargeDelay[2] = {180000, 300000};
-    unsigned long debugDelay = 3000;
+    bool breatheUp = true;
+    int ledBrightness = 0;
+    float pwm_val = 0.0;
+    static constexpr int smoothingPoints = 255;
+
+    static constexpr unsigned long defaultDelay = 8000;
+    static constexpr unsigned long bountyDelay[2] = {300000, 900000};
+    static constexpr unsigned long overchargeDelay[2] = {180000, 300000};
 };
 
 /*
@@ -64,9 +68,10 @@ public:
     bool transitionToIdle();
 
 private:
+    static constexpr int AWAKEN_THRESHOLD = 20;
     SimpleTimer activationSequenceTimer;
-    byte activateMotorCount = 0;
-    bool activateMotor = true;
+    int activateMotorCount = 0;
+    bool activateMotor = false;
     const int activationStepDuration = 100;
 };
 

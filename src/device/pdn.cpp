@@ -15,13 +15,16 @@ PDN::PDN() : display(displayCS, displayDC, displayRST),
              secondary(secondaryButtonPin),
              displayLights(numDisplayLights),
              gripLights(numGripLights) {
+    this->PDN::initializePins();
 };
 
 int PDN::begin() {
-    initializePins();
 
     serialOut.begin();
     serialIn.begin();
+
+    FastLED.clear();
+    FastLED.show();
 
     return 1;
 }
@@ -36,20 +39,6 @@ void PDN::initializePins() {
     gpio_pad_select_gpio(GPIO_NUM_39);
     gpio_pad_select_gpio(GPIO_NUM_40);
     gpio_pad_select_gpio(GPIO_NUM_41);
-
-    // init display
-    pinMode(displayCS, OUTPUT);
-    pinMode(displayDC, OUTPUT);
-    digitalWrite(displayCS, 0);
-    digitalWrite(displayDC, 0);
-
-    pinMode(motorPin, OUTPUT);
-
-    pinMode(TXt, OUTPUT);
-    pinMode(TXr, INPUT);
-
-    pinMode(RXt, OUTPUT);
-    pinMode(RXr, INPUT);
 
     pinMode(displayLightsPin, OUTPUT);
     pinMode(gripLightsPin, OUTPUT);
@@ -70,7 +59,14 @@ HWSerialWrapper* PDN::inputJack() {
 void PDN::loop() {
     primary.loop();
     secondary.loop();
+
+    FastLED.show();
 }
+
+void PDN::onStateChange() {
+    FastLED.clear();
+}
+
 
 void PDN::setGlobablLightColor(LEDColor color) {
     FastLED.showColor(CRGB(color.red, color.green, color.blue), 255);
@@ -118,9 +114,28 @@ void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
             break;
         }
     }
-
-
 }
+
+void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
+    switch(whichLights) {
+        case LightIdentifier::GLOBAL:
+            break;
+        case LightIdentifier::DISPLAY_LIGHTS: {
+            displayLights.setLight(ledNum, CRGB(color.red, color.green, color.blue));
+            break;
+        }
+        case LightIdentifier::GRIP_LIGHTS: {
+            gripLights.setLight(ledNum, CRGB(color.red, color.green, color.blue));
+            break;
+        }
+        case LightIdentifier::TRANSMIT_LIGHT: {
+            displayLights.setTransmitLight(CRGB(color.red, color.green, color.blue));
+            break;
+        }
+    }
+}
+
+
 
 //Button Functions
 
@@ -233,11 +248,11 @@ Display* PDN::drawImage(Image image) {
     return display.drawImage(image);
 }
 
-Display* PDN::drawText(char *text, int xStart, int yStart) {
+Display* PDN::drawText(const char *text, int xStart, int yStart) {
     return display.drawText(text, xStart, yStart);
 }
 
-Display* PDN::drawText(char *text) {
+Display* PDN::drawText(const char *text) {
     return display.drawText(text);
 }
 

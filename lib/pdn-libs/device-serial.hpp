@@ -78,6 +78,8 @@ protected:
                 return outputJack();
             case SerialIdentifier::INPUT_JACK:
                 return inputJack();
+            default:
+                assert(false);
         }
     }
 

@@ -68,7 +68,6 @@ void Duel::onStateMounted(Device *PDN) {
 }
 
 void Duel::onStateLoop(Device *PDN) {
-    duelTimer.updateTime();
 
     string *validMessage = waitForValidMessage(PDN);
     if (validMessage != nullptr) {

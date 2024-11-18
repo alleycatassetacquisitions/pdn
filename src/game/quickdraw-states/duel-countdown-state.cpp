@@ -43,11 +43,21 @@ void DuelCountdown::onStateMounted(Device *PDN) {
     countdownQueue.push_back(THREE);
     countdownQueue.push_back(TWO);
     countdownQueue.push_back(ONE);
+
+    const CountdownStage* current = countdownQueue.front();
+    PDN->setGlobalBrightness(current->ledBrightness);
+
+    PDN->
+    invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(current->step)))->
+    render();
+
+    countdownTimer.setTimer(current->countdownTimer);
+    countdownQueue.pop_front();
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
-    countdownTimer.updateTime();
     if (countdownTimer.expired()) {
         const CountdownStage* current = countdownQueue.front();
         if(current == nullptr) {

@@ -10,7 +10,7 @@ void PDNDisplay::render() {
     screen.sendBuffer();
 }
 
-Display* PDNDisplay::drawText(char *text, int xStart, int yStart) {
+Display* PDNDisplay::drawText(const char *text, int xStart, int yStart) {
     int x = 8;
     int y = 8;
 
@@ -55,7 +55,7 @@ Display* PDNDisplay::drawImage(Image image, int xStart, int yStart) {
     return this;
 }
 
-Display * PDNDisplay::drawText(char *text) {
+Display * PDNDisplay::drawText(const char *text) {
     drawText(text, -1, -1);
     return this;
 }
@@ -71,6 +71,11 @@ void PDNDisplay::reset() {
 }
 
 PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8G2_R0, displayCS, displayDC, displayRST) {
+    pinMode(displayCS, OUTPUT);
+    pinMode(displayDC, OUTPUT);
+    digitalWrite(displayCS, 0);
+    digitalWrite(displayDC, 0);
+
     screen.begin();
     screen.clearBuffer();
     screen.setContrast(125);
