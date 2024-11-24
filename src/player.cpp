@@ -1,6 +1,7 @@
 #include "player.hpp"
-
+#include <memory>
 #include <ArduinoJson.h>
+
 
 
 string Player::toJson() const {
@@ -65,6 +66,7 @@ string Player::getUserID() const
 
 void Player::setCurrentMatchId(string matchId) {
     *currentMatchId = matchId;
+
 }
 
 string* Player::getCurrentMatchId() {

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <memory>
 #include <string>
+#include <iostream>
 
 using namespace std;
 
@@ -42,8 +44,8 @@ private:
 
     Allegiance allegiance = Allegiance::RESISTANCE;
 
-    string *currentMatchId = nullptr;
-    string *currentOpponentId = nullptr;
+    string* currentMatchId = new string();
+    string* currentOpponentId = new string();
 
     bool hunter = true;
 };

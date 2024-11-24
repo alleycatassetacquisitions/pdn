@@ -47,7 +47,7 @@ private:
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
 
-    static constexpr unsigned long defaultDelay = 8000;
+    static constexpr unsigned long defaultDelay = 2500;
     static constexpr unsigned long bountyDelay[2] = {300000, 900000};
     static constexpr unsigned long overchargeDelay[2] = {180000, 300000};
 };
