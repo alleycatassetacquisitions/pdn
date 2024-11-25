@@ -1,3 +1,4 @@
+#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 //
@@ -36,6 +37,7 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
+
     if (player->isHunter()) {
         currentPalette = hunterColors;
     } else {

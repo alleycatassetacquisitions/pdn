@@ -13,12 +13,6 @@
  */
 HandshakeFinalAckState::HandshakeFinalAckState(Player *player) : State(HANDSHAKE_FINAL_ACK_STATE) {
     this->player = player;
-    std::vector<const string *> reading;
-    if (player->isHunter()) {
-        reading.push_back(&BOUNTY_HANDSHAKE_FINAL_ACK);
-    } else {
-        reading.push_back(&HUNTER_HANDSHAKE_FINAL_ACK);
-    }
 }
 
 HandshakeFinalAckState::~HandshakeFinalAckState() {
@@ -26,6 +20,21 @@ HandshakeFinalAckState::~HandshakeFinalAckState() {
 }
 
 void HandshakeFinalAckState::onStateMounted(Device *PDN) {
+    std::vector<const string *> writing;
+    std::vector<const string *> reading;
+    if (player->isHunter()) {
+        reading.push_back(&BOUNTY_HANDSHAKE_FINAL_ACK);
+
+        writing.push_back(&HUNTER_HANDSHAKE_FINAL_ACK);
+    } else {
+        reading.push_back(&HUNTER_HANDSHAKE_FINAL_ACK);
+
+        writing.push_back(&BOUNTY_HANDSHAKE_FINAL_ACK);
+    }
+    registerValidMessages(reading);
+    registerResponseMessage(writing);
+
+    PDN->writeString(writing[0]);
 }
 
 

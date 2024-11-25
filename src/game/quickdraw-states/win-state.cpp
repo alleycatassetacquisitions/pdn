@@ -40,18 +40,19 @@ void Win::onStateMounted(Device *PDN) {
     PDN->invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::WIN))->
     render();
+
+    winTimer.setTimer(3000);
 }
 
 void Win::onStateLoop(Device *PDN) {
-    EVERY_N_MILLIS(150) {
-        PDN->setVibration(PDN->getCurrentVibrationIntensity() + 10);
-    }
-    if (PDN->getCurrentVibrationIntensity() > VIBRATION_MAX) {
+    winTimer.updateTime();
+    if(winTimer.expired()) {
         reset = true;
     }
 }
 
 void Win::onStateDismounted(Device *PDN) {
+    winTimer.invalidate();
     reset = false;
 }
 

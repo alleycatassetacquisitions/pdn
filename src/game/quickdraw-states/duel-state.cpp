@@ -1,3 +1,4 @@
+#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 //
@@ -37,6 +38,8 @@ Duel::Duel(Player* player) : State(DUEL) {
 
     reading.push_back(&ZAP);
     reading.push_back(&YOU_DEFEATED_ME);
+
+    registerValidMessages(reading);
 }
 
 Duel::~Duel() {
@@ -45,20 +48,18 @@ Duel::~Duel() {
 
 void Duel::onStateMounted(Device *PDN) {
     PDN->setButtonClick(
-        ButtonInteraction::PRESS,
+        ButtonInteraction::CLICK,
         ButtonIdentifier::PRIMARY_BUTTON,
-        [](void *PDN) {
-            ButtonPress(static_cast<Device *>(PDN));
-        },
-        PDN);
+         [] {
+            PDN::GetInstance()->writeString(&ZAP);
+        });
 
     PDN->setButtonClick(
-        ButtonInteraction::PRESS,
+        ButtonInteraction::CLICK,
         ButtonIdentifier::SECONDARY_BUTTON,
-        [](void *PDN) {
-            ButtonPress(static_cast<Device *>(PDN));
-        },
-        PDN);
+        [] {
+            PDN::GetInstance()->writeString(&ZAP);
+        });
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 
@@ -68,14 +69,16 @@ void Duel::onStateMounted(Device *PDN) {
 }
 
 void Duel::onStateLoop(Device *PDN) {
-
-    string *validMessage = waitForValidMessage(PDN);
-    if (validMessage != nullptr) {
-        if (*validMessage == ZAP) {
-            PDN->writeString(&YOU_DEFEATED_ME);
-            captured = true;
-        } else if (*validMessage == YOU_DEFEATED_ME) {
-            wonBattle = true;
+    duelTimer.updateTime();
+    if(!captured && !wonBattle) {
+        string *validMessage = waitForValidMessage(PDN);
+        if (validMessage != nullptr) {
+            if (*validMessage == ZAP) {
+                PDN->writeString(&YOU_DEFEATED_ME);
+                captured = true;
+            } else if (*validMessage == YOU_DEFEATED_ME) {
+                wonBattle = true;
+            }
         }
     }
 }

@@ -47,5 +47,5 @@ private:
     string* currentMatchId = new string();
     string* currentOpponentId = new string();
 
-    bool hunter = true;
+    bool hunter = false;
 };

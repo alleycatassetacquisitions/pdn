@@ -40,38 +40,40 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(Device *PDN) {
-    countdownQueue.push_back(THREE);
-    countdownQueue.push_back(TWO);
-    countdownQueue.push_back(ONE);
-
-    const CountdownStage* current = countdownQueue.front();
-    PDN->setGlobalBrightness(current->ledBrightness);
+    CRGB countdownColor;
+    if(player->isHunter()) {
+        countdownColor = hunterColors[0];
+    } else {
+        countdownColor = bountyColors[0];
+    }
+    PDN->setGlobablLightColor(LEDColor(countdownColor.r, countdownColor.g, countdownColor.b));
+    PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
 
     PDN->
     invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(current->step)))->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
     render();
 
-    countdownTimer.setTimer(current->countdownTimer);
-    countdownQueue.pop_front();
+    countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
+    currentStepIndex++;
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
+    countdownTimer.updateTime();
     if (countdownTimer.expired()) {
-        const CountdownStage* current = countdownQueue.front();
-        if(current == nullptr) {
+        if(countdownQueue[currentStepIndex].step == CountdownStep::BATTLE) {
             doBattle = true;
         } else {
-            PDN->setGlobalBrightness(current->ledBrightness);
+            PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
 
             PDN->
             invalidateScreen()->
-            drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(current->step)))->
+            drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
             render();
 
-            countdownTimer.setTimer(current->countdownTimer);
-            countdownQueue.pop_front();
+            countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
+            currentStepIndex++;
         }
     }
 }
@@ -90,6 +92,7 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 
 void DuelCountdown::onStateDismounted(Device *PDN) {
     doBattle = false;
+    currentStepIndex = 0;
     countdownTimer.invalidate();
 }
 

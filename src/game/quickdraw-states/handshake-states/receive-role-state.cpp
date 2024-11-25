@@ -62,10 +62,7 @@ void HandshakeReceiveRoleState::onStateLoop(Device *PDN) {
         }
     }
 
-    if (player->getCurrentMatchId() != nullptr && player->getCurrentOpponentId() != nullptr) {
-        for (int i = 0; i < responseStringMessages.size(); i++) {
-            PDN->writeString(&responseStringMessages[i]);
-        }
+    if (!player->getCurrentMatchId()->empty() && !player->getCurrentOpponentId()->empty()) {
         transitionToFinalAckState = true;
     }
 
