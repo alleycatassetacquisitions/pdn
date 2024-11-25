@@ -1,3 +1,4 @@
+#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 //
@@ -36,6 +37,7 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
+
     if (player->isHunter()) {
         currentPalette = hunterColors;
     } else {
@@ -49,8 +51,8 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    //This may be totally bad, but trying to figure out how to not spam Serial.
-    if (PDN->getSerialWriteQueueSize() == 0) {
+
+    EVERY_N_MILLIS(250) {
         PDN->writeString(&responseStringMessages[0]);
     }
 

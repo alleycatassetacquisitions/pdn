@@ -35,23 +35,22 @@ Lose::~Lose() {
 
 void Lose::onStateMounted(Device *PDN) {
     //Write match to eeprom.
-    PDN->setVibration(VIBRATION_MAX);
     PDN->invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
     render();
+
+    loseTimer.setTimer(3000);
 }
 
 void Lose::onStateLoop(Device *PDN) {
-    EVERY_N_MILLIS(150) {
-        PDN->setVibration(PDN->getCurrentVibrationIntensity() - 10);
-    }
-
-    if (PDN->getCurrentVibrationIntensity() <= 0) {
+    loseTimer.updateTime();
+    if(loseTimer.expired()) {
         reset = true;
     }
 }
 
 void Lose::onStateDismounted(Device *PDN) {
+    loseTimer.invalidate();
     reset = false;
 }
 

@@ -43,7 +43,7 @@ class DeviceSerial {
                 getCurrentCommsJack()->read();
                 return_me = string(getCurrentCommsJack()->readStringUntil(STRING_TERM).c_str());
             } else {
-                return_me = "No valid message during output jack read";
+                return_me = "null";
             }
         }
         return return_me;

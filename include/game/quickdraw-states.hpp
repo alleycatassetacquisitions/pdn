@@ -47,7 +47,7 @@ private:
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
 
-    static constexpr unsigned long defaultDelay = 8000;
+    static constexpr unsigned long defaultDelay = 2500;
     static constexpr unsigned long bountyDelay[2] = {300000, 900000};
     static constexpr unsigned long overchargeDelay[2] = {180000, 300000};
 };
@@ -174,6 +174,7 @@ private:
         THREE = 3,
         TWO = 2,
         ONE = 1,
+        BATTLE = 0
     };
 
     struct CountdownStage {
@@ -192,12 +193,13 @@ private:
 
     Player* player;
     SimpleTimer countdownTimer;
-    CountdownStage* currentStage;
     bool doBattle = false;
-    const CountdownStage* THREE = new CountdownStage(CountdownStep::THREE, 2000, 255);
-    const CountdownStage* TWO = new CountdownStage(CountdownStep::TWO, 2000, 155);
-    const CountdownStage* ONE = new CountdownStage(CountdownStep::ONE, 3000, 75);
-    deque<const CountdownStage*> countdownQueue;
+    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000, 255);
+    const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000, 155);
+    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 3000, 75);
+    const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0, 0);
+    const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
+    int currentStepIndex = 0;
 };
 
 /*
@@ -220,10 +222,6 @@ public:
     bool transitionToWin();
 
     bool transitionToLose();
-
-    static void ButtonPress(Device *PDN) {
-        PDN->writeString(&ZAP);
-    }
 
 private:
     Player* player;
@@ -256,6 +254,7 @@ public:
     bool isTerminalState() override;
 
 private:
+    SimpleTimer winTimer = SimpleTimer();
     Player *player;
     bool reset = false;
 };
@@ -280,6 +279,7 @@ public:
     bool isTerminalState() override;
 
 private:
+    SimpleTimer loseTimer = SimpleTimer();
     Player *player;
     bool reset = false;
 };
