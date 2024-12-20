@@ -26,6 +26,14 @@ int PDN::begin() {
     FastLED.clear();
     FastLED.show();
 
+    //Initialize PSRAM which can be used as
+    //extra heap space by allocating using
+    //ps_malloc instead of malloc
+    if(psramInit())
+    {
+        Serial.println("PSRAM initialized");
+    }
+
     return 1;
 }
 
