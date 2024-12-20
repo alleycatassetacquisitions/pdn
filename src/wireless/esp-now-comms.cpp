@@ -2,6 +2,7 @@
 #include <Arduino.h> //For Serial, may be replaced with more specific header?
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_log.h>
 
 #include "wireless/esp-now-comms.hpp"
 
@@ -66,26 +67,26 @@ EspNowManager::EspNowManager() :
     esp_err_t err = esp_now_init();
     if(err != ESP_OK)
     {
-        Serial.printf("ESPNOW failed to init: 0x%X\n", err);
+        ESP_LOGE("ENC", "ESPNOW failed to init: 0x%X\n", err);
     }
     else
     {
         //Register callbacks
         esp_err_t err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
         if(err != ESP_OK)
-            Serial.printf("ESPNOW Error registering recv cb: 0x%X\n", err);
+            ESP_LOGE("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
         err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
         if(err != ESP_OK)
-            Serial.printf("ESPNOW Error registering send cb: 0x%X\n", err);
+            ESP_LOGE("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
 
         //Register broadcast peer
         esp_now_peer_info_t broadcastPeer = {};
         memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
         err = esp_now_add_peer(&broadcastPeer);
         if(err != ESP_OK)
-            Serial.printf("ESPNOW Error registering broadcast peer: 0x%X\n", err);
+            ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
 
-        Serial.println("ESPNOW Comms initialized");
+        ESP_LOGI("ENC", "ESPNOW Comms initialized");
     }
 }
 
@@ -117,7 +118,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
 {
     if(len > (255 * MAX_PKT_DATA_SIZE))
     {
-        Serial.printf("ESP-NOW Error: Tried to send too large of buffer: %u of max %u\n",
+        ESP_LOGW("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
             len, 
             255 * MAX_PKT_DATA_SIZE);
         return -1;
@@ -146,9 +147,9 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
             for(int j = 0; j < i; ++j)
                 free(sendBuffers[j]);
 
-            //TODO: Change to use error logging and return better error code once we have them
-            Serial.println("Failed to allocate buffers for ESP-NOW send queue");
-            Serial.printf("Needed to allocate a total of %lu bytes\n", len);
+            //TODO: Return better error code once we have them
+            ESP_LOGE("ENC", "Failed to allocate buffers for ESP-NOW send queue");
+            ESP_LOGE("ENC", "Needed to allocate a total of %lu bytes\n", len);
             return -1;
         }
         bytesLeft -= thisBuffer;
@@ -164,7 +165,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
     {
         size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
 #if DEBUG_PRINT_ESP_NOW
-        Serial.printf("ESPNOW SendData pktIdx: %i thisBuffer: %u\n", pktIdx, thisBuffer);
+        ESP_LOGD("ENC", "ESPNOW SendData pktIdx: %i thisBuffer: %u\n", pktIdx, thisBuffer);
 #endif
 
         //Each packet needs a header, build it directly in the send buffer
@@ -222,27 +223,22 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
     EspNowManager* manager = EspNowManager::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
-    Serial.printf("ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
+    ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
         mac_addr[0], mac_addr[1], mac_addr[2],
         mac_addr[3], mac_addr[4], mac_addr[5]);
-
-    for(int i = 36; i < 41; ++i)
-         Serial.printf("0x%X ", data[i]);
-    Serial.printf("\n");
 #endif
 
     //Make sure received packet is at least min length
     if(data_len < sizeof(DataPktHdr))
     {
-        Serial.printf("[ESPNOW] Recieved buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
+        ESP_LOGE("ENC", "Recieved buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
         return;
     }
 
     const DataPktHdr* pktHdr = (const DataPktHdr*)data;
-    //auto rssi = esp_now_info->rx_ctrl->rssi;
 
 #if DEBUG_PRINT_ESP_NOW
-    //Serial.printf("Packet Type: %i\n", pktHdr->packetType);
+    ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
 
     //Check for multipacket cluster
@@ -276,7 +272,7 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
                 DataRecvBuffer recvBuffer = existingBuffer->second;
                 if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx)
                 {
-                    Serial.printf("Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
+                    ESP_LOGW("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
                                   recvBuffer.expectedNextIdx,
                                   pktHdr->idxInCluster);
                     free(recvBuffer.data);
@@ -302,7 +298,7 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
             }
             else
             {
-                Serial.println("No recv buffer for mid cluster pkt. We must have missed first pkt.");
+                ESP_LOGW("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
                 return;
             }
         }
@@ -319,7 +315,7 @@ void EspNowManager::EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_sta
     EspNowManager* manager = EspNowManager::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
-    Serial.println("ESPNOW Send Callback");
+    ESP_LOGD("ENC", "ESPNOW Send Callback");
 #endif
 
     if(status == ESP_NOW_SEND_SUCCESS)
@@ -330,12 +326,12 @@ void EspNowManager::EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_sta
     {
         if(manager->m_curRetries < manager->m_maxRetries)
         {
-            Serial.println("ESPNOW Failed send, retrying");
+            ESP_LOGW("ENC", "ESPNOW Failed send, retrying");
             ++manager->m_curRetries;
         }
         else
         {
-            Serial.println("ESPNOW Failed send, giving up");
+            ESP_LOGE("ENC", "ESPNOW Failed send, giving up");
             manager->MoveToNextSendPkt();
         }
     }
@@ -365,7 +361,7 @@ int EspNowManager::SendFrontPkt()
             ++m_curRetries;
             if(m_curRetries >= m_maxRetries)
             {
-                Serial.printf("ESPNOW Failed after max retries. Err: %i\n", err);
+                ESP_LOGE("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
                 //TODO: Pop all packets in the current cluster?
                 MoveToNextSendPkt();
                 if(!m_sendQueue.empty())
@@ -414,7 +410,7 @@ void EspNowManager::HandlePktCallback(const PktType packetType, const uint8_t *s
 {
     if((int)packetType >= (int)PktType::kNumPacketTypes)
     {
-        Serial.printf("Recv invalid packet type: %u\n", (int)packetType);
+        ESP_LOGE("ENC", "Recv invalid packet type: %u\n", (int)packetType);
         return;
     }
 

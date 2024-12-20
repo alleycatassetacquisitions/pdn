@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_log.h>
 
 #include <FastLED.h>
 #include "simple-timer.hpp"
@@ -100,13 +101,13 @@ void getDeviceId();
 int wins = 0;
 
 void setup(void) {
+  //esp_log_level_set("*", ESP_LOG_VERBOSE);
   pdn->begin();
   game.initialize();
-  //TODO: Move this
-  Serial.begin(115200);
-  delay(5000);
 
-  Serial.println("Debug Serial started");
+  delay(1000);
+
+  ESP_LOGI("PDN", "HW and Game Initialized\n");
 
   // Initialize WiFi for ESP-NOW use
   WiFi.begin();
@@ -124,6 +125,8 @@ void setup(void) {
           manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
         },
         &remotePlayers);
+
+  ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
   // if (game.playerInfo.isHunter()) {
   //   currentPalette = hunterColors;
   // } else {
