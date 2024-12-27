@@ -31,6 +31,16 @@ Display* PDNDisplay::drawImage(Image image, int xStart, int yStart) {
     return this;
 }
 
+Display *PDNDisplay::drawTextInvertedColor(const char *text, int xStart, int yStart)
+{
+    size_t text_len = strlen(text);
+    screen.drawBox(xStart * kCharWidth, yStart * kCharHeight, text_len * kCharWidth,  kCharHeight / 2);
+    screen.setColorIndex(0);
+    screen.drawStr(xStart * kCharWidth, yStart * kCharHeight, text);
+    screen.setColorIndex(1);
+
+    return nullptr;
+}
 Display * PDNDisplay::drawText(const char *text) {
     drawText(text, 0, 8);
     return this;

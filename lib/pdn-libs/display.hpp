@@ -34,6 +34,8 @@ public:
 
     virtual Display* drawText(const char *text, int xStart, int yStart) = 0;
 
+    virtual Display* drawTextInvertedColor(const char* text, int xStart, int yStart) = 0;
+
     virtual Display* drawImage(Image image) = 0;
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;

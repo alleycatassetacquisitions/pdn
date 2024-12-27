@@ -10,7 +10,7 @@
 #include "quickdraw-resources.hpp"
 #include <queue>
 
-#include "../ui/list-ui.hpp"
+#include "../ui/list-select-ui.hpp"
 
 using namespace std;
 
@@ -521,7 +521,7 @@ public:
 
 private:
     std::vector< std::string > m_testList;
-    ListUI<std::string> m_uiList;
+    ListSelectUI<std::string> m_uiList;
     bool m_invalidated = true;
 
     static void stringToStr(const std::string* item, char* str, size_t str_max);

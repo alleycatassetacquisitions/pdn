@@ -8,7 +8,7 @@ template <typename T>
 class ListUI
 {
 public:
-    typedef void (*ItemToStringHandler)(const T* item, char* str, size_t str_max_size);
+    typedef std::function<void(const T* item, char* str, size_t str_max_size)> ItemToStringHandler;
 
     ListUI(Display* display, ItemToStringHandler callback, const std::vector<T>& items)  :
         m_display(display),
@@ -33,7 +33,7 @@ public:
             --m_curPage;
     }
 
-    void render()
+    virtual void render()
     {
         int xSizeChar, ySizeChar;
         std::tie(xSizeChar, ySizeChar) = m_display->getSizeInChar();

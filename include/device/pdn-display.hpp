@@ -22,6 +22,8 @@ public:
     Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) override;
 
     Display* drawText(const char *text, int xStart, int yStart) override;
+    Display* drawTextInvertedColor(const char* text, int xStart, int yStart) override;
+
 
     Display* drawImage(Image image, int xStart, int yStart) override;
 
@@ -36,12 +38,14 @@ public:
 
     std::tuple<int,int> getSizeInChar()
     {
-        return {128/8, 64 / 8};
+        return {128 / kCharWidth, 64 / kCharHeight};
     }
 
     const int maxCharX = 128 / 8;
     const int maxCharY = 64 / 8;
 
 private:
+    const int kCharWidth = 8;
+    const int kCharHeight = 8;
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI screen;
 };

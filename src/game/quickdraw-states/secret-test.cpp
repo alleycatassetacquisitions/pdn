@@ -22,10 +22,10 @@ void SecretTest::onStateMounted(Device *PDN)
     m_uiList.setDisplay(PDN->invalidateScreen());
 
     PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON,
-        SecretTest::pageDown, this);
+        SecretTest::pageUp, this);
     
     PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::SECONDARY_BUTTON,
-        SecretTest::pageUp, this);
+        SecretTest::pageDown, this);
 }
 
 void SecretTest::onStateLoop(Device *PDN)
@@ -54,13 +54,13 @@ void SecretTest::stringToStr(const std::string *item, char *str, size_t str_max)
 void SecretTest::pageUp(void* param)
 {
     SecretTest* state = (SecretTest*)param;
-    state->m_uiList.nextPage();
+    state->m_uiList.moveSelectionUp();
     state->m_invalidated = true;
 }
 
 void SecretTest::pageDown(void* param)
 {
     SecretTest* state = (SecretTest*)param;
-    state->m_uiList.prevPage();
+    state->m_uiList.moveSelectionDown();
     state->m_invalidated = true;
 }
