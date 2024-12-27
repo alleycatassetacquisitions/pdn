@@ -44,6 +44,7 @@ void Quickdraw::populateStateMap() {
     
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+    SecretTest* secretTest = new SecretTest();
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -107,6 +108,14 @@ void Quickdraw::populateStateMap() {
             std::bind(&Idle::transitionToHandshake,
                 idle),
             handshakeInitiate));
+
+    idle->addTransition(
+        new StateTransition(
+            std::bind(&Idle::transitionToSecretTest,
+                idle),
+            secretTest));
+
+    
 
     // Handshake state transitions
     handshakeInitiate->addTransition(

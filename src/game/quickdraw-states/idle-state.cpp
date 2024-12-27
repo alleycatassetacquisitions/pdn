@@ -96,6 +96,12 @@ void Idle::onStateLoop(Device *PDN) {
         transitionToHandshakeState = true;
     }
 
+    if(PDN->isLongPressed(ButtonIdentifier::PRIMARY_BUTTON) 
+        && PDN->isLongPressed(ButtonIdentifier::SECONDARY_BUTTON) 
+        && !transitionToHandshakeState)
+        
+        transitionToSecretTestState = true;
+
     if(displayIsDirty) {
         cycleStats(PDN);
         displayIsDirty = false;
@@ -104,6 +110,7 @@ void Idle::onStateLoop(Device *PDN) {
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
+    transitionToSecretTestState = false;
     sendMacAddress = false;
     waitingForMacAddress = false;
     statsIndex = 0;
@@ -127,6 +134,11 @@ void Idle::serialEventCallbacks(string message) {
 
 bool Idle::transitionToHandshake() {
     return transitionToHandshakeState;
+}
+
+bool Idle::transitionToSecretTest()
+{
+    return transitionToSecretTestState;
 }
 
 void Idle::cycleStats(Device *PDN) {
