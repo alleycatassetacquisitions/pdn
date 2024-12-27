@@ -64,10 +64,17 @@ void Idle::onStateLoop(Device *PDN) {
     if (validMessage != nullptr) {
         transitionToHandshakeState = true;
     }
+
+    if(PDN->isLongPressed(ButtonIdentifier::PRIMARY_BUTTON) 
+        && PDN->isLongPressed(ButtonIdentifier::SECONDARY_BUTTON) 
+        && !transitionToHandshakeState)
+        
+        transitionToSecretTestState = true;
 }
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
+    transitionToSecretTestState = false;
 }
 
 void Idle::ledAnimation(Device *PDN) {
@@ -112,4 +119,9 @@ void Idle::ledAnimation(Device *PDN) {
 
 bool Idle::transitionToHandshake() {
     return transitionToHandshakeState;
+}
+
+bool Idle::transitionToSecretTest()
+{
+    return transitionToSecretTestState;
 }

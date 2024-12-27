@@ -7,6 +7,8 @@
 #include <FastLED.h>
 #include <queue>
 
+#include "../ui/list-ui.hpp"
+
 using namespace std;
 
 // Quickdraw States
@@ -20,7 +22,8 @@ enum QuickdrawStateId {
     DUEL_COUNTDOWN = 5,
     DUEL = 6,
     WIN = 7,
-    LOSE = 8
+    LOSE = 8,
+    SECRET_TEST = 9
 };
 
 
@@ -91,9 +94,12 @@ public:
 
     bool transitionToHandshake();
 
+    bool transitionToSecretTest();
+
 private:
     Player* player;
     bool transitionToHandshakeState = false;
+    bool transitionToSecretTestState = false;
     const float smoothingPoints = 255;
     byte ledBrightness = 65;
     float pwm_val = 0;
@@ -282,4 +288,25 @@ private:
     SimpleTimer loseTimer = SimpleTimer();
     Player *player;
     bool reset = false;
+};
+
+class SecretTest : public State {
+public:
+    SecretTest();
+
+    void onStateMounted(Device *PDN) override;
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;
+
+private:
+    std::vector< std::string > m_testList;
+    ListUI<std::string> m_uiList;
+    bool m_invalidated = true;
+
+    static void stringToStr(const std::string* item, char* str, size_t str_max);
+
+    static void pageUp(void* param);
+    static void pageDown(void* param);
 };

@@ -21,6 +21,7 @@ void Quickdraw::populateStateMap() {
     Duel* duel = new Duel(player);
     Win* win = new Win(player);
     Lose* lose = new Lose(player);
+    SecretTest* secretTest = new SecretTest();
 
     sleep->addTransition(
         new StateTransition(
@@ -38,6 +39,12 @@ void Quickdraw::populateStateMap() {
             std::bind(&Idle::transitionToHandshake,
                 idle),
             handshake));
+
+    idle->addTransition(
+        new StateTransition(
+            std::bind(&Idle::transitionToSecretTest,
+                idle),
+            secretTest));
 
     handshake->addTransition(
         new StateTransition(
