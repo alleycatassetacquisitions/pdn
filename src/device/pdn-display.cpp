@@ -11,29 +11,30 @@ void PDNDisplay::render() {
 }
 
 Display* PDNDisplay::drawText(const char *text, int xStart, int yStart) {
-    int x = 8;
-    int y = 8;
+    const int x = 8;
+    const int y = 8;
 
     if (xStart != -1) {
-        cursor.x = x*xStart;
+        cursor.x = xStart;
     }
 
     if (yStart != -1) {
-        cursor.y = y*yStart;
+        cursor.y = yStart;
     }
 
     while(*text != '\0') {
         if(cursor.x >= maxCharX) {
-            cursor.y += y;
+            cursor.y++;
             cursor.x = 0;
         } else if(cursor.y > maxCharY) {
-            cursor.x = 0;
-            cursor.y = y;
+            return this;
         }
 
-        screen.drawStr(cursor.x, cursor.y, text);
+        uint16_t utf16_char = *text;
+        //ESP_LOGD("PDN", "drawGlyph(%i, %i, %u)", cursor.x * x, cursor.y * y, utf16_char);
+        screen.drawGlyph(cursor.x * x, cursor.y * y, utf16_char);
         text++;
-        cursor.x += x;
+        cursor.x++;
     }
 
     return this;
@@ -79,5 +80,6 @@ PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8
     screen.begin();
     screen.clearBuffer();
     screen.setContrast(125);
-    screen.setFont(u8g2_font_prospero_nbp_tf);
+    //screen.setFont(u8g2_font_prospero_nbp_tf);
+    screen.setFont(u8g2_font_victoriabold8_8r);
 }
