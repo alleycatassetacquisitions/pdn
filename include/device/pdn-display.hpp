@@ -29,6 +29,16 @@ public:
 
     void reset();
 
+    std::tuple<int,int> getSizeInPixels()
+    {
+        return {128,64};
+    }
+
+    std::tuple<int,int> getSizeInChar()
+    {
+        return {128/8, 64 / 8};
+    }
+
     const int maxCharX = 128 / 8;
     const int maxCharY = 64 / 8;
 

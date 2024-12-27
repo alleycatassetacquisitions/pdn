@@ -38,6 +38,10 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
+    virtual std::tuple<int,int> getSizeInPixels() = 0;
+
+    virtual std::tuple<int,int> getSizeInChar() = 0;
+
 protected:
     Cursor cursor;
 };
