@@ -39,11 +39,9 @@ public:
 
     void render() override
     {
-        int xSizeChar, ySizeChar;
-        std::tie(xSizeChar, ySizeChar) = this->m_display->getSizeInChar();
-        char* str = (char*)alloca(xSizeChar);
-        size_t page_start = this->m_curPage * ySizeChar;
-        int page_end = std::min(page_start + ySizeChar, this->m_items.size());
+        char* str = (char*)alloca(this->m_strMaxLen);
+        size_t page_start = this->m_curPage * this->m_pageLen;
+        int page_end = std::min(page_start + this->m_pageLen, this->m_items.size());
 
         if(page_start >= this->m_items.size())
         {
@@ -55,20 +53,20 @@ public:
         for(int i = page_start; i < page_end; ++i)
         {
             const auto item = this->m_items.data() + i;
-            this->m_itemToStringCallback(item, str, xSizeChar);
+            this->m_itemToStringCallback(item, str, this->m_strMaxLen);
             //ESP_LOGD("UI", "Display::drawText(%s, 0, %d)", str, i-page_start+1);
+            int yDrawChar = i - page_start + 1 + this->m_yOffset;
             if(i == m_curSelected)
-                this->m_display->drawTextInvertedColor(str, 0, i - page_start + 1);
+                this->m_display->drawTextInvertedColor(str, this->m_xOffset, yDrawChar);
             else
-                this->m_display->drawText(str, 0, i - page_start + 1);
+                this->m_display->drawText(str, this->m_xOffset, yDrawChar);
         }
     }
 
 protected:
     void recalculateCurrentPage()
     {
-        int yDisplaySizeChars = std::get<1>(this->m_display->getSizeInChar());
-        this->m_curPage = m_curSelected / yDisplaySizeChars;
+        this->m_curPage = m_curSelected / this->m_pageLen;
     }
 
     size_t m_curSelected = 0;
