@@ -21,6 +21,8 @@ void SecretTest::onStateMounted(Device *PDN)
 
     m_uiList.setDisplay(PDN->invalidateScreen());
 
+    m_uiList.setPos(5, 3);
+
     PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON,
         SecretTest::pageUp, this);
     
@@ -55,6 +57,7 @@ void SecretTest::pageUp(void* param)
 {
     SecretTest* state = (SecretTest*)param;
     state->m_uiList.moveSelectionUp();
+    //state->m_uiList.prevPage();
     state->m_invalidated = true;
 }
 
@@ -62,5 +65,6 @@ void SecretTest::pageDown(void* param)
 {
     SecretTest* state = (SecretTest*)param;
     state->m_uiList.moveSelectionDown();
+    //state->m_uiList.nextPage();
     state->m_invalidated = true;
 }
