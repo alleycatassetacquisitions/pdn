@@ -37,6 +37,8 @@ public:
 
     void setCurrentMatchId(string matchId);
 
+    void setHunter(bool isHunter);
+
     string *getCurrentMatchId();
 
     void setCurrentOpponentId(string opponentId);
@@ -51,5 +53,5 @@ private:
     string* currentMatchId = new string();
     string* currentOpponentId = new string();
 
-    bool hunter = false;
+    bool hunter = true;
 };

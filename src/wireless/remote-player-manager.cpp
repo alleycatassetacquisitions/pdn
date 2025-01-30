@@ -7,20 +7,26 @@
 
 struct PlayerInfoPkt
 {
-    char id[32];
+    char id[33];
     Allegiance allegiance;
     uint8_t hunter;
 } __attribute__((packed));
 
 
+RemotePlayerManager *RemotePlayerManager::GetInstance() {
+    static RemotePlayerManager instance;
+    return &instance;
+}
+
+
 RemotePlayerManager::RemotePlayerManager() :
-    m_remotePlayerTTL(5000),
+    m_remotePlayerTTL(60000),
     m_broadcastInterval(1000),
     m_lastBroadcastTime(0)
 {
 }
 
-void RemotePlayerManager::Update()
+void RemotePlayerManager::Update(const bool shouldBroadcast)
 {
     unsigned long now = millis();
 
@@ -32,9 +38,11 @@ void RemotePlayerManager::Update()
         m_remotePlayers.end());
 
     //Broadcast if we need to
-    if( (m_lastBroadcastTime != 0) && (now - m_lastBroadcastTime >= m_broadcastInterval))
-    {
-        BroadcastPlayerInfo();
+    if(shouldBroadcast) {
+        if((now - m_lastBroadcastTime) >= m_broadcastInterval)
+        {
+            BroadcastPlayerInfo();
+        }
     }
 }
 
@@ -42,9 +50,10 @@ int RemotePlayerManager::BroadcastPlayerInfo()
 {
     PlayerInfoPkt broadcastPkt;
     strncpy(broadcastPkt.id, m_localPlayerInfo->getUserID().c_str(), 32);
-    broadcastPkt.id[31] = '\0'; //TODO: Should be 33 bytes since ID could be 32 chars
+    broadcastPkt.id[32] = '\0';
     broadcastPkt.allegiance = m_localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = m_localPlayerInfo->isHunter();
+    ESP_LOGW("RPM", "Broadcasting\n");
 
 #if DEBUG_REMOTE_PLAYER_MANAGER
     ESP_LOGD("RPM", "Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
@@ -62,11 +71,10 @@ int RemotePlayerManager::BroadcastPlayerInfo()
     return ret;
 }
 
-void RemotePlayerManager::StartBroadcastingPlayerInfo(Player *playerInfo, unsigned long broadcastIntervalMillis)
+void RemotePlayerManager::initialize(Player *playerInfo, unsigned long broadcastIntervalMillis)
 {
     m_localPlayerInfo = playerInfo;
     m_broadcastInterval = broadcastIntervalMillis;
-    BroadcastPlayerInfo();
 }
 
 void RemotePlayerManager::SetRemotePlayerTTL(unsigned long ttl)
@@ -117,10 +125,27 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     if(remotePlayer != m_remotePlayers.end())
     {
         remotePlayer->lastSeenTime = millis();
+        remotePlayer->numPings++;
 #if PDN_ENABLE_RSSI_TRACKING
         remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
         ESP_LOGD("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
 #endif
     }
     return 0;
+}
+
+bool RemotePlayerManager::hasRemotePings() {
+    return !m_remotePlayers.empty();
+}
+
+RemotePlayer RemotePlayerManager::getTopPingedByPlayer() {
+    RemotePlayer topPinged = m_remotePlayers.front();
+
+    for(int i = 0; i < m_remotePlayers.size(); i++) {
+        if(m_remotePlayers[i].numPings > topPinged.numPings) {
+            topPinged = m_remotePlayers[i];
+        }
+    }
+
+    return topPinged;
 }

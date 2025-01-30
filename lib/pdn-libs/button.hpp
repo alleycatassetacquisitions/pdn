@@ -49,4 +49,6 @@ class Button {
     virtual bool isLongPressed() = 0;
 
     virtual unsigned long longPressedMillis() = 0;
+
+    virtual int multiClickCount() = 0;
 };

@@ -9,6 +9,9 @@ Player::Player(const string id0, const Allegiance allegiance0, const bool isHunt
 {
 }
 
+void Player::setHunter(bool isHunter) {
+    hunter = isHunter;
+}
 
 string Player::toJson() const {
     // Create a JSON object for player

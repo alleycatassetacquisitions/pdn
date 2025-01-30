@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <esp_now.h>
 #include <cstring>  // For memcpy
@@ -9,6 +11,7 @@ struct RemotePlayer
     uint8_t wifiMacAddr[ESP_NOW_ETH_ALEN];
     Player playerInfo;
     unsigned long lastSeenTime;
+    uint8_t numPings;
     signed rssi;
 
     RemotePlayer(const uint8_t* macAddr, string id, Allegiance allegiance, bool isHunter,
@@ -24,16 +27,20 @@ struct RemotePlayer
 class RemotePlayerManager
 {
 public:
-    RemotePlayerManager();
+    static RemotePlayerManager* GetInstance();
 
-    void Update();
+    void Update(bool shouldBroadcast);
 
-    void StartBroadcastingPlayerInfo(Player* playerInfo, unsigned long broadcastIntervalMillis);
+    void initialize(Player* playerInfo, unsigned long broadcastIntervalMillis);
     
     void SetRemotePlayerTTL(unsigned long ttl);
     unsigned long GetRemotePlayerTTL();
 
     int ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const uint8_t* data, const size_t dataLen);
+
+    RemotePlayer getTopPingedByPlayer();
+
+    bool hasRemotePings();
 
 protected:
     int BroadcastPlayerInfo();
@@ -44,4 +51,6 @@ protected:
     unsigned long m_broadcastInterval;
     unsigned long m_lastBroadcastTime;
 
+private:
+    RemotePlayerManager();
 };

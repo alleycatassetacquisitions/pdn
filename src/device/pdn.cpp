@@ -127,6 +127,7 @@ void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
 void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
     switch(whichLights) {
         case LightIdentifier::GLOBAL:
+            FastLED.showColor(CRGB(color.red, color.green, color.blue), BRIGHTNESS_MAX);
             break;
         case LightIdentifier::DISPLAY_LIGHTS: {
             displayLights.setLight(ledNum, CRGB(color.red, color.green, color.blue));
@@ -143,6 +144,13 @@ void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
     }
 }
 
+void PDN::setLEDBarLeft(int value) {
+    displayLights.setLEDBarLeft(value);
+}
+
+void PDN::setLEDBarRight(int value) {
+    displayLights.setLEDBarRight(value);
+}
 
 
 //Button Functions
@@ -226,6 +234,10 @@ bool PDN::isLongPressed(ButtonIdentifier whichButton) {
 
 unsigned long PDN::longPressedMillis(ButtonIdentifier whichButton) {
     return getButton(whichButton)->longPressedMillis();
+}
+
+int PDN::buttonMultiClickCount(ButtonIdentifier whichButton) {
+    return getButton(whichButton)->multiClickCount();
 }
 
 Display * PDN::invalidateScreen() {
@@ -329,3 +341,5 @@ void PDN::attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction 
 void PDN::attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
     getButton(whichButton)->setButtonLongPressRelease(newFunction, parameter);
 }
+
+

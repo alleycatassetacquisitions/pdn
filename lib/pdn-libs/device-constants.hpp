@@ -20,7 +20,7 @@ const int displayRST = 14;
 const int VIBRATION_MAX = 255;
 const int VIBRATION_OFF = 0;
 
-const int BRIGHTNESS_MAX = 255;
+const int BRIGHTNESS_MAX = 200;
 const int BRIGHTNESS_OFF = 0;
 
 const int numDisplayLights = 13;

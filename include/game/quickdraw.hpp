@@ -6,6 +6,7 @@
 #include "state-machine.hpp"
 #include "quickdraw-states.hpp"
 #include "quickdraw-resources.hpp"
+#include "wireless/remote-player-manager.hpp"
 
 #define MATCH_SIZE sizeof(Match)
 
@@ -14,7 +15,7 @@
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN);
+    Quickdraw(Player *player, Device *PDN, RemotePlayerManager *playerManager);
 
     ~Quickdraw();
 
@@ -28,4 +29,5 @@ private:
     int numMatches = 0;
 
     Player *player;
+    RemotePlayerManager *playerManager;
 };

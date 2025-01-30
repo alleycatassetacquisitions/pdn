@@ -50,6 +50,8 @@ public:
 
     virtual bool isLongPressed(ButtonIdentifier whichButton) = 0;
 
+    virtual int buttonMultiClickCount(ButtonIdentifier whichButton) = 0;
+
     virtual unsigned long longPressedMillis(ButtonIdentifier whichButton) = 0;
 
     // LED Methods
@@ -62,6 +64,10 @@ public:
     virtual void fadeLightsBy(LightIdentifier whichLights, int value) = 0;
 
     virtual void setLight(LightIdentifier whichLights, int ledNum, LEDColor color) = 0;
+
+    virtual void setLEDBarLeft(int value) = 0;
+
+    virtual void setLEDBarRight(int value) = 0;
 
     //Vibration Motor Methods
     virtual void setVibration(int value) = 0;

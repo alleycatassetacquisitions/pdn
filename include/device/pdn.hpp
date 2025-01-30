@@ -45,6 +45,8 @@ public:
 
     bool isLongPressed(ButtonIdentifier whichButton) override;
 
+    int buttonMultiClickCount(ButtonIdentifier whichButton) override;
+
     unsigned long longPressedMillis(ButtonIdentifier whichButton) override;
 
     void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
@@ -52,6 +54,10 @@ public:
     void fadeLightsBy(LightIdentifier whichLights, int value) override;
 
     void setLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
+
+    void setLEDBarLeft(int value) override;
+
+    void setLEDBarRight(int value) override;
 
     Display * invalidateScreen() override;
 

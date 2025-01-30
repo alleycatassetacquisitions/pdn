@@ -5,23 +5,29 @@
 #include "simple-timer.hpp"
 #include "state.hpp"
 #include <FastLED.h>
+#include <map>
 #include <queue>
+
+#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/remote-player-manager.hpp"
 
 using namespace std;
 
-// Quickdraw States
+    // Quickdraw States
 
-enum QuickdrawStateId {
-    SLEEP = 0,
-    AWAKEN_SEQUENCE = 1,
-    IDLE = 2,
-    HANDSHAKE = 3,
-    CONNECTION_SUCCESSFUL = 4,
-    DUEL_COUNTDOWN = 5,
-    DUEL = 6,
-    WIN = 7,
-    LOSE = 8
-};
+    enum QuickdrawStateId {
+        SLEEP = 0,
+        AWAKEN_SEQUENCE = 1,
+        IDLE = 2,
+        HANDSHAKE = 3,
+        CONNECTION_SUCCESSFUL = 4,
+        DUEL_COUNTDOWN = 5,
+        DUEL = 6,
+        WIN = 7,
+        LOSE = 8,
+        LOCKED_DOWN = 9,
+        HACKED = 10
+    };
 
 
 class Sleep : public State {
@@ -77,7 +83,7 @@ private:
 
 class Idle : public State {
 public:
-    Idle(Player* player);
+    Idle(Player* player, QuickdrawWirelessManager* qwm);
 
     ~Idle();
 
@@ -89,17 +95,52 @@ public:
 
     void ledAnimation(Device *PDN);
 
+    void onQuickdrawPacketReceived(QuickdrawCommand packet);
+
     bool transitionToHandshake();
+
+    bool transitionToLockdown();
+
+    void updateHackProgress();
+
+    void updateLockdownProgress();
+
+
+
+    void setupButtonCallbacks(Device* PDN);
+
+protected:
+
+    bool checkPacketThreshold(int command);
 
 private:
     Player* player;
+    QuickdrawWirelessManager* wirelessManager;
+
+    //state transition
     bool transitionToHandshakeState = false;
+    bool transitionToLockdownState = false;
+    bool transitionToHackedState = false;
+
+    //LED Animation
     const float smoothingPoints = 255;
     byte ledBrightness = 65;
     float pwm_val = 0;
     bool breatheUp = true;
     long idleLEDBreak = 5000;
     CRGBPalette16 currentPalette;
+
+    //Game
+    SimpleTimer commandTimeout;
+
+    long hackBroadcastDelay = 5000;
+    long lockdownBroadcastDelay = 5000;
+
+    const int HACK_THRESHOLD = 6;
+    const int LOCKDOWN_THRESHOLD = 6;
+
+    int hackAcks = 0;
+    int lockdownAcks = 0;
 };
 
 class Handshake : public State {
@@ -124,6 +165,28 @@ private:
     long timeout = 5000;
     HandshakeStateMachine *stateMachine;
     bool resetToActivated = false;
+};
+
+class Lockdown : public State {
+    public:
+    Lockdown(Player *player);
+    ~Lockdown();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    void transitionToConnectionSuccessful();
+    void transitionToDormant();
+
+private:
+    bool transitionToConnectionSuccessfulState = false;
+    bool transitionToDormantState = false;
+
+    Player* player;
+
+    long timeout = 15*60*1000;
+    SimpleTimer lockdownTimeout;
 };
 
 /*

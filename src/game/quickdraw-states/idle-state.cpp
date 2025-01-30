@@ -1,6 +1,7 @@
 #include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
+#include "wireless/remote-player-manager.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -15,8 +16,10 @@
       msgDelay = msgDelay + 1;
     }
  */
-Idle::Idle(Player* player) : State(IDLE) {
+Idle::Idle(Player* player, QuickdrawWirelessManager* qwm) : State(IDLE) {
     this->player = player;
+    this->wirelessManager = qwm;
+
     std::vector<const string *> writing;
     std::vector<const string *> reading;
 
@@ -40,34 +43,85 @@ void Idle::onStateMounted(Device *PDN) {
 
     if (player->isHunter()) {
         currentPalette = hunterColors;
+        wirelessManager->initialize(player, lockdownBroadcastDelay);
     } else {
+        wirelessManager->initialize(player, hackBroadcastDelay);
         currentPalette = bountyColors;
     }
+
+    wirelessManager->setPacketReceivedCallback(
+        std::bind(&Idle::onQuickdrawPacketReceived, this, std::placeholders::_1));
 
     PDN->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     render();
+
+    setupButtonCallbacks(PDN);
 }
 
-void Idle::onStateLoop(Device *PDN) {
+void Idle::onQuickdrawPacketReceived(QuickdrawCommand packet) {
+    switch(packet.command) {
+        case HACK: {
+            if(player->isHunter()) {
+                updateHackProgress();
+            } else {
+                ESP_LOGE("IDLE", "Received %02x as Bounty", packet.command);
+            }
+            break;
+        }
+        case LOCKDOWN:
+            if(!player->isHunter()) {
+                updateLockdownProgress();
+            } else {
+                ESP_LOGE("IDLE", "Received %02x as Hunter", packet.command);
+            }
+            break;
+        default:
+            ESP_LOGE("IDLE", "Unhandled command %02x", packet.command);
+    }
+}
 
-    EVERY_N_MILLIS(250) {
-        PDN->writeString(&responseStringMessages[0]);
+
+void Idle::onStateLoop(Device *PDN) {
+    commandTimeout.updateTime();
+    if(commandTimeout.expired()) {
+        wirelessManager->clearPackets();
+    }
+    // EVERY_N_MILLIS(250) {
+    //     PDN->writeString(&responseStringMessages[0]);
+    // }
+
+    if(hackAcks > 0) {
+        PDN->setLEDBarLeft(HACK_THRESHOLD-hackAcks);
+        PDN->setLEDBarRight(HACK_THRESHOLD-hackAcks);
     }
 
     EVERY_N_MILLIS(16) {
         ledAnimation(PDN);
     }
 
-    string *validMessage = waitForValidMessage(PDN);
-    if (validMessage != nullptr) {
-        transitionToHandshakeState = true;
-    }
+    // // string *validMessage = waitForValidMessage(PDN);
+    // // if (validMessage != nullptr) {
+    // //     transitionToHandshakeState = true;
+    // // }
+    // EVERY_N_SECONDS(3) {
+    //     if(playerManager->hasRemotePings()) {
+    //         ESP_LOGI("PDN", "Seeing remote pings.\n");
+    //         if(playerManager->getTopPingedByPlayer().numPings > 6) {
+    //             transitionToLockdownState = true;
+    //         }
+    //     }
+    // }
+
 }
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
+    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+    // PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+
+    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
 }
 
 void Idle::ledAnimation(Device *PDN) {
@@ -76,8 +130,7 @@ void Idle::ledAnimation(Device *PDN) {
     } else {
         ledBrightness--;
     }
-    pwm_val =
-            255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+    pwm_val = 255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
 
     if (ledBrightness == 255) {
         breatheUp = false;
@@ -110,6 +163,46 @@ void Idle::ledAnimation(Device *PDN) {
     }
 }
 
+void Idle::updateHackProgress() {
+    hackAcks = wirelessManager->getPacketAckCount(HACK);
+    if(hackAcks > HACK_THRESHOLD) {
+        //hacked
+    } else {
+        ESP_LOGI("IDLE", "Hack progress: %d", hackAcks);
+
+        wirelessManager->broadcastPacket(HACK_ACK, 0, hackAcks);
+    }
+}
+
+void Idle::updateLockdownProgress() {
+
+}
+
+void Idle::setupButtonCallbacks(Device* PDN) {
+    if(player->isHunter()) {
+        PDN->setButtonClick(
+            ButtonInteraction::DURING_LONG_PRESS,
+            ButtonIdentifier::PRIMARY_BUTTON,
+            [] {
+                QuickdrawWirelessManager* qwm = QuickdrawWirelessManager::GetInstance();
+                qwm->broadcastPacket(LOCKDOWN, 0, qwm->getPacketAckCount(LOCKDOWN_ACK));
+        });
+    } else {
+        PDN->setButtonClick(
+            ButtonInteraction::DURING_LONG_PRESS,
+            ButtonIdentifier::PRIMARY_BUTTON,
+            [] {
+                QuickdrawWirelessManager* qwm = QuickdrawWirelessManager::GetInstance();
+                qwm->broadcastPacket(HACK, 0, qwm->getPacketAckCount(HACK_ACK));
+        });
+    }
+}
+
+
 bool Idle::transitionToHandshake() {
     return transitionToHandshakeState;
+}
+
+bool Idle::transitionToLockdown() {
+    return transitionToLockdownState;
 }

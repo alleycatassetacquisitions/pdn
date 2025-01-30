@@ -48,6 +48,8 @@ class PDNButton : public Button {
 
     unsigned long longPressedMillis() override;
 
+    int multiClickCount() override;
+
 private:
     OneButton button;
 };

@@ -84,6 +84,12 @@ public:
         return currentState;
     }
 
+    void reset() {
+        currentState->onStateDismounted(PDN);
+        newState = stateMap[0];
+        commitState();
+    }
+
 protected:
     // initial state is 0 in the list here
     std::vector<State *> stateMap;

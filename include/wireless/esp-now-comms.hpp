@@ -19,6 +19,7 @@ const uint8_t ESP_NOW_BROADCAST_ADDR[ESP_NOW_ETH_ALEN] = {0xFF, 0xFF, 0xFF, 0xFF
 enum class PktType : uint8_t
 {
     kPlayerInfoBroadcast = 0,
+    kQuickdrawPacket = 1,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 
