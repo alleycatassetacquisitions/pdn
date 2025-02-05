@@ -17,8 +17,9 @@ Player* player = new Player();
 
 //WIRELESS
 RemotePlayerManager* remotePlayers = RemotePlayerManager::GetInstance();
+QuickdrawWirelessManager* quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
 
-Quickdraw game = Quickdraw(player, pdn, remotePlayers);
+Quickdraw game = Quickdraw(player, pdn);
 
 // String stripWhitespace(String input) {
 //   String output;
@@ -71,8 +72,15 @@ void setup(void) {
           RemotePlayerManager::GetInstance()->ProcessPlayerInfoPkt(srcMacAddr, data, len);
         },
         &remotePlayers);
+  EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawPacket,
+      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+        {
+          QuickdrawWirelessManager::GetInstance()->processQuickdrawCommand(srcMacAddr, data, len);
+        },
+        &quickdrawWirelessManager);
 
   ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
+
 
   pdn->setButtonClick(ButtonInteraction::MULTI_CLICK, ButtonIdentifier::SECONDARY_BUTTON, [] {
     ESP_LOGI("PDN", "Secondary Multiclick fired, Button Clicked Count: %i",

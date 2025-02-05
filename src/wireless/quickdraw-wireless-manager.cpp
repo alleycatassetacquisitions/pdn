@@ -19,10 +19,11 @@ QuickdrawWirelessManager *QuickdrawWirelessManager::GetInstance() {
     return &instance;
 }
 
-QuickdrawWirelessManager::QuickdrawWirelessManager() {}
+QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
 
 void QuickdrawWirelessManager::initialize(Player *player, long broadcastDelay) {
     this->player = player;
+    this->broadcastDelay = broadcastDelay;
 }
 
 void QuickdrawWirelessManager::clearCallbacks() {
@@ -34,22 +35,28 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (Qui
 }
 
 int QuickdrawWirelessManager::broadcastPacket(int command, int drawTimeMs, int ackCount) {
-    QuickdrawPacket qdPacket;
-    strncpy(qdPacket.id, player->getUserID().c_str(), 32);
-    qdPacket.id[32] = '\0';
-    qdPacket.command = command,
-    qdPacket.resultTime = drawTimeMs;
-    qdPacket.ackCount = ackCount;
+    if(!broadcastTimer.isRunning() || broadcastTimer.expired()) {
+        QuickdrawPacket qdPacket;
+        strncpy(qdPacket.id, player->getUserID().c_str(), 32);
+        qdPacket.id[32] = '\0';
+        qdPacket.command = command;
+        qdPacket.resultTime = drawTimeMs;
+        qdPacket.ackCount = ackCount;
 
-    ESP_LOGI("QWM", "Broadcasting command %i", command);
+        ESP_LOGI("QWM", "Broadcasting command %i", command);
 
-    int ret = EspNowManager::GetInstance()->SendData(
-        ESP_NOW_BROADCAST_ADDR,
-        PktType::kQuickdrawPacket,
-        (uint8_t*)&qdPacket,
-        sizeof(qdPacket));
+        int ret = EspNowManager::GetInstance()->SendData(
+            ESP_NOW_BROADCAST_ADDR,
+            PktType::kQuickdrawPacket,
+            (uint8_t*)&qdPacket,
+            sizeof(qdPacket));
 
-    return ret;
+        broadcastTimer.setTimer(broadcastDelay);
+
+        return ret;
+    }
+    return -1;
+
 }
 
 
@@ -80,6 +87,11 @@ int QuickdrawWirelessManager::processQuickdrawCommand(const uint8_t *macAddress,
 void QuickdrawWirelessManager::clearPackets() {
     commandTracker.clear();
 }
+
+void QuickdrawWirelessManager::clearPacket(int command) {
+    commandTracker.erase(command);
+}
+
 
 int QuickdrawWirelessManager::getPacketAckCount(int command) {
     if(commandTracker.find(command) == commandTracker.end()) {

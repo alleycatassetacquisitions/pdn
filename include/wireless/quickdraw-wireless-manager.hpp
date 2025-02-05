@@ -1,3 +1,5 @@
+#pragma once
+
 //
 // Created by Elli Furedy on 1/21/2025.
 //
@@ -6,7 +8,7 @@
 #include <cstring>  // For memcpy
 #include <functional>
 #include <map>
-
+#include "simple-timer.hpp"
 #include "player.hpp"
 
 using namespace std;
@@ -20,7 +22,8 @@ enum QDCommand {
     LOCKDOWN_ACK = 5,
     LOCKDOWN_CONFIRMED = 6,
     DRAW_RESULT = 7,
-    COMMAND_COUNT //always add new commands above this line.
+    COMMAND_COUNT,  // Always add new commands above this line
+    INVALID_COMMAND = 0xFF
 };
 
 struct QuickdrawCommand {
@@ -28,6 +31,10 @@ struct QuickdrawCommand {
     int command;
     int ackCount;
     long drawTimeMs;
+
+    QuickdrawCommand() : command(0), ackCount(0), drawTimeMs(0) {
+        memset(wifiMacAddr, 0, ESP_NOW_ETH_ALEN);
+    }
 
     QuickdrawCommand(const uint8_t* macAddress, int command, long drawTimeMs, int ackCount) :
         command(command), drawTimeMs(drawTimeMs), ackCount(ackCount) {
@@ -55,6 +62,8 @@ public:
 
     void clearPackets();
 
+    void clearPacket(int command);
+
     void logPacket(QuickdrawCommand packet);
 
 private:
@@ -65,4 +74,8 @@ private:
     Player* player;
 
     QDCommandTracker commandTracker;
+
+    SimpleTimer broadcastTimer;
+
+    long broadcastDelay;
 };

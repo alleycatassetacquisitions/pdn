@@ -80,3 +80,7 @@ bool PDNButton::isLongPressed() {
 unsigned long PDNButton::longPressedMillis() {
     return button.getPressedMs();
 }
+
+int PDNButton::multiClickCount() {
+    return button.getNumberClicks();
+}

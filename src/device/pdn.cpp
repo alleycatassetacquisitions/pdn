@@ -67,7 +67,8 @@ HWSerialWrapper* PDN::inputJack() {
 void PDN::loop() {
     primary.loop();
     secondary.loop();
-
+    displayLights.loop();
+    gripLights.loop();
     FastLED.show();
 }
 

@@ -16,6 +16,8 @@ public:
 
     void setTimer(unsigned long timerDelay);
 
+    bool isRunning();
+
     unsigned long now = 0;
 private:
     bool running = false;
