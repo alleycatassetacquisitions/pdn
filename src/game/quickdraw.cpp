@@ -1,4 +1,5 @@
 #include "../../include/game/quickdraw.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 
 Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
     this->player = player;
@@ -11,10 +12,11 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
+    QuickdrawWirelessManager* wirelessManager = QuickdrawWirelessManager::GetInstance();
 
     Sleep* sleep = new Sleep(player);
     AwakenSequence* awakenSequence = new AwakenSequence();
-    Idle* idle = new Idle(player);
+    Idle* idle = new Idle(player, wirelessManager);
     Handshake* handshake = new Handshake(player);
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown(player);
