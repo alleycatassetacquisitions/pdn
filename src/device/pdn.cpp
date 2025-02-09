@@ -69,6 +69,7 @@ HWSerialWrapper* PDN::inputJack() {
 void PDN::loop() {
     primary.loop();
     secondary.loop();
+    serialLoop();
     lightManager.loop();
 }
 

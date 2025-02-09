@@ -91,6 +91,8 @@ public:
 
     bool transitionToHandshake();
 
+    void serialEventCallbacks(string message);
+
 private:
     Player* player;
     bool transitionToHandshakeState = false;
@@ -103,6 +105,8 @@ private:
     float pwmValues[3] = {0, 0, 0};
     bool breatheUp = true;
     long idleLEDBreak = 5000;
+    bool waitingForMacAddress = false;
+    bool sendMacAddress = false;
     CRGBPalette16 currentPalette;
     CRGB lastColor;
 };

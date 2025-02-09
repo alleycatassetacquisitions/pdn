@@ -43,6 +43,10 @@ public:
 
     string *getCurrentOpponentId();
 
+    void setOpponentMacAddress(string macAddress);
+
+    string *getOpponentMacAddress();
+
 private:
     string id = "default";
 
@@ -50,6 +54,7 @@ private:
 
     string* currentMatchId = new string();
     string* currentOpponentId = new string();
-
+    string* opponentMacAddress = new string();
+    
     bool hunter = false;
 };
