@@ -1,4 +1,6 @@
 #include "game/handshake-machine.hpp"
+#include "id-generator.hpp"
+
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -30,19 +32,20 @@ bool initiateHandshake()
  */
 HandshakeInitiateState::HandshakeInitiateState(Player *player) : State(HANDSHAKE_INITIATE_STATE) {
     isHunter = player->isHunter();
-    std::vector<const string *> writing;
 
     if (isHunter) {
-        writing.push_back(&HUNTER_BATTLE_MESSAGE);
+        string battleId = generateUUID();
+        string hunterId = player->getUserID();
+        string message = battleId + " " + hunterId;
+        
     } else {
-        writing.push_back(&BOUNTY_BATTLE_MESSAGE);
+        string message = player->getUserID();
     }
-
-    registerResponseMessage(writing);
 }
 
 HandshakeInitiateState::~HandshakeInitiateState() {
 }
+
 
 void HandshakeInitiateState::onStateMounted(Device *PDN) {
     for (int i = 0; i < responseStringMessages.size(); i++) {
