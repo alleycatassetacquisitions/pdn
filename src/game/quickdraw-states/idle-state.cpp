@@ -1,6 +1,7 @@
 #include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
+#include "wireless/esp-now-comms.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -20,16 +21,16 @@ Idle::Idle(Player* player) : State(IDLE) {
     std::vector<const string *> writing;
     std::vector<const string *> reading;
 
-    if (player->isHunter()) {
-        reading.push_back(&BOUNTY_BATTLE_MESSAGE);
-        writing.push_back(&HUNTER_BATTLE_MESSAGE);
-    } else {
-        reading.push_back(&HUNTER_BATTLE_MESSAGE);
-        writing.push_back(&BOUNTY_BATTLE_MESSAGE);
-    }
+    // if (player->isHunter()) {
+    //     reading.push_back(&BOUNTY_BATTLE_MESSAGE);
+    //     writing.push_back(&HUNTER_BATTLE_MESSAGE);
+    // } else {
+    //     reading.push_back(&HUNTER_BATTLE_MESSAGE);
+    //     writing.push_back(&BOUNTY_BATTLE_MESSAGE);
+    // }
 
-    registerValidMessages(reading);
-    registerResponseMessage(writing);
+    // registerValidMessages(reading);
+    // registerResponseMessage(writing);
 }
 
 Idle::~Idle() {
@@ -53,22 +54,51 @@ void Idle::onStateMounted(Device *PDN) {
 void Idle::onStateLoop(Device *PDN) {
 
     EVERY_N_MILLIS(250) {
-        PDN->writeString(&responseStringMessages[0]);
+        if(!player->isHunter()) {
+            ESP_LOGI("IDLE", "Sending heartbeat.");
+            PDN->writeString(&SERIAL_HEARTBEAT);
+        }
     }
+
+    if(sendMacAddress) {
+        uint8_t macAddr[6];
+        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
+        ESP_LOGI("IDLE", "Reading MAC address: %s", MacToString(macAddr));
+        
+        std::string macStr = MacToString(macAddr);
+        PDN->writeString(&macStr);
+        sendMacAddress = false;
+    }
+
 
     EVERY_N_MILLIS(16) {
         ledAnimation(PDN);
     }
 
-    string *validMessage = waitForValidMessage(PDN);
-    if (validMessage != nullptr) {
-        transitionToHandshakeState = true;
-    }
+
+    // string *validMessage = waitForValidMessage(PDN);
+    // if (validMessage != nullptr) {
+    //     transitionToHandshakeState = true;
+    // }
 }
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
 }
+
+void Idle::serialEventCallbacks(string message) {
+    ESP_LOGI("IDLE", "Serial event received: %s", message.c_str());
+    if(message.compare(SERIAL_HEARTBEAT) == 0) {
+        sendMacAddress = true;   
+    }else if(message.compare(SEND_MAC_ADDRESS) == 0) {
+        waitingForMacAddress = true;
+    } else if(waitingForMacAddress) {
+        waitingForMacAddress = false;
+        player->setOpponentMacAddress(message);
+        transitionToHandshakeState = true;
+    }
+}
+
 
 void Idle::ledAnimation(Device *PDN) {
     if (breatheUp) {

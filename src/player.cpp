@@ -86,3 +86,11 @@ void Player::setCurrentOpponentId(string opponentId) {
 string* Player::getCurrentOpponentId() {
     return currentOpponentId;
 }
+
+void Player::setOpponentMacAddress(string macAddress) {
+    *opponentMacAddress = macAddress;
+}
+
+string* Player::getOpponentMacAddress() {
+    return opponentMacAddress;
+}
