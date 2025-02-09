@@ -20,25 +20,6 @@ struct DataPktHdr
 
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 
-static uint64_t MacToUInt64(const uint8_t* macAddr)
-{
-    uint64_t tmp = 0;
-    for(int i = 0; i < ESP_NOW_ETH_ALEN; ++i)
-        tmp = (tmp << 8) + macAddr[i];
-
-    return tmp;
-}
-
-static const char* MacToString(const uint8_t* macAddr)
-{
-    static char macStr[18];
-    snprintf(macStr, 18, "%X:%X:%X:%X:%X:%X",
-        macAddr[0], macAddr[1], macAddr[2],
-        macAddr[3], macAddr[4], macAddr[5]);
-        macStr[17] = '\0';
-    return macStr;
-}
-
 EspNowManager *EspNowManager::GetInstance()
 {
     static EspNowManager instance;
