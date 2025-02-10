@@ -18,19 +18,6 @@
  */
 Idle::Idle(Player* player) : State(IDLE) {
     this->player = player;
-    std::vector<const string *> writing;
-    std::vector<const string *> reading;
-
-    // if (player->isHunter()) {
-    //     reading.push_back(&BOUNTY_BATTLE_MESSAGE);
-    //     writing.push_back(&HUNTER_BATTLE_MESSAGE);
-    // } else {
-    //     reading.push_back(&HUNTER_BATTLE_MESSAGE);
-    //     writing.push_back(&BOUNTY_BATTLE_MESSAGE);
-    // }
-
-    // registerValidMessages(reading);
-    // registerResponseMessage(writing);
 }
 
 Idle::~Idle() {
@@ -48,6 +35,8 @@ void Idle::onStateMounted(Device *PDN) {
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     render();
+
+    PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
 
     AnimationConfig config;
     
@@ -72,19 +61,19 @@ void Idle::onStateMounted(Device *PDN) {
 void Idle::onStateLoop(Device *PDN) {
 
     EVERY_N_MILLIS(250) {
-            if(!player->isHunter()) {
-            ESP_LOGI("IDLE", "Sending heartbeat.");
-            PDN->writeString(&SERIAL_HEARTBEAT);
+        if(!player->isHunter()) {
+            PDN->writeString(SERIAL_HEARTBEAT.c_str());
         }
     }
 
     if(sendMacAddress) {
         uint8_t macAddr[6];
         esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
-        ESP_LOGI("IDLE", "Reading MAC address: %s", MacToString(macAddr));
+        const char* macStr = MacToString(macAddr);
+        ESP_LOGI("IDLE", "Reading MAC address: %s", macStr);
         
-        std::string macStr = MacToString(macAddr);
-        PDN->writeString(&macStr);
+        PDN->writeString(SEND_MAC_ADDRESS);
+        PDN->writeString(macStr);
         sendMacAddress = false;
     }
     }
@@ -100,19 +89,21 @@ void Idle::onStateLoop(Device *PDN) {
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
+    PDN->clearCallbacks();
 }
 
 void Idle::serialEventCallbacks(string message) {
     ESP_LOGI("IDLE", "Serial event received: %s", message.c_str());
     if(message.compare(SERIAL_HEARTBEAT) == 0) {
-        sendMacAddress = true;   
-    }else if(message.compare(SEND_MAC_ADDRESS) == 0) {
+        sendMacAddress = true;  
+    } else if(message.compare(SEND_MAC_ADDRESS) == 0) {
         waitingForMacAddress = true;
     } else if(waitingForMacAddress) {
         waitingForMacAddress = false;
         player->setOpponentMacAddress(message);
         transitionToHandshakeState = true;
     }
+
 }
 
 

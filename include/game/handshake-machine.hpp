@@ -4,9 +4,13 @@
 #pragma once
 #include "../../lib/pdn-libs/player.hpp"
 #include "state-machine.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
+
 
 // STATE - HANDSHAKE
 /**
+ * 
+ * TODO: Create new init state that routes to correct handshake state based on player role.
 Handshake states:
 0 - Send battle message once.
 1 - Wait for battle message, once received send battle_message & shake.
@@ -17,19 +21,42 @@ Handshake states:
 **/
 enum HandshakeStateId {
     HANDSHAKE_INITIATE_STATE = 0,
-    HANDSHAKE_RECEIVE_BATTLE_STATE = 1,
-    HANDSHAKE_SEND_ROLE_STATE = 2,
-    HANDSHAKE_RECEIVED_ROLE_STATE = 3,
-    HANDSHAKE_FINAL_ACK_STATE = 4,
-    HANDSHAKE_TERMINAL_STATE = 5
+    BOUNTY_SEND_CC_STATE = 1,
+    HUNTER_SEND_ID_STATE = 2,
+    BOUNTY_SEND_FINAL_ACK_STATE = 3,
+    HUNTER_SEND_FINAL_ACK_STATE = 4,
+    HANDSHAKE_STARTING_LINE_STATE = 5,
+    HANDSHAKE_TERMINAL_STATE = 6
+
 };
 
 
 class HandshakeInitiateState : public State {
 public:
-    explicit HandshakeInitiateState(Player *player);
+    HandshakeInitiateState(Player *player);
 
-    ~HandshakeInitiateState() override;
+    ~HandshakeInitiateState();
+
+    bool transitionToBountySendCC();
+
+    bool transitionToHunterSendId();
+
+    void onStateMounted(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;
+
+    private:
+    Player *player;
+    bool transitionToBountySendCCState = false;
+    bool transitionToHunterSendIdState = false;
+};
+
+class BountySendConnectionConfirmedState : public State {
+public:
+
+    explicit BountySendConnectionConfirmedState(Player *player);
+
+    ~BountySendConnectionConfirmedState() override;
 
     void onStateMounted(Device *PDN) override;
 
@@ -39,16 +66,17 @@ public:
 
 private:
     const int HANDSHAKE_TIMEOUT = 5000;
-    bool isHunter = false;
-    bool transitionToReceiveBattleState = false;
+    Player *player;
+    bool transitionToBountySendAckState = false;
+
 };
 
 
-class HandshakeReceiveBattleState : public State {
+class HunterSendIdState : public State {
 public:
-    HandshakeReceiveBattleState(Player *player);
+    HunterSendIdState(Player *player);
 
-    ~HandshakeReceiveBattleState();
+    ~HunterSendIdState();
 
     void onStateMounted(Device *PDN) override;
 
@@ -56,18 +84,20 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToSendRole();
+    bool transitionToSendAck();
+
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
 
 private:
     Player *player;
-    bool transitionToSendRoleState = false;
+    bool transitionToHunterSendAckState = false;
 };
 
-class HandshakeSendRoleState : public State {
+class BountySendFinalAckState : public State {
 public:
-    HandshakeSendRoleState(Player *player);
+    BountySendFinalAckState(Player *player);
 
-    ~HandshakeSendRoleState();
+    ~BountySendFinalAckState();
 
     void onStateMounted(Device *PDN) override;
 
@@ -75,18 +105,21 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToReceiveRole();
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+
+
+    bool transitionToStartingLine();
 
 private:
     Player *player;
-    bool transitionToReceiveRoleState = false;
+    bool transitionToStartingLineState = false;
 };
 
-class HandshakeReceiveRoleState : public State {
+class HunterSendFinalAckState : public State {
 public:
-    HandshakeReceiveRoleState(Player *player);
+    HunterSendFinalAckState(Player *player);
 
-    ~HandshakeReceiveRoleState();
+    ~HunterSendFinalAckState();
 
     void onStateMounted(Device *PDN) override;
 
@@ -94,24 +127,32 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToFinalAck();
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+
+    bool transitionToStartingLine();
+
+
 
 private:
     Player *player;
-    bool transitionToFinalAckState = false;
+    bool transitionToStartingLineState = false;
 };
 
-class HandshakeFinalAckState : public State {
-public:
-    HandshakeFinalAckState(Player *player);
 
-    ~HandshakeFinalAckState();
+
+class StartingLineState : public State {
+public:
+    StartingLineState(Player *player);
+
+    ~StartingLineState();
 
     void onStateMounted(Device *PDN) override;
 
     void onStateLoop(Device *PDN) override;
 
     void onStateDismounted(Device *PDN) override;
+
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
 
     bool handshakeSuccessful();
 
@@ -138,7 +179,7 @@ public:
     bool handshakeSuccessful();
 
 private:
-    HandshakeInitiateState *createSendState();
+    BountySendConnectionConfirmedState *createSendState();
 
     Player *player;
 };

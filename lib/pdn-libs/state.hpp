@@ -90,7 +90,6 @@ public:
 
     State *checkTransitions() {
         for (StateTransition *transition: transitions) {
-            ESP_LOGI("STATE", "Checking transition condition for state %d.", name.id);
             if (transition->isConditionMet()) {
                 ESP_LOGI("STATE", "Transitioning to state %d.", transition->getNextState()->getStateId());
                 return transition->nextState;
@@ -106,7 +105,6 @@ public:
     };
 
     virtual void onStateLoop(Device *PDN) {
-        ESP_LOGI("STATE", "State %d loop executed.", name.id);
     };
 
     virtual void onStateDismounted(Device *PDN) {
