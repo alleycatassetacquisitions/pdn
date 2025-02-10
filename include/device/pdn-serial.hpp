@@ -40,4 +40,5 @@ public:
     void print(char msg) override;
     void println(char* msg) override;
     void println(string msg) override;
+
 };

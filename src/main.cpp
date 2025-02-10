@@ -11,6 +11,7 @@
 #include "id-generator.hpp"
 #include "wireless/esp-now-comms.hpp"
 #include "wireless/remote-player-manager.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 
 //GAME ROLE
 Device* pdn = PDN::GetInstance();
@@ -22,6 +23,7 @@ String DEBUG_MODE_SUBSTR = "";
 
 // REMOTE PLAYERS
 RemotePlayerManager remotePlayers;
+QuickdrawWirelessManager *quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
 
 // DISPLAY
 bool displayIsDirty = false;
@@ -118,6 +120,16 @@ void setup(void) {
   WiFi.channel(6);
   
   remotePlayers.StartBroadcastingPlayerInfo(player, 1000);
+
+  EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
+      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+        {
+          QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
+          manager->processQuickdrawCommand(srcMacAddr, data, len);
+        },
+        quickdrawWirelessManager);
+
+
   EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
       [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
         {

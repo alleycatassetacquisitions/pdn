@@ -18,13 +18,9 @@ class DeviceSerial {
     public:
     virtual ~DeviceSerial() {}
 
-    void writeString(string *msg) {
+    void writeString(string msg) {
         getCurrentCommsJack()->print(STRING_START);
-        getCurrentCommsJack()->println(*msg);
-    }
-
-    void writeString(const string* msg) {
-        writeString(new string(*msg));
+        getCurrentCommsJack()->println(msg);
     }
 
     string readString(){
@@ -86,7 +82,7 @@ class DeviceSerial {
                 }
                 receivedString[idx] = '\0'; // Null terminate
                 if (onStringReceivedCallback) {
-                    onStringReceivedCallback(receivedString);
+                    onStringReceivedCallback(string(receivedString));
                 }
             }
         }

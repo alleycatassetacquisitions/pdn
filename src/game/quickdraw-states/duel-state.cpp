@@ -51,14 +51,14 @@ void Duel::onStateMounted(Device *PDN) {
         ButtonInteraction::CLICK,
         ButtonIdentifier::PRIMARY_BUTTON,
          [] {
-            PDN::GetInstance()->writeString(&ZAP);
+            PDN::GetInstance()->writeString(ZAP.c_str());
         });
 
     PDN->setButtonClick(
         ButtonInteraction::CLICK,
         ButtonIdentifier::SECONDARY_BUTTON,
         [] {
-            PDN::GetInstance()->writeString(&ZAP);
+            PDN::GetInstance()->writeString(ZAP.c_str());
         });
 
     duelTimer.setTimer(DUEL_TIMEOUT);
@@ -74,7 +74,7 @@ void Duel::onStateLoop(Device *PDN) {
         string *validMessage = waitForValidMessage(PDN);
         if (validMessage != nullptr) {
             if (*validMessage == ZAP) {
-                PDN->writeString(&YOU_DEFEATED_ME);
+                PDN->writeString(YOU_DEFEATED_ME.c_str());
                 captured = true;
             } else if (*validMessage == YOU_DEFEATED_ME) {
                 wonBattle = true;

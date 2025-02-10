@@ -17,46 +17,54 @@ bool HandshakeStateMachine::handshakeSuccessful() {
 
 void HandshakeStateMachine::populateStateMap() {
     HandshakeInitiateState *initiateState = new HandshakeInitiateState(this->player);
-    HandshakeReceiveBattleState *receiveBattleState = new HandshakeReceiveBattleState(this->player);
-    HandshakeSendRoleState *sendRoleState = new HandshakeSendRoleState(this->player);
-    HandshakeReceiveRoleState *receiveRoleState = new HandshakeReceiveRoleState(this->player);
-    HandshakeFinalAckState *finalAckState = new HandshakeFinalAckState(this->player);
+    BountySendConnectionConfirmedState *bountySendCC = new BountySendConnectionConfirmedState(this->player);
+    HunterSendIdState *hunterSendId = new HunterSendIdState(this->player);
+    HunterSendFinalAckState *hunterSendAck = new HunterSendFinalAckState(this->player);
+    BountySendFinalAckState *bountySendAck = new BountySendFinalAckState(this->player);
+    StartingLineState *startingLine = new StartingLineState(this->player);
     HandshakeTerminalState *terminalState = new HandshakeTerminalState();
-
 
     initiateState->addTransition(
         new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToReceiveBattle,
-                      initiateState),
-            receiveBattleState));
+            std::bind(&HandshakeInitiateState::transitionToBountySendCC, initiateState),
+            bountySendCC));
 
-    receiveBattleState->addTransition(
+    initiateState->addTransition(
         new StateTransition(
-            std::bind(&HandshakeReceiveBattleState::transitionToSendRole,
-                      receiveBattleState),
-            sendRoleState));
+            std::bind(&HandshakeInitiateState::transitionToHunterSendId, initiateState),
+            hunterSendId));
 
-    sendRoleState->addTransition(
+    bountySendCC->addTransition(
         new StateTransition(
-            std::bind(&HandshakeSendRoleState::transitionToReceiveRole,
-                      sendRoleState),
-            receiveRoleState));
+            std::bind(&BountySendConnectionConfirmedState::transitionToReceiveBattle, bountySendCC),
+            bountySendAck));
 
-    receiveRoleState->addTransition(
+    hunterSendId->addTransition(
         new StateTransition(
-            std::bind(&HandshakeReceiveRoleState::transitionToFinalAck,
-                      receiveRoleState),
-            finalAckState));
+            std::bind(&HunterSendIdState::transitionToSendAck, hunterSendId),
+            hunterSendAck));
 
-    finalAckState->addTransition(
+    hunterSendAck->addTransition(
         new StateTransition(
-            std::bind(&HandshakeFinalAckState::handshakeSuccessful,
-                      finalAckState),
+            std::bind(&HunterSendFinalAckState::transitionToStartingLine, hunterSendAck),
+            startingLine));
+
+    bountySendAck->addTransition(
+        new StateTransition(
+            std::bind(&BountySendFinalAckState::transitionToStartingLine, bountySendAck),
+            startingLine));
+
+    startingLine->addTransition(
+        new StateTransition(
+            std::bind(&StartingLineState::handshakeSuccessful, startingLine),
             terminalState));
 
     stateMap.push_back(initiateState);
-    stateMap.push_back(receiveBattleState);
-    stateMap.push_back(receiveRoleState);
-    stateMap.push_back(finalAckState);
+    stateMap.push_back(bountySendCC);
+    stateMap.push_back(hunterSendId);
+    stateMap.push_back(hunterSendAck);
+    stateMap.push_back(bountySendAck);
+    stateMap.push_back(startingLine);
     stateMap.push_back(terminalState);
+
 }

@@ -53,6 +53,7 @@ void PDNSerialOut::println(string msg) {
 PDNSerialIn::PDNSerialIn() {
 }
 
+
 void PDNSerialIn::begin() {
     pinMode(RXt, OUTPUT);
     pinMode(RXr, INPUT);

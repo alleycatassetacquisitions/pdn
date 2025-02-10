@@ -22,6 +22,10 @@ bool SimpleTimer::expired()
     return false;
 }
 
+bool SimpleTimer::isRunning() {
+    return running;
+}
+
 void SimpleTimer::invalidate()
 {
     duration = 0;
