@@ -27,7 +27,7 @@ protected:
     void serialWriteAppendsStringStart() {
         stateTestDevice.setActiveComms(SerialIdentifier::OUTPUT_JACK);
 
-        stateTestDevice.writeString(&TEST_WRITE_STRING);
+        stateTestDevice.writeString(TEST_WRITE_STRING.c_str());
 
         ASSERT_EQ(stateTestDevice.outputJackSerial.peek(), STRING_START);
     }
@@ -35,7 +35,7 @@ protected:
     void headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue() {
         stateTestDevice.setActiveComms(SerialIdentifier::OUTPUT_JACK);
 
-        stateTestDevice.writeString(&TEST_WRITE_STRING);
+        stateTestDevice.writeString(TEST_WRITE_STRING.c_str());
 
         ASSERT_EQ(stateTestDevice.getHead(), "");
 
@@ -48,7 +48,7 @@ protected:
 
     void whenHeadIsEmptyReadStringStillReturnsNextString() {
         stateTestDevice.setActiveComms(SerialIdentifier::OUTPUT_JACK);
-        stateTestDevice.writeString(&TEST_WRITE_STRING);
+        stateTestDevice.writeString(TEST_WRITE_STRING.c_str());
 
         ASSERT_EQ(stateTestDevice.getHead(), "");
 

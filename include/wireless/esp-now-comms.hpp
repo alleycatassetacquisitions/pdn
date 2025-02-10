@@ -19,6 +19,7 @@ const uint8_t ESP_NOW_BROADCAST_ADDR[ESP_NOW_ETH_ALEN] = {0xFF, 0xFF, 0xFF, 0xFF
 enum class PktType : uint8_t
 {
     kPlayerInfoBroadcast = 0,
+    kQuickdrawCommand = 1,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 
@@ -129,4 +130,36 @@ static const char* MacToString(const uint8_t* macAddr)
         macAddr[3], macAddr[4], macAddr[5]);
         macStr[17] = '\0';
     return macStr;
+}
+
+static bool StringToMac(const char* macStr, uint8_t* macAddr)
+{
+    ESP_LOGI("ENC", "Converting MAC string '%s' to bytes", macStr);
+
+    if(strlen(macStr) != 17) { // XX:XX:XX:XX:XX:XX
+        ESP_LOGE("ENC", "Invalid MAC string length: %d", strlen(macStr));
+        return false;
+    }
+
+    unsigned int values[6];
+    int result = sscanf(macStr, "%X:%X:%X:%X:%X:%X",
+        &values[0], &values[1], &values[2],
+        &values[3], &values[4], &values[5]);
+
+    if(result != 6) {
+        ESP_LOGE("ENC", "Failed to parse MAC string, only got %d values", result);
+        return false;
+    }
+
+    for(int i = 0; i < 6; i++)
+    {
+        if(values[i] > 0xFF) {
+            ESP_LOGE("ENC", "MAC byte %d value 0x%X exceeds 0xFF", i, values[i]);
+            return false;
+        }
+        macAddr[i] = (uint8_t)values[i];
+    }
+
+    ESP_LOGI("ENC", "Successfully converted MAC string to bytes");
+    return true;
 }

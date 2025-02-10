@@ -14,6 +14,8 @@ public:
 
     void invalidate();
 
+    bool isRunning();
+
     void setTimer(unsigned long timerDelay);
 
     unsigned long now = 0;
