@@ -76,6 +76,7 @@ void PDN::loop() {
 void PDN::onStateChange() {
     lightManager.clear(LightIdentifier::DISPLAY_LIGHTS);
     lightManager.clear(LightIdentifier::GRIP_LIGHTS);
+    flushSerial();
 }
 
 

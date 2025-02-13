@@ -43,9 +43,13 @@ public:
 
     void onStateMounted(Device *PDN) override;
 
+    void onStateLoop(Device *PDN) override;
+
     void onStateDismounted(Device *PDN) override;
 
     private:
+    SimpleTimer handshakeSettlingTimer;
+    const int HANDSHAKE_SETTLE_TIME = 500;
     Player *player;
     bool transitionToBountySendCCState = false;
     bool transitionToHunterSendIdState = false;

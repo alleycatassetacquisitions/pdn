@@ -70,11 +70,11 @@ void Idle::onStateLoop(Device *PDN) {
         uint8_t macAddr[6];
         esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
         const char* macStr = MacToString(macAddr);
-        ESP_LOGI("IDLE", "Reading MAC address: %s", macStr);
+        ESP_LOGI("IDLE", "Perparing to Send Mac Address: %s", macStr);
         
         PDN->writeString(SEND_MAC_ADDRESS);
         PDN->writeString(macStr);
-        sendMacAddress = false;
+        transitionToHandshakeState = true;
     }
     }
 
@@ -89,6 +89,8 @@ void Idle::onStateLoop(Device *PDN) {
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
+    sendMacAddress = false;
+    waitingForMacAddress = false;
     PDN->clearCallbacks();
 }
 

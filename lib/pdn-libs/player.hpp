@@ -56,5 +56,5 @@ private:
     string* currentOpponentId = new string();
     string* opponentMacAddress = new string();
     
-    bool hunter = true;
+    bool hunter = false;
 };

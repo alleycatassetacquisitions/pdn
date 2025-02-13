@@ -8,6 +8,7 @@
 #include <string>
 #include <functional>
 #include "device-constants.hpp"
+#include "esp_log.h"
 
 enum class SerialIdentifier {
     OUTPUT_JACK = 0,
@@ -72,20 +73,20 @@ class DeviceSerial {
     }
 
     void serialLoop() {
-        if (commsAvailable()) {
+        if (getCurrentCommsJack()->available()) {
             char incomingChar = getCurrentCommsJack()->read();
             if (incomingChar == STRING_START) {
-                char receivedString[256] = {0}; // Buffer for received chars
-                int idx = 0;
-                while (getCurrentCommsJack()->available() && getCurrentCommsJack()->peek() != STRING_TERM && idx < 255) {
-                    receivedString[idx++] = getCurrentCommsJack()->read();
-                }
-                receivedString[idx] = '\0'; // Null terminate
+                string receivedString = getCurrentCommsJack()->readStringUntil(STRING_TERM);
                 if (onStringReceivedCallback) {
-                    onStringReceivedCallback(string(receivedString));
+                    onStringReceivedCallback(receivedString);
                 }
             }
         }
+    }
+
+    void flushSerial() {
+        outputJack()->flush();
+        inputJack()->flush();
     }
 
 
