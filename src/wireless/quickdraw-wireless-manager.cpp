@@ -6,14 +6,13 @@
 #include <Arduino.h>
 
 #include "wireless/esp-now-comms.hpp"
-#define UUID_LEN_TERMINATED 33
 #define UUID_LEN 32
 
 
 struct QuickdrawPacket {
-    char id[UUID_LEN_TERMINATED];
-    char matchId[UUID_LEN_TERMINATED];
-    char opponentId[UUID_LEN_TERMINATED];
+    char id[UUID_LEN];
+    char matchId[UUID_LEN];
+    char opponentId[UUID_LEN];
     int command;
     long resultTime;
     int ackCount;
@@ -41,20 +40,32 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (Qui
     packetReceivedCallback = callback;
 }
 
-int QuickdrawWirelessManager::broadcastPacket(string macAddress, int command, int drawTimeMs, int ackCount, string matchId, string opponentId) {
-    // TODO swap this to a direct send to the mac address instead of broadcasting
+int QuickdrawWirelessManager::broadcastPacket(const string& macAddress, 
+                                             int command, 
+                                             int drawTimeMs, 
+                                             int ackCount,
+                                             const string& matchId, 
+                                             const string& opponentId) {
     if(!broadcastTimer.isRunning() || broadcastTimer.expired()) {
         QuickdrawPacket qdPacket;
+        
+        // Safely copy the player ID
+        
         strncpy(qdPacket.id, player->getUserID().c_str(), UUID_LEN);
-        qdPacket.id[UUID_LEN] = '\0';
+        ESP_LOGI("QWM", "Player ID: %s", qdPacket.id);
+        
+        // Safely copy the match ID
         strncpy(qdPacket.matchId, matchId.c_str(), UUID_LEN);
         qdPacket.matchId[UUID_LEN] = '\0';
+        ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
+        // Safely copy the opponent ID
         strncpy(qdPacket.opponentId, opponentId.c_str(), UUID_LEN);
         qdPacket.opponentId[UUID_LEN] = '\0';
+        ESP_LOGI("QWM", "Opponent ID: %s", qdPacket.opponentId);
+        
         qdPacket.command = command;
         qdPacket.resultTime = drawTimeMs;
         qdPacket.ackCount = ackCount;
-
 
         ESP_LOGI("QWM", "Broadcasting command %i", command);
 
@@ -65,11 +76,9 @@ int QuickdrawWirelessManager::broadcastPacket(string macAddress, int command, in
             sizeof(qdPacket));
 
         broadcastTimer.setTimer(broadcastDelay);
-
         return ret;
     }
     return -1;
-
 }
 
 
@@ -95,7 +104,9 @@ int QuickdrawWirelessManager::processQuickdrawCommand(const uint8_t *macAddress,
 
 
     logPacket(command);
-    packetReceivedCallback(command);
+    if(packetReceivedCallback) {
+        packetReceivedCallback(command);
+    }
 
     return 1;
 }

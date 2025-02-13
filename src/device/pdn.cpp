@@ -75,6 +75,7 @@ void PDN::loop() {
 
 void PDN::onStateChange() {
     FastLED.clear();
+    flushSerial();
 }
 
 

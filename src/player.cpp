@@ -62,7 +62,7 @@ Allegiance Player::getAllegiance() const
 
 void Player::setUserID(char* newId)
 {
-  id = newId;
+  id = string(newId);
 }
 
 string Player::getUserID() const

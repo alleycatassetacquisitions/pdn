@@ -64,7 +64,12 @@ public:
 
     void setPacketReceivedCallback(std::function<void(QuickdrawCommand)> callback);
 
-    int broadcastPacket(string macAddress, int command, int drawTimeMs = 0, int ackCount = 0, string matchId = "", string opponentId = "");
+    int broadcastPacket(const string& macAddress, 
+                       int command, 
+                       int drawTimeMs = 0, 
+                       int ackCount = 0, 
+                       const string& matchId = "", 
+                       const string& opponentId = "");
 
     void clearCallbacks();
 

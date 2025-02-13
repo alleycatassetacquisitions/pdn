@@ -44,8 +44,11 @@ void setup() {
   // This could be any Wi-Fi channel, the only requirement is that all devices
   // communicating together on ESP-NOW must use the same channel
   WiFi.channel(6);
+
+  player->setUserID(idGenerator->generateId());
+  quickdrawWirelessManager->initialize(player, 1000);
   
-  remotePlayers.StartBroadcastingPlayerInfo(player, 1000);
+  remotePlayers.StartBroadcastingPlayerInfo(player, 5000);
 
   EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
       [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)

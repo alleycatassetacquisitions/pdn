@@ -15,8 +15,8 @@ struct PlayerInfoPkt
 
 
 RemotePlayerManager::RemotePlayerManager() :
-    m_remotePlayerTTL(5000),
-    m_broadcastInterval(1000),
+    m_remotePlayerTTL(60000),
+    m_broadcastInterval(5000),
     m_lastBroadcastTime(0)
 {
 }

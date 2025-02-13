@@ -125,7 +125,7 @@ public:
 private:
     Player *player;
     SimpleTimer handshakeTimeout;
-    long timeout = 5000;
+    long timeout = 20000;
     HandshakeStateMachine *stateMachine;
     bool resetToActivated = false;
 };
