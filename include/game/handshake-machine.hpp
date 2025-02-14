@@ -64,12 +64,15 @@ public:
 
     void onStateMounted(Device *PDN) override;
 
+    void onStateLoop(Device *PDN) override;
+
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToReceiveBattle();
+    bool transitionToBountySendAck();
 
 private:
-    const int HANDSHAKE_TIMEOUT = 5000;
+    SimpleTimer delayTimer;
+    const int delay = 100;
     Player *player;
     bool transitionToBountySendAckState = false;
 

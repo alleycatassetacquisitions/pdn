@@ -24,7 +24,11 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
     string matchId = !player->isHunter() ? IdGenerator::GetInstance()->generateId() : ""; //only bounty generates match id
     ESP_LOGI("BOUNTY_SEND_CC", "Broadcasting packet with matchId: %s, opponentId: %s", matchId.c_str(), opponentId.c_str());
     QuickdrawWirelessManager::GetInstance()->broadcastPacket(*player->getOpponentMacAddress(), CONNECTION_CONFIRMED, 0 /*drawTimeMs*/, 0 /*ackCount*/, matchId, opponentId);
-    transitionToBountySendAckState = true;
+    delayTimer.setTimer(delay);
+}
+
+void BountySendConnectionConfirmedState::onStateLoop(Device *PDN) {
+    transitionToBountySendAckState = delayTimer.expired();
 }
 
 void BountySendConnectionConfirmedState::onStateDismounted(Device *PDN) {
@@ -32,6 +36,6 @@ void BountySendConnectionConfirmedState::onStateDismounted(Device *PDN) {
     transitionToBountySendAckState = false;
 }
 
-bool BountySendConnectionConfirmedState::transitionToReceiveBattle() {
+bool BountySendConnectionConfirmedState::transitionToBountySendAck() {
     return transitionToBountySendAckState;
 }
