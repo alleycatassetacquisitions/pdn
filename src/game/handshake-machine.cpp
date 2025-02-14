@@ -36,7 +36,7 @@ void HandshakeStateMachine::populateStateMap() {
 
     bountySendCC->addTransition(
         new StateTransition(
-            std::bind(&BountySendConnectionConfirmedState::transitionToReceiveBattle, bountySendCC),
+            std::bind(&BountySendConnectionConfirmedState::transitionToBountySendAck, bountySendCC),
             bountySendAck));
 
     hunterSendId->addTransition(

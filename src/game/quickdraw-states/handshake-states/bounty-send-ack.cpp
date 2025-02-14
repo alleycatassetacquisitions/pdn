@@ -31,7 +31,6 @@ BountySendFinalAckState::BountySendFinalAckState(Player *player) : State(BOUNTY_
 
 BountySendFinalAckState::~BountySendFinalAckState() {
     player = nullptr;
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
 }
 
 
@@ -51,16 +50,14 @@ void BountySendFinalAckState::onQuickdrawCommandReceived(QuickdrawCommand comman
     }
 }
 
-
-
-
-
 void BountySendFinalAckState::onStateLoop(Device *PDN) {
 }
 
 void BountySendFinalAckState::onStateDismounted(Device *PDN) {
     ESP_LOGI("BOUNTY_SEND_ACK", "State dismounted");
     transitionToStartingLineState = false;
+    
+    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
 }
 
 bool BountySendFinalAckState::transitionToStartingLine() {
