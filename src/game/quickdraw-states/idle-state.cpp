@@ -56,8 +56,12 @@ void Idle::onStateLoop(Device *PDN) {
         PDN->writeString(&responseStringMessages[0]);
     }
 
-    EVERY_N_MILLIS(16) {
+    EVERY_N_MILLIS(500) {
         ledAnimation(PDN);
+    }
+
+    EVERY_N_MILLIS(50) {
+        PDN->fadeLightsBy(LightIdentifier::GLOBAL, 25);
     }
 
     string *validMessage = waitForValidMessage(PDN);
@@ -71,43 +75,65 @@ void Idle::onStateDismounted(Device *PDN) {
 }
 
 void Idle::ledAnimation(Device *PDN) {
-    if (breatheUp) {
-        ledBrightness++;
+    CRGB color;
+    if(ledChaseIndex == 2) {
+        color = CRGB::Red;
+    } else if(ledChaseIndex == 1) {
+        color = CRGB::OrangeRed;
     } else {
-        ledBrightness--;
-    }
-    pwm_val =
-            255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
-
-    if (ledBrightness == 255) {
-        breatheUp = false;
-    } else if (ledBrightness == 80) {
-        breatheUp = true;
+        color = CRGB::Orange;
     }
 
-    if (random8() % 8 == 0) {
-        CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
-        PDN->addToLight(LightIdentifier::DISPLAY_LIGHTS,
-                        random8() % (numDisplayLights - 1),
-                        LEDColor(color.r, color.g, color.b)
-        );
-    }
+    pwm_val = 255.0 * (1.0 - abs((2.0 * (ledBrightness[ledChaseIndex] / smoothingPoints)) - 1.0));
+
+    color.nscale8_video(ledBrightness);
+    
+    Serial.printf("Current chase index: %d\n", ledChaseIndex);
+    PDN->setLight(LightIdentifier::LEFT_LIGHTS, ledChaseIndex, LEDColor(color.r, color.g, color.b));
+    PDN->setLight(LightIdentifier::RIGHT_LIGHTS, ledChaseIndex, LEDColor(color.r, color.g, color.b));
 
 
-    for (int i = 0; i < numGripLights; i++) {
-        if (random8() % 130 == 0) {
-            CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
-            PDN->addToLight(LightIdentifier::GRIP_LIGHTS,
-                            i,
-                            LEDColor(color.r, color.g, color.b)
-            );
-        }
+    ledChaseIndex--;
+    if(ledChaseIndex < 0) {
+        ledChaseIndex = 2;
     }
+    // if (breatheUp) {
+    //     ledBrightness++;
+    // } else {
+    //     ledBrightness--;
+    // }
+    // pwm_val =
+    //         255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
 
-    if(random8() % 2) {
-        PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 1);
-        PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 1);
-    }
+    // if (ledBrightness == 255) {
+    //     breatheUp = false;
+    // } else if (ledBrightness == 80) {
+    //     breatheUp = true;
+    // }
+
+    // if (random8() % 8 == 0) {
+    //     CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+    //     PDN->addToLight(LightIdentifier::DISPLAY_LIGHTS,
+    //                     random8() % (numDisplayLights - 1),
+    //                     LEDColor(color.r, color.g, color.b)
+    //     );
+    // }
+
+
+    // for (int i = 0; i < numGripLights; i++) {
+    //     if (random8() % 130 == 0) {
+    //         CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+    //         PDN->addToLight(LightIdentifier::GRIP_LIGHTS,
+    //                         i,
+    //                         LEDColor(color.r, color.g, color.b)
+    //         );
+    //     }
+    // }
+
+    // if(random8() % 2) {
+    //     PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 1);
+    //     PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 1);
+    // }
 }
 
 bool Idle::transitionToHandshake() {

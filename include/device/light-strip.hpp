@@ -30,6 +30,10 @@ public:
         return lights[index];
     }
 
+    CRGB *getLight(int index) {
+        return &lights[index];
+    }
+
     void fade(int fadeAmount) {
         fadeToBlackBy(lights, numLights, fadeAmount);
     };

@@ -99,6 +99,14 @@ void PDN::fadeLightsBy(LightIdentifier whichLights, int value) {
             gripLights.fade(value);
             break;
         }
+        case LightIdentifier::LEFT_LIGHTS: {
+            gripLights.fade(value);
+            break;
+        }
+        case LightIdentifier::RIGHT_LIGHTS: {
+            gripLights.fade(value);
+            break;
+        }
         case LightIdentifier::TRANSMIT_LIGHT: {
             break;
         }
@@ -140,10 +148,98 @@ void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
             displayLights.setTransmitLight(CRGB(color.red, color.green, color.blue));
             break;
         }
+        case LightIdentifier::LEFT_LIGHTS: {
+            setLeftLED(ledNum, CRGB(color.red, color.green, color.blue));
+            break;
+        }
+        case LightIdentifier::RIGHT_LIGHTS: {
+            setRightLED(ledNum, CRGB(color.red, color.green, color.blue));
+            break;
+        }
     }
 }
 
+void PDN::setLeftLED(int index, CRGB color) {
+    switch(index) {
+        case 0: {
+            gripLights.setLight(2, color);
+            break;
+        }
+        case 1: {
+            gripLights.setLight(1, color);
+            break;
+        }
+        case 2: {
+            gripLights.setLight(0, color);
+            break;
+        }
+        case 3: {
+            displayLights.setLight(0, color);
+            break;
+        }
+        case 4: {
+            displayLights.setLight(1, color);
+            break;
+        }
+        case 5: {
+            displayLights.setLight(2, color);
+            break;
+        }
+        case 6: {
+            displayLights.setLight(3, color);
+            break;
+        }
+        case 7: {
+            displayLights.setLight(4, color);
+            break;
+        }
+        case 8: {
+            displayLights.setLight(5, color);
+            break;
+        }
+    }
+}
 
+void PDN::setRightLED(int index, CRGB color) {
+    switch(index) {
+        case 0: {
+            gripLights.setLight(3, color);
+            break;
+        }
+        case 1: {
+            gripLights.setLight(4, color);
+            break;
+        }
+        case 2: {
+            gripLights.setLight(5, color);
+            break;
+        }
+        case 3: {
+            displayLights.setLight(11, color);
+            break;
+        }
+        case 4: {
+            displayLights.setLight(10, color);
+            break;
+        }
+        case 5: {
+            displayLights.setLight(9, color);
+            break;
+        }
+        case 6: {
+            displayLights.setLight(8, color);
+            break;
+        }
+        case 7: {
+            displayLights.setLight(7, color);
+            break;
+        }
+        case 8: {
+            displayLights.setLight(6, color);
+            break;
+        }
+    }
+}
 
 //Button Functions
 

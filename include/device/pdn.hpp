@@ -103,6 +103,9 @@ private:
     void attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction);
     void attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
 
+    void setLeftLED(int index, CRGB color);
+    void setRightLED(int index, CRGB color);
+
     PDNDisplay display;
     PDNHaptics haptics;
     PDNButton primary;

@@ -12,7 +12,9 @@ enum class LightIdentifier {
     GLOBAL = 0,
     DISPLAY_LIGHTS = 1,
     GRIP_LIGHTS = 2,
-    TRANSMIT_LIGHT = 3
+    TRANSMIT_LIGHT = 3,
+    LEFT_LIGHTS = 4,
+    RIGHT_LIGHTS = 5
 };
 
 struct LEDColor {
