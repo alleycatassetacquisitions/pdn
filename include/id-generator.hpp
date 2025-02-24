@@ -7,6 +7,11 @@ using namespace std;
 
 class IdGenerator {
 public:
+    // UUID string format: 8-4-4-4-12 chars + 4 hyphens + null terminator = 37
+    static constexpr size_t UUID_STRING_LENGTH = 36;  // Length without null terminator
+    static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
+    static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
+
     static IdGenerator *GetInstance() {
         static IdGenerator instance;
         return &instance;

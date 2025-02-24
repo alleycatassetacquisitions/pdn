@@ -103,7 +103,7 @@ int wins = 0;
 
 void setup(void) {
   //esp_log_level_set("*", ESP_LOG_VERBOSE);
-  
+  player->setUserID(idGenerator->generateId());
   pdn->begin();
   game.initialize();
 

@@ -1,13 +1,12 @@
 #pragma once
 
 #include <string>
+#include "id-generator.hpp"
 
 using namespace std;
 
-// UUID binary size is 16 bytes
-#define UUID_BINARY_SIZE 16
 // Size of match data in bytes: 3 UUIDs (16 bytes each) + winner flag (1 byte) + 2 draw times (8 bytes each)
-#define MATCH_BINARY_SIZE (3 * UUID_BINARY_SIZE + 1 + 2 * sizeof(unsigned long))
+#define MATCH_BINARY_SIZE (3 * IdGenerator::UUID_BINARY_SIZE + 1 + 2 * sizeof(unsigned long))
 
 // JSON keys for match serialization
 #define JSON_KEY_MATCH_ID "match_id"

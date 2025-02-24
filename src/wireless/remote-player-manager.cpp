@@ -2,12 +2,13 @@
 #include <esp_log.h>
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/esp-now-comms.hpp"
+#include "id-generator.hpp"
 
 #define DEBUG_REMOTE_PLAYER_MANAGER 0
 
 struct PlayerInfoPkt
 {
-    char id[32];
+    char id[IdGenerator::UUID_BUFFER_SIZE];  // UUID string + null terminator
     Allegiance allegiance;
     uint8_t hunter;
 } __attribute__((packed));
@@ -41,8 +42,8 @@ void RemotePlayerManager::Update()
 int RemotePlayerManager::BroadcastPlayerInfo()
 {
     PlayerInfoPkt broadcastPkt;
-    strncpy(broadcastPkt.id, m_localPlayerInfo->getUserID().c_str(), 32);
-    broadcastPkt.id[31] = '\0'; //TODO: Should be 33 bytes since ID could be 32 chars
+    strncpy(broadcastPkt.id, m_localPlayerInfo->getUserID().c_str(), IdGenerator::UUID_STRING_LENGTH);
+    broadcastPkt.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null termination
     broadcastPkt.allegiance = m_localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = m_localPlayerInfo->isHunter();
 
