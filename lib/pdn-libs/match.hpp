@@ -9,6 +9,14 @@ using namespace std;
 // Size of match data in bytes: 3 UUIDs (16 bytes each) + winner flag (1 byte) + 2 draw times (8 bytes each)
 #define MATCH_BINARY_SIZE (3 * UUID_BINARY_SIZE + 1 + 2 * sizeof(unsigned long))
 
+// JSON keys for match serialization
+#define JSON_KEY_MATCH_ID "match_id"
+#define JSON_KEY_HUNTER_ID "hunter"
+#define JSON_KEY_BOUNTY_ID "bounty"
+#define JSON_KEY_WINNER_IS_HUNTER "winner_is_hunter"
+#define JSON_KEY_HUNTER_TIME "hunter_time"
+#define JSON_KEY_BOUNTY_TIME "bounty_time"
+
 /**
  * Represents a duel match between a hunter and bounty player.
  * Stores match details and outcome, with serialization support.

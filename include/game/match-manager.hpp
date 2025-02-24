@@ -9,14 +9,13 @@
 #pragma once
 
 #include <vector>
-#include <EEPROM.h>
+#include <Preferences.h>
 #include "../lib/pdn-libs/match.hpp"
 
-// EEPROM layout:
-// First byte: Number of matches (max 255)
-// Following bytes: Match data, each MATCH_BINARY_SIZE bytes long
-#define EEPROM_MATCH_COUNT_ADDR 0
-#define EEPROM_MATCHES_START_ADDR 1
+// Preferences namespace and keys
+#define PREF_NAMESPACE "matches"
+#define PREF_COUNT_KEY "count"
+#define PREF_MATCH_KEY "match_"  // Will be appended with index
 #define MAX_MATCHES 255
 
 class MatchManager {
@@ -42,7 +41,7 @@ public:
     Match* receiveMatch(const string& match_json);
 
     /**
-     * Finalizes a match by saving it to EEPROM and removing from active matches
+     * Finalizes a match by saving it to storage and removing from active matches
      * @param match_id UUID of the match to finalize
      * @return true if match was found and saved
      */
@@ -73,46 +72,47 @@ public:
     Match* getCurrentMatch() const { return activeMatch; }
 
     /**
-     * Converts all stored matches from EEPROM to a JSON array string
+     * Converts all stored matches to a JSON array string
      * @return JSON string containing all stored matches
      */
-    string toJson() const;
+    string toJson();
 
     /**
-     * Clears all matches from EEPROM storage
+     * Clears all matches from storage
      */
     void clearStorage();
 
     /**
-     * Gets the number of stored matches in EEPROM
+     * Gets the number of stored matches
      * @return Number of matches
      */
-    size_t getStoredMatchCount() const;
+    size_t getStoredMatchCount();
 
 private:
-    MatchManager() : activeMatch(nullptr) {}
+    MatchManager();
     ~MatchManager();
 
     /**
-     * Appends a match to EEPROM storage
+     * Appends a match to storage
      * @param match Match to save
      * @return true if save was successful
      */
-    bool appendMatchToEEPROM(const Match* match);
+    bool appendMatchToStorage(const Match* match);
 
     /**
-     * Updates the stored match count in EEPROM
+     * Updates the stored match count
      */
     void updateStoredMatchCount(uint8_t count);
 
     /**
-     * Reads a match from EEPROM at the specified index
+     * Reads a match from storage at the specified index
      * @param index Index of the match to read
      * @return New Match object if successful, nullptr if invalid
      */
-    Match* readMatchFromEEPROM(uint8_t index) const;
+    Match* readMatchFromStorage(uint8_t index);
 
     Match* activeMatch;  // Currently active match (only one at a time)
+    Preferences prefs;   // Preferences instance for persistent storage
 
     // Prevent copying of singleton
     MatchManager(const MatchManager&) = delete;

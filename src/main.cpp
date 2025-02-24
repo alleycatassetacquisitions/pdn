@@ -11,6 +11,7 @@
 #include "id-generator.hpp"
 #include "wireless/esp-now-comms.hpp"
 #include "wireless/remote-player-manager.hpp"
+#include "game/match-manager.hpp"
 
 //GAME ROLE
 Device* pdn = PDN::GetInstance();
@@ -102,6 +103,7 @@ int wins = 0;
 
 void setup(void) {
   //esp_log_level_set("*", ESP_LOG_VERBOSE);
+  
   pdn->begin();
   game.initialize();
 
@@ -127,22 +129,6 @@ void setup(void) {
         &remotePlayers);
 
   ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
-  // if (game.playerInfo.isHunter()) {
-  //   currentPalette = hunterColors;
-  // } else {
-  //   currentPalette = bountyColors;
-  // }
-  //
-  // PDN->attachPrimaryButtonClick(primaryButtonClick);
-  // PDN->attachSecondaryButtonClick(primaryButtonClick);
-  //
-  // drawDebugLabels();
-  // PDN->getDisplay().getScreen().drawXBM(0, 0, 128, 64, getImageForAllegiance(indexLogo));
-  // PDN->getDisplay().getScreen().drawXBM(64, 0, 128, 64, getImageForAllegiance(indexStamp));
-  // PDN->getDisplay().sendBuffer();
-  //
-  // uiRefresh.every(16, updateUi);
-  //
   delay(3000);
 }
 

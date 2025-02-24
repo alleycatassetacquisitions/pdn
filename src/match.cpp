@@ -36,12 +36,12 @@ string Match::toJson() const
     // Create a JSON object for the match
     StaticJsonDocument<128> doc;
     JsonObject matchObj = doc.to<JsonObject>();
-    matchObj["match_id"] = match_id;
-    matchObj["hunter"] = hunter;
-    matchObj["bounty"] = bounty;
-    matchObj["capture"] = winner_is_hunter;
-    matchObj["hunter_time"] = hunter_draw_time_ms;
-    matchObj["bounty_time"] = bounty_draw_time_ms;
+    matchObj[JSON_KEY_MATCH_ID] = match_id;
+    matchObj[JSON_KEY_HUNTER_ID] = hunter;
+    matchObj[JSON_KEY_BOUNTY_ID] = bounty;
+    matchObj[JSON_KEY_WINNER_IS_HUNTER] = winner_is_hunter;
+    matchObj[JSON_KEY_HUNTER_TIME] = hunter_draw_time_ms;
+    matchObj[JSON_KEY_BOUNTY_TIME] = bounty_draw_time_ms;
 
     // Serialize the JSON object to a string
     string json;
@@ -56,26 +56,26 @@ void Match::fromJson(const string &json) {
 
     if (!error) {
         // Only update fields if they exist in the JSON
-        if (doc.containsKey("match_id")) {
-            match_id = doc["match_id"].as<string>();
+        if (doc.containsKey(JSON_KEY_MATCH_ID)) {
+            match_id = doc[JSON_KEY_MATCH_ID].as<string>();
         }
-        if (doc.containsKey("hunter")) {
-            hunter = doc["hunter"].as<string>();
+        if (doc.containsKey(JSON_KEY_HUNTER_ID)) {
+            hunter = doc[JSON_KEY_HUNTER_ID].as<string>();
         }
-        if (doc.containsKey("bounty")) {
-            bounty = doc["bounty"].as<string>();
+        if (doc.containsKey(JSON_KEY_BOUNTY_ID)) {
+            bounty = doc[JSON_KEY_BOUNTY_ID].as<string>();
         }
-        if (doc.containsKey("capture")) {
-            winner_is_hunter = doc["capture"];
+        if (doc.containsKey(JSON_KEY_WINNER_IS_HUNTER)) {
+            winner_is_hunter = doc[JSON_KEY_WINNER_IS_HUNTER];
         }
-        if (doc.containsKey("hunter_time")) {
-            hunter_draw_time_ms = doc["hunter_time"].as<unsigned long>();
+        if (doc.containsKey(JSON_KEY_HUNTER_TIME)) {
+            hunter_draw_time_ms = doc[JSON_KEY_HUNTER_TIME].as<unsigned long>();
         }
-        if (doc.containsKey("bounty_time")) {
-            bounty_draw_time_ms = doc["bounty_time"].as<unsigned long>();
+        if (doc.containsKey(JSON_KEY_BOUNTY_TIME)) {
+            bounty_draw_time_ms = doc[JSON_KEY_BOUNTY_TIME].as<unsigned long>();
         }
     } else {
-      // Serial.println("Failed to parse JSON");
+        ESP_LOGE("Match", "Failed to parse JSON");
     }
 }
 
