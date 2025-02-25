@@ -10,8 +10,10 @@
 #include "game/quickdraw.hpp"
 #include "id-generator.hpp"
 #include "wireless/esp-now-comms.hpp"
+#include "wireless/wireless-manager.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
+#include "wireless/wireless-types.hpp"
 
 // Core game objects
 Device* pdn = PDN::GetInstance();
@@ -23,6 +25,9 @@ Quickdraw game = Quickdraw(player, pdn);
 RemotePlayerManager remotePlayers;
 
 void setup() {
+    Serial.begin(115200);
+    while (!Serial) delay(100);
+
     player->setUserID(idGenerator->generateId());
     pdn->begin();
     game.initialize();
@@ -34,14 +39,14 @@ void setup() {
     WiFi.begin();
     WiFi.enableSTA(true);
     WiFi.channel(6);
-    
+
     remotePlayers.StartBroadcastingPlayerInfo(player, 1000);
     EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
-        [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
+          [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
             RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
             manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
-        },
-        &remotePlayers);
+          },
+          &remotePlayers);
 
     ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
     delay(3000);
