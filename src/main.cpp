@@ -5,11 +5,6 @@
 // Global PDN instance
 PDN* pdn = PDN::GetInstance();
 
-// Function prototypes
-void startIdleAnimation();
-void startCountdownAnimation();
-void onButtonClick();
-
 void setup() {
   Serial.begin(115200);
   while (!Serial) delay(10);
