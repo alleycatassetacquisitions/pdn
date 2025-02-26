@@ -21,6 +21,7 @@
 #include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
 #include "device/display-lights.hpp"
 #include "device/grip-lights.hpp"
+#include "device/idle-animation.hpp"
 
 class LightManager : public ILightController {
 public:
@@ -57,33 +58,13 @@ private:
     static CRGB convertToFastLED(const LEDColor& color);
     static LEDColor convertFromFastLED(const CRGB& color);
     
-    // Animation update methods
-    void updateAnimation();
-    void updateIdleAnimation();
-    void updateDeviceConnectedAnimation();
-    void updateCountdownAnimation();
-    void updateLoseAnimation();
-    void updateWinAnimation();
-    void cleanupPalette();
-
+    // Apply an LED state to the physical LEDs
+    void applyLEDState(const LEDState& state);
+    
     // Member variables
     DisplayLights& displayLights;
     GripLights& gripLights;
-    
-    struct AnimationState {
-        uint32_t lastUpdate;
-        uint8_t currentStep;
-        uint8_t currentIndex;
-        uint8_t prevIndex;
-        uint8_t brightness;
-        bool isActive;
-        bool isPaused;
-        bool isFadingOut;
-        bool isWaitingForPause;
-        SimpleTimer pauseTimer;
-        AnimationConfig config;
-    } animState;
-
+    IAnimation* currentAnimation;
     LEDColor* palette;
     uint8_t paletteSize;
 };

@@ -250,67 +250,68 @@ static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) 
     }
 }
 
-// void Idle::gripChase(Device *PDN) {
-//     // If we're in the delay period between cycles
-//     if (isWaitingBetweenCycles) {
-//         if (cycleDelayTimer.expired()) {
-//             isWaitingBetweenCycles = false;
-//             transitionProgress = 0;
-//             ledChaseIndex = 0;
+// void IdleAnimation(Device *PDN) {
+// if (animState.isWaitingForPause) {
+//         if (animState.pauseTimer.expired()) {
+//             animState.isWaitingForPause = false;
+//             animState.currentIndex = 8;  // Reset to top
+//             animState.prevIndex = 8;
+//             animState.brightness = 0;
 //         }
 //         return;
 //     }
 
-//     // Use the appropriate color array based on player type
-//     const CRGB* colors = player->isHunter() ? hunterIdleColors : bountyIdleColors;
+//     // Clear all LEDs except our controlled ones
+//     setBrightness(LightIdentifier::GRIP_LIGHTS, 0);
+//     setBrightness(LightIdentifier::DISPLAY_LIGHTS, 0);
     
-//     // Calculate indices for each LED based on the chase index
-//     int firstLedColor = (ledChaseIndex + 0) % 4;
-//     int secondLedColor = (ledChaseIndex + 1) % 4;
-//     int thirdLedColor = (ledChaseIndex + 2) % 4;
-    
-//     // Calculate next color indices for interpolation
-//     int nextFirstLedColor = (firstLedColor + 1) % 4;
-//     int nextSecondLedColor = (secondLedColor + 1) % 4;
-//     int nextThirdLedColor = (thirdLedColor + 1) % 4;
-    
-//     // Get the bezier curve value from the lookup table
-//     float bezierT = BEZIER_LOOKUP[transitionProgress];
-    
-//     // Interpolate between current and next colors
-//     auto lerpColor = [](const CRGB& start, const CRGB& end, float t) {
-//         return CRGB(
-//             start.r + (end.r - start.r) * t,
-//             start.g + (end.g - start.g) * t,
-//             start.b + (end.b - start.b) * t
-//         );
-//     };
-    
-//     // Calculate interpolated colors using bezier curve
-//     CRGB firstLedFinal = lerpColor(colors[firstLedColor], colors[nextFirstLedColor], bezierT);
-//     CRGB secondLedFinal = lerpColor(colors[secondLedColor], colors[nextSecondLedColor], bezierT);
-//     CRGB thirdLedFinal = lerpColor(colors[thirdLedColor], colors[nextThirdLedColor], bezierT);
-    
-//     // Set the LEDs with interpolated colors
-//     PDN->setLight(LightIdentifier::LEFT_LIGHTS, 0, LEDColor(firstLedFinal.r, firstLedFinal.g, firstLedFinal.b));
-//     PDN->setLight(LightIdentifier::LEFT_LIGHTS, 1, LEDColor(secondLedFinal.r, secondLedFinal.g, secondLedFinal.b));
-//     PDN->setLight(LightIdentifier::LEFT_LIGHTS, 2, LEDColor(thirdLedFinal.r, thirdLedFinal.g, thirdLedFinal.b));
-    
-//     PDN->setLight(LightIdentifier::RIGHT_LIGHTS, 0, LEDColor(firstLedFinal.r, firstLedFinal.g, firstLedFinal.b));
-//     PDN->setLight(LightIdentifier::RIGHT_LIGHTS, 1, LEDColor(secondLedFinal.r, secondLedFinal.g, secondLedFinal.b));
-//     PDN->setLight(LightIdentifier::RIGHT_LIGHTS, 2, LEDColor(thirdLedFinal.r, thirdLedFinal.g, thirdLedFinal.b));
+//     if (animState.isFadingOut) {
+//         // Only show the bottom LED fading out
+//         // Decrease brightness for fade out
+//         if (animState.brightness >= 45) {
+//             animState.brightness -= 45;
+//         } else {
+//             animState.brightness = 0;
+//         }
 
-//     // Update transition progress
-//     transitionProgress += 1; // Adjust this value to control transition speed
+//         setLightColor(LightIdentifier::LEFT_LIGHTS, 0, LEDColor(animState.brightness, animState.brightness, animState.brightness));
+//         setLightColor(LightIdentifier::RIGHT_LIGHTS, 0, LEDColor(animState.brightness, animState.brightness, animState.brightness));
+        
+//         if (animState.brightness == 0) {
+//             animState.isFadingOut = false;
+//             animState.isWaitingForPause = true;
+//             animState.pauseTimer.setTimer(250);  // 250ms pause
+//         }
+//         return;
+//     }
     
-//     // When transition is complete, move to next color
-//     if (transitionProgress >= 255) {
-//         transitionProgress = 0;
-//         ledChaseIndex++;
-//         if(ledChaseIndex >= 4) {
-//             // Start the delay between cycles
-//             isWaitingBetweenCycles = true;
-//             cycleDelayTimer.setTimer(50); // 50ms delay
+//     // Normal animation sequence
+//     // Set the current LED pair to white with increasing brightness
+//     setLightColor(LightIdentifier::LEFT_LIGHTS, animState.currentIndex, LEDColor(animState.brightness, animState.brightness, animState.brightness));
+//     setLightColor(LightIdentifier::RIGHT_LIGHTS, animState.currentIndex, LEDColor(animState.brightness, animState.brightness, animState.brightness));
+    
+//     // Set the previous LED pair with decreasing brightness
+//     if (animState.prevIndex != animState.currentIndex) {  // Only if we have a different previous position
+//         uint8_t prevBrightness = 255 - animState.brightness;  // Inverse fade
+//         setLightColor(LightIdentifier::LEFT_LIGHTS, animState.prevIndex, LEDColor(prevBrightness, prevBrightness, prevBrightness));
+//         setLightColor(LightIdentifier::RIGHT_LIGHTS, animState.prevIndex, LEDColor(prevBrightness, prevBrightness, prevBrightness));
+//     }
+    
+//     static const uint8_t brightnessStep = 45;  // Configurable step size
+//     if (animState.brightness <= (255 - brightnessStep)) {  // Prevent overflow
+//         animState.brightness += brightnessStep;
+//     } else {
+//         animState.brightness = 255;  // Ensure we hit exactly 255
+//     }
+    
+//     // When we reach full brightness, move to next position
+//     if (animState.brightness >= 255) {
+//         if (animState.currentIndex == 0) {  // If we're at the bottom
+//             animState.isFadingOut = true;   // Start the fade out sequence
+//         } else {
+//             animState.brightness = 0;  // Reset brightness for next position
+//             animState.prevIndex = animState.currentIndex;  // Store current position as previous
+//             animState.currentIndex--;  // Move to next position (moving downward)
 //         }
 //     }
 // }
