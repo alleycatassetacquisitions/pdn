@@ -9,7 +9,7 @@ public:
         this->numLights = numLights;
         lights = new CRGB[numLights];
         FastLED.addLeds<WS2812B, pinNumber, GRB>(lights, numLights);
-
+        // FastLED.setTemperature(DirectSunlight);
         lightMask = new CRGB[numLights];
         std::fill_n(lightMask, numLights, CRGB::Black);
     }
