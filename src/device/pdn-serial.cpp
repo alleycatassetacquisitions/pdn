@@ -15,7 +15,6 @@ void PDNSerialOut::begin() {
     pinMode(TXr, INPUT);
 
     Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
-    Serial1.setTxBufferSize(TRANSMIT_QUEUE_MAX_SIZE);
 }
 
 int PDNSerialOut::availableForWrite() {
@@ -58,7 +57,6 @@ void PDNSerialIn::begin() {
     pinMode(RXr, INPUT);
 
     Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
-    Serial2.setTxBufferSize(TRANSMIT_QUEUE_MAX_SIZE);
 }
 
 int PDNSerialIn::availableForWrite() {
