@@ -126,3 +126,86 @@ For any questions, collaboration opportunities, or technical issues, please reac
 
 - **Email**: [alleycatassetacquisitions@gmail.com](mailto:alleycatassetacquisitions@gmail.com)
 - **Website**: [alleycat.agency](https://alleycat.agency)
+
+# PDN Animation System
+
+This project implements a flexible animation system for the PDN device, with a focus on non-blocking animations and clean architecture.
+
+## Animation Architecture
+
+The animation system is built around these key components:
+
+1. **IAnimation Interface**: Defines the contract for all animations
+2. **AnimationBase Class**: Provides common functionality for all animations
+3. **Specific Animation Classes**: Implement concrete animations (Idle, Countdown, etc.)
+4. **LightManager**: Manages animations and controls the physical LEDs
+
+## Available Animations
+
+### Idle Animation
+
+The idle animation creates a smooth flowing effect that:
+- Starts at the top LED (index 8)
+- Moves downward through both display and grip LEDs
+- Fades each LED pair in and out smoothly
+- When it reaches the bottom, it fades out and restarts from the top
+
+### Countdown Animation
+
+The countdown animation provides a visual countdown effect that:
+- Starts at the first display LED (index 3)
+- Progressively lights up each LED with a smooth fade-in
+- Keeps previously lit LEDs at full brightness
+- Completes when all LEDs are lit
+- Useful for game countdowns or timing indicators
+
+## Using Animations
+
+To start an animation:
+
+```cpp
+// Create animation configuration
+AnimationConfig config;
+config.type = AnimationType::COUNTDOWN;  // or AnimationType::IDLE
+config.speed = 16;  // 16ms between frames (approximately 60fps)
+config.curve = EaseCurve::EASE_IN_OUT;  // Optional easing curve
+
+// Start the animation
+pdn.startAnimation(config);
+
+// Check if animation is complete
+if (pdn.isAnimationComplete()) {
+  // Animation has finished
+}
+
+// Pause/resume animation
+pdn.pauseAnimation();
+pdn.resumeAnimation();
+
+// Stop animation
+pdn.stopAnimation();
+```
+
+## Demo Program
+
+The main.cpp file includes a demo program that:
+- Starts with the idle animation
+- Allows switching to the countdown animation with a button press
+- Automatically returns to idle when countdown completes
+- Provides serial output for debugging
+
+## Extending the System
+
+To create a new animation:
+
+1. Create a new class that inherits from AnimationBase
+2. Implement the onInit() and onAnimate() methods
+3. Add the animation type to the AnimationType enum in light-interface.hpp
+4. Update the LightManager::startAnimation method to create your animation
+
+## Implementation Details
+
+- All animations are non-blocking
+- The system uses SimpleTimer for timing operations
+- LED brightness is controlled separately from color for better fade effects
+- The animation system is decoupled from the physical LED implementation

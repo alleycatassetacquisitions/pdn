@@ -22,36 +22,43 @@
 #include "device/display-lights.hpp"
 #include "device/grip-lights.hpp"
 #include "device/idle-animation.hpp"
+#include "device/countdown-animation.hpp"
 
-class LightManager : public ILightController {
+class LightManager {
 public:
     LightManager(DisplayLights& displayLights, GripLights& gripLights);
-    ~LightManager() override;
+    ~LightManager();
 
-    // ILightController implementation
-    void begin() override;
-    void loop() override;
+    // Core functionality
+    void begin();
+    void loop();
     
-    void startAnimation(AnimationConfig config) override;
-    void stopAnimation() override;
-    void pauseAnimation() override;
-    void resumeAnimation() override;
+    // Animation control
+    void startAnimation(AnimationConfig config);
+    void stopAnimation();
+    void pauseAnimation();
+    void resumeAnimation();
     
-    void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color) override;
-    void setAllLights(LightIdentifier lights, LEDColor color) override;
-    void setBrightness(LightIdentifier lights, uint8_t brightness) override;
-    void clear(LightIdentifier lights) override;
+    // Direct LED control
+    void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color);
+    void setAllLights(LightIdentifier lights, LEDColor color);
+    void setBrightness(LightIdentifier lights, uint8_t brightness);
+    void clear(LightIdentifier lights);
     
-    void setPalette(const LEDColor* colors, uint8_t numColors) override;
-    LEDColor getPaletteColor(uint8_t index) const override;
+    // Color palette management
+    void setPalette(const LEDColor* colors, uint8_t numColors);
+    LEDColor getPaletteColor(uint8_t index) const;
     
-    bool isAnimating() const override;
-    bool isPaused() const override;
-    AnimationType getCurrentAnimation() const override;
+    // Animation state query
+    bool isAnimating() const;
+    bool isPaused() const;
+    bool isAnimationComplete() const;
+    AnimationType getCurrentAnimation() const;
 
 protected:
-    uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const override;
-    LEDColor interpolateColor(const LEDColor& start, const LEDColor& end, uint8_t t) const override;
+    // Helper methods
+    uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const;
+    LEDColor interpolateColor(const LEDColor& start, const LEDColor& end, uint8_t t) const;
 
 private:
     // FastLED helpers

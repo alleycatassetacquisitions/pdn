@@ -77,6 +77,7 @@ public:
     void resumeAnimation();
     bool isAnimating() const;
     bool isPaused() const;
+    bool isAnimationComplete() const;
     AnimationType getCurrentAnimation() const;
 
 protected:

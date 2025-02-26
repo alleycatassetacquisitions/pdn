@@ -54,6 +54,7 @@ void LightManager::startAnimation(AnimationConfig config) {
             // TODO: Implement other animation types
             break;
         case AnimationType::COUNTDOWN:
+            currentAnimation = new CountdownAnimation();
             break;
         case AnimationType::LOSE:
             break;
@@ -263,6 +264,10 @@ bool LightManager::isPaused() const {
     return currentAnimation && currentAnimation->isPaused();
 }
 
+bool LightManager::isAnimationComplete() const {
+    return currentAnimation ? currentAnimation->isComplete() : true;
+}
+
 AnimationType LightManager::getCurrentAnimation() const {
     return currentAnimation ? currentAnimation->getType() : AnimationType::IDLE;
 }
@@ -313,13 +318,43 @@ void LightManager::applyLEDState(const LEDState& state) {
     for (int i = 0; i < 9; i++) {
         const auto& led = state.leftLights[i];
         if (led.brightness > 0) {  // Only set if LED is actually on
-            // Scale the color by brightness
-            LEDColor scaledColor(
-                (led.color.red * led.brightness) / 255,
-                (led.color.green * led.brightness) / 255,
-                (led.color.blue * led.brightness) / 255
-            );
-            setLightColor(LightIdentifier::LEFT_LIGHTS, i, scaledColor);
+            // Apply color at full intensity
+            setLightColor(LightIdentifier::LEFT_LIGHTS, i, led.color);
+            
+            // Then apply brightness separately
+            // This preserves the color while adjusting intensity
+            if (led.brightness < 255) {
+                // Get the physical LED indices for this virtual index
+                switch(i) {
+                    case 0: // Bottom grip LED
+                        gripLights.setLightBrightness(2, led.brightness);
+                        break;
+                    case 1:
+                        gripLights.setLightBrightness(1, led.brightness);
+                        break;
+                    case 2:
+                        gripLights.setLightBrightness(0, led.brightness);
+                        break;
+                    case 3: // Display LEDs
+                        displayLights.setLightBrightness(0, led.brightness);
+                        break;
+                    case 4:
+                        displayLights.setLightBrightness(1, led.brightness);
+                        break;
+                    case 5:
+                        displayLights.setLightBrightness(2, led.brightness);
+                        break;
+                    case 6:
+                        displayLights.setLightBrightness(3, led.brightness);
+                        break;
+                    case 7:
+                        displayLights.setLightBrightness(4, led.brightness);
+                        break;
+                    case 8:
+                        displayLights.setLightBrightness(5, led.brightness);
+                        break;
+                }
+            }
         }
     }
     
@@ -327,23 +362,54 @@ void LightManager::applyLEDState(const LEDState& state) {
     for (int i = 0; i < 9; i++) {
         const auto& led = state.rightLights[i];
         if (led.brightness > 0) {  // Only set if LED is actually on
-            // Scale the color by brightness
-            LEDColor scaledColor(
-                (led.color.red * led.brightness) / 255,
-                (led.color.green * led.brightness) / 255,
-                (led.color.blue * led.brightness) / 255
-            );
-            setLightColor(LightIdentifier::RIGHT_LIGHTS, i, scaledColor);
+            // Apply color at full intensity
+            setLightColor(LightIdentifier::RIGHT_LIGHTS, i, led.color);
+            
+            // Then apply brightness separately
+            // This preserves the color while adjusting intensity
+            if (led.brightness < 255) {
+                // Get the physical LED indices for this virtual index
+                switch(i) {
+                    case 0: // Bottom grip LED
+                        gripLights.setLightBrightness(3, led.brightness);
+                        break;
+                    case 1:
+                        gripLights.setLightBrightness(4, led.brightness);
+                        break;
+                    case 2:
+                        gripLights.setLightBrightness(5, led.brightness);
+                        break;
+                    case 3: // Display LEDs
+                        displayLights.setLightBrightness(11, led.brightness);
+                        break;
+                    case 4:
+                        displayLights.setLightBrightness(10, led.brightness);
+                        break;
+                    case 5:
+                        displayLights.setLightBrightness(9, led.brightness);
+                        break;
+                    case 6:
+                        displayLights.setLightBrightness(8, led.brightness);
+                        break;
+                    case 7:
+                        displayLights.setLightBrightness(7, led.brightness);
+                        break;
+                    case 8:
+                        displayLights.setLightBrightness(6, led.brightness);
+                        break;
+                }
+            }
         }
     }
     
     // Apply transmit light
     if (state.transmitLight.brightness > 0) {
-        LEDColor scaledColor(
-            (state.transmitLight.color.red * state.transmitLight.brightness) / 255,
-            (state.transmitLight.color.green * state.transmitLight.brightness) / 255,
-            (state.transmitLight.color.blue * state.transmitLight.brightness) / 255
-        );
-        setLightColor(LightIdentifier::TRANSMIT_LIGHT, 0, scaledColor);
+        // Apply color at full intensity
+        setLightColor(LightIdentifier::TRANSMIT_LIGHT, 0, state.transmitLight.color);
+        
+        // Then apply brightness separately
+        if (state.transmitLight.brightness < 255) {
+            displayLights.setLightBrightness(12, state.transmitLight.brightness);
+        }
     }
 } 

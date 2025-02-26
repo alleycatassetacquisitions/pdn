@@ -136,6 +136,10 @@ bool PDN::isPaused() const {
     return lightManager.isPaused();
 }
 
+bool PDN::isAnimationComplete() const {
+    return lightManager.isAnimationComplete();
+}
+
 AnimationType PDN::getCurrentAnimation() const {
     return lightManager.getCurrentAnimation();
 }
