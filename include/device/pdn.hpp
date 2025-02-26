@@ -71,14 +71,14 @@ public:
     int getCurrentVibrationIntensity() override;
 
     // Animation control methods
-    void startAnimation(AnimationConfig config);
-    void stopAnimation();
-    void pauseAnimation();
-    void resumeAnimation();
-    bool isAnimating() const;
-    bool isPaused() const;
-    bool isAnimationComplete() const;
-    AnimationType getCurrentAnimation() const;
+    void startAnimation(AnimationConfig config) override;
+    void stopAnimation() override;
+    void pauseAnimation() override;
+    void resumeAnimation() override;
+    bool isAnimating() const override;
+    bool isPaused() const override;
+    bool isAnimationComplete() const override;
+    AnimationType getCurrentAnimation() const override;
 
 protected:
     PDN();

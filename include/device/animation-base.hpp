@@ -3,16 +3,23 @@
 #include "light-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "simple-timer.hpp"
+#include <algorithm> // For std::min
 
 class AnimationBase : public IAnimation {
 public:
     AnimationBase() : 
         isPaused_(false),
-        isComplete_(false) {
+        isComplete_(false),
+        palette_(nullptr),
+        paletteSize_(0) {
         frameTimer_.setTimer(16); // Default 16ms between frames
     }
     
-    virtual ~AnimationBase() = default;
+    virtual ~AnimationBase() {
+        if (palette_) {
+            delete[] palette_;
+        }
+    }
 
     void init(const AnimationConfig& config) override {
         config_ = config;
@@ -44,6 +51,38 @@ public:
     AnimationType getType() const override { return config_.type; }
     bool isPaused() const override { return isPaused_; }
 
+    // Palette management
+    void setPalette(const LEDColor* colors, uint8_t numColors) {
+        if (palette_) {
+            delete[] palette_;
+            palette_ = nullptr;
+            paletteSize_ = 0;
+        }
+        
+        if (colors && numColors > 0) {
+            palette_ = new LEDColor[numColors];
+            paletteSize_ = numColors;
+            for (uint8_t i = 0; i < numColors; i++) {
+                palette_[i] = colors[i];
+            }
+        }
+    }
+    
+    LEDColor getPaletteColor(uint8_t index) const {
+        if (palette_ && index < paletteSize_) {
+            return palette_[index];
+        }
+        return LEDColor(255, 255, 255); // Default to white
+    }
+    
+    bool hasPalette() const {
+        return palette_ != nullptr && paletteSize_ > 0;
+    }
+    
+    uint8_t getPaletteSize() const {
+        return paletteSize_;
+    }
+
 protected:
     // Override these in derived classes
     virtual void onInit() = 0;
@@ -52,7 +91,7 @@ protected:
     // Use the easing curves from quickdraw-resources.hpp
     uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const override {
         // Ensure progress is in bounds
-        progress = min(progress, (uint8_t)255);
+        progress = std::min(progress, (uint8_t)255);
         
         // Return the appropriate easing value from lookup tables
         switch (curve) {
@@ -102,4 +141,6 @@ protected:
     SimpleTimer frameTimer_;
     AnimationConfig config_;
     LEDState currentState_;
+    LEDColor* palette_;
+    uint8_t paletteSize_;
 }; 

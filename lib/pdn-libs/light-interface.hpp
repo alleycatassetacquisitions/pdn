@@ -87,6 +87,12 @@ public:
     
     // Check if the animation is paused
     virtual bool isPaused() const = 0;
+    
+    // Palette management
+    virtual void setPalette(const LEDColor* colors, uint8_t numColors) = 0;
+    virtual LEDColor getPaletteColor(uint8_t index) const = 0;
+    virtual bool hasPalette() const = 0;
+    virtual uint8_t getPaletteSize() const = 0;
 
 protected:
     // Helper method to get easing values

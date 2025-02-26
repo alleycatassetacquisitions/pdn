@@ -1,4 +1,5 @@
 #include "device/light-manager.hpp"
+#include <algorithm> // For std::min
 
 LightManager::LightManager(DisplayLights& displayLights, GripLights& gripLights)
     : displayLights(displayLights)
@@ -64,6 +65,12 @@ void LightManager::startAnimation(AnimationConfig config) {
     
     // Initialize the animation if created
     if (currentAnimation) {
+        // Set the palette if available
+        if (palette && paletteSize > 0) {
+            currentAnimation->setPalette(palette, paletteSize);
+        }
+        
+        // Initialize the animation
         currentAnimation->init(config);
     }
 }
@@ -274,7 +281,7 @@ AnimationType LightManager::getCurrentAnimation() const {
 
 uint8_t LightManager::getEasingValue(uint8_t progress, EaseCurve curve) const {
     // Ensure progress is in bounds
-    progress = min(progress, (uint8_t)255);
+    progress = std::min(progress, (uint8_t)255);
     
     // Return the appropriate easing value from lookup tables
     switch (curve) {

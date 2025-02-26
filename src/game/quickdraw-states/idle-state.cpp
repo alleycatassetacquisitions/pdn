@@ -52,6 +52,12 @@ void Idle::onStateMounted(Device *PDN) {
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     render();
+
+    AnimationConfig config;
+    config.type = AnimationType::IDLE;
+    config.speed = 16;
+    config.curve = EaseCurve::LINEAR;
+    PDN->startAnimation(config);
 }
 
 void Idle::onStateLoop(Device *PDN) {
@@ -60,18 +66,12 @@ void Idle::onStateLoop(Device *PDN) {
         PDN->writeString(&responseStringMessages[0]);
     }
 
-    EVERY_N_MILLIS(16) {
-        ledAnimation(PDN);  // Moved to quickdraw-resources.hpp as countdownAnimation
-    }
+
 
     string *validMessage = waitForValidMessage(PDN);
     if (validMessage != nullptr) {
         transitionToHandshakeState = true;
     }
-}
-
-void Idle::ledAnimation(Device *PDN) {
-    
 }
 
 void Idle::onStateDismounted(Device *PDN) {

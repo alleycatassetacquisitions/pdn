@@ -63,6 +63,16 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
+    // Animation control methods
+    virtual void startAnimation(AnimationConfig config) = 0;
+    virtual void stopAnimation() = 0;
+    virtual void pauseAnimation() = 0;
+    virtual void resumeAnimation() = 0;
+    virtual bool isAnimating() const = 0;
+    virtual bool isPaused() const = 0;
+    virtual bool isAnimationComplete() const = 0;
+    virtual AnimationType getCurrentAnimation() const = 0;
+
 protected:
     Device() {}
 

@@ -1,35 +1,60 @@
 #include <Arduino.h>
-#include "device/pdn.hpp"
-#include "button.hpp"
+#include <WiFi.h>
+#include <esp_log.h>
+#include <FastLED.h>
 
-// Global PDN instance
-PDN* pdn = PDN::GetInstance();
+#include "simple-timer.hpp"
+#include "player.hpp"
+#include "state-machine.hpp"
+#include "device/pdn.hpp"
+#include "game/quickdraw.hpp"
+#include "id-generator.hpp"
+#include "wireless/esp-now-comms.hpp"
+#include "wireless/wireless-manager.hpp"
+#include "wireless/remote-player-manager.hpp"
+#include "game/match-manager.hpp"
+#include "wireless/wireless-types.hpp"
+
+// Core game objects
+Device* pdn = PDN::GetInstance();
+IdGenerator* idGenerator = IdGenerator::GetInstance();
+Player* player = new Player();
+Quickdraw game = Quickdraw(player, pdn);
+
+// Remote player management
+RemotePlayerManager remotePlayers;
 
 void setup() {
-  Serial.begin(115200);
-  while (!Serial) delay(10);
-  
-  Serial.println("PDN Animation Demo");
-  
-  // Initialize the PDN
-  pdn->begin();
-  
-  // Start with idle animation
-  startCountdownAnimation();
+    Serial.begin(115200);
+    while (!Serial) delay(100);
+
+    player->setUserID(idGenerator->generateId());
+    pdn->begin();
+    game.initialize();
+    delay(1000);
+
+    ESP_LOGI("PDN", "HW and Game Initialized\n");
+
+    // Initialize WiFi for ESP-NOW use
+    WiFi.begin();
+    WiFi.enableSTA(true);
+    WiFi.channel(6);
+
+    remotePlayers.StartBroadcastingPlayerInfo(player, 1000);
+    EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
+          [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
+            RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
+            manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
+          },
+          &remotePlayers);
+
+    ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
+    delay(3000);
 }
 
 void loop() {
-  // Update the PDN (handles animation)
-  pdn->loop();
-  
-}
-
-void startCountdownAnimation() {
-  AnimationConfig config;
-  config.type = AnimationType::COUNTDOWN;
-  config.speed = 16;  // 16ms between frames (approximately 60fps)
-  config.curve = EaseCurve::EASE_IN_OUT;
-  
-  Serial.println("Starting countdown animation...");
-  pdn->startAnimation(config);
+    pdn->loop();
+    EspNowManager::GetInstance()->Update();
+    remotePlayers.Update();
+    game.loop();
 }
