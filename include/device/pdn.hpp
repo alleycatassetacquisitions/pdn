@@ -10,6 +10,7 @@
 #include "pdn-display.hpp"
 #include "pdn-haptics.hpp"
 #include "pdn-serial.hpp"
+#include "light-manager.hpp"
 
 #include <string>
 
@@ -69,6 +70,15 @@ public:
 
     int getCurrentVibrationIntensity() override;
 
+    // Animation control methods
+    void startAnimation(AnimationConfig config);
+    void stopAnimation();
+    void pauseAnimation();
+    void resumeAnimation();
+    bool isAnimating() const;
+    bool isPaused() const;
+    AnimationType getCurrentAnimation() const;
+
 protected:
     PDN();
 
@@ -77,7 +87,6 @@ protected:
     HWSerialWrapper* outputJack() override;
 
     HWSerialWrapper* inputJack() override;
-
 
 private:
     PDNButton* getButton(ButtonIdentifier whichButton);
@@ -103,15 +112,13 @@ private:
     void attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction);
     void attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
 
-    void setLeftLED(int index, CRGB color);
-    void setRightLED(int index, CRGB color);
-
     PDNDisplay display;
     PDNHaptics haptics;
     PDNButton primary;
     PDNButton secondary;
     DisplayLights displayLights;
     GripLights gripLights;
+    LightManager lightManager;
 
     PDNSerialOut serialOut;
     PDNSerialIn serialIn;

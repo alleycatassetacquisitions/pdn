@@ -3,31 +3,11 @@
 #include "device-serial.hpp"
 #include "display.hpp"
 #include "button.hpp"
+#include "light-interface.hpp"
 
 using namespace std;
 
 //LED Resource Identifiers
-
-enum class LightIdentifier {
-    GLOBAL = 0,
-    DISPLAY_LIGHTS = 1,
-    GRIP_LIGHTS = 2,
-    TRANSMIT_LIGHT = 3,
-    LEFT_LIGHTS = 4,
-    RIGHT_LIGHTS = 5
-};
-
-struct LEDColor {
-    int red;
-    int green;
-    int blue;
-
-    LEDColor(int red, int green, int blue) {
-        this->red = red;
-        this->green = green;
-        this->blue = blue;
-    }
-};
 
 class Device : public DeviceSerial {
 public:

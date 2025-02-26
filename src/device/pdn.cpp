@@ -14,17 +14,19 @@ PDN::PDN() : display(displayCS, displayDC, displayRST),
              primary(primaryButtonPin),
              secondary(secondaryButtonPin),
              displayLights(numDisplayLights),
-             gripLights(numGripLights) {
+             gripLights(numGripLights),
+             lightManager(displayLights, gripLights) {
     this->PDN::initializePins();
 };
 
 int PDN::begin() {
-
     serialOut.begin();
     serialIn.begin();
 
     FastLED.clear();
     FastLED.show();
+
+    lightManager.begin();
 
     //Initialize PSRAM which can be used as
     //extra heap space by allocating using
@@ -67,273 +69,38 @@ HWSerialWrapper* PDN::inputJack() {
 void PDN::loop() {
     primary.loop();
     secondary.loop();
-
-    FastLED.show();
+    lightManager.loop();
 }
 
 void PDN::onStateChange() {
-    FastLED.clear();
+    lightManager.clear(LightIdentifier::DISPLAY_LIGHTS);
+    lightManager.clear(LightIdentifier::GRIP_LIGHTS);
 }
 
 
 void PDN::setGlobablLightColor(LEDColor color) {
-    FastLED.showColor(CRGB(color.red, color.green, color.blue), 255);
-};
+    lightManager.setAllLights(LightIdentifier::DISPLAY_LIGHTS, color);
+    lightManager.setAllLights(LightIdentifier::GRIP_LIGHTS, color);
+}
 
 void PDN::setGlobalBrightness(int brightness) {
-    FastLED.setBrightness(brightness);
-};
+    lightManager.setBrightness(LightIdentifier::DISPLAY_LIGHTS, brightness);
+    lightManager.setBrightness(LightIdentifier::GRIP_LIGHTS, brightness);
+}
 
 void PDN::fadeLightsBy(LightIdentifier whichLights, int value) {
-    switch(whichLights) {
-        case LightIdentifier::GLOBAL: {
-            displayLights.fade(value);
-            gripLights.fade(value);
-            break;
-        }
-        case LightIdentifier::DISPLAY_LIGHTS: {
-            displayLights.fade(value);
-            break;
-        }
-        case LightIdentifier::GRIP_LIGHTS: {
-            gripLights.fade(value);
-            break;
-        }
-        case LightIdentifier::LEFT_LIGHTS: {
-            gripLights.fade(value);
-            break;
-        }
-        case LightIdentifier::RIGHT_LIGHTS: {
-            gripLights.fade(value);
-            break;
-        }
-        case LightIdentifier::TRANSMIT_LIGHT: {
-            break;
-        }
-    }
+    // Convert fade value to brightness (255 - fade)
+    uint8_t brightness = max(0, 255 - value);
+    lightManager.setBrightness(whichLights, brightness);
 }
 
 void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
-    switch(whichLights) {
-        case LightIdentifier::GLOBAL:
-            break;
-        case LightIdentifier::DISPLAY_LIGHTS: {
-            displayLights.addToLight(ledNum, CRGB(color.red, color.green, color.blue));
-            break;
-        }
-        case LightIdentifier::GRIP_LIGHTS: {
-            gripLights.addToLight(ledNum, CRGB(color.red, color.green, color.blue));
-            break;
-        }
-        case LightIdentifier::TRANSMIT_LIGHT: {
-            displayLights.setTransmitLight(CRGB(color.red, color.green, color.blue));
-            break;
-        }
-    }
+    // For now, just set the light since LightManager doesn't have an additive mode
+    lightManager.setLightColor(whichLights, ledNum, color);
 }
 
 void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
-    switch(whichLights) {
-        case LightIdentifier::GLOBAL:
-            break;
-        case LightIdentifier::DISPLAY_LIGHTS: {
-            displayLights.setLight(ledNum, CRGB(color.red, color.green, color.blue));
-            break;
-        }
-        case LightIdentifier::GRIP_LIGHTS: {
-            gripLights.setLight(ledNum, CRGB(color.red, color.green, color.blue));
-            break;
-        }
-        case LightIdentifier::TRANSMIT_LIGHT: {
-            displayLights.setTransmitLight(CRGB(color.red, color.green, color.blue));
-            break;
-        }
-        case LightIdentifier::LEFT_LIGHTS: {
-            setLeftLED(ledNum, CRGB(color.red, color.green, color.blue));
-            break;
-        }
-        case LightIdentifier::RIGHT_LIGHTS: {
-            setRightLED(ledNum, CRGB(color.red, color.green, color.blue));
-            break;
-        }
-    }
-}
-
-void PDN::setLeftLED(int index, CRGB color) {
-    switch(index) {
-        case 0: {
-            gripLights.setLight(2, color);
-            break;
-        }
-        case 1: {
-            gripLights.setLight(1, color);
-            break;
-        }
-        case 2: {
-            gripLights.setLight(0, color);
-            break;
-        }
-        case 3: {
-            displayLights.setLight(0, color);
-            break;
-        }
-        case 4: {
-            displayLights.setLight(1, color);
-            break;
-        }
-        case 5: {
-            displayLights.setLight(2, color);
-            break;
-        }
-        case 6: {
-            displayLights.setLight(3, color);
-            break;
-        }
-        case 7: {
-            displayLights.setLight(4, color);
-            break;
-        }
-        case 8: {
-            displayLights.setLight(5, color);
-            break;
-        }
-    }
-}
-
-void PDN::setRightLED(int index, CRGB color) {
-    switch(index) {
-        case 0: {
-            gripLights.setLight(3, color);
-            break;
-        }
-        case 1: {
-            gripLights.setLight(4, color);
-            break;
-        }
-        case 2: {
-            gripLights.setLight(5, color);
-            break;
-        }
-        case 3: {
-            displayLights.setLight(11, color);
-            break;
-        }
-        case 4: {
-            displayLights.setLight(10, color);
-            break;
-        }
-        case 5: {
-            displayLights.setLight(9, color);
-            break;
-        }
-        case 6: {
-            displayLights.setLight(8, color);
-            break;
-        }
-        case 7: {
-            displayLights.setLight(7, color);
-            break;
-        }
-        case 8: {
-            displayLights.setLight(6, color);
-            break;
-        }
-    }
-}
-
-//Button Functions
-
-void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction newFunction) {
-    switch(interactionType) {
-        case ButtonInteraction::CLICK: {
-            attachSingleClick(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::RELEASE: {
-            attachLongPressRelease(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::PRESS: {
-            attachPress(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::DOUBLE_CLICK: {
-            attachDoubleClick(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::MULTI_CLICK: {
-            attachMultiClick(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::LONG_PRESS: {
-            attachLongPress(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::DURING_LONG_PRESS: {
-            attachDuringLongPress(whichButton, newFunction);
-            break;
-        }
-    }
-}
-
-
-
-void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
-    parameterizedCallbackFunction newFunction, void *parameter) {
-    switch(interactionType) {
-        case ButtonInteraction::CLICK: {
-            attachSingleClick(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::RELEASE: {
-            attachLongPressRelease(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::PRESS: {
-            attachPress(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::DOUBLE_CLICK: {
-            attachDoubleClick(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::MULTI_CLICK: {
-            attachMultiClick(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::LONG_PRESS: {
-            attachLongPress(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::DURING_LONG_PRESS: {
-            attachDuringLongPress(whichButton, newFunction, parameter);
-            break;
-        }
-    }
-}
-
-void PDN::removeButtonCallbacks(ButtonIdentifier whichButton) {
-    getButton(whichButton)->removeButtonCallbacks();
-}
-
-bool PDN::isLongPressed(ButtonIdentifier whichButton) {
-    return getButton(whichButton)->isLongPressed();
-}
-
-unsigned long PDN::longPressedMillis(ButtonIdentifier whichButton) {
-    return getButton(whichButton)->longPressedMillis();
-}
-
-Display * PDN::invalidateScreen() {
-    return display.invalidateScreen();
-}
-
-void PDN::render() {
-    display.render();
-}
-
-Display* PDN::drawImage(Image image, int xStart, int yStart) {
-    return display.drawImage(image, xStart, yStart);
+    lightManager.setLightColor(whichLights, ledNum, color);
 }
 
 void PDN::setVibration(int value) {
@@ -342,6 +109,35 @@ void PDN::setVibration(int value) {
 
 int PDN::getCurrentVibrationIntensity() {
     return haptics.getIntensity();
+}
+
+// Animation control methods
+void PDN::startAnimation(AnimationConfig config) {
+    lightManager.startAnimation(config);
+}
+
+void PDN::stopAnimation() {
+    lightManager.stopAnimation();
+}
+
+void PDN::pauseAnimation() {
+    lightManager.pauseAnimation();
+}
+
+void PDN::resumeAnimation() {
+    lightManager.resumeAnimation();
+}
+
+bool PDN::isAnimating() const {
+    return lightManager.isAnimating();
+}
+
+bool PDN::isPaused() const {
+    return lightManager.isPaused();
+}
+
+AnimationType PDN::getCurrentAnimation() const {
+    return lightManager.getCurrentAnimation();
 }
 
 void PDN::setDeviceId(string deviceId) {
@@ -424,4 +220,96 @@ void PDN::attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction 
 
 void PDN::attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
     getButton(whichButton)->setButtonLongPressRelease(newFunction, parameter);
+}
+
+//Button Functions
+void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction newFunction) {
+    switch(interactionType) {
+        case ButtonInteraction::CLICK: {
+            attachSingleClick(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::RELEASE: {
+            attachLongPressRelease(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::PRESS: {
+            attachPress(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::DOUBLE_CLICK: {
+            attachDoubleClick(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::MULTI_CLICK: {
+            attachMultiClick(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::LONG_PRESS: {
+            attachLongPress(whichButton, newFunction);
+            break;
+        }
+        case ButtonInteraction::DURING_LONG_PRESS: {
+            attachDuringLongPress(whichButton, newFunction);
+            break;
+        }
+    }
+}
+
+void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
+    parameterizedCallbackFunction newFunction, void *parameter) {
+    switch(interactionType) {
+        case ButtonInteraction::CLICK: {
+            attachSingleClick(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::RELEASE: {
+            attachLongPressRelease(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::PRESS: {
+            attachPress(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::DOUBLE_CLICK: {
+            attachDoubleClick(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::MULTI_CLICK: {
+            attachMultiClick(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::LONG_PRESS: {
+            attachLongPress(whichButton, newFunction, parameter);
+            break;
+        }
+        case ButtonInteraction::DURING_LONG_PRESS: {
+            attachDuringLongPress(whichButton, newFunction, parameter);
+            break;
+        }
+    }
+}
+
+void PDN::removeButtonCallbacks(ButtonIdentifier whichButton) {
+    getButton(whichButton)->removeButtonCallbacks();
+}
+
+bool PDN::isLongPressed(ButtonIdentifier whichButton) {
+    return getButton(whichButton)->isLongPressed();
+}
+
+unsigned long PDN::longPressedMillis(ButtonIdentifier whichButton) {
+    return getButton(whichButton)->longPressedMillis();
+}
+
+Display * PDN::invalidateScreen() {
+    return display.invalidateScreen();
+}
+
+void PDN::render() {
+    display.render();
+}
+
+Display* PDN::drawImage(Image image, int xStart, int yStart) {
+    return display.drawImage(image, xStart, yStart);
 }
