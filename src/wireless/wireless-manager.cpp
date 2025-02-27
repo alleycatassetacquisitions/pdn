@@ -4,118 +4,7 @@
 #include <esp_log.h>
 #include <memory>
 #include <utility>
-#include <esp_http_client.h>
-
-/**
- * Event handler for ESP-IDF HTTP client events.
- * This function processes various events during the HTTP request lifecycle
- * and manages the response data accumulation.
- * 
- * @param evt Pointer to the event structure containing event type and data
- * @return ESP_OK if event was handled successfully
- * 
- * Events handled:
- * - HTTP_EVENT_ERROR: Connection or protocol errors
- * - HTTP_EVENT_ON_DATA: Received response data chunks
- * - HTTP_EVENT_ON_FINISH: Request completed successfully
- * - HTTP_EVENT_DISCONNECTED: Connection terminated
- */
-esp_err_t http_event_handler(esp_http_client_event_t *evt) {
-    WifiState* state = static_cast<WifiState*>(evt->user_data);
-    HttpRequest* request = state->currentRequest;
-    char sample[51] = {0};
-    char error_msg[64] = {0};
-    int status_code = 0;
-    
-    if (!request) {
-        ESP_LOGE("WirelessManager", "HTTP event with no active request! Event ID: %d", evt->event_id);
-        return ESP_OK;
-    }
-    
-    if (evt->event_id == HTTP_EVENT_ERROR) {
-        ESP_LOGE("WirelessManager", "HTTP_EVENT_ERROR for URL: %s", request->url.c_str());
-        ESP_LOGE("WirelessManager", "Connection failed or protocol error occurred");
-        
-        request->retryCount++;
-        ESP_LOGI("WirelessManager", "Request retry count: %d", request->retryCount);
-        
-        if (request->retryCount >= 3) {
-            ESP_LOGE("WirelessManager", "Max retries reached for URL: %s", request->url.c_str());
-            if (request->hasErrorCallback) {
-                request->onError({
-                    WirelessError::CONNECTION_FAILED,
-                    "HTTP Event Error - Max retries reached"
-                });
-            }
-        } else {
-            ESP_LOGI("WirelessManager", "Will retry request later");
-        }
-    } else if (evt->event_id == HTTP_EVENT_ON_CONNECTED) {
-        ESP_LOGI("WirelessManager", "HTTP_EVENT_ON_CONNECTED to: %s", request->url.c_str());
-        ESP_LOGI("WirelessManager", "Connection established successfully");
-    } else if (evt->event_id == HTTP_EVENT_HEADERS_SENT) {
-        ESP_LOGI("WirelessManager", "HTTP_EVENT_HEADERS_SENT for: %s", request->url.c_str());
-        ESP_LOGI("WirelessManager", "Request headers sent, waiting for response");
-    } else if (evt->event_id == HTTP_EVENT_ON_HEADER) {
-        // Only log essential headers at INFO level
-        if (strcmp(evt->header_key, "Content-Type") == 0 || 
-            strcmp(evt->header_key, "Content-Length") == 0 ||
-            strcmp(evt->header_key, "Status") == 0) {
-            ESP_LOGI("WirelessManager", "Received header: %s: %s", 
-                     evt->header_key, evt->header_value);
-        } else {
-            // Log other headers at DEBUG level only
-            ESP_LOGD("WirelessManager", "Header: %s: %s", 
-                     evt->header_key, evt->header_value);
-        }
-    } else if (evt->event_id == HTTP_EVENT_ON_DATA) {
-        ESP_LOGI("WirelessManager", "HTTP_EVENT_ON_DATA for: %s, len=%d, data_len=%d", 
-                 request->url.c_str(), evt->data_len, request->responseData.length());
-        
-        if (evt->data_len) {
-            request->responseData.concat(String(reinterpret_cast<char*>(evt->data), evt->data_len));
-            ESP_LOGI("WirelessManager", "Response data length now: %d", request->responseData.length());
-            
-            if (evt->data_len > 0) {
-                strncpy(sample, reinterpret_cast<char*>(evt->data), evt->data_len > 50 ? 50 : evt->data_len);
-                ESP_LOGI("WirelessManager", "Data sample: %s", sample);
-            }
-        } else {
-            ESP_LOGW("WirelessManager", "Received empty data chunk");
-        }
-    } else if (evt->event_id == HTTP_EVENT_ON_FINISH) {
-        ESP_LOGI("WirelessManager", "HTTP_EVENT_ON_FINISH for: %s, response length: %d", 
-                 request->url.c_str(), request->responseData.length());
-        
-        status_code = esp_http_client_get_status_code(state->httpClient);
-        ESP_LOGI("WirelessManager", "HTTP status code: %d", status_code);
-        
-        if (status_code >= 200 && status_code < 300) {
-            ESP_LOGI("WirelessManager", "Request successful with status %d", status_code);
-            if (request->onSuccess) {
-                ESP_LOGI("WirelessManager", "Calling success callback for: %s", request->url.c_str());
-                request->onSuccess(request->responseData);
-            }
-        } else {
-            ESP_LOGE("WirelessManager", "Request failed with status %d", status_code);
-            if (request->hasErrorCallback) {
-                snprintf(error_msg, sizeof(error_msg), "HTTP Error: %d", status_code);
-                request->onError({
-                    status_code >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE,
-                    error_msg
-                });
-            }
-        }
-    } else if (evt->event_id == HTTP_EVENT_DISCONNECTED) {
-        ESP_LOGI("WirelessManager", "HTTP_EVENT_DISCONNECTED from: %s", request->url.c_str());
-        ESP_LOGI("WirelessManager", "Connection closed");
-    } else {
-        ESP_LOGI("WirelessManager", "Unknown HTTP event: %d for: %s", 
-                 evt->event_id, request->url.c_str());
-    }
-    
-    return ESP_OK;
-}
+#include <string>
 
 PowerOffState::PowerOffState() : WirelessState(WirelessStateId::POWER_OFF) {}
 
@@ -126,7 +15,6 @@ WifiState::WifiState(const char* wifiSsid, const char* wifiPassword, std::queue<
     , ssid(wifiSsid)
     , password(wifiPassword)
     , httpQueue(requestQueue)
-    , httpClient(nullptr)
     , currentRequest(nullptr) {}
 
 // PowerOffState Implementation
@@ -161,10 +49,20 @@ void EspNowState::onStateDismounted(Device* device) {
 // WifiState Implementation
 void WifiState::onStateMounted(Device* device) {
     idleTimer.setTimer(IDLE_TIMEOUT);
-    if (initializeWiFi() && initializeHttpClient()) {
-        ESP_LOGI("WirelessManager", "WiFi and HTTP client initialized successfully");
+    if (initializeWiFi()) {
+        ESP_LOGI("WirelessManager", "WiFi initialized successfully");
+        
+        // Configure WiFiClientSecure to skip certificate verification
+        wifiClientSecure.setInsecure();
+        
+        // Set additional WiFiClientSecure options for better reliability
+        wifiClientSecure.setTimeout(30); // 30 seconds timeout
+        wifiClientSecure.setHandshakeTimeout(30000); // 30 seconds for handshake
+        
+        ESP_LOGI("WirelessManager", "WiFiClientSecure configured with extended timeouts");
+        ESP_LOGI("WirelessManager", "WiFiClientSecure configured to skip certificate verification");
     } else {
-        ESP_LOGE("WirelessManager", "Failed to initialize WiFi or HTTP client");
+        ESP_LOGE("WirelessManager", "Failed to initialize WiFi");
     }
 }
 
@@ -175,7 +73,6 @@ void WifiState::onStateLoop(Device* device) {
 }
 
 void WifiState::onStateDismounted(Device* device) {
-    cleanupHttpClient();
     WiFi.disconnect(true);
 }
 
@@ -237,48 +134,6 @@ bool WifiState::initializeWiFi() {
     }
 }
 
-bool WifiState::initializeHttpClient() {
-    ESP_LOGI("WirelessManager", "Initializing HTTP client");
-    
-    esp_http_client_config_t config = {};
-    config.event_handler = http_event_handler;
-    config.timeout_ms = 10000;  // Increased timeout for better reliability
-    config.user_data = this;  // Pass WifiState instance to event handler
-    config.keep_alive_enable = true;  // Enable connection reuse
-    config.url = "http://jsonplaceholder.typicode.com"; // Use HTTP instead of HTTPS for testing
-    config.skip_cert_common_name_check = true;  // Skip certificate CN validation
-    config.cert_pem = nullptr;  // Skip certificate verification entirely
-    
-    ESP_LOGI("WirelessManager", "HTTP client config: timeout=%d ms, keep-alive=%s, base_url=%s, cert_verify=disabled", 
-             config.timeout_ms, config.keep_alive_enable ? "enabled" : "disabled", config.url);
-    
-    httpClient = esp_http_client_init(&config);
-    
-    if (httpClient != nullptr) {
-        ESP_LOGI("WirelessManager", "HTTP client initialized successfully");
-        return true;
-    } else {
-        ESP_LOGE("WirelessManager", "Failed to initialize HTTP client");
-        return false;
-    }
-}
-
-void WifiState::cleanupHttpClient() {
-    ESP_LOGI("WirelessManager", "Cleaning up HTTP client resources");
-    
-    if (httpClient) {
-        esp_err_t err = esp_http_client_cleanup(httpClient);
-        if (err == ESP_OK) {
-            ESP_LOGI("WirelessManager", "HTTP client cleanup successful");
-        } else {
-            ESP_LOGE("WirelessManager", "HTTP client cleanup failed with error: %s", esp_err_to_name(err));
-        }
-        httpClient = nullptr;
-    } else {
-        ESP_LOGW("WirelessManager", "No HTTP client to clean up");
-    }
-}
-
 /**
  * Processes queued HTTP requests and initiates new ones when ready.
  * This method is called periodically from the WiFi state loop.
@@ -336,14 +191,14 @@ bool WifiState::processQueuedRequests() {
 }
 
 /**
- * Initiates a new HTTP request using ESP-IDF's HTTP client.
- * This method configures and starts an asynchronous HTTP request.
+ * Initiates a new HTTP request using WiFiClientSecure and HTTPClient.
+ * This method configures and performs an HTTP request.
  * 
  * The request lifecycle:
  * 1. Validates WiFi connection
- * 2. Initializes ESP HTTP client with configuration
+ * 2. Creates an HTTPClient instance
  * 3. Sets up method and headers
- * 4. Initiates the asynchronous request
+ * 4. Performs the request and processes the response
  * 
  * @param request Reference to the HttpRequest to process
  */
@@ -360,22 +215,8 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
         });
         return;
     } else {
-        ESP_LOGI("WirelessManager", "WiFi connected to: %s, IP: %s, RSSI: %d dBm", 
+        ESP_LOGI("WirelessManager", "WiFi connected to %s, IP: %s, RSSI: %d dBm",
                  WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    }
-
-    // Check HTTP client with detailed logging
-    if (!httpClient) {
-        ESP_LOGW("WirelessManager", "HTTP client not initialized, attempting to initialize");
-        if (!initializeHttpClient()) {
-            ESP_LOGE("WirelessManager", "Failed to initialize HTTP client");
-            handleRequestError(request, {
-                WirelessError::CONNECTION_FAILED,
-                "Failed to initialize HTTP client"
-            });
-            return;
-        }
-        ESP_LOGI("WirelessManager", "HTTP client initialized successfully");
     }
 
     // Clear any previous response data
@@ -385,55 +226,139 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
     // Set request state
     request.inProgress = true;
     request.lastAttemptTime = millis();
-    currentRequest = &request;  // Set current request for event handler
+    currentRequest = &request;
     ESP_LOGI("WirelessManager", "Request marked as in-progress, attempt time: %lu", request.lastAttemptTime);
 
-    // Configure client for this request with detailed logging
-    ESP_LOGI("WirelessManager", "Configuring HTTP client for URL: %s", request.url.c_str());
-    esp_http_client_set_url(httpClient, request.url.c_str());
+    // Log memory usage before request
+    ESP_LOGI("WirelessManager", "Free heap before request: %d bytes", ESP.getFreeHeap());
+
+    // Create HTTP client
+    HTTPClient http;
     
-    // Set method with detailed logging
-    if (request.method == "POST") {
-        ESP_LOGI("WirelessManager", "Setting HTTP method to POST");
-        esp_http_client_set_method(httpClient, HTTP_METHOD_POST);
+    // Set a longer timeout (30 seconds instead of the default 5)
+    http.setTimeout(30000);
+    ESP_LOGI("WirelessManager", "Set HTTP client timeout to 30 seconds");
+    
+    // Check if URL starts with https
+    bool isHttps = request.url.substr(0, 5) == "https";
+    
+    // Begin the request with the appropriate client
+    if (isHttps) {
+        ESP_LOGI("WirelessManager", "Using secure client for HTTPS request");
+        http.begin(wifiClientSecure, request.url.c_str());
     } else {
-        ESP_LOGI("WirelessManager", "Setting HTTP method to GET");
-        esp_http_client_set_method(httpClient, HTTP_METHOD_GET);
+        ESP_LOGI("WirelessManager", "Using regular client for HTTP request");
+        http.begin(request.url.c_str());
     }
-
-    // Set headers for POST with detailed logging
-    if (request.method == "POST") {
-        ESP_LOGI("WirelessManager", "Setting Content-Type header to application/json");
-        esp_http_client_set_header(httpClient, "Content-Type", "application/json");
-        
-        ESP_LOGI("WirelessManager", "Setting POST payload: %s (length: %d)", 
-                 request.payload.c_str(), request.payload.length());
-        esp_http_client_set_post_field(httpClient, request.payload.c_str(), request.payload.length());
-    }
-
-    // Perform request with detailed logging
-    ESP_LOGI("WirelessManager", "Performing HTTP request to: %s", request.url.c_str());
-    esp_err_t err = esp_http_client_perform(httpClient);
     
-    if (err != ESP_OK) {
-        ESP_LOGE("WirelessManager", "HTTP request failed with error: %s (code: %d)", 
-                 esp_err_to_name(err), err);
+    // Add a small delay to ensure connection stability
+    delay(100);
+    
+    // Set content type for requests with payload
+    if (!request.payload.empty()) {
+        http.addHeader("Content-Type", "application/json");
+        ESP_LOGI("WirelessManager", "Added Content-Type: application/json header");
+    }
+    
+    // Perform the request based on the method
+    int httpCode = -1;
+    
+    if (request.method == "GET") {
+        ESP_LOGI("WirelessManager", "Performing GET request");
+        httpCode = http.GET();
+    } else if (request.method == "POST") {
+        ESP_LOGI("WirelessManager", "Performing POST request with payload: %s", request.payload.c_str());
+        ESP_LOGI("WirelessManager", "Payload size: %d bytes", request.payload.length());
+        httpCode = http.POST(request.payload.c_str());
+    } else if (request.method == "PUT") {
+        ESP_LOGI("WirelessManager", "Performing PUT request with payload: %s", request.payload.c_str());
+        ESP_LOGI("WirelessManager", "Payload size: %d bytes", request.payload.length());
+        httpCode = http.PUT(request.payload.c_str());
+    } else {
+        ESP_LOGE("WirelessManager", "Unsupported HTTP method: %s", request.method.c_str());
+        handleRequestError(request, {
+            WirelessError::INVALID_STATE,
+            "Unsupported HTTP method: " + request.method
+        });
+        http.end();
+        return;
+    }
+    
+    // Check HTTP response code
+    if (httpCode > 0) {
+        ESP_LOGI("WirelessManager", "HTTP response code: %d", httpCode);
+        
+        // HTTP request was successful
+        if (httpCode >= 200 && httpCode < 300) {
+            // Get the response payload
+            std::string payload = http.getString().c_str();
+            request.responseData = payload;
+            
+            ESP_LOGI("WirelessManager", "Request successful, response length: %d", payload.length());
+            
+            // Call success callback
+            if (request.onSuccess) {
+                ESP_LOGI("WirelessManager", "Calling success callback");
+                request.onSuccess(payload);
+            }
+            
+            // Request completed successfully, remove from queue
+            httpQueue->pop();
+            currentRequest = nullptr;
+        } else {
+            // HTTP error
+            ESP_LOGE("WirelessManager", "HTTP error: %d", httpCode);
+            
+            // Handle error based on HTTP code
+            WirelessError errorCode = httpCode >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
+            std::string errorMessage = "HTTP Error: " + std::to_string(httpCode);
+            
+            handleRequestError(request, {
+                errorCode,
+                errorMessage
+            });
+        }
+    } else {
+        // HTTP request failed
+        ESP_LOGE("WirelessManager", "HTTP request failed: %s", http.errorToString(httpCode).c_str());
+        
+        // Check if it's a timeout error
+        if (httpCode == HTTPC_ERROR_READ_TIMEOUT) {
+            ESP_LOGW("WirelessManager", "Read timeout detected. Server might be slow to respond.");
+            ESP_LOGI("WirelessManager", "This is common with free-tier services like Render that have cold starts.");
+            
+            // For timeout errors, we'll use a more aggressive retry strategy
+            if (request.retryCount < MAX_RETRIES) {
+                request.retryCount++;
+                request.inProgress = false;
+                
+                // Use a shorter backoff for timeouts since the server might just be slow
+                unsigned long backoffTime = 2000; // 2 seconds fixed backoff for timeouts
+                
+                ESP_LOGI("WirelessManager", "Will retry after timeout in %lu ms (attempt %d of %d)", 
+                         backoffTime, request.retryCount + 1, MAX_RETRIES + 1);
+                
+                // End the HTTP client before returning
+                http.end();
+                
+                // Log memory usage after request
+                ESP_LOGI("WirelessManager", "Free heap after timeout retry decision: %d bytes", ESP.getFreeHeap());
+                
+                return; // Keep the request in the queue for retry
+            }
+        }
+        
         handleRequestError(request, {
             WirelessError::CONNECTION_FAILED,
-            "Failed to perform HTTP request: " + String(esp_err_to_name(err))
+            "HTTP request failed: " + std::string(http.errorToString(httpCode).c_str())
         });
-        
-        // Reset client on error with detailed logging
-        ESP_LOGW("WirelessManager", "Resetting HTTP client due to error");
-        cleanupHttpClient();
-        ESP_LOGI("WirelessManager", "Reinitializing HTTP client");
-        initializeHttpClient();
-        currentRequest = nullptr;
-        httpQueue->pop();
-        ESP_LOGI("WirelessManager", "Request removed from queue, queue size: %d", httpQueue->size());
-    } else {
-        ESP_LOGI("WirelessManager", "HTTP request initiated successfully");
     }
+    
+    // End the HTTP client
+    http.end();
+    
+    // Log memory usage after request
+    ESP_LOGI("WirelessManager", "Free heap after request: %d bytes", ESP.getFreeHeap());
 }
 
 /**
@@ -441,7 +366,7 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
  * This method is called periodically from the WiFi state loop.
  * 
  * Timeout handling:
- * - Checks if request has exceeded timeout period (5000ms)
+ * - Checks if request has exceeded timeout period (10000ms)
  * - Increments retry counter if timed out
  * - Cleans up resources if max retries reached
  * - Removes failed requests from queue
@@ -517,12 +442,6 @@ void WifiState::checkOngoingRequests() {
             ESP_LOGI("WirelessManager", "Will retry request (attempt %d of 3)", 
                      request.retryCount + 1);
         }
-        
-        // Reset HTTP client after timeout
-        ESP_LOGW("WirelessManager", "Resetting HTTP client due to timeout");
-        cleanupHttpClient();
-        ESP_LOGI("WirelessManager", "Reinitializing HTTP client");
-        initializeHttpClient();
     } else if (detailedLogging) {
         ESP_LOGI("WirelessManager", "Request to %s is still in progress (%lu ms elapsed)", 
                  request.url.c_str(), elapsedTime);
@@ -538,17 +457,24 @@ void WifiState::checkOngoingRequests() {
 void WifiState::handleRequestError(HttpRequest& request, WirelessErrorInfo error) {
     ESP_LOGE("WirelessManager", "Request error: %s, URL: %s, Method: %s", 
              error.message.c_str(), request.url.c_str(), request.method.c_str());
+    
+    // Call error callback if available
     if (request.hasErrorCallback) {
         request.onError(error);
     }
+    
     // Implement retry logic with exponential backoff
     if (error.code == WirelessError::CONNECTION_FAILED && request.retryCount < MAX_RETRIES) {
+        request.retryCount++;
         unsigned long backoffTime = pow(2, request.retryCount) * 1000; // Exponential backoff
-        request.lastAttemptTime = millis() + backoffTime;
-        ESP_LOGI("WirelessManager", "Retrying request in %lu ms", backoffTime);
+        request.lastAttemptTime = millis();
+        request.inProgress = false;
+        ESP_LOGI("WirelessManager", "Retrying request in %lu ms (attempt %d of %d)", 
+                 backoffTime, request.retryCount + 1, MAX_RETRIES + 1);
     } else {
         ESP_LOGW("WirelessManager", "Max retries reached or non-recoverable error");
         httpQueue->pop();
+        currentRequest = nullptr;
     }
 }
 
@@ -624,11 +550,11 @@ void WirelessManager::populateStateMap() {
 }
 
 bool WirelessManager::makeHttpRequest(
-    const String& url,
-    std::function<void(const String&)> onSuccess,
+    const std::string& url,
+    std::function<void(const std::string&)> onSuccess,
     std::function<void(const WirelessErrorInfo&)> onError,
-    const String& method,
-    const String& payload
+    const std::string& method,
+    const std::string& payload
 ) {
     ESP_LOGI("WirelessManager", "Queueing HTTP request to: %s (method: %s)", url.c_str(), method.c_str());
     
@@ -650,10 +576,10 @@ bool WirelessManager::makeHttpRequest(
 }
 
 bool WirelessManager::makeHttpRequest(
-    const String& url,
-    std::function<void(const String&)> onSuccess,
-    const String& method,
-    const String& payload
+    const std::string& url,
+    std::function<void(const std::string&)> onSuccess,
+    const std::string& method,
+    const std::string& payload
 ) {
     ESP_LOGI("WirelessManager", "Queueing HTTP request to: %s (method: %s, no error callback)", 
              url.c_str(), method.c_str());
@@ -746,7 +672,7 @@ void WirelessManager::loop() {
         if (currentStateId == WirelessStateId::WIFI) {
             ESP_LOGI("WirelessManager", "WiFi status: %d", WiFi.status());
             if (WiFi.status() == WL_CONNECTED) {
-                ESP_LOGI("WirelessManager", "WiFi connected to: %s, IP: %s, RSSI: %d dBm", 
+                ESP_LOGI("WirelessManager", "WiFi connected to %s, IP: %s, RSSI: %d dBm", 
                          WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
             } else {
                 ESP_LOGW("WirelessManager", "WiFi not connected, status: %d", WiFi.status());

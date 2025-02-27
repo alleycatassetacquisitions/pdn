@@ -2,10 +2,12 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <esp_http_client.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 #include <queue>
 #include <memory>
 #include <functional>
+#include <string>
 
 #include "state-machine.hpp"
 #include "wireless/wireless-types.hpp"
@@ -16,9 +18,6 @@ class Device;
 class State;
 class StateMachine;
 
-// Forward declare the event handler
-esp_err_t http_event_handler(esp_http_client_event_t *evt);
-
 enum WirelessStateId {
     POWER_OFF = 0,
     ESP_NOW = 1,
@@ -27,21 +26,19 @@ enum WirelessStateId {
 
 /**
  * Represents an HTTP request with associated callbacks and state.
- * This struct manages both the request configuration and its runtime state,
- * integrating with ESP-IDF's esp_http_client for asynchronous operation.
+ * This struct manages both the request configuration and its runtime state.
  */
 struct HttpRequest {
-    String url;                                  ///< URL for the request
-    std::function<void(const String&)> onSuccess; ///< Callback for successful requests
+    std::string url;                                  ///< URL for the request
+    std::function<void(const std::string&)> onSuccess; ///< Callback for successful requests
     std::function<void(const WirelessErrorInfo&)> onError; ///< Callback for failed requests
-    String method = "GET";                       ///< HTTP method (GET, POST, etc.)
-    String payload = "";                         ///< Request payload (for POST requests)
-    bool hasErrorCallback = false;               ///< Whether an error callback was provided
-    bool inProgress = false;                     ///< Whether the request is currently in progress
-    unsigned long lastAttemptTime = 0;           ///< Time of the last attempt
-    int retryCount = 0;                          ///< Number of retry attempts
-    String responseData = "";                    ///< Accumulated response data
-    esp_http_client_handle_t client; ///< ESP-IDF HTTP client handle
+    std::string method = "GET";                       ///< HTTP method (GET, POST, etc.)
+    std::string payload = "";                         ///< Request payload (for POST/PUT requests)
+    bool hasErrorCallback = false;                    ///< Whether an error callback was provided
+    bool inProgress = false;                          ///< Whether the request is currently in progress
+    unsigned long lastAttemptTime = 0;                ///< Time of the last attempt
+    int retryCount = 0;                               ///< Number of retry attempts
+    std::string responseData = "";                    ///< Accumulated response data
 
     /**
      * Creates an HTTP request with both success and error callbacks.
@@ -50,13 +47,13 @@ struct HttpRequest {
      * @param successCallback Function to call on successful response
      * @param errorCallback Function to call on error
      * @param requestMethod HTTP method to use (defaults to "GET")
-     * @param requestPayload Request body for POST requests
+     * @param requestPayload Request body for POST/PUT requests
      */
-    HttpRequest(const String& requestUrl, 
-                std::function<void(const String&)> successCallback,
+    HttpRequest(const std::string& requestUrl, 
+                std::function<void(const std::string&)> successCallback,
                 std::function<void(const WirelessErrorInfo&)> errorCallback,
-                const String& requestMethod = "GET", 
-                const String& requestPayload = "")
+                const std::string& requestMethod = "GET", 
+                const std::string& requestPayload = "")
         : url(requestUrl), 
           method(requestMethod), 
           payload(requestPayload), 
@@ -65,8 +62,7 @@ struct HttpRequest {
           hasErrorCallback(true),
           retryCount(0), 
           lastAttemptTime(0), 
-          inProgress(false),
-          client(nullptr) {}
+          inProgress(false) {}
     
     /**
      * Creates an HTTP request with only a success callback.
@@ -75,12 +71,12 @@ struct HttpRequest {
      * @param requestUrl The target URL for the request
      * @param successCallback Function to call on successful response
      * @param requestMethod HTTP method to use (defaults to "GET")
-     * @param requestPayload Request body for POST requests
+     * @param requestPayload Request body for POST/PUT requests
      */
-    HttpRequest(const String& requestUrl, 
-                std::function<void(const String&)> successCallback,
-                const String& requestMethod = "GET", 
-                const String& requestPayload = "")
+    HttpRequest(const std::string& requestUrl, 
+                std::function<void(const std::string&)> successCallback,
+                const std::string& requestMethod = "GET", 
+                const std::string& requestPayload = "")
         : url(requestUrl), 
           method(requestMethod), 
           payload(requestPayload), 
@@ -88,8 +84,7 @@ struct HttpRequest {
           hasErrorCallback(false),
           retryCount(0), 
           lastAttemptTime(0), 
-          inProgress(false),
-          client(nullptr) {}
+          inProgress(false) {}
 };
 
 class WirelessState : public State {
@@ -126,21 +121,10 @@ public:
     
 private:
     /**
-     * Initializes WiFi connection and HTTP client.
-     * @return true if WiFi connection and client initialization successful
+     * Initializes WiFi connection.
+     * @return true if WiFi connection initialization successful
      */
     bool initializeWiFi();
-
-    /**
-     * Initializes the persistent HTTP client with default configuration.
-     * @return true if client initialization successful
-     */
-    bool initializeHttpClient();
-
-    /**
-     * Cleans up HTTP client resources.
-     */
-    void cleanupHttpClient();
 
     bool processQueuedRequests();
     void initiateHttpRequest(HttpRequest& request);
@@ -151,10 +135,8 @@ private:
     const char* password;
     uint8_t channel;
     std::queue<HttpRequest>* httpQueue;
-    esp_http_client_handle_t httpClient;  ///< Persistent HTTP client handle
     HttpRequest* currentRequest;          ///< Pointer to currently processing request
-    
-    friend esp_err_t http_event_handler(esp_http_client_event_t *evt);
+    WiFiClientSecure wifiClientSecure;    ///< Secure client for HTTPS requests
 };
 
 class WirelessManager : public StateMachine {
@@ -186,16 +168,16 @@ public:
      * @param url Target URL for the HTTP request
      * @param onSuccess Callback function for successful response
      * @param onError Callback function for error handling
-     * @param method HTTP method to use ("GET" or "POST")
-     * @param payload Request body for POST requests
+     * @param method HTTP method to use ("GET", "POST", or "PUT")
+     * @param payload Request body for POST/PUT requests
      * @return true if request was successfully queued
      */
     bool makeHttpRequest(
-        const String& url,
-        std::function<void(const String&)> onSuccess,
+        const std::string& url,
+        std::function<void(const std::string&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError,
-        const String& method = "GET",
-        const String& payload = ""
+        const std::string& method = "GET",
+        const std::string& payload = ""
     );
 
     /**
@@ -208,15 +190,15 @@ public:
      * 
      * @param url Target URL for the HTTP request
      * @param onSuccess Callback function for successful response
-     * @param method HTTP method to use ("GET" or "POST")
-     * @param payload Request body for POST requests
+     * @param method HTTP method to use ("GET", "POST", or "PUT")
+     * @param payload Request body for POST/PUT requests
      * @return true if request was successfully queued
      */
     bool makeHttpRequest(
-        const String& url,
-        std::function<void(const String&)> onSuccess,
-        const String& method = "GET",
-        const String& payload = ""
+        const std::string& url,
+        std::function<void(const std::string&)> onSuccess,
+        const std::string& method = "GET",
+        const std::string& payload = ""
     );
 
     // Force state changes

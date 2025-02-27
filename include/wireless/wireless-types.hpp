@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <functional>
 #include <optional>
+#include <string>
 
 enum class WirelessError {
     TIMEOUT,
@@ -15,9 +16,9 @@ enum class WirelessError {
 
 struct WirelessErrorInfo {
     WirelessError code;
-    String message;
+    std::string message;
 };
 
 // Callback definitions
-using HttpSuccessCallback = std::function<void(const String& jsonResponse)>;
+using HttpSuccessCallback = std::function<void(const std::string& jsonResponse)>;
 using HttpErrorCallback = std::function<void(const WirelessErrorInfo& error)>; 
