@@ -81,9 +81,11 @@ bool MatchManager::updateMatch(const string& match_id, bool winner_is_hunter,
 }
 
 string MatchManager::toJson() {
-    // Create JSON array
+    // Create JSON document with an object at the root
     StaticJsonDocument<2048> doc;  // Adjust size based on max matches
-    JsonArray matchArray = doc.to<JsonArray>();
+    
+    // Create a "matches" array within the root object
+    JsonArray matchArray = doc.createNestedArray("matches");
 
     // Read all matches from storage
     uint8_t count = getStoredMatchCount();
