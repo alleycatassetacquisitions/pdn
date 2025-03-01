@@ -33,9 +33,9 @@ public:
 
     string getDeviceId() override;
 
-    void setGlobablLightColor(LEDColor color) override;
+    void setGlobablLightColor(LEDColor color);
 
-    void setGlobalBrightness(int brightness) override;
+    void setGlobalBrightness(int brightness);
 
     void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction) override;
 
@@ -48,11 +48,11 @@ public:
 
     unsigned long longPressedMillis(ButtonIdentifier whichButton) override;
 
-    void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
+    void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color);
 
-    void fadeLightsBy(LightIdentifier whichLights, int value) override;
+    void fadeLightsBy(LightIdentifier whichLights, int value);
 
-    void setLight(LightIdentifier whichLights, int ledNum, LEDColor color) override;
+    void setLight(LightIdentifier whichLights, int ledNum, LEDColor color);
 
     Display * invalidateScreen() override;
 
@@ -71,14 +71,14 @@ public:
     int getCurrentVibrationIntensity() override;
 
     // Animation control methods
-    void startAnimation(AnimationConfig config) override;
-    void stopAnimation() override;
-    void pauseAnimation() override;
-    void resumeAnimation() override;
-    bool isAnimating() const override;
-    bool isPaused() const override;
-    bool isAnimationComplete() const override;
-    AnimationType getCurrentAnimation() const override;
+    void startAnimation(AnimationConfig config);
+    void stopAnimation();
+    void pauseAnimation();
+    void resumeAnimation();
+    bool isAnimating() const;
+    bool isPaused() const;
+    bool isAnimationComplete() const;
+    AnimationType getCurrentAnimation() const;
 
 protected:
     PDN();

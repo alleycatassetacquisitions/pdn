@@ -34,13 +34,6 @@ enum class EaseCurve {
     ELASTIC
 };
 
-struct AnimationConfig {
-    AnimationType type;
-    bool loop;
-    uint8_t speed;
-    EaseCurve curve = EaseCurve::LINEAR;  // Default to linear curve
-};
-
 // New struct to represent the state of all LEDs
 struct LEDState {
     struct SingleLEDState {
@@ -56,6 +49,42 @@ struct LEDState {
     uint32_t timestamp;            // When this state was generated
 
     LEDState() : timestamp(0) {}
+    
+    // Helper to set a single LED in the state
+    void setLED(bool isLeft, uint8_t index, const LEDColor& color, uint8_t brightness) {
+        if (index >= 9) return;
+        
+        SingleLEDState& led = isLeft ? 
+            leftLights[index] : 
+            rightLights[index];
+            
+        led.color = color;
+        led.brightness = brightness;
+    }
+
+    // Helper to set both left and right LEDs
+    void setLEDPair(uint8_t index, const LEDColor& color, uint8_t brightness) {
+        setLED(true, index, color, brightness);
+        setLED(false, index, color, brightness);
+    }
+
+    // Helper to clear all LEDs
+    void clear() {
+        for (int i = 0; i < 9; i++) {
+            leftLights[i] = SingleLEDState();
+            rightLights[i] = SingleLEDState();
+        }
+        transmitLight = SingleLEDState();
+    }
+};
+
+struct AnimationConfig {
+    AnimationType type;
+    bool loop;
+    uint8_t speed;
+    EaseCurve curve = EaseCurve::LINEAR;  // Default to linear curve
+    LEDState initialState;                // Initial LED state for the animation
+    uint16_t loopDelayMs = 0;             // Delay between animation loops (in milliseconds)
 };
 
 // Interface for animations
@@ -68,7 +97,7 @@ public:
     
     // Generate the next frame of the animation
     // Returns: The complete LED state for this frame
-    virtual LEDState animate(uint32_t currentTime) = 0;
+    virtual LEDState animate() = 0;
     
     // Check if the animation has completed
     virtual bool isComplete() const = 0;
@@ -87,14 +116,11 @@ public:
     
     // Check if the animation is paused
     virtual bool isPaused() const = 0;
-    
-    // Palette management
-    virtual void setPalette(const LEDColor* colors, uint8_t numColors) = 0;
-    virtual LEDColor getPaletteColor(uint8_t index) const = 0;
-    virtual bool hasPalette() const = 0;
-    virtual uint8_t getPaletteSize() const = 0;
 
 protected:
     // Helper method to get easing values
     virtual uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const = 0;
+    
+    // Helper method to interpolate between two colors
+    virtual LEDColor interpolateColor(const LEDColor& start, const LEDColor& end, uint8_t t) const = 0;
 }; 

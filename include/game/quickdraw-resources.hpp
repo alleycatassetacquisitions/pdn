@@ -81,7 +81,7 @@ const CRGBPalette16 hunterColors = CRGBPalette16(
     CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen,
     CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkGreen, CRGB::DarkGreen);
 
-const CRGBPalette16 idleColors = CRGBPalette16(
+const CRGBPalette16 debugColors = CRGBPalette16(
     CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
     CRGB::Red, CRGB::Yellow, CRGB::Red, CRGB::Yellow,
     CRGB::DarkGreen, CRGB::DarkBlue, CRGB::DarkGreen, CRGB::DarkBlue,
@@ -102,6 +102,72 @@ const CRGB hunterIdleColors[4] = {
     CRGB(0,200,100),  // Teal
     CRGB(0,180,180)   // Cyan
 };
+
+// LED color constants converted from CRGB to LEDColor
+const LEDColor bountyIdleLEDColors[8] = {
+    LEDColor(255, 2, 1),     // Color 1
+    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+    LEDColor(255, 51, 0),    // Color 3
+    LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+    LEDColor(255, 2, 1),     // Color 1
+    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+    LEDColor(255, 51, 0),    // Color 3
+    LEDColor(222, 97, 7)     // Color 4 (13% dimmer)
+};
+
+const LEDColor hunterIdleLEDColors[8] = {
+    LEDColor(0, 255, 0),     // Green
+    LEDColor(0, 237, 75),    // Blue-green
+    LEDColor(0, 200, 100),   // Teal
+    LEDColor(0, 180, 180),    // Cyan
+    LEDColor(0, 255, 0),     // Green
+    LEDColor(0, 237, 75),    // Blue-green
+    LEDColor(0, 200, 100),   // Teal
+    LEDColor(0, 180, 180)    // Cyan
+};
+
+// Predefined LED states for animations
+// Hunter idle LED state - green/blue gradient
+const LEDState HUNTER_IDLE_STATE = [](){
+    LEDState state;
+    // Initialize with default values (all black)
+    for (int i = 0; i < 9; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+    }
+    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+    
+    // Set the first 4 LEDs with hunter colors at full brightness
+    for (int i = 0; i < 4; i++) {
+        if (i < 4) {
+            state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
+            state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
+        }
+    }
+    
+    return state;
+}();
+
+// Bounty idle LED state - red/orange gradient
+const LEDState BOUNTY_IDLE_STATE = [](){
+    LEDState state;
+    // Initialize with default values (all black)
+    for (int i = 0; i < 9; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+    }
+    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+    
+    // Set the first 4 LEDs with bounty colors at full brightness
+    for (int i = 0; i < 4; i++) {
+        if (i < 4) {
+            state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
+            state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
+        }
+    }
+    
+    return state;
+}();
 
 // Pre-calculated curve values for smooth transitions (0-255)
 

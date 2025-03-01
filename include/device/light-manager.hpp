@@ -40,14 +40,10 @@ public:
     void resumeAnimation();
     
     // Direct LED control
-    void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color);
-    void setAllLights(LightIdentifier lights, LEDColor color);
-    void setBrightness(LightIdentifier lights, uint8_t brightness);
+    // void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color);
+    // void setAllLights(LightIdentifier lights, LEDColor color);
+    // void setBrightness(LightIdentifier lights, uint8_t brightness);
     void clear(LightIdentifier lights);
-    
-    // Color palette management
-    void setPalette(const LEDColor* colors, uint8_t numColors);
-    LEDColor getPaletteColor(uint8_t index) const;
     
     // Animation state query
     bool isAnimating() const;
@@ -55,23 +51,57 @@ public:
     bool isAnimationComplete() const;
     AnimationType getCurrentAnimation() const;
 
-protected:
-    // Helper methods
-    uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const;
-    LEDColor interpolateColor(const LEDColor& start, const LEDColor& end, uint8_t t) const;
-
 private:
+    /*
+        These methods are used to extract the CRGB arrays from the LEDState.
+        This is useful for sending the LEDState to the FastLED library.
+        Extract grip lights will create a CRGB array from the LEDState like this:
+
+        gripLight[0] = state.leftLights[0];
+        gripLight[1] = state.leftLights[1];
+        gripLight[2] = state.leftLights[2];
+        gripLight[3] = state.rightLights[2];
+        gripLight[4] = state.rightLights[1];
+        gripLight[5] = state.rightLights[0];
+        
+        And extract display lights will create a CRGB array from the LEDState like this:
+
+        displayLight[0] = state.leftLights[3];
+        displayLight[1] = state.leftLights[4];
+        displayLight[2] = state.leftLights[5];
+        displayLight[3] = state.leftLights[6];
+        displayLight[4] = state.leftLights[7];
+        displayLight[5] = state.leftLights[8];
+        displayLight[6] = state.rightLights[8];
+        displayLight[7] = state.rightLights[7];
+        displayLight[8] = state.rightLights[6];
+        displayLight[9] = state.rightLights[5];
+        displayLight[10] = state.rightLights[4];
+        displayLight[11] = state.rightLights[3];
+        displayLight[12] = state.transmitLight;
+        
+    */
+    void mapStateToGripLights(const LEDState& state);
+    void mapStateToDisplayLights(const LEDState& state);
+    
     // FastLED helpers
-    static CRGB convertToFastLED(const LEDColor& color);
+    static CRGB convertToFastLED(const LEDState::SingleLEDState& color);
     static LEDColor convertFromFastLED(const CRGB& color);
     
-    // Apply an LED state to the physical LEDs
+    /*
+        This method will apply the LEDState to the physical LEDs.
+        It will use the arrays extracted from the LEDState to set the color and brightness of the LEDs.
+        This should be a pair of simple for loops, one that iterates over the grip lights
+        and one that iterates over the display lights. For each LED, we will set the color and brightness.
+    */ 
     void applyLEDState(const LEDState& state);
     
     // Member variables
     DisplayLights& displayLights;
     GripLights& gripLights;
     IAnimation* currentAnimation;
-    LEDColor* palette;
-    uint8_t paletteSize;
+    
+    // Member arrays for extracted lights
+    CRGB gripLightArray[6];
+    CRGB displayLightArray[13];
 };

@@ -10,8 +10,6 @@ public:
         lights = new CRGB[numLights];
         FastLED.addLeds<WS2812B, pinNumber, GRB>(lights, numLights);
         // FastLED.setTemperature(DirectSunlight);
-        lightMask = new CRGB[numLights];
-        std::fill_n(lightMask, numLights, CRGB::Black);
     }
 
     ~LightStrip() {
@@ -42,29 +40,8 @@ public:
         lights[index] += color;
     };
 
-    void loop() {
-        for (int i = 0; i < numLights; i++) {
-            lights[i] -= lightMask[i];
-        }
-    }
-
-    void setLightOn(int index, bool on) {
-        if(on) {
-            lightMask[index] = CRGB::Black;
-        } else {
-            lightMask[index] = CRGB::White;
-        }
-    }
-
-    void resetMask() {
-        for (int i = 0; i < numLights; i++) {
-            lightMask[i] = CRGB::Black;
-        }
-    }
-
 protected:
     int numLights;
-    CRGB *lightMask;
     CRGB *lights;
     CRGBPalette16 currentPalette;
     int colorIndex;

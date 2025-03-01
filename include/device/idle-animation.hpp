@@ -3,107 +3,145 @@
 #include "animation-base.hpp"
 #include "simple-timer.hpp"
 #include <algorithm> // For std::min
+#include "esp_log.h"
 
 class IdleAnimation : public AnimationBase {
 public:
     IdleAnimation() : 
         AnimationBase(),
-        currentIndex_(8),  // Start at top
-        brightness_(0),
-        isFadingOut_(false),
+        currentIndex_(12),  // Start at top
+        progress(0),
         isWaitingForPause_(false) {
         // Initialize with 0ms timer (expired)
         pauseTimer_.setTimer(0);
-        
-        // Blue color scheme
-        primaryColor_ = LEDColor(0, 150, 255);  // Blue
-        trailColor1_ = LEDColor(0, 50, 255);    // Lighter blue
-        trailColor2_ = LEDColor(0, 0, 150);     // Darker blue
     }
 
 protected:
     void onInit() override {
-        currentIndex_ = 8;  // Start at top
-        brightness_ = 0;
-        isFadingOut_ = false;
+        //currentIndex starts at 12.
+        currentIndex_ = 12;
+        progress = 0;
         isWaitingForPause_ = false;
-        
-        // If a palette is available, use those colors
-        if (hasPalette()) {
-            primaryColor_ = getPaletteColor(0);
-            trailColor1_ = getPaletteColor(1 % getPaletteSize());
-            trailColor2_ = getPaletteColor(2 % getPaletteSize());
-        }
+
+        ledColors[0] = config_.initialState.leftLights[0].color;
+        ledColors[1] = config_.initialState.leftLights[1].color;
+        ledColors[2] = config_.initialState.leftLights[2].color;
+        ledColors[3] = config_.initialState.leftLights[3].color;
         
         pauseTimer_.setTimer(0);  // Reset pause timer
-        clearState(currentState_);
+        currentState_ = config_.initialState; //Set the current state to initial.
     }
 
-    LEDState onAnimate(uint32_t currentTime) override {
-        LEDState newState;
-        clearState(newState);
-
-        // If we're in the pause state
+    LEDState onAnimate() override {
+        // If we're waiting for a pause between animations
         if (isWaitingForPause_) {
             if (pauseTimer_.expired()) {
+                // Reset for next animation cycle
                 isWaitingForPause_ = false;
-                currentIndex_ = 8;  // Reset to top
-                brightness_ = 0;
-            }
-            return newState;  // Return empty state during pause
-        }
-
-        // Normal animation sequence with 3 LEDs in the chase
-        // Set the current LED and two trailing LEDs with decreasing brightness
-        setLEDPair(newState, currentIndex_, primaryColor_, brightness_);
-        
-        // First trailing LED (one position behind)
-        if (currentIndex_ < 8) {
-            uint8_t trailingBrightness1 = std::min<uint8_t>(255, brightness_ * 0.7);
-            setLEDPair(newState, currentIndex_ + 1, trailColor1_, trailingBrightness1);
-        }
-        
-        // Second trailing LED (two positions behind)
-        if (currentIndex_ < 7) {
-            uint8_t trailingBrightness2 = std::min<uint8_t>(255, brightness_ * 0.4);
-            setLEDPair(newState, currentIndex_ + 2, trailColor2_, trailingBrightness2);
-        }
-
-        for(int i = 0; i < 9; i++) {
-            if(!(currentIndex_ == i || currentIndex_ + 1 == i || currentIndex_ + 2 == i)) {
-                setLEDPair(newState, i, LEDColor(0, 0, 0), 0);
-            }
-        }
-
-        // Update brightness
-        static const uint8_t brightnessStep = 45;
-        if (brightness_ <= (255 - brightnessStep)) {
-            brightness_ += brightnessStep;
-        } else {
-            brightness_ = 255;
-        }
-
-        // When we reach full brightness, move to next position
-        if (brightness_ >= 255) {
-            if (currentIndex_ == 0) {  // If we're at the bottom
-                isWaitingForPause_ = true;
-                pauseTimer_.setTimer(250);
+                currentIndex_ = 12;  // Reset to top
+                progress = 0;
             } else {
-                brightness_ = 0;  // Reset brightness for next position
-                currentIndex_--;  // Move to next position (moving downward)
+                return currentState_;
             }
         }
 
-        return newState;
+        // Increment progress for fade in/out and interpolation.
+        progress = min(progress + 10, 255);  // Adjust speed as needed
+
+        if(progress > 255) {
+            progress = 255;
+        }
+
+        int currentBezierValue = getEasingValue(progress, config_.curve);
+        
+        switch(currentIndex_) {
+            case 12:
+                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[0], currentBezierValue), 65);
+                break;
+            case 11:
+                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 10:
+                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 9:
+                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 8:
+                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 7:
+                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 6:
+                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 5:
+                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), 65);
+                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 4:
+                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), 65);
+                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[0], currentBezierValue), min(currentBezierValue, 155));
+                break;
+            case 3:
+                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[2], currentBezierValue), 65);
+                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[1], currentBezierValue), 65);
+                break;
+            case 2:
+                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[2], currentBezierValue), 65);
+                break;
+            case 1:
+                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 65));
+                break;
+            default:
+                break;
+        }
+        
+        if (progress == 255) {
+            progress = 0;
+            currentIndex_--;
+
+            // If we've reached the end of the animation
+            if (currentIndex_ <= 0) {
+                // If looping is enabled, set up for the next loop
+                if (config_.loop) {
+                    isWaitingForPause_ = true;
+                    pauseTimer_.setTimer(config_.loopDelayMs);
+                } else {
+                    isComplete_ = true;
+                }
+            }
+        }
+
+        return currentState_;
     }
 
 private:
+    LEDColor ledColors[4];
     uint8_t currentIndex_;
-    uint8_t brightness_;
-    bool isFadingOut_;
+    uint8_t progress;
     bool isWaitingForPause_;
-    LEDColor primaryColor_;
-    LEDColor trailColor1_;
-    LEDColor trailColor2_;
     SimpleTimer pauseTimer_;
 }; 

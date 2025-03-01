@@ -4,21 +4,17 @@
 #include "game/quickdraw-resources.hpp"
 #include "simple-timer.hpp"
 #include <algorithm> // For std::min
+#include "esp_log.h"
 
 class AnimationBase : public IAnimation {
 public:
     AnimationBase() : 
         isPaused_(false),
-        isComplete_(false),
-        palette_(nullptr),
-        paletteSize_(0) {
+        isComplete_(false) {
         frameTimer_.setTimer(16); // Default 16ms between frames
     }
     
     virtual ~AnimationBase() {
-        if (palette_) {
-            delete[] palette_;
-        }
     }
 
     void init(const AnimationConfig& config) override {
@@ -26,10 +22,14 @@ public:
         isPaused_ = false;
         isComplete_ = false;
         frameTimer_.setTimer(config.speed);
+        
+        // Initialize with the provided initial state
+        currentState_ = config.initialState;
+        
         onInit();
     }
 
-    LEDState animate(uint32_t currentTime) override final {
+    LEDState animate() override final {
         if (isPaused_ || isComplete_) {
             return currentState_;
         }
@@ -37,56 +37,39 @@ public:
         // Only update if enough time has passed
         if (frameTimer_.expired()) {
             frameTimer_.setTimer(config_.speed);  // Reset timer for next frame
-            currentState_ = onAnimate(currentTime);
-            currentState_.timestamp = currentTime;
+            
+            // Update the current state directly and get it back
+            LEDState prevState = currentState_;
+            currentState_ = onAnimate();
+            currentState_.timestamp = millis();
         }
 
         return currentState_;
     }
 
     bool isComplete() const override { return isComplete_; }
-    void pause() override { isPaused_ = true; }
-    void resume() override { isPaused_ = false; }
-    void stop() override { isComplete_ = true; }
+    
+    void pause() override { 
+        isPaused_ = true; 
+    }
+    
+    void resume() override { 
+        isPaused_ = false; 
+    }
+    
+    void stop() override { 
+        isComplete_ = true; 
+    }
+    
     AnimationType getType() const override { return config_.type; }
     bool isPaused() const override { return isPaused_; }
-
-    // Palette management
-    void setPalette(const LEDColor* colors, uint8_t numColors) {
-        if (palette_) {
-            delete[] palette_;
-            palette_ = nullptr;
-            paletteSize_ = 0;
-        }
-        
-        if (colors && numColors > 0) {
-            palette_ = new LEDColor[numColors];
-            paletteSize_ = numColors;
-            for (uint8_t i = 0; i < numColors; i++) {
-                palette_[i] = colors[i];
-            }
-        }
-    }
-    
-    LEDColor getPaletteColor(uint8_t index) const {
-        if (palette_ && index < paletteSize_) {
-            return palette_[index];
-        }
-        return LEDColor(255, 255, 255); // Default to white
-    }
-    
-    bool hasPalette() const {
-        return palette_ != nullptr && paletteSize_ > 0;
-    }
-    
-    uint8_t getPaletteSize() const {
-        return paletteSize_;
-    }
 
 protected:
     // Override these in derived classes
     virtual void onInit() = 0;
-    virtual LEDState onAnimate(uint32_t currentTime) = 0;
+    
+    // Returns the updated state (which is also stored in currentState_)
+    virtual LEDState onAnimate() = 0;
     
     // Use the easing curves from quickdraw-resources.hpp
     uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const override {
@@ -107,32 +90,15 @@ protected:
                 return LINEAR_CURVE[progress];
         }
     }
-
-    // Helper to set a single LED in the state
-    void setLED(LEDState& state, bool isLeft, uint8_t index, const LEDColor& color, uint8_t brightness) {
-        if (index >= 9) return;
-        
-        LEDState::SingleLEDState& led = isLeft ? 
-            state.leftLights[index] : 
-            state.rightLights[index];
-            
-        led.color = color;
-        led.brightness = brightness;
-    }
-
-    // Helper to set both left and right LEDs
-    void setLEDPair(LEDState& state, uint8_t index, const LEDColor& color, uint8_t brightness) {
-        setLED(state, true, index, color, brightness);
-        setLED(state, false, index, color, brightness);
-    }
-
-    // Helper to clear all LEDs
-    void clearState(LEDState& state) {
-        for (int i = 0; i < 9; i++) {
-            state.leftLights[i] = LEDState::SingleLEDState();
-            state.rightLights[i] = LEDState::SingleLEDState();
-        }
-        state.transmitLight = LEDState::SingleLEDState();
+    
+    // Interpolate between two colors based on progress (t is 0-255)
+    LEDColor interpolateColor(const LEDColor& start, const LEDColor& end, uint8_t t) const {
+        // Use fixed-point math for interpolation (t is 0-255)
+        return LEDColor(
+            start.red + ((end.red - start.red) * t) / 255,
+            start.green + ((end.green - start.green) * t) / 255,
+            start.blue + ((end.blue - start.blue) * t) / 255
+        );
     }
 
 protected:
@@ -141,6 +107,4 @@ protected:
     SimpleTimer frameTimer_;
     AnimationConfig config_;
     LEDState currentState_;
-    LEDColor* palette_;
-    uint8_t paletteSize_;
 }; 

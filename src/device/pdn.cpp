@@ -79,28 +79,28 @@ void PDN::onStateChange() {
 
 
 void PDN::setGlobablLightColor(LEDColor color) {
-    lightManager.setAllLights(LightIdentifier::DISPLAY_LIGHTS, color);
-    lightManager.setAllLights(LightIdentifier::GRIP_LIGHTS, color);
+    // lightManager.setAllLights(LightIdentifier::DISPLAY_LIGHTS, color);
+    // lightManager.setAllLights(LightIdentifier::GRIP_LIGHTS, color);
 }
 
 void PDN::setGlobalBrightness(int brightness) {
-    lightManager.setBrightness(LightIdentifier::DISPLAY_LIGHTS, brightness);
-    lightManager.setBrightness(LightIdentifier::GRIP_LIGHTS, brightness);
+    // lightManager.setBrightness(LightIdentifier::DISPLAY_LIGHTS, brightness);
+    // lightManager.setBrightness(LightIdentifier::GRIP_LIGHTS, brightness);
 }
 
 void PDN::fadeLightsBy(LightIdentifier whichLights, int value) {
     // Convert fade value to brightness (255 - fade)
-    uint8_t brightness = max(0, 255 - value);
-    lightManager.setBrightness(whichLights, brightness);
+    // uint8_t brightness = max(0, 255 - value);
+    // lightManager.setBrightness(whichLights, brightness);
 }
 
 void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
     // For now, just set the light since LightManager doesn't have an additive mode
-    lightManager.setLightColor(whichLights, ledNum, color);
+    // lightManager.setLightColor(whichLights, ledNum, color);
 }
 
 void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
-    lightManager.setLightColor(whichLights, ledNum, color);
+    // lightManager.setLightColor(whichLights, ledNum, color);
 }
 
 void PDN::setVibration(int value) {
