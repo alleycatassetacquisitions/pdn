@@ -44,10 +44,6 @@ void Idle::onStateMounted(Device *PDN) {
         currentPalette = bountyColors;
     }
 
-    isWaitingBetweenCycles = false;
-    transitionProgress = 0;
-    ledChaseIndex = 8;  // Start from top LED
-
     PDN->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
@@ -55,10 +51,10 @@ void Idle::onStateMounted(Device *PDN) {
 
     AnimationConfig config;
     config.type = AnimationType::IDLE;
-    config.speed = 5;
-    config.curve = EaseCurve::ELASTIC;
-    config.initialState = player->isHunter() ? HUNTER_IDLE_STATE : BOUNTY_IDLE_STATE;
-    config.loopDelayMs = 250;
+    config.speed = 16;
+    config.curve = EaseCurve::LINEAR;
+    config.initialState = player->isHunter() ? HUNTER_IDLE_STATE_ALTERNATE : BOUNTY_IDLE_STATE_ALTERNATE;
+    config.loopDelayMs = 0;
     config.loop = true;
     PDN->startAnimation(config);
 }

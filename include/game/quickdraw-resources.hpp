@@ -126,6 +126,72 @@ const LEDColor hunterIdleLEDColors[8] = {
     LEDColor(0, 180, 180)    // Cyan
 };
 
+const LEDColor hunterIdleLEDColorsAlternate[9] = {
+    LEDColor(0, 255, 0),     // Green
+    LEDColor(0, 237, 75),    // Blue-green
+    LEDColor(0, 200, 100),   // Teal
+    LEDColor(0, 180, 180),    // Cyan
+    LEDColor(0, 255, 0),     // Green
+    LEDColor(0, 237, 75),    // Blue-green
+    LEDColor(0, 200, 100),   // Teal
+    LEDColor(0, 180, 180),    // Cyan
+    LEDColor(0, 0, 0),   // Teal
+};
+
+// const LEDColor bountyIdleLEDColorsAlternate[9] = {
+//     LEDColor(255, 2, 1),     // Color 1
+//     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+//     LEDColor(255, 51, 0),    // Color 3
+//     LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+//     LEDColor(255, 2, 1),     // Color 1
+//     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+//     LEDColor(255, 51, 0),    // Color 3
+//     LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+//     LEDColor(0, 0, 0),    // Color 2 (7% dimmer)
+// };
+
+
+// const LEDColor bountyIdleLEDColorsAlternate[9] = {
+//     LEDColor(255, 2, 1),     // Color 1
+//     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+//     LEDColor(255, 51, 0),    // Color 3
+//     LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+//     LEDColor(255, 2, 1),     // Color 1
+//     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+//     LEDColor(255, 51, 0),    // Color 3
+//     LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+//     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+// };
+
+
+const LEDColor bountyIdleLEDColorsAlternate[9] = {
+    LEDColor(255, 2, 1),     // Color 1
+    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+    LEDColor(255, 51, 0),    // Color 3
+    LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+    LEDColor(255, 2, 1),     // Color 1
+    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+    LEDColor(255, 51, 0),    // Color 3
+    LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+    LEDColor(0, 0, 0),    // Color 2 (7% dimmer)
+};
+
+
+/*
+v3
+const LEDColor bountyIdleLEDColorsAlternate[9] = {
+    LEDColor(255, 2, 1),     // Color 1
+    LEDColor(0, 0, 0),    
+    LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
+    LEDColor(0, 0, 0),    
+    LEDColor(255, 51, 0),    // Color 3
+    LEDColor(0, 0, 0),    
+    LEDColor(222, 97, 7),     // Color 4 (13% dimmer)
+    LEDColor(0, 0, 0),    
+    LEDColor(0, 0, 0),
+};
+*/
+
 // Predefined LED states for animations
 // Hunter idle LED state - green/blue gradient
 const LEDState HUNTER_IDLE_STATE = [](){
@@ -148,6 +214,20 @@ const LEDState HUNTER_IDLE_STATE = [](){
     return state;
 }();
 
+// Predefined LED states for animations
+// Hunter idle LED state - green/blue gradient
+const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
+    LEDState state;
+    
+    // Set the first 4 LEDs with hunter colors at full brightness
+    for (int i = 0; i < 9; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
+        state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
+    }
+    
+    return state;
+}();
+
 // Bounty idle LED state - red/orange gradient
 const LEDState BOUNTY_IDLE_STATE = [](){
     LEDState state;
@@ -164,6 +244,19 @@ const LEDState BOUNTY_IDLE_STATE = [](){
             state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
             state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
         }
+    }
+    
+    return state;
+}();
+
+const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
+    LEDState state;
+    
+    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+    
+    for (int i = 0; i < 9; i++) { 
+        state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColorsAlternate[i], 65);
+        state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColorsAlternate[i], 65);
     }
     
     return state;
