@@ -60,7 +60,11 @@ protected:
             
             // Set the interpolated color
             LEDColor interpolatedColor = {r, g, b};
-            currentState_.setLEDPair(i, interpolatedColor, 65);
+            if(i > 2) {
+                currentState_.setLEDPair(i, interpolatedColor, (int)(brightness * brightnessRatio));
+            } else {
+                currentState_.setLEDPair(i, interpolatedColor, brightness);
+            }
         }
         
         // Increment transition progress
@@ -87,4 +91,6 @@ private:
     int transitionProgress;
     bool isWaitingForPause_;
     SimpleTimer pauseTimer_;
+    uint8_t brightness = 87;
+    float brightnessRatio = .2;
 }; 
