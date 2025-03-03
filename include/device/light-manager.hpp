@@ -23,6 +23,7 @@
 #include "device/grip-lights.hpp"
 #include "device/idle-animation.hpp"
 #include "device/countdown-animation.hpp"
+#include "device/vertical-chase-animation.hpp"
 
 class LightManager {
 public:

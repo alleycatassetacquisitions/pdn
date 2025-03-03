@@ -45,6 +45,9 @@ void LightManager::startAnimation(AnimationConfig config) {
         case AnimationType::IDLE:
             currentAnimation = new IdleAnimation();
             break;
+        case AnimationType::VERTICAL_CHASE:
+            currentAnimation = new VerticalChaseAnimation();
+            break;
         case AnimationType::DEVICE_CONNECTED:
             // TODO: Implement other animation types
             break;

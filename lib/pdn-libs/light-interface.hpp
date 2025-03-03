@@ -21,6 +21,7 @@ struct LEDColor {
 
 enum class AnimationType {
     IDLE,
+    VERTICAL_CHASE,
     DEVICE_CONNECTED,
     COUNTDOWN,
     LOSE,
