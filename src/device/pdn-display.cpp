@@ -78,6 +78,6 @@ PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8
 
     screen.begin();
     screen.clearBuffer();
-    screen.setContrast(125);
+    screen.setContrast(175);
     screen.setFont(u8g2_font_prospero_nbp_tf);
 }

@@ -1,6 +1,7 @@
 #include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
+#include "game/quickdraw-resources.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -37,7 +38,6 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
-
     if (player->isHunter()) {
         currentPalette = hunterColors;
     } else {
@@ -48,6 +48,15 @@ void Idle::onStateMounted(Device *PDN) {
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     render();
+
+    AnimationConfig config;
+    config.type = AnimationType::IDLE;
+    config.speed = 16;
+    config.curve = EaseCurve::LINEAR;
+    config.initialState = player->isHunter() ? HUNTER_IDLE_STATE_ALTERNATE : BOUNTY_IDLE_STATE_ALTERNATE;
+    config.loopDelayMs = 0;
+    config.loop = true;
+    PDN->startAnimation(config);
 }
 
 void Idle::onStateLoop(Device *PDN) {
@@ -56,9 +65,7 @@ void Idle::onStateLoop(Device *PDN) {
         PDN->writeString(&responseStringMessages[0]);
     }
 
-    EVERY_N_MILLIS(16) {
-        ledAnimation(PDN);
-    }
+
 
     string *validMessage = waitForValidMessage(PDN);
     if (validMessage != nullptr) {
@@ -68,46 +75,8 @@ void Idle::onStateLoop(Device *PDN) {
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
-}
-
-void Idle::ledAnimation(Device *PDN) {
-    if (breatheUp) {
-        ledBrightness++;
-    } else {
-        ledBrightness--;
-    }
-    pwm_val =
-            255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
-
-    if (ledBrightness == 255) {
-        breatheUp = false;
-    } else if (ledBrightness == 80) {
-        breatheUp = true;
-    }
-
-    if (random8() % 8 == 0) {
-        CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
-        PDN->addToLight(LightIdentifier::DISPLAY_LIGHTS,
-                        random8() % (numDisplayLights - 1),
-                        LEDColor(color.r, color.g, color.b)
-        );
-    }
-
-
-    for (int i = 0; i < numGripLights; i++) {
-        if (random8() % 130 == 0) {
-            CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
-            PDN->addToLight(LightIdentifier::GRIP_LIGHTS,
-                            i,
-                            LEDColor(color.r, color.g, color.b)
-            );
-        }
-    }
-
-    if(random8() % 2) {
-        PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 1);
-        PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 1);
-    }
+    cycleDelayTimer.invalidate();
+    isWaitingBetweenCycles = false;
 }
 
 bool Idle::transitionToHandshake() {

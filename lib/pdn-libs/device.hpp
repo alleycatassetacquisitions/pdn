@@ -1,31 +1,14 @@
 #pragma once
+
 #include <string>
 #include "device-serial.hpp"
 #include "display.hpp"
 #include "button.hpp"
+#include "light-interface.hpp"
 
 using namespace std;
 
 //LED Resource Identifiers
-
-enum class LightIdentifier {
-    GLOBAL = 0,
-    DISPLAY_LIGHTS = 1,
-    GRIP_LIGHTS = 2,
-    TRANSMIT_LIGHT = 3
-};
-
-struct LEDColor {
-    int red;
-    int green;
-    int blue;
-
-    LEDColor(int red, int green, int blue) {
-        this->red = red;
-        this->green = green;
-        this->blue = blue;
-    }
-};
 
 class Device : public DeviceSerial {
 public:
@@ -53,7 +36,7 @@ public:
     virtual unsigned long longPressedMillis(ButtonIdentifier whichButton) = 0;
 
     // LED Methods
-    virtual void setGlobablLightColor(LEDColor color) = 0;
+    virtual void setGlobalLightColor(LEDColor color) = 0;
 
     virtual void setGlobalBrightness(int brightness) = 0;
 
@@ -80,6 +63,16 @@ public:
     virtual Display* drawImage(Image image) = 0;
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
+
+    // Animation control methods
+    virtual void startAnimation(AnimationConfig config) = 0;
+    virtual void stopAnimation() = 0;
+    virtual void pauseAnimation() = 0;
+    virtual void resumeAnimation() = 0;
+    virtual bool isAnimating() const = 0;
+    virtual bool isPaused() const = 0;
+    virtual bool isAnimationComplete() const = 0;
+    virtual AnimationType getCurrentAnimation() const = 0;
 
 protected:
     Device() {}

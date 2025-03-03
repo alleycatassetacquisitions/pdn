@@ -46,7 +46,7 @@ void DuelCountdown::onStateMounted(Device *PDN) {
     } else {
         countdownColor = bountyColors[0];
     }
-    PDN->setGlobablLightColor(LEDColor(countdownColor.r, countdownColor.g, countdownColor.b));
+    PDN->setGlobalLightColor(LEDColor(countdownColor.r, countdownColor.g, countdownColor.b));
     PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
 
     PDN->

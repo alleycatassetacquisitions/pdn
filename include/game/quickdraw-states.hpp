@@ -94,12 +94,17 @@ public:
 private:
     Player* player;
     bool transitionToHandshakeState = false;
+    int ledChaseIndex = 2;
+    uint8_t transitionProgress = 0;
+    bool isWaitingBetweenCycles = false;
+    SimpleTimer cycleDelayTimer;
     const float smoothingPoints = 255;
-    byte ledBrightness = 65;
-    float pwm_val = 0;
+    byte ledBrightness[3] = {160, 80, 0};
+    float pwmValues[3] = {0, 0, 0};
     bool breatheUp = true;
     long idleLEDBreak = 5000;
     CRGBPalette16 currentPalette;
+    CRGB lastColor;
 };
 
 class Handshake : public State {
