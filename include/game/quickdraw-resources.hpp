@@ -91,8 +91,8 @@ const CRGBPalette16 debugColors = CRGBPalette16(
 // Idle animation colors for bounty and hunter
 const CRGB bountyIdleColors[4] = {
     CRGB(255,2,1),    // Color 1
-    CRGB(237,75,0),   // Color 2 (7% dimmer)
     CRGB(255,51,0),   // Color 3
+    CRGB(237,75,0),   // Color 2 (7% dimmer)
     CRGB(222,97,7)    // Color 4 (13% dimmer)
 };
 
@@ -135,7 +135,7 @@ const LEDColor hunterIdleLEDColorsAlternate[9] = {
     LEDColor(0, 237, 75),    // Blue-green
     LEDColor(0, 200, 100),   // Teal
     LEDColor(0, 180, 180),    // Cyan
-    LEDColor(0, 0, 0),   // Teal
+    LEDColor(0, 180, 180)    // Cyan
 };
 
 // const LEDColor bountyIdleLEDColorsAlternate[9] = {
