@@ -135,7 +135,7 @@ const LEDColor hunterIdleLEDColorsAlternate[9] = {
     LEDColor(0, 237, 75),    // Blue-green
     LEDColor(0, 200, 100),   // Teal
     LEDColor(0, 180, 180),    // Cyan
-    LEDColor(0, 0, 0),   // Teal
+    LEDColor(0, 180, 180)    // Cyan
 };
 
 // const LEDColor bountyIdleLEDColorsAlternate[9] = {

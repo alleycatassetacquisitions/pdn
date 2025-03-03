@@ -55,14 +55,14 @@ void Idle::onStateMounted(Device *PDN) {
         config.type = AnimationType::IDLE;
         config.speed = 16;
         config.curve = EaseCurve::LINEAR;
-        config.initialState = player->isHunter() ? HUNTER_IDLE_STATE_ALTERNATE : BOUNTY_IDLE_STATE_ALTERNATE;
+        config.initialState = HUNTER_IDLE_STATE_ALTERNATE;
         config.loopDelayMs = 0;
         config.loop = true;
     } else {
         config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 5;
         config.curve = EaseCurve::ELASTIC;
-        config.initialState = player->isHunter() ? HUNTER_IDLE_STATE : BOUNTY_IDLE_STATE;
+        config.initialState = BOUNTY_IDLE_STATE;
         config.loopDelayMs = 1500;
         config.loop = true;
     }
