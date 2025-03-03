@@ -33,7 +33,7 @@ public:
 
     string getDeviceId() override;
 
-    void setGlobablLightColor(LEDColor color);
+    void setGlobalLightColor(LEDColor color);
 
     void setGlobalBrightness(int brightness);
 

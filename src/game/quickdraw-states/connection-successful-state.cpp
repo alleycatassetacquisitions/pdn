@@ -37,7 +37,7 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
     } else {
         color = bountyColors[random8(16)];
     }
-    PDN->setGlobablLightColor(LEDColor(color.r, color.g, color.b));
+    PDN->setGlobalLightColor(LEDColor(color.r, color.g, color.b));
 
     PDN->
     invalidateScreen()->

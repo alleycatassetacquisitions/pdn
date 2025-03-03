@@ -78,7 +78,7 @@ void PDN::onStateChange() {
 }
 
 
-void PDN::setGlobablLightColor(LEDColor color) {
+void PDN::setGlobalLightColor(LEDColor color) {
     // lightManager.setAllLights(LightIdentifier::DISPLAY_LIGHTS, color);
     // lightManager.setAllLights(LightIdentifier::GRIP_LIGHTS, color);
 }

@@ -36,7 +36,7 @@ public:
     virtual unsigned long longPressedMillis(ButtonIdentifier whichButton) = 0;
 
     // LED Methods
-    virtual void setGlobablLightColor(LEDColor color) = 0;
+    virtual void setGlobalLightColor(LEDColor color) = 0;
 
     virtual void setGlobalBrightness(int brightness) = 0;
 

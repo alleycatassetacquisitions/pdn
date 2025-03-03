@@ -103,7 +103,7 @@ class MockDevice : public Device {
     MOCK_METHOD(void, setLight, (LightIdentifier, int, LEDColor), (override));
 
     //LED Methods
-    MOCK_METHOD(void, setGlobablLightColor, (LEDColor), (override));
+    MOCK_METHOD(void, setGlobalLightColor, (LEDColor), (override));
     MOCK_METHOD(void, setGlobalBrightness, (int), (override));
     MOCK_METHOD(void, addToLight, (LightIdentifier, int, LEDColor), (override));
     MOCK_METHOD(void, fadeLightsBy, (LightIdentifier, int), (override));
@@ -119,6 +119,16 @@ class MockDevice : public Device {
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
     MOCK_METHOD(Display*, invalidateScreen, (), (override));
     MOCK_METHOD(void, render, (), (override));
+
+    //Animation Methods
+    MOCK_METHOD(void, startAnimation, (AnimationConfig), (override));
+    MOCK_METHOD(void, stopAnimation, (), (override));
+    MOCK_METHOD(void, pauseAnimation, (), (override));
+    MOCK_METHOD(void, resumeAnimation, (), (override));
+    MOCK_METHOD(bool, isAnimating, (), (const, override));
+    MOCK_METHOD(bool, isPaused, (), (const, override));
+    MOCK_METHOD(bool, isAnimationComplete, (), (const, override));
+    MOCK_METHOD(AnimationType, getCurrentAnimation, (), (const, override));
 
     //DeviceSerial Fake.
     HWSerialWrapper* outputJack() override {
