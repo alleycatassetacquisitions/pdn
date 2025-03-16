@@ -1,4 +1,4 @@
-#include "game/handshake-machine.hpp"
+#include "game/quickdraw-states.hpp"
 #include "esp_log.h"
 //
 // Created by Elli Furedy on 10/1/2024.
@@ -25,8 +25,7 @@
       }
     }
  */
-BountySendFinalAckState::BountySendFinalAckState(Player *player) : State(BOUNTY_SEND_FINAL_ACK_STATE) {
-    this->player = player;
+BountySendFinalAckState::BountySendFinalAckState(Player *player) : BaseHandshakeState(BOUNTY_SEND_FINAL_ACK_STATE, player) {
 }
 
 BountySendFinalAckState::~BountySendFinalAckState() {

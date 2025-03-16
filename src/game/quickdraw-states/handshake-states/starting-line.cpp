@@ -1,4 +1,4 @@
-#include "game/handshake-machine.hpp"
+#include "game/quickdraw-states.hpp"
 #include "esp_log.h"
 
 //
@@ -13,8 +13,8 @@
       return true;
     }
  */
-StartingLineState::StartingLineState(Player *player) : State(HANDSHAKE_STARTING_LINE_STATE) {
-    this->player = player;
+StartingLineState::StartingLineState(Player *player) : BaseHandshakeState(HANDSHAKE_STARTING_LINE_STATE, player) {
+    // No need to set player here as it's already set in the BaseHandshakeState constructor
 }
 
 StartingLineState::~StartingLineState() {

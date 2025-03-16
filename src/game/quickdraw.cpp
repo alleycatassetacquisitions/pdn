@@ -17,12 +17,12 @@ void Quickdraw::populateStateMap() {
     Idle* idle = new Idle(player);
     
     // New handshake states
-    HandshakeInitiate* handshakeInitiate = new HandshakeInitiate(player);
-    BountySendCC* bountySendCC = new BountySendCC(player);
-    BountySendAck* bountySendAck = new BountySendAck(player);
-    HunterSendId* hunterSendId = new HunterSendId(player);
-    HunterSendAck* hunterSendAck = new HunterSendAck(player);
-    HandshakeStartingLine* handshakeStartingLine = new HandshakeStartingLine(player);
+    HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
+    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
+    BountySendFinalAckState* bountySendAck = new BountySendFinalAckState(player);
+    HunterSendIdState* hunterSendId = new HunterSendIdState(player);
+    HunterSendFinalAckState* hunterSendAck = new HunterSendFinalAckState(player);
+    StartingLineState* startingLine = new StartingLineState(player);
     
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown(player);
@@ -50,13 +50,13 @@ void Quickdraw::populateStateMap() {
     // Handshake state transitions
     handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&HandshakeInitiate::transitionToBountySendCC,
+            std::bind(&HandshakeInitiateState::transitionToBountySendCC,
                 handshakeInitiate),
             bountySendCC));
     
     handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&HandshakeInitiate::transitionToHunterSendId,
+            std::bind(&HandshakeInitiateState::transitionToHunterSendId,
                 handshakeInitiate),
             hunterSendId));
     
@@ -70,7 +70,7 @@ void Quickdraw::populateStateMap() {
     // Bounty path
     bountySendCC->addTransition(
         new StateTransition(
-            std::bind(&BountySendCC::transitionToBountySendAck,
+            std::bind(&BountySendConnectionConfirmedState::transitionToBountySendAck,
                 bountySendCC),
             bountySendAck));
     
@@ -83,9 +83,9 @@ void Quickdraw::populateStateMap() {
     
     bountySendAck->addTransition(
         new StateTransition(
-            std::bind(&BountySendAck::transitionToHandshakeStartingLine,
+            std::bind(&BountySendFinalAckState::transitionToStartingLine,
                 bountySendAck),
-            handshakeStartingLine));
+            startingLine));
     
     // Common timeout transition for all handshake states
     bountySendAck->addTransition(
@@ -97,7 +97,7 @@ void Quickdraw::populateStateMap() {
     // Hunter path
     hunterSendId->addTransition(
         new StateTransition(
-            std::bind(&HunterSendId::transitionToHunterSendAck,
+            std::bind(&HunterSendIdState::transitionToSendAck,
                 hunterSendId),
             hunterSendAck));
     
@@ -110,9 +110,9 @@ void Quickdraw::populateStateMap() {
     
     hunterSendAck->addTransition(
         new StateTransition(
-            std::bind(&HunterSendAck::transitionToHandshakeStartingLine,
+            std::bind(&HunterSendFinalAckState::transitionToStartingLine,
                 hunterSendAck),
-            handshakeStartingLine));
+            startingLine));
     
     // Common timeout transition for all handshake states
     hunterSendAck->addTransition(
@@ -122,17 +122,17 @@ void Quickdraw::populateStateMap() {
             idle));
     
     // Starting line state
-    handshakeStartingLine->addTransition(
+    startingLine->addTransition(
         new StateTransition(
-            std::bind(&HandshakeStartingLine::transitionToConnectionSuccessful,
-                handshakeStartingLine),
+            std::bind(&StartingLineState::handshakeSuccessful,
+                startingLine),
             connectionSuccessful));
     
     // Common timeout transition for all handshake states
-    handshakeStartingLine->addTransition(
+    startingLine->addTransition(
         new StateTransition(
             std::bind(&BaseHandshakeState::transitionToIdle,
-                handshakeStartingLine),
+                startingLine),
             idle));
 
     connectionSuccessful->addTransition(
@@ -182,7 +182,7 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(bountySendAck);
     stateMap.push_back(hunterSendId);
     stateMap.push_back(hunterSendAck);
-    stateMap.push_back(handshakeStartingLine);
+    stateMap.push_back(startingLine);
     
     stateMap.push_back(connectionSuccessful);
     stateMap.push_back(duelCountdown);
