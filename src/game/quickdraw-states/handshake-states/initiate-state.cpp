@@ -1,8 +1,8 @@
-#include "game/handshake-machine.hpp"
+#include "game/quickdraw-states.hpp"
 #include "esp_log.h"
 
-HandshakeInitiateState::HandshakeInitiateState(Player *player) : State(HANDSHAKE_INITIATE_STATE) {
-    this->player = player;
+HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE, player) {
+    // No need to set player here as it's already set in the BaseHandshakeState constructor
 }
 
 HandshakeInitiateState::~HandshakeInitiateState() {

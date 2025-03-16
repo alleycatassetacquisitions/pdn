@@ -1,4 +1,4 @@
-#include "game/handshake-machine.hpp"
+#include "game/quickdraw-states.hpp"
 #include "id-generator.hpp"
 #include "esp_log.h"
 
@@ -9,8 +9,8 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 
 
-BountySendConnectionConfirmedState::BountySendConnectionConfirmedState(Player *player) : State(BOUNTY_SEND_CC_STATE) {
-    this->player = player;
+BountySendConnectionConfirmedState::BountySendConnectionConfirmedState(Player *player) : BaseHandshakeState(BOUNTY_SEND_CC_STATE, player) {
+    // No need to set player here as it's already set in the BaseHandshakeState constructor
 }
 
 BountySendConnectionConfirmedState::~BountySendConnectionConfirmedState() {

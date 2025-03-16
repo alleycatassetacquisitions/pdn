@@ -1,11 +1,11 @@
-#include "game/handshake-machine.hpp"
+#include "game/quickdraw-states.hpp"
 #include "esp_log.h"
 //
 // Created by Elli Furedy on 10/1/2024.
 //
 
-HunterSendFinalAckState::HunterSendFinalAckState(Player *player) : State(HUNTER_SEND_FINAL_ACK_STATE) {
-    this->player = player;
+HunterSendFinalAckState::HunterSendFinalAckState(Player *player) : BaseHandshakeState(HUNTER_SEND_FINAL_ACK_STATE, player) {
+    // No need to set player here as it's already set in the BaseHandshakeState constructor
 }
 
 HunterSendFinalAckState::~HunterSendFinalAckState() {
@@ -30,7 +30,6 @@ void HunterSendFinalAckState::onStateLoop(Device *PDN) {
 
 void HunterSendFinalAckState::onStateDismounted(Device *PDN) {
     ESP_LOGI("HUNTER_SEND_ACK", "State dismounted");
-    State::onStateDismounted(PDN);
     QuickdrawWirelessManager::GetInstance()->clearCallbacks();
 }
 

@@ -14,7 +14,7 @@
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-comms-manager.hpp"
 
 // Core game objects
 Device* pdn = PDN::GetInstance();
@@ -24,7 +24,7 @@ Quickdraw game = Quickdraw(player, pdn);
 
 // Remote player management
 RemotePlayerManager remotePlayers;
-QuickdrawWirelessManager *quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
+QuickdrawCommsManager *quickdrawCommsManager = QuickdrawCommsManager::GetInstance();
 
 void setup() {
     Serial.begin(115200);
@@ -46,17 +46,24 @@ void setup() {
   WiFi.channel(6);
 
   player->setUserID(idGenerator->generateId());
-  quickdrawWirelessManager->initialize(player, 1000);
+  
+  // Initialize the communications manager
+  quickdrawCommsManager->initialize(player, 1000);
+  
+  // Register for serial callbacks
+  pdn->setOnStringReceivedCallback([](std::string message) {
+      QuickdrawCommsManager::GetInstance()->processSerialCommand(message);
+  });
   
   remotePlayers.StartBroadcastingPlayerInfo(player, 5000);
 
   EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
       [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
         {
-          QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
+          QuickdrawCommsManager* manager = (QuickdrawCommsManager*)userArg;
           manager->processQuickdrawCommand(srcMacAddr, data, len);
         },
-        quickdrawWirelessManager);
+        quickdrawCommsManager);
 
 
   EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,

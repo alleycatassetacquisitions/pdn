@@ -1,13 +1,13 @@
 #include "id-generator.hpp"
-#include "game/handshake-machine.hpp"
+#include "game/quickdraw-states.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "esp_log.h"
 
 // Opening Handshake State for a Hunter. we have sent our mac address over serial and are waiting
 // for the opponent to send the match id and their user id.
 
-HunterSendIdState::HunterSendIdState(Player *player) : State(HUNTER_SEND_ID_STATE) {
-    this->player = player;
+HunterSendIdState::HunterSendIdState(Player *player) : BaseHandshakeState(HUNTER_SEND_ID_STATE, player) {
+    // No need to set player here as it's already set in the BaseHandshakeState constructor
 }
 
 HunterSendIdState::~HunterSendIdState() {
