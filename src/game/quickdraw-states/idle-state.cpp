@@ -2,6 +2,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "wireless/esp-now-comms.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -18,19 +19,6 @@
  */
 Idle::Idle(Player* player) : State(IDLE) {
     this->player = player;
-    std::vector<const string *> writing;
-    std::vector<const string *> reading;
-
-    if (player->isHunter()) {
-        reading.push_back(&BOUNTY_BATTLE_MESSAGE);
-        writing.push_back(&HUNTER_BATTLE_MESSAGE);
-    } else {
-        reading.push_back(&HUNTER_BATTLE_MESSAGE);
-        writing.push_back(&BOUNTY_BATTLE_MESSAGE);
-    }
-
-    registerValidMessages(reading);
-    registerResponseMessage(writing);
 }
 
 Idle::~Idle() {
@@ -48,6 +36,8 @@ void Idle::onStateMounted(Device *PDN) {
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     render();
+
+    PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
 
     AnimationConfig config;
     
@@ -72,21 +62,87 @@ void Idle::onStateMounted(Device *PDN) {
 void Idle::onStateLoop(Device *PDN) {
 
     EVERY_N_MILLIS(250) {
-        PDN->writeString(&responseStringMessages[0]);
+        if(!player->isHunter()) {
+            PDN->writeString(SERIAL_HEARTBEAT.c_str());
+        }
     }
 
-
-
-    string *validMessage = waitForValidMessage(PDN);
-    if (validMessage != nullptr) {
+    if(sendMacAddress) {
+        uint8_t macAddr[6];
+        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
+        const char* macStr = MacToString(macAddr);
+        ESP_LOGI("IDLE", "Perparing to Send Mac Address: %s", macStr);
+        
+        PDN->writeString(SEND_MAC_ADDRESS);
+        PDN->writeString(macStr);
         transitionToHandshakeState = true;
     }
+
+    // string *validMessage = waitForValidMessage(PDN);
+    // if (validMessage != nullptr) {
+    //     transitionToHandshakeState = true;
+    // }
 }
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
-    cycleDelayTimer.invalidate();
-    isWaitingBetweenCycles = false;
+    sendMacAddress = false;
+    waitingForMacAddress = false;
+    PDN->clearCallbacks();
+}
+
+void Idle::serialEventCallbacks(string message) {
+    ESP_LOGI("IDLE", "Serial event received: %s", message.c_str());
+    if(message.compare(SERIAL_HEARTBEAT) == 0) {
+        sendMacAddress = true;  
+    } else if(message.compare(SEND_MAC_ADDRESS) == 0) {
+        waitingForMacAddress = true;
+    } else if(waitingForMacAddress) {
+        waitingForMacAddress = false;
+        player->setOpponentMacAddress(message);
+        transitionToHandshakeState = true;
+    }
+}
+
+
+void Idle::ledAnimation(Device *PDN) {
+    // if (breatheUp) {
+    //     ledBrightness++;
+    // } else {
+    //     ledBrightness--;
+    // }
+    // pwm_val =
+    //         255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
+
+    // if (ledBrightness == 255) {
+    //     breatheUp = false;
+    // } else if (ledBrightness == 80) {
+    //     breatheUp = true;
+    // }
+
+    // if (random8() % 8 == 0) {
+    //     CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+    //     PDN->addToLight(LightIdentifier::DISPLAY_LIGHTS,
+    //                     random8() % (numDisplayLights - 1),
+    //                     LEDColor(color.r, color.g, color.b)
+    //     );
+    // }
+
+
+    // for (int i = 0; i < numGripLights; i++) {
+    //     if (random8() % 130 == 0) {
+    //         CRGB color = ColorFromPalette(currentPalette, random8(), pwm_val, LINEARBLEND);
+    //         PDN->addToLight(LightIdentifier::GRIP_LIGHTS,
+    //                         i,
+    //                         LEDColor(color.r, color.g, color.b)
+    //         );
+    //     }
+    // }
+
+    // if(random8() % 2) {
+    //     PDN->fadeLightsBy(LightIdentifier::DISPLAY_LIGHTS, 1);
+    //     PDN->fadeLightsBy(LightIdentifier::GRIP_LIGHTS, 1);
+    // }
 }
 
 bool Idle::transitionToHandshake() {

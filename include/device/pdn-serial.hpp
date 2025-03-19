@@ -23,6 +23,7 @@ class PDNSerialOut : public HWSerialWrapper {
     void print(char msg) override;
     void println(char* msg) override;
     void println(string msg) override;
+    void flush() override;
 };
 
 class PDNSerialIn : public HWSerialWrapper {
@@ -40,4 +41,5 @@ public:
     void print(char msg) override;
     void println(char* msg) override;
     void println(string msg) override;
+    void flush() override;
 };

@@ -20,4 +20,5 @@ class HWSerialWrapper {
     virtual void print(char msg) = 0;
     virtual void println(char* msg) = 0;
     virtual void println(string msg) = 0;
+    virtual void flush() = 0;
 };

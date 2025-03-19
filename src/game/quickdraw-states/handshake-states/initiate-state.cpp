@@ -1,61 +1,46 @@
-#include "game/handshake-machine.hpp"
-//
-// Created by Elli Furedy on 9/30/2024.
-//
+#include "game/quickdraw-states.hpp"
+#include "esp_log.h"
 
-/*
-bool initiateHandshake()
-{
-  if (comms().available() > 0 && Serial1.peek() == BATTLE_MESSAGE)
-  {
-    comms().read();
-    comms().write(BATTLE_MESSAGE);
-    return true;
-  }
-
-  return false;
-}
-    bool initiateHandshake() {
-      if (gameCommsAvailable()) {
-        if(peekGameComms() == BOUNTY_BATTLE_MESSAGE && isHunter) {
-          readGameComms();
-          writeGameComms(HUNTER_BATTLE_MESSAGE);
-          return true;
-        } else if(peekGameComms() == HUNTER_BATTLE_MESSAGE && !isHunter) {
-          readGameComms();
-          writeGameComms(BOUNTY_BATTLE_MESSAGE);
-          return true;
-        }
-      }
- */
-HandshakeInitiateState::HandshakeInitiateState(Player *player) : State(HANDSHAKE_INITIATE_STATE) {
-    isHunter = player->isHunter();
-    std::vector<const string *> writing;
-
-    if (isHunter) {
-        writing.push_back(&HUNTER_BATTLE_MESSAGE);
-    } else {
-        writing.push_back(&BOUNTY_BATTLE_MESSAGE);
-    }
-
-    registerResponseMessage(writing);
+HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE, player) {
+    // No need to set player here as it's already set in the BaseHandshakeState constructor
 }
 
 HandshakeInitiateState::~HandshakeInitiateState() {
+    player = nullptr;
 }
 
 void HandshakeInitiateState::onStateMounted(Device *PDN) {
-    for (int i = 0; i < responseStringMessages.size(); i++) {
-        PDN->writeString(&responseStringMessages[i]);
-    }
+    ESP_LOGI("INITIATE_STATE", "State mounted");
+    handshakeSettlingTimer.setTimer(HANDSHAKE_SETTLE_TIME);
+}
 
-    transitionToReceiveBattleState = true;
+void HandshakeInitiateState::onStateLoop(Device *PDN) {
+    ESP_LOGI("INITIATE_STATE", "State loop running");
+    handshakeSettlingTimer.updateTime();
+    ESP_LOGI("INITIATE_STATE", "Timer expired: %d", handshakeSettlingTimer.expired());
+    if(player->isHunter()) {
+        ESP_LOGI("INITIATE_STATE", "Player is Hunter");
+        transitionToHunterSendIdState = true;
+    } else {
+        if(handshakeSettlingTimer.expired()) {
+            ESP_LOGI("INITIATE_STATE", "Transitioning to BountySendCCState");
+            transitionToBountySendCCState = true;
+        }
+    }
 }
 
 void HandshakeInitiateState::onStateDismounted(Device *PDN) {
-    transitionToReceiveBattleState = false;
+    ESP_LOGI("INITIATE_STATE", "State dismounted");
+    transitionToBountySendCCState = false;
+    transitionToHunterSendIdState = false;
+    handshakeSettlingTimer.invalidate();
 }
 
-bool HandshakeInitiateState::transitionToReceiveBattle() {
-    return transitionToReceiveBattleState;
+bool HandshakeInitiateState::transitionToBountySendCC() {
+    return transitionToBountySendCCState;
+} 
+
+
+bool HandshakeInitiateState::transitionToHunterSendId() {
+    return transitionToHunterSendIdState;
 }

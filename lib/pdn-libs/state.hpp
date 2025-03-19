@@ -38,7 +38,7 @@ public:
     // Method to check if the transition condition is met
     bool isConditionMet() const {
         return condition();
-    }
+    };
 
     // Getter for the next state
     State *getNextState() const {
@@ -133,7 +133,8 @@ public:
 
     //Checks if the currently received String message is a part of the set of valid messages.
     bool isMessageValidForState(string *msg) {
-        return validStringMessages.find(*msg) != validStringMessages.end();
+        bool isValid = validStringMessages.find(*msg) != validStringMessages.end();
+        return isValid;
     }
 
     /*

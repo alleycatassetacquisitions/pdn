@@ -62,7 +62,7 @@ Allegiance Player::getAllegiance() const
 
 void Player::setUserID(char* newId)
 {
-  id = newId;
+  id = string(newId);
 }
 
 string Player::getUserID() const
@@ -85,4 +85,12 @@ void Player::setCurrentOpponentId(string opponentId) {
 
 string* Player::getCurrentOpponentId() {
     return currentOpponentId;
+}
+
+void Player::setOpponentMacAddress(string macAddress) {
+    *opponentMacAddress = macAddress;
+}
+
+string* Player::getOpponentMacAddress() {
+    return opponentMacAddress;
 }

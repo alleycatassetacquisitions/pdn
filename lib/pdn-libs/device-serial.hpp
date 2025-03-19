@@ -6,10 +6,8 @@
 
 #include "serial-wrapper.hpp"
 #include <string>
-
+#include <functional>
 #include "device-constants.hpp"
-
-using namespace std;
 
 enum class SerialIdentifier {
     OUTPUT_JACK = 0,
@@ -20,13 +18,9 @@ class DeviceSerial {
     public:
     virtual ~DeviceSerial() {}
 
-    void writeString(string *msg) {
+    void writeString(string msg) {
         getCurrentCommsJack()->print(STRING_START);
-        getCurrentCommsJack()->println(*msg);
-    }
-
-    void writeString(const string* msg) {
-        writeString(new string(*msg));
+        getCurrentCommsJack()->println(msg);
     }
 
     string readString(){
@@ -61,13 +55,38 @@ class DeviceSerial {
     }
 
     bool commsAvailable() {
-                return getCurrentCommsJack()->available() > 0;
+        return getCurrentCommsJack()->available() > 0;
     }
 
     int getSerialWriteQueueSize() {
         return TRANSMIT_QUEUE_MAX_SIZE - getCurrentCommsJack()->availableForWrite();
     }
 
+    void setOnStringReceivedCallback(std::function<void(std::string)> callback) {
+        onStringReceivedCallback = callback;
+    }
+
+
+    void clearCallbacks() {
+        onStringReceivedCallback = nullptr;
+    }
+
+    void serialLoop() {
+        if (getCurrentCommsJack()->available()) {
+            char incomingChar = getCurrentCommsJack()->read();
+            if (incomingChar == STRING_START) {
+                string receivedString = getCurrentCommsJack()->readStringUntil(STRING_TERM);
+                if (onStringReceivedCallback) {
+                    onStringReceivedCallback(receivedString);
+                }
+            }
+        }
+    }
+
+    void flushSerial() {
+        outputJack()->flush();
+        inputJack()->flush();
+    }
 
 
 protected:
@@ -92,4 +111,5 @@ protected:
 private:
 
     SerialIdentifier currentCommsJack = SerialIdentifier::OUTPUT_JACK;
+    std::function<void(std::string)> onStringReceivedCallback;
 };

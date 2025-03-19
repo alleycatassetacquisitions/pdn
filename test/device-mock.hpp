@@ -65,6 +65,10 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         print(STRING_TERM);
     }
 
+    void flush() override {
+        msgQueue.clear();
+    }
+
     deque<char> msgQueue;
 
 };

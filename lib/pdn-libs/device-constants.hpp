@@ -38,8 +38,11 @@ const string BOUNTY_HANDSHAKE_FINAL_ACK = "bhfa";
 const string ZAP = "zap";
 const string YOU_DEFEATED_ME = "ydm";
 
+const string SERIAL_HEARTBEAT = "hb";
+
 const string SEND_MATCH_ID = "smid";
 const string SEND_USER_ID = "suid";
+const string SEND_MAC_ADDRESS = "smac";
 
 const char STRING_TERM = '\r';
 const char STRING_START = '*';

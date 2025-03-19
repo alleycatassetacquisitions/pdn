@@ -34,7 +34,7 @@ int PDNSerialOut::read() {
 }
 
 string PDNSerialOut::readStringUntil(char terminator) {
-    return Serial1.readStringUntil(terminator).c_str();
+    return string(Serial1.readStringUntil(terminator).c_str());
 }
 
 void PDNSerialOut::print(char msg) {
@@ -49,8 +49,13 @@ void PDNSerialOut::println(string msg) {
     Serial1.println(msg.c_str());
 }
 
+void PDNSerialOut::flush() {
+    Serial1.flush();
+}
+
 PDNSerialIn::PDNSerialIn() {
 }
+
 
 void PDNSerialIn::begin() {
     pinMode(RXt, OUTPUT);
@@ -60,7 +65,7 @@ void PDNSerialIn::begin() {
 }
 
 int PDNSerialIn::availableForWrite() {
-    Serial2.availableForWrite();
+    return Serial2.availableForWrite();
 }
 
 int PDNSerialIn::available() {
@@ -76,7 +81,7 @@ int PDNSerialIn::read() {
 }
 
 string PDNSerialIn::readStringUntil(char terminator) {
-    return Serial2.readStringUntil(terminator).c_str();
+    return string(Serial2.readStringUntil(terminator).c_str());
 }
 
 void PDNSerialIn::print(char msg) {
@@ -89,4 +94,8 @@ void PDNSerialIn::println(char *msg) {
 
 void PDNSerialIn::println(string msg) {
     Serial2.println(msg.c_str());
+}
+
+void PDNSerialIn::flush() {
+    Serial2.flush();
 }

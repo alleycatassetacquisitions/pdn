@@ -15,7 +15,15 @@ void Quickdraw::populateStateMap() {
     Sleep* sleep = new Sleep(player);
     AwakenSequence* awakenSequence = new AwakenSequence();
     Idle* idle = new Idle(player);
-    Handshake* handshake = new Handshake(player);
+    
+    // New handshake states
+    HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
+    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
+    BountySendFinalAckState* bountySendAck = new BountySendFinalAckState(player);
+    HunterSendIdState* hunterSendId = new HunterSendIdState(player);
+    HunterSendFinalAckState* hunterSendAck = new HunterSendFinalAckState(player);
+    StartingLineState* startingLine = new StartingLineState(player);
+    
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown(player);
     Duel* duel = new Duel(player);
@@ -37,17 +45,94 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&Idle::transitionToHandshake,
                 idle),
-            handshake));
+            handshakeInitiate));
 
-    handshake->addTransition(
+    // Handshake state transitions
+    handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&Handshake::transitionToConnectionSuccessful,
-                handshake),
-                connectionSuccessful));
-    handshake->addTransition(
+            std::bind(&HandshakeInitiateState::transitionToBountySendCC,
+                handshakeInitiate),
+            bountySendCC));
+    
+    handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&Handshake::transitionToIdle,
-            handshake),
+            std::bind(&HandshakeInitiateState::transitionToHunterSendId,
+                handshakeInitiate),
+            hunterSendId));
+    
+    // Common timeout transition for all handshake states
+    handshakeInitiate->addTransition(
+        new StateTransition(
+            std::bind(&BaseHandshakeState::transitionToIdle,
+                handshakeInitiate),
+            idle));
+    
+    // Bounty path
+    bountySendCC->addTransition(
+        new StateTransition(
+            std::bind(&BountySendConnectionConfirmedState::transitionToBountySendAck,
+                bountySendCC),
+            bountySendAck));
+    
+    // Common timeout transition for all handshake states
+    bountySendCC->addTransition(
+        new StateTransition(
+            std::bind(&BaseHandshakeState::transitionToIdle,
+                bountySendCC),
+            idle));
+    
+    bountySendAck->addTransition(
+        new StateTransition(
+            std::bind(&BountySendFinalAckState::transitionToStartingLine,
+                bountySendAck),
+            startingLine));
+    
+    // Common timeout transition for all handshake states
+    bountySendAck->addTransition(
+        new StateTransition(
+            std::bind(&BaseHandshakeState::transitionToIdle,
+                bountySendAck),
+            idle));
+    
+    // Hunter path
+    hunterSendId->addTransition(
+        new StateTransition(
+            std::bind(&HunterSendIdState::transitionToSendAck,
+                hunterSendId),
+            hunterSendAck));
+    
+    // Common timeout transition for all handshake states
+    hunterSendId->addTransition(
+        new StateTransition(
+            std::bind(&BaseHandshakeState::transitionToIdle,
+                hunterSendId),
+            idle));
+    
+    hunterSendAck->addTransition(
+        new StateTransition(
+            std::bind(&HunterSendFinalAckState::transitionToStartingLine,
+                hunterSendAck),
+            startingLine));
+    
+    // Common timeout transition for all handshake states
+    hunterSendAck->addTransition(
+        new StateTransition(
+            std::bind(&BaseHandshakeState::transitionToIdle,
+                hunterSendAck),
+            idle));
+    
+    // Starting line state
+    startingLine->addTransition(
+        new StateTransition(
+            std::bind(&StartingLineState::handshakeSuccessful,
+                startingLine),
+            connectionSuccessful));
+    
+    // Common timeout transition for all handshake states
+    startingLine->addTransition(
+        new StateTransition(
+            std::bind(&BaseHandshakeState::transitionToIdle,
+                startingLine),
             idle));
 
     connectionSuccessful->addTransition(
@@ -90,7 +175,15 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(sleep);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
-    stateMap.push_back(handshake);
+    
+    // Add new handshake states
+    stateMap.push_back(handshakeInitiate);
+    stateMap.push_back(bountySendCC);
+    stateMap.push_back(bountySendAck);
+    stateMap.push_back(hunterSendId);
+    stateMap.push_back(hunterSendAck);
+    stateMap.push_back(startingLine);
+    
     stateMap.push_back(connectionSuccessful);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);

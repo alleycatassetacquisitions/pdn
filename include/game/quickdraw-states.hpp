@@ -1,10 +1,10 @@
 #pragma once
 
-#include "handshake-machine.hpp"
 #include "player.hpp"
 #include "simple-timer.hpp"
 #include "state.hpp"
 #include <FastLED.h>
+#include "wireless/quickdraw-wireless-manager.hpp"
 #include <queue>
 
 using namespace std;
@@ -15,12 +15,17 @@ enum QuickdrawStateId {
     SLEEP = 0,
     AWAKEN_SEQUENCE = 1,
     IDLE = 2,
-    HANDSHAKE = 3,
-    CONNECTION_SUCCESSFUL = 4,
-    DUEL_COUNTDOWN = 5,
-    DUEL = 6,
-    WIN = 7,
-    LOSE = 8
+    HANDSHAKE_INITIATE_STATE = 3,
+    BOUNTY_SEND_CC_STATE = 4,
+    HUNTER_SEND_ID_STATE = 5,
+    BOUNTY_SEND_FINAL_ACK_STATE = 6,
+    HUNTER_SEND_FINAL_ACK_STATE = 7,
+    HANDSHAKE_STARTING_LINE_STATE = 8,
+    CONNECTION_SUCCESSFUL = 9,
+    DUEL_COUNTDOWN = 10,
+    DUEL = 11,
+    WIN = 12,
+    LOSE = 13
 };
 
 
@@ -77,7 +82,7 @@ private:
 
 class Idle : public State {
 public:
-    Idle(Player* player);
+    Idle(Player *player);
 
     ~Idle();
 
@@ -87,48 +92,20 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    void ledAnimation(Device *PDN);
-
     bool transitionToHandshake();
 
 private:
-    Player* player;
-    bool transitionToHandshakeState = false;
-    int ledChaseIndex = 2;
-    uint8_t transitionProgress = 0;
-    bool isWaitingBetweenCycles = false;
-    SimpleTimer cycleDelayTimer;
-    const float smoothingPoints = 255;
-    byte ledBrightness[3] = {160, 80, 0};
-    float pwmValues[3] = {0, 0, 0};
-    bool breatheUp = true;
-    long idleLEDBreak = 5000;
-    CRGBPalette16 currentPalette;
-    CRGB lastColor;
-};
-
-class Handshake : public State {
-public:
-    Handshake(Player *player);
-
-    ~Handshake();
-
-    void onStateMounted(Device *PDN) override;
-
-    void onStateLoop(Device *PDN) override;
-
-    void onStateDismounted(Device *PDN) override;
-
-    bool transitionToIdle();
-
-    bool transitionToConnectionSuccessful();
-
-private:
     Player *player;
-    SimpleTimer handshakeTimeout;
-    long timeout = 5000;
-    HandshakeStateMachine *stateMachine;
-    bool resetToActivated = false;
+    bool transitionToHandshakeState = false;
+    bool sendMacAddress = false;
+    bool waitingForMacAddress = false;
+    uint8_t ledBrightness = 0;
+    bool breatheUp = true;
+    CRGBPalette16 currentPalette;
+
+    void serialEventCallbacks(string message);
+
+    void ledAnimation(Device *PDN);
 };
 
 /*
@@ -287,4 +264,147 @@ private:
     SimpleTimer loseTimer = SimpleTimer();
     Player *player;
     bool reset = false;
+};
+
+// Base class for all handshake states
+class BaseHandshakeState : public State {
+
+public:
+    // Common transition to idle if timeout occurs
+    bool transitionToIdle() {
+        return isTimedOut();
+    }
+
+protected:
+    Player *player;
+    static SimpleTimer handshakeTimeout;
+    static bool timeoutInitialized;
+    static const int timeout = 20000; // 20 seconds timeout
+    
+    BaseHandshakeState(QuickdrawStateId stateId, Player *player) : State(stateId) {
+        this->player = player;
+        if (!timeoutInitialized) {
+            handshakeTimeout.setTimer(timeout);
+            timeoutInitialized = true;
+        }
+    }
+    
+    ~BaseHandshakeState() {
+        player = nullptr;
+    }
+    
+    static void initTimeout() {
+        handshakeTimeout.setTimer(timeout);
+        timeoutInitialized = true;
+    }
+    
+    static bool isTimedOut() {
+        if (!timeoutInitialized) return false;
+        handshakeTimeout.updateTime();
+        return handshakeTimeout.expired();
+    }
+    
+    static void resetTimeout() {
+        timeoutInitialized = false;
+    }
+};
+
+class HandshakeInitiateState : public BaseHandshakeState {
+public:
+    HandshakeInitiateState(Player *player);
+    ~HandshakeInitiateState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToBountySendCC();
+    bool transitionToHunterSendId();
+
+private:
+    SimpleTimer handshakeSettlingTimer;
+    const int HANDSHAKE_SETTLE_TIME = 500;
+    bool transitionToBountySendCCState = false;
+    bool transitionToHunterSendIdState = false;
+};
+
+class BountySendConnectionConfirmedState : public BaseHandshakeState {
+public:
+    BountySendConnectionConfirmedState(Player *player);
+    ~BountySendConnectionConfirmedState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToBountySendAck();
+
+private:
+    SimpleTimer delayTimer;
+    const int delay = 100;
+    bool transitionToBountySendAckState = false;
+};
+
+class BountySendFinalAckState : public BaseHandshakeState {
+public:
+    BountySendFinalAckState(Player *player);
+    ~BountySendFinalAckState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+    bool transitionToStartingLine();
+
+private:
+    SimpleTimer delayTimer;
+    const int delay = 100;
+    bool transitionToStartingLineState = false;
+};
+
+class HunterSendIdState : public BaseHandshakeState {
+public:
+    HunterSendIdState(Player *player);
+    ~HunterSendIdState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+    bool transitionToSendAck();
+
+private:
+    SimpleTimer delayTimer;
+    const int delay = 100;
+    bool transitionToHunterSendAckState = false;
+};
+
+class HunterSendFinalAckState : public BaseHandshakeState {
+public:
+    HunterSendFinalAckState(Player *player);
+    ~HunterSendFinalAckState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+    bool transitionToStartingLine();
+
+private:
+    SimpleTimer delayTimer;
+    const int delay = 100;
+    bool transitionToStartingLineState = false;
+};
+
+class StartingLineState : public BaseHandshakeState {
+public:
+    StartingLineState(Player *player);
+    ~StartingLineState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+    bool handshakeSuccessful();
+
+private:
+    bool handshakeSuccessfulFlag = false;
 };
