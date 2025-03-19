@@ -46,6 +46,8 @@ pdn-pcb/#auto_saved_files#
 # Built Visual Studio Code Extensions
 *.vsix
 
+.cursorrules
+
 # Default ignored files
 /shelf/
 /workspace.xml
