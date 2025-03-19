@@ -5,7 +5,6 @@
 #include <utility>
 #include <vector>
 #include <string>
-#include <esp_log.h> // For logging
 
 #include "device.hpp"
 
@@ -39,7 +38,7 @@ public:
     // Method to check if the transition condition is met
     bool isConditionMet() const {
         return condition();
-    }
+    };
 
     // Getter for the next state
     State *getNextState() const {
@@ -91,7 +90,6 @@ public:
     State *checkTransitions() {
         for (StateTransition *transition: transitions) {
             if (transition->isConditionMet()) {
-                ESP_LOGI("STATE", "Transitioning to state %d.", transition->getNextState()->getStateId());
                 return transition->nextState;
             }
         }
@@ -101,14 +99,12 @@ public:
     int getStateId() const { return name.id; };
 
     virtual void onStateMounted(Device *PDN) {
-        ESP_LOGI("STATE", "State %d mounted.", name.id);
     };
 
     virtual void onStateLoop(Device *PDN) {
     };
 
     virtual void onStateDismounted(Device *PDN) {
-        ESP_LOGI("STATE", "State %d dismounted.", name.id);
     };
 
     virtual bool isTerminalState() {
@@ -122,7 +118,6 @@ public:
      */
     virtual void registerValidMessages(std::vector<const string *> msgs) {
         for (auto msg: msgs) {
-            ESP_LOGI("STATE", "Registering valid message: %s", msg->c_str());
             validStringMessages.insert(*msg);
         }
     };
@@ -132,7 +127,6 @@ public:
      */
     virtual void registerResponseMessage(std::vector<const string *> msgs) {
         for (int i = 0; i < msgs.size(); i++) {
-            ESP_LOGI("STATE", "Registering response message: %s", msgs.at(i)->c_str());
             responseStringMessages.push_back(*msgs.at(i));
         }
     };
@@ -140,7 +134,6 @@ public:
     //Checks if the currently received String message is a part of the set of valid messages.
     bool isMessageValidForState(string *msg) {
         bool isValid = validStringMessages.find(*msg) != validStringMessages.end();
-        ESP_LOGI("STATE", "Message %s is %s for state %d.", msg->c_str(), isValid ? "valid" : "invalid", name.id);
         return isValid;
     }
 
@@ -151,10 +144,8 @@ public:
     string *waitForValidMessage(Device *PDN) {
         while (PDN->commsAvailable()) {
             if (!isMessageValidForState(PDN->peekComms())) {
-                ESP_LOGI("STATE", "Discarding invalid message: %s", PDN->peekComms()->c_str());
                 PDN->readString();
             } else {
-                ESP_LOGI("STATE", "Valid message found: %s", PDN->peekComms()->c_str());
                 return new string(PDN->readString());
             }
         }

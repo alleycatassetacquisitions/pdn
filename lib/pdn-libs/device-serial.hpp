@@ -8,7 +8,6 @@
 #include <string>
 #include <functional>
 #include "device-constants.hpp"
-#include "esp_log.h"
 
 enum class SerialIdentifier {
     OUTPUT_JACK = 0,

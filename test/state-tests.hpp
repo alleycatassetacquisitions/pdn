@@ -55,20 +55,20 @@ protected:
     void prepareValidMessageTest() {
         readValidMessageState.onStateMounted(&stateTestDevice);
 
-        stateTestDevice.writeString(new string(*TEST_INCOMING_STRING));
+        stateTestDevice.writeString(*TEST_INCOMING_STRING);
     }
 
     void prepareInvalidMessageTest() {
         readValidMessageState.onStateMounted(&stateTestDevice);
 
-        stateTestDevice.writeString(new string(*INVALID_INCOMING_STRING));
+        stateTestDevice.writeString(*INVALID_INCOMING_STRING);
     }
 
     void prepareGarbageFirstTest() {
         readValidMessageState.onStateMounted(&stateTestDevice);
 
-        stateTestDevice.writeString(new string(*INVALID_INCOMING_STRING));
-        stateTestDevice.writeString(new string(*TEST_INCOMING_STRING));
+        stateTestDevice.writeString(*INVALID_INCOMING_STRING);
+        stateTestDevice.writeString(*TEST_INCOMING_STRING);
     }
 
     MockDevice stateTestDevice;
