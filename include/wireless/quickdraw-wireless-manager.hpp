@@ -17,12 +17,9 @@ enum QDCommand {
     // Handshake Commands
     CONNECTION_CONFIRMED = 0, //Bounty -> Hunter
     HUNTER_RECEIVE_MATCH = 1, //Hunter -> Bounty
-    BOUNTY_RECEIVE_OPPONENT_ID = 2, //Bounty -> Hunter
-    HUNTER_RECEIVE_FINAL_ACK = 3, //Hunter -> Bounty
-    BOUNTY_RECEIVE_FINAL_ACK = 4, //Bounty -> Hunter
-    STARTING_LINE = 5, //BOTH
+    BOUNTY_FINAL_ACK = 4, //Bounty -> Hunter
+    
     // Game Commands
-
     HACK = 6,
     HACK_ACK = 7, 
     HACK_CONFIRMED = 8,
