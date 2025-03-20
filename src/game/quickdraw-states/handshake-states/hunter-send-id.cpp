@@ -6,13 +6,12 @@
 // Opening Handshake State for a Hunter. we have sent our mac address over serial and are waiting
 // for the opponent to send the match id and their user id.
 
-HunterSendIdState::HunterSendIdState(Player *player) : BaseHandshakeState(HUNTER_SEND_ID_STATE, player) {
-    // No need to set player here as it's already set in the BaseHandshakeState constructor
+HunterSendIdState::HunterSendIdState(Player *player) : BaseHandshakeState(HUNTER_SEND_ID_STATE) {
+    this->player = player;
 }
 
 HunterSendIdState::~HunterSendIdState() {
     player = nullptr;
-    
 }
 
 
@@ -29,7 +28,9 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         player->setCurrentOpponentId(command.opponentId);
         player->setCurrentMatchId(command.matchId);
         QuickdrawWirelessManager::GetInstance()->broadcastPacket(*player->getOpponentMacAddress(), HUNTER_RECEIVE_MATCH, 0 /*drawTimeMs*/, 0 /*ackCount*/, *player->getCurrentMatchId(), *player->getCurrentOpponentId());
-        transitionToHunterSendAckState = true;
+    } else if (command.command == BOUNTY_FINAL_ACK) {
+        ESP_LOGI("HUNTER_SEND_ID", "Received BOUNTY_FINAL_ACK from opponent");
+        transitionToConnectionSuccessfulState = true;
     }
 }
 
@@ -38,10 +39,10 @@ void HunterSendIdState::onStateLoop(Device *PDN) {}
 
 void HunterSendIdState::onStateDismounted(Device *PDN) {
     ESP_LOGI("HUNTER_SEND_ID", "State dismounted");
-    transitionToHunterSendAckState = false;
+    transitionToConnectionSuccessfulState = false;
     QuickdrawWirelessManager::GetInstance()->clearCallbacks();
 }
 
-bool HunterSendIdState::transitionToSendAck() {
-    return transitionToHunterSendAckState;
+bool HunterSendIdState::transitionToConnectionSuccessful() {
+    return transitionToConnectionSuccessfulState;
 }

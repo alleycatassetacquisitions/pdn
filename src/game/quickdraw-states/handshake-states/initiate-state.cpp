@@ -1,8 +1,8 @@
 #include "game/quickdraw-states.hpp"
 #include "esp_log.h"
 
-HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE, player) {
-    // No need to set player here as it's already set in the BaseHandshakeState constructor
+HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE) {
+    this->player = player;
 }
 
 HandshakeInitiateState::~HandshakeInitiateState() {
@@ -11,21 +11,15 @@ HandshakeInitiateState::~HandshakeInitiateState() {
 
 void HandshakeInitiateState::onStateMounted(Device *PDN) {
     ESP_LOGI("INITIATE_STATE", "State mounted");
-    handshakeSettlingTimer.setTimer(HANDSHAKE_SETTLE_TIME);
 }
 
 void HandshakeInitiateState::onStateLoop(Device *PDN) {
-    ESP_LOGI("INITIATE_STATE", "State loop running");
-    handshakeSettlingTimer.updateTime();
-    ESP_LOGI("INITIATE_STATE", "Timer expired: %d", handshakeSettlingTimer.expired());
     if(player->isHunter()) {
-        ESP_LOGI("INITIATE_STATE", "Player is Hunter");
+        ESP_LOGI("INITIATE_STATE", "Player is Hunter, transitioning to HunterSendIdState");
         transitionToHunterSendIdState = true;
     } else {
-        if(handshakeSettlingTimer.expired()) {
-            ESP_LOGI("INITIATE_STATE", "Transitioning to BountySendCCState");
-            transitionToBountySendCCState = true;
-        }
+        ESP_LOGI("INITIATE_STATE", "Transitioning to BountySendCCState");
+        transitionToBountySendCCState = true;
     }
 }
 
@@ -33,7 +27,6 @@ void HandshakeInitiateState::onStateDismounted(Device *PDN) {
     ESP_LOGI("INITIATE_STATE", "State dismounted");
     transitionToBountySendCCState = false;
     transitionToHunterSendIdState = false;
-    handshakeSettlingTimer.invalidate();
 }
 
 bool HandshakeInitiateState::transitionToBountySendCC() {
