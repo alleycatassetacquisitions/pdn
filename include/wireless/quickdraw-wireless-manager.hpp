@@ -10,6 +10,8 @@
 #include <map>
 #include "simple-timer.hpp"
 #include "player.hpp"
+#include "match.hpp"
+#include "id-generator.hpp"
 
 using namespace std;
 
@@ -33,17 +35,14 @@ enum QDCommand {
 };
 
 struct QuickdrawCommand {
-    string wifiMacAddr;
-    string matchId;
-    string opponentId;
+string wifiMacAddr;
     int command;
-    int ackCount;
-    long drawTimeMs;
+    Match match;
 
-    QuickdrawCommand() : command(0), ackCount(0), drawTimeMs(0), matchId(""), opponentId(""), wifiMacAddr("") {}
+    QuickdrawCommand() : command(0), match(), wifiMacAddr("") {}
 
-    QuickdrawCommand(string macAddress, int command, long drawTimeMs, int ackCount, string matchId, string opponentId) :
-        command(command), drawTimeMs(drawTimeMs), ackCount(ackCount), matchId(matchId), opponentId(opponentId), wifiMacAddr(macAddress) {    }
+    QuickdrawCommand(string macAddress, int command, Match match) :
+        command(command), match(match), wifiMacAddr(macAddress) {    }
 
 
 
@@ -63,10 +62,7 @@ public:
 
     int broadcastPacket(const string& macAddress, 
                        int command, 
-                       int drawTimeMs = 0, 
-                       int ackCount = 0, 
-                       const string& matchId = "", 
-                       const string& opponentId = "");
+                       Match match);
 
     void clearCallbacks();
 

@@ -1,5 +1,4 @@
 #include "game/match-manager.hpp"
-#include "id-generator.hpp"
 #include <ArduinoJson.h>
 
 MatchManager::MatchManager() : activeMatch(nullptr) {
@@ -15,42 +14,52 @@ MatchManager::~MatchManager() {
     prefs.end();
 }
 
-Match* MatchManager::createMatch(const string& hunter_id, const string& bounty_id) {
+void MatchManager::clearCurrentMatch() {
+    if (activeMatch) {
+        delete activeMatch;
+        activeMatch = nullptr;
+    }
+}
+
+Match* MatchManager::createMatch(const string& match_id, const string& hunter_id, const string& bounty_id) {
     // Only allow one active match at a time
     if (activeMatch != nullptr) {
         return nullptr;
     }
 
-    // Generate a new UUID for the match
-    char* uuid = IdGenerator::GetInstance()->generateId();
-    string match_id(uuid);  // Properly construct string from char*
     activeMatch = new Match(match_id, hunter_id, bounty_id);
     return activeMatch;
 }
 
-Match* MatchManager::receiveMatch(const string& match_json) {
+Match* MatchManager::receiveMatch(Match match) {
     // Only allow one active match at a time
     if (activeMatch != nullptr) {
         return nullptr;
     }
 
-    // Parse the JSON into a new match
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, match_json);
-    if (error) {
-        return nullptr;
-    }
-
-    activeMatch = new Match();
-    activeMatch->fromJson(match_json);
+    activeMatch = &match;
     return activeMatch;
 }
 
-bool MatchManager::finalizeMatch(const string& match_id) {
-    if (!activeMatch || activeMatch->getMatchId() != match_id) {
+bool MatchManager::matchIsFinalized(bool isHunter) {
+    if (!activeMatch) {
+        return false;
+    }
+    
+    if (isHunter) {
+        return activeMatch->getHunterDrawTime() > 0;
+    } else {
+        return activeMatch->getBountyDrawTime() > 0;
+    }
+}
+
+bool MatchManager::finalizeMatch() {
+    if (!activeMatch) {
         ESP_LOGE("PDN", "Cannot finalize match - no active match or ID mismatch\n");
         return false;
     }
+
+    string match_id = activeMatch->getMatchId();
 
     // Save to storage
     if (appendMatchToStorage(activeMatch)) {
@@ -68,14 +77,18 @@ bool MatchManager::finalizeMatch(const string& match_id) {
     return false;
 }
 
-bool MatchManager::updateMatch(const string& match_id, bool winner_is_hunter,
-                             unsigned long hunter_time_ms, unsigned long bounty_time_ms) {
-    if (!activeMatch || activeMatch->getMatchId() != match_id) {
+bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
+    if (!activeMatch) {
         return false;
     }
-
-    activeMatch->setWinner(winner_is_hunter);
     activeMatch->setHunterDrawTime(hunter_time_ms);
+    return true;
+}
+
+bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
+    if (!activeMatch) {
+        return false;
+    }
     activeMatch->setBountyDrawTime(bounty_time_ms);
     return true;
 }

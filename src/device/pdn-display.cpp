@@ -12,7 +12,6 @@ void PDNDisplay::render() {
 
 Display* PDNDisplay::drawText(const char *text, int xStart, int yStart) {
     screen.drawStr(xStart, yStart, text);
-
     return this;
 }
 
@@ -33,7 +32,7 @@ Display* PDNDisplay::drawImage(Image image, int xStart, int yStart) {
 }
 
 Display * PDNDisplay::drawText(const char *text) {
-    drawText(text, -1, -1);
+    drawText(text, 0, 8);
     return this;
 }
 
@@ -85,4 +84,5 @@ PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8
     screen.clearBuffer();
     screen.setContrast(175);
     screen.setFont(u8g2_font_tenfatguys_tf);
+    screen.setFontMode(1);
 }

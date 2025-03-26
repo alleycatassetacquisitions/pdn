@@ -28,8 +28,9 @@ enum QuickdrawStateId {
     CONNECTION_SUCCESSFUL = 12,
     DUEL_COUNTDOWN = 13,
     DUEL = 14,
-    WIN = 15,
-    LOSE = 16
+    DUEL_RESULT = 15,
+    WIN = 16,
+    LOSE = 17
 };
 
 class PlayerRegistration : public State {
@@ -330,18 +331,47 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToActivated();
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
 
-    bool transitionToWin();
+    bool transitionToIdle();
 
-    bool transitionToLose();
+    bool transitionToDuelResult();
 
 private:
     Player* player;
+    unsigned long duelStartTime = 0;
+    parameterizedCallbackFunction buttonPress;
+    bool hasPressedButton = false;
+    bool hasReceivedDrawResult = false;
+    bool transitionToIdleState = false;
+    bool transitionToDuelResultState = false;
     SimpleTimer duelTimer;
-    bool captured = false;
-    bool wonBattle = false;
     const int DUEL_TIMEOUT = 4000;
+    const int DUEL_RESULT_GRACE_PERIOD = 750;
+};
+
+class DuelResult : public State {
+public:
+    DuelResult(Player* player);
+
+    ~DuelResult();
+
+    void onStateMounted(Device *PDN) override;  
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;   
+    
+    bool transitionToWin();
+
+    bool transitionToLose();    
+    
+private:
+    Player* player;
+    unsigned long SHOW_RESULT_TIME = 1500;
+    SimpleTimer resultTimer;
+    bool wonBattle = false;
+    bool captured = false;
 };
 
 
@@ -432,6 +462,7 @@ protected:
     
     static void resetTimeout() {
         timeoutInitialized = false;
+        handshakeTimeout.invalidate();
     }
 };
 

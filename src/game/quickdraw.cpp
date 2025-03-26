@@ -26,10 +26,11 @@ void Quickdraw::populateStateMap() {
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
     HunterSendIdState* hunterSendId = new HunterSendIdState(player);
-    
+
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown(player);
     Duel* duel = new Duel(player);
+    DuelResult* duelResult = new DuelResult(player);
     Win* win = new Win(player, wirelessManager);
     Lose* lose = new Lose(player, wirelessManager);
 
@@ -147,18 +148,23 @@ void Quickdraw::populateStateMap() {
                 duel));
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToActivated,
+            std::bind(&Duel::transitionToIdle,
                 duel),
                 idle));
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToWin,
+            std::bind(&Duel::transitionToDuelResult,
                 duel),
-                win));
-    duel->addTransition(
+                duelResult));
+    duelResult->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToLose,
-                duel),
+            std::bind(&DuelResult::transitionToWin,
+                duelResult),
+                win));
+    duelResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelResult::transitionToLose,
+                duelResult),
                 lose));
     win->addTransition(
         new StateTransition(
@@ -184,10 +190,10 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(handshakeInitiate);
     stateMap.push_back(bountySendCC);
     stateMap.push_back(hunterSendId);
-    
     stateMap.push_back(connectionSuccessful);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
+    stateMap.push_back(duelResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
 }

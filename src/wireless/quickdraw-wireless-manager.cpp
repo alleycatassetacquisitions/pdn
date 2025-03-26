@@ -11,14 +11,12 @@
 
 
 struct QuickdrawPacket {
-    char id[IdGenerator::UUID_BUFFER_SIZE];
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    char opponentId[IdGenerator::UUID_BUFFER_SIZE];
+    char hunterId[IdGenerator::UUID_BUFFER_SIZE];
+    char bountyId[IdGenerator::UUID_BUFFER_SIZE];
+    long hunterDrawTime;
+    long bountyDrawTime;
     int command;
-    long resultTime;
-    int ackCount;
-
-
 } __attribute__((packed));
 
 QuickdrawWirelessManager *QuickdrawWirelessManager::GetInstance() {
@@ -43,10 +41,7 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (Qui
 
 int QuickdrawWirelessManager::broadcastPacket(const string& macAddress, 
                                              int command, 
-                                             int drawTimeMs, 
-                                             int ackCount,
-                                             const string& matchId, 
-                                             const string& opponentId) {
+                                             Match match) {
     // Ensure WiFi is in STA mode before sending
     if (WiFi.getMode() != WIFI_STA) {
         ESP_LOGW("QWM", "WiFi not in STA mode, setting it now");
@@ -55,26 +50,37 @@ int QuickdrawWirelessManager::broadcastPacket(const string& macAddress,
     
     QuickdrawPacket qdPacket;
     
-    // Safely copy the player ID
-    strncpy(qdPacket.id, player->getUserID().c_str(),  IdGenerator::UUID_STRING_LENGTH);
-    qdPacket.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    ESP_LOGI("QWM", "Player ID: %s", qdPacket.id);
+    // // Safely copy the player ID
+    // strncpy(qdPacket.id, player->getUserID().c_str(),  IdGenerator::UUID_STRING_LENGTH);
+    // qdPacket.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    // ESP_LOGI("QWM", "Player ID: %s", qdPacket.id);
     
-    // Safely copy the match ID
-    strncpy(qdPacket.matchId, matchId.c_str(), IdGenerator::UUID_STRING_LENGTH);
-    qdPacket.matchId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
+    // // Safely copy the match ID
+    // strncpy(qdPacket.matchId, matchId.c_str(), IdGenerator::UUID_STRING_LENGTH);
+    // qdPacket.matchId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    // ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
     
-    // Safely copy the opponent ID
-    strncpy(qdPacket.opponentId, opponentId.c_str(), IdGenerator::UUID_STRING_LENGTH);
-    qdPacket.opponentId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    ESP_LOGI("QWM", "Opponent ID: %s", qdPacket.opponentId);
+    // // Safely copy the opponent ID
+    // strncpy(qdPacket.opponentId, opponentId.c_str(), IdGenerator::UUID_STRING_LENGTH);
+    // qdPacket.opponentId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    // ESP_LOGI("QWM", "Opponent ID: %s", qdPacket.opponentId);
     
     qdPacket.command = command;
-    qdPacket.resultTime = drawTimeMs;
-    qdPacket.ackCount = ackCount;
+    strncpy(qdPacket.matchId, match.getMatchId().c_str(), IdGenerator::UUID_STRING_LENGTH);
+    qdPacket.matchId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    strncpy(qdPacket.hunterId, match.getHunterId().c_str(), IdGenerator::UUID_STRING_LENGTH);
+    qdPacket.hunterId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    strncpy(qdPacket.bountyId, match.getBountyId().c_str(), IdGenerator::UUID_STRING_LENGTH);
+    qdPacket.bountyId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    qdPacket.hunterDrawTime = match.getHunterDrawTime();
+    qdPacket.bountyDrawTime = match.getBountyDrawTime();
 
     ESP_LOGI("QWM", "Broadcasting command %i", command);
+    ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
+    ESP_LOGI("QWM", "Hunter ID: %s", qdPacket.hunterId);
+    ESP_LOGI("QWM", "Bounty ID: %s", qdPacket.bountyId);
+    ESP_LOGI("QWM", "Hunter Draw Time: %ld", qdPacket.hunterDrawTime);
+    ESP_LOGI("QWM", "Bounty Draw Time: %ld", qdPacket.bountyDrawTime);
 
     int ret = EspNowManager::GetInstance()->SendData(
         ESP_NOW_BROADCAST_ADDR,
@@ -98,13 +104,14 @@ int QuickdrawWirelessManager::processQuickdrawCommand(const uint8_t *macAddress,
 
     QuickdrawPacket *packet = (QuickdrawPacket *)data;
 
+    Match match = Match(packet->matchId, packet->hunterId, packet->bountyId);
+    match.setHunterDrawTime(packet->hunterDrawTime);
+    match.setBountyDrawTime(packet->bountyDrawTime);
+
     QuickdrawCommand command = QuickdrawCommand(
             MacToString(macAddress),
             packet->command,
-            packet->resultTime,
-            packet->ackCount,
-            packet->matchId,
-            packet->opponentId);
+            match);
 
 
     logPacket(command);
@@ -125,12 +132,7 @@ void QuickdrawWirelessManager::clearPacket(int command) {
 
 
 int QuickdrawWirelessManager::getPacketAckCount(int command) {
-    if(commandTracker.find(command) == commandTracker.end()) {
-        //No command found
-        return 0;
-    }
-
-    return commandTracker[command].ackCount;
+    return 0;
 }
 
 

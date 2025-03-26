@@ -27,43 +27,31 @@ public:
 
     /**
      * Creates a new active match
+     * @param match_id UUID of the match
      * @param hunter_id Hunter's UUID
      * @param bounty_id Bounty's UUID
      * @return Pointer to the newly created match
      */
-    Match* createMatch(const string& hunter_id, const string& bounty_id);
+    Match* createMatch(const string& match_id, const string& hunter_id, const string& bounty_id);
 
     /**
      * Initializes a match received from another player
      * @param match_json JSON string containing match data
      * @return Pointer to the initialized match, nullptr if invalid
      */
-    Match* receiveMatch(const string& match_json);
+    Match* receiveMatch(Match match);
 
     /**
      * Finalizes a match by saving it to storage and removing from active matches
      * @param match_id UUID of the match to finalize
      * @return true if match was found and saved
      */
-    bool finalizeMatch(const string& match_id);
+    bool finalizeMatch();
 
-    /**
-     * Updates an existing active match with new data
-     * @param match_id UUID of the match to update
-     * @param winner_is_hunter true if hunter won
-     * @param hunter_time_ms hunter's draw time in ms
-     * @param bounty_time_ms bounty's draw time in ms
-     * @return true if match was found and updated
-     */
-    bool updateMatch(const string& match_id, bool winner_is_hunter, 
-                    unsigned long hunter_time_ms, unsigned long bounty_time_ms);
+    bool setHunterDrawTime(unsigned long hunter_time_ms);
+    bool setBountyDrawTime(unsigned long bounty_time_ms);
 
-    /**
-     * Finds an active match by its ID
-     * @param match_id UUID of the match to find
-     * @return Pointer to the match if found, nullptr otherwise
-     */
-    Match* findActiveMatch(const string& match_id);
+    bool matchIsFinalized(bool isHunter);
 
     /**
      * Gets the current active match if any
@@ -87,6 +75,8 @@ public:
      * @return Number of matches
      */
     size_t getStoredMatchCount();
+
+    void clearCurrentMatch();
 
 private:
     MatchManager();
