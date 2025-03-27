@@ -66,6 +66,9 @@ public:
 
     Display * drawImage(Image image, int xStart, int yStart) override;
 
+    Display* setGlyphMode(FontMode mode) override;
+
+    Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) override;
     void setVibration(int value) override;
 
     int getCurrentVibrationIntensity() override;

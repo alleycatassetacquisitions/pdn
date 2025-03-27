@@ -7,6 +7,12 @@ struct Cursor {
     int y = 0;
 };
 
+enum class FontMode {
+    TEXT,
+    NUMBER_GLYPH,
+    LOADING_GLYPH
+};
+
 class Display {
 public:
 
@@ -16,7 +22,11 @@ public:
 
     virtual void render() = 0;
 
-    virtual Display* drawText(const char *text);
+    virtual Display* drawText(const char *text) = 0;
+
+    virtual Display* setGlyphMode(FontMode mode) = 0;
+
+    virtual Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) = 0;
 
     virtual Display* drawText(const char *text, int xStart, int yStart) = 0;
 

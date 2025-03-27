@@ -60,6 +60,10 @@ public:
 
     virtual Display* drawText(const char *text, int xStart, int yStart) = 0;
 
+    virtual Display* setGlyphMode(FontMode mode) = 0;
+
+    virtual Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) = 0;
+
     virtual Display* drawImage(Image image) = 0;
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;

@@ -475,4 +475,44 @@ static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) 
 //     }
 // }
 
+// static const char* digitGlyphs[] = {
+//     "", //the glyphs are 1-10, so 0 is empty.
+//     "\u2780",
+//     "\u2781",
+//     "\u2782",
+//     "\u2783",
+//     "\u2784",
+//     "\u2785",
+//     "\u2786",
+//     "\u2787",
+//     "\u2788",
+//     "\u2789",
+//     "\u278A"
+// };
+
+static const char* digitGlyphs[] = {
+    "\u0030",
+    "\u0031",
+    "\u0032",
+    "\u0033",
+    "\u0034",
+    "\u0035",
+    "\u0036",
+    "\u0037",
+    "\u0038",
+    "\u0039",
+    "\u0040"
+};
+
+static const char* loadingGlyphs[] = {
+    "\u2630",
+    "\u2631",
+    "\u2632",
+    "\u2633",
+    "\u2634",
+    "\u2635",
+    "\u2636",
+    "\u2637"
+};
+
 #endif

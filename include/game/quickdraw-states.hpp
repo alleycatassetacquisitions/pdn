@@ -12,22 +12,47 @@ using namespace std;
 // Quickdraw States
 
 enum QuickdrawStateId {
-    SLEEP = 0,
-    AWAKEN_SEQUENCE = 1,
-    IDLE = 2,
-    HANDSHAKE_INITIATE_STATE = 3,
-    BOUNTY_SEND_CC_STATE = 4,
-    HUNTER_SEND_ID_STATE = 5,
-    BOUNTY_SEND_FINAL_ACK_STATE = 6,
-    HUNTER_SEND_FINAL_ACK_STATE = 7,
-    HANDSHAKE_STARTING_LINE_STATE = 8,
-    CONNECTION_SUCCESSFUL = 9,
-    DUEL_COUNTDOWN = 10,
-    DUEL = 11,
-    WIN = 12,
-    LOSE = 13
+    PLAYER_REGISTRATION = 0,
+    SLEEP = 1,
+    AWAKEN_SEQUENCE = 2,
+    IDLE = 3,
+    HANDSHAKE_INITIATE_STATE = 4,
+    BOUNTY_SEND_CC_STATE = 5,
+    HUNTER_SEND_ID_STATE = 6,
+    CONNECTION_SUCCESSFUL = 7,
+    DUEL_COUNTDOWN = 8,
+    DUEL = 9,
+    WIN = 10,
+    LOSE = 11
 };
 
+class PlayerRegistration : public State {
+public:
+    PlayerRegistration(Player* player);
+    ~PlayerRegistration();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    void convertInputIdToString();
+
+    bool transitionToSleep();
+
+    void showLoadingGlyphs(Device *PDN);
+
+private:
+    bool transitionToSleepState = false;
+    bool shouldRender = false;
+    Player* player;
+    int currentDigit = 0;
+    int currentDigitIndex = 0;
+    static constexpr int DIGIT_COUNT = 4;
+    int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
+    bool isFetchingUserData = false;
+    SimpleTimer userDataFetchTimer;
+    const int USER_DATA_FETCH_TIMEOUT = 4000;
+};
 
 class Sleep : public State {
 public:

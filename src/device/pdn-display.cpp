@@ -11,30 +11,7 @@ void PDNDisplay::render() {
 }
 
 Display* PDNDisplay::drawText(const char *text, int xStart, int yStart) {
-    int x = 8;
-    int y = 8;
-
-    if (xStart != -1) {
-        cursor.x = x*xStart;
-    }
-
-    if (yStart != -1) {
-        cursor.y = y*yStart;
-    }
-
-    while(*text != '\0') {
-        if(cursor.x >= maxCharX) {
-            cursor.y += y;
-            cursor.x = 0;
-        } else if(cursor.y > maxCharY) {
-            cursor.x = 0;
-            cursor.y = y;
-        }
-
-        screen.drawStr(cursor.x, cursor.y, text);
-        text++;
-        cursor.x += x;
-    }
+    screen.drawStr(xStart, yStart, text);
 
     return this;
 }
@@ -62,6 +39,29 @@ Display * PDNDisplay::drawText(const char *text) {
 
 Display * PDNDisplay::drawImage(Image image) {
     drawImage(image, -1, -1);
+    return this;
+}
+
+Display * PDNDisplay::setGlyphMode(FontMode mode) {
+    switch (mode) {
+        case FontMode::TEXT:
+            screen.disableUTF8Print();
+            screen.setFont(u8g2_font_prospero_nbp_tf);
+            break;
+        case FontMode::NUMBER_GLYPH:
+            screen.enableUTF8Print();
+            screen.setFont(u8g2_font_twelvedings_t_all);
+            break;
+        case FontMode::LOADING_GLYPH:
+            screen.enableUTF8Print();
+            screen.setFont(u8g2_font_unifont_t_76);
+            break;
+    }
+    return this;
+}
+
+Display * PDNDisplay::renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) {
+    screen.drawUTF8(xStart, yStart, unicodeForGlyph);
     return this;
 }
 

@@ -12,6 +12,7 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
+    PlayerRegistration* playerRegistration = new PlayerRegistration(player);
     Sleep* sleep = new Sleep(player);
     AwakenSequence* awakenSequence = new AwakenSequence();
     Idle* idle = new Idle(player);
@@ -29,6 +30,11 @@ void Quickdraw::populateStateMap() {
     Duel* duel = new Duel(player);
     Win* win = new Win(player);
     Lose* lose = new Lose(player);
+
+    playerRegistration->addTransition(
+        new StateTransition(
+            std::bind(&PlayerRegistration::transitionToSleep, playerRegistration),
+            sleep));
 
     sleep->addTransition(
         new StateTransition(
@@ -132,6 +138,7 @@ void Quickdraw::populateStateMap() {
                 lose),
                 sleep));
 
+    stateMap.push_back(playerRegistration);
     stateMap.push_back(sleep);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
