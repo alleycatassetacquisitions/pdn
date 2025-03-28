@@ -25,9 +25,23 @@ public:
 
     bool isHunter() const;
 
+    void setIsHunter(bool isHunter);
+
     void toggleHunter();
 
     Allegiance getAllegiance() const;
+
+    void setAllegiance(const string& allegianceStr);
+
+    string getAllegianceString() const;
+
+    string getName() const;
+
+    void setName(const string& name);
+
+    string getFaction() const;
+
+    void setFaction(const string& faction);
 
     void setUserID(char *newId);
 
@@ -49,6 +63,9 @@ public:
 
 private:
     string id = "default";
+    string name = "";
+    string allegianceStr = "none";
+    string faction = "";
 
     Allegiance allegiance = Allegiance::RESISTANCE;
 

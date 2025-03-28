@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
 #include <esp_log.h>
 
@@ -18,7 +19,9 @@ PlayerRegistration::~PlayerRegistration() {
 
 void PlayerRegistration::onStateMounted(Device *PDN) {
     ESP_LOGI(TAG, "State mounted - Starting player registration");
-    PDN->drawText("Pairing Code", 16, 16)->
+    PDN->invalidateScreen()->
+    setGlyphMode(FontMode::TEXT)->
+    drawText("Pairing Code", 16, 16)->
     setGlyphMode(FontMode::NUMBER_GLYPH)->
     renderGlyph(digitGlyphs[0], 20, 40)->
     render();
@@ -54,7 +57,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
                     playerRegistration->inputId[3]);
             ESP_LOGI(TAG, "Player registration complete - ID: %s", playerId);
             playerRegistration->player->setUserID(playerId);
-            playerRegistration->isFetchingUserData = true;
+            playerRegistration->transitionToUserFetchState = true;
         } else {
             playerRegistration->shouldRender = true;
         }
@@ -62,20 +65,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
 }
 
 void PlayerRegistration::onStateLoop(Device *PDN) {
-
-    if(isFetchingUserData) {
-        ESP_LOGD(TAG, "Fetching user data");
-        if(!userDataFetchTimer.isRunning()) {
-            ESP_LOGD(TAG, "User data fetch timer is not running");
-            userDataFetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT);
-        } else if(userDataFetchTimer.expired()) {
-            ESP_LOGD(TAG, "User data fetch timer expired");
-        } else {
-            EVERY_N_MILLISECONDS(50) {
-                showLoadingGlyphs(PDN);
-            }
-        }
-    } else if(shouldRender) {
+    if(shouldRender) {
         ESP_LOGD(TAG, "Rendering display - Digit index: %d, Current digit: %d", currentDigitIndex, currentDigit);
         if(currentDigitIndex == 0) {
             PDN->
@@ -120,47 +110,6 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
     }
 }
 
-void PlayerRegistration::showLoadingGlyphs(Device *PDN) {
-    ESP_LOGD(TAG, "Showing loading glyphs");
-    
-    // Calculate grid layout
-    const int GLYPH_SIZE = 14;  // Each glyph is 14x14 pixels
-    const int SCREEN_WIDTH = 128;
-    const int SCREEN_HEIGHT = 64;
-    
-    // Calculate number of glyphs that can fit in each dimension
-    const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
-    const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);  // Start at y=14
-    
-    // Clear the screen
-    PDN->invalidateScreen();
-    
-    // Set glyph mode for rendering
-    PDN->setGlyphMode(FontMode::LOADING_GLYPH);
-    
-    // Fill the screen with random loading glyphs
-    for (int row = 0; row < GLYPHS_PER_COL; row++) {
-        for (int col = 0; col < GLYPHS_PER_ROW; col++) {
-            if(random(0, 100) < 50) {
-                // Calculate position
-                int x = col * GLYPH_SIZE;
-                int y = 14 + (row * GLYPH_SIZE);  // Start at y=14
-                
-                // Select random glyph from the array
-                int randomIndex = random(0, 8);  // 8 glyphs in the array
-                const char* glyph = loadingGlyphs[randomIndex];
-                
-                // Render the glyph
-                PDN->renderGlyph(glyph, x, y);
-            }
-        }
-    }
-    
-    // Final render call
-    PDN->render();
-    ESP_LOGD(TAG, "Loading glyphs rendered");
-}
-
 void PlayerRegistration::convertInputIdToString() {
     char playerId[5];
     snprintf(playerId, sizeof(playerId), "%d%d%d%d", 
@@ -170,6 +119,7 @@ void PlayerRegistration::convertInputIdToString() {
             inputId[3]);
     player->setUserID(playerId);
 }
+
 void PlayerRegistration::onStateDismounted(Device *PDN) {
     ESP_LOGI(TAG, "State dismounted - Cleaning up");
     PDN->setGlyphMode(FontMode::TEXT);
@@ -178,11 +128,12 @@ void PlayerRegistration::onStateDismounted(Device *PDN) {
     //reset all member variables
     currentDigitIndex = 0;
     currentDigit = 1;
+    transitionToUserFetchState = false;
     ESP_LOGI(TAG, "State cleanup complete");
 }
 
-bool PlayerRegistration::transitionToSleep() {
-    return false;
+bool PlayerRegistration::transitionToUserFetch() {
+    return transitionToUserFetchState;
 }
 
 

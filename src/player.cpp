@@ -9,31 +9,40 @@ Player::Player(const string id0, const Allegiance allegiance0, const bool isHunt
 {
 }
 
-
 string Player::toJson() const {
     // Create a JSON object for player
-    StaticJsonDocument<128> doc;
+    StaticJsonDocument<256> doc;
     JsonObject playerObj = doc.to<JsonObject>();
     playerObj["id"] = id;
-    playerObj["allegiance"] = (int)allegiance;
+    playerObj["name"] = name;
+    playerObj["allegiance"] = allegianceStr;
+    playerObj["faction"] = faction;
     playerObj["hunter"] = hunter;
 
     // Serialize the JSON object to a string
     string json;
     serializeJson(playerObj, json);
     return json;
-  }
+}
 
 void Player::fromJson(const string &json) {
     // Parse the JSON string into a JSON object
-    StaticJsonDocument<128> doc;
+    StaticJsonDocument<256> doc;
     DeserializationError error = deserializeJson(doc, json);
 
     // Check if parsing was successful
     if (!error) {
       // Retrieve values from the JSON object
       id = doc["id"].as<string>();
-      allegiance = (Allegiance)(int)doc["allegiance"];
+      if (doc.containsKey("name")) {
+        name = doc["name"].as<string>();
+      }
+      if (doc.containsKey("allegiance")) {
+        allegianceStr = doc["allegiance"].as<string>();
+      }
+      if (doc.containsKey("faction")) {
+        faction = doc["faction"].as<string>();
+      }
       hunter = doc["hunter"];
     } else {
       // Serial.println("Failed to parse JSON");
@@ -43,6 +52,11 @@ void Player::fromJson(const string &json) {
 void Player::toggleHunter()
 {
   hunter = !hunter;
+}
+
+void Player::setIsHunter(bool isHunter) 
+{
+  hunter = isHunter;
 }
 
 void Player::clearUserID()
@@ -60,6 +74,47 @@ Allegiance Player::getAllegiance() const
     return allegiance;
 }
 
+void Player::setAllegiance(const string& allegianceStr)
+{
+    this->allegianceStr = allegianceStr;
+    
+    // Set the enum value based on the string
+    if (allegianceStr == "Alleycat") {
+        allegiance = Allegiance::ALLEYCAT;
+    } else if (allegianceStr == "Endline") {
+        allegiance = Allegiance::ENDLINE;
+    } else if (allegianceStr == "Helix") {
+        allegiance = Allegiance::HELIX;
+    } else if (allegianceStr == "The Resistance") {
+        allegiance = Allegiance::RESISTANCE;
+    }
+}
+
+string Player::getAllegianceString() const
+{
+    return allegianceStr;
+}
+
+string Player::getName() const
+{
+    return name;
+}
+
+void Player::setName(const string& name)
+{
+    this->name = name;
+}
+
+string Player::getFaction() const
+{
+    return faction;
+}
+
+void Player::setFaction(const string& faction)
+{
+    this->faction = faction;
+}
+
 void Player::setUserID(char* newId)
 {
   id = string(newId);
@@ -72,7 +127,6 @@ string Player::getUserID() const
 
 void Player::setCurrentMatchId(string matchId) {
     *currentMatchId = matchId;
-
 }
 
 string* Player::getCurrentMatchId() {

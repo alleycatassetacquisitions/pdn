@@ -5,6 +5,7 @@
 #include "state.hpp"
 #include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/wireless-manager.hpp"
 #include <queue>
 
 using namespace std;
@@ -13,17 +14,18 @@ using namespace std;
 
 enum QuickdrawStateId {
     PLAYER_REGISTRATION = 0,
-    SLEEP = 1,
-    AWAKEN_SEQUENCE = 2,
-    IDLE = 3,
-    HANDSHAKE_INITIATE_STATE = 4,
-    BOUNTY_SEND_CC_STATE = 5,
-    HUNTER_SEND_ID_STATE = 6,
-    CONNECTION_SUCCESSFUL = 7,
-    DUEL_COUNTDOWN = 8,
-    DUEL = 9,
-    WIN = 10,
-    LOSE = 11
+    FETCH_USER_DATA = 1,
+    SLEEP = 2,
+    AWAKEN_SEQUENCE = 3,
+    IDLE = 4,
+    HANDSHAKE_INITIATE_STATE = 5,
+    BOUNTY_SEND_CC_STATE = 6,
+    HUNTER_SEND_ID_STATE = 7,
+    CONNECTION_SUCCESSFUL = 8,
+    DUEL_COUNTDOWN = 9,
+    DUEL = 10,
+    WIN = 11,
+    LOSE = 12
 };
 
 class PlayerRegistration : public State {
@@ -37,21 +39,41 @@ public:
 
     void convertInputIdToString();
 
-    bool transitionToSleep();
+    bool transitionToUserFetch();
 
-    void showLoadingGlyphs(Device *PDN);
 
 private:
-    bool transitionToSleepState = false;
+    bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
     int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
+};
+
+class FetchUserDataState : public State {
+public:
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager);
+    ~FetchUserDataState();
+
+    bool resetToPlayerRegistration();
+    
+    void showLoadingGlyphs(Device *PDN);
+
+    void renderWelcomeMessage();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+private:
+    bool resetToPlayerRegistrationState = false;
+    WirelessManager* wirelessManager;
     bool isFetchingUserData = false;
+    Player* player;
     SimpleTimer userDataFetchTimer;
-    const int USER_DATA_FETCH_TIMEOUT = 4000;
+    const int USER_DATA_FETCH_TIMEOUT = 10000;
 };
 
 class Sleep : public State {

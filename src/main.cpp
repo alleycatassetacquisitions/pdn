@@ -20,7 +20,8 @@
 Device* pdn = PDN::GetInstance();
 IdGenerator* idGenerator = IdGenerator::GetInstance();
 Player* player = new Player();
-Quickdraw game = Quickdraw(player, pdn);
+WirelessManager* wirelessManager = new WirelessManager(pdn, "The Lab", "C00KIECAT", "http://192.168.1.107:3000");
+Quickdraw game = Quickdraw(player, pdn, wirelessManager);
 
 // Remote player management
 RemotePlayerManager remotePlayers;
@@ -45,29 +46,32 @@ void setup() {
   // communicating together on ESP-NOW must use the same channel
   WiFi.channel(6);
 
+  wirelessManager->initialize();
+  
+
   player->setUserID(idGenerator->generateId());
   
   // Initialize the communications manager
-  quickdrawWirelessManager->initialize(player, 1000);
+  // quickdrawWirelessManager->initialize(player, 1000);
   
-  remotePlayers.StartBroadcastingPlayerInfo(player, 5000);
+  // remotePlayers.StartBroadcastingPlayerInfo(player, 5000);
 
-  EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
-      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
-        {
-          QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
-          manager->processQuickdrawCommand(srcMacAddr, data, len);
-        },
-        quickdrawWirelessManager);
+  // EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
+  //     [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+  //       {
+  //         QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
+  //         manager->processQuickdrawCommand(srcMacAddr, data, len);
+  //       },
+  //       quickdrawWirelessManager);
 
 
-  EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
-      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
-        {
-          RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
-          manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
-        },
-        &remotePlayers);
+  // EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
+  //     [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+  //       {
+  //         RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
+  //         manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
+  //       },
+  //       &remotePlayers);
 
     ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
     delay(3000);
@@ -75,7 +79,8 @@ void setup() {
 
 void loop() {
     pdn->loop();
-    EspNowManager::GetInstance()->Update();
-    remotePlayers.Update();
+    // EspNowManager::GetInstance()->Update();
+    // remotePlayers.Update();
     game.loop();
+    wirelessManager->loop();
 }

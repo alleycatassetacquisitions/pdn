@@ -6,7 +6,7 @@
 #include "state-machine.hpp"
 #include "quickdraw-states.hpp"
 #include "quickdraw-resources.hpp"
-
+#include "wireless/wireless-manager.hpp"
 #define MATCH_SIZE sizeof(Match)
 
 // Global includes
@@ -14,7 +14,7 @@
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN);
+    Quickdraw(Player *player, Device *PDN, WirelessManager* wirelessManager);
 
     ~Quickdraw();
 
@@ -28,4 +28,5 @@ private:
     int numMatches = 0;
 
     Player *player;
+    WirelessManager* wirelessManager;
 };

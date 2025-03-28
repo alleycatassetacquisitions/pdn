@@ -31,7 +31,7 @@ enum WirelessStateId {
  * integrating with ESP-IDF's esp_http_client for asynchronous operation.
  */
 struct HttpRequest {
-    String url;                                  ///< URL for the request
+    String path;                                  ///< Path to append to base URL
     std::function<void(const String&)> onSuccess; ///< Callback for successful requests
     std::function<void(const WirelessErrorInfo&)> onError; ///< Callback for failed requests
     String method = "GET";                       ///< HTTP method (GET, POST, etc.)
@@ -41,23 +41,23 @@ struct HttpRequest {
     unsigned long lastAttemptTime = 0;           ///< Time of the last attempt
     int retryCount = 0;                          ///< Number of retry attempts
     String responseData = "";                    ///< Accumulated response data
-    esp_http_client_handle_t client; ///< ESP-IDF HTTP client handle
+    esp_http_client_handle_t client;             ///< ESP-IDF HTTP client handle
 
     /**
      * Creates an HTTP request with both success and error callbacks.
      * 
-     * @param requestUrl The target URL for the request
+     * @param requestPath The path to append to the base URL
      * @param successCallback Function to call on successful response
      * @param errorCallback Function to call on error
      * @param requestMethod HTTP method to use (defaults to "GET")
      * @param requestPayload Request body for POST requests
      */
-    HttpRequest(const String& requestUrl, 
+    HttpRequest(const String& requestPath, 
                 std::function<void(const String&)> successCallback,
                 std::function<void(const WirelessErrorInfo&)> errorCallback,
                 const String& requestMethod = "GET", 
                 const String& requestPayload = "")
-        : url(requestUrl), 
+        : path(requestPath), 
           method(requestMethod), 
           payload(requestPayload), 
           onSuccess(successCallback), 
@@ -72,16 +72,16 @@ struct HttpRequest {
      * Creates an HTTP request with only a success callback.
      * Errors will be logged but not handled by user code.
      * 
-     * @param requestUrl The target URL for the request
+     * @param requestPath The path to append to the base URL
      * @param successCallback Function to call on successful response
      * @param requestMethod HTTP method to use (defaults to "GET")
      * @param requestPayload Request body for POST requests
      */
-    HttpRequest(const String& requestUrl, 
+    HttpRequest(const String& requestPath, 
                 std::function<void(const String&)> successCallback,
                 const String& requestMethod = "GET", 
                 const String& requestPayload = "")
-        : url(requestUrl), 
+        : path(requestPath), 
           method(requestMethod), 
           payload(requestPayload), 
           onSuccess(successCallback),
@@ -119,7 +119,7 @@ public:
 
 class WifiState : public WirelessState {
 public:
-    WifiState(const char* ssid, const char* password, std::queue<HttpRequest>* requestQueue);
+    WifiState(const char* ssid, const char* password, const char* baseUrl, std::queue<HttpRequest>* requestQueue);
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
@@ -149,6 +149,7 @@ private:
     
     const char* ssid;
     const char* password;
+    const char* baseUrl;
     uint8_t channel;
     std::queue<HttpRequest>* httpQueue;
     esp_http_client_handle_t httpClient;  ///< Persistent HTTP client handle
@@ -159,7 +160,7 @@ private:
 
 class WirelessManager : public StateMachine {
 public:
-    WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword);
+    WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl);
     
     /**
      * Initialize the wireless manager
@@ -177,13 +178,9 @@ public:
 
     /**
      * Queues an HTTP request with full error handling support.
-     * This version includes both success and error callbacks for comprehensive
-     * request lifecycle management.
+     * The path will be appended to the base URL.
      * 
-     * The request is queued and will be processed when the WiFi state is active.
-     * If not in WiFi state, this will trigger a state transition to WiFi mode.
-     * 
-     * @param url Target URL for the HTTP request
+     * @param path Path to append to base URL
      * @param onSuccess Callback function for successful response
      * @param onError Callback function for error handling
      * @param method HTTP method to use ("GET" or "POST")
@@ -191,7 +188,7 @@ public:
      * @return true if request was successfully queued
      */
     bool makeHttpRequest(
-        const String& url,
+        const String& path,
         std::function<void(const String&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError,
         const String& method = "GET",
@@ -200,20 +197,16 @@ public:
 
     /**
      * Queues a simple HTTP request with basic error handling.
-     * This version only includes a success callback. Errors will be logged
-     * but not handled by user code.
+     * The path will be appended to the base URL.
      * 
-     * The request is queued and will be processed when the WiFi state is active.
-     * If not in WiFi state, this will trigger a state transition to WiFi mode.
-     * 
-     * @param url Target URL for the HTTP request
+     * @param path Path to append to base URL
      * @param onSuccess Callback function for successful response
      * @param method HTTP method to use ("GET" or "POST")
      * @param payload Request body for POST requests
      * @return true if request was successfully queued
      */
     bool makeHttpRequest(
-        const String& url,
+        const String& path,
         std::function<void(const String&)> onSuccess,
         const String& method = "GET",
         const String& payload = ""
@@ -229,6 +222,7 @@ public:
 private:
     const char* wifiSsid;
     const char* wifiPassword;
+    const char* baseUrl;
     bool pendingEspNowSwitch;
     bool pendingWifiSwitch;
     bool pendingPowerOff;

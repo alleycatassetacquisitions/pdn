@@ -1,7 +1,8 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
     this->player = player;
+    this->wirelessManager = wirelessManager;
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -13,6 +14,7 @@ Quickdraw::~Quickdraw() {
 void Quickdraw::populateStateMap() {
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);
     Sleep* sleep = new Sleep(player);
     AwakenSequence* awakenSequence = new AwakenSequence();
     Idle* idle = new Idle(player);
@@ -33,8 +35,13 @@ void Quickdraw::populateStateMap() {
 
     playerRegistration->addTransition(
         new StateTransition(
-            std::bind(&PlayerRegistration::transitionToSleep, playerRegistration),
-            sleep));
+            std::bind(&PlayerRegistration::transitionToUserFetch, playerRegistration),
+            fetchUserData));
+
+    fetchUserData->addTransition(
+        new StateTransition(
+            std::bind(&FetchUserDataState::resetToPlayerRegistration, fetchUserData),
+            playerRegistration));
 
     sleep->addTransition(
         new StateTransition(
@@ -139,6 +146,7 @@ void Quickdraw::populateStateMap() {
                 sleep));
 
     stateMap.push_back(playerRegistration);
+    stateMap.push_back(fetchUserData);
     stateMap.push_back(sleep);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
