@@ -36,9 +36,6 @@ public:
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-
-    void convertInputIdToString();
-
     bool transitionToUserFetch();
 
 

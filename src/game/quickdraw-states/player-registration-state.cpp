@@ -110,16 +110,6 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
     }
 }
 
-void PlayerRegistration::convertInputIdToString() {
-    char playerId[5];
-    snprintf(playerId, sizeof(playerId), "%d%d%d%d", 
-            inputId[0],
-            inputId[1],
-            inputId[2],
-            inputId[3]);
-    player->setUserID(playerId);
-}
-
 void PlayerRegistration::onStateDismounted(Device *PDN) {
     ESP_LOGI(TAG, "State dismounted - Cleaning up");
     PDN->setGlyphMode(FontMode::TEXT);

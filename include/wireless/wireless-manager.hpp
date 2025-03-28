@@ -126,8 +126,8 @@ public:
     
 private:
     /**
-     * Initializes WiFi connection and HTTP client.
-     * @return true if WiFi connection and client initialization successful
+     * Checks if WiFi is connected (non-blocking).
+     * @return true if WiFi is connected
      */
     bool initializeWiFi();
 
@@ -142,10 +142,27 @@ private:
      */
     void cleanupHttpClient();
 
+    /**
+     * Starts the WiFi connection process.
+     */
+    void startWifiConnectionProcess();
+
+    /**
+     * Logs detailed WiFi status errors.
+     */
+    void logWifiStatusError();
+
     bool processQueuedRequests();
     void initiateHttpRequest(HttpRequest& request);
     void checkOngoingRequests();
     void handleRequestError(HttpRequest& request, WirelessErrorInfo error);
+    
+    // WiFi connection state
+    bool wifiConnected;
+    bool httpClientInitialized;
+    int wifiConnectionAttempts;
+    SimpleTimer connectionAttemptTimer;
+    static const int MAX_WIFI_CONN_ATTEMPTS = 20;
     
     const char* ssid;
     const char* password;
