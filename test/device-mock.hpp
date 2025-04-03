@@ -123,6 +123,9 @@ class MockDevice : public Device {
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
     MOCK_METHOD(Display*, invalidateScreen, (), (override));
     MOCK_METHOD(void, render, (), (override));
+    MOCK_METHOD(Display*, setGlyphMode, (FontMode), (override));
+    MOCK_METHOD(Display*, drawButton, (const char*, int, int), (override));
+    MOCK_METHOD(Display*, renderGlyph, (const char*, int, int), (override));
 
     //Animation Methods
     MOCK_METHOD(void, startAnimation, (AnimationConfig), (override));
@@ -149,5 +152,4 @@ class MockDevice : public Device {
 
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
-
 };

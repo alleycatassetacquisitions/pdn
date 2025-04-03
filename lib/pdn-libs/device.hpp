@@ -68,6 +68,8 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
+    virtual Display* drawButton(const char *text, int xCenter, int yCenter) = 0;
+
     // Animation control methods
     virtual void startAnimation(AnimationConfig config) = 0;
     virtual void stopAnimation() = 0;

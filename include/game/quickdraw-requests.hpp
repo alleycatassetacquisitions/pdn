@@ -120,7 +120,8 @@ namespace QuickdrawRequests {
                 } else {
                     onError({
                         WirelessError::INVALID_RESPONSE,
-                        "Failed to parse player response"
+                        "Failed to parse player response",
+                        false
                     });
                 }
             },

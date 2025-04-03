@@ -96,7 +96,7 @@ class WirelessState : public State {
 protected:
     WirelessState(int stateId) : State(stateId) {}
     static const unsigned long IDLE_TIMEOUT = 300000; // 5 minutes
-    static const uint8_t MAX_RETRIES = 3;
+    static const uint8_t MAX_RETRIES = 1;
     SimpleTimer idleTimer;
 };
 

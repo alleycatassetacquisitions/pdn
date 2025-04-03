@@ -39,12 +39,13 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
         request->retryCount++;
         ESP_LOGI("WirelessManager", "Request retry count: %d", request->retryCount);
         
-        if (request->retryCount >= 3) {
+        if (request->retryCount >= WirelessState::MAX_RETRIES) {
             ESP_LOGE("WirelessManager", "Max retries reached for path: %s", request->path.c_str());
             if (request->hasErrorCallback) {
                 request->onError({
                     WirelessError::CONNECTION_FAILED,
-                    "HTTP Event Error - Max retries reached"
+                    "HTTP Event Error - Max retries reached",
+                    false
                 });
             }
         } else {
@@ -112,7 +113,8 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
                 snprintf(error_msg, sizeof(error_msg), "HTTP Error: %d", status_code);
                 request->onError({
                     status_code >= 500 ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE,
-                    error_msg
+                    error_msg,
+                    request->retryCount < WirelessState::MAX_RETRIES
                 });
             }
             
@@ -137,11 +139,12 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
             state->currentRequest = nullptr;
             
             // Remove the request from the queue if it's been retried too many times or has a response
-            if (request->retryCount >= 2 || !request->responseData.isEmpty()) {
+            if (request->retryCount >= WirelessState::MAX_RETRIES || !request->responseData.isEmpty()) {
                 if (request->hasErrorCallback) {
                     request->onError({
                         WirelessError::CONNECTION_FAILED,
-                        "Connection closed before response completed"
+                        "Connection closed before response completed",
+                        false  // No more retries or has response data
                     });
                 }
                 state->httpQueue->pop();
@@ -351,6 +354,7 @@ bool WifiState::initializeHttpClient() {
     config.url = baseUrl;  // Set the base URL
     config.skip_cert_common_name_check = true;  // Skip certificate CN validation
     config.cert_pem = nullptr;  // Skip certificate verification entirely
+    config.is_async = true;
     
     ESP_LOGI("WirelessManager", "HTTP client config: timeout=%d ms, keep-alive=%s, base_url=%s, cert_verify=disabled", 
              config.timeout_ms, config.keep_alive_enable ? "enabled" : "disabled", config.url);
@@ -485,7 +489,8 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
         ESP_LOGE("WirelessManager", "Cannot make HTTP request - WiFi not connected (status: %d)", WiFi.status());
         handleRequestError(request, {
             WirelessError::WIFI_NOT_CONNECTED,
-            "WiFi connection lost"
+            "WiFi connection lost",
+            false
         });
         return;
     } else {
@@ -500,7 +505,8 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
             ESP_LOGE("WirelessManager", "Failed to initialize HTTP client");
             handleRequestError(request, {
                 WirelessError::CONNECTION_FAILED,
-                "Failed to initialize HTTP client"
+                "Failed to initialize HTTP client",
+                false
             });
             
             // Reset request state
@@ -508,7 +514,7 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
             currentRequest = nullptr;
             
             // Remove from queue if max retries reached
-            if (request.retryCount >= 3) {
+            if (request.retryCount >= WirelessState::MAX_RETRIES) {
                 httpQueue->pop();
                 ESP_LOGI("WirelessManager", "Failed request removed from queue after HTTP client init failure, queue size: %d", httpQueue->size());
             }
@@ -553,13 +559,16 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
     // Perform request with detailed logging
     ESP_LOGI("WirelessManager", "Performing HTTP request to: %s", fullUrl.c_str());
     esp_err_t err = esp_http_client_perform(httpClient);
+    ESP_LOGI("WirelessManager", "HTTP request performed with error: %s (code: %d)", 
+             esp_err_to_name(err), err);
     
     if (err != ESP_OK) {
         ESP_LOGE("WirelessManager", "HTTP request failed with error: %s (code: %d)", 
                  esp_err_to_name(err), err);
         handleRequestError(request, {
             WirelessError::CONNECTION_FAILED,
-            "Failed to perform HTTP request: " + String(esp_err_to_name(err))
+            "Failed to perform HTTP request: " + String(esp_err_to_name(err)),
+            request.retryCount < WirelessState::MAX_RETRIES
         });
         
         // Reset client on error with detailed logging
@@ -633,7 +642,7 @@ void WifiState::checkOngoingRequests() {
         currentRequest = nullptr;
         
         // Check if max retries reached
-        if (request.retryCount >= 3) {
+        if (request.retryCount >= WirelessState::MAX_RETRIES) {
             ESP_LOGE("WirelessManager", "Max retries reached for path: %s", request.path.c_str());
             
             // Call error callback if available
@@ -641,7 +650,8 @@ void WifiState::checkOngoingRequests() {
                 ESP_LOGI("WirelessManager", "Calling error callback for timed out request");
                 request.onError({
                     WirelessError::TIMEOUT,
-                    "Request timed out after 3 retries"
+                    "Request timed out after 1 retry",
+                    false
                 });
             }
             

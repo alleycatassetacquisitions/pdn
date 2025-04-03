@@ -16,6 +16,7 @@ enum class WirelessError {
 struct WirelessErrorInfo {
     WirelessError code;
     String message;
+    bool willRetry;
 };
 
 // Callback definitions

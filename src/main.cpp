@@ -20,7 +20,7 @@
 Device* pdn = PDN::GetInstance();
 IdGenerator* idGenerator = IdGenerator::GetInstance();
 Player* player = new Player();
-WirelessManager* wirelessManager = new WirelessManager(pdn, "The Lab", "C00KIECAT", "http://192.168.1.107:3000");
+WirelessManager* wirelessManager = new WirelessManager(pdn, "network", "password", "http://192.168.1.107:3000");
 Quickdraw game = Quickdraw(player, pdn, wirelessManager);
 
 // Remote player management
@@ -33,7 +33,6 @@ void setup() {
 
     player->setUserID(idGenerator->generateId());
     pdn->begin();
-    game.initialize();
     delay(1000);
 
     ESP_LOGI("PDN", "HW and Game Initialized\n");
@@ -74,7 +73,13 @@ void setup() {
   //       &remotePlayers);
 
     ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
+    pdn->
+    invalidateScreen()->
+        drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
+        drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
+        render();
     delay(3000);
+    game.initialize();
 }
 
 void loop() {

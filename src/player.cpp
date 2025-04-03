@@ -79,7 +79,7 @@ void Player::setAllegiance(const string& allegianceStr)
     this->allegianceStr = allegianceStr;
     
     // Set the enum value based on the string
-    if (allegianceStr == "Alleycat") {
+    if (allegianceStr == "None") {
         allegiance = Allegiance::ALLEYCAT;
     } else if (allegianceStr == "Endline") {
         allegiance = Allegiance::ENDLINE;
@@ -87,6 +87,24 @@ void Player::setAllegiance(const string& allegianceStr)
         allegiance = Allegiance::HELIX;
     } else if (allegianceStr == "The Resistance") {
         allegiance = Allegiance::RESISTANCE;
+    }
+}
+
+void Player::setAllegiance(const Allegiance allegiance)
+{
+    this->allegiance = allegiance;
+    switch(allegiance) {
+        case Allegiance::ALLEYCAT:
+            allegianceStr = "None";
+            break;
+        case Allegiance::ENDLINE:
+            allegianceStr = "Endline";
+            break;
+        case Allegiance::HELIX:
+            allegianceStr = "Helix";
+            break;
+        case Allegiance::RESISTANCE:
+            allegianceStr = "The Resistance";
     }
 }
 

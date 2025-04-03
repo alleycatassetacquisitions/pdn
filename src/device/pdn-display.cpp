@@ -46,7 +46,7 @@ Display * PDNDisplay::setGlyphMode(FontMode mode) {
     switch (mode) {
         case FontMode::TEXT:
             screen.disableUTF8Print();
-            screen.setFont(u8g2_font_prospero_nbp_tf);
+            screen.setFont(u8g2_font_tenfatguys_tr);
             break;
         case FontMode::NUMBER_GLYPH:
             screen.enableUTF8Print();
@@ -57,6 +57,11 @@ Display * PDNDisplay::setGlyphMode(FontMode mode) {
             screen.setFont(u8g2_font_unifont_t_76);
             break;
     }
+    return this;
+}
+
+Display * PDNDisplay::drawButton(const char *text, int xCenter, int yCenter) {
+    screen.drawButtonUTF8(xCenter, yCenter, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, 2, 2, text);
     return this;
 }
 
@@ -79,5 +84,5 @@ PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8
     screen.begin();
     screen.clearBuffer();
     screen.setContrast(175);
-    screen.setFont(u8g2_font_prospero_nbp_tf);
+    screen.setFont(u8g2_font_tenfatguys_tf);
 }

@@ -21,7 +21,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
     ESP_LOGI(TAG, "State mounted - Starting player registration");
     PDN->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
-    drawText("Pairing Code", 16, 16)->
+    drawText("Pairing Code", 8, 16)->
     setGlyphMode(FontMode::NUMBER_GLYPH)->
     renderGlyph(digitGlyphs[0], 20, 40)->
     render();
@@ -71,7 +71,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
             PDN->
             invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 16, 16)->
+            drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
             renderGlyph(digitGlyphs[currentDigit], 20, 40)->
             render();
@@ -79,7 +79,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
             PDN->
             invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 16, 16)->
+            drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
             renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
             renderGlyph(digitGlyphs[currentDigit], 44, 40)->
@@ -88,7 +88,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
             PDN->
             invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 16, 16)->
+            drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
             renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
             renderGlyph(digitGlyphs[inputId[1]], 44, 40)->
@@ -98,7 +98,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
             PDN->
             invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 16, 16)->
+            drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
             renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
             renderGlyph(digitGlyphs[inputId[1]], 44, 40)->
@@ -117,7 +117,7 @@ void PlayerRegistration::onStateDismounted(Device *PDN) {
     PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
     //reset all member variables
     currentDigitIndex = 0;
-    currentDigit = 1;
+    currentDigit = 0;
     transitionToUserFetchState = false;
     ESP_LOGI(TAG, "State cleanup complete");
 }

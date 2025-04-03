@@ -28,6 +28,8 @@ public:
 
     virtual Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) = 0;
 
+    virtual Display* drawButton(const char *text, int xCenter, int yCenter) = 0;
+
     virtual Display* drawText(const char *text, int xStart, int yStart) = 0;
 
     virtual Display* drawImage(Image image) = 0;

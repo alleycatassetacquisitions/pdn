@@ -27,29 +27,50 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
     ESP_LOGI(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
     ESP_LOGI(TAG, "WiFi state: %d", wirelessManager->getCurrentState()->getStateId());
     
-    QuickdrawRequests::getPlayer(
-        wirelessManager,
-        String(player->getUserID().c_str()),
-        [this](const PlayerResponse& response) {
-            ESP_LOGI(TAG, "Successfully fetched player data: %s (%s)", 
-                    response.name.c_str(), response.id.c_str());
-            
-            // Set player information using the setters
-            player->setName(response.name.c_str());
-            player->setIsHunter(response.isHunter);
-            player->setAllegiance(response.allegiance.c_str());
-            player->setFaction(response.faction.c_str());
 
-            renderWelcomeMessage();
-            userDataFetchTimer.invalidate();
-            isFetchingUserData = false;
-        },
-        [this](const WirelessErrorInfo& error) {
-            ESP_LOGE(TAG, "Failed to fetch player data: %s (code: %d)", 
-                   error.message.c_str(), static_cast<int>(error.code));
-            resetToPlayerRegistrationState = true;
-        }
-    );
+    if(player->getUserID() == TEST_BOUNTY_ID) {
+        player->setIsHunter(false);
+        player->setName("KO-NA-MI");
+        player->setFaction("Bounty");
+        transitionToWelcomeMessageState = true;
+        userDataFetchTimer.invalidate();
+        isFetchingUserData = false;
+    } else if(player->getUserID() == TEST_HUNTER_ID) {
+        player->setIsHunter(true);
+        player->setName("Nesting Bot");
+        player->setFaction("Hunter");
+        transitionToWelcomeMessageState = true;
+        userDataFetchTimer.invalidate();
+        isFetchingUserData = false;
+    } else {
+        QuickdrawRequests::getPlayer(
+            wirelessManager,
+            String(player->getUserID().c_str()),
+            [this](const PlayerResponse& response) {
+                ESP_LOGI(TAG, "Successfully fetched player data: %s (%s)", 
+                        response.name.c_str(), response.id.c_str());
+                
+                // Set player information using the setters
+                player->setName(response.name.c_str());
+                player->setIsHunter(response.isHunter);
+                player->setAllegiance(response.allegiance.c_str());
+                player->setFaction(response.faction.c_str());
+
+                userDataFetchTimer.invalidate();
+                transitionToWelcomeMessageState = true;
+            },
+            [this](const WirelessErrorInfo& error) {
+                ESP_LOGE(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
+                    error.message.c_str(), static_cast<int>(error.code), error.willRetry);
+                if(!error.willRetry) {
+                    isFetchingUserData = false;
+                    player->setName("Unknown");
+                    player->setAllegiance("None");
+                    transitionToConfirmOfflineState = true;
+                }
+            }
+        );
+    }
 }   
 
 void FetchUserDataState::onStateLoop(Device *PDN) {
@@ -66,7 +87,7 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
     if(userDataFetchTimer.expired()) {
         ESP_LOGW(TAG, "User data fetch timer expired after %lu ms", userDataFetchTimer.getElapsedTime());
         isFetchingUserData = false;
-        resetToPlayerRegistrationState = true;
+        transitionToConfirmOfflineState = true;
     } else if(userDataFetchTimer.isRunning()) {
         EVERY_N_MILLISECONDS(50) {
             showLoadingGlyphs(PDN);
@@ -79,21 +100,14 @@ void FetchUserDataState::onStateDismounted(Device *PDN) {
     PDN->setGlyphMode(FontMode::TEXT);
     //reset all member variables
     isFetchingUserData = false;
-    resetToPlayerRegistrationState = false;
+    transitionToConfirmOfflineState = false;
+    transitionToWelcomeMessageState = false;
     userDataFetchTimer.invalidate();
     ESP_LOGI(TAG, "State cleanup complete");
 }   
 
-bool FetchUserDataState::resetToPlayerRegistration() {
-    static bool lastResetState = false;
-    
-    // Only log when the state actually changes
-    if(resetToPlayerRegistrationState && !lastResetState) {
-        ESP_LOGI(TAG, "Resetting to PlayerRegistration state");
-    }
-    
-    lastResetState = resetToPlayerRegistrationState;
-    return resetToPlayerRegistrationState;
+bool FetchUserDataState::transitionToConfirmOffline() {
+    return transitionToConfirmOfflineState;
 }  
 
 void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
@@ -134,16 +148,9 @@ void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
     PDN->render();
 }  
 
-void FetchUserDataState::renderWelcomeMessage() {
-    PDN::GetInstance()->
-    invalidateScreen()->
-    setGlyphMode(FontMode::TEXT)->
-    drawText("Welcome", 0, 16)->
-    drawText(player->getName().c_str(), 0, 32)->
-    drawText("to Quickdraw!", 0, 48)->
-    render();
+bool FetchUserDataState::transitionToWelcomeMessage() {
+    return transitionToWelcomeMessageState;
 }
-
 
 
 

@@ -25,6 +25,8 @@ public:
 
     Display* drawImage(Image image, int xStart, int yStart) override;
 
+    Display* drawButton(const char *text, int xCenter, int yCenter) override;
+
     void reset();
 
     const int maxCharX = 128 / 8;
