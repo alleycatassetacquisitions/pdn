@@ -40,8 +40,10 @@ struct LEDState {
     struct SingleLEDState {
         LEDColor color;
         uint8_t brightness;
-        SingleLEDState() : color(0,0,0), brightness(0) {}
-        SingleLEDState(LEDColor c, uint8_t b) : color(c), brightness(b) {}
+        bool reserved;  // If true, this LED should not be modified by animations
+        SingleLEDState() : color(0,0,0), brightness(0), reserved(false) {}
+        SingleLEDState(LEDColor c, uint8_t b) : color(c), brightness(b), reserved(false) {}
+        SingleLEDState(LEDColor c, uint8_t b, bool r) : color(c), brightness(b), reserved(r) {}
     };
 
     SingleLEDState leftLights[9];   // 9 LEDs for left side (0-8)
@@ -51,8 +53,14 @@ struct LEDState {
 
     LEDState() : timestamp(0) {}
     
+    // Helper to check if an LED is reserved
+    bool isReserved(bool isLeft, uint8_t index) const {
+        if (index >= 9) return false;
+        return isLeft ? leftLights[index].reserved : rightLights[index].reserved;
+    }
+    
     // Helper to set a single LED in the state
-    void setLED(bool isLeft, uint8_t index, const LEDColor& color, uint8_t brightness) {
+    void setLED(bool isLeft, uint8_t index, const LEDColor& color, uint8_t brightness, bool reserved = false) {
         if (index >= 9) return;
         
         SingleLEDState& led = isLeft ? 
@@ -61,21 +69,38 @@ struct LEDState {
             
         led.color = color;
         led.brightness = brightness;
+        led.reserved = reserved;
     }
 
-    // Helper to set both left and right LEDs
-    void setLEDPair(uint8_t index, const LEDColor& color, uint8_t brightness) {
-        setLED(true, index, color, brightness);
-        setLED(false, index, color, brightness);
+    // Helper to set both left and right LEDs, ignoring reserved status
+    void setLEDPair(uint8_t index, const LEDColor& color, uint8_t brightness, bool reserved = false) {
+        setLED(true, index, color, brightness, reserved);
+        setLED(false, index, color, brightness, reserved);
     }
 
-    // Helper to clear all LEDs
+    // Helper to set both left and right LEDs, respecting reserved status
+    void setLEDPairRespectingReserved(uint8_t index, const LEDColor& color, uint8_t brightness, bool forceUpdate = false) {
+        if (forceUpdate || !isReserved(true, index)) {
+            setLED(true, index, color, brightness);
+        }
+        if (forceUpdate || !isReserved(false, index)) {
+            setLED(false, index, color, brightness);
+        }
+    }
+
+    // Helper to clear all non-reserved LEDs
     void clear() {
         for (int i = 0; i < 9; i++) {
-            leftLights[i] = SingleLEDState();
-            rightLights[i] = SingleLEDState();
+            if (!leftLights[i].reserved) {
+                leftLights[i] = SingleLEDState();
+            }
+            if (!rightLights[i].reserved) {
+                rightLights[i] = SingleLEDState();
+            }
         }
-        transmitLight = SingleLEDState();
+        if (!transmitLight.reserved) {
+            transmitLight = SingleLEDState();
+        }
     }
 };
 

@@ -44,7 +44,7 @@ public:
 
     virtual void fadeLightsBy(LightIdentifier whichLights, int value) = 0;
 
-    virtual void setLight(LightIdentifier whichLights, int ledNum, LEDColor color) = 0;
+    virtual void setLight(LightIdentifier whichLights, int ledNum, LEDColor color, uint8_t brightness = 255, bool reserved = false) = 0;
 
     //Vibration Motor Methods
     virtual void setVibration(int value) = 0;

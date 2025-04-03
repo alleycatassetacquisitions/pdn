@@ -6,6 +6,7 @@
 #include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include <queue>
+#include "game/ping-queue.hpp"
 
 using namespace std;
 
@@ -82,27 +83,27 @@ private:
 
 class Idle : public State {
 public:
-    Idle(Player *player);
+    Idle(Player* player);
+    ~Idle() override;
 
-    ~Idle();
-
-    void onStateMounted(Device *PDN) override;
-
-    void onStateLoop(Device *PDN) override;
-
-    void onStateDismounted(Device *PDN) override;
-
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
     bool transitionToHandshake();
 
+    // Getters for testing
+    Player* getPlayer() { return player; }
+    PingQueue& getPingQueue() { return pingQueue; }
+
 private:
-    Player *player;
+    void serialEventCallbacks(string message);
+    void updateLEDStatus(Device* PDN);
+    
+    Player* player;
+    PingQueue pingQueue;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
-
-    void serialEventCallbacks(string message);
-
-    void ledAnimation(Device *PDN);
 };
 
 /*

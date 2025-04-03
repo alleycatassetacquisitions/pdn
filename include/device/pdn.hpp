@@ -52,7 +52,7 @@ public:
 
     void fadeLightsBy(LightIdentifier whichLights, int value);
 
-    void setLight(LightIdentifier whichLights, int ledNum, LEDColor color);
+    void setLight(LightIdentifier whichLights, int ledNum, LEDColor color, uint8_t brightness = 255, bool reserved = false);
 
     Display * invalidateScreen() override;
 

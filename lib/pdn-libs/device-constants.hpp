@@ -48,3 +48,7 @@ const char STRING_TERM = '\r';
 const char STRING_START = '*';
 
 const int TRANSMIT_QUEUE_MAX_SIZE = 1024;
+
+// LED Brightness Levels
+constexpr int LED_DIM_BRIGHTNESS = 20;    // Very dim brightness for inactive LEDs
+constexpr int LED_ACTIVE_BRIGHTNESS = 255; // Full brightness for active LEDs

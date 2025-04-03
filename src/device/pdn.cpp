@@ -101,8 +101,8 @@ void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
     // lightManager.setLightColor(whichLights, ledNum, color);
 }
 
-void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
-    // lightManager.setLightColor(whichLights, ledNum, color);
+void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color, uint8_t brightness, bool reserved) {
+    lightManager.setLED(whichLights, ledNum, color, brightness, reserved);
 }
 
 void PDN::setVibration(int value) {
@@ -162,12 +162,14 @@ Display* PDN::drawText(const char *text) {
     return display.drawText(text);
 }
 
-PDNButton * PDN::getButton(ButtonIdentifier whichButton) {
+PDNButton* PDN::getButton(ButtonIdentifier whichButton) {
     switch(whichButton) {
         case ButtonIdentifier::PRIMARY_BUTTON:
             return &primary;
         case ButtonIdentifier::SECONDARY_BUTTON:
             return &secondary;
+        default:
+            return nullptr;  // Return nullptr for unknown button identifiers
     }
 }
 

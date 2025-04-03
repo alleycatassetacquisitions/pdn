@@ -25,6 +25,14 @@
 #include "device/countdown-animation.hpp"
 #include "device/vertical-chase-animation.hpp"
 
+struct LEDPhysicalState {
+    CRGB color;
+    bool reserved;
+    
+    LEDPhysicalState() : color(CRGB::Black), reserved(false) {}
+    LEDPhysicalState(CRGB color, bool reserved) : color(color), reserved(reserved) {}
+};
+
 class LightManager {
 public:
     LightManager(DisplayLights& displayLights, GripLights& gripLights);
@@ -41,9 +49,7 @@ public:
     void resumeAnimation();
     
     // Direct LED control
-    // void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color);
-    // void setAllLights(LightIdentifier lights, LEDColor color);
-    // void setBrightness(LightIdentifier lights, uint8_t brightness);
+    void setLED(LightIdentifier whichLights, int ledNum, LEDColor color, uint8_t brightness = 255, bool reserved = false);
     void clear(LightIdentifier lights);
     
     // Animation state query
@@ -102,7 +108,7 @@ private:
     GripLights& gripLights;
     IAnimation* currentAnimation;
     
-    // Member arrays for extracted lights
-    CRGB gripLightArray[6];
-    CRGB displayLightArray[13];
+    // Member arrays for extracted lights with reserved status
+    LEDPhysicalState gripLightArray[6];
+    LEDPhysicalState displayLightArray[13];
 };

@@ -89,149 +89,17 @@ void LightManager::resumeAnimation() {
     }
 }
 
-// void LightManager::setLightColor(LightIdentifier lights, uint8_t index, LEDColor color) {
-//     CRGB fastledColor = convertToFastLED(color);
-//     switch (lights) {
-//         case LightIdentifier::DISPLAY_LIGHTS:
-//             displayLights.setLight(index, fastledColor);
-//             break;
-//         case LightIdentifier::GRIP_LIGHTS:
-//             gripLights.setLight(index, fastledColor);
-//             break;
-//         case LightIdentifier::LEFT_LIGHTS:
-//             switch(index) {
-//                 case 0:
-//                     gripLights.setLight(2, fastledColor);
-//                     break;
-//                 case 1:
-//                     gripLights.setLight(1, fastledColor);
-//                     break;
-//                 case 2:
-//                     gripLights.setLight(0, fastledColor);
-//                     break;
-//                 case 3:
-//                     displayLights.setLight(0, fastledColor);
-//                     break;
-//                 case 4:
-//                     displayLights.setLight(1, fastledColor);
-//                     break;
-//                 case 5:
-//                     displayLights.setLight(2, fastledColor);
-//                     break;
-//                 case 6:
-//                     displayLights.setLight(3, fastledColor);
-//                     break;
-//                 case 7:
-//                     displayLights.setLight(4, fastledColor);
-//                     break;
-//                 case 8:
-//                     displayLights.setLight(5, fastledColor);
-//                     break;
-//             }
-//             break;
-//         case LightIdentifier::RIGHT_LIGHTS:
-//             switch(index) {
-//                 case 0:
-//                     gripLights.setLight(3, fastledColor);
-//                     break;
-//                 case 1:
-//                     gripLights.setLight(4, fastledColor);
-//                     break;
-//                 case 2:
-//                     gripLights.setLight(5, fastledColor);
-//                     break;
-//                 case 3:
-//                     displayLights.setLight(11, fastledColor);
-//                     break;
-//                 case 4:
-//                     displayLights.setLight(10, fastledColor);
-//                     break;
-//                 case 5:
-//                     displayLights.setLight(9, fastledColor);
-//                     break;
-//                 case 6:
-//                     displayLights.setLight(8, fastledColor);
-//                     break;
-//                 case 7:
-//                     displayLights.setLight(7, fastledColor);
-//                     break;
-//                 case 8:
-//                     displayLights.setLight(6, fastledColor);
-//                     break;
-//             }
-//             break;
-//         case LightIdentifier::TRANSMIT_LIGHT:
-//             displayLights.setLight(12, fastledColor);
-//             break;
-//         default:
-//             break;
-//     }
-// }
-
-// void LightManager::setAllLights(LightIdentifier lights, LEDColor color) {
-//     CRGB fastledColor = convertToFastLED(color);
-//     switch (lights) {
-//         case LightIdentifier::DISPLAY_LIGHTS:
-//             for (int i = 0; i < 13; i++) {
-//                 displayLights.setLight(i, fastledColor);
-//             }
-//             break;
-//         case LightIdentifier::GRIP_LIGHTS:
-//             for (int i = 0; i < 6; i++) {
-//                 gripLights.setLight(i, fastledColor);
-//             }
-//             break;
-//         case LightIdentifier::LEFT_LIGHTS:
-//             for (int i = 6; i < 12; i++) {
-//                 displayLights.setLight(i, fastledColor);
-//             }
-//             break;
-//         case LightIdentifier::RIGHT_LIGHTS:
-//             for (int i = 0; i < 6; i++) {
-//                 displayLights.setLight(i, fastledColor);
-//             }
-//             break;
-//         case LightIdentifier::TRANSMIT_LIGHT:
-//             displayLights.setLight(12, fastledColor);
-//             break;
-//         default:
-//             break;
-//     }
-// }
-
-// void LightManager::setBrightness(LightIdentifier lights, uint8_t brightness) {
-//     switch (lights) {
-//         case LightIdentifier::DISPLAY_LIGHTS:
-//             for (int i = 0; i < 13; i++) {
-//                 displayLights.setLightBrightness(i, brightness);
-//             }
-//             break;
-//         case LightIdentifier::GRIP_LIGHTS:
-//             for (int i = 0; i < 6; i++) {
-//                 gripLights.setLightBrightness(i, brightness);
-//             }
-//             break;
-//         case LightIdentifier::LEFT_LIGHTS:
-//             for (int i = 6; i < 12; i++) {
-//                 displayLights.setLightBrightness(i, brightness);
-//             }
-//             break;
-//         case LightIdentifier::RIGHT_LIGHTS:
-//             for (int i = 0; i < 6; i++) {
-//                 displayLights.setLightBrightness(i, brightness);
-//             }
-//             break;
-//         case LightIdentifier::TRANSMIT_LIGHT:
-//             displayLights.setLightBrightness(12, brightness);
-//             break;
-//         default:
-//             break;
-//     }
-// }
 
 void LightManager::clear(LightIdentifier lights) {
-    fill_solid(gripLightArray, 6, CRGB::Black);
-    fill_solid(displayLightArray, 13, CRGB::Black);
+    // Clear grip lights
+    for (int i = 0; i < 6; i++) {
+        gripLightArray[i] = LEDPhysicalState();  // This will set color to CRGB::Black and reserved to false
+    }
+    
+    // Clear display lights
+    for (int i = 0; i < 13; i++) {
+        displayLightArray[i] = LEDPhysicalState();  // This will set color to CRGB::Black and reserved to false
+    }
 }
 
 bool LightManager::isAnimating() const {
@@ -263,44 +131,93 @@ LEDColor LightManager::convertFromFastLED(const CRGB& color) {
 
 void LightManager::mapStateToGripLights(const LEDState& state) {
     // Map the LEDState to the grip lights array according to the pattern
-    gripLightArray[0] = convertToFastLED(state.leftLights[2]);
-    gripLightArray[1] = convertToFastLED(state.leftLights[1]);
-    gripLightArray[2] = convertToFastLED(state.leftLights[0]);
-    gripLightArray[3] = convertToFastLED(state.rightLights[0]);
-    gripLightArray[4] = convertToFastLED(state.rightLights[1]);
-    gripLightArray[5] = convertToFastLED(state.rightLights[2]);
+    gripLightArray[0] = LEDPhysicalState(convertToFastLED(state.leftLights[2]), state.leftLights[2].reserved);
+    gripLightArray[1] = LEDPhysicalState(convertToFastLED(state.leftLights[1]), state.leftLights[1].reserved);
+    gripLightArray[2] = LEDPhysicalState(convertToFastLED(state.leftLights[0]), state.leftLights[0].reserved);
+    gripLightArray[3] = LEDPhysicalState(convertToFastLED(state.rightLights[0]), state.rightLights[0].reserved);
+    gripLightArray[4] = LEDPhysicalState(convertToFastLED(state.rightLights[1]), state.rightLights[1].reserved);
+    gripLightArray[5] = LEDPhysicalState(convertToFastLED(state.rightLights[2]), state.rightLights[2].reserved);
 }
 
 void LightManager::mapStateToDisplayLights(const LEDState& state) {
     // Map the LEDState to the display lights array according to the pattern
-    displayLightArray[0] = convertToFastLED(state.leftLights[3]);
-    displayLightArray[1] = convertToFastLED(state.leftLights[4]);
-    displayLightArray[2] = convertToFastLED(state.leftLights[5]);
-    displayLightArray[3] = convertToFastLED(state.leftLights[6]);
-    displayLightArray[4] = convertToFastLED(state.leftLights[7]);
-    displayLightArray[5] = convertToFastLED(state.leftLights[8]);
-    displayLightArray[6] = convertToFastLED(state.rightLights[8]);
-    displayLightArray[7] = convertToFastLED(state.rightLights[7]);
-    displayLightArray[8] = convertToFastLED(state.rightLights[6]);
-    displayLightArray[9] = convertToFastLED(state.rightLights[5]);
-    displayLightArray[10] = convertToFastLED(state.rightLights[4]);
-    displayLightArray[11] = convertToFastLED(state.rightLights[3]);
-    displayLightArray[12] = convertToFastLED(state.transmitLight);
+    displayLightArray[0] = LEDPhysicalState(convertToFastLED(state.leftLights[3]), state.leftLights[3].reserved);
+    displayLightArray[1] = LEDPhysicalState(convertToFastLED(state.leftLights[4]), state.leftLights[4].reserved);
+    displayLightArray[2] = LEDPhysicalState(convertToFastLED(state.leftLights[5]), state.leftLights[5].reserved);
+    displayLightArray[3] = LEDPhysicalState(convertToFastLED(state.leftLights[6]), state.leftLights[6].reserved);
+    displayLightArray[4] = LEDPhysicalState(convertToFastLED(state.leftLights[7]), state.leftLights[7].reserved);
+    displayLightArray[5] = LEDPhysicalState(convertToFastLED(state.leftLights[8]), state.leftLights[8].reserved);
+    displayLightArray[6] = LEDPhysicalState(convertToFastLED(state.rightLights[8]), state.rightLights[8].reserved);
+    displayLightArray[7] = LEDPhysicalState(convertToFastLED(state.rightLights[7]), state.rightLights[7].reserved);
+    displayLightArray[8] = LEDPhysicalState(convertToFastLED(state.rightLights[6]), state.rightLights[6].reserved);
+    displayLightArray[9] = LEDPhysicalState(convertToFastLED(state.rightLights[5]), state.rightLights[5].reserved);
+    displayLightArray[10] = LEDPhysicalState(convertToFastLED(state.rightLights[4]), state.rightLights[4].reserved);
+    displayLightArray[11] = LEDPhysicalState(convertToFastLED(state.rightLights[3]), state.rightLights[3].reserved);
+    displayLightArray[12] = LEDPhysicalState(convertToFastLED(state.transmitLight), state.transmitLight.reserved);
 }
 
 void LightManager::applyLEDState(const LEDState& state) {
-    // Extract the grip and display lights from the LEDState
+    // Map the LEDState to the physical LEDs, respecting reserved status
     mapStateToGripLights(state);
     mapStateToDisplayLights(state);
     
     // Apply the grip lights
     for (int i = 0; i < 6; i++) {
-        // Set the color
-        this->gripLights.setLight(i, gripLightArray[i]);
+        if (!gripLightArray[i].reserved) {
+            this->gripLights.setLight(i, gripLightArray[i].color);
+        }
     }
     
-    // Apply the display lights
     for (int i = 0; i < 13; i++) {
-        this->displayLights.setLight(i, displayLightArray[i]);
+        if (!displayLightArray[i].reserved) {
+            this->displayLights.setLight(i, displayLightArray[i].color);
+        }
+    }
+}
+
+void LightManager::setLED(LightIdentifier whichLights, int ledNum, LEDColor color, uint8_t brightness, bool reserved) {
+    // Create a new LEDState with the specified parameters
+    LEDState state;
+    
+    // Map the LED number to the correct index based on the identifier
+    switch (whichLights) {
+        case LightIdentifier::LEFT_LIGHTS:
+            if (ledNum < 9) {
+                state.leftLights[ledNum] = LEDState::SingleLEDState(color, brightness, reserved);
+            }
+            break;
+        case LightIdentifier::RIGHT_LIGHTS:
+            if (ledNum < 9) {
+                state.rightLights[ledNum] = LEDState::SingleLEDState(color, brightness, reserved);
+            }
+            break;
+        case LightIdentifier::DISPLAY_LIGHTS:
+            // Map display LED indices to the correct left/right light indices
+            if (ledNum < 6) {
+                // Left side display LEDs (0-5)
+                state.leftLights[ledNum + 3] = LEDState::SingleLEDState(color, brightness, reserved);
+            } else if (ledNum < 12) {
+                // Right side display LEDs (6-11)
+                state.rightLights[11 - ledNum] = LEDState::SingleLEDState(color, brightness, reserved);
+            } else if (ledNum == 12) {
+                // Transmit LED
+                state.transmitLight = LEDState::SingleLEDState(color, brightness, reserved);
+            }
+            break;
+        case LightIdentifier::GRIP_LIGHTS:
+            // Map grip LED indices to the correct left/right light indices
+            if (ledNum < 3) {
+                // Left grip LEDs (0-2)
+                state.leftLights[2 - ledNum] = LEDState::SingleLEDState(color, brightness, reserved);
+            } else if (ledNum < 6) {
+                // Right grip LEDs (3-5)
+                state.rightLights[ledNum - 3] = LEDState::SingleLEDState(color, brightness, reserved);
+            }
+            break;
+        case LightIdentifier::TRANSMIT_LIGHT:
+            state.transmitLight = LEDState::SingleLEDState(color, brightness, reserved);
+            break;
+        default:
+            break;
     }
 } 
