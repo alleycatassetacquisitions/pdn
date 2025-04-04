@@ -1,7 +1,8 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
     this->player = player;
+    this->wirelessManager = wirelessManager;
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -12,17 +13,19 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
-    Sleep* sleep = new Sleep(player);
-    AwakenSequence* awakenSequence = new AwakenSequence();
+    PlayerRegistration* playerRegistration = new PlayerRegistration(player);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);
+    WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
+    ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
+    ChooseRoleState* chooseRole = new ChooseRoleState(player);
+    AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
+    
+    AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player);
     
-    // New handshake states
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
-    // BountySendFinalAckState* bountySendAck = new BountySendFinalAckState(player);
     HunterSendIdState* hunterSendId = new HunterSendIdState(player);
-    // HunterSendFinalAckState* hunterSendAck = new HunterSendFinalAckState(player);
-    // StartingLineState* startingLine = new StartingLineState(player);
     
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown(player);
@@ -30,10 +33,46 @@ void Quickdraw::populateStateMap() {
     Win* win = new Win(player);
     Lose* lose = new Lose(player);
 
-    sleep->addTransition(
+    playerRegistration->addTransition(
         new StateTransition(
-            /* condition function */std::bind(&Sleep::transitionToAwakenSequence, sleep),
-                awakenSequence));
+            std::bind(&PlayerRegistration::transitionToUserFetch, playerRegistration),
+            fetchUserData));
+
+    fetchUserData->addTransition(
+        new StateTransition(
+            std::bind(&FetchUserDataState::transitionToConfirmOffline, fetchUserData),
+            confirmOffline));
+
+    fetchUserData->addTransition(
+        new StateTransition(
+            std::bind(&FetchUserDataState::transitionToWelcomeMessage, fetchUserData),
+            welcomeMessage));
+
+    confirmOffline->addTransition(
+        new StateTransition(
+            std::bind(&ConfirmOfflineState::transitionToChooseRole, confirmOffline),
+            chooseRole));
+
+    confirmOffline->addTransition(
+        new StateTransition(
+            std::bind(&ConfirmOfflineState::transitionToPlayerRegistration, confirmOffline),
+            playerRegistration));
+
+    chooseRole->addTransition(
+        new StateTransition(
+            std::bind(&ChooseRoleState::transitionToAllegiancePicker, chooseRole),
+            allegiancePicker));
+
+    allegiancePicker->addTransition(
+        new StateTransition(
+            std::bind(&AllegiancePickerState::transitionToWelcomeMessage, allegiancePicker),
+            welcomeMessage));
+            
+
+    welcomeMessage->addTransition(
+        new StateTransition(
+            std::bind(&WelcomeMessage::transitionToGameplay, welcomeMessage),
+            awakenSequence));
 
     awakenSequence->addTransition(
         new StateTransition(
@@ -125,24 +164,26 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
         std::bind(&Win::resetGame,
             win),
-            sleep));
+            awakenSequence));
     lose->addTransition(
         new StateTransition(
             std::bind(&Lose::resetGame,
                 lose),
-                sleep));
+                awakenSequence));
 
-    stateMap.push_back(sleep);
+    stateMap.push_back(playerRegistration);
+    stateMap.push_back(fetchUserData);
+    stateMap.push_back(confirmOffline);
+    stateMap.push_back(chooseRole);
+    stateMap.push_back(allegiancePicker);
+    stateMap.push_back(welcomeMessage);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
     
     // Add new handshake states
     stateMap.push_back(handshakeInitiate);
     stateMap.push_back(bountySendCC);
-    // stateMap.push_back(bountySendAck);
     stateMap.push_back(hunterSendId);
-    // stateMap.push_back(hunterSendAck);
-    // stateMap.push_back(startingLine);
     
     stateMap.push_back(connectionSuccessful);
     stateMap.push_back(duelCountdown);

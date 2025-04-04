@@ -162,6 +162,18 @@ Display* PDN::drawText(const char *text) {
     return display.drawText(text);
 }
 
+Display* PDN::setGlyphMode(FontMode mode) {
+    return display.setGlyphMode(mode);
+}
+
+Display* PDN::renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) {
+    return display.renderGlyph(unicodeForGlyph, xStart, yStart);
+}
+
+Display* PDN::drawButton(const char *text, int xCenter, int yCenter) {
+    return display.drawButton(text, xCenter, yCenter);
+}
+
 PDNButton * PDN::getButton(ButtonIdentifier whichButton) {
     switch(whichButton) {
         case ButtonIdentifier::PRIMARY_BUTTON:

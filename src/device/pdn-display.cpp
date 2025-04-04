@@ -11,30 +11,7 @@ void PDNDisplay::render() {
 }
 
 Display* PDNDisplay::drawText(const char *text, int xStart, int yStart) {
-    int x = 8;
-    int y = 8;
-
-    if (xStart != -1) {
-        cursor.x = x*xStart;
-    }
-
-    if (yStart != -1) {
-        cursor.y = y*yStart;
-    }
-
-    while(*text != '\0') {
-        if(cursor.x >= maxCharX) {
-            cursor.y += y;
-            cursor.x = 0;
-        } else if(cursor.y > maxCharY) {
-            cursor.x = 0;
-            cursor.y = y;
-        }
-
-        screen.drawStr(cursor.x, cursor.y, text);
-        text++;
-        cursor.x += x;
-    }
+    screen.drawStr(xStart, yStart, text);
 
     return this;
 }
@@ -65,6 +42,34 @@ Display * PDNDisplay::drawImage(Image image) {
     return this;
 }
 
+Display * PDNDisplay::setGlyphMode(FontMode mode) {
+    switch (mode) {
+        case FontMode::TEXT:
+            screen.disableUTF8Print();
+            screen.setFont(u8g2_font_tenfatguys_tr);
+            break;
+        case FontMode::NUMBER_GLYPH:
+            screen.enableUTF8Print();
+            screen.setFont(u8g2_font_twelvedings_t_all);
+            break;
+        case FontMode::LOADING_GLYPH:
+            screen.enableUTF8Print();
+            screen.setFont(u8g2_font_unifont_t_76);
+            break;
+    }
+    return this;
+}
+
+Display * PDNDisplay::drawButton(const char *text, int xCenter, int yCenter) {
+    screen.drawButtonUTF8(xCenter, yCenter, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, 2, 2, text);
+    return this;
+}
+
+Display * PDNDisplay::renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) {
+    screen.drawUTF8(xStart, yStart, unicodeForGlyph);
+    return this;
+}
+
 void PDNDisplay::reset() {
     screen.clearBuffer();
     screen.clearDisplay();
@@ -79,5 +84,5 @@ PDNDisplay::PDNDisplay(int displayCS, int displayDC, int displayRST) : screen(U8
     screen.begin();
     screen.clearBuffer();
     screen.setContrast(175);
-    screen.setFont(u8g2_font_prospero_nbp_tf);
+    screen.setFont(u8g2_font_tenfatguys_tf);
 }

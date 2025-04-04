@@ -48,3 +48,6 @@ const char STRING_TERM = '\r';
 const char STRING_START = '*';
 
 const int TRANSMIT_QUEUE_MAX_SIZE = 1024;
+
+const string TEST_BOUNTY_ID = "9999";
+const string TEST_HUNTER_ID = "8888";

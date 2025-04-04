@@ -5,6 +5,7 @@
 #include "state.hpp"
 #include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/wireless-manager.hpp"
 #include <queue>
 
 using namespace std;
@@ -12,20 +13,151 @@ using namespace std;
 // Quickdraw States
 
 enum QuickdrawStateId {
-    SLEEP = 0,
-    AWAKEN_SEQUENCE = 1,
-    IDLE = 2,
-    HANDSHAKE_INITIATE_STATE = 3,
-    BOUNTY_SEND_CC_STATE = 4,
-    HUNTER_SEND_ID_STATE = 5,
-    BOUNTY_SEND_FINAL_ACK_STATE = 6,
-    HUNTER_SEND_FINAL_ACK_STATE = 7,
-    HANDSHAKE_STARTING_LINE_STATE = 8,
-    CONNECTION_SUCCESSFUL = 9,
-    DUEL_COUNTDOWN = 10,
-    DUEL = 11,
-    WIN = 12,
-    LOSE = 13
+    PLAYER_REGISTRATION = 0,
+    FETCH_USER_DATA = 1,
+    CONFIRM_OFFLINE = 2,
+    CHOOSE_ROLE = 3,
+    ALLEGIANCE_PICKER = 4,
+    WELCOME_MESSAGE = 5,
+    SLEEP = 6,
+    AWAKEN_SEQUENCE = 7,
+    IDLE = 8,
+    HANDSHAKE_INITIATE_STATE = 9,
+    BOUNTY_SEND_CC_STATE = 10,
+    HUNTER_SEND_ID_STATE = 11,
+    CONNECTION_SUCCESSFUL = 12,
+    DUEL_COUNTDOWN = 13,
+    DUEL = 14,
+    WIN = 15,
+    LOSE = 16
+};
+
+class PlayerRegistration : public State {
+public:
+    PlayerRegistration(Player* player);
+    ~PlayerRegistration();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToUserFetch();
+
+
+private:
+    bool transitionToUserFetchState = false;
+    bool shouldRender = false;
+    Player* player;
+    int currentDigit = 0;
+    int currentDigitIndex = 0;
+    static constexpr int DIGIT_COUNT = 4;
+    int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
+};
+
+class FetchUserDataState : public State {
+public:
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager);
+    ~FetchUserDataState();
+
+    bool transitionToConfirmOffline();
+    bool transitionToWelcomeMessage();
+    void showLoadingGlyphs(Device *PDN);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+private:
+    bool transitionToConfirmOfflineState = false;
+    bool transitionToWelcomeMessageState = false;
+    WirelessManager* wirelessManager;
+    bool isFetchingUserData = false;
+    Player* player;
+    SimpleTimer userDataFetchTimer;
+    const int USER_DATA_FETCH_TIMEOUT = 10000;
+};
+
+class ConfirmOfflineState : public State {
+public:
+    ConfirmOfflineState(Player* player);
+    ~ConfirmOfflineState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToChooseRole();
+    bool transitionToPlayerRegistration();
+    void renderUi(Device *PDN);
+    int getDigitGlyphForIDIndex(int index);
+
+private:
+    Player* player;
+    int uiPage = 0;
+    const int UI_PAGE_COUNT = 3;
+    const int UI_PAGE_TIMEOUT = 3000;
+    bool finishedPaging = false;
+    int menuIndex = 0;
+    bool displayIsDirty = false;
+    const int MENU_ITEM_COUNT = 2;
+    SimpleTimer uiPageTimer;
+    bool transitionToChooseRoleState = false;
+    bool transitionToPlayerRegistrationState = false;
+    parameterizedCallbackFunction confirmCallback;
+    parameterizedCallbackFunction cancelCallback;
+
+};
+
+class ChooseRoleState : public State {
+public:
+    ChooseRoleState(Player* player);
+    ~ChooseRoleState();
+    
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToAllegiancePicker();
+    void renderUi(Device *PDN);
+
+private:
+    Player* player;
+    bool transitionToAllegiancePickerState = false;
+    bool displayIsDirty = false;
+    bool hunterSelected = true;
+};
+
+class AllegiancePickerState : public State {
+public:
+    AllegiancePickerState(Player* player);
+    ~AllegiancePickerState();
+    
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToWelcomeMessage();
+    void renderUi(Device *PDN);
+
+private:
+    Player* player;
+    bool transitionToWelcomeMessageState = false;
+    bool displayIsDirty = false;
+    int currentAllegiance = 0;
+    const Allegiance allegianceArray[4] = {Allegiance::HELIX, Allegiance::ENDLINE, Allegiance::ALLEYCAT, Allegiance::RESISTANCE};
+};
+
+class WelcomeMessage : public State {
+public:
+    WelcomeMessage(Player* player);
+    ~WelcomeMessage();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    void renderWelcomeMessage();
+    bool transitionToGameplay();
+
+private:
+    Player* player;
+    SimpleTimer welcomeMessageTimer;
+    bool transitionToAwakenSequenceState = false;
+    const int WELCOME_MESSAGE_TIMEOUT = 5000;
 };
 
 
@@ -62,8 +194,8 @@ private:
  */
 class AwakenSequence : public State {
 public:
-    AwakenSequence();
-
+    AwakenSequence(Player* player);
+    ~AwakenSequence();
     void onStateMounted(Device *PDN) override;
 
     void onStateLoop(Device *PDN) override;
@@ -78,6 +210,7 @@ private:
     int activateMotorCount = 0;
     bool activateMotor = false;
     const int activationStepDuration = 100;
+    Player* player;
 };
 
 class Idle : public State {

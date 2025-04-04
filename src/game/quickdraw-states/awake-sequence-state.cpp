@@ -33,7 +33,12 @@
     }
  */
 
-AwakenSequence::AwakenSequence() : State(AWAKEN_SEQUENCE) {
+AwakenSequence::AwakenSequence(Player* player) : State(AWAKEN_SEQUENCE) {
+    this->player = player;
+}
+
+AwakenSequence::~AwakenSequence() {
+    player = nullptr;
 }
 
 void AwakenSequence::onStateMounted(Device *PDN) {
@@ -43,8 +48,8 @@ void AwakenSequence::onStateMounted(Device *PDN) {
 
     PDN->
     invalidateScreen()->
-        drawImage(Quickdraw::getImageForAllegiance(Allegiance::ENDLINE, ImageType::LOGO_LEFT))->
-        drawImage(Quickdraw::getImageForAllegiance(Allegiance::HELIX, ImageType::LOGO_RIGHT))->
+        drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
+        drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::STAMP))->
         render();
 }
 

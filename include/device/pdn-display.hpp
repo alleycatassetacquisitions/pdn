@@ -17,9 +17,15 @@ public:
 
     Display* drawImage(Image image) override;
 
+    Display* setGlyphMode(FontMode mode) override;
+
+    Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) override;
+
     Display* drawText(const char *text, int xStart, int yStart) override;
 
     Display* drawImage(Image image, int xStart, int yStart) override;
+
+    Display* drawButton(const char *text, int xCenter, int yCenter) override;
 
     void reset();
 
