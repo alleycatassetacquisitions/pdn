@@ -173,13 +173,42 @@ void LightManager::applyLEDState(const LEDState& state) {
             this->displayLights.setLight(i, displayLightArray[i].color);
         }
     }
+    
+    // Update the physical LEDs
+    FastLED.show();
 }
 
 void LightManager::setLED(LightIdentifier whichLights, int ledNum, LEDColor color, uint8_t brightness, bool reserved) {
     // Create a new LEDState with the specified parameters
     LEDState state;
     
-    // Map the LED number to the correct index based on the identifier
+    // Map the current physical LED states back to a LEDState
+    // Left lights (0-2 from grip, 3-8 from display)
+    state.leftLights[0] = LEDState::SingleLEDState(convertFromFastLED(gripLightArray[2].color), brightness, gripLightArray[2].reserved);
+    state.leftLights[1] = LEDState::SingleLEDState(convertFromFastLED(gripLightArray[1].color), brightness, gripLightArray[1].reserved);
+    state.leftLights[2] = LEDState::SingleLEDState(convertFromFastLED(gripLightArray[0].color), brightness, gripLightArray[0].reserved);
+    state.leftLights[3] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[0].color), brightness, displayLightArray[0].reserved);
+    state.leftLights[4] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[1].color), brightness, displayLightArray[1].reserved);
+    state.leftLights[5] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[2].color), brightness, displayLightArray[2].reserved);
+    state.leftLights[6] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[3].color), brightness, displayLightArray[3].reserved);
+    state.leftLights[7] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[4].color), brightness, displayLightArray[4].reserved);
+    state.leftLights[8] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[5].color), brightness, displayLightArray[5].reserved);
+    
+    // Right lights (0-2 from grip, 3-8 from display)
+    state.rightLights[0] = LEDState::SingleLEDState(convertFromFastLED(gripLightArray[3].color), brightness, gripLightArray[3].reserved);
+    state.rightLights[1] = LEDState::SingleLEDState(convertFromFastLED(gripLightArray[4].color), brightness, gripLightArray[4].reserved);
+    state.rightLights[2] = LEDState::SingleLEDState(convertFromFastLED(gripLightArray[5].color), brightness, gripLightArray[5].reserved);
+    state.rightLights[3] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[11].color), brightness, displayLightArray[11].reserved);
+    state.rightLights[4] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[10].color), brightness, displayLightArray[10].reserved);
+    state.rightLights[5] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[9].color), brightness, displayLightArray[9].reserved);
+    state.rightLights[6] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[8].color), brightness, displayLightArray[8].reserved);
+    state.rightLights[7] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[7].color), brightness, displayLightArray[7].reserved);
+    state.rightLights[8] = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[6].color), brightness, displayLightArray[6].reserved);
+    
+    // Transmit light
+    state.transmitLight = LEDState::SingleLEDState(convertFromFastLED(displayLightArray[12].color), brightness, displayLightArray[12].reserved);
+    
+    // Now update the specific LED we want to change
     switch (whichLights) {
         case LightIdentifier::LEFT_LIGHTS:
             if (ledNum < 9) {
@@ -188,6 +217,9 @@ void LightManager::setLED(LightIdentifier whichLights, int ledNum, LEDColor colo
             break;
         case LightIdentifier::RIGHT_LIGHTS:
             if (ledNum < 9) {
+                if (reserved) {
+                    ESP_LOGI(TAG, "Setting reserved LED %d to color %d, %d, %d", ledNum, color.red, color.green, color.blue);
+                }
                 state.rightLights[ledNum] = LEDState::SingleLEDState(color, brightness, reserved);
             }
             break;
@@ -220,4 +252,7 @@ void LightManager::setLED(LightIdentifier whichLights, int ledNum, LEDColor colo
         default:
             break;
     }
+    
+    // Apply the LED state to the physical LEDs
+    applyLEDState(state);
 } 

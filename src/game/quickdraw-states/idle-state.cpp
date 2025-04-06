@@ -136,6 +136,7 @@ bool Idle::transitionToHandshake() {
 void Idle::updateLEDStatus(Device* PDN) {
     // Get the number of valid pings for the current player
     int validPings = std::min(pingQueue.getValidPingCount(player->getUserID()), TOTAL_LEDS_RIGHT_DISPLAY);
+    
     // Only modify LEDs if there are active pings
     if (validPings > 0) {
         // bottom of display LEDs right of display 3 -> 8 (3 is bot)
@@ -144,7 +145,8 @@ void Idle::updateLEDStatus(Device* PDN) {
         }
         
         // Set active pings to purple (starting from bottom)
-        for (int i = 0; i <= validPings; i++) {
+        for (int i = 0; i < validPings; i++) {
+            ESP_LOGI("IDLE", "Setting LED %d to purple", i + BOTTOM_RIGHT_DISPLAY_LED_INDEX);
             // Mark these LEDs as reserved so they won't be modified by animations
             PDN->setLight(LightIdentifier::RIGHT_LIGHTS, i + BOTTOM_RIGHT_DISPLAY_LED_INDEX, LEDColor(255, 0, 255), LED_ACTIVE_BRIGHTNESS, true); // Purple
         }
