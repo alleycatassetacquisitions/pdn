@@ -29,7 +29,7 @@ private:
 
     std::vector<Match> matches;
     int numMatches = 0;
-
+    MatchManager* matchManager;
     Player *player;
     WirelessManager* wirelessManager;
 };

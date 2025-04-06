@@ -9,14 +9,25 @@
 #pragma once
 
 #include <vector>
+#include "button.hpp"
 #include <Preferences.h>
 #include "../lib/pdn-libs/match.hpp"
+#include "player.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 
 // Preferences namespace and keys
 #define PREF_NAMESPACE "matches"
 #define PREF_COUNT_KEY "count"
 #define PREF_MATCH_KEY "match_"  // Will be appended with index
 #define MAX_MATCHES 255
+
+struct ActiveDuelState {
+    bool hasReceivedDrawResult = false;
+    bool hasPressedButton = false;
+    bool gracePeriodExpiredNoResult = false;
+    unsigned long duelLocalStartTime = 0;
+    Match* match = nullptr;
+};
 
 class MatchManager {
 public:
@@ -51,13 +62,26 @@ public:
     bool setHunterDrawTime(unsigned long hunter_time_ms);
     bool setBountyDrawTime(unsigned long bounty_time_ms);
 
-    bool matchIsFinalized(bool isHunter);
+    void setDuelLocalStartTime(unsigned long local_start_time_ms);
+
+    void setNeverPressed();
+
+    bool didWin();
+
+    unsigned long getDuelLocalStartTime();
+
+    bool matchResultsAreIn();
+
+    bool getHasReceivedDrawResult();
+    bool getHasPressedButton();
+    void setReceivedDrawResult();
+    void setReceivedButtonPush();
 
     /**
      * Gets the current active match if any
      * @return Pointer to the active match, nullptr if none
      */
-    Match* getCurrentMatch() const { return activeMatch; }
+    Match* getCurrentMatch() const { return activeDuelState.match; }
 
     /**
      * Converts all stored matches to a JSON array string
@@ -78,9 +102,23 @@ public:
 
     void clearCurrentMatch();
 
+    void listenForMatchResults(QuickdrawCommand command);
+
+    void setPlayer(Player* player);
+
+    parameterizedCallbackFunction getDuelButtonPush();
+
+protected:
+    Player* player;
+
+
 private:
     MatchManager();
     ~MatchManager();
+
+    ActiveDuelState activeDuelState;
+
+    parameterizedCallbackFunction duelButtonPush;
 
     /**
      * Appends a match to storage
@@ -101,7 +139,6 @@ private:
      */
     Match* readMatchFromStorage(uint8_t index);
 
-    Match* activeMatch;  // Currently active match (only one at a time)
     Preferences prefs;   // Preferences instance for persistent storage
 
     // Prevent copying of singleton

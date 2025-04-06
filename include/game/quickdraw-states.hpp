@@ -5,6 +5,7 @@
 #include "state.hpp"
 #include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "game/match-manager.hpp"
 #include "wireless/wireless-manager.hpp"
 #include <queue>
 
@@ -28,9 +29,11 @@ enum QuickdrawStateId {
     CONNECTION_SUCCESSFUL = 12,
     DUEL_COUNTDOWN = 13,
     DUEL = 14,
-    DUEL_RESULT = 15,
-    WIN = 16,
-    LOSE = 17
+    DUEL_PUSHED = 15,
+    DUEL_RECEIVED_RESULT = 16,
+    DUEL_RESULT = 17,
+    WIN = 18,
+    LOSE = 19
 };
 
 class PlayerRegistration : public State {
@@ -270,7 +273,7 @@ private:
  */
 class DuelCountdown : public State {
 public:
-    DuelCountdown(Player* player);
+    DuelCountdown(Player* player, MatchManager* matchManager);
 
     ~DuelCountdown();
 
@@ -314,6 +317,7 @@ private:
     const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0, 0);
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
+    MatchManager* matchManager;
 };
 
 /*
@@ -321,7 +325,7 @@ private:
  */
 class Duel : public State {
 public:
-    Duel(Player* player);
+    Duel(Player* player, MatchManager* matchManager);
 
     ~Duel();
 
@@ -335,24 +339,69 @@ public:
 
     bool transitionToIdle();
 
+    bool transitionToDuelPushed();
+
+    bool transitionToDuelReceivedResult();
+
+private:
+    Player* player;
+    MatchManager* matchManager;
+    parameterizedCallbackFunction buttonPress;
+    bool transitionToDuelPushedState = false;
+    bool transitionToIdleState = false;
+    bool transitionToDuelReceivedResultState = false;
+    SimpleTimer duelTimer;
+    const int DUEL_TIMEOUT = 4000;
+};
+
+class DuelPushed : public State {
+public:
+    DuelPushed(Player* player, MatchManager* matchManager);
+
+    ~DuelPushed();
+
+    void onStateMounted(Device *PDN) override;
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;
+
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+
     bool transitionToDuelResult();
 
 private:
     Player* player;
-    unsigned long duelStartTime = 0;
-    parameterizedCallbackFunction buttonPress;
-    bool hasPressedButton = false;
-    bool hasReceivedDrawResult = false;
-    bool transitionToIdleState = false;
+    MatchManager* matchManager;
+    SimpleTimer gracePeriodTimer;
+    const int DUEL_RESULT_GRACE_PERIOD = 900;
+};
+
+class DuelReceivedResult : public State {
+public:
+    DuelReceivedResult(Player* player, MatchManager* matchManager);
+
+    ~DuelReceivedResult();
+
+    void onStateMounted(Device *PDN) override;  
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;   
+    
+    bool transitionToDuelResult();
+
+private:
+    SimpleTimer buttonPushGraceTimer;
     bool transitionToDuelResultState = false;
-    SimpleTimer duelTimer;
-    const int DUEL_TIMEOUT = 4000;
-    const int DUEL_RESULT_GRACE_PERIOD = 750;
+    const int BUTTON_PUSH_GRACE_PERIOD = 750;
+    Player* player;
+    MatchManager* matchManager;
 };
 
 class DuelResult : public State {
 public:
-    DuelResult(Player* player);
+    DuelResult(Player* player, MatchManager* matchManager);
 
     ~DuelResult();
 
@@ -368,8 +417,7 @@ public:
     
 private:
     Player* player;
-    unsigned long SHOW_RESULT_TIME = 1500;
-    SimpleTimer resultTimer;
+    MatchManager* matchManager;
     bool wonBattle = false;
     bool captured = false;
 };

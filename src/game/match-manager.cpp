@@ -1,74 +1,156 @@
 #include "game/match-manager.hpp"
 #include <ArduinoJson.h>
+#include <esp_log.h>
+#include "wireless/quickdraw-wireless-manager.hpp"
 
-MatchManager::MatchManager() : activeMatch(nullptr) {
+#define MATCH_MANAGER_TAG "MATCH_MANAGER"
+
+MatchManager::MatchManager() {
     // Open preferences with our namespace
     if (!prefs.begin(PREF_NAMESPACE, false)) {
         ESP_LOGE("PDN", "Failed to initialize preferences\n");
     }
+
+    duelButtonPush = [](void *ctx) {
+        unsigned long now = millis();
+        
+        if (!ctx) {
+            ESP_LOGE(MATCH_MANAGER_TAG, "Button press handler received null context");
+            return;
+        }
+
+        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+        Player *player = matchManager->player;
+
+        if(matchManager->getHasPressedButton()) {
+            ESP_LOGI(MATCH_MANAGER_TAG, "Button already pressed - skipping");
+            return;
+        }
+
+        unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
+
+        ESP_LOGI(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms for %s", 
+                reactionTimeMs, player->isHunter() ? "Hunter" : "Bounty");
+
+        player->isHunter() ? 
+        matchManager->setHunterDrawTime(reactionTimeMs) 
+        : matchManager->setBountyDrawTime(reactionTimeMs);
+
+        ESP_LOGI(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
+
+        // Send a packet with the reaction time
+        if (!player->getOpponentMacAddress()) {
+            ESP_LOGE(MATCH_MANAGER_TAG, "Cannot send packet - opponent MAC address is null");
+            return;
+        }
+
+        ESP_LOGI(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s", 
+                player->getOpponentMacAddress()->c_str());
+                
+        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+            *player->getOpponentMacAddress(),
+            QDCommand::DRAW_RESULT,
+            *MatchManager::GetInstance()->getCurrentMatch()
+        );
+
+        matchManager->setReceivedButtonPush();
+        
+        ESP_LOGI(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
+    };
 }
 
 MatchManager::~MatchManager() {
-    delete activeMatch;
-    activeMatch = nullptr;
+    delete activeDuelState.match;
+    activeDuelState.match = nullptr;
     prefs.end();
 }
 
 void MatchManager::clearCurrentMatch() {
-    if (activeMatch) {
-        delete activeMatch;
-        activeMatch = nullptr;
+    if (activeDuelState.match) {
+        ESP_LOGI("PDN", "Clearing current match");
+        delete activeDuelState.match;
+        activeDuelState.match = nullptr;
+        activeDuelState.hasReceivedDrawResult = false;
+        activeDuelState.hasPressedButton = false;
+        activeDuelState.duelLocalStartTime = 0;
+        activeDuelState.gracePeriodExpiredNoResult = false;
     }
 }
 
 Match* MatchManager::createMatch(const string& match_id, const string& hunter_id, const string& bounty_id) {
     // Only allow one active match at a time
-    if (activeMatch != nullptr) {
+    if (activeDuelState.match != nullptr) {
         return nullptr;
     }
 
-    activeMatch = new Match(match_id, hunter_id, bounty_id);
-    return activeMatch;
+    activeDuelState.match = new Match(match_id, hunter_id, bounty_id);
+    return activeDuelState.match;
 }
 
 Match* MatchManager::receiveMatch(Match match) {
     // Only allow one active match at a time
-    if (activeMatch != nullptr) {
+    if (activeDuelState.match != nullptr) {
         return nullptr;
     }
 
-    activeMatch = &match;
-    return activeMatch;
+    activeDuelState.match = &match;
+    return activeDuelState.match;
 }
 
-bool MatchManager::matchIsFinalized(bool isHunter) {
-    if (!activeMatch) {
+void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
+    activeDuelState.duelLocalStartTime = local_start_time_ms;
+}
+
+unsigned long MatchManager::getDuelLocalStartTime() {
+    return activeDuelState.duelLocalStartTime;
+}
+
+// //Pretty sure this needs to be refactored. will come back to it.
+bool MatchManager::matchResultsAreIn() {
+    if (!activeDuelState.match) {
         return false;
     }
-    
-    if (isHunter) {
-        return activeMatch->getHunterDrawTime() > 0;
-    } else {
-        return activeMatch->getBountyDrawTime() > 0;
+       
+    return (activeDuelState.hasReceivedDrawResult && activeDuelState.hasPressedButton)
+    || (activeDuelState.gracePeriodExpiredNoResult && activeDuelState.hasPressedButton);
+}
+
+void MatchManager::setNeverPressed() {
+    activeDuelState.gracePeriodExpiredNoResult = true;
+}
+
+bool MatchManager::didWin() {
+    if (!activeDuelState.match) {
+        return false;
     }
+
+    if(player->isHunter() && activeDuelState.match->getBountyDrawTime() == 0) {
+        return true;
+    }
+
+    if(!player->isHunter() && activeDuelState.match->getHunterDrawTime() == 0) {
+        return true;
+    }
+
+    
+    return player->isHunter() ? 
+    activeDuelState.match->getHunterDrawTime() < activeDuelState.match->getBountyDrawTime() :
+    activeDuelState.match->getBountyDrawTime() < activeDuelState.match->getHunterDrawTime();
 }
 
 bool MatchManager::finalizeMatch() {
-    if (!activeMatch) {
+    if (!activeDuelState.match) {
         ESP_LOGE("PDN", "Cannot finalize match - no active match or ID mismatch\n");
         return false;
     }
 
-    string match_id = activeMatch->getMatchId();
+    string match_id = activeDuelState.match->getMatchId();
 
     // Save to storage
-    if (appendMatchToStorage(activeMatch)) {
+    if (appendMatchToStorage(activeDuelState.match)) {
         // Update stored count
         updateStoredMatchCount(getStoredMatchCount() + 1);
-        
-        // Clear active match
-        delete activeMatch;
-        activeMatch = nullptr;
+        clearCurrentMatch();
         ESP_LOGI("PDN", "Successfully finalized match %s\n", match_id.c_str());
         return true;
     }
@@ -77,19 +159,39 @@ bool MatchManager::finalizeMatch() {
     return false;
 }
 
+bool MatchManager::getHasReceivedDrawResult() {
+    return activeDuelState.hasReceivedDrawResult;
+}
+
+bool MatchManager::getHasPressedButton() {
+    return activeDuelState.hasPressedButton;
+}
+
+void MatchManager::setReceivedDrawResult() {
+    activeDuelState.hasReceivedDrawResult = true;
+}
+
+parameterizedCallbackFunction MatchManager::getDuelButtonPush() {
+    return duelButtonPush;
+}
+
+void MatchManager::setReceivedButtonPush() {
+    activeDuelState.hasPressedButton = true;
+}
+
 bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
-    if (!activeMatch) {
+    if (!activeDuelState.match) {
         return false;
     }
-    activeMatch->setHunterDrawTime(hunter_time_ms);
+    activeDuelState.match->setHunterDrawTime(hunter_time_ms);
     return true;
 }
 
 bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
-    if (!activeMatch) {
+    if (!activeDuelState.match) {
         return false;
     }
-    activeMatch->setBountyDrawTime(bounty_time_ms);
+    activeDuelState.match->setBountyDrawTime(bounty_time_ms);
     return true;
 }
 
@@ -183,4 +285,29 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     Match* match = new Match();
     match->fromJson(matchJson);
     return match;
+}
+
+void MatchManager::setPlayer(Player* player) {
+    this->player = player;
+}
+
+void MatchManager::listenForMatchResults(QuickdrawCommand command) {
+    ESP_LOGI(MATCH_MANAGER_TAG, "Received command: %d", command.command);
+    
+    if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
+        setReceivedDrawResult();
+        ESP_LOGI(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
+        
+        long opponentTime = player->isHunter() ? 
+            command.match.getBountyDrawTime() : 
+            command.match.getHunterDrawTime();
+            
+        ESP_LOGI(MATCH_MANAGER_TAG, "Opponent reaction time: %ld ms", opponentTime);
+        
+        player->isHunter() ? 
+        setBountyDrawTime(command.match.getBountyDrawTime()) 
+        : setHunterDrawTime(command.match.getHunterDrawTime());
+    } else {
+        ESP_LOGW(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
+    }
 }

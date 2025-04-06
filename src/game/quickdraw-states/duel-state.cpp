@@ -36,8 +36,9 @@ if (peekGameComms() == ZAP) {
     duelTimedOut = true;
   }
  */
-Duel::Duel(Player* player) : State(DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager) : State(DUEL) {
     this->player = player;
+    this->matchManager = matchManager;
     ESP_LOGI(DUEL_TAG, "Duel state created for player %s (Hunter: %d)", 
              player->getUserID().c_str(), player->isHunter());
 }
@@ -45,89 +46,33 @@ Duel::Duel(Player* player) : State(DUEL) {
 Duel::~Duel() {
     ESP_LOGI(DUEL_TAG, "Duel state destroyed");
     this->player = nullptr;
+    this->matchManager = nullptr;
 }
 
 void Duel::onStateMounted(Device *PDN) {
     ESP_LOGI(DUEL_TAG, "Duel state mounted");
-    
-    buttonPress = [](void *ctx) {
-        if (!ctx) {
-            ESP_LOGE(DUEL_TAG, "Button press handler received null context");
-            return;
-        }
-
-        Duel* duelState = static_cast<Duel*>(ctx);
-        if (!duelState->player) {
-            ESP_LOGE(DUEL_TAG, "Button press handler - player is null");
-            return;
-        }
-
-        if(duelState->hasPressedButton) {
-            ESP_LOGI(DUEL_TAG, "Button already pressed - skipping");
-            return;
-        }
-
-        Player *player = duelState->player;
-        Device *PDN = PDN::GetInstance();
-        if (!PDN) {
-            ESP_LOGE(DUEL_TAG, "Button press handler - PDN is null");
-            return;
-        }
-
-        unsigned long duelStartTime = duelState->duelStartTime;
-
-        unsigned long reactionTimeMs = millis() - duelStartTime;
-
-        ESP_LOGI(DUEL_TAG, "Button pressed! Reaction time: %lu ms for %s", 
-                reactionTimeMs, player->isHunter() ? "Hunter" : "Bounty");
-
-        player->isHunter() ? 
-        MatchManager::GetInstance()->setHunterDrawTime(reactionTimeMs) 
-        : MatchManager::GetInstance()->setBountyDrawTime(reactionTimeMs);
-
-        ESP_LOGI(DUEL_TAG, "Stored reaction time in MatchManager");
-
-        // Send a packet with the reaction time
-        if (!player->getOpponentMacAddress()) {
-            ESP_LOGE(DUEL_TAG, "Cannot send packet - opponent MAC address is null");
-            return;
-        }
-
-        ESP_LOGI(DUEL_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s", 
-                player->getOpponentMacAddress()->c_str());
-                
-        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
-            *player->getOpponentMacAddress(),
-            QDCommand::DRAW_RESULT,
-            *MatchManager::GetInstance()->getCurrentMatch()
-        );
-
-        duelState->hasPressedButton = true;
-
-        if(duelState->hasReceivedDrawResult) {
-            ESP_LOGI(DUEL_TAG, "Already have draw result when button is pressed");
-            duelState->transitionToDuelResultState = true;
-        }
-        
-        ESP_LOGI(DUEL_TAG, "Reaction time: %lu ms", reactionTimeMs);
-    };
+    matchManager->setDuelLocalStartTime(millis());
 
     ESP_LOGI(DUEL_TAG, "Setting up button handlers");
+    
+    QuickdrawWirelessManager::GetInstance()->setPacketReceivedCallback(
+        std::bind(&MatchManager::listenForMatchResults, matchManager, std::placeholders::_1)
+    );
 
     PDN->setButtonClick(
         ButtonInteraction::CLICK,
         ButtonIdentifier::PRIMARY_BUTTON,
-        buttonPress, this);
+        matchManager->getDuelButtonPush(), matchManager);
 
     PDN->setButtonClick(
         ButtonInteraction::CLICK,
         ButtonIdentifier::SECONDARY_BUTTON,
-        buttonPress, this);
+        matchManager->getDuelButtonPush(), matchManager);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
-    duelStartTime = millis();
+
     ESP_LOGI(DUEL_TAG, "Duel timer started for %d ms, duelStartTime: %lu", 
-             DUEL_TIMEOUT, duelStartTime);
+             DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
              
     PDN->invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
@@ -138,76 +83,44 @@ void Duel::onStateMounted(Device *PDN) {
 
 void Duel::onStateLoop(Device *PDN) {
     duelTimer.updateTime();
-    
-    if(duelTimer.expired()) {
-        
-        PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-        PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
-        
-        if(!hasReceivedDrawResult && !hasPressedButton) {
-            ESP_LOGW(DUEL_TAG, "Duel timer expired with no results and no button press - transitioning to idle");
-            transitionToIdleState = true;
-        } else if(hasReceivedDrawResult && !hasPressedButton) {
-            ESP_LOGW(DUEL_TAG, "Duel timer expired with results but no button press - marking as timeout (-1)");
-            
-            player->isHunter() ?
-            MatchManager::GetInstance()->setHunterDrawTime(DUEL_NO_RESULT_TIME):
-            MatchManager::GetInstance()->setBountyDrawTime(DUEL_NO_RESULT_TIME);
 
-            QuickdrawWirelessManager::GetInstance()->broadcastPacket(
-                player->getOpponentMacAddress() ? *player->getOpponentMacAddress() : "",
-                QDCommand::DRAW_RESULT,
-                *MatchManager::GetInstance()->getCurrentMatch()
-            );
-
-            ESP_LOGI(DUEL_TAG, "Transitioning to duel result state (timeout scenario)");
-            transitionToDuelResultState = true;
-        } else if(!hasReceivedDrawResult && hasPressedButton) {
-            ESP_LOGW(DUEL_TAG, "Duel timer expired with button press but no results - marking as timeout (-1)");
-            transitionToDuelResultState = true;
-        }
-    }
-}
-
-void Duel::onQuickdrawCommandReceived(QuickdrawCommand command) {
-    if (!player) {
-        ESP_LOGE(DUEL_TAG, "Command received but player is null");
+    if(matchManager->getHasReceivedDrawResult()) {
+        transitionToDuelReceivedResultState = true;
+        return;
+    } else if(matchManager->getHasPressedButton()) {
+        transitionToDuelPushedState = true;
         return;
     }
-
-    ESP_LOGI(DUEL_TAG, "Received command: %d", command.command);
     
-    if(command.command == QDCommand::DRAW_RESULT) {
-        hasReceivedDrawResult = true;
-        ESP_LOGI(DUEL_TAG, "Received DRAW_RESULT command from opponent");
-        
-        long opponentTime = player->isHunter() ? 
-            command.match.getBountyDrawTime() : 
-            command.match.getHunterDrawTime();
-            
-        ESP_LOGI(DUEL_TAG, "Opponent reaction time: %ld ms", opponentTime);
-        
-        if (opponentTime < 0) {
-            ESP_LOGW(DUEL_TAG, "Received invalid opponent time: %ld", opponentTime);
-            return;
-        }
-        
-        player->isHunter() ? 
-        MatchManager::GetInstance()->setBountyDrawTime(command.match.getBountyDrawTime()) 
-        : MatchManager::GetInstance()->setHunterDrawTime(command.match.getHunterDrawTime());
-
-        if(hasPressedButton) {
-            ESP_LOGI(DUEL_TAG, "Both players have acted - transitioning to result state");
-            transitionToDuelResultState = true;
-        } else {
-            ESP_LOGI(DUEL_TAG, "Only opponent has acted - starting grace period: %d ms", 
-                    DUEL_RESULT_GRACE_PERIOD);
-            duelTimer.invalidate();
-            duelTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
-        }
-    } else {
-        ESP_LOGW(DUEL_TAG, "Received unexpected command in Duel state: %d", command.command);
+    if(duelTimer.expired()) {
+        transitionToIdleState = true;
     }
+        // PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+        // PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+        
+        // if(!hasReceivedDrawResult && !hasPressedButton) {
+        //     ESP_LOGW(DUEL_TAG, "Duel timer expired with no results and no button press - transitioning to idle");
+        //     transitionToIdleState = true;
+        // } else if(hasReceivedDrawResult && !hasPressedButton) {
+        //     ESP_LOGW(DUEL_TAG, "Duel timer expired with results but no button press - marking as timeout (-1)");
+            
+        //     player->isHunter() ?
+        //     MatchManager::GetInstance()->setHunterDrawTime(DUEL_NO_RESULT_TIME):
+        //     MatchManager::GetInstance()->setBountyDrawTime(DUEL_NO_RESULT_TIME);
+
+        //     QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+        //         player->getOpponentMacAddress() ? *player->getOpponentMacAddress() : "",
+        //         QDCommand::DRAW_RESULT,
+        //         *MatchManager::GetInstance()->getCurrentMatch()
+        //     );
+
+        //     ESP_LOGI(DUEL_TAG, "Transitioning to duel result state (timeout scenario)");
+        //     transitionToDuelReceivedResultState = true;
+        // } else if(!hasReceivedDrawResult && hasPressedButton) {
+        //     ESP_LOGW(DUEL_TAG, "Duel timer expired with button press but no results - marking as timeout (-1)");
+        //     transitionToDuelReceivedResultState = true;
+        // }
+    // }
 }
 
 bool Duel::transitionToIdle() {
@@ -217,11 +130,18 @@ bool Duel::transitionToIdle() {
     return transitionToIdleState;
 }
 
-bool Duel::transitionToDuelResult() {
-    if (transitionToDuelResultState) {
+bool Duel::transitionToDuelPushed() {
+    if (transitionToDuelPushedState) {
+        ESP_LOGI(DUEL_TAG, "Transitioning to duel pushed state");
+    }
+    return transitionToDuelPushedState;
+}
+
+bool Duel::transitionToDuelReceivedResult() {
+    if (transitionToDuelReceivedResultState) {
         ESP_LOGI(DUEL_TAG, "Transitioning to duel result state");
     }
-    return transitionToDuelResultState;
+    return transitionToDuelReceivedResultState;
 }
 
 void Duel::onStateDismounted(Device *PDN) {
@@ -229,16 +149,8 @@ void Duel::onStateDismounted(Device *PDN) {
     
     duelTimer.invalidate();
     ESP_LOGI(DUEL_TAG, "Duel timer invalidated");
-    
-    // Log state before reset
-    ESP_LOGI(DUEL_TAG, "State before reset - transitionToDuelResult: %d, transitionToIdle: %d, receivedResult: %d, pressedButton: %d",
-            transitionToDuelResultState, transitionToIdleState, hasReceivedDrawResult, hasPressedButton);
-    
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
 
-    transitionToDuelResultState = false;
+    transitionToDuelReceivedResultState = false;
     transitionToIdleState = false;
-    hasReceivedDrawResult = false;
-    hasPressedButton = false;
+    transitionToDuelPushedState = false;
 }

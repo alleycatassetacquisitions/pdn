@@ -29,6 +29,7 @@ enum QDCommand {
     LOCKDOWN_ACK = 10,
     LOCKDOWN_CONFIRMED = 11,    
     DRAW_RESULT = 12,
+    NEVER_PRESSED = 13,
     COMMAND_COUNT,  // Always add new commands above this line
     INVALID_COMMAND = 0xFF
 

@@ -3,6 +3,9 @@
 Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
     this->player = player;
     this->wirelessManager = wirelessManager;
+    this->matchManager = MatchManager::GetInstance();
+    matchManager->setPlayer(player);
+    PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {
@@ -28,9 +31,13 @@ void Quickdraw::populateStateMap() {
     HunterSendIdState* hunterSendId = new HunterSendIdState(player);
 
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
-    DuelCountdown* duelCountdown = new DuelCountdown(player);
-    Duel* duel = new Duel(player);
-    DuelResult* duelResult = new DuelResult(player);
+    
+    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager);
+    Duel* duel = new Duel(player, matchManager);
+    DuelPushed* duelPushed = new DuelPushed(player, matchManager);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager);
+    DuelResult* duelResult = new DuelResult(player, matchManager);
+    
     Win* win = new Win(player, wirelessManager);
     Lose* lose = new Lose(player, wirelessManager);
 
@@ -153,8 +160,23 @@ void Quickdraw::populateStateMap() {
                 idle));
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToDuelResult,
+            std::bind(&Duel::transitionToDuelReceivedResult,
                 duel),
+                duelReceivedResult));
+    duel->addTransition(
+        new StateTransition(
+            std::bind(&Duel::transitionToDuelPushed,
+                duel),
+                duelPushed));
+    duelPushed->addTransition(
+        new StateTransition(
+            std::bind(&DuelPushed::transitionToDuelResult,
+                duelPushed),
+                duelResult));
+    duelReceivedResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelReceivedResult::transitionToDuelResult,
+                duelReceivedResult),
                 duelResult));
     duelResult->addTransition(
         new StateTransition(
