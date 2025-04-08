@@ -9,6 +9,7 @@ struct Cursor {
 
 enum class FontMode {
     TEXT,
+    TEXT_INVERTED,
     NUMBER_GLYPH,
     LOADING_GLYPH
 };

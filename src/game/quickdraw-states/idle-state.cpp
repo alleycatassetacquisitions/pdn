@@ -26,9 +26,21 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
+
+    // cursor position is bottom left of the character drawn, need to start at y = 16 otherwise we will be cut off screen
+    // 0, 0 is the top left pixel
+
+    //starting at 64, you start in the white space for text
+
+
+    //COUNT is the max character i can handle. 
+    //X = 64 + 4 for min
+    //Y = 20 for each line
     PDN->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
+    setGlyphMode(FontMode::TEXT_INVERTED)-> drawText("Hello,", 64 + 6, 20)->
+    setGlyphMode(FontMode::TEXT_INVERTED)-> drawText("Count: ", 64 + 6, 40)->
     render();
 
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
