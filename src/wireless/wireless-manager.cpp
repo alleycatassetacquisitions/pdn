@@ -5,6 +5,16 @@
 #include <memory>
 #include <utility>
 #include <esp_http_client.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
+#include <WiFi.h>
+#include <esp_netif.h>
+#include <ArduinoJson.h>
+#include <UUID.h>
+#include "wireless/esp-now-comms.hpp"
+
+// Forward declarations
+class EspNowManager;
 
 /**
  * Event handler for ESP-IDF HTTP client events.
@@ -167,7 +177,13 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
 
 PowerOffState::PowerOffState() : WirelessState(WirelessStateId::POWER_OFF) {}
 
-EspNowState::EspNowState() : WirelessState(WirelessStateId::ESP_NOW) {}
+EspNowState::EspNowState() 
+    : WirelessState(WirelessStateId::ESP_NOW)
+    , espNowInitialized(false)
+    , espNowConnectionAttempts(0)
+    , channel(6) {  // Default channel 6
+    ESP_LOGI("WirelessManager", "EspNowState created");
+}
 
 WifiState::WifiState(const char* ssid, const char* password, const char* baseUrl, std::queue<HttpRequest>* requestQueue) 
     : WirelessState(WirelessStateId::WIFI)
@@ -201,16 +217,138 @@ void PowerOffState::powerDown() {
 
 // EspNowState Implementation
 void EspNowState::onStateMounted(Device* device) {
-    ESP_LOGW("WirelessManager", "ESP-NOW integration pending");
+    ESP_LOGI("WirelessManager", "EspNowState mounted");
     idleTimer.setTimer(IDLE_TIMEOUT);
+    espNowInitialized = false;
+    espNowConnectionAttempts = 0;
+    
+    // Start ESP-NOW initialization process
+    ESP_LOGI("WirelessManager", "Starting ESP-NOW initialization");
+    
+    // Set WiFi mode to STA
+    WiFi.mode(WIFI_STA);
+    WiFi.enableSTA(true);
+    
+    // Set the channel
+    WiFi.channel(channel);
+    
+    // Start ESP-NOW initialization attempts
+    connectionAttemptTimer.setTimer(500); // Check every 500ms
 }
 
 void EspNowState::onStateLoop(Device* device) {
     idleTimer.updateTime();
+    
+    // Handle ESP-NOW initialization process
+    if (!espNowInitialized) {
+        connectionAttemptTimer.updateTime();
+        
+        if (connectionAttemptTimer.expired()) {
+            if (initializeEspNow()) {
+                ESP_LOGI("WirelessManager", "ESP-NOW initialized successfully after %d attempts!", 
+                         espNowConnectionAttempts);
+                ESP_LOGI("WirelessManager", "Channel: %d", channel);
+                espNowInitialized = true;
+            } else {
+                espNowConnectionAttempts++;
+                if (espNowConnectionAttempts >= MAX_ESP_NOW_CONN_ATTEMPTS) {
+                    ESP_LOGE("WirelessManager", "Failed to initialize ESP-NOW after %d attempts", 
+                             MAX_ESP_NOW_CONN_ATTEMPTS);
+                    // TODO: Consider transitioning to a different state
+                } else {
+                    ESP_LOGI("WirelessManager", "ESP-NOW initialization attempt %d/%d", 
+                             espNowConnectionAttempts, MAX_ESP_NOW_CONN_ATTEMPTS);
+                    connectionAttemptTimer.setTimer(500);
+                }
+            }
+        }
+    }
 }
 
 void EspNowState::onStateDismounted(Device* device) {
-    // TODO: ESP-NOW cleanup will be handled later
+    ESP_LOGI("WirelessManager", "EspNowState dismounted");
+    cleanupEspNow();
+}
+
+bool EspNowState::initializeEspNow() {
+    // Initialize ESP-NOW
+    esp_err_t err = esp_now_init();
+    if (err != ESP_OK) {
+        ESP_LOGE("WirelessManager", "ESP-NOW init failed: 0x%X", err);
+        return false;
+    }
+    
+    // Register callbacks
+    err = esp_now_register_recv_cb(onEspNowRecv);
+    if (err != ESP_OK) {
+        ESP_LOGE("WirelessManager", "ESP-NOW recv callback registration failed: 0x%X", err);
+        esp_now_deinit();
+        return false;
+    }
+    
+    err = esp_now_register_send_cb(onEspNowSend);
+    if (err != ESP_OK) {
+        ESP_LOGE("WirelessManager", "ESP-NOW send callback registration failed: 0x%X", err);
+        esp_now_deinit();
+        return false;
+    }
+    
+    // Register broadcast peer
+    esp_now_peer_info_t broadcastPeer = {};
+    memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
+    broadcastPeer.channel = channel;
+    broadcastPeer.encrypt = false;
+    
+    err = esp_now_add_peer(&broadcastPeer);
+    if (err != ESP_OK) {
+        ESP_LOGE("WirelessManager", "ESP-NOW broadcast peer registration failed: 0x%X", err);
+        esp_now_deinit();
+        return false;
+    }
+    
+    return true;
+}
+
+void EspNowState::cleanupEspNow() {
+    ESP_LOGI("WirelessManager", "Cleaning up ESP-NOW");
+    
+    // Remove broadcast peer
+    esp_now_del_peer(ESP_NOW_BROADCAST_ADDR);
+    
+    // Unregister callbacks
+    esp_now_unregister_recv_cb();
+    esp_now_unregister_send_cb();
+    
+    // Deinitialize ESP-NOW
+    esp_now_deinit();
+    
+    espNowInitialized = false;
+}
+
+// ESP-NOW callbacks
+void EspNowState::onEspNowRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+    ESP_LOGI("WirelessManager", "Received ESP-NOW data from %s, length: %d", MacToString(mac_addr), data_len);
+    
+    // Forward the data to EspNowManager for processing
+    EspNowManager* espNowManager = EspNowManager::GetInstance();
+    if (espNowManager) {
+        // Use SetPacketHandler to register a callback for this packet type
+        espNowManager->SetPacketHandler(PktType::kPlayerInfoBroadcast, 
+            [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
+                // Handle received data
+                ESP_LOGI("WirelessManager", "Received data from %s", MacToString(srcMacAddr));
+            }, 
+            nullptr
+        );
+    }
+}
+
+void EspNowState::onEspNowSend(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        ESP_LOGI("WirelessManager", "ESP-NOW data sent successfully to %s", MacToString(mac_addr));
+    } else {
+        ESP_LOGE("WirelessManager", "Failed to send ESP-NOW data to %s", MacToString(mac_addr));
+    }
 }
 
 // WifiState Implementation
@@ -719,72 +857,100 @@ void WifiState::handleRequestError(HttpRequest& request, WirelessErrorInfo error
 }
 
 // WirelessManager Implementation
-WirelessManager::WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl)
+WirelessManager::WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl) 
     : StateMachine(device)
     , wifiSsid(wifiSsid)
     , wifiPassword(wifiPassword)
     , baseUrl(baseUrl)
-    , pendingEspNowSwitch(false)
-    , pendingWifiSwitch(false)
-    , pendingPowerOff(false)
-    , wifiEnabled(false)
-    , wifiChannel(6) {
+    , isInitialized(false) {
     ESP_LOGI("WirelessManager", "WirelessManager created with SSID: %s, base URL: %s", wifiSsid, baseUrl);
 }
 
 WirelessManager::~WirelessManager() {
-    disableWiFi();
+    cleanup();
 }
 
-bool WirelessManager::enableWiFi() {
-    if (wifiEnabled) {
-        return true;
+void WirelessManager::initialize() {
+    if (isInitialized) {
+        return;
     }
 
-    ESP_LOGI("WirelessManager", "Enabling WiFi");
-    
     // Initialize WiFi in STA mode
     WiFi.mode(WIFI_STA);
     WiFi.enableSTA(true);
-    
-    // Set the channel if specified
-    if (wifiChannel > 0) {
-        WiFi.channel(wifiChannel);
-    }
-    
-    wifiEnabled = true;
-    return true;
-}
 
-bool WirelessManager::disableWiFi() {
-    if (!wifiEnabled) {
-        return true;
+    // Initialize ESP-NOW through the EspNowManager
+    EspNowManager* espNowManager = EspNowManager::GetInstance();
+    if (!espNowManager) {
+        ESP_LOGE("WirelessManager", "Failed to get EspNowManager instance");
+        return;
     }
 
-    ESP_LOGI("WirelessManager", "Disabling WiFi");
-    
-    // Disconnect and turn off WiFi
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    
-    wifiEnabled = false;
-    return true;
+    // Register packet handler for user data
+    espNowManager->SetPacketHandler(PktType::kPlayerInfoBroadcast, 
+        [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
+            // Handle received data
+            ESP_LOGI("WirelessManager", "Received data from %s", MacToString(srcMacAddr));
+        }, 
+        nullptr
+    );
+
+    // Populate state map and transitions
+    populateStateMap();
+
+    isInitialized = true;
+    ESP_LOGI("WirelessManager", "Wireless manager initialized successfully");
 }
 
-bool WirelessManager::isWiFiEnabled() const {
-    return wifiEnabled;
+void WirelessManager::cleanup() {
+    if (!isInitialized) {
+        return;
+    }
+
+    // EspNowManager handles its own cleanup in its destructor
+    isInitialized = false;
+    ESP_LOGI("WirelessManager", "Wireless manager cleaned up");
 }
 
-uint8_t WirelessManager::getWiFiChannel() const {
-    return wifiChannel;
+bool WirelessManager::sendData(const uint8_t* data, size_t len) {
+    if (!isInitialized) {
+        ESP_LOGE("WirelessManager", "Wireless manager not initialized");
+        return false;
+    }
+
+    // Use EspNowManager to send data
+    EspNowManager* espNowManager = EspNowManager::GetInstance();
+    if (!espNowManager) {
+        ESP_LOGE("WirelessManager", "Failed to get EspNowManager instance");
+        return false;
+    }
+
+    // Send data using the existing API
+    int result = espNowManager->SendData(
+        ESP_NOW_BROADCAST_ADDR,  // Broadcast to all peers
+        PktType::kPlayerInfoBroadcast,  // Use existing packet type
+        data,
+        len
+    );
+
+    return result == 0;  // EspNowManager returns 0 on success
 }
 
-void WirelessManager::setWiFiChannel(uint8_t channel) {
-    if (channel > 0 && channel <= 14) {
-        wifiChannel = channel;
-        if (wifiEnabled) {
-            WiFi.channel(channel);
-        }
+void WirelessManager::setReceiveCallback(std::function<void(const uint8_t*, size_t)> callback) {
+    receiveCallback = callback;
+}
+
+void WirelessManager::onDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len) {
+    if (receiveCallback) {
+        receiveCallback(data, len);
+    }
+}
+
+void WirelessManager::onDataSent(const uint8_t* mac_addr, esp_now_send_status_t status) {
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        ESP_LOGI("WirelessManager", "Data sent successfully");
+    } else {
+        ESP_LOGE("WirelessManager", "Failed to send data");
     }
 }
 
@@ -921,29 +1087,56 @@ bool WirelessManager::powerOff() {
     return true;
 }
 
-void WirelessManager::initialize() {
-    ESP_LOGI("WirelessManager", "Initializing WirelessManager");
+void WirelessManager::sendMessage(const char* type, const char* message) {
+    // Create JSON document
+    StaticJsonDocument<200> doc;
+    doc["type"] = type;
+    doc["message"] = message;
     
-    // Call base class initialize which will populate state map and set initial state
-    StateMachine::initialize();
+    // Serialize JSON to string
+    String jsonString;
+    serializeJson(doc, jsonString);
     
-    ESP_LOGI("WirelessManager", "WirelessManager initialized with initial state: %d", 
-             getCurrentState()->getStateId());
+    // Broadcast the message to all peers
+    esp_now_peer_info_t peerInfo = {};
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
     
-    // Initialize WiFi if needed
-    if (!httpQueue.empty()) {
-        ESP_LOGI("WirelessManager", "HTTP queue not empty, enabling WiFi and switching to WiFi state");
-        enableWiFi();
-        switchToWifi();
+    // Add broadcast address
+    uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    
+    // Add peer
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        ESP_LOGE("WirelessManager", "Failed to add peer");
+        return;
     }
+    
+    // Send the message
+    esp_err_t result = esp_now_send(broadcastAddress, (uint8_t*)jsonString.c_str(), jsonString.length());
+    
+    if (result == ESP_OK) {
+        ESP_LOGI("WirelessManager", "Message sent successfully");
+    } else {
+        ESP_LOGE("WirelessManager", "Error sending message");
+    }
+    
+    // Remove peer after sending
+    esp_now_del_peer(broadcastAddress);
 }
 
 void WirelessManager::loop() {
     static unsigned long lastStatusLog = 0;
     static int lastStateId = -1;
     
-    // Get current state ID
-    int currentStateId = getCurrentState()->getStateId();
+    // Get current state ID - add null check
+    State* currentState = getCurrentState();
+    if (!currentState) {
+        ESP_LOGW("WirelessManager", "No current state available");
+        return;
+    }
+    
+    int currentStateId = currentState->getStateId();
     
     // Check if state has changed
     if (currentStateId != lastStateId) {

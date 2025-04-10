@@ -72,7 +72,7 @@ public:
         currentState->onStateMounted(PDN);
     };
 
-    void loop() {
+    virtual void loop() {
         currentState->onStateLoop(PDN);
         checkStateTransitions();
         if (stateChangeReady) {

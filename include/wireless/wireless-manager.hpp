@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_http_client.h>
+#include <esp_now.h>
 #include <queue>
 #include <memory>
 #include <functional>
@@ -15,6 +16,7 @@
 class Device;
 class State;
 class StateMachine;
+class EspNowManager;
 
 // Forward declare the event handler
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
@@ -115,6 +117,20 @@ public:
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
+    
+private:
+    bool espNowInitialized;
+    int espNowConnectionAttempts;
+    SimpleTimer connectionAttemptTimer;
+    static const int MAX_ESP_NOW_CONN_ATTEMPTS = 5;
+    uint8_t channel;
+    
+    bool initializeEspNow();
+    void cleanupEspNow();
+
+    // ESP-NOW callbacks
+    static void onEspNowRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len);
+    static void onEspNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
 };
 
 class WifiState : public WirelessState {
@@ -180,12 +196,13 @@ public:
     WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl);
     ~WirelessManager();
     
-    /**
-     * Initialize the wireless manager
-     * Sets up states and transitions
-     */
     void initialize();
-    
+    void cleanup();
+    bool sendData(const uint8_t* data, size_t len);
+    void setReceiveCallback(std::function<void(const uint8_t*, size_t)> callback);
+    void onDataReceived(const uint8_t* mac_addr, const uint8_t* data, int len);
+    void onDataSent(const uint8_t* mac_addr, esp_now_send_status_t status);
+    void sendMessage(const char* type, const char* message);
     /**
      * Process the state machine and handle wireless operations
      * Should be called in the main loop
@@ -193,7 +210,6 @@ public:
     void loop();
     
     void populateStateMap() override;
-
     /**
      * Queues an HTTP request with full error handling support.
      * The path will be appended to the base URL.
@@ -236,9 +252,6 @@ public:
     bool powerOff();
 
     // WiFi control methods
-    bool enableWiFi();
-    bool disableWiFi();
-    bool isWiFiEnabled() const;
     uint8_t getWiFiChannel() const;
     void setWiFiChannel(uint8_t channel);
 
@@ -254,4 +267,6 @@ private:
     std::queue<HttpRequest> httpQueue;
     bool wifiEnabled;
     uint8_t wifiChannel;
+    bool isInitialized;
+    std::function<void(const uint8_t*, size_t)> receiveCallback;
 }; 

@@ -29,6 +29,7 @@ class EspNowManager
 {
 public:
     static EspNowManager* GetInstance();
+    ~EspNowManager();
 
     void Update();
 
@@ -49,6 +50,10 @@ public:
     //Unregister packet handler for specified packet type
     void ClearPacketHandler(const PktType packetType);
 
+    //ESP-NOW callbacks
+    static void EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *data, int data_len);
+    static void EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status);
+
 #if PDN_ENABLE_RSSI_TRACKING
     int GetRssiForPeer(const uint8_t* macAddr);
 #endif
@@ -60,10 +65,6 @@ private:
     //Callback for receiving raw Wifi packets, used for rssi tracking
     static void WifiPromiscuousRecvCallback(void *buf, wifi_promiscuous_pkt_type_t type);
 #endif
-
-    //ESP-NOW callbacks
-    static void EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *data, int data_len);
-    static void EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status);
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt();
