@@ -726,8 +726,66 @@ WirelessManager::WirelessManager(Device* device, const char* wifiSsid, const cha
     , baseUrl(baseUrl)
     , pendingEspNowSwitch(false)
     , pendingWifiSwitch(false)
-    , pendingPowerOff(false) {
+    , pendingPowerOff(false)
+    , wifiEnabled(false)
+    , wifiChannel(6) {
     ESP_LOGI("WirelessManager", "WirelessManager created with SSID: %s, base URL: %s", wifiSsid, baseUrl);
+}
+
+WirelessManager::~WirelessManager() {
+    disableWiFi();
+}
+
+bool WirelessManager::enableWiFi() {
+    if (wifiEnabled) {
+        return true;
+    }
+
+    ESP_LOGI("WirelessManager", "Enabling WiFi");
+    
+    // Initialize WiFi in STA mode
+    WiFi.mode(WIFI_STA);
+    WiFi.enableSTA(true);
+    
+    // Set the channel if specified
+    if (wifiChannel > 0) {
+        WiFi.channel(wifiChannel);
+    }
+    
+    wifiEnabled = true;
+    return true;
+}
+
+bool WirelessManager::disableWiFi() {
+    if (!wifiEnabled) {
+        return true;
+    }
+
+    ESP_LOGI("WirelessManager", "Disabling WiFi");
+    
+    // Disconnect and turn off WiFi
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    
+    wifiEnabled = false;
+    return true;
+}
+
+bool WirelessManager::isWiFiEnabled() const {
+    return wifiEnabled;
+}
+
+uint8_t WirelessManager::getWiFiChannel() const {
+    return wifiChannel;
+}
+
+void WirelessManager::setWiFiChannel(uint8_t channel) {
+    if (channel > 0 && channel <= 14) {
+        wifiChannel = channel;
+        if (wifiEnabled) {
+            WiFi.channel(channel);
+        }
+    }
 }
 
 void WirelessManager::populateStateMap() {
@@ -872,9 +930,10 @@ void WirelessManager::initialize() {
     ESP_LOGI("WirelessManager", "WirelessManager initialized with initial state: %d", 
              getCurrentState()->getStateId());
     
-    // Immediately switch to WiFi state if we have HTTP requests
+    // Initialize WiFi if needed
     if (!httpQueue.empty()) {
-        ESP_LOGI("WirelessManager", "HTTP queue not empty, switching to WiFi state");
+        ESP_LOGI("WirelessManager", "HTTP queue not empty, enabling WiFi and switching to WiFi state");
+        enableWiFi();
         switchToWifi();
     }
 }

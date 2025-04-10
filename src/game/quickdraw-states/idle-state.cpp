@@ -1,8 +1,12 @@
 #include "device/pdn.hpp"
+#include "game/ping-queue.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "wireless/esp-now-comms.hpp"
+#include <string>
+#include <Arduino.h>
+#include "player.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -17,34 +21,53 @@
       msgDelay = msgDelay + 1;
     }
  */
-Idle::Idle(Player* player) : State(IDLE) {
-    this->player = player;
+using namespace std;
+
+void handlePrimaryButtonClick(void* context) {
+    auto* idle = static_cast<Idle*>(context);
+    idle->handlePrimaryButton();
+}
+
+void handleSecondaryButtonClick(void* context) {
+    auto* idle = static_cast<Idle*>(context);
+    idle->handleSecondaryButton();
+}
+
+Idle::Idle(PingQueue* pingQueue, Player* player) : State(QuickdrawStateId::IDLE), 
+    pingQueue(pingQueue), player(player), displayCount(0),
+    needsRender(false), sendMacAddress(false), 
+    waitingForMacAddress(false), transitionToHandshakeState(false) {
 }
 
 Idle::~Idle() {
-    player = nullptr;
 }
 
-void Idle::onStateMounted(Device *PDN) {
+void Idle::handlePrimaryButton() {
+    pingQueue->addPing(*player->getOpponentMacAddress());
+    needsRender = true;
+}
 
-    // cursor position is bottom left of the character drawn, need to start at y = 16 otherwise we will be cut off screen
-    // 0, 0 is the top left pixel
+void Idle::handleSecondaryButton() {
+    pingQueue->clear();
+    displayCount = 0;
+    needsRender = true;
+}
 
-    //starting at 64, you start in the white space for text
+void Idle::onStateMounted(Device* PDN) {
+    // Set up button callbacks
+    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON, handlePrimaryButtonClick, this);
+    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::SECONDARY_BUTTON, handleSecondaryButtonClick, this);
 
+    // Add 2 debug pings to the queue using opponent's MAC address
+    pingQueue->addPing(*player->getOpponentMacAddress());
+    pingQueue->addPing(*player->getOpponentMacAddress());
+    displayCount = pingQueue->getValidPingCount(*player->getOpponentMacAddress());
+    needsRender = true;
 
-    //COUNT is the max character i can handle. 
-    //X = 64 + 4 for min
-    //Y = 20 for each line
-    PDN->
-    invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
-    setGlyphMode(FontMode::TEXT_INVERTED)-> drawText("Hello,", 64 + 6, 20)->
-    setGlyphMode(FontMode::TEXT_INVERTED)-> drawText("Count: ", 64 + 6, 40)->
-    render();
-
+    // Set up serial callback
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
 
+    // Set up animation
     AnimationConfig config;
     
     if(player->isHunter()) {
@@ -65,19 +88,55 @@ void Idle::onStateMounted(Device *PDN) {
     PDN->startAnimation(config);
 }
 
-void Idle::onStateLoop(Device *PDN) {
+void Idle::onStateLoop(Device* PDN) {
+    static uint32_t lastCleanup = 0;
+    static uint32_t lastHeartbeat = 0;
+    uint32_t currentMillis = millis();
 
-    EVERY_N_MILLIS(250) {
-        if(!player->isHunter()) {
-            PDN->writeString(SERIAL_HEARTBEAT.c_str());
+    // Clean up expired pings every second
+    if (currentMillis - lastCleanup >= 1000) {
+        lastCleanup = currentMillis;
+        pingQueue->cleanup();
+        int actualCount = pingQueue->getValidPingCount(*player->getOpponentMacAddress());
+        if (actualCount != displayCount) {
+            displayCount = actualCount;
+            needsRender = true;
         }
     }
 
+    // Only render when needed
+    if (needsRender) {
+        // Clear the screen and reset to default state
+        PDN->invalidateScreen();
+        PDN->setGlyphMode(FontMode::TEXT);
+        
+        // Draw the background image
+        PDN->drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE));
+        
+        // Draw all text in inverted mode
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED);
+        PDN->drawText("Hello,", 64 + 6, 20);
+        PDN->drawText("Count: ", 64 + 6, 40);
+        PDN->drawText(std::to_string(displayCount).c_str(), 64 + 6, 60);
+        
+        // Reset to default mode and render
+        PDN->setGlyphMode(FontMode::TEXT);
+        PDN->render();
+        needsRender = false;
+    }
+
+    // Handle heartbeat for non-hunters
+    if (!player->isHunter() && currentMillis - lastHeartbeat >= 250) {
+        lastHeartbeat = currentMillis;
+        PDN->writeString(SERIAL_HEARTBEAT.c_str());
+    }
+
+    // Handle MAC address sending
     if(sendMacAddress) {
         uint8_t macAddr[6];
         esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
         const char* macStr = MacToString(macAddr);
-        ESP_LOGI("IDLE", "Perparing to Send Mac Address: %s", macStr);
+        ESP_LOGI("IDLE", "Preparing to Send Mac Address: %s", macStr);
         
         PDN->writeString(SEND_MAC_ADDRESS);
         PDN->writeString(macStr);
@@ -85,11 +144,19 @@ void Idle::onStateLoop(Device *PDN) {
     }
 }
 
-void Idle::onStateDismounted(Device *PDN) {
+void Idle::onStateDismounted(Device* PDN) {
+    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    
+    // Reset state variables
     transitionToHandshakeState = false;
     sendMacAddress = false;
     waitingForMacAddress = false;
-    PDN->clearCallbacks();
+    needsRender = false;
+    displayCount = 0;
+    
+    // Clear the queue
+    pingQueue->clear();
 }
 
 void Idle::serialEventCallbacks(string message) {

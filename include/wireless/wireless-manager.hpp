@@ -178,6 +178,7 @@ private:
 class WirelessManager : public StateMachine {
 public:
     WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl);
+    ~WirelessManager();
     
     /**
      * Initialize the wireless manager
@@ -234,6 +235,13 @@ public:
     bool switchToWifi();
     bool powerOff();
 
+    // WiFi control methods
+    bool enableWiFi();
+    bool disableWiFi();
+    bool isWiFiEnabled() const;
+    uint8_t getWiFiChannel() const;
+    void setWiFiChannel(uint8_t channel);
+
     friend class WifiState;
 
 private:
@@ -244,4 +252,6 @@ private:
     bool pendingWifiSwitch;
     bool pendingPowerOff;
     std::queue<HttpRequest> httpQueue;
+    bool wifiEnabled;
+    uint8_t wifiChannel;
 }; 

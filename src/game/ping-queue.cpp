@@ -4,36 +4,35 @@
 
 void PingQueue::addPing(const std::string& sourceId) {
     uint64_t currentTime = millis();
-    
-    // Add new ping
     m_pings.push_back({currentTime, sourceId});
-    
-    // Clean up expired pings
-    cleanup();
 }
 
 void PingQueue::cleanup() {
     uint64_t currentTime = millis();
-    
-    // Remove expired pings
     m_pings.erase(
-        std::remove_if(m_pings.begin(), m_pings.end(),
+        std::remove_if(
+            m_pings.begin(),
+            m_pings.end(),
             [currentTime, this](const Ping& ping) {
                 return (currentTime - ping.timestamp) > m_expiryTime;
-            }),
+            }
+        ),
         m_pings.end()
     );
 }
 
 int PingQueue::getPingCount(const std::string& sourceId) const {
-    return std::count_if(m_pings.begin(), m_pings.end(),
+    return std::count_if(
+        m_pings.begin(),
+        m_pings.end(),
         [&sourceId](const Ping& ping) {
             return ping.sourceId == sourceId;
-        });
+        }
+    );
 }
 
 bool PingQueue::hasEnoughPings(const std::string& sourceId) const {
-    return getValidPingCount(sourceId) >= m_requiredPings;
+    return getPingCount(sourceId) >= m_requiredPings;
 }
 
 void PingQueue::clear() {
@@ -42,54 +41,57 @@ void PingQueue::clear() {
 
 int PingQueue::getValidPingCount(const std::string& sourceId) const {
     uint64_t currentTime = millis();
-    
-    return std::count_if(m_pings.begin(), m_pings.end(),
+    return std::count_if(
+        m_pings.begin(),
+        m_pings.end(),
         [&sourceId, currentTime, this](const Ping& ping) {
             return ping.sourceId == sourceId && 
                    (currentTime - ping.timestamp) <= m_expiryTime;
-        });
+        }
+    );
 }
 
 std::set<std::string> PingQueue::getActiveSources() const {
-    std::set<std::string> activeSources;
+    std::set<std::string> sources;
     uint64_t currentTime = millis();
     
     for (const auto& ping : m_pings) {
-        if (currentTime - ping.timestamp <= m_expiryTime) {
-            activeSources.insert(ping.sourceId);
+        if ((currentTime - ping.timestamp) <= m_expiryTime) {
+            sources.insert(ping.sourceId);
         }
     }
     
-    return activeSources;
+    return sources;
 }
 
 bool PingQueue::isSourceActive(const std::string& sourceId) const {
     uint64_t currentTime = millis();
-    
-    return std::any_of(m_pings.begin(), m_pings.end(),
+    return std::any_of(
+        m_pings.begin(),
+        m_pings.end(),
         [&sourceId, currentTime, this](const Ping& ping) {
             return ping.sourceId == sourceId && 
                    (currentTime - ping.timestamp) <= m_expiryTime;
-        });
+        }
+    );
 }
 
 uint64_t PingQueue::getLastPingTime(const std::string& sourceId) const {
-    uint64_t lastTime = 0;
+    uint64_t lastPingTime = 0;
     
     for (const auto& ping : m_pings) {
-        if (ping.sourceId == sourceId && ping.timestamp > lastTime) {
-            lastTime = ping.timestamp;
+        if (ping.sourceId == sourceId && ping.timestamp > lastPingTime) {
+            lastPingTime = ping.timestamp;
         }
     }
     
-    return lastTime;
+    return lastPingTime;
 }
 
 uint64_t PingQueue::getTimeSinceLastPing(const std::string& sourceId) const {
     uint64_t lastPingTime = getLastPingTime(sourceId);
     if (lastPingTime == 0) {
-        return m_expiryTime; // Return max time if no pings found
+        return UINT64_MAX;
     }
-    
     return millis() - lastPingTime;
 } 

@@ -37,40 +37,32 @@ void setup() {
 
     ESP_LOGI("PDN", "HW and Game Initialized\n");
 
-  // Initialize WiFi for ESP-NOW use
-  WiFi.begin();
-  // STA mode is required for ESP-NOW
-  WiFi.enableSTA(true);
-  // This could be any Wi-Fi channel, the only requirement is that all devices
-  // communicating together on ESP-NOW must use the same channel
-  WiFi.channel(6);
+    // Initialize wireless manager
+    wirelessManager->initialize();
+    
+    // Set WiFi channel for ESP-NOW if needed
+    wirelessManager->setWiFiChannel(6);
+    
+    // Initialize the communications manager
+    // quickdrawWirelessManager->initialize(player, 1000);
+    
+    // remotePlayers.StartBroadcastingPlayerInfo(player, 5000);
 
-  wirelessManager->initialize();
-  
+    // EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
+    //     [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+    //       {
+    //         QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
+    //         manager->processQuickdrawCommand(srcMacAddr, data, len);
+    //       },
+    //       quickdrawWirelessManager);
 
-  player->setUserID(idGenerator->generateId());
-  
-  // Initialize the communications manager
-  // quickdrawWirelessManager->initialize(player, 1000);
-  
-  // remotePlayers.StartBroadcastingPlayerInfo(player, 5000);
-
-  // EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
-  //     [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
-  //       {
-  //         QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
-  //         manager->processQuickdrawCommand(srcMacAddr, data, len);
-  //       },
-  //       quickdrawWirelessManager);
-
-
-  // EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
-  //     [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
-  //       {
-  //         RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
-  //         manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
-  //       },
-  //       &remotePlayers);
+    // EspNowManager::GetInstance()->SetPacketHandler(PktType::kPlayerInfoBroadcast,
+    //     [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+    //       {
+    //         RemotePlayerManager* manager = (RemotePlayerManager*)userArg;
+    //         manager->ProcessPlayerInfoPkt(srcMacAddr, data, len);
+    //       },
+    //       &remotePlayers);
 
     ESP_LOGI("PDN", "ESP-NOW and Remote Player Service initialized");
     pdn->
