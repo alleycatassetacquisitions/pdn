@@ -17,8 +17,9 @@
       msgDelay = msgDelay + 1;
     }
  */
-Idle::Idle(Player* player) : State(IDLE) {
+Idle::Idle(Player* player, WirelessManager* wirelessManager) : State(IDLE) {
     this->player = player;
+    this->wirelessManager = wirelessManager;
 }
 
 Idle::~Idle() {
@@ -33,6 +34,8 @@ void Idle::onStateMounted(Device *PDN) {
 
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
 
+    wirelessManager->switchToEspNow();
+    
     AnimationConfig config;
     
     if(player->isHunter()) {

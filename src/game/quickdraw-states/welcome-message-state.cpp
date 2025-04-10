@@ -18,6 +18,7 @@ void WelcomeMessage::onStateMounted(Device *PDN) {
     ESP_LOGI(TAG, "WelcomeMessage state mounted");
     renderWelcomeMessage();
     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
+    PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 } 
 
 void WelcomeMessage::onStateLoop(Device *PDN) {

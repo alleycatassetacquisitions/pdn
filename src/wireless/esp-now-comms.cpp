@@ -44,31 +44,44 @@ EspNowManager::EspNowManager() :
     esp_wifi_set_promiscuous(true);
 #endif
 
-    //Initialize Wifi + ESP-NOW
+    // Initialize ESP-NOW
+    Initialize();
+}
+
+esp_err_t EspNowManager::Initialize()
+{
+    //Initialize ESP-NOW
     esp_err_t err = esp_now_init();
     if(err != ESP_OK)
     {
         ESP_LOGE("ENC", "ESPNOW failed to init: 0x%X\n", err);
+        return err;
     }
-    else
-    {
-        //Register callbacks
-        esp_err_t err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
-        if(err != ESP_OK)
-            ESP_LOGE("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
-        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
-        if(err != ESP_OK)
-            ESP_LOGE("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
-
-        //Register broadcast peer
-        esp_now_peer_info_t broadcastPeer = {};
-        memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
-        err = esp_now_add_peer(&broadcastPeer);
-        if(err != ESP_OK)
-            ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
-
-        ESP_LOGI("ENC", "ESPNOW Comms initialized");
+    
+    //Register callbacks
+    err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
+    if(err != ESP_OK) {
+        ESP_LOGE("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
+        return err;
     }
+    
+    err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
+    if(err != ESP_OK) {
+        ESP_LOGE("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
+        return err;
+    }
+
+    //Register broadcast peer
+    esp_now_peer_info_t broadcastPeer = {};
+    memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
+    err = esp_now_add_peer(&broadcastPeer);
+    if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
+        ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
+        return err;
+    }
+
+    ESP_LOGI("ENC", "ESPNOW Comms initialized");
+    return ESP_OK;
 }
 
 #if PDN_ENABLE_RSSI_TRACKING
@@ -400,4 +413,14 @@ void EspNowManager::HandlePktCallback(const PktType packetType, const uint8_t *s
     {
         callback(srcMacAddr, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
     }
+}
+
+void EspNowManager::HandleReceivedData(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+    // This simply forwards to the static callback method
+    EspNowRecvCallback(mac_addr, data, data_len);
+}
+
+void EspNowManager::HandleSendStatus(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    // This simply forwards to the static callback method
+    EspNowSendCallback(mac_addr, status);
 }

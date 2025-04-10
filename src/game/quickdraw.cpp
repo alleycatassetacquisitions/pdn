@@ -3,7 +3,6 @@
 Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
     this->player = player;
     this->wirelessManager = wirelessManager;
-    PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {
@@ -21,7 +20,8 @@ void Quickdraw::populateStateMap() {
     AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
     
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player);
+    // Wireless manager should be injected into the state here.
+    Idle* idle = new Idle(player, wirelessManager);
     
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
@@ -30,8 +30,8 @@ void Quickdraw::populateStateMap() {
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     DuelCountdown* duelCountdown = new DuelCountdown(player);
     Duel* duel = new Duel(player);
-    Win* win = new Win(player);
-    Lose* lose = new Lose(player);
+    Win* win = new Win(player, wirelessManager);
+    Lose* lose = new Lose(player, wirelessManager);
 
     playerRegistration->addTransition(
         new StateTransition(

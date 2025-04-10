@@ -10,6 +10,7 @@
 #include "state-machine.hpp"
 #include "wireless/wireless-types.hpp"
 #include "simple-timer.hpp"
+#include "esp-now-comms.hpp"
 
 // Forward declarations
 class Device;
@@ -18,6 +19,7 @@ class StateMachine;
 
 // Forward declare the event handler
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
+
 
 enum WirelessStateId {
     POWER_OFF = 0,
@@ -105,8 +107,6 @@ public:
     PowerOffState();
     void onStateMounted(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
-private:
-    void powerDown();
 };
 
 class EspNowState : public WirelessState {

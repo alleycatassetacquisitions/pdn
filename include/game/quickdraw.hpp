@@ -21,6 +21,9 @@ public:
     void populateStateMap() override;
 
     static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
+    
+    // Add getter for WirelessManager
+    WirelessManager* getWirelessManager() { return wirelessManager; }
 
 private:
 

@@ -24,8 +24,9 @@ if (startBattleFinish) {
     }
   }
  */
-Win::Win(Player *player) : State(WIN) {
+Win::Win(Player *player, WirelessManager* wirelessManager) : State(WIN) {
     this->player = player;
+    this->wirelessManager = wirelessManager;
 }
 
 Win::~Win() {
@@ -54,6 +55,9 @@ void Win::onStateLoop(Device *PDN) {
 void Win::onStateDismounted(Device *PDN) {
     winTimer.invalidate();
     reset = false;
+    
+    // Switch to power-off WiFi mode at the end of game
+    wirelessManager->powerOff();
 }
 
 bool Win::resetGame() {
