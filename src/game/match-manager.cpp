@@ -93,7 +93,13 @@ Match* MatchManager::receiveMatch(Match match) {
         return nullptr;
     }
 
-    activeDuelState.match = &match;
+    // Create a new Match object on the heap instead of storing a pointer to the parameter
+    activeDuelState.match = new Match(match.getMatchId(), match.getHunterId(), match.getBountyId());
+    
+    // Copy draw times
+    activeDuelState.match->setHunterDrawTime(match.getHunterDrawTime());
+    activeDuelState.match->setBountyDrawTime(match.getBountyDrawTime());
+    
     return activeDuelState.match;
 }
 

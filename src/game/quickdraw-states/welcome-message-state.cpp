@@ -19,6 +19,9 @@ void WelcomeMessage::onStateMounted(Device *PDN) {
     renderWelcomeMessage();
     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
+    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+
 } 
 
 void WelcomeMessage::onStateLoop(Device *PDN) {

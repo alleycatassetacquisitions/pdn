@@ -12,8 +12,8 @@
 
 struct QuickdrawPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    char hunterId[IdGenerator::UUID_BUFFER_SIZE];
-    char bountyId[IdGenerator::UUID_BUFFER_SIZE];
+    char hunterId[5];  // 4 chars + null terminator
+    char bountyId[5];  // 4 chars + null terminator
     long hunterDrawTime;
     long bountyDrawTime;
     int command;
@@ -50,28 +50,22 @@ int QuickdrawWirelessManager::broadcastPacket(const string& macAddress,
     
     QuickdrawPacket qdPacket;
     
-    // // Safely copy the player ID
-    // strncpy(qdPacket.id, player->getUserID().c_str(),  IdGenerator::UUID_STRING_LENGTH);
-    // qdPacket.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    // ESP_LOGI("QWM", "Player ID: %s", qdPacket.id);
-    
-    // // Safely copy the match ID
-    // strncpy(qdPacket.matchId, matchId.c_str(), IdGenerator::UUID_STRING_LENGTH);
-    // qdPacket.matchId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    // ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
-    
-    // // Safely copy the opponent ID
-    // strncpy(qdPacket.opponentId, opponentId.c_str(), IdGenerator::UUID_STRING_LENGTH);
-    // qdPacket.opponentId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    // ESP_LOGI("QWM", "Opponent ID: %s", qdPacket.opponentId);
-    
+    // Set command
     qdPacket.command = command;
+    
+    // Copy the match ID (UUID)
     strncpy(qdPacket.matchId, match.getMatchId().c_str(), IdGenerator::UUID_STRING_LENGTH);
     qdPacket.matchId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    strncpy(qdPacket.hunterId, match.getHunterId().c_str(), IdGenerator::UUID_STRING_LENGTH);
-    qdPacket.hunterId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
-    strncpy(qdPacket.bountyId, match.getBountyId().c_str(), IdGenerator::UUID_STRING_LENGTH);
-    qdPacket.bountyId[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null-termination
+    
+    // Copy the hunter ID (4 chars)
+    strncpy(qdPacket.hunterId, match.getHunterId().c_str(), 4);
+    qdPacket.hunterId[4] = '\0';  // Ensure null-termination
+    
+    // Copy the bounty ID (4 chars)
+    strncpy(qdPacket.bountyId, match.getBountyId().c_str(), 4);
+    qdPacket.bountyId[4] = '\0';  // Ensure null-termination
+    
+    // Set draw times
     qdPacket.hunterDrawTime = match.getHunterDrawTime();
     qdPacket.bountyDrawTime = match.getBountyDrawTime();
 

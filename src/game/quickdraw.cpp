@@ -215,6 +215,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(connectionSuccessful);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
+    stateMap.push_back(duelPushed);
+    stateMap.push_back(duelReceivedResult);
     stateMap.push_back(duelResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
