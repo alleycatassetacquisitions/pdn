@@ -1,4 +1,5 @@
 #include "../../include/game/quickdraw.hpp"
+#include "game/ping-queue.hpp"
 
 Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
     this->player = player;
@@ -21,7 +22,8 @@ void Quickdraw::populateStateMap() {
     AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
     
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player);
+    PingQueue* pingQueue = new PingQueue();
+    Idle* idle = new Idle(pingQueue, player);
     
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);

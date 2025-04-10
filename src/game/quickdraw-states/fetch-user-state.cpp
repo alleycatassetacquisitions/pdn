@@ -3,6 +3,7 @@
 #include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
 #include <esp_log.h>
+#include "device-constants.hpp"
 
 static const char* TAG = "FetchUserDataState";
 
@@ -10,7 +11,6 @@ FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wireless
     ESP_LOGI(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->wirelessManager = wirelessManager;
-    // Set a longer fetch timeout (20 seconds)
 }   
 
 FetchUserDataState::~FetchUserDataState() {
@@ -25,9 +25,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
     
     // Log important information
     ESP_LOGI(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
-    ESP_LOGI(TAG, "WiFi state: %d", wirelessManager->getCurrentState()->getStateId());
     
-
     if(player->getUserID() == TEST_BOUNTY_ID) {
         player->setIsHunter(false);
         player->setName("KO-NA-MI");
@@ -98,12 +96,10 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
 void FetchUserDataState::onStateDismounted(Device *PDN) {
     ESP_LOGI(TAG, "State dismounted - Cleaning up");
     PDN->setGlyphMode(FontMode::TEXT);
-    //reset all member variables
     isFetchingUserData = false;
+    transitionToWelcomeMessageState = false;
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
-    userDataFetchTimer.invalidate();
-    ESP_LOGI(TAG, "State cleanup complete");
 }   
 
 bool FetchUserDataState::transitionToConfirmOffline() {

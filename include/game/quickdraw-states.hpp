@@ -7,11 +7,17 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/wireless-manager.hpp"
 #include <queue>
+#include "device/pdn.hpp"
+#include <string>
+
+// Forward declarations
+class Device;
+class Player;
+class PingQueue;
 
 using namespace std;
 
 // Quickdraw States
-
 enum QuickdrawStateId {
     PLAYER_REGISTRATION = 0,
     FETCH_USER_DATA = 1,
@@ -30,6 +36,31 @@ enum QuickdrawStateId {
     DUEL = 14,
     WIN = 15,
     LOSE = 16
+};
+
+class Idle : public State {
+public:
+    Idle(PingQueue* pingQueue, Player* player);
+    ~Idle();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    void serialEventCallbacks(string message);
+    bool transitionToHandshake();
+
+    // Button handlers
+    void handlePrimaryButton();
+    void handleSecondaryButton();
+
+private:
+    PingQueue* pingQueue;
+    Player* player;
+    int displayCount;
+    bool needsRender;
+    bool sendMacAddress;
+    bool waitingForMacAddress;
+    bool transitionToHandshakeState;
 };
 
 class PlayerRegistration : public State {
@@ -211,31 +242,6 @@ private:
     bool activateMotor = false;
     const int activationStepDuration = 100;
     Player* player;
-};
-
-class Idle : public State {
-public:
-    Idle(Player *player);
-
-    ~Idle();
-
-    void onStateMounted(Device *PDN) override;
-
-    void onStateLoop(Device *PDN) override;
-
-    void onStateDismounted(Device *PDN) override;
-
-    bool transitionToHandshake();
-
-private:
-    Player *player;
-    bool transitionToHandshakeState = false;
-    bool sendMacAddress = false;
-    bool waitingForMacAddress = false;
-
-    void serialEventCallbacks(string message);
-
-    void ledAnimation(Device *PDN);
 };
 
 /*

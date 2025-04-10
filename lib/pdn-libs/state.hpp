@@ -111,6 +111,9 @@ public:
         return false;
     }
 
+    virtual void serialEventCallbacks(string message) {
+    }
+
     /*
      * Creates a set of valid String messages for this state.
      * Any message that is received that is *not* in this set

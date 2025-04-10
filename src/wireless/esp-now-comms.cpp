@@ -36,39 +36,66 @@ EspNowManager::EspNowManager() :
     m_maxRetries(5),
     m_curRetries(0)
 {
+    // Initialize WiFi first
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_err_t err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE("ENC", "WiFi init failed: 0x%X", err);
+        return;
+    }
+
+    // Set WiFi mode to STA
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        ESP_LOGE("ENC", "WiFi set mode failed: 0x%X", err);
+        return;
+    }
+
+    // Start WiFi
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        ESP_LOGE("ENC", "WiFi start failed: 0x%X", err);
+        return;
+    }
+
 #if PDN_ENABLE_RSSI_TRACKING
     wifi_promiscuous_filter_t filter = {
-		.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
-	esp_wifi_set_promiscuous_filter(&filter);
+        .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
+    esp_wifi_set_promiscuous_filter(&filter);
     esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
     esp_wifi_set_promiscuous(true);
 #endif
 
-    //Initialize Wifi + ESP-NOW
-    esp_err_t err = esp_now_init();
-    if(err != ESP_OK)
-    {
-        ESP_LOGE("ENC", "ESPNOW failed to init: 0x%X\n", err);
+    // Now initialize ESP-NOW
+    err = esp_now_init();
+    if(err != ESP_OK) {
+        ESP_LOGE("ENC", "ESPNOW failed to init: 0x%X", err);
+        return;
     }
-    else
-    {
-        //Register callbacks
-        esp_err_t err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
-        if(err != ESP_OK)
-            ESP_LOGE("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
-        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
-        if(err != ESP_OK)
-            ESP_LOGE("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
 
-        //Register broadcast peer
-        esp_now_peer_info_t broadcastPeer = {};
-        memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
-        err = esp_now_add_peer(&broadcastPeer);
-        if(err != ESP_OK)
-            ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
-
-        ESP_LOGI("ENC", "ESPNOW Comms initialized");
+    //Register callbacks
+    err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
+    if(err != ESP_OK) {
+        ESP_LOGE("ENC", "ESPNOW Error registering recv cb: 0x%X", err);
+        return;
     }
+    
+    err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
+    if(err != ESP_OK) {
+        ESP_LOGE("ENC", "ESPNOW Error registering send cb: 0x%X", err);
+        return;
+    }
+
+    //Register broadcast peer
+    esp_now_peer_info_t broadcastPeer = {};
+    memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
+    err = esp_now_add_peer(&broadcastPeer);
+    if(err != ESP_OK) {
+        ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X", err);
+        return;
+    }
+
+    ESP_LOGI("ENC", "ESPNOW Comms initialized successfully");
 }
 
 #if PDN_ENABLE_RSSI_TRACKING
@@ -400,4 +427,15 @@ void EspNowManager::HandlePktCallback(const PktType packetType, const uint8_t *s
     {
         callback(srcMacAddr, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
     }
+}
+
+EspNowManager::~EspNowManager() {
+    // Cleanup ESP-NOW
+    esp_now_deinit();
+    
+    // Cleanup WiFi
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    
+    ESP_LOGI("ENC", "ESPNOW Comms cleaned up");
 }
