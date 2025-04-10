@@ -7,6 +7,7 @@
 
 #include "wireless/esp-now-comms.hpp"
 #include "id-generator.hpp"
+#include <WiFi.h>
 
 
 struct QuickdrawPacket {
@@ -46,6 +47,12 @@ int QuickdrawWirelessManager::broadcastPacket(const string& macAddress,
                                              int ackCount,
                                              const string& matchId, 
                                              const string& opponentId) {
+    // Ensure WiFi is in STA mode before sending
+    if (WiFi.getMode() != WIFI_STA) {
+        ESP_LOGW("QWM", "WiFi not in STA mode, setting it now");
+        WiFi.mode(WIFI_STA);
+    }
+    
     QuickdrawPacket qdPacket;
     
     // Safely copy the player ID

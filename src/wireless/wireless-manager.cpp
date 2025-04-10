@@ -5,6 +5,8 @@
 #include <memory>
 #include <utility>
 #include <esp_http_client.h>
+#include "wireless/esp-now-comms.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 
 /**
  * Event handler for ESP-IDF HTTP client events.
@@ -186,31 +188,60 @@ WifiState::WifiState(const char* ssid, const char* password, const char* baseUrl
 
 // PowerOffState Implementation
 void PowerOffState::onStateMounted(Device* device) {
-    powerDown();
+    ESP_LOGI("WirelessManager", "Entered power off state - all wireless services inactive");
+    // No active shutdown needed here - clean up happens in the other states' onStateDismounted methods
 }
 
 void PowerOffState::onStateDismounted(Device* device) {
     // Nothing to clean up
 }
 
-void PowerOffState::powerDown() {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    // TODO: ESP-NOW cleanup will be handled later
-}
-
 // EspNowState Implementation
 void EspNowState::onStateMounted(Device* device) {
-    ESP_LOGW("WirelessManager", "ESP-NOW integration pending");
-    idleTimer.setTimer(IDLE_TIMEOUT);
+    ESP_LOGI("WirelessManager", "Mounting ESP-NOW state");
+    
+    // Ensure WiFi is in STA mode which is required for ESP-NOW
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(false);  // Disconnect from any AP but maintain WiFi hardware state
+    
+    // Set default channel for ESP-NOW communication
+    WiFi.channel(6);
+    
+    // Initialize ESP-NOW using the manager's initialize method
+    esp_err_t err = EspNowManager::GetInstance()->Initialize();
+    if (err == ESP_OK) {
+        ESP_LOGI("WirelessManager", "ESP-NOW initialized successfully");
+        
+        // Register packet handlers after successful initialization
+        EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
+      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+        {
+          QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
+          manager->processQuickdrawCommand(srcMacAddr, data, len);
+        },
+        QuickdrawWirelessManager::GetInstance());
+    } else {
+        ESP_LOGE("WirelessManager", "ESP-NOW initialization failed: %d", err);
+    }
+    
+    ESP_LOGI("WirelessManager", "ESP-NOW state mounted successfully");
 }
 
 void EspNowState::onStateLoop(Device* device) {
-    idleTimer.updateTime();
+    // Give processing time to ESP-NOW manager
+    EspNowManager::GetInstance()->Update();
 }
 
 void EspNowState::onStateDismounted(Device* device) {
-    // TODO: ESP-NOW cleanup will be handled later
+    ESP_LOGI("WirelessManager", "Dismounting ESP-NOW state");
+    
+    // Deinitialize ESP-NOW when this state is dismounted
+    esp_err_t err = esp_now_deinit();
+    if (err == ESP_OK) {
+        ESP_LOGI("WirelessManager", "ESP-NOW deinitialized successfully");
+    } else {
+        ESP_LOGW("WirelessManager", "ESP-NOW deinitialization failed: %d", err);
+    }
 }
 
 // WifiState Implementation

@@ -24,8 +24,9 @@ if (startBattleFinish) {
     }
   }
  */
-Lose::Lose(Player *player) : State(LOSE) {
+Lose::Lose(Player *player, WirelessManager* wirelessManager) : State(LOSE) {
     this->player = player;
+    this->wirelessManager = wirelessManager;
 }
 
 Lose::~Lose() {
@@ -52,6 +53,9 @@ void Lose::onStateLoop(Device *PDN) {
 void Lose::onStateDismounted(Device *PDN) {
     loseTimer.invalidate();
     reset = false;
+    
+    // Switch to power-off WiFi mode at the end of game
+    wirelessManager->powerOff();
 }
 
 bool Lose::resetGame() {

@@ -215,7 +215,7 @@ private:
 
 class Idle : public State {
 public:
-    Idle(Player *player);
+    Idle(Player *player, WirelessManager* wirelessManager);
 
     ~Idle();
 
@@ -229,6 +229,7 @@ public:
 
 private:
     Player *player;
+    WirelessManager* wirelessManager;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
@@ -351,7 +352,7 @@ private:
  */
 class Win : public State {
 public:
-    Win(Player *player);
+    Win(Player *player, WirelessManager* wirelessManager);
 
     ~Win();
 
@@ -367,6 +368,7 @@ public:
 
 private:
     SimpleTimer winTimer = SimpleTimer();
+    WirelessManager* wirelessManager;
     Player *player;
     bool reset = false;
 };
@@ -376,7 +378,7 @@ private:
  */
 class Lose : public State {
 public:
-    Lose(Player *player);
+    Lose(Player *player, WirelessManager* wirelessManager);
 
     ~Lose();
 
@@ -392,6 +394,7 @@ public:
 
 private:
     SimpleTimer loseTimer = SimpleTimer();
+    WirelessManager* wirelessManager;
     Player *player;
     bool reset = false;
 };

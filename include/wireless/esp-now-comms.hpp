@@ -49,9 +49,17 @@ public:
     //Unregister packet handler for specified packet type
     void ClearPacketHandler(const PktType packetType);
 
+    // Initializes ESP-NOW and sets up callbacks and broadcast peer
+    esp_err_t Initialize();
+
 #if PDN_ENABLE_RSSI_TRACKING
     int GetRssiForPeer(const uint8_t* macAddr);
 #endif
+
+    // Public methods for ESP-NOW callback handling 
+    // (used when re-initializing ESP-NOW in EspNowState)
+    void HandleReceivedData(const uint8_t *mac_addr, const uint8_t *data, int data_len);
+    void HandleSendStatus(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 private:
     EspNowManager();
