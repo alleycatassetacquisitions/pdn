@@ -41,6 +41,9 @@ void Quickdraw::populateStateMap() {
     
     Win* win = new Win(player, wirelessManager);
     Lose* lose = new Lose(player, wirelessManager);
+    
+    Sleep* sleep = new Sleep(player);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -51,6 +54,11 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&FetchUserDataState::transitionToConfirmOffline, fetchUserData),
             confirmOffline));
+
+    fetchUserData->addTransition(
+        new StateTransition(
+            std::bind(&FetchUserDataState::transitionToUploadMatches, fetchUserData),
+            uploadMatches));
 
     fetchUserData->addTransition(
         new StateTransition(
@@ -193,12 +201,22 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
         std::bind(&Win::resetGame,
             win),
-            awakenSequence));
+            uploadMatches));
     lose->addTransition(
         new StateTransition(
             std::bind(&Lose::resetGame,
                 lose),
-                awakenSequence));
+                uploadMatches));
+
+    uploadMatches->addTransition(
+        new StateTransition(
+            std::bind(&UploadMatchesState::transitionToSleep, uploadMatches),
+            sleep));
+
+    uploadMatches->addTransition(
+        new StateTransition(
+            std::bind(&UploadMatchesState::transitionToPlayerRegistration, uploadMatches),
+            playerRegistration));
 
     stateMap.push_back(playerRegistration);
     stateMap.push_back(fetchUserData);

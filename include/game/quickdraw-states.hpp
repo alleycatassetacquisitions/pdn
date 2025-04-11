@@ -33,7 +33,8 @@ enum QuickdrawStateId {
     DUEL_RECEIVED_RESULT = 16,
     DUEL_RESULT = 17,
     WIN = 18,
-    LOSE = 19
+    LOSE = 19,
+    UPLOAD_MATCHES = 20
 };
 
 class PlayerRegistration : public State {
@@ -64,14 +65,16 @@ public:
 
     bool transitionToConfirmOffline();
     bool transitionToWelcomeMessage();
+    bool transitionToUploadMatches();
     void showLoadingGlyphs(Device *PDN);
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-
+    
 private:
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
+    bool transitionToUploadMatchesState = false;
     WirelessManager* wirelessManager;
     bool isFetchingUserData = false;
     Player* player;
@@ -180,17 +183,21 @@ public:
     bool transitionToAwakenSequence();
 
 private:
+    String matchesJson;
     SimpleTimer dormantTimer;
+    SimpleTimer matchUploadRetryTimer;
     Player* player;
-
+    WirelessManager* wirelessManager;
+    MatchManager* matchManager;
+    int matchUploadRetryCount = 0;
+    const int MATCH_UPLOAD_RETRY_LIMIT = 2;
+    const int MATCH_UPLOAD_RETRY_DELAY = 90000;
     bool breatheUp = true;
     int ledBrightness = 0;
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
 
-    static constexpr unsigned long defaultDelay = 2500;
-    static constexpr unsigned long bountyDelay[2] = {300000, 900000};
-    static constexpr unsigned long overchargeDelay[2] = {180000, 300000};
+    static constexpr unsigned long defaultDelay = 300000;
 };
 
 /*
@@ -566,4 +573,32 @@ private:
     SimpleTimer delayTimer;
     const int delay = 100;
     bool transitionToConnectionSuccessfulState = false;
+};
+
+class UploadMatchesState : public State {
+public:
+    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+    ~UploadMatchesState();
+    
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    void retryMatchUpload();
+
+    bool transitionToSleep();
+
+    bool transitionToPlayerRegistration();
+
+private:
+    Player* player;
+    WirelessManager* wirelessManager;
+    MatchManager* matchManager;
+    SimpleTimer uploadMatchesTimer;
+    int matchUploadRetryCount = 0;
+    const int UPLOAD_MATCHES_RETRY_DELAY = 60000;
+    const int UPLOAD_MATCHES_MAX_RETRIES = 2;
+    String matchesJson;
+    bool transitionToSleepState = false;
+    bool transitionToPlayerRegistrationState = false;
 };

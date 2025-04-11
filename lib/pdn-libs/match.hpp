@@ -12,6 +12,7 @@ using namespace std;
 #define JSON_KEY_MATCH_ID "match_id"
 #define JSON_KEY_HUNTER_ID "hunter"
 #define JSON_KEY_BOUNTY_ID "bounty"
+#define JSON_KEY_WINNER_IS_HUNTER "winner_is_hunter"
 #define JSON_KEY_HUNTER_TIME "hunter_time"
 #define JSON_KEY_BOUNTY_TIME "bounty_time"
 
