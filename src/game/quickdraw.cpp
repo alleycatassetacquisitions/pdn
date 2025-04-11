@@ -218,6 +218,11 @@ void Quickdraw::populateStateMap() {
             std::bind(&UploadMatchesState::transitionToPlayerRegistration, uploadMatches),
             playerRegistration));
 
+    sleep->addTransition(
+        new StateTransition(
+            std::bind(&Sleep::transitionToAwakenSequence, sleep),
+            awakenSequence));
+
     stateMap.push_back(playerRegistration);
     stateMap.push_back(fetchUserData);
     stateMap.push_back(confirmOffline);
@@ -239,6 +244,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(duelResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
+    stateMap.push_back(uploadMatches);
+    stateMap.push_back(sleep);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {

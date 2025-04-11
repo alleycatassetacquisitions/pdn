@@ -293,6 +293,11 @@ void MatchManager::initialize(Player* player) {
             return;
         }
 
+        if(matchManager->getCurrentMatch() == nullptr) {
+            ESP_LOGE(MATCH_MANAGER_TAG, "No current match - skipping");
+            return;
+        }
+
         unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
 
         ESP_LOGI(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms for %s", 
@@ -329,7 +334,6 @@ void MatchManager::listenForMatchResults(QuickdrawCommand command) {
     ESP_LOGI(MATCH_MANAGER_TAG, "Received command: %d", command.command);
     
     if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
-        setReceivedDrawResult();
         ESP_LOGI(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
         
         long opponentTime = player->isHunter() ? 
@@ -341,6 +345,8 @@ void MatchManager::listenForMatchResults(QuickdrawCommand command) {
         player->isHunter() ? 
         setBountyDrawTime(command.match.getBountyDrawTime()) 
         : setHunterDrawTime(command.match.getHunterDrawTime());
+
+        setReceivedDrawResult();
     } else {
         ESP_LOGW(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
     }

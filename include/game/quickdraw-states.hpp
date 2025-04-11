@@ -183,21 +183,15 @@ public:
     bool transitionToAwakenSequence();
 
 private:
-    String matchesJson;
+    bool transitionToAwakenSequenceState = false;
     SimpleTimer dormantTimer;
-    SimpleTimer matchUploadRetryTimer;
     Player* player;
-    WirelessManager* wirelessManager;
-    MatchManager* matchManager;
-    int matchUploadRetryCount = 0;
-    const int MATCH_UPLOAD_RETRY_LIMIT = 2;
-    const int MATCH_UPLOAD_RETRY_DELAY = 90000;
     bool breatheUp = true;
     int ledBrightness = 0;
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
 
-    static constexpr unsigned long defaultDelay = 300000;
+    static constexpr unsigned long SLEEP_DURATION = 5000;
 };
 
 /*

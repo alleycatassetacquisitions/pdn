@@ -58,9 +58,17 @@ void Sleep::onStateMounted(Device *PDN) {
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
         render();
+
+    dormantTimer.setTimer(SLEEP_DURATION);
 }
 
 void Sleep::onStateLoop(Device *PDN) {
+
+    dormantTimer.updateTime();
+
+    if(dormantTimer.expired()) {
+        transitionToAwakenSequenceState = true;
+    }
 
     EVERY_N_MILLIS(16) {
         if (breatheUp) {
@@ -83,10 +91,9 @@ void Sleep::onStateLoop(Device *PDN) {
 }
 
 void Sleep::onStateDismounted(Device *PDN) {
-    matchUploadRetryTimer.invalidate();
     dormantTimer.invalidate();
 }
 
 bool Sleep::transitionToAwakenSequence() {
-    return dormantTimer.expired();
+    return transitionToAwakenSequenceState;
 }
