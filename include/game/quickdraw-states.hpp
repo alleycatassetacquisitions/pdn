@@ -588,6 +588,8 @@ public:
 
     bool transitionToSleep();
 
+    void showLoadingGlyphs(Device *PDN);
+
     bool transitionToPlayerRegistration();
 
 private:
@@ -601,4 +603,5 @@ private:
     String matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
+    
 };

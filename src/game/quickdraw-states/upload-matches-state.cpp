@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-requests.hpp"
+#include "game/quickdraw-resources.hpp"
 #include <esp_log.h>
 
 const string TAG = "UploadMatchesState";
@@ -18,10 +19,7 @@ UploadMatchesState::~UploadMatchesState() {
 
 void UploadMatchesState::onStateMounted(Device *PDN) {
 
-    PDN->invalidateScreen()
-    ->setGlyphMode(FontMode::TEXT)
-    ->drawText("Uploading matches...", 10, 20)
-    ->render();
+    showLoadingGlyphs(PDN);
 
     matchesJson = String(matchManager->toJson().c_str());
 
@@ -55,6 +53,8 @@ void UploadMatchesState::onStateLoop(Device *PDN) {
     if(uploadMatchesTimer.expired()) {
         retryMatchUpload();
     }
+
+    showLoadingGlyphs(PDN);
 }
 
 void UploadMatchesState::onStateDismounted(Device *PDN) {
@@ -99,6 +99,44 @@ void UploadMatchesState::retryMatchUpload() {
             transitionToSleepState = true;
         }
     }
+}
+
+void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
+    // Calculate grid layout
+    const int GLYPH_SIZE = 14;  // Each glyph is 14x14 pixels
+    const int SCREEN_WIDTH = 128;
+    const int SCREEN_HEIGHT = 64;
+    
+    // Calculate number of glyphs that can fit in each dimension
+    const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
+    const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);  // Start at y=14
+    
+    // Clear the screen
+    PDN->invalidateScreen();
+    
+    // Set glyph mode for rendering
+    PDN->setGlyphMode(FontMode::LOADING_GLYPH);
+    
+    // Fill the screen with random loading glyphs
+    for (int row = 0; row < GLYPHS_PER_COL; row++) {
+        for (int col = 0; col < GLYPHS_PER_ROW; col++) {
+            if(random(0, 100) < 50) {
+                // Calculate position
+                int x = col * GLYPH_SIZE;
+                int y = 14 + (row * GLYPH_SIZE);  // Start at y=14
+                
+                // Select random glyph from the array
+                int randomIndex = random(0, 8);  // 8 glyphs in the array
+                const char* glyph = loadingGlyphs[randomIndex];
+                
+                // Render the glyph
+                PDN->renderGlyph(glyph, x, y);
+            }
+        }
+    }
+    
+    // Final render call
+    PDN->render();
 }
 
 bool UploadMatchesState::transitionToSleep() {
