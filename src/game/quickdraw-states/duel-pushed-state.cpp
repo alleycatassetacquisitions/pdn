@@ -28,7 +28,6 @@ void DuelPushed::onStateMounted(Device *PDN) {
 }
 
 void DuelPushed::onStateLoop(Device *PDN) {
-    ESP_LOGI(DUEL_PUSHED_TAG, "DuelPushed state looped");
     gracePeriodTimer.updateTime();
 }
 

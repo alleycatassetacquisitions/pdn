@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_log.h>
 #include <FastLED.h>
+#include <Preferences.h>
 
 #include "simple-timer.hpp"
 #include "player.hpp"

@@ -31,10 +31,7 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    static MatchManager* GetInstance() {
-        static MatchManager instance;
-        return &instance;
-    }
+    static MatchManager* GetInstance();
 
     /**
      * Creates a new active match
@@ -104,7 +101,7 @@ public:
 
     void listenForMatchResults(QuickdrawCommand command);
 
-    void setPlayer(Player* player);
+    void initialize(Player* player);
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -140,10 +137,6 @@ private:
     Match* readMatchFromStorage(uint8_t index);
 
     Preferences prefs;   // Preferences instance for persistent storage
-
-    // Prevent copying of singleton
-    MatchManager(const MatchManager&) = delete;
-    MatchManager& operator=(const MatchManager&) = delete;
 };
 
 

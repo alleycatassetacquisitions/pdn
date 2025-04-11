@@ -4,7 +4,6 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManag
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->matchManager = MatchManager::GetInstance();
-    matchManager->setPlayer(player);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -14,6 +13,8 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
+
+    matchManager->initialize(player);
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player);
     FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);

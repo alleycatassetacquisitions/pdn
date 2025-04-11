@@ -26,8 +26,6 @@ void DuelReceivedResult::onStateMounted(Device *PDN) {
 }
 
 void DuelReceivedResult::onStateLoop(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state looped");
-
     buttonPushGraceTimer.updateTime();
 
     if(buttonPushGraceTimer.expired()) {
