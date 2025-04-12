@@ -84,7 +84,7 @@ struct AnimationConfig {
     bool loop;
     uint8_t speed;
     EaseCurve curve = EaseCurve::LINEAR;  // Default to linear curve
-    LEDState initialState;                // Initial LED state for the animation
+    LEDState initialState = LEDState();                // Initial LED state for the animation
     uint16_t loopDelayMs = 0;             // Delay between animation loops (in milliseconds)
 };
 

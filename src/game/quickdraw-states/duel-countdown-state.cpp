@@ -42,15 +42,6 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(Device *PDN) {
-    CRGB countdownColor;
-    if(player->isHunter()) {
-        countdownColor = hunterColors[0];
-    } else {
-        countdownColor = bountyColors[0];
-    }
-    PDN->setGlobalLightColor(LEDColor(countdownColor.r, countdownColor.g, countdownColor.b));
-    PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
-
     PDN->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
@@ -58,6 +49,13 @@ void DuelCountdown::onStateMounted(Device *PDN) {
 
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
+
+    AnimationConfig config;
+    config.type = AnimationType::COUNTDOWN;
+    config.speed = 18;
+    config.loopDelayMs = 0;
+    config.loop = false;
+    PDN->startAnimation(config);
 }
 
 
@@ -67,8 +65,6 @@ void DuelCountdown::onStateLoop(Device *PDN) {
         if(countdownQueue[currentStepIndex].step == CountdownStep::BATTLE) {
             doBattle = true;
         } else {
-            PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
-
             PDN->
             invalidateScreen()->
             drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->

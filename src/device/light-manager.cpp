@@ -52,7 +52,7 @@ void LightManager::startAnimation(AnimationConfig config) {
             // TODO: Implement other animation types
             break;
         case AnimationType::COUNTDOWN:
-            // currentAnimation = new CountdownAnimation();
+            currentAnimation = new CountdownAnimation();
             break;
         case AnimationType::LOSE:
             break;

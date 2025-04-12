@@ -296,15 +296,13 @@ private:
     };
 
     struct CountdownStage {
-        CountdownStage(CountdownStep step, unsigned long countdownTimer, byte ledBrightness) {
+        CountdownStage(CountdownStep step, unsigned long countdownTimer) {
             this->step = step;
             this->countdownTimer = countdownTimer;
-            this->ledBrightness = ledBrightness;
         }
 
         CountdownStep step;
         unsigned long countdownTimer = 0;
-        byte ledBrightness = 0;
     };
 
     ImageType getImageIdForStep(CountdownStep step);
@@ -312,10 +310,10 @@ private:
     Player* player;
     SimpleTimer countdownTimer;
     bool doBattle = false;
-    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000, 255);
-    const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000, 155);
-    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 3000, 75);
-    const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0, 0);
+    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
+    const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
+    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 3000);
+    const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0);
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
     MatchManager* matchManager;
