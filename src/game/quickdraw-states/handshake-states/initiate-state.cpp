@@ -14,6 +14,7 @@ void HandshakeInitiateState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeInitiateState::onStateLoop(Device *PDN) {
+    BaseHandshakeState::initTimeout();
     if(player->isHunter()) {
         ESP_LOGI("INITIATE_STATE", "Player is Hunter, transitioning to HunterSendIdState");
         transitionToHunterSendIdState = true;

@@ -1,65 +1,122 @@
 #include "game/match-manager.hpp"
-#include "id-generator.hpp"
 #include <ArduinoJson.h>
+#include <esp_log.h>
+#include "wireless/quickdraw-wireless-manager.hpp"
 
-MatchManager::MatchManager() : activeMatch(nullptr) {
-    // Open preferences with our namespace
-    if (!prefs.begin(PREF_NAMESPACE, false)) {
-        ESP_LOGE("PDN", "Failed to initialize preferences\n");
+#define MATCH_MANAGER_TAG "MATCH_MANAGER"
+
+MatchManager* MatchManager::GetInstance() {
+    static bool firstCall = true;
+    static MatchManager instance;
+    
+    if (firstCall) {
+        ESP_LOGW("MATCH_MANAGER", "***** MatchManager singleton initialized for the first time *****");
+        firstCall = false;
     }
+    
+    return &instance;
 }
 
+MatchManager::MatchManager() {}
+
 MatchManager::~MatchManager() {
-    delete activeMatch;
-    activeMatch = nullptr;
+    delete activeDuelState.match;
+    activeDuelState.match = nullptr;
     prefs.end();
 }
 
-Match* MatchManager::createMatch(const string& hunter_id, const string& bounty_id) {
-    // Only allow one active match at a time
-    if (activeMatch != nullptr) {
-        return nullptr;
+void MatchManager::clearCurrentMatch() {
+    if (activeDuelState.match) {
+        ESP_LOGI("PDN", "Clearing current match");
+        delete activeDuelState.match;
+        activeDuelState.match = nullptr;
+        activeDuelState.hasReceivedDrawResult = false;
+        activeDuelState.hasPressedButton = false;
+        activeDuelState.duelLocalStartTime = 0;
+        activeDuelState.gracePeriodExpiredNoResult = false;
     }
-
-    // Generate a new UUID for the match
-    char* uuid = IdGenerator::GetInstance()->generateId();
-    string match_id(uuid);  // Properly construct string from char*
-    activeMatch = new Match(match_id, hunter_id, bounty_id);
-    return activeMatch;
 }
 
-Match* MatchManager::receiveMatch(const string& match_json) {
+Match* MatchManager::createMatch(const string& match_id, const string& hunter_id, const string& bounty_id) {
     // Only allow one active match at a time
-    if (activeMatch != nullptr) {
+    if (activeDuelState.match != nullptr) {
         return nullptr;
     }
 
-    // Parse the JSON into a new match
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, match_json);
-    if (error) {
-        return nullptr;
-    }
-
-    activeMatch = new Match();
-    activeMatch->fromJson(match_json);
-    return activeMatch;
+    activeDuelState.match = new Match(match_id, hunter_id, bounty_id);
+    return activeDuelState.match;
 }
 
-bool MatchManager::finalizeMatch(const string& match_id) {
-    if (!activeMatch || activeMatch->getMatchId() != match_id) {
+Match* MatchManager::receiveMatch(Match match) {
+    // Only allow one active match at a time
+    if (activeDuelState.match != nullptr) {
+        return nullptr;
+    }
+
+    // Create a new Match object on the heap instead of storing a pointer to the parameter
+    activeDuelState.match = new Match(match.getMatchId(), match.getHunterId(), match.getBountyId());
+    
+    // Copy draw times
+    activeDuelState.match->setHunterDrawTime(match.getHunterDrawTime());
+    activeDuelState.match->setBountyDrawTime(match.getBountyDrawTime());
+    
+    return activeDuelState.match;
+}
+
+void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
+    activeDuelState.duelLocalStartTime = local_start_time_ms;
+}
+
+unsigned long MatchManager::getDuelLocalStartTime() {
+    return activeDuelState.duelLocalStartTime;
+}
+
+// //Pretty sure this needs to be refactored. will come back to it.
+bool MatchManager::matchResultsAreIn() {
+    if (!activeDuelState.match) {
+        return false;
+    }
+       
+    return (activeDuelState.hasReceivedDrawResult && activeDuelState.hasPressedButton)
+    || (activeDuelState.gracePeriodExpiredNoResult && activeDuelState.hasPressedButton);
+}
+
+void MatchManager::setNeverPressed() {
+    activeDuelState.gracePeriodExpiredNoResult = true;
+}
+
+bool MatchManager::didWin() {
+    if (!activeDuelState.match) {
+        return false;
+    }
+
+    if(player->isHunter() && activeDuelState.match->getBountyDrawTime() == 0) {
+        return true;
+    }
+
+    if(!player->isHunter() && activeDuelState.match->getHunterDrawTime() == 0) {
+        return true;
+    }
+
+    
+    return player->isHunter() ? 
+    activeDuelState.match->getHunterDrawTime() < activeDuelState.match->getBountyDrawTime() :
+    activeDuelState.match->getBountyDrawTime() < activeDuelState.match->getHunterDrawTime();
+}
+
+bool MatchManager::finalizeMatch() {
+    if (!activeDuelState.match) {
         ESP_LOGE("PDN", "Cannot finalize match - no active match or ID mismatch\n");
         return false;
     }
 
+    string match_id = activeDuelState.match->getMatchId();
+
     // Save to storage
-    if (appendMatchToStorage(activeMatch)) {
+    if (appendMatchToStorage(activeDuelState.match)) {
         // Update stored count
         updateStoredMatchCount(getStoredMatchCount() + 1);
-        
-        // Clear active match
-        delete activeMatch;
-        activeMatch = nullptr;
+        clearCurrentMatch();
         ESP_LOGI("PDN", "Successfully finalized match %s\n", match_id.c_str());
         return true;
     }
@@ -68,15 +125,39 @@ bool MatchManager::finalizeMatch(const string& match_id) {
     return false;
 }
 
-bool MatchManager::updateMatch(const string& match_id, bool winner_is_hunter,
-                             unsigned long hunter_time_ms, unsigned long bounty_time_ms) {
-    if (!activeMatch || activeMatch->getMatchId() != match_id) {
+bool MatchManager::getHasReceivedDrawResult() {
+    return activeDuelState.hasReceivedDrawResult;
+}
+
+bool MatchManager::getHasPressedButton() {
+    return activeDuelState.hasPressedButton;
+}
+
+void MatchManager::setReceivedDrawResult() {
+    activeDuelState.hasReceivedDrawResult = true;
+}
+
+parameterizedCallbackFunction MatchManager::getDuelButtonPush() {
+    return duelButtonPush;
+}
+
+void MatchManager::setReceivedButtonPush() {
+    activeDuelState.hasPressedButton = true;
+}
+
+bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
+    if (!activeDuelState.match) {
         return false;
     }
+    activeDuelState.match->setHunterDrawTime(hunter_time_ms);
+    return true;
+}
 
-    activeMatch->setWinner(winner_is_hunter);
-    activeMatch->setHunterDrawTime(hunter_time_ms);
-    activeMatch->setBountyDrawTime(bounty_time_ms);
+bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
+    if (!activeDuelState.match) {
+        return false;
+    }
+    activeDuelState.match->setBountyDrawTime(bounty_time_ms);
     return true;
 }
 
@@ -132,14 +213,28 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     // Create key for this match
     char key[16];
     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
+
+    ESP_LOGW(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
+            key, matchJson.length());
+    ESP_LOGW(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
+    
+    // Try to check if preferences is working
+    if (prefs.putUChar("test_key", 123) != 1) {
+        ESP_LOGE(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
+    } else {
+        uint8_t test_val = prefs.getUChar("test_key", 0);
+        ESP_LOGW(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
+    }
     
     // Save match JSON to preferences
     if (!prefs.putString(key, matchJson.c_str())) {
-        ESP_LOGE("PDN", "Failed to save match to storage\n");
+        ESP_LOGE(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
+                key, matchJson.length());
+        
         return false;
     }
 
-    ESP_LOGI("PDN", "Successfully saved match to storage at index %d\n", count);
+    ESP_LOGW(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
     return true;
 }
 
@@ -170,4 +265,89 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     Match* match = new Match();
     match->fromJson(matchJson);
     return match;
+}
+
+void MatchManager::initialize(Player* player) {
+    this->player = player;
+
+     // Open preferences with our namespace
+    if (!prefs.begin(PREF_NAMESPACE, false)) {
+        ESP_LOGW(MATCH_MANAGER_TAG, "Failed to initialize preferences");
+    } else {
+        ESP_LOGW(MATCH_MANAGER_TAG, "Preferences initialized successfully");
+    }
+
+    duelButtonPush = [](void *ctx) {
+        unsigned long now = millis();
+        
+        if (!ctx) {
+            ESP_LOGE(MATCH_MANAGER_TAG, "Button press handler received null context");
+            return;
+        }
+
+        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+        Player *player = matchManager->player;
+
+        if(matchManager->getHasPressedButton()) {
+            ESP_LOGI(MATCH_MANAGER_TAG, "Button already pressed - skipping");
+            return;
+        }
+
+        if(matchManager->getCurrentMatch() == nullptr) {
+            ESP_LOGE(MATCH_MANAGER_TAG, "No current match - skipping");
+            return;
+        }
+
+        unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
+
+        ESP_LOGI(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms for %s", 
+                reactionTimeMs, player->isHunter() ? "Hunter" : "Bounty");
+
+        player->isHunter() ? 
+        matchManager->setHunterDrawTime(reactionTimeMs) 
+        : matchManager->setBountyDrawTime(reactionTimeMs);
+
+        ESP_LOGI(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
+
+        // Send a packet with the reaction time
+        if (!player->getOpponentMacAddress()) {
+            ESP_LOGE(MATCH_MANAGER_TAG, "Cannot send packet - opponent MAC address is null");
+            return;
+        }
+
+        ESP_LOGI(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s", 
+                player->getOpponentMacAddress()->c_str());
+                
+        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+            *player->getOpponentMacAddress(),
+            QDCommand::DRAW_RESULT,
+            *MatchManager::GetInstance()->getCurrentMatch()
+        );
+
+        matchManager->setReceivedButtonPush();
+        
+        ESP_LOGI(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
+    };
+}
+
+void MatchManager::listenForMatchResults(QuickdrawCommand command) {
+    ESP_LOGI(MATCH_MANAGER_TAG, "Received command: %d", command.command);
+    
+    if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
+        ESP_LOGI(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
+        
+        long opponentTime = player->isHunter() ? 
+            command.match.getBountyDrawTime() : 
+            command.match.getHunterDrawTime();
+            
+        ESP_LOGI(MATCH_MANAGER_TAG, "Opponent reaction time: %ld ms", opponentTime);
+        
+        player->isHunter() ? 
+        setBountyDrawTime(command.match.getBountyDrawTime()) 
+        : setHunterDrawTime(command.match.getHunterDrawTime());
+
+        setReceivedDrawResult();
+    } else {
+        ESP_LOGW(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
+    }
 }

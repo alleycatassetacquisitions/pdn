@@ -145,7 +145,7 @@ namespace QuickdrawRequests {
         std::function<void(const WirelessErrorInfo&)> onError
     ) {
         wirelessManager->makeHttpRequest(
-            "/matches",
+            "/api/matches",
             onSuccess,
             onError,
             "PUT",

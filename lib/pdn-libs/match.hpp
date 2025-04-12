@@ -5,8 +5,8 @@
 
 using namespace std;
 
-// Size of match data in bytes: 3 UUIDs (16 bytes each) + winner flag (1 byte) + 2 draw times (8 bytes each)
-#define MATCH_BINARY_SIZE (3 * IdGenerator::UUID_BINARY_SIZE + 1 + 2 * sizeof(unsigned long))
+// Size of match data in bytes: 3 UUIDs (16 bytes each) + 2 draw times (8 bytes each)
+#define MATCH_BINARY_SIZE (3 * IdGenerator::UUID_BINARY_SIZE + 2 * sizeof(unsigned long))
 
 // JSON keys for match serialization
 #define JSON_KEY_MATCH_ID "match_id"
@@ -25,7 +25,7 @@ public:
     /**
      * Default constructor for empty match
      */
-    Match() = default;
+    Match();
 
     /**
      * Creates a new match with the given IDs
@@ -41,12 +41,6 @@ public:
     void setupMatch(string id, string hunter, string bounty);
 
     /**
-     * Sets the winner of the match
-     * @param winner_is_hunter true if hunter won, false if bounty won
-     */
-    void setWinner(bool winner_is_hunter);
-
-    /**
      * Sets the hunter's draw time
      * @param timeMs draw time in milliseconds
      */
@@ -57,6 +51,12 @@ public:
      * @param timeMs draw time in milliseconds
      */
     void setBountyDrawTime(unsigned long timeMs);
+
+    /**
+     * Sets the hunter's ID
+     * @param hunter_id Hunter player's ID
+     */
+    void setHunterId(string hunter_id);
 
     /**
      * @return Match data as JSON string
@@ -92,7 +92,6 @@ public:
     string getMatchId() const { return match_id; }
     string getHunterId() const { return hunter; }
     string getBountyId() const { return bounty; }
-    bool wasHunterWinner() const { return winner_is_hunter; }
     unsigned long getHunterDrawTime() const { return hunter_draw_time_ms; }
     unsigned long getBountyDrawTime() const { return bounty_draw_time_ms; }
 
@@ -100,7 +99,6 @@ private:
     string match_id;
     string hunter;
     string bounty;
-    bool winner_is_hunter = false; // Default to false until explicitly set
     unsigned long hunter_draw_time_ms = 0;
     unsigned long bounty_draw_time_ms = 0;
 };

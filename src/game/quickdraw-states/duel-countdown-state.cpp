@@ -30,12 +30,14 @@
     }
   }
  */
-DuelCountdown::DuelCountdown(Player* player) : State(DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager) : State(DUEL_COUNTDOWN) {
     this->player = player;
+    this->matchManager = matchManager;
 }
 
 DuelCountdown::~DuelCountdown() {
     player = nullptr;
+    matchManager = nullptr;
 }
 
 

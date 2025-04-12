@@ -5,6 +5,7 @@
 #include "state.hpp"
 #include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "game/match-manager.hpp"
 #include "wireless/wireless-manager.hpp"
 #include <queue>
 
@@ -28,8 +29,12 @@ enum QuickdrawStateId {
     CONNECTION_SUCCESSFUL = 12,
     DUEL_COUNTDOWN = 13,
     DUEL = 14,
-    WIN = 15,
-    LOSE = 16
+    DUEL_PUSHED = 15,
+    DUEL_RECEIVED_RESULT = 16,
+    DUEL_RESULT = 17,
+    WIN = 18,
+    LOSE = 19,
+    UPLOAD_MATCHES = 20
 };
 
 class PlayerRegistration : public State {
@@ -60,14 +65,16 @@ public:
 
     bool transitionToConfirmOffline();
     bool transitionToWelcomeMessage();
+    bool transitionToUploadMatches();
     void showLoadingGlyphs(Device *PDN);
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-
+    
 private:
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
+    bool transitionToUploadMatchesState = false;
     WirelessManager* wirelessManager;
     bool isFetchingUserData = false;
     Player* player;
@@ -176,17 +183,15 @@ public:
     bool transitionToAwakenSequence();
 
 private:
+    bool transitionToAwakenSequenceState = false;
     SimpleTimer dormantTimer;
     Player* player;
-
     bool breatheUp = true;
     int ledBrightness = 0;
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
 
-    static constexpr unsigned long defaultDelay = 2500;
-    static constexpr unsigned long bountyDelay[2] = {300000, 900000};
-    static constexpr unsigned long overchargeDelay[2] = {180000, 300000};
+    static constexpr unsigned long SLEEP_DURATION = 5000;
 };
 
 /*
@@ -269,7 +274,7 @@ private:
  */
 class DuelCountdown : public State {
 public:
-    DuelCountdown(Player* player);
+    DuelCountdown(Player* player, MatchManager* matchManager);
 
     ~DuelCountdown();
 
@@ -313,6 +318,7 @@ private:
     const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0, 0);
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
+    MatchManager* matchManager;
 };
 
 /*
@@ -320,7 +326,7 @@ private:
  */
 class Duel : public State {
 public:
-    Duel(Player* player);
+    Duel(Player* player, MatchManager* matchManager);
 
     ~Duel();
 
@@ -330,18 +336,91 @@ public:
 
     void onStateDismounted(Device *PDN) override;
 
-    bool transitionToActivated();
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
 
-    bool transitionToWin();
+    bool transitionToIdle();
 
-    bool transitionToLose();
+    bool transitionToDuelPushed();
+
+    bool transitionToDuelReceivedResult();
 
 private:
     Player* player;
+    MatchManager* matchManager;
+    parameterizedCallbackFunction buttonPress;
+    bool transitionToDuelPushedState = false;
+    bool transitionToIdleState = false;
+    bool transitionToDuelReceivedResultState = false;
     SimpleTimer duelTimer;
-    bool captured = false;
-    bool wonBattle = false;
     const int DUEL_TIMEOUT = 4000;
+};
+
+class DuelPushed : public State {
+public:
+    DuelPushed(Player* player, MatchManager* matchManager);
+
+    ~DuelPushed();
+
+    void onStateMounted(Device *PDN) override;
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;
+
+    void onQuickdrawCommandReceived(QuickdrawCommand command);
+
+    bool transitionToDuelResult();
+
+private:
+    Player* player;
+    MatchManager* matchManager;
+    SimpleTimer gracePeriodTimer;
+    const int DUEL_RESULT_GRACE_PERIOD = 900;
+};
+
+class DuelReceivedResult : public State {
+public:
+    DuelReceivedResult(Player* player, MatchManager* matchManager);
+
+    ~DuelReceivedResult();
+
+    void onStateMounted(Device *PDN) override;  
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;   
+    
+    bool transitionToDuelResult();
+
+private:
+    SimpleTimer buttonPushGraceTimer;
+    bool transitionToDuelResultState = false;
+    const int BUTTON_PUSH_GRACE_PERIOD = 750;
+    Player* player;
+    MatchManager* matchManager;
+};
+
+class DuelResult : public State {
+public:
+    DuelResult(Player* player, MatchManager* matchManager);
+
+    ~DuelResult();
+
+    void onStateMounted(Device *PDN) override;  
+
+    void onStateLoop(Device *PDN) override;
+
+    void onStateDismounted(Device *PDN) override;   
+    
+    bool transitionToWin();
+
+    bool transitionToLose();    
+    
+private:
+    Player* player;
+    MatchManager* matchManager;
+    bool wonBattle = false;
+    bool captured = false;
 };
 
 
@@ -432,6 +511,7 @@ protected:
     
     static void resetTimeout() {
         timeoutInitialized = false;
+        handshakeTimeout.invalidate();
     }
 };
 
@@ -487,4 +567,35 @@ private:
     SimpleTimer delayTimer;
     const int delay = 100;
     bool transitionToConnectionSuccessfulState = false;
+};
+
+class UploadMatchesState : public State {
+public:
+    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+    ~UploadMatchesState();
+    
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    void retryMatchUpload();
+
+    bool transitionToSleep();
+
+    void showLoadingGlyphs(Device *PDN);
+
+    bool transitionToPlayerRegistration();
+
+private:
+    Player* player;
+    WirelessManager* wirelessManager;
+    MatchManager* matchManager;
+    SimpleTimer uploadMatchesTimer;
+    int matchUploadRetryCount = 0;
+    const int UPLOAD_MATCHES_RETRY_DELAY = 60000;
+    const int UPLOAD_MATCHES_MAX_RETRIES = 2;
+    String matchesJson;
+    bool transitionToSleepState = false;
+    bool transitionToPlayerRegistrationState = false;
+    
 };

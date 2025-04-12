@@ -5,6 +5,10 @@
 #include "game/quickdraw.hpp"
 #include <string>
 #include <clib/u8x8.h>
+#include "game/quickdraw-requests.hpp"
+#include <esp_log.h>
+
+#define TAG "SleepState"
 
 using namespace std;
 /*
@@ -49,23 +53,23 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(Device *PDN) {
-    if (player->isHunter()) {
-        dormantTimer.setTimer(defaultDelay);
-    } else {
-        // unsigned long dormantTime = random(bountyDelay[0], bountyDelay[1]);
-        dormantTimer.setTimer(defaultDelay);
-    }
-
-
-
     PDN->
         invalidateScreen()->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
         render();
+
+    dormantTimer.setTimer(SLEEP_DURATION);
 }
 
 void Sleep::onStateLoop(Device *PDN) {
+
+    dormantTimer.updateTime();
+
+    if(dormantTimer.expired()) {
+        transitionToAwakenSequenceState = true;
+    }
+
     EVERY_N_MILLIS(16) {
         if (breatheUp) {
             ledBrightness++;
@@ -91,5 +95,5 @@ void Sleep::onStateDismounted(Device *PDN) {
 }
 
 bool Sleep::transitionToAwakenSequence() {
-    return dormantTimer.expired();
+    return transitionToAwakenSequenceState;
 }

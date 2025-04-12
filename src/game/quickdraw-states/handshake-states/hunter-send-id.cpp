@@ -2,7 +2,7 @@
 #include "game/quickdraw-states.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "esp_log.h"
-
+#include "game/match-manager.hpp"
 // Opening Handshake State for a Hunter. we have sent our mac address over serial and are waiting
 // for the opponent to send the match id and their user id.
 
@@ -21,16 +21,66 @@ void HunterSendIdState::onStateMounted(Device *PDN) {
 }
 
 void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
+    if (!player) {
+        ESP_LOGE("HUNTER_SEND_ID", "Player is null in command handler");
+        return;
+    }
+
     ESP_LOGI("HUNTER_SEND_ID", "Command received: %d", command.command);
+    
     if (command.command == CONNECTION_CONFIRMED) {
         ESP_LOGI("HUNTER_SEND_ID", "Received CONNECTION_CONFIRMED from opponent");
+        
+        // Validate received match data
+        if (command.match.getMatchId().empty()) {
+            ESP_LOGE("HUNTER_SEND_ID", "Received empty match ID");
+            return;
+        }
+        if (command.match.getBountyId().empty()) {
+            ESP_LOGE("HUNTER_SEND_ID", "Received empty bounty ID");
+            return;
+        }
+        
+        ESP_LOGI("HUNTER_SEND_ID", "Received match ID: %s, bounty ID: %s", 
+                 command.match.getMatchId().c_str(), 
+                 command.match.getBountyId().c_str());
+
+        // Set opponent MAC address
+        if (command.wifiMacAddr.empty()) {
+            ESP_LOGE("HUNTER_SEND_ID", "Received empty MAC address");
+            return;
+        }
         player->setOpponentMacAddress(command.wifiMacAddr);
-        player->setCurrentOpponentId(command.opponentId);
-        player->setCurrentMatchId(command.matchId);
-        QuickdrawWirelessManager::GetInstance()->broadcastPacket(*player->getOpponentMacAddress(), HUNTER_RECEIVE_MATCH, 0 /*drawTimeMs*/, 0 /*ackCount*/, *player->getCurrentMatchId(), *player->getCurrentOpponentId());
+        
+        // Create new match with validated data
+        Match* newMatch = MatchManager::GetInstance()->createMatch(
+            command.match.getMatchId(),
+            player->getUserID(),
+            command.match.getBountyId()
+        );
+        
+        if (!newMatch) {
+            ESP_LOGE("HUNTER_SEND_ID", "Failed to create match");
+            return;
+        }
+
+        ESP_LOGI("HUNTER_SEND_ID", "Created match with ID: %s", newMatch->getMatchId().c_str());
+        
+        try {
+            QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+                *player->getOpponentMacAddress(),
+                HUNTER_RECEIVE_MATCH,
+                *newMatch
+            );
+            ESP_LOGI("HUNTER_SEND_ID", "Sent HUNTER_RECEIVE_MATCH");
+        } catch (const std::exception& e) {
+            ESP_LOGE("HUNTER_SEND_ID", "Failed to send HUNTER_RECEIVE_MATCH: %s", e.what());
+        }
     } else if (command.command == BOUNTY_FINAL_ACK) {
         ESP_LOGI("HUNTER_SEND_ID", "Received BOUNTY_FINAL_ACK from opponent");
         transitionToConnectionSuccessfulState = true;
+    } else {
+        ESP_LOGW("HUNTER_SEND_ID", "Received unexpected command: %d", command.command);
     }
 }
 
@@ -40,6 +90,7 @@ void HunterSendIdState::onStateLoop(Device *PDN) {}
 void HunterSendIdState::onStateDismounted(Device *PDN) {
     ESP_LOGI("HUNTER_SEND_ID", "State dismounted");
     transitionToConnectionSuccessfulState = false;
+    BaseHandshakeState::resetTimeout();
     QuickdrawWirelessManager::GetInstance()->clearCallbacks();
 }
 

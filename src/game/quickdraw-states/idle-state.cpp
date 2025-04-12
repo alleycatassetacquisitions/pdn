@@ -3,6 +3,7 @@
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "wireless/esp-now-comms.hpp"
+#include "game/match-manager.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -27,6 +28,9 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
+
+    MatchManager::GetInstance()->clearCurrentMatch();
+
     PDN->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->

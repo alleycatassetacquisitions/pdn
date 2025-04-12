@@ -3,6 +3,8 @@
 Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
     this->player = player;
     this->wirelessManager = wirelessManager;
+    this->matchManager = MatchManager::GetInstance();
+    PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {
@@ -11,6 +13,8 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
+
+    matchManager->initialize(player);
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player);
     FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);
@@ -26,12 +30,20 @@ void Quickdraw::populateStateMap() {
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
     HunterSendIdState* hunterSendId = new HunterSendIdState(player);
-    
+
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
-    DuelCountdown* duelCountdown = new DuelCountdown(player);
-    Duel* duel = new Duel(player);
+    
+    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager);
+    Duel* duel = new Duel(player, matchManager);
+    DuelPushed* duelPushed = new DuelPushed(player, matchManager);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager);
+    DuelResult* duelResult = new DuelResult(player, matchManager);
+    
     Win* win = new Win(player, wirelessManager);
     Lose* lose = new Lose(player, wirelessManager);
+    
+    Sleep* sleep = new Sleep(player);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -42,6 +54,11 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&FetchUserDataState::transitionToConfirmOffline, fetchUserData),
             confirmOffline));
+
+    fetchUserData->addTransition(
+        new StateTransition(
+            std::bind(&FetchUserDataState::transitionToUploadMatches, fetchUserData),
+            uploadMatches));
 
     fetchUserData->addTransition(
         new StateTransition(
@@ -147,29 +164,64 @@ void Quickdraw::populateStateMap() {
                 duel));
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToActivated,
+            std::bind(&Duel::transitionToIdle,
                 duel),
                 idle));
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToWin,
+            std::bind(&Duel::transitionToDuelReceivedResult,
                 duel),
-                win));
+                duelReceivedResult));
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToLose,
+            std::bind(&Duel::transitionToDuelPushed,
                 duel),
+                duelPushed));
+    duelPushed->addTransition(
+        new StateTransition(
+            std::bind(&DuelPushed::transitionToDuelResult,
+                duelPushed),
+                duelResult));
+    duelReceivedResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelReceivedResult::transitionToDuelResult,
+                duelReceivedResult),
+                duelResult));
+    duelResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelResult::transitionToWin,
+                duelResult),
+                win));
+    duelResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelResult::transitionToLose,
+                duelResult),
                 lose));
     win->addTransition(
         new StateTransition(
         std::bind(&Win::resetGame,
             win),
-            awakenSequence));
+            uploadMatches));
     lose->addTransition(
         new StateTransition(
             std::bind(&Lose::resetGame,
                 lose),
-                awakenSequence));
+                uploadMatches));
+
+    uploadMatches->addTransition(
+        new StateTransition(
+            std::bind(&UploadMatchesState::transitionToSleep, uploadMatches),
+            sleep));
+
+    uploadMatches->addTransition(
+        new StateTransition(
+            std::bind(&UploadMatchesState::transitionToPlayerRegistration, uploadMatches),
+            playerRegistration));
+
+    sleep->addTransition(
+        new StateTransition(
+            std::bind(&Sleep::transitionToAwakenSequence, sleep),
+            awakenSequence));
 
     stateMap.push_back(playerRegistration);
     stateMap.push_back(fetchUserData);
@@ -184,12 +236,16 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(handshakeInitiate);
     stateMap.push_back(bountySendCC);
     stateMap.push_back(hunterSendId);
-    
     stateMap.push_back(connectionSuccessful);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
+    stateMap.push_back(duelPushed);
+    stateMap.push_back(duelReceivedResult);
+    stateMap.push_back(duelResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
+    stateMap.push_back(uploadMatches);
+    stateMap.push_back(sleep);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {

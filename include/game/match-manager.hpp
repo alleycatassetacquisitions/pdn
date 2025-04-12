@@ -9,8 +9,11 @@
 #pragma once
 
 #include <vector>
+#include "button.hpp"
 #include <Preferences.h>
 #include "../lib/pdn-libs/match.hpp"
+#include "player.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 
 // Preferences namespace and keys
 #define PREF_NAMESPACE "matches"
@@ -18,58 +21,64 @@
 #define PREF_MATCH_KEY "match_"  // Will be appended with index
 #define MAX_MATCHES 255
 
+struct ActiveDuelState {
+    bool hasReceivedDrawResult = false;
+    bool hasPressedButton = false;
+    bool gracePeriodExpiredNoResult = false;
+    unsigned long duelLocalStartTime = 0;
+    Match* match = nullptr;
+};
+
 class MatchManager {
 public:
-    static MatchManager* GetInstance() {
-        static MatchManager instance;
-        return &instance;
-    }
+    static MatchManager* GetInstance();
 
     /**
      * Creates a new active match
+     * @param match_id UUID of the match
      * @param hunter_id Hunter's UUID
      * @param bounty_id Bounty's UUID
      * @return Pointer to the newly created match
      */
-    Match* createMatch(const string& hunter_id, const string& bounty_id);
+    Match* createMatch(const string& match_id, const string& hunter_id, const string& bounty_id);
 
     /**
      * Initializes a match received from another player
      * @param match_json JSON string containing match data
      * @return Pointer to the initialized match, nullptr if invalid
      */
-    Match* receiveMatch(const string& match_json);
+    Match* receiveMatch(Match match);
 
     /**
      * Finalizes a match by saving it to storage and removing from active matches
      * @param match_id UUID of the match to finalize
      * @return true if match was found and saved
      */
-    bool finalizeMatch(const string& match_id);
+    bool finalizeMatch();
 
-    /**
-     * Updates an existing active match with new data
-     * @param match_id UUID of the match to update
-     * @param winner_is_hunter true if hunter won
-     * @param hunter_time_ms hunter's draw time in ms
-     * @param bounty_time_ms bounty's draw time in ms
-     * @return true if match was found and updated
-     */
-    bool updateMatch(const string& match_id, bool winner_is_hunter, 
-                    unsigned long hunter_time_ms, unsigned long bounty_time_ms);
+    bool setHunterDrawTime(unsigned long hunter_time_ms);
+    bool setBountyDrawTime(unsigned long bounty_time_ms);
 
-    /**
-     * Finds an active match by its ID
-     * @param match_id UUID of the match to find
-     * @return Pointer to the match if found, nullptr otherwise
-     */
-    Match* findActiveMatch(const string& match_id);
+    void setDuelLocalStartTime(unsigned long local_start_time_ms);
+
+    void setNeverPressed();
+
+    bool didWin();
+
+    unsigned long getDuelLocalStartTime();
+
+    bool matchResultsAreIn();
+
+    bool getHasReceivedDrawResult();
+    bool getHasPressedButton();
+    void setReceivedDrawResult();
+    void setReceivedButtonPush();
 
     /**
      * Gets the current active match if any
      * @return Pointer to the active match, nullptr if none
      */
-    Match* getCurrentMatch() const { return activeMatch; }
+    Match* getCurrentMatch() const { return activeDuelState.match; }
 
     /**
      * Converts all stored matches to a JSON array string
@@ -88,9 +97,25 @@ public:
      */
     size_t getStoredMatchCount();
 
+    void clearCurrentMatch();
+
+    void listenForMatchResults(QuickdrawCommand command);
+
+    void initialize(Player* player);
+
+    parameterizedCallbackFunction getDuelButtonPush();
+
+protected:
+    Player* player;
+
+
 private:
     MatchManager();
     ~MatchManager();
+
+    ActiveDuelState activeDuelState;
+
+    parameterizedCallbackFunction duelButtonPush;
 
     /**
      * Appends a match to storage
@@ -111,12 +136,7 @@ private:
      */
     Match* readMatchFromStorage(uint8_t index);
 
-    Match* activeMatch;  // Currently active match (only one at a time)
     Preferences prefs;   // Preferences instance for persistent storage
-
-    // Prevent copying of singleton
-    MatchManager(const MatchManager&) = delete;
-    MatchManager& operator=(const MatchManager&) = delete;
 };
 
 

@@ -42,6 +42,10 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         transitionToWelcomeMessageState = true;
         userDataFetchTimer.invalidate();
         isFetchingUserData = false;
+    } else if(player->getUserID() == FORCE_MATCH_UPLOAD) {
+        transitionToUploadMatchesState = true;
+        userDataFetchTimer.invalidate();
+        isFetchingUserData = false;
     } else {
         QuickdrawRequests::getPlayer(
             wirelessManager,
@@ -102,6 +106,7 @@ void FetchUserDataState::onStateDismounted(Device *PDN) {
     isFetchingUserData = false;
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
+    transitionToUploadMatchesState = false;
     userDataFetchTimer.invalidate();
     ESP_LOGI(TAG, "State cleanup complete");
 }   
@@ -109,6 +114,10 @@ void FetchUserDataState::onStateDismounted(Device *PDN) {
 bool FetchUserDataState::transitionToConfirmOffline() {
     return transitionToConfirmOfflineState;
 }  
+
+bool FetchUserDataState::transitionToUploadMatches() {
+    return transitionToUploadMatchesState;
+}
 
 void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
     // Calculate grid layout

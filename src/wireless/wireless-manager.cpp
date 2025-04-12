@@ -572,18 +572,21 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
     if (request.method == "POST") {
         ESP_LOGI("WirelessManager", "Setting HTTP method to POST");
         esp_http_client_set_method(httpClient, HTTP_METHOD_POST);
+    } else if (request.method == "PUT") {
+        ESP_LOGI("WirelessManager", "Setting HTTP method to PUT");
+        esp_http_client_set_method(httpClient, HTTP_METHOD_PUT);
     } else {
         ESP_LOGI("WirelessManager", "Setting HTTP method to GET");
         esp_http_client_set_method(httpClient, HTTP_METHOD_GET);
     }
 
-    // Set headers for POST with detailed logging
-    if (request.method == "POST") {
+    // Set headers and payload for POST/PUT with detailed logging
+    if (request.method == "POST" || request.method == "PUT") {
         ESP_LOGI("WirelessManager", "Setting Content-Type header to application/json");
         esp_http_client_set_header(httpClient, "Content-Type", "application/json");
         
-        ESP_LOGI("WirelessManager", "Setting POST payload: %s (length: %d)", 
-                 request.payload.c_str(), request.payload.length());
+        ESP_LOGI("WirelessManager", "Setting %s payload: %s (length: %d)", 
+                 request.method.c_str(), request.payload.c_str(), request.payload.length());
         esp_http_client_set_post_field(httpClient, request.payload.c_str(), request.payload.length());
     }
 

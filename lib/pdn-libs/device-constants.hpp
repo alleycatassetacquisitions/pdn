@@ -28,6 +28,8 @@ const int numGripLights = 6;
 
 const int BAUDRATE = 19200;
 
+const unsigned long DUEL_NO_RESULT_TIME = 123456789;
+
 // COMMANDS
 const string BOUNTY_BATTLE_MESSAGE = "bbm";
 const string HUNTER_BATTLE_MESSAGE = "hbm";
@@ -51,3 +53,5 @@ const int TRANSMIT_QUEUE_MAX_SIZE = 1024;
 
 const string TEST_BOUNTY_ID = "9999";
 const string TEST_HUNTER_ID = "8888";
+
+const string FORCE_MATCH_UPLOAD = "6969";
