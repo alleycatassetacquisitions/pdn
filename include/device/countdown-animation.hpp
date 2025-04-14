@@ -76,9 +76,10 @@ protected:
         fadeProgress_ += 5;  // Adjust this value to control fade speed
 
         // When fade is complete, start delay before next LED
-        if (fadeProgress_ >= 255) {
+        if (fadeProgress_ >= 250) {
             isWaitingBetweenLeds_ = true;
-            ledDelayTimer_.setTimer(config_.loopDelayMs > 0 ? config_.loopDelayMs : 200);  // Default 200ms delay between LEDs
+            int loopDelayMs = currentLed_ % 2 == 0 ? 350 : 50;
+            ledDelayTimer_.setTimer(loopDelayMs);  // Default 200ms delay between LEDs
         }
 
         return currentState_;

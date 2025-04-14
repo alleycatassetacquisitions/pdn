@@ -26,6 +26,10 @@ void DuelReceivedResult::onStateMounted(Device *PDN) {
 }
 
 void DuelReceivedResult::onStateLoop(Device *PDN) {
+    if(matchManager->getHasPressedButton()) {
+        PDN->setVibration(0);
+    }
+
     buttonPushGraceTimer.updateTime();
 
     if(buttonPushGraceTimer.expired()) {

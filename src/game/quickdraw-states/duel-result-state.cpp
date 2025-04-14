@@ -28,6 +28,8 @@ void DuelResult::onStateMounted(Device *PDN) {
         captured = true;
     }
 
+    PDN->setVibration(0);
+
     matchManager->finalizeMatch();
 
     PDN->invalidateScreen()->render();
@@ -51,6 +53,7 @@ void DuelResult::onStateDismounted(Device *PDN) {
              
     wonBattle = false;
     captured = false;
+    PDN->stopAnimation();
 }
 
 bool DuelResult::transitionToWin() {

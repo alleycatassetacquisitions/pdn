@@ -25,7 +25,9 @@ enum class AnimationType {
     DEVICE_CONNECTED,
     COUNTDOWN,
     LOSE,
-    WIN
+    HUNTER_WIN,
+    BOUNTY_WIN,
+    TRANSMIT_BREATH
 };
 
 enum class EaseCurve {

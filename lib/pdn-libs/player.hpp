@@ -33,7 +33,9 @@ public:
 
     void setAllegiance(const string& allegianceStr);
 
-    void setAllegiance(const Allegiance allegiance);
+    void setAllegiance(int allegiance);
+
+    void setAllegiance(Allegiance allegiance);
 
     string getAllegianceString() const;
 

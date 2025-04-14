@@ -25,6 +25,8 @@ void DuelPushed::onStateMounted(Device *PDN) {
     PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
 
     gracePeriodTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
+
+    PDN->setVibration(0);
 }
 
 void DuelPushed::onStateLoop(Device *PDN) {

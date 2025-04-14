@@ -41,6 +41,15 @@ void Lose::onStateMounted(Device *PDN) {
     render();
 
     loseTimer.setTimer(3000);
+
+    AnimationConfig config;
+    config.type = AnimationType::LOSE;
+    config.loop = true;
+    config.speed = 16;
+    config.initialState = LEDState();
+    config.loopDelayMs = 0;
+
+    PDN->startAnimation(config);
 }
 
 void Lose::onStateLoop(Device *PDN) {

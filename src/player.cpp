@@ -61,7 +61,7 @@ void Player::setIsHunter(bool isHunter)
 
 void Player::clearUserID()
 {
-  id = "default";
+  id = "9998";
 }
 
 bool Player::isHunter() const
@@ -90,9 +90,32 @@ void Player::setAllegiance(const string& allegianceStr)
     }
 }
 
-void Player::setAllegiance(const Allegiance allegiance)
+void Player::setAllegiance(int allegiance)
+{
+    switch(allegiance) {
+        case 0:
+            allegianceStr = "None";
+            this->allegiance = Allegiance::ALLEYCAT;
+            break;
+        case 1:
+            allegianceStr = "Endline";
+            this->allegiance = Allegiance::ENDLINE;
+            break;
+        case 2:
+            allegianceStr = "Helix";
+            this->allegiance = Allegiance::HELIX;
+            break;
+        case 3:
+            allegianceStr = "The Resistance";
+            this->allegiance = Allegiance::RESISTANCE;
+            break;
+    }
+}
+
+void Player::setAllegiance(Allegiance allegiance)
 {
     this->allegiance = allegiance;
+
     switch(allegiance) {
         case Allegiance::ALLEYCAT:
             allegianceStr = "None";
@@ -100,12 +123,8 @@ void Player::setAllegiance(const Allegiance allegiance)
         case Allegiance::ENDLINE:
             allegianceStr = "Endline";
             break;
-        case Allegiance::HELIX:
-            allegianceStr = "Helix";
-            break;
-        case Allegiance::RESISTANCE:
-            allegianceStr = "The Resistance";
     }
+    
 }
 
 string Player::getAllegianceString() const

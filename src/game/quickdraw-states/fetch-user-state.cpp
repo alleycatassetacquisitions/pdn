@@ -57,7 +57,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
                 // Set player information using the setters
                 player->setName(response.name.c_str());
                 player->setIsHunter(response.isHunter);
-                player->setAllegiance(response.allegiance.c_str());
+                player->setAllegiance(response.allegiance);
                 player->setFaction(response.faction.c_str());
 
                 userDataFetchTimer.invalidate();

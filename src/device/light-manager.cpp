@@ -55,8 +55,16 @@ void LightManager::startAnimation(AnimationConfig config) {
             currentAnimation = new CountdownAnimation();
             break;
         case AnimationType::LOSE:
+            currentAnimation = new LoseAnimation();
             break;
-        case AnimationType::WIN:
+        case AnimationType::HUNTER_WIN:
+            currentAnimation = new HunterWinAnimation();
+            break;
+        case AnimationType::BOUNTY_WIN:
+            currentAnimation = new BountyWinAnimation();
+            break;
+        case AnimationType::TRANSMIT_BREATH:
+            currentAnimation = new TransmitBreathAnimation();
             break;
     }
     
@@ -75,6 +83,7 @@ void LightManager::stopAnimation() {
     }
     clear(LightIdentifier::DISPLAY_LIGHTS);
     clear(LightIdentifier::GRIP_LIGHTS);
+    FastLED.show();
 }
 
 void LightManager::pauseAnimation() {
@@ -232,6 +241,7 @@ void LightManager::resumeAnimation() {
 void LightManager::clear(LightIdentifier lights) {
     fill_solid(gripLightArray, 6, CRGB::Black);
     fill_solid(displayLightArray, 13, CRGB::Black);
+    FastLED.show();
 }
 
 bool LightManager::isAnimating() const {

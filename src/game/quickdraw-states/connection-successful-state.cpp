@@ -30,14 +30,14 @@ ConnectionSuccessful::~ConnectionSuccessful() {
 
 
 void ConnectionSuccessful::onStateMounted(Device *PDN) {
-    //colors to indicate different powerups, types of players.
-    CRGB color;
-    if (player->isHunter()) {
-        color = hunterColors[random8(16)];
-    } else {
-        color = bountyColors[random8(16)];
-    }
-    PDN->setGlobalLightColor(LEDColor(color.r, color.g, color.b));
+
+    AnimationConfig config;
+    config.type = AnimationType::TRANSMIT_BREATH;
+    config.loop = true;
+    config.speed = 5;
+    config.initialState = LEDState();
+    config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
+    PDN->startAnimation(config);
 
     PDN->
     invalidateScreen()->

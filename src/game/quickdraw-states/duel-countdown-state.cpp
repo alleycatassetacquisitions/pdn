@@ -52,16 +52,27 @@ void DuelCountdown::onStateMounted(Device *PDN) {
 
     AnimationConfig config;
     config.type = AnimationType::COUNTDOWN;
-    config.speed = 18;
+    config.speed = 16;
     config.loopDelayMs = 0;
     config.loop = false;
     PDN->startAnimation(config);
+
+    PDN->setVibration(HAPTIC_INTENSITY);
+    hapticTimer.setTimer(HAPTIC_DURATION);
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
     countdownTimer.updateTime();
+    hapticTimer.updateTime();
+
+    if (hapticTimer.expired()) {
+        PDN->setVibration(0);
+    }
+
     if (countdownTimer.expired()) {
+        PDN->setVibration(HAPTIC_INTENSITY);
+        hapticTimer.setTimer(HAPTIC_DURATION);
         if(countdownQueue[currentStepIndex].step == CountdownStep::BATTLE) {
             doBattle = true;
         } else {

@@ -24,6 +24,10 @@
 #include "device/idle-animation.hpp"
 #include "device/countdown-animation.hpp"
 #include "device/vertical-chase-animation.hpp"
+#include "device/transmit-breath-animation.hpp"
+#include "device/hunter-win-animation.hpp"
+#include "device/bounty-win-animation.hpp"
+#include "device/lose-animation.hpp"
 
 class LightManager {
 public:

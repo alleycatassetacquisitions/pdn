@@ -95,8 +95,14 @@ void Idle::serialEventCallbacks(string message) {
         waitingForMacAddress = true;
     } else if(waitingForMacAddress) {
         waitingForMacAddress = false;
-        player->setOpponentMacAddress(message);
-        transitionToHandshakeState = true;
+        if(player->getOpponentMacAddress()->compare(message) != 0) {
+            player->setOpponentMacAddress(message);
+            transitionToHandshakeState = true;
+        } else {
+            transitionToHandshakeState = false;
+            sendMacAddress = false;
+            waitingForMacAddress = false;
+        }
     }
 }
 

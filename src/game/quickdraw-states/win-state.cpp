@@ -43,6 +43,15 @@ void Win::onStateMounted(Device *PDN) {
     render();
 
     winTimer.setTimer(3000);
+
+    AnimationConfig config;
+    config.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
+    config.loop = true;
+    config.speed = 16;
+    config.initialState = LEDState();
+    config.loopDelayMs = 0;
+
+    PDN->startAnimation(config);
 }
 
 void Win::onStateLoop(Device *PDN) {

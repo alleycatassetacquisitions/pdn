@@ -48,7 +48,7 @@ struct PlayerResponse {
     String id;
     String name;
     bool isHunter;
-    String allegiance;
+    int allegiance;
     String faction;
     std::vector<String> errors;
 
@@ -84,7 +84,7 @@ struct PlayerResponse {
         id = data["id"].as<String>();
         name = data["name"].as<String>();
         isHunter = data["hunter"].as<bool>();
-        allegiance = data["allegiance"].as<String>();
+        allegiance = data["allegiance"].as<int>();
         faction = data["faction"].as<String>();
 
         return true;

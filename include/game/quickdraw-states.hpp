@@ -39,7 +39,7 @@ enum QuickdrawStateId {
 
 class PlayerRegistration : public State {
 public:
-    PlayerRegistration(Player* player);
+    PlayerRegistration(Player* player, MatchManager* matchManager);
     ~PlayerRegistration();
 
     void onStateMounted(Device *PDN) override;
@@ -52,6 +52,7 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
+    MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
@@ -145,7 +146,7 @@ private:
     Player* player;
     bool transitionToWelcomeMessageState = false;
     bool displayIsDirty = false;
-    int currentAllegiance = 0;
+int currentAllegiance = 0;
     const Allegiance allegianceArray[4] = {Allegiance::HELIX, Allegiance::ENDLINE, Allegiance::ALLEYCAT, Allegiance::RESISTANCE};
 };
 
@@ -309,10 +310,13 @@ private:
 
     Player* player;
     SimpleTimer countdownTimer;
+    SimpleTimer hapticTimer;
+    const int HAPTIC_DURATION = 75;
+    const int HAPTIC_INTENSITY = 255;
     bool doBattle = false;
-    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
+    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2050);
     const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
-    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 3000);
+    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 2050);
     const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0);
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
@@ -576,13 +580,13 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
 
-    void retryMatchUpload();
-
     bool transitionToSleep();
 
     void showLoadingGlyphs(Device *PDN);
 
     bool transitionToPlayerRegistration();
+
+    void routeToNextState();
 
 private:
     Player* player;
@@ -590,8 +594,7 @@ private:
     MatchManager* matchManager;
     SimpleTimer uploadMatchesTimer;
     int matchUploadRetryCount = 0;
-    const int UPLOAD_MATCHES_RETRY_DELAY = 60000;
-    const int UPLOAD_MATCHES_MAX_RETRIES = 2;
+    const int UPLOAD_MATCHES_TIMEOUT = 60000;
     String matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
