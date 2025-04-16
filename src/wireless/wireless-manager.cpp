@@ -5,8 +5,10 @@
 #include <memory>
 #include <utility>
 #include <esp_http_client.h>
+#include <functional>
 #include "wireless/esp-now-comms.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/remote-debug-manager.hpp"
 
 /**
  * Event handler for ESP-IDF HTTP client events.
@@ -171,11 +173,9 @@ PowerOffState::PowerOffState() : WirelessState(WirelessStateId::POWER_OFF) {}
 
 EspNowState::EspNowState() : WirelessState(WirelessStateId::ESP_NOW) {}
 
-WifiState::WifiState(const char* ssid, const char* password, const char* baseUrl, std::queue<HttpRequest>* requestQueue) 
+WifiState::WifiState(WifiConfig* config, std::queue<HttpRequest>* requestQueue) 
     : WirelessState(WirelessStateId::WIFI)
-    , ssid(ssid)
-    , password(password)
-    , baseUrl(baseUrl)
+    , wifiConfig(config)
     , httpQueue(requestQueue)
     , httpClient(nullptr)
     , currentRequest(nullptr)
@@ -183,7 +183,7 @@ WifiState::WifiState(const char* ssid, const char* password, const char* baseUrl
     , httpClientInitialized(false)
     , wifiConnectionAttempts(0)
     , channel(0) {
-    ESP_LOGI("WirelessManager", "WifiState created with base URL: %s", baseUrl);
+    ESP_LOGI("WirelessManager", "WifiState created with base URL: %s", wifiConfig->baseUrl.c_str());
 }
 
 // PowerOffState Implementation
@@ -220,6 +220,17 @@ void EspNowState::onStateMounted(Device* device) {
           manager->processQuickdrawCommand(srcMacAddr, data, len);
         },
         QuickdrawWirelessManager::GetInstance());
+        
+        // Register RemoteDebugManager's packet handler
+        EspNowManager::GetInstance()->SetPacketHandler(
+            PktType::kDebugPacket,  // Using the broadcast packet type for debug packets
+            [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
+                RemoteDebugManager* manager = (RemoteDebugManager*)userArg;
+                manager->ProcessDebugPacket(srcMacAddr, data, len);
+            },
+            RemoteDebugManager::GetInstance()
+        );
+        ESP_LOGI("WirelessManager", "RemoteDebugManager packet handler registered");
     } else {
         ESP_LOGE("WirelessManager", "ESP-NOW initialization failed: %d", err);
     }
@@ -341,7 +352,7 @@ bool WifiState::initializeWiFi() {
 }
 
 void WifiState::startWifiConnectionProcess() {
-    ESP_LOGI("WirelessManager", "Initializing WiFi with SSID: %s", ssid);
+    ESP_LOGI("WirelessManager", "Initializing WiFi with SSID: %s", wifiConfig->ssid.c_str());
     
     // Explicitly set WiFi mode to station
     WiFi.mode(WIFI_STA);
@@ -349,7 +360,7 @@ void WifiState::startWifiConnectionProcess() {
     
     // Start connection attempt
     ESP_LOGI("WirelessManager", "Starting WiFi connection attempt...");
-    WiFi.begin(ssid, password);
+    WiFi.begin(wifiConfig->ssid.c_str(), wifiConfig->password.c_str());
 }
 
 void WifiState::logWifiStatusError() {
@@ -360,7 +371,7 @@ void WifiState::logWifiStatusError() {
     } else if (status == WL_IDLE_STATUS) {
         ESP_LOGE("WirelessManager", "WiFi is in idle status, still trying");
     } else if (status == WL_NO_SSID_AVAIL) {
-        ESP_LOGE("WirelessManager", "SSID not available: %s", ssid);
+        ESP_LOGE("WirelessManager", "SSID not available: %s", wifiConfig->ssid.c_str());
     } else if (status == WL_SCAN_COMPLETED) {
         ESP_LOGE("WirelessManager", "WiFi scan completed but no connection established");
     } else if (status == WL_CONNECT_FAILED) {
@@ -375,14 +386,14 @@ void WifiState::logWifiStatusError() {
 }
 
 bool WifiState::initializeHttpClient() {
-    ESP_LOGI("WirelessManager", "Initializing HTTP client with base URL: %s", baseUrl);
+    ESP_LOGI("WirelessManager", "Initializing HTTP client with base URL: %s", wifiConfig->baseUrl.c_str());
     
     esp_http_client_config_t config = {};
     config.event_handler = http_event_handler;
     config.timeout_ms = 10000;  // Increased timeout for better reliability
     config.user_data = this;  // Pass WifiState instance to event handler
     config.keep_alive_enable = true;  // Enable connection reuse
-    config.url = baseUrl;  // Set the base URL
+    config.url = wifiConfig->baseUrl.c_str();  // Set the base URL
     config.skip_cert_common_name_check = true;  // Skip certificate CN validation
     config.cert_pem = nullptr;  // Skip certificate verification entirely
     config.is_async = true;
@@ -488,24 +499,26 @@ bool WifiState::processQueuedRequests() {
 void WifiState::initiateHttpRequest(HttpRequest& request) {
     // Construct full URL by combining base URL and path
     String fullUrl;
+    String baseUrlStr = wifiConfig->baseUrl;
+    
     // Check if baseUrl already contains http:// or https://
-    if (strncmp(baseUrl, "http://", 7) == 0 || strncmp(baseUrl, "https://", 8) == 0) {
-        fullUrl = String(baseUrl);
+    if (baseUrlStr.startsWith("http://") || baseUrlStr.startsWith("https://")) {
+        fullUrl = baseUrlStr;
         // Ensure we don't have double slashes between baseUrl and path
-        if (baseUrl[strlen(baseUrl)-1] == '/' && request.path[0] == '/') {
-            fullUrl += (request.path.c_str() + 1); // Skip the first slash of the path
-        } else if (baseUrl[strlen(baseUrl)-1] != '/' && request.path[0] != '/') {
+        if (baseUrlStr.endsWith("/") && request.path.startsWith("/")) {
+            fullUrl += request.path.substring(1); // Skip the first slash of the path
+        } else if (!baseUrlStr.endsWith("/") && !request.path.startsWith("/")) {
             fullUrl += "/" + request.path;  // Add slash between baseUrl and path
         } else {
             fullUrl += request.path;  // Use as is
         }
     } else {
         // Add http:// prefix if missing
-        fullUrl = String("http://") + String(baseUrl);
+        fullUrl = "http://" + baseUrlStr;
         // Handle slashes same as above
-        if (baseUrl[strlen(baseUrl)-1] == '/' && request.path[0] == '/') {
-            fullUrl += (request.path.c_str() + 1);
-        } else if (baseUrl[strlen(baseUrl)-1] != '/' && request.path[0] != '/') {
+        if (baseUrlStr.endsWith("/") && request.path.startsWith("/")) {
+            fullUrl += request.path.substring(1);
+        } else if (!baseUrlStr.endsWith("/") && !request.path.startsWith("/")) {
             fullUrl += "/" + request.path;
         } else {
             fullUrl += request.path;
@@ -753,24 +766,24 @@ void WifiState::handleRequestError(HttpRequest& request, WirelessErrorInfo error
 }
 
 // WirelessManager Implementation
-WirelessManager::WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl)
+WirelessManager::WirelessManager(Device* device, const String& wifiSsid, const String& wifiPassword, const String& baseUrl)
     : StateMachine(device)
-    , wifiSsid(wifiSsid)
-    , wifiPassword(wifiPassword)
-    , baseUrl(baseUrl)
+    , wifiConfig(wifiSsid, wifiPassword, baseUrl)
     , pendingEspNowSwitch(false)
     , pendingWifiSwitch(false)
     , pendingPowerOff(false) {
-    ESP_LOGI("WirelessManager", "WirelessManager created with SSID: %s, base URL: %s", wifiSsid, baseUrl);
+    ESP_LOGI("WirelessManager", "WirelessManager created with SSID: %s, base URL: %s", 
+             wifiConfig.ssid.c_str(), wifiConfig.baseUrl.c_str());
 }
 
 void WirelessManager::populateStateMap() {
-    ESP_LOGI("WirelessManager", "Populating state map with SSID: %s, base URL: %s", wifiSsid, baseUrl);
+    ESP_LOGI("WirelessManager", "Populating state map with SSID: %s, base URL: %s", 
+             wifiConfig.ssid.c_str(), wifiConfig.baseUrl.c_str());
     
     // Create states
     PowerOffState* powerOffState = new PowerOffState();
     EspNowState* espNowState = new EspNowState();
-    WifiState* wifiState = new WifiState(wifiSsid, wifiPassword, baseUrl, &httpQueue);
+    WifiState* wifiState = new WifiState(&wifiConfig, &httpQueue);
     
     // Add states to the map
     stateMap.push_back(powerOffState);
@@ -897,6 +910,33 @@ bool WirelessManager::powerOff() {
     return true;
 }
 
+void WirelessManager::updateWifiCredentials(DebugPacket debugPacket) {
+    ESP_LOGI("WirelessManager", "Updating WiFi credentials - SSID: %s, Base URL: %s", 
+             debugPacket.ssid, debugPacket.baseUrl);
+    
+    // Update stored credentials
+    wifiConfig.ssid = debugPacket.ssid;
+    wifiConfig.password = debugPacket.password;
+    wifiConfig.baseUrl = debugPacket.baseUrl;
+    
+    // If we're currently in WiFi state, we need to reinitialize it
+    if (getCurrentState()->getStateId() == WirelessStateId::WIFI) {
+        ESP_LOGI("WirelessManager", "Currently in WiFi state, reconnecting with new credentials");
+        
+        // First switch to ESP-NOW temporarily
+        pendingEspNowSwitch = true;
+        pendingWifiSwitch = false;
+        pendingPowerOff = false;
+        
+        // Then schedule a switch back to WiFi with new credentials
+        // We use a simple delay approach instead of using device's task scheduler
+        ESP_LOGI("WirelessManager", "Will switch back to WiFi with new credentials shortly");
+        
+        // Note: In a real implementation, you would use a proper timer or task scheduler
+        // This is a simplification for demonstration purposes
+    }
+}
+
 void WirelessManager::initialize() {
     ESP_LOGI("WirelessManager", "Initializing WirelessManager");
     
@@ -905,6 +945,11 @@ void WirelessManager::initialize() {
     
     ESP_LOGI("WirelessManager", "WirelessManager initialized with initial state: %d", 
              getCurrentState()->getStateId());
+    
+    // Set up RemoteDebugManager callback for handling WiFi credential updates
+    RemoteDebugManager::GetInstance()->SetPacketReceivedCallback(
+        std::bind(&WirelessManager::updateWifiCredentials, this, std::placeholders::_1)
+    );
     
     // Immediately switch to WiFi state if we have HTTP requests
     if (!httpQueue.empty()) {

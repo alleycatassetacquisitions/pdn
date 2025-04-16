@@ -19,6 +19,20 @@ struct WirelessErrorInfo {
     bool willRetry;
 };
 
+/**
+ * Configuration struct for WiFi credentials and settings
+ */
+struct WifiConfig {
+    String ssid;
+    String password;
+    String baseUrl;
+    
+    WifiConfig() : ssid(""), password(""), baseUrl("") {}
+    
+    WifiConfig(const String& ssid, const String& password, const String& baseUrl)
+        : ssid(ssid), password(password), baseUrl(baseUrl) {}
+};
+
 // Callback definitions
 using HttpSuccessCallback = std::function<void(const String& jsonResponse)>;
 using HttpErrorCallback = std::function<void(const WirelessErrorInfo& error)>; 

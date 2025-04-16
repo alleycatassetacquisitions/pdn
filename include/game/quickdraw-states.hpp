@@ -40,7 +40,7 @@ enum QuickdrawStateId {
 
 class PlayerRegistration : public State {
 public:
-    PlayerRegistration(Player* player, MatchManager* matchManager);
+    PlayerRegistration(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
     ~PlayerRegistration();
 
     void onStateMounted(Device *PDN) override;
@@ -53,6 +53,7 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
+    WirelessManager* wirelessManager;
     MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
@@ -68,12 +69,14 @@ public:
     bool transitionToConfirmOffline();
     bool transitionToWelcomeMessage();
     bool transitionToUploadMatches();
+    bool transitionToPlayerRegistration();
     void showLoadingGlyphs(Device *PDN);
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     
 private:
+    bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     bool transitionToUploadMatchesState = false;

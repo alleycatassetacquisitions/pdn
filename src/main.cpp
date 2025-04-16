@@ -16,17 +16,24 @@
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/remote-debug-manager.hpp"
 
 // Core game objects
 Device* pdn = PDN::GetInstance();
 IdGenerator* idGenerator = IdGenerator::GetInstance();
 Player* player = new Player();
-WirelessManager* wirelessManager = new WirelessManager(pdn, "The Lab", "C00KIECAT", "http://192.168.1.107:3000");
+
+const char* WIFI_SSID = "NeoCore Networks";
+const char* WIFI_PASSWORD = "AlleyCatBountyHunting1";
+const char* BASE_URL = "http://alleycat-server.local:3000";
+
+WirelessManager* wirelessManager = new WirelessManager(pdn, WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 Quickdraw game = Quickdraw(player, pdn, wirelessManager);
 
 // Remote player management
 // RemotePlayerManager remotePlayers;
 QuickdrawWirelessManager *quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
+RemoteDebugManager* remoteDebugManager = RemoteDebugManager::GetInstance();
 
 void setup() {
     Serial.begin(115200);
@@ -47,6 +54,8 @@ void setup() {
     WiFi.channel(6);  // Set a consistent channel for ESP-NOW communication
     
     ESP_LOGI("PDN", "WiFi configured for ESP-NOW");
+
+    remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
     // Initialize the communications manager
     quickdrawWirelessManager->initialize(player, 1000);

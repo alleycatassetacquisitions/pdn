@@ -3,6 +3,7 @@
 #include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
 #include <esp_log.h>
+#include "wireless/remote-debug-manager.hpp"
 
 static const char* TAG = "FetchUserDataState";
 
@@ -46,7 +47,12 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         transitionToUploadMatchesState = true;
         userDataFetchTimer.invalidate();
         isFetchingUserData = false;
-    } else {
+    } else if(player->getUserID() == BROADCAST_WIFI) { 
+        RemoteDebugManager::GetInstance()->BroadcastDebugPacket();
+        transitionToPlayerRegistrationState = true;
+        userDataFetchTimer.invalidate();
+        isFetchingUserData = false;
+    }else {
         QuickdrawRequests::getPlayer(
             wirelessManager,
             String(player->getUserID().c_str()),
@@ -107,6 +113,7 @@ void FetchUserDataState::onStateDismounted(Device *PDN) {
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
     transitionToUploadMatchesState = false;
+    transitionToPlayerRegistrationState = false;
     userDataFetchTimer.invalidate();
     ESP_LOGI(TAG, "State cleanup complete");
 }   
@@ -117,6 +124,10 @@ bool FetchUserDataState::transitionToConfirmOffline() {
 
 bool FetchUserDataState::transitionToUploadMatches() {
     return transitionToUploadMatchesState;
+}
+
+bool FetchUserDataState::transitionToPlayerRegistration() {
+    return transitionToPlayerRegistrationState;
 }
 
 void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
