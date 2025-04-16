@@ -4,12 +4,14 @@
 #include "device/pdn.hpp"
 #include <esp_log.h>
 
+
 // Logging tag for PlayerRegistration state
 static const char* TAG = "PlayerRegistration";
 
-PlayerRegistration::PlayerRegistration(Player* player) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
+PlayerRegistration::PlayerRegistration(Player* player, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
     ESP_LOGI(TAG, "Initializing PlayerRegistration state");
     this->player = player;
+    this->matchManager = matchManager;
 }
 
 PlayerRegistration::~PlayerRegistration() {
@@ -62,6 +64,20 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
             playerRegistration->shouldRender = true;
         }
     }, this);
+
+
+    ESP_LOGI(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
+    if(matchManager->getStoredMatchCount() > 0) {
+        ESP_LOGI(TAG, "Starting transmit breath animation");
+        AnimationConfig config;
+        config.type = AnimationType::TRANSMIT_BREATH;
+        config.loop = true;
+        config.speed = 25;
+        config.initialState = LEDState();
+        config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
+        PDN->startAnimation(config);
+    }
+    
 }
 
 void PlayerRegistration::onStateLoop(Device *PDN) {
@@ -119,6 +135,7 @@ void PlayerRegistration::onStateDismounted(Device *PDN) {
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
+    PDN->stopAnimation();
     ESP_LOGI(TAG, "State cleanup complete");
 }
 

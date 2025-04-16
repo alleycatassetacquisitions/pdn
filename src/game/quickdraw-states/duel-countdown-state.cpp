@@ -42,37 +42,53 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(Device *PDN) {
-    CRGB countdownColor;
-    if(player->isHunter()) {
-        countdownColor = hunterColors[0];
-    } else {
-        countdownColor = bountyColors[0];
-    }
-    PDN->setGlobalLightColor(LEDColor(countdownColor.r, countdownColor.g, countdownColor.b));
-    PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
-
     PDN->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
     render();
 
+    PDN->startAnimation(countdownQueue[currentStepIndex].animationConfig);
+
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
+
+    PDN->setButtonClick(
+        ButtonInteraction::CLICK,
+        ButtonIdentifier::PRIMARY_BUTTON,
+        matchManager->getButtonMasher(),
+        matchManager);
+
+    PDN->setButtonClick(
+        ButtonInteraction::CLICK,
+        ButtonIdentifier::SECONDARY_BUTTON,
+        matchManager->getButtonMasher(),
+        matchManager);
+
+    PDN->setVibration(HAPTIC_INTENSITY);
+    hapticTimer.setTimer(HAPTIC_DURATION);
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
     countdownTimer.updateTime();
+    hapticTimer.updateTime();
+
+    if (hapticTimer.expired()) {
+        PDN->setVibration(0);
+    }
+
     if (countdownTimer.expired()) {
+        PDN->setVibration(HAPTIC_INTENSITY);
+        hapticTimer.setTimer(HAPTIC_DURATION);
         if(countdownQueue[currentStepIndex].step == CountdownStep::BATTLE) {
             doBattle = true;
         } else {
-            PDN->setGlobalBrightness(countdownQueue[currentStepIndex].ledBrightness);
-
             PDN->
             invalidateScreen()->
             drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
             render();
+
+            PDN->startAnimation(countdownQueue[currentStepIndex].animationConfig);
 
             countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
             currentStepIndex++;
@@ -96,6 +112,8 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
+    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
 }
 
 bool DuelCountdown::shallWeBattle() {

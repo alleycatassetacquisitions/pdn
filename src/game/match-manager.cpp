@@ -225,7 +225,7 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
         uint8_t test_val = prefs.getUChar("test_key", 0);
         ESP_LOGW(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
     }
-    
+
     // Save match JSON to preferences
     if (!prefs.putString(key, matchJson.c_str())) {
         ESP_LOGE(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
@@ -267,6 +267,10 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     return match;
 }
 
+parameterizedCallbackFunction MatchManager::getButtonMasher() {
+    return buttonMasher;
+}
+
 void MatchManager::initialize(Player* player) {
     this->player = player;
 
@@ -286,6 +290,7 @@ void MatchManager::initialize(Player* player) {
         }
 
         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+        ActiveDuelState* activeDuelState = &matchManager->activeDuelState;
         Player *player = matchManager->player;
 
         if(matchManager->getHasPressedButton()) {
@@ -299,6 +304,10 @@ void MatchManager::initialize(Player* player) {
         }
 
         unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
+
+        if(activeDuelState->buttonMasherCount > 0) {
+            reactionTimeMs = reactionTimeMs + (activeDuelState->BUTTON_MASHER_PENALTY_MS * activeDuelState->buttonMasherCount);
+        }
 
         ESP_LOGI(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms for %s", 
                 reactionTimeMs, player->isHunter() ? "Hunter" : "Bounty");
@@ -327,6 +336,12 @@ void MatchManager::initialize(Player* player) {
         matchManager->setReceivedButtonPush();
         
         ESP_LOGI(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
+    };
+
+    buttonMasher = [](void *ctx) {
+        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+        matchManager->activeDuelState.buttonMasherCount++;
+        ESP_LOGI(MATCH_MANAGER_TAG, "Button masher count: %d", matchManager->activeDuelState.buttonMasherCount);
     };
 }
 

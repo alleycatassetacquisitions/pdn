@@ -31,11 +31,6 @@ void Idle::onStateMounted(Device *PDN) {
 
     MatchManager::GetInstance()->clearCurrentMatch();
 
-    PDN->
-    invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
-    render();
-
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
 
     wirelessManager->switchToEspNow();
@@ -58,6 +53,28 @@ void Idle::onStateMounted(Device *PDN) {
         config.loop = true;
     }
     PDN->startAnimation(config);
+
+    parameterizedCallbackFunction cycleStats = [](void *ctx) {
+        Idle* idle = (Idle*)ctx;
+        idle->displayIsDirty = true;
+    };
+
+
+    PDN->setButtonClick(
+        ButtonInteraction::CLICK,
+        ButtonIdentifier::PRIMARY_BUTTON,
+        cycleStats,
+        this
+    );
+
+    PDN->setButtonClick(
+        ButtonInteraction::CLICK,
+        ButtonIdentifier::SECONDARY_BUTTON,
+        cycleStats,
+        this
+    );
+
+    displayIsDirty = true;
 }
 
 void Idle::onStateLoop(Device *PDN) {
@@ -78,13 +95,21 @@ void Idle::onStateLoop(Device *PDN) {
         PDN->writeString(macStr);
         transitionToHandshakeState = true;
     }
+
+    if(displayIsDirty) {
+        cycleStats(PDN);
+        displayIsDirty = false;
+    }
 }
 
 void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
     sendMacAddress = false;
     waitingForMacAddress = false;
-    PDN->clearCallbacks();
+    statsIndex = 0;
+    PDN->setGlyphMode(FontMode::TEXT);
+    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
 }
 
 void Idle::serialEventCallbacks(string message) {
@@ -102,4 +127,36 @@ void Idle::serialEventCallbacks(string message) {
 
 bool Idle::transitionToHandshake() {
     return transitionToHandshakeState;
+}
+
+void Idle::cycleStats(Device *PDN) {
+    PDN->invalidateScreen();
+    PDN->drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
+
+    if(statsIndex == 0) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getWins()).c_str(), 88, 40);
+    } else if(statsIndex == 1) {        
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getStreak()).c_str(), 88, 40);
+    } else if(statsIndex == 2) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Losses",70, 20);
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLosses()).c_str(), 88, 40);
+    } else if(statsIndex == 3) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Matches",70, 20);
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getMatchesPlayed()).c_str(), 88, 40);
+    } else if(statsIndex == 4) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Last",70, 20)->drawText("Reaction", 70, 35);
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLastReactionTime()).c_str(), 80, 55);
+    } else if(statsIndex == 5) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getAverageReactionTime()).c_str(), 80, 55);
+    }
+
+    PDN->render();
+
+    statsIndex++;
+    if(statsIndex > statsCount) {
+        statsIndex = 0;
+    }
 }

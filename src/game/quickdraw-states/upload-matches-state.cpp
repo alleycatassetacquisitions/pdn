@@ -3,25 +3,30 @@
 #include "game/quickdraw-resources.hpp"
 #include <esp_log.h>
 
-const string TAG = "UploadMatchesState";
+static const char* TAG = "UploadMatchesState";
 
 UploadMatchesState::UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : State(UPLOAD_MATCHES) {
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->matchManager = matchManager;
+    ESP_LOGI(TAG, "UploadMatchesState initialized");
 }
 
 UploadMatchesState::~UploadMatchesState() {
+    ESP_LOGI(TAG, "UploadMatchesState destroyed");
     player = nullptr;
     wirelessManager = nullptr;
     matchManager = nullptr;
 }
 
 void UploadMatchesState::onStateMounted(Device *PDN) {
+    ESP_LOGI(TAG, "State mounted - Starting match upload process");
 
     showLoadingGlyphs(PDN);
+    uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
 
     matchesJson = String(matchManager->toJson().c_str());
+    ESP_LOGI(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
 
     QuickdrawRequests::updateMatches(
         wirelessManager,
@@ -31,74 +36,42 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
                     jsonResponse.c_str());
 
             matchManager->clearStorage();
+            ESP_LOGI(TAG, "Match storage cleared after successful upload");
+            routeToNextState();
             
-            if(player->getUserID() == FORCE_MATCH_UPLOAD) {
-                transitionToPlayerRegistrationState = true;
-            } else {
-                transitionToSleepState = true;
-            }
         },
         [this](const WirelessErrorInfo& error) {
             ESP_LOGE(TAG, "Failed to update matches: %s (code: %d), willRetry: %d", 
                 error.message.c_str(), static_cast<int>(error.code), error.willRetry);
-            
-            if(!error.willRetry) {
-                uploadMatchesTimer.setTimer(UPLOAD_MATCHES_RETRY_DELAY);
-            }
+            routeToNextState();
         }
     );
+
+    AnimationConfig config;
+    config.type = AnimationType::TRANSMIT_BREATH;
+    config.loop = true;
+    config.speed = 10;
+    config.initialState = LEDState();
+    config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
+    PDN->startAnimation(config);
 }
 
 void UploadMatchesState::onStateLoop(Device *PDN) {
+    uploadMatchesTimer.updateTime();
     if(uploadMatchesTimer.expired()) {
-        retryMatchUpload();
+        ESP_LOGI(TAG, "Retry timer expired, attempting match upload again");
+        routeToNextState();
     }
 
     showLoadingGlyphs(PDN);
 }
 
 void UploadMatchesState::onStateDismounted(Device *PDN) {
+    ESP_LOGI(TAG, "State dismounted - Cleaning up resources");
     uploadMatchesTimer.invalidate();
-    matchUploadRetryCount = 0;
     transitionToSleepState = false;
     transitionToPlayerRegistrationState = false;
-}
-
-void UploadMatchesState::retryMatchUpload() {
-    if(matchUploadRetryCount < UPLOAD_MATCHES_MAX_RETRIES) {
-        matchUploadRetryCount++;
-        QuickdrawRequests::updateMatches(
-            wirelessManager,
-            matchesJson,
-            [this](const String& jsonResponse) {
-                ESP_LOGI(TAG, "Successfully updated matches: %s", 
-                        jsonResponse.c_str());
-
-                matchManager->clearStorage();
-                
-                if(player->getUserID() == FORCE_MATCH_UPLOAD) {
-                    transitionToPlayerRegistrationState = true;
-                } else {
-                    transitionToSleepState = true;
-                }
-            },
-            [this](const WirelessErrorInfo& error) {
-                ESP_LOGE(TAG, "Failed to update matches: %s (code: %d), willRetry: %d", 
-                    error.message.c_str(), static_cast<int>(error.code), error.willRetry);
-                
-                if(!error.willRetry) {
-                    uploadMatchesTimer.setTimer(UPLOAD_MATCHES_RETRY_DELAY);
-                }
-            }
-        );
-    } else {
-        ESP_LOGE(TAG, "Failed to upload matches after %d retries", matchUploadRetryCount);
-        if(player->getUserID() == FORCE_MATCH_UPLOAD) {
-            transitionToPlayerRegistrationState = true;
-        } else {
-            transitionToSleepState = true;
-        }
-    }
+    PDN->stopAnimation();
 }
 
 void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
@@ -140,10 +113,25 @@ void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
 }
 
 bool UploadMatchesState::transitionToSleep() {
+    if(transitionToSleepState) {
+        ESP_LOGI(TAG, "Transitioning to Sleep state");
+    }
     return transitionToSleepState;
 }   
 
 bool UploadMatchesState::transitionToPlayerRegistration() {
+    if(transitionToPlayerRegistrationState) {
+        ESP_LOGI(TAG, "Transitioning to Player Registration state");
+    }
     return transitionToPlayerRegistrationState;
 }
 
+void UploadMatchesState::routeToNextState() {
+    if(player->getUserID() == FORCE_MATCH_UPLOAD) {
+        ESP_LOGI(TAG, "FORCE_MATCH_UPLOAD user ID detected - transitioning to player registration");
+        transitionToPlayerRegistrationState = true;
+    } else {
+        ESP_LOGI(TAG, "Regular user - transitioning to sleep state");
+        transitionToSleepState = true;
+    }
+}

@@ -48,13 +48,13 @@ struct PlayerResponse {
     String id;
     String name;
     bool isHunter;
-    String allegiance;
+    int allegiance;
     String faction;
     std::vector<String> errors;
 
     // Parse JSON response into this structure
     bool parseFromJson(const String& json) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, json);
         
         if (error) {
@@ -63,7 +63,7 @@ struct PlayerResponse {
         }
 
         // Check for errors array
-        if (doc.containsKey("errors")) {
+        if (doc["errors"].is<JsonArray>()) {
             JsonArray errorsArray = doc["errors"];
             for (JsonVariant errorVar : errorsArray) {
                 errors.push_back(errorVar.as<String>());
@@ -75,7 +75,7 @@ struct PlayerResponse {
         }
 
         // Parse data object
-        if (!doc.containsKey("data")) {
+        if (!doc["data"].is<JsonObject>()) {
             ESP_LOGE("QuickdrawRequests", "Player response missing data object");
             return false;
         }
@@ -84,7 +84,7 @@ struct PlayerResponse {
         id = data["id"].as<String>();
         name = data["name"].as<String>();
         isHunter = data["hunter"].as<bool>();
-        allegiance = data["allegiance"].as<String>();
+        allegiance = data["allegiance"].as<int>();
         faction = data["faction"].as<String>();
 
         return true;

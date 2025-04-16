@@ -40,7 +40,16 @@ void Lose::onStateMounted(Device *PDN) {
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
     render();
 
-    loseTimer.setTimer(3000);
+    loseTimer.setTimer(8000);
+
+    AnimationConfig config;
+    config.type = AnimationType::LOSE;
+    config.loop = true;
+    config.speed = 16;
+    config.initialState = LEDState();
+    config.loopDelayMs = 0;
+
+    PDN->startAnimation(config);
 }
 
 void Lose::onStateLoop(Device *PDN) {

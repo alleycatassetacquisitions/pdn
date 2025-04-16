@@ -26,6 +26,8 @@ struct ActiveDuelState {
     bool hasPressedButton = false;
     bool gracePeriodExpiredNoResult = false;
     unsigned long duelLocalStartTime = 0;
+    unsigned long BUTTON_MASHER_PENALTY_MS = 75;
+    int buttonMasherCount = 0;
     Match* match = nullptr;
 };
 
@@ -105,6 +107,8 @@ public:
 
     parameterizedCallbackFunction getDuelButtonPush();
 
+    parameterizedCallbackFunction getButtonMasher();
+
 protected:
     Player* player;
 
@@ -116,6 +120,7 @@ private:
     ActiveDuelState activeDuelState;
 
     parameterizedCallbackFunction duelButtonPush;
+    parameterizedCallbackFunction buttonMasher;
 
     /**
      * Appends a match to storage

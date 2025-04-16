@@ -46,14 +46,30 @@ Display * PDNDisplay::setGlyphMode(FontMode mode) {
         case FontMode::TEXT:
             screen.disableUTF8Print();
             screen.setFont(u8g2_font_tenfatguys_tr);
+            screen.setDrawColor(1);
+            screen.setFontMode(0);
             break;
         case FontMode::NUMBER_GLYPH:
             screen.enableUTF8Print();
             screen.setFont(u8g2_font_twelvedings_t_all);
+            screen.setDrawColor(1);
+            screen.setFontMode(0);
             break;
         case FontMode::LOADING_GLYPH:
             screen.enableUTF8Print();
             screen.setFont(u8g2_font_unifont_t_76);
+            screen.setDrawColor(1);
+            screen.setFontMode(0);
+            break;
+        case FontMode::TEXT_INVERTED_SMALL:
+            screen.setFont(u8g2_font_tenthinnerguys_t_all);
+            screen.setFontMode(1);
+            screen.setDrawColor(2);
+            break;
+        case FontMode::TEXT_INVERTED_LARGE:
+            screen.setFont(u8g2_font_tenfatguys_tr);
+            screen.setFontMode(1);
+            screen.setDrawColor(2);
             break;
     }
     return this;

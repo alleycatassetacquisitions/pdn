@@ -7,6 +7,7 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-manager.hpp"
+#include "quickdraw-resources.hpp"
 #include <queue>
 
 using namespace std;
@@ -39,7 +40,7 @@ enum QuickdrawStateId {
 
 class PlayerRegistration : public State {
 public:
-    PlayerRegistration(Player* player);
+    PlayerRegistration(Player* player, MatchManager* matchManager);
     ~PlayerRegistration();
 
     void onStateMounted(Device *PDN) override;
@@ -52,6 +53,7 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
+    MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
@@ -146,7 +148,7 @@ private:
     bool transitionToWelcomeMessageState = false;
     bool displayIsDirty = false;
     int currentAllegiance = 0;
-    const Allegiance allegianceArray[4] = {Allegiance::HELIX, Allegiance::ENDLINE, Allegiance::ALLEYCAT, Allegiance::RESISTANCE};
+    const Allegiance allegianceArray[4] = {Allegiance::ALLEYCAT, Allegiance::ENDLINE, Allegiance::HELIX, Allegiance::RESISTANCE};
 };
 
 class WelcomeMessage : public State {
@@ -191,7 +193,7 @@ private:
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
 
-    static constexpr unsigned long SLEEP_DURATION = 5000;
+    static constexpr unsigned long SLEEP_DURATION = 60000UL;
 };
 
 /*
@@ -232,12 +234,19 @@ public:
 
     bool transitionToHandshake();
 
+    void cycleStats(Device *PDN);
+
 private:
     Player *player;
     WirelessManager* wirelessManager;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
+
+    bool displayIsDirty = false;
+
+    int statsIndex = 0;
+    int statsCount = 5;
 
     void serialEventCallbacks(string message);
 
@@ -296,26 +305,41 @@ private:
     };
 
     struct CountdownStage {
-        CountdownStage(CountdownStep step, unsigned long countdownTimer, byte ledBrightness) {
+        CountdownStage(CountdownStep step, unsigned long countdownTimer) {
             this->step = step;
             this->countdownTimer = countdownTimer;
-            this->ledBrightness = ledBrightness;
+            this->animationConfig.type = AnimationType::COUNTDOWN;
+            this->animationConfig.loop = false;
+            this->animationConfig.speed = 16;
+
+            if(step == CountdownStep::THREE) {
+                this->animationConfig.initialState = COUNTDOWN_THREE_STATE;
+            } else if(step == CountdownStep::TWO) {
+                this->animationConfig.initialState = COUNTDOWN_TWO_STATE;
+            } else if(step == CountdownStep::ONE) {
+                this->animationConfig.initialState = COUNTDOWN_ONE_STATE;
+            } else if(step == CountdownStep::BATTLE) {
+                this->animationConfig.initialState = COUNTDOWN_DUEL_STATE;
+            }
         }
 
         CountdownStep step;
         unsigned long countdownTimer = 0;
-        byte ledBrightness = 0;
+        AnimationConfig animationConfig;
     };
 
     ImageType getImageIdForStep(CountdownStep step);
 
     Player* player;
     SimpleTimer countdownTimer;
+    SimpleTimer hapticTimer;
+    const int HAPTIC_DURATION = 75;
+    const int HAPTIC_INTENSITY = 255;
     bool doBattle = false;
-    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000, 255);
-    const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000, 155);
-    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 3000, 75);
-    const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0, 0);
+    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
+    const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
+    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 2000);
+    const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0);
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
     MatchManager* matchManager;
@@ -578,13 +602,13 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
 
-    void retryMatchUpload();
-
     bool transitionToSleep();
 
     void showLoadingGlyphs(Device *PDN);
 
     bool transitionToPlayerRegistration();
+
+    void routeToNextState();
 
 private:
     Player* player;
@@ -592,8 +616,7 @@ private:
     MatchManager* matchManager;
     SimpleTimer uploadMatchesTimer;
     int matchUploadRetryCount = 0;
-    const int UPLOAD_MATCHES_RETRY_DELAY = 60000;
-    const int UPLOAD_MATCHES_MAX_RETRIES = 2;
+    const int UPLOAD_MATCHES_TIMEOUT = 10000;
     String matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;

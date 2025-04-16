@@ -75,10 +75,22 @@ void Duel::onStateMounted(Device *PDN) {
              DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
              
     PDN->invalidateScreen()->
+    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
     render();
     
     ESP_LOGI(DUEL_TAG, "Draw image displayed for allegiance: %d", player->getAllegiance());
+
+    AnimationConfig config;
+    config.type = AnimationType::COUNTDOWN;
+    config.speed = 16;
+    config.loopDelayMs = 0;
+    config.loop = false;
+    config.initialState = COUNTDOWN_DUEL_STATE;
+    
+    PDN->startAnimation(config);
+
+    PDN->setVibration(175);
 }
 
 void Duel::onStateLoop(Device *PDN) {

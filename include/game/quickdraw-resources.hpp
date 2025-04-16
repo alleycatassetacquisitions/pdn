@@ -23,7 +23,7 @@ const ImageCollection alleycatImageCollection = {
 {ImageType::COUNTDOWN_THREE, Image(image_alley_count3, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_TWO, Image(image_alley_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_alley_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_alley_draw, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_alley_victor, 128, 64, 0, 0)},
 {ImageType::LOSE, Image(image_alley_loser, 128, 64, 0, 0)},
 };
@@ -37,7 +37,7 @@ const ImageCollection helixImageCollection = {
 {ImageType::COUNTDOWN_THREE, Image(image_helix_count3, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_TWO, Image(image_helix_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_helix_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_helix_draw, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_helix_victor, 128, 64, 0, 0)},
 {ImageType::LOSE, Image(image_helix_loser, 128, 64, 0, 0)},
 };
@@ -51,7 +51,7 @@ const ImageCollection endlineImageCollection = {
 {ImageType::COUNTDOWN_THREE, Image(image_endline_count3, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_TWO, Image(image_endline_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_endline_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_endline_draw, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_endline_victor, 128, 64, 0, 0)},
 {ImageType::LOSE, Image(image_endline_loser, 128, 64, 0, 0)},
 };
@@ -65,7 +65,7 @@ const ImageCollection resistanceImageCollection = {
 {ImageType::COUNTDOWN_THREE, Image(image_resistance_count3, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_TWO, Image(image_resistance_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_resistance_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_resistance_draw, 128, 64, 0, 0)},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
 {ImageType::WIN, Image(image_resistance_victor, 128, 64, 0, 0)},
 {ImageType::LOSE, Image(image_resistance_loser, 128, 64, 0, 0)},
 };
@@ -343,59 +343,6 @@ const uint8_t ELASTIC_CURVE[256] = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 };
 
-// Countdown animation implementation for future use
-/*
-void countdownAnimation(Device *PDN) {
-    static uint8_t currentLed = 3;        // Starting LED index (3-8)
-    static uint8_t fadeProgress = 0;      // Progress of current LED's fade (0-255)
-    static bool isWaitingBetweenLeds = false;
-    static SimpleTimer ledDelayTimer;
-    
-    // If all LEDs are lit, keep them all at full brightness
-    if (currentLed >= 9) {
-        // Keep all LEDs at full brightness
-        for (int i = 3; i <= 8; i++) {
-            PDN->setLight(LightIdentifier::LEFT_LIGHTS, i, LEDColor(255, 255, 255));
-            PDN->setLight(LightIdentifier::RIGHT_LIGHTS, i, LEDColor(255, 255, 255));
-        }
-        return;
-    }
-
-    // If we're in the delay period between LEDs
-    if (isWaitingBetweenLeds) {
-        if (ledDelayTimer.expired()) {
-            isWaitingBetweenLeds = false;
-            currentLed++;           // Move to next LED
-            fadeProgress = 0;       // Reset fade progress for new LED
-        }
-        return;
-    }
-
-    // Get smooth fade value from ease-in-out curve
-    float brightness = EASE_IN_OUT_CURVE[fadeProgress];
-    uint8_t ledValue = brightness * 255;
-
-    // Set current LED brightness
-    PDN->setLight(LightIdentifier::LEFT_LIGHTS, currentLed, LEDColor(ledValue, ledValue, ledValue));
-    PDN->setLight(LightIdentifier::RIGHT_LIGHTS, currentLed, LEDColor(ledValue, ledValue, ledValue));
-
-    // Keep previous LEDs at full brightness
-    for (int i = 3; i < currentLed; i++) {
-        PDN->setLight(LightIdentifier::LEFT_LIGHTS, i, LEDColor(255, 255, 255));
-        PDN->setLight(LightIdentifier::RIGHT_LIGHTS, i, LEDColor(255, 255, 255));
-    }
-
-    // Update fade progress
-    fadeProgress += 5;  // Adjust this value to control fade speed
-
-    // When fade is complete, start delay before next LED
-    if (fadeProgress >= 255) {
-        isWaitingBetweenLeds = true;
-        ledDelayTimer.setTimer(200);  // 200ms delay between LEDs
-    }
-}
-*/
-
 static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) {
     switch(allegiance) {
         case Allegiance::HELIX:
@@ -408,87 +355,6 @@ static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) 
             return &alleycatImageCollection;
     }
 }
-
-// void IdleAnimation(Device *PDN) {
-// if (animState.isWaitingForPause) {
-//         if (animState.pauseTimer.expired()) {
-//             animState.isWaitingForPause = false;
-//             animState.currentIndex = 8;  // Reset to top
-//             animState.prevIndex = 8;
-//             animState.brightness = 0;
-//         }
-//         return;
-//     }
-
-//     // Clear all LEDs except our controlled ones
-//     setBrightness(LightIdentifier::GRIP_LIGHTS, 0);
-//     setBrightness(LightIdentifier::DISPLAY_LIGHTS, 0);
-    
-//     if (animState.isFadingOut) {
-//         // Only show the bottom LED fading out
-//         // Decrease brightness for fade out
-//         if (animState.brightness >= 45) {
-//             animState.brightness -= 45;
-//         } else {
-//             animState.brightness = 0;
-//         }
-
-//         setLightColor(LightIdentifier::LEFT_LIGHTS, 0, LEDColor(animState.brightness, animState.brightness, animState.brightness));
-//         setLightColor(LightIdentifier::RIGHT_LIGHTS, 0, LEDColor(animState.brightness, animState.brightness, animState.brightness));
-        
-//         if (animState.brightness == 0) {
-//             animState.isFadingOut = false;
-//             animState.isWaitingForPause = true;
-//             animState.pauseTimer.setTimer(250);  // 250ms pause
-//         }
-//         return;
-//     }
-    
-//     // Normal animation sequence
-//     // Set the current LED pair to white with increasing brightness
-//     setLightColor(LightIdentifier::LEFT_LIGHTS, animState.currentIndex, LEDColor(animState.brightness, animState.brightness, animState.brightness));
-//     setLightColor(LightIdentifier::RIGHT_LIGHTS, animState.currentIndex, LEDColor(animState.brightness, animState.brightness, animState.brightness));
-    
-//     // Set the previous LED pair with decreasing brightness
-//     if (animState.prevIndex != animState.currentIndex) {  // Only if we have a different previous position
-//         uint8_t prevBrightness = 255 - animState.brightness;  // Inverse fade
-//         setLightColor(LightIdentifier::LEFT_LIGHTS, animState.prevIndex, LEDColor(prevBrightness, prevBrightness, prevBrightness));
-//         setLightColor(LightIdentifier::RIGHT_LIGHTS, animState.prevIndex, LEDColor(prevBrightness, prevBrightness, prevBrightness));
-//     }
-    
-//     static const uint8_t brightnessStep = 45;  // Configurable step size
-//     if (animState.brightness <= (255 - brightnessStep)) {  // Prevent overflow
-//         animState.brightness += brightnessStep;
-//     } else {
-//         animState.brightness = 255;  // Ensure we hit exactly 255
-//     }
-    
-//     // When we reach full brightness, move to next position
-//     if (animState.brightness >= 255) {
-//         if (animState.currentIndex == 0) {  // If we're at the bottom
-//             animState.isFadingOut = true;   // Start the fade out sequence
-//         } else {
-//             animState.brightness = 0;  // Reset brightness for next position
-//             animState.prevIndex = animState.currentIndex;  // Store current position as previous
-//             animState.currentIndex--;  // Move to next position (moving downward)
-//         }
-//     }
-// }
-
-// static const char* digitGlyphs[] = {
-//     "", //the glyphs are 1-10, so 0 is empty.
-//     "\u2780",
-//     "\u2781",
-//     "\u2782",
-//     "\u2783",
-//     "\u2784",
-//     "\u2785",
-//     "\u2786",
-//     "\u2787",
-//     "\u2788",
-//     "\u2789",
-//     "\u278A"
-// };
 
 static const char* digitGlyphs[] = {
     "\u0030",
@@ -514,5 +380,34 @@ static const char* loadingGlyphs[] = {
     "\u2636",
     "\u2637"
 };
+
+static const LEDState COUNTDOWN_THREE_STATE = LEDState();
+
+static const LEDState COUNTDOWN_TWO_STATE = [](){
+    LEDState state;
+    for(int i = 3; i < 5; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+    }
+    return state;
+}();
+
+static const LEDState COUNTDOWN_ONE_STATE = [](){
+    LEDState state;
+    for(int i = 3; i < 7; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+    }
+    return state;
+}();
+
+static const LEDState COUNTDOWN_DUEL_STATE = [](){
+    LEDState state;
+    for(int i = 3; i < 9; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+    }
+    return state;
+}();
 
 #endif
