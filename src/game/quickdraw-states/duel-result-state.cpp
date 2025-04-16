@@ -22,14 +22,28 @@ DuelResult::~DuelResult() {
 void DuelResult::onStateMounted(Device *PDN) {
     ESP_LOGI(DUEL_RESULT_TAG, "Duel result state mounted");
 
+    player->incrementMatchesPlayed();
+
     if(matchManager->didWin()) {
         wonBattle = true;
+        player->incrementWins();
+        player->incrementStreak();
     } else {
         captured = true;
+        player->resetStreak();
+        player->incrementLosses();
     }
 
     PDN->setVibration(0);
 
+    // Store reaction time before finalizing match
+    if(player->isHunter()) {
+        player->addReactionTime(matchManager->getCurrentMatch()->getHunterDrawTime());
+    } else {
+        player->addReactionTime(matchManager->getCurrentMatch()->getBountyDrawTime());
+    }
+
+    // Now it's safe to finalize the match, which might clear the current match
     matchManager->finalizeMatch();
 
     PDN->invalidateScreen()->render();

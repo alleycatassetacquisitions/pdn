@@ -81,7 +81,16 @@ void Duel::onStateMounted(Device *PDN) {
     
     ESP_LOGI(DUEL_TAG, "Draw image displayed for allegiance: %d", player->getAllegiance());
 
-    PDN->setVibration(255);
+    AnimationConfig config;
+    config.type = AnimationType::COUNTDOWN;
+    config.speed = 16;
+    config.loopDelayMs = 0;
+    config.loop = false;
+    config.initialState = COUNTDOWN_DUEL_STATE;
+    
+    PDN->startAnimation(config);
+
+    PDN->setVibration(175);
 }
 
 void Duel::onStateLoop(Device *PDN) {

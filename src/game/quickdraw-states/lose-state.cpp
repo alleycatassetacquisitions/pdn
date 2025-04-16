@@ -40,7 +40,7 @@ void Lose::onStateMounted(Device *PDN) {
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
     render();
 
-    loseTimer.setTimer(3000);
+    loseTimer.setTimer(8000);
 
     AnimationConfig config;
     config.type = AnimationType::LOSE;

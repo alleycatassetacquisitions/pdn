@@ -47,15 +47,22 @@ void DuelCountdown::onStateMounted(Device *PDN) {
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
     render();
 
+    PDN->startAnimation(countdownQueue[currentStepIndex].animationConfig);
+
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
 
-    AnimationConfig config;
-    config.type = AnimationType::COUNTDOWN;
-    config.speed = 16;
-    config.loopDelayMs = 0;
-    config.loop = false;
-    PDN->startAnimation(config);
+    PDN->setButtonClick(
+        ButtonInteraction::CLICK,
+        ButtonIdentifier::PRIMARY_BUTTON,
+        matchManager->getButtonMasher(),
+        matchManager);
+
+    PDN->setButtonClick(
+        ButtonInteraction::CLICK,
+        ButtonIdentifier::SECONDARY_BUTTON,
+        matchManager->getButtonMasher(),
+        matchManager);
 
     PDN->setVibration(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);
@@ -81,6 +88,8 @@ void DuelCountdown::onStateLoop(Device *PDN) {
             drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
             render();
 
+            PDN->startAnimation(countdownQueue[currentStepIndex].animationConfig);
+
             countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
             currentStepIndex++;
         }
@@ -103,6 +112,8 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
+    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
+    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
 }
 
 bool DuelCountdown::shallWeBattle() {

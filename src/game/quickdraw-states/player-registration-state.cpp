@@ -77,9 +77,6 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
         config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
         PDN->startAnimation(config);
     }
-
-    
-
     
 }
 

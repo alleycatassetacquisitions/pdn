@@ -43,10 +43,7 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
         [this](const WirelessErrorInfo& error) {
             ESP_LOGE(TAG, "Failed to update matches: %s (code: %d), willRetry: %d", 
                 error.message.c_str(), static_cast<int>(error.code), error.willRetry);
-            
-            if(!error.willRetry) {
-                transitionToSleepState = true;
-            }
+            routeToNextState();
         }
     );
 

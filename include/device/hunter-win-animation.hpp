@@ -10,12 +10,11 @@ public:
     HunterWinAnimation() : 
         AnimationBase(),
         lastFrameTime_(0) {
-        ESP_LOGI("HunterWinAnimation", "Constructor called");
+
     }
 
 protected:
     void onInit() override {
-        ESP_LOGI("HunterWinAnimation", "onInit called");
         // Reset animation state
         lastFrameTime_ = 0;
         
@@ -33,7 +32,6 @@ protected:
         currentState_.rightLights[0].color = gripColors[3];
         currentState_.rightLights[1].color = gripColors[4];
         currentState_.rightLights[2].color = gripColors[5];
-        ESP_LOGI("HunterWinAnimation", "Initialized with frame timer: %d ms", config_.speed);
     }
 
     LEDState onAnimate() override {
@@ -62,7 +60,6 @@ protected:
                 currentState_.setLED(false, index-3, gripColors[index], 155);
             }
             
-            ESP_LOGI("HunterWinAnimation", "Added six twinkles to display and grip LEDs");
         }
         
         return currentState_;

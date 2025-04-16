@@ -267,6 +267,10 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     return match;
 }
 
+parameterizedCallbackFunction MatchManager::getButtonMasher() {
+    return buttonMasher;
+}
+
 void MatchManager::initialize(Player* player) {
     this->player = player;
 

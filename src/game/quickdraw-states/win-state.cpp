@@ -42,7 +42,7 @@ void Win::onStateMounted(Device *PDN) {
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::WIN))->
     render();
 
-    winTimer.setTimer(3000);
+    winTimer.setTimer(8000);
 
     AnimationConfig config;
     config.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
@@ -64,6 +64,8 @@ void Win::onStateLoop(Device *PDN) {
 void Win::onStateDismounted(Device *PDN) {
     winTimer.invalidate();
     reset = false;
+
+    PDN->setVibration(VIBRATION_OFF);
     
     // Switch to power-off WiFi mode at the end of game
     wirelessManager->powerOff();

@@ -185,3 +185,55 @@ void Player::setOpponentMacAddress(string macAddress) {
 string* Player::getOpponentMacAddress() {
     return opponentMacAddress;
 }
+
+unsigned long Player::getLastReactionTime() {
+    return lastReactionTime;
+}
+
+unsigned long Player::getAverageReactionTime() {
+    if(matchesPlayed == 0) {
+        return 0;
+    }
+    return totalReactionTime / matchesPlayed;
+}
+
+int Player::getStreak() {
+    return winStreak;
+}
+
+int Player::getMatchesPlayed() {
+    return matchesPlayed;
+}
+
+int Player::getWins() {
+    return wins;
+}
+
+int Player::getLosses() {
+    return losses;
+}
+
+void Player::incrementStreak() {
+    winStreak++;
+}
+
+void Player::resetStreak() {
+    winStreak = 0;
+}
+
+void Player::incrementMatchesPlayed() {
+    matchesPlayed++;
+}
+
+void Player::incrementWins() {
+    wins++;
+}
+
+void Player::incrementLosses() {
+    losses++;
+}
+
+void Player::addReactionTime(unsigned long reactionTime) {
+    lastReactionTime = reactionTime;
+    totalReactionTime += reactionTime;
+}
