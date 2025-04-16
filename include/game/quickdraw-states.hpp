@@ -220,37 +220,31 @@ private:
     Player* player;
 };
 
+class PingQueue;
+
 class Idle : public State {
 public:
-    Idle(Player *player, WirelessManager* wirelessManager);
+    Idle(Player* player, PingQueue* pingQueue);
+    ~Idle() override;
 
-    ~Idle();
-
-    void onStateMounted(Device *PDN) override;
-
-    void onStateLoop(Device *PDN) override;
-
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
 
     bool transitionToHandshake();
 
-    void cycleStats(Device *PDN);
-
 private:
-    Player *player;
-    WirelessManager* wirelessManager;
+    void serialEventCallbacks(string message);
+    void cycleStats(Device* PDN);
+
+    Player* player;
+    PingQueue* pingQueue;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
-
     bool displayIsDirty = false;
-
     int statsIndex = 0;
-    int statsCount = 5;
-
-    void serialEventCallbacks(string message);
-
-    void ledAnimation(Device *PDN);
+    static constexpr int statsCount = 5;
 };
 
 /*

@@ -4,6 +4,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "wireless/esp-now-comms.hpp"
 #include "game/match-manager.hpp"
+#include "game/ping-queue.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -18,9 +19,9 @@
       msgDelay = msgDelay + 1;
     }
  */
-Idle::Idle(Player* player, WirelessManager* wirelessManager) : State(IDLE) {
+Idle::Idle(Player* player, PingQueue* pingQueue) : State(IDLE) {
     this->player = player;
-    this->wirelessManager = wirelessManager;
+    this->pingQueue = pingQueue;
 }
 
 Idle::~Idle() {
@@ -96,6 +97,17 @@ void Idle::onStateLoop(Device *PDN) {
         transitionToHandshakeState = true;
     }
 
+    // Update ping queue
+    if (player->getOpponentMacAddress() && !player->getOpponentMacAddress()->empty()) {
+        pingQueue->addPing(*player->getOpponentMacAddress());
+        pingQueue->cleanup();
+        
+        if (pingQueue->hasEnoughPings(*player->getOpponentMacAddress())) {
+            ESP_LOGI("IDLE", "Enough pings received from opponent");
+            transitionToHandshakeState = true;
+        }
+    }
+
     if(displayIsDirty) {
         cycleStats(PDN);
         displayIsDirty = false;
@@ -110,6 +122,8 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->setGlyphMode(FontMode::TEXT);
     PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
     PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    pingQueue->clear();
+    PDN->clearCallbacks();
 }
 
 void Idle::serialEventCallbacks(string message) {
