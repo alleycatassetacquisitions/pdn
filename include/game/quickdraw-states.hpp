@@ -8,6 +8,7 @@
 #include "game/match-manager.hpp"
 #include "wireless/wireless-manager.hpp"
 #include "quickdraw-resources.hpp"
+#include "game/ping-queue.hpp"
 #include <queue>
 
 using namespace std;
@@ -220,11 +221,9 @@ private:
     Player* player;
 };
 
-class PingQueue;
-
 class Idle : public State {
 public:
-    Idle(Player* player, PingQueue* pingQueue);
+    Idle(Player* player, WirelessManager* wirelessManager, PingQueue* pingQueue);
     ~Idle() override;
 
     void onStateMounted(Device* PDN) override;
@@ -234,17 +233,19 @@ public:
     bool transitionToHandshake();
 
 private:
-    void serialEventCallbacks(string message);
+    void serialEventCallbacks(std::string message);
     void cycleStats(Device* PDN);
+    void ledAnimation(Device* PDN);
 
     Player* player;
+    WirelessManager* wirelessManager;
     PingQueue* pingQueue;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
-    static constexpr int statsCount = 5;
+    static constexpr int statsCount = 6;
 };
 
 /*

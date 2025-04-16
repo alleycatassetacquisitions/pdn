@@ -19,21 +19,23 @@
       msgDelay = msgDelay + 1;
     }
  */
-Idle::Idle(Player* player, PingQueue* pingQueue) : State(IDLE) {
+Idle::Idle(Player* player, WirelessManager* wirelessManager, PingQueue* pingQueue) : State(IDLE) {
     this->player = player;
+    this->wirelessManager = wirelessManager;
     this->pingQueue = pingQueue;
 }
 
 Idle::~Idle() {
     player = nullptr;
+    wirelessManager = nullptr;
+    pingQueue = nullptr;
 }
 
 void Idle::onStateMounted(Device *PDN) {
-
     MatchManager::GetInstance()->clearCurrentMatch();
 
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
-
+    
     wirelessManager->switchToEspNow();
     
     AnimationConfig config;
@@ -79,7 +81,6 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-
     EVERY_N_MILLIS(250) {
         if(!player->isHunter()) {
             PDN->writeString(SERIAL_HEARTBEAT.c_str());
@@ -90,7 +91,7 @@ void Idle::onStateLoop(Device *PDN) {
         uint8_t macAddr[6];
         esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
         const char* macStr = MacToString(macAddr);
-        ESP_LOGI("IDLE", "Perparing to Send Mac Address: %s", macStr);
+        ESP_LOGI("IDLE", "Preparing to Send Mac Address: %s", macStr);
         
         PDN->writeString(SEND_MAC_ADDRESS);
         PDN->writeString(macStr);
@@ -99,10 +100,11 @@ void Idle::onStateLoop(Device *PDN) {
 
     // Update ping queue
     if (player->getOpponentMacAddress() && !player->getOpponentMacAddress()->empty()) {
-        pingQueue->addPing(*player->getOpponentMacAddress());
+        std::string opponentMac = *player->getOpponentMacAddress();
+        pingQueue->addPing(opponentMac);
         pingQueue->cleanup();
         
-        if (pingQueue->hasEnoughPings(*player->getOpponentMacAddress())) {
+        if (pingQueue->hasEnoughPings(opponentMac)) {
             ESP_LOGI("IDLE", "Enough pings received from opponent");
             transitionToHandshakeState = true;
         }
@@ -126,16 +128,20 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->clearCallbacks();
 }
 
-void Idle::serialEventCallbacks(string message) {
+void Idle::serialEventCallbacks(std::string message) {
     ESP_LOGI("IDLE", "Serial event received: %s", message.c_str());
-    if(message.compare(SERIAL_HEARTBEAT) == 0) {
+    
+    if(message == SERIAL_HEARTBEAT) {
         sendMacAddress = true;  
-    } else if(message.compare(SEND_MAC_ADDRESS) == 0) {
+    } else if(message == SEND_MAC_ADDRESS) {
         waitingForMacAddress = true;
     } else if(waitingForMacAddress) {
         waitingForMacAddress = false;
         player->setOpponentMacAddress(message);
         transitionToHandshakeState = true;
+    } else if (message.substr(0, 5) == "PING:") {
+        std::string sourceId = message.substr(5);
+        pingQueue->addPing(sourceId);
     }
 }
 
@@ -165,6 +171,14 @@ void Idle::cycleStats(Device *PDN) {
     } else if(statsIndex == 5) {
         PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getAverageReactionTime()).c_str(), 80, 55);
+    } else if(statsIndex == 6) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Ping",70, 20)->drawText("Queue", 70, 35);
+        if (player->getOpponentMacAddress() && !player->getOpponentMacAddress()->empty()) {
+            int pingCount = pingQueue->getValidPingCount(*player->getOpponentMacAddress());
+            PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(pingCount).c_str(), 88, 55);
+        } else {
+            PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText("0", 88, 55);
+        }
     }
 
     PDN->render();

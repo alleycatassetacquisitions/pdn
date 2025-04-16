@@ -7,6 +7,8 @@
 #include "quickdraw-states.hpp"
 #include "quickdraw-resources.hpp"
 #include "wireless/wireless-manager.hpp"
+#include "game/ping-queue.hpp"
+#include "image.hpp"
 #define MATCH_SIZE sizeof(Match)
 
 // Global includes
@@ -32,4 +34,5 @@ private:
     MatchManager* matchManager;
     Player *player;
     WirelessManager* wirelessManager;
+    PingQueue pingQueue;
 };

@@ -351,6 +351,7 @@ static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) 
             return &endlineImageCollection;
         case Allegiance::RESISTANCE:
             return &resistanceImageCollection;
+        case Allegiance::ALLEYCAT:
         default:
             return &alleycatImageCollection;
     }

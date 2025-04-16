@@ -13,25 +13,37 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
-    // Create states
-    PlayerRegistration* playerRegistration = new PlayerRegistration(player);
-    FetchUserData* fetchUserData = new FetchUserData(player);
-    AllegiancePicker* allegiancePicker = new AllegiancePicker(player);
-    ChooseRole* chooseRole = new ChooseRole(player);
-    ConfirmOffline* confirmOffline = new ConfirmOffline(player);
-    HandshakeInitiate* handshakeInitiate = new HandshakeInitiate(player);
-    BountySendCC* bountySendCC = new BountySendCC(player);
-    HunterSendId* hunterSendId = new HunterSendId(player);
-    ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
-    DuelCountdown* duelCountdown = new DuelCountdown(player);
-    Duel* duel = new Duel(player);
-    Win* win = new Win(player);
-    Lose* lose = new Lose(player);
-    AwakenSequence* awakenSequence = new AwakenSequence(player);
+    matchManager->initialize(player);
 
-    // Create PingQueue and Idle state
-    PingQueue* pingQueue = new PingQueue();
-    Idle* idle = new Idle(player, pingQueue);
+    PlayerRegistration* playerRegistration = new PlayerRegistration(player, matchManager);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);
+    WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
+    ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
+    ChooseRoleState* chooseRole = new ChooseRoleState(player);
+    AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
+    
+    AwakenSequence* awakenSequence = new AwakenSequence(player);
+    
+    // Create Idle state with both managers
+    Idle* idle = new Idle(player, wirelessManager, &pingQueue);
+    
+    HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
+    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
+    HunterSendIdState* hunterSendId = new HunterSendIdState(player);
+
+    ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
+    
+    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager);
+    Duel* duel = new Duel(player, matchManager);
+    DuelPushed* duelPushed = new DuelPushed(player, matchManager);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager);
+    DuelResult* duelResult = new DuelResult(player, matchManager);
+    
+    Win* win = new Win(player, wirelessManager);
+    Lose* lose = new Lose(player, wirelessManager);
+    
+    Sleep* sleep = new Sleep(player);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
     // Add transitions
     playerRegistration->addTransition(

@@ -1,33 +1,54 @@
 #pragma once
 
+#include <vector>
 #include <string>
-#include <map>
 #include <set>
-#include <chrono>
+#include <Arduino.h>
+#include "simple-timer.hpp"
 
 class PingQueue {
 public:
-    PingQueue();
-    ~PingQueue();
+    struct Ping {
+        uint64_t timestamp;
+        std::string sourceId;
+    };
 
+    PingQueue();
+
+    // Add a new ping from a source
     void addPing(const std::string& sourceId);
+
+    // Clean up expired pings
     void cleanup();
+
+    // Get the number of valid pings from a source
     int getPingCount(const std::string& sourceId) const;
+
+    // Check if a source has enough pings
     bool hasEnoughPings(const std::string& sourceId) const;
+
+    // Clear all pings
     void clear();
+
+    // Get the current number of valid pings for a source
     int getValidPingCount(const std::string& sourceId) const;
+
+    // Get all unique sources that have pinged in the last expiry time
     std::set<std::string> getActiveSources() const;
+
+    // Check if a specific source has been active in the last expiry time
     bool isSourceActive(const std::string& sourceId) const;
+
+    // Get the most recent ping from a source
     uint64_t getLastPingTime(const std::string& sourceId) const;
+
+    // Get the time since the last ping from a source
     uint64_t getTimeSinceLastPing(const std::string& sourceId) const;
 
 private:
-    struct PingInfo {
-        uint64_t timestamp;
-        bool valid;
-    };
-
-    std::map<std::string, std::vector<PingInfo>> pings;
-    static constexpr uint64_t PING_TIMEOUT_MS = 5000; // 5 seconds
-    static constexpr int MIN_PINGS_REQUIRED = 3;
+    std::vector<Ping> m_pings;
+    SimpleTimer cleanupTimer;
+    const uint64_t m_expiryTime;
+    const uint64_t m_pingInterval;
+    const int m_requiredPings;
 }; 
