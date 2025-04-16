@@ -3,15 +3,16 @@
 #include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
 #include <esp_log.h>
-
+#include "wireless/wireless-manager.hpp"
 
 // Logging tag for PlayerRegistration state
 static const char* TAG = "PlayerRegistration";
 
-PlayerRegistration::PlayerRegistration(Player* player, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
+PlayerRegistration::PlayerRegistration(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
     ESP_LOGI(TAG, "Initializing PlayerRegistration state");
     this->player = player;
     this->matchManager = matchManager;
+    this->wirelessManager = wirelessManager;
 }
 
 PlayerRegistration::~PlayerRegistration() {
@@ -20,7 +21,10 @@ PlayerRegistration::~PlayerRegistration() {
 }
 
 void PlayerRegistration::onStateMounted(Device *PDN) {
+   
     ESP_LOGI(TAG, "State mounted - Starting player registration");
+    // Switch to ESP-NOW mode to listen for debug packets
+    wirelessManager->switchToEspNow();
     PDN->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
     drawText("Pairing Code", 8, 16)->

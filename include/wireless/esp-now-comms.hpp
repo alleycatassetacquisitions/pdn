@@ -4,7 +4,7 @@
 #include <queue>
 #include <unordered_map>
 #include <esp_now.h>
-
+#include <esp_log.h>
 //Change to 1 to enable tracking rssi for peers
 //This works, but requires wifi to be in promiscuous mode
 //which likely prevents connecting to access points and
@@ -20,6 +20,7 @@ enum class PktType : uint8_t
 {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
+    kDebugPacket = 2,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 

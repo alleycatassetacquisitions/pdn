@@ -9,6 +9,7 @@
 
 #include "state-machine.hpp"
 #include "wireless/wireless-types.hpp"
+#include "wireless/remote-debug-manager.hpp"
 #include "simple-timer.hpp"
 #include "esp-now-comms.hpp"
 
@@ -119,7 +120,7 @@ public:
 
 class WifiState : public WirelessState {
 public:
-    WifiState(const char* ssid, const char* password, const char* baseUrl, std::queue<HttpRequest>* requestQueue);
+    WifiState(WifiConfig* config, std::queue<HttpRequest>* requestQueue);
     void onStateMounted(Device* PDN) override;
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
@@ -164,9 +165,7 @@ private:
     SimpleTimer connectionAttemptTimer;
     static const int MAX_WIFI_CONN_ATTEMPTS = 20;
     
-    const char* ssid;
-    const char* password;
-    const char* baseUrl;
+    WifiConfig* wifiConfig;
     uint8_t channel;
     std::queue<HttpRequest>* httpQueue;
     esp_http_client_handle_t httpClient;  ///< Persistent HTTP client handle
@@ -177,7 +176,7 @@ private:
 
 class WirelessManager : public StateMachine {
 public:
-    WirelessManager(Device* device, const char* wifiSsid, const char* wifiPassword, const char* baseUrl);
+    WirelessManager(Device* device, const String& wifiSsid, const String& wifiPassword, const String& baseUrl);
     
     /**
      * Initialize the wireless manager
@@ -233,13 +232,19 @@ public:
     bool switchToEspNow();
     bool switchToWifi();
     bool powerOff();
+    
+    /**
+     * Updates WiFi credentials and base URL.
+     * If currently connected to WiFi, this will trigger a reconnect.
+     * 
+     * @param debugPacket Debug packet containing new credentials
+     */
+    void updateWifiCredentials(DebugPacket debugPacket);
 
     friend class WifiState;
 
 private:
-    const char* wifiSsid;
-    const char* wifiPassword;
-    const char* baseUrl;
+    WifiConfig wifiConfig;
     bool pendingEspNowSwitch;
     bool pendingWifiSwitch;
     bool pendingPowerOff;

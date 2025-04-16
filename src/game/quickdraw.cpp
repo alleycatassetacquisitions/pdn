@@ -16,7 +16,7 @@ void Quickdraw::populateStateMap() {
 
     matchManager->initialize(player);
 
-    PlayerRegistration* playerRegistration = new PlayerRegistration(player, matchManager);
+    PlayerRegistration* playerRegistration = new PlayerRegistration(player, wirelessManager, matchManager);
     FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);
     WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
@@ -64,6 +64,11 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&FetchUserDataState::transitionToWelcomeMessage, fetchUserData),
             welcomeMessage));
+
+    fetchUserData->addTransition(
+        new StateTransition(
+            std::bind(&FetchUserDataState::transitionToPlayerRegistration, fetchUserData),
+            playerRegistration));
 
     confirmOffline->addTransition(
         new StateTransition(
