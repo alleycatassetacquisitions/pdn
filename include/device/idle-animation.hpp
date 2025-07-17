@@ -11,31 +11,31 @@ public:
         AnimationBase(),
         currentOffset(0),
         transitionProgress(0),
-        isWaitingForPause_(false) {
-        pauseTimer_.setTimer(0);
+        isWaitingForPause(false) {
+        pauseTimer.setTimer(0);
     }
 
 protected:
     void onInit() override {
         currentOffset = 0;
         transitionProgress = 0;
-        isWaitingForPause_ = false;
+        isWaitingForPause = false;
         
         // Store initial colors
         for (int i = 0; i < 9; i++) {
-            originalColors[i] = config_.initialState.leftLights[i].color;
+            originalColors[i] = config.initialState.leftLights[i].color;
         }
         
-        pauseTimer_.setTimer(0);
-        currentState_ = config_.initialState;
+        pauseTimer.setTimer(0);
+        currentState = config.initialState;
     }
 
     LEDState onAnimate() override {
-        if (isWaitingForPause_) {
-            if (pauseTimer_.expired()) {
-                isWaitingForPause_ = false;
+        if (isWaitingForPause) {
+            if (pauseTimer.expired()) {
+                isWaitingForPause = false;
             } else {
-                return currentState_;
+                return currentState;
             }
         }
         
@@ -61,9 +61,9 @@ protected:
             // Set the interpolated color
             LEDColor interpolatedColor = {r, g, b};
             if(i > 2) {
-                currentState_.setLEDPair(i, interpolatedColor, (int)(brightness * brightnessRatio));
+                currentState.setLEDPair(i, interpolatedColor, (int)(brightness * brightnessRatio));
             } else {
-                currentState_.setLEDPair(i, interpolatedColor, brightness);
+                currentState.setLEDPair(i, interpolatedColor, brightness);
             }
         }
         
@@ -76,21 +76,21 @@ protected:
             currentOffset = (currentOffset + 1) % 9;
             
             // If we've completed a full cycle and looping is enabled, add a pause
-            if (currentOffset == 0 && config_.loop) {
-                isWaitingForPause_ = true;
-                pauseTimer_.setTimer(config_.loopDelayMs);
+            if (currentOffset == 0 && config.loop) {
+                isWaitingForPause = true;
+                pauseTimer.setTimer(config.loopDelayMs);
             }
         }
         
-        return currentState_;
+        return currentState;
     }
 
 private:
     LEDColor originalColors[9];
     int currentOffset;
     int transitionProgress;
-    bool isWaitingForPause_;
-    SimpleTimer pauseTimer_;
+    bool isWaitingForPause;
+    SimpleTimer pauseTimer;
     uint8_t brightness = 87;
     float brightnessRatio = .2;
 }; 

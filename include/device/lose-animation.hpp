@@ -9,10 +9,10 @@ class LoseAnimation : public AnimationBase {
 public:
     LoseAnimation() : 
         AnimationBase(),
-        animationState_(AnimationState::SHORT_CIRCUIT),
-        stateStartTime_(0),
-        flickerTimer_(0),
-        fadeProgress_(255) {
+        animationState(AnimationState::SHORT_CIRCUIT),
+        stateStartTime(0),
+        flickerTimer(0),
+        fadeProgress(255) {
         ESP_LOGI("LoseAnimation", "Constructor called");
     }
 
@@ -20,34 +20,34 @@ protected:
     void onInit() override {
         ESP_LOGI("LoseAnimation", "onInit called");
         // Reset animation state
-        animationState_ = AnimationState::SHORT_CIRCUIT;
-        stateStartTime_ = millis();
-        flickerTimer_ = 0;
-        fadeProgress_ = 255;
+        animationState = AnimationState::SHORT_CIRCUIT;
+        stateStartTime = millis();
+        flickerTimer = 0;
+        fadeProgress = 255;
         
         // Set default frame rate for smooth animation (16ms per frame)
-        if (config_.speed == 0) {
-            frameTimer_.setTimer(16);
+        if (config.speed == 0) {
+            frameTimer.setTimer(16);
         }
         
         // Initialize with clear state
-        currentState_ = config_.initialState;
-        currentState_.clear();
-        ESP_LOGI("LoseAnimation", "Initialized with frame timer: %d ms", config_.speed);
+        currentState = config.initialState;
+        currentState.clear();
+        ESP_LOGI("LoseAnimation", "Initialized with frame timer: %d ms", config.speed);
     }
 
     LEDState onAnimate() override {
         uint32_t currentTime = millis();
         
-        switch (animationState_) {
+        switch (animationState) {
             case AnimationState::SHORT_CIRCUIT:
                 // Short circuit effect: rapid flickering with bright flashes
                 animateShortCircuit(currentTime);
                 
                 // Transition to power down after just 0.25 seconds (reduced from 0.5 seconds)
-                if (currentTime - stateStartTime_ > 250) {
-                    animationState_ = AnimationState::POWER_DOWN;
-                    stateStartTime_ = currentTime;
+                if (currentTime - stateStartTime > 250) {
+                    animationState = AnimationState::POWER_DOWN;
+                    stateStartTime = currentTime;
                     ESP_LOGI("LoseAnimation", "Transitioning to POWER_DOWN state");
                 }
                 break;
@@ -57,9 +57,9 @@ protected:
                 animatePowerDown(currentTime);
                 
                 // Transition to warning state after power down (1.5 seconds)
-                if (currentTime - stateStartTime_ > 1500) {
-                    animationState_ = AnimationState::WARNING;
-                    stateStartTime_ = currentTime;
+                if (currentTime - stateStartTime > 1500) {
+                    animationState = AnimationState::WARNING;
+                    stateStartTime = currentTime;
                     ESP_LOGI("LoseAnimation", "Transitioning to WARNING state");
                 }
                 break;
@@ -71,7 +71,7 @@ protected:
                 break;
         }
         
-        return currentState_;
+        return currentState;
     }
 
 private:
@@ -83,11 +83,11 @@ private:
     
     void animateShortCircuit(uint32_t currentTime) {
         // Clear previous state
-        currentState_.clear();
+        currentState.clear();
         
         // Even slower, less intense flickering
-        if (currentTime - flickerTimer_ > 80 + random(50)) {  // Further increased from 60+random(40)
-            flickerTimer_ = currentTime;
+        if (currentTime - flickerTimer > 80 + random(50)) {  // Further increased from 60+random(40)
+            flickerTimer = currentTime;
             
             // Randomize which LEDs light up
             for (int i = 0; i < 9; i++) {
@@ -111,10 +111,10 @@ private:
                 
                 // Set LEDs
                 if (leftLit) {
-                    currentState_.leftLights[i] = LEDState::SingleLEDState(color, brightness);
+                    currentState.leftLights[i] = LEDState::SingleLEDState(color, brightness);
                 }
                 if (rightLit) {
-                    currentState_.rightLights[i] = LEDState::SingleLEDState(color, brightness);
+                    currentState.rightLights[i] = LEDState::SingleLEDState(color, brightness);
                 }
             }
             
@@ -124,7 +124,7 @@ private:
                 // Fewer LEDs light up during a surge
                 for (int i = 0; i < 9; i++) {
                     if (random(100) < 40) { // 40% chance instead of 50%
-                        currentState_.setLEDPair(i, surgeColor, 130); // Fixed lower brightness (reduced from 180)
+                        currentState.setLEDPair(i, surgeColor, 130); // Fixed lower brightness (reduced from 180)
                     }
                 }
             }
@@ -133,14 +133,14 @@ private:
     
     void animatePowerDown(uint32_t currentTime) {
         // Gradual fade out of all LEDs
-        if (fadeProgress_ > 0) {
-            fadeProgress_ = std::max(0, fadeProgress_ - 3);
+        if (fadeProgress > 0) {
+            fadeProgress = std::max(0, fadeProgress - 3);
             
             // Set all LEDs to a dim blue-ish white with decreasing brightness
             LEDColor powerDownColor(100, 100, 150);
             
             for (int i = 0; i < 9; i++) {
-                currentState_.setLEDPair(i, powerDownColor, fadeProgress_);
+                currentState.setLEDPair(i, powerDownColor, fadeProgress);
             }
             
             // Occasionally add a flicker during power down
@@ -148,20 +148,20 @@ private:
                 int flickerLED = random(9);
                 // Calculate flicker brightness with bounds checking
                 int extraBrightness = random(100);
-                int totalBrightness = fadeProgress_ + extraBrightness;
+                int totalBrightness = fadeProgress + extraBrightness;
                 uint8_t flickerBrightness = (totalBrightness > 255) ? 255 : static_cast<uint8_t>(totalBrightness);
                 
-                currentState_.setLEDPair(flickerLED, powerDownColor, flickerBrightness);
+                currentState.setLEDPair(flickerLED, powerDownColor, flickerBrightness);
             }
         }
     }
     
     void animateWarning(uint32_t currentTime) {
         // Clear all LEDs first
-        currentState_.clear();
+        currentState.clear();
         
         // Calculate elapsed time and cycle count
-        uint32_t elapsedTime = currentTime - stateStartTime_;
+        uint32_t elapsedTime = currentTime - stateStartTime;
         uint32_t cycleCount = elapsedTime / 1000; // Each cycle is 1000ms
         
         // Calculate dimming factor based on cycle count (0-100%)
@@ -194,28 +194,28 @@ private:
         LEDColor redColor(255, 0, 0);
         
         // Display only a few warning lights
-        currentState_.leftLights[1] = LEDState::SingleLEDState(amberColor, brightness);
-        currentState_.leftLights[4] = LEDState::SingleLEDState(amberColor, brightness);
-        currentState_.leftLights[7] = LEDState::SingleLEDState(amberColor, brightness);
+        currentState.leftLights[1] = LEDState::SingleLEDState(amberColor, brightness);
+        currentState.leftLights[4] = LEDState::SingleLEDState(amberColor, brightness);
+        currentState.leftLights[7] = LEDState::SingleLEDState(amberColor, brightness);
         
-        currentState_.rightLights[1] = LEDState::SingleLEDState(redColor, brightness);
-        currentState_.rightLights[4] = LEDState::SingleLEDState(redColor, brightness);
-        currentState_.rightLights[7] = LEDState::SingleLEDState(redColor, brightness);
+        currentState.rightLights[1] = LEDState::SingleLEDState(redColor, brightness);
+        currentState.rightLights[4] = LEDState::SingleLEDState(redColor, brightness);
+        currentState.rightLights[7] = LEDState::SingleLEDState(redColor, brightness);
         
         // Transmit light occasional blink - red
         if (warningPhase < 200 || (warningPhase > 500 && warningPhase < 700)) {
-            currentState_.transmitLight = LEDState::SingleLEDState(redColor, brightness);
+            currentState.transmitLight = LEDState::SingleLEDState(redColor, brightness);
         }
         
         // If we've completed 3 full cycles and we're not looping, mark as complete
-        if (!config_.loop && cycleCount >= 3 && warningPhase > 900) {
-            isComplete_ = true;
+        if (!config.loop && cycleCount >= 3 && warningPhase > 900) {
+            isComplete = true;
             ESP_LOGI("LoseAnimation", "Animation complete after 3 warning cycles");
         }
     }
     
-    AnimationState animationState_;
-    uint32_t stateStartTime_;
-    uint32_t flickerTimer_;
-    int fadeProgress_;
+    AnimationState animationState;
+    uint32_t stateStartTime;
+    uint32_t flickerTimer;
+    int fadeProgress;
 }; 

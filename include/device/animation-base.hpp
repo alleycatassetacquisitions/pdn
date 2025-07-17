@@ -9,60 +9,60 @@
 class AnimationBase : public IAnimation {
 public:
     AnimationBase() : 
-        isPaused_(false),
-        isComplete_(false) {
-        frameTimer_.setTimer(16); // Default 16ms between frames
+        isPaused(false),
+        isComplete(false) {
+        frameTimer.setTimer(16); // Default 16ms between frames
     }
     
     virtual ~AnimationBase() {
     }
 
     void init(const AnimationConfig& config) override {
-        config_ = config;
-        isPaused_ = false;
-        isComplete_ = false;
-        frameTimer_.setTimer(config.speed);
+        this->config = config;
+        isPaused = false;
+        isComplete = false;
+        frameTimer.setTimer(config.speed);
         
         // Initialize with the provided initial state
-        currentState_ = config.initialState;
+        currentState = config.initialState;
         
         onInit();
     }
 
     LEDState animate() override final {
-        if (isPaused_ || isComplete_) {
-            return currentState_;
+        if (isPaused || isComplete) {
+            return currentState;
         }
 
         // Only update if enough time has passed
-        if (frameTimer_.expired()) {
-            frameTimer_.setTimer(config_.speed);  // Reset timer for next frame
+        if (frameTimer.expired()) {
+            frameTimer.setTimer(config.speed);  // Reset timer for next frame
             
             // Update the current state directly and get it back
-            LEDState prevState = currentState_;
-            currentState_ = onAnimate();
-            currentState_.timestamp = millis();
+            LEDState prevState = currentState;
+            currentState = onAnimate();
+            currentState.timestamp = millis();
         }
 
-        return currentState_;
+        return currentState;
     }
 
-    bool isComplete() const override { return isComplete_; }
+    bool complete() const override { return isComplete; }
     
     void pause() override { 
-        isPaused_ = true; 
+        isPaused = true; 
     }
     
     void resume() override { 
-        isPaused_ = false; 
+        isPaused = false; 
     }
     
     void stop() override { 
-        isComplete_ = true; 
+        isComplete = true; 
     }
     
-    AnimationType getType() const override { return config_.type; }
-    bool isPaused() const override { return isPaused_; }
+    AnimationType getType() const override { return config.type; }
+    bool paused() const override { return isPaused; }
 
 protected:
     // Override these in derived classes
@@ -102,9 +102,9 @@ protected:
     }
 
 protected:
-    bool isPaused_;
-    bool isComplete_;
-    SimpleTimer frameTimer_;
-    AnimationConfig config_;
-    LEDState currentState_;
+    bool isPaused;
+    bool isComplete;
+    SimpleTimer frameTimer;
+    AnimationConfig config;
+    LEDState currentState;
 }; 

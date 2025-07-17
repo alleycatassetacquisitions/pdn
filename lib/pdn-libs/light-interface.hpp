@@ -103,7 +103,7 @@ public:
     virtual LEDState animate() = 0;
     
     // Check if the animation has completed
-    virtual bool isComplete() const = 0;
+    virtual bool complete() const = 0;
     
     // Pause the animation
     virtual void pause() = 0;
@@ -118,7 +118,7 @@ public:
     virtual AnimationType getType() const = 0;
     
     // Check if the animation is paused
-    virtual bool isPaused() const = 0;
+    virtual bool paused() const = 0;
 
 protected:
     // Helper method to get easing values

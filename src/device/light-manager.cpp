@@ -21,7 +21,7 @@ void LightManager::begin() {
 }
 
 void LightManager::loop() {
-    if (currentAnimation && !currentAnimation->isPaused()) {
+    if (currentAnimation && !currentAnimation->paused()) {
         // Get the next frame from the animation
         LEDState state = currentAnimation->animate();
         
@@ -245,15 +245,15 @@ void LightManager::clear(LightIdentifier lights) {
 }
 
 bool LightManager::isAnimating() const {
-    return currentAnimation != nullptr && !currentAnimation->isComplete();
+    return currentAnimation != nullptr && !currentAnimation->complete();
 }
 
 bool LightManager::isPaused() const {
-    return currentAnimation && currentAnimation->isPaused();
+    return currentAnimation && currentAnimation->paused();
 }
 
 bool LightManager::isAnimationComplete() const {
-    return currentAnimation ? currentAnimation->isComplete() : true;
+    return currentAnimation ? currentAnimation->complete() : true;
 }
 
 AnimationType LightManager::getCurrentAnimation() const {

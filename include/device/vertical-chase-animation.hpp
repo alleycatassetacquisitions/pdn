@@ -9,39 +9,39 @@ class VerticalChaseAnimation : public AnimationBase {
 public:
     VerticalChaseAnimation() : 
         AnimationBase(),
-        currentIndex_(12),  // Start at top
+        currentIndex(12),  // Start at top
         progress(0),
-        isWaitingForPause_(false) {
+        isWaitingForPause(false) {
         // Initialize with 0ms timer (expired)
-        pauseTimer_.setTimer(0);
+        pauseTimer.setTimer(0);
     }
 
 protected:
     void onInit() override {
         //currentIndex starts at 12.
-        currentIndex_ = 12;
+        currentIndex = 12;
         progress = 0;
-        isWaitingForPause_ = false;
+        isWaitingForPause = false;
 
-        ledColors[0] = config_.initialState.leftLights[0].color;
-        ledColors[1] = config_.initialState.leftLights[1].color;
-        ledColors[2] = config_.initialState.leftLights[2].color;
-        ledColors[3] = config_.initialState.leftLights[3].color;
+        ledColors[0] = config.initialState.leftLights[0].color;
+        ledColors[1] = config.initialState.leftLights[1].color;
+        ledColors[2] = config.initialState.leftLights[2].color;
+        ledColors[3] = config.initialState.leftLights[3].color;
         
-        pauseTimer_.setTimer(0);  // Reset pause timer
-        currentState_ = config_.initialState; //Set the current state to initial.
+        pauseTimer.setTimer(0);  // Reset pause timer
+        currentState = config.initialState; //Set the current state to initial.
     }
 
     LEDState onAnimate() override {
         // If we're waiting for a pause between animations
-        if (isWaitingForPause_) {
-            if (pauseTimer_.expired()) {
+        if (isWaitingForPause) {
+            if (pauseTimer.expired()) {
                 // Reset for next animation cycle
-                isWaitingForPause_ = false;
-                currentIndex_ = 12;  // Reset to top
+                isWaitingForPause = false;
+                currentIndex = 12;  // Reset to top
                 progress = 0;
             } else {
-                return currentState_;
+                return currentState;
             }
         }
 
@@ -52,68 +52,68 @@ protected:
             progress = 255;
         }
 
-        int currentBezierValue = getEasingValue(progress, config_.curve);
+        int currentBezierValue = getEasingValue(progress, config.curve);
         
-        switch(currentIndex_) {
+        switch(currentIndex) {
             case 12:
-                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[0], currentBezierValue), 35);
+                currentState.setLEDPair(8, interpolateColor(currentState.leftLights[8].color, ledColors[0], currentBezierValue), 35);
                 break;
             case 11:
-                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(8, interpolateColor(currentState.leftLights[8].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(7, interpolateColor(currentState.leftLights[7].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 10:
-                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(8, interpolateColor(currentState.leftLights[8].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(7, interpolateColor(currentState.leftLights[7].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(6, interpolateColor(currentState.leftLights[6].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 9:
-                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(8, interpolateColor(currentState.leftLights[8].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(7, interpolateColor(currentState.leftLights[7].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(6, interpolateColor(currentState.leftLights[6].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(5, interpolateColor(currentState.leftLights[5].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 8:
-                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(7, interpolateColor(currentState.leftLights[7].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(6, interpolateColor(currentState.leftLights[6].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(5, interpolateColor(currentState.leftLights[5].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(4, interpolateColor(currentState.leftLights[4].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 7:
-                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(6, interpolateColor(currentState.leftLights[6].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(5, interpolateColor(currentState.leftLights[5].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(4, interpolateColor(currentState.leftLights[4].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(3, interpolateColor(currentState.leftLights[3].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 6:
-                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(5, interpolateColor(currentState.leftLights[5].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(4, interpolateColor(currentState.leftLights[4].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(3, interpolateColor(currentState.leftLights[3].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(2, interpolateColor(currentState.leftLights[2].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 5:
-                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), 35);
-                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(4, interpolateColor(currentState.leftLights[4].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(3, interpolateColor(currentState.leftLights[3].color, ledColors[3], currentBezierValue), 35);
+                currentState.setLEDPair(2, interpolateColor(currentState.leftLights[2].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(1, interpolateColor(currentState.leftLights[1].color, ledColors[1], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 4:
-                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState.setLEDPair(3, interpolateColor(currentState.leftLights[3].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(2, interpolateColor(currentState.leftLights[2].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(1, interpolateColor(currentState.leftLights[1].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(0, interpolateColor(currentState.leftLights[0].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
                 break;
             case 3:
-                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[1], currentBezierValue), 35);
+                currentState.setLEDPair(2, interpolateColor(currentState.leftLights[2].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(1, interpolateColor(currentState.leftLights[1].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(0, interpolateColor(currentState.leftLights[0].color, ledColors[1], currentBezierValue), 35);
                 break;
             case 2:
-                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
-                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[2], currentBezierValue), 35);
+                currentState.setLEDPair(1, interpolateColor(currentState.leftLights[1].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(0, interpolateColor(currentState.leftLights[0].color, ledColors[2], currentBezierValue), 35);
                 break;
             case 1:
-                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState.setLEDPair(0, interpolateColor(currentState.leftLights[0].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
                 break;
             default:
                 break;
@@ -121,29 +121,29 @@ protected:
         
         if (progress == 255) {
             progress = 0;
-            currentIndex_--;
+            currentIndex--;
 
             // If we've reached the end of the animation
-            if (currentIndex_ <= 0) {
+            if (currentIndex <= 0) {
                 // If looping is enabled, set up for the next loop
-                if (config_.loop) {
-                    isWaitingForPause_ = true;
-                    pauseTimer_.setTimer(config_.loopDelayMs);
+                if (config.loop) {
+                    isWaitingForPause = true;
+                    pauseTimer.setTimer(config.loopDelayMs);
                 } else {
-                    isComplete_ = true;
+                    isComplete = true;
                 }
             }
         }
 
-        return currentState_;
+        return currentState;
     }
 
 private:
     LEDColor ledColors[4];
-    uint8_t currentIndex_;
+    uint8_t currentIndex;
     uint8_t progress;
-    bool isWaitingForPause_;
-    SimpleTimer pauseTimer_;
+    bool isWaitingForPause;
+    SimpleTimer pauseTimer;
     uint8_t leadingBrightness = 255;
     float trailingBrightnessFactor = .2;
 }; 
