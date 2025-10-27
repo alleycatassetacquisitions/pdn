@@ -37,7 +37,7 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20
+    UPLOAD_MATCHES = 20,
     SECRET_TEST = 21
 };
 
@@ -247,6 +247,7 @@ private:
     Player *player;
     WirelessManager* wirelessManager;
     bool transitionToHandshakeState = false;
+    bool transitionToSecretTestState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
 
