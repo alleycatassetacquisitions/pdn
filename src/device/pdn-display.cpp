@@ -80,6 +80,12 @@ Display * PDNDisplay::drawButton(const char *text, int xCenter, int yCenter) {
     return this;
 }
 
+Display * PDNDisplay::drawBox(int xStart, int yStart, int width, int height, bool filled) {
+    screen.setDrawColor(filled ? 1 : 0);
+    screen.drawBox(xStart, yStart, width, height);
+    return this;
+}
+
 Display * PDNDisplay::renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) {
     screen.drawUTF8(xStart, yStart, unicodeForGlyph);
     return this;

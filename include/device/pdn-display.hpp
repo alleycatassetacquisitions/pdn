@@ -25,6 +25,8 @@ public:
 
     Display* drawImage(Image image, int xStart, int yStart) override;
 
+    Display* drawBox(int xStart, int yStart, int width, int height, bool filled) override;
+
     Display* drawButton(const char *text, int xCenter, int yCenter) override;
 
     void reset();

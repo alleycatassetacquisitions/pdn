@@ -51,8 +51,8 @@ const char STRING_START = '*';
 
 const int TRANSMIT_QUEUE_MAX_SIZE = 1024;
 
-const string TEST_BOUNTY_ID = "9999";
-const string TEST_HUNTER_ID = "8888";
+const string TEST_BOUNTY_ID = "0001";
+const string TEST_HUNTER_ID = "0000";
 const string BROADCAST_WIFI = "1111";
 
 const string FORCE_MATCH_UPLOAD = "6969";

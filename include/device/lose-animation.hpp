@@ -1,14 +1,14 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "animation.hpp"
 #include "simple-timer.hpp"
 #include <algorithm>
 #include "esp_log.h"
 
-class LoseAnimation : public AnimationBase {
+class LoseAnimation : public Animation {
 public:
     LoseAnimation() : 
-        AnimationBase(),
+        Animation(),
         animationState(AnimationState::SHORT_CIRCUIT),
         stateStartTime(0),
         flickerTimer(0),

@@ -36,6 +36,8 @@ public:
 
     virtual Display* drawImage(Image image) = 0;
 
+    virtual Display* drawBox(int xStart, int yStart, int width, int height, bool filled) = 0;
+
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
 protected:

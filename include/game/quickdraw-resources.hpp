@@ -14,6 +14,8 @@ using namespace std;
 
 typedef std::map<ImageType, Image> ImageCollection;
 
+const Image ALLEYCAT_QRCODE = Image(alleycat_qrcode, 62, 62, 65, 1);
+
 const ImageCollection alleycatImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},

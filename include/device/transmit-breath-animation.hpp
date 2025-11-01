@@ -1,6 +1,6 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "animation.hpp"
 #include "simple-timer.hpp"
 #include <algorithm> // For std::min
 #include "esp_log.h"
@@ -27,10 +27,10 @@
  * device->startAnimation(config);
  * ```
  */
-class TransmitBreathAnimation : public AnimationBase {
+class TransmitBreathAnimation : public Animation {
 public:
     TransmitBreathAnimation() : 
-        AnimationBase(),
+        Animation(),
         breathProgress(0),
         breathingUp(true) {
     }

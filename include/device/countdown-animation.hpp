@@ -1,12 +1,12 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "animation.hpp"
 #include "simple-timer.hpp"
 
-class CountdownAnimation : public AnimationBase {
+class CountdownAnimation : public Animation {
 public:
     CountdownAnimation() : 
-        AnimationBase(),
+        Animation(),
         currentLed(3),           // Start with the first display LED (index 3)
         stopIndex(9),
         fadeProgress(0),         // Start with 0 brightness

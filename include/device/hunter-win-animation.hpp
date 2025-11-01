@@ -1,14 +1,14 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "animation.hpp"
 #include "simple-timer.hpp"
 #include <algorithm> // For std::min
 #include "esp_log.h"
 
-class HunterWinAnimation : public AnimationBase {
+class HunterWinAnimation : public Animation {
 public:
     HunterWinAnimation() : 
-        AnimationBase() {
+        Animation() {
 
     }
 

@@ -1,14 +1,14 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "animation.hpp"
 #include "simple-timer.hpp"
 #include <algorithm> // For std::min
 #include "esp_log.h"
 
-class IdleAnimation : public AnimationBase {
+class IdleAnimation : public Animation {
 public:
     IdleAnimation() : 
-        AnimationBase(),
+        Animation(),
         currentOffset(0),
         transitionProgress(0),
         isWaitingForPause(false) {

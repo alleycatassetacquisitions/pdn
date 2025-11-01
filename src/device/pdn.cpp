@@ -166,6 +166,10 @@ Display* PDN::setGlyphMode(FontMode mode) {
     return display.setGlyphMode(mode);
 }
 
+Display* PDN::drawBox(int xStart, int yStart, int width, int height, bool filled) {
+    return display.drawBox(xStart, yStart, width, height, filled);
+}
+
 Display* PDN::renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) {
     return display.renderGlyph(unicodeForGlyph, xStart, yStart);
 }

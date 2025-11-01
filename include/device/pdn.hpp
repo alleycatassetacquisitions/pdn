@@ -68,6 +68,8 @@ public:
 
     Display* drawButton(const char *text, int xCenter, int yCenter) override;
 
+    Display* drawBox(int xStart, int yStart, int width, int height, bool filled) override;
+
     Display* setGlyphMode(FontMode mode) override;
 
     Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) override;

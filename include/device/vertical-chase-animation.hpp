@@ -1,14 +1,14 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "animation.hpp"
 #include "simple-timer.hpp"
 #include <algorithm> // For std::min
 #include "esp_log.h"
 
-class VerticalChaseAnimation : public AnimationBase {
+class VerticalChaseAnimation : public Animation {
 public:
     VerticalChaseAnimation() : 
-        AnimationBase(),
+        Animation(),
         currentIndex(12),  // Start at top
         progress(0),
         isWaitingForPause(false) {

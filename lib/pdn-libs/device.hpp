@@ -70,6 +70,8 @@ public:
 
     virtual Display* drawButton(const char *text, int xCenter, int yCenter) = 0;
 
+    virtual Display* drawBox(int xStart, int yStart, int width, int height, bool filled) = 0;
+
     // Animation control methods
     virtual void startAnimation(AnimationConfig config) = 0;
     virtual void stopAnimation() = 0;

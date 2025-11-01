@@ -27,7 +27,6 @@
 esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     WifiState* state = static_cast<WifiState*>(evt->user_data);
     HttpRequest* request = state->currentRequest;
-    char sample[51] = {0};
     char error_msg[64] = {0};
     int status_code = 0;
     
@@ -80,11 +79,6 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
         if (evt->data_len) {
             request->responseData.concat(String(reinterpret_cast<char*>(evt->data), evt->data_len));
             ESP_LOGI("WirelessManager", "Response data length now: %d", request->responseData.length());
-            
-            if (evt->data_len > 0) {
-                strncpy(sample, reinterpret_cast<char*>(evt->data), evt->data_len > 50 ? 50 : evt->data_len);
-                ESP_LOGI("WirelessManager", "Data sample: %s", sample);
-            }
         } else {
             ESP_LOGW("WirelessManager", "Received empty data chunk");
         }
