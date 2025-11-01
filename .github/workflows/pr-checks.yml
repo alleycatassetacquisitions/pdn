@@ -30,4 +30,4 @@ jobs:
     - name: Run Platformio Tests
       run:  platformio test -e native
     - name: Build ESP32-s3 Image
-      run:  platformio run -e esp32-s3-devkitc-1
+      run:  platformio run -e pdn_release
