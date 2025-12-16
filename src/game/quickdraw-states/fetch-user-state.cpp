@@ -23,11 +23,13 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
     showLoadingGlyphs(PDN);
     isFetchingUserData = true;
     userDataFetchTimer.setTimer(20000);
+
+    
+    player->setUserID("4375");
     
     // Log important information
     ESP_LOGI(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
     ESP_LOGI(TAG, "WiFi state: %d", wirelessManager->getCurrentState()->getStateId());
-    
 
     if(player->getUserID() == TEST_BOUNTY_ID) {
         player->setIsHunter(false);

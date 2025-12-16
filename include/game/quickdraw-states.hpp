@@ -248,8 +248,8 @@ private:
 
     bool displayIsDirty = false;
 
-    int statsIndex = 0;
-    int statsCount = 5;
+    int statsIndex = 6;
+    int statsCount = 6;
 
     void serialEventCallbacks(string message);
 

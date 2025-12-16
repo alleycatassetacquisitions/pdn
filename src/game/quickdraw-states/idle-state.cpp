@@ -151,6 +151,8 @@ void Idle::cycleStats(Device *PDN) {
     } else if(statsIndex == 5) {
         PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getAverageReactionTime()).c_str(), 80, 55);
+    } else if(statsIndex == 6) {
+        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText(player->getName().c_str(), 70, 40);
     }
 
     PDN->render();
