@@ -3,6 +3,7 @@
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "wireless/esp-now-comms.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
@@ -29,6 +30,7 @@ Idle::~Idle() {
 
 void Idle::onStateMounted(Device *PDN) {
 
+    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
     MatchManager::GetInstance()->clearCurrentMatch();
 
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
