@@ -18,13 +18,13 @@ class DeviceSerial {
     public:
     virtual ~DeviceSerial() {}
 
-    void writeString(string msg) {
+    void writeString(std::string msg) {
         getCurrentCommsJack()->print(STRING_START);
         getCurrentCommsJack()->println(msg);
     }
 
-    string readString(){
-        string return_me = head;
+    std::string readString(){
+        std::string return_me = head;
 
         // need to invalidate head
         head = "";
@@ -35,7 +35,7 @@ class DeviceSerial {
             }
             if (getCurrentCommsJack()->peek() == STRING_START) {
                 getCurrentCommsJack()->read();
-                return_me = string(getCurrentCommsJack()->readStringUntil(STRING_TERM).c_str());
+                return_me = std::string(getCurrentCommsJack()->readStringUntil(STRING_TERM).c_str());
             } else {
                 return_me = "null";
             }
@@ -47,7 +47,7 @@ class DeviceSerial {
         currentCommsJack = whichJack;
     }
 
-    string *peekComms() {
+    std::string *peekComms() {
         if (head == "") {
             head = readString();
         }
@@ -75,7 +75,7 @@ class DeviceSerial {
         if (getCurrentCommsJack()->available()) {
             char incomingChar = getCurrentCommsJack()->read();
             if (incomingChar == STRING_START) {
-                string receivedString = getCurrentCommsJack()->readStringUntil(STRING_TERM);
+                std::string receivedString = getCurrentCommsJack()->readStringUntil(STRING_TERM);
                 if (onStringReceivedCallback) {
                     onStringReceivedCallback(receivedString);
                 }
@@ -106,7 +106,7 @@ protected:
 
     virtual HWSerialWrapper* inputJack() = 0;
 
-    string head = "";
+    std::string head = "";
 
 private:
 

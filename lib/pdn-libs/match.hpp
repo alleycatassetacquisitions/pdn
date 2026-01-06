@@ -3,8 +3,6 @@
 #include <string>
 #include "../../include/id-generator.hpp"
 
-using namespace std;
-
 // Size of match data in bytes: 3 UUIDs (16 bytes each) + 2 draw times (8 bytes each)
 #define MATCH_BINARY_SIZE (3 * IdGenerator::UUID_BINARY_SIZE + 2 * sizeof(unsigned long))
 
@@ -33,12 +31,12 @@ public:
      * @param hunter_id Hunter player's ID
      * @param bounty_id Bounty player's ID
      */
-    Match(string match_id, string hunter_id, string bounty_id);
+    Match(std::string match_id, std::string hunter_id, std::string bounty_id);
 
     /**
      * Legacy method to setup match details after construction
      */
-    void setupMatch(string id, string hunter, string bounty);
+    void setupMatch(std::string id, std::string hunter, std::string bounty);
 
     /**
      * Sets the hunter's draw time
@@ -56,18 +54,18 @@ public:
      * Sets the hunter's ID
      * @param hunter_id Hunter player's ID
      */
-    void setHunterId(string hunter_id);
+    void setHunterId(std::string hunter_id);
 
     /**
      * @return Match data as JSON string
      */
-    string toJson() const;
+    std::string toJson() const;
 
     /**
      * Populates match data from JSON string
      * @param json JSON string containing match data
      */
-    void fromJson(const string &json);
+    void fromJson(const std::string &json);
 
     /**
      * Serializes match data to a byte array
@@ -89,16 +87,16 @@ public:
     static size_t binarySize() { return MATCH_BINARY_SIZE; }
 
     // Getters
-    string getMatchId() const { return match_id; }
-    string getHunterId() const { return hunter; }
-    string getBountyId() const { return bounty; }
+    std::string getMatchId() const { return match_id; }
+    std::string getHunterId() const { return hunter; }
+    std::string getBountyId() const { return bounty; }
     unsigned long getHunterDrawTime() const { return hunter_draw_time_ms; }
     unsigned long getBountyDrawTime() const { return bounty_draw_time_ms; }
 
 private:
-    string match_id;
-    string hunter;
-    string bounty;
+    std::string match_id;
+    std::string hunter;
+    std::string bounty;
     unsigned long hunter_draw_time_ms = 0;
     unsigned long bounty_draw_time_ms = 0;
 };

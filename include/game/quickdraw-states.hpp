@@ -9,8 +9,7 @@
 #include "wireless/wireless-manager.hpp"
 #include "quickdraw-resources.hpp"
 #include <queue>
-
-using namespace std;
+#include <string>
 
 // Quickdraw States
 
@@ -251,7 +250,7 @@ private:
     int statsIndex = 0;
     int statsCount = 5;
 
-    void serialEventCallbacks(string message);
+    void serialEventCallbacks(std::string message);
 
     void ledAnimation(Device *PDN);
 };
@@ -620,7 +619,7 @@ private:
     SimpleTimer uploadMatchesTimer;
     int matchUploadRetryCount = 0;
     const int UPLOAD_MATCHES_TIMEOUT = 10000;
-    String matchesJson;
+    std::string matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
     

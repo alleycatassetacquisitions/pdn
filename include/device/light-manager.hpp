@@ -15,12 +15,10 @@
 
 #pragma once
 
-#include <FastLED.h>
 #include "simple-timer.hpp"
 #include "light-interface.hpp"
 #include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
-#include "device/display-lights.hpp"
-#include "device/grip-lights.hpp"
+#include "device/pdn-lights.hpp"
 #include "device/idle-animation.hpp"
 #include "device/countdown-animation.hpp"
 #include "device/vertical-chase-animation.hpp"
@@ -31,7 +29,7 @@
 
 class LightManager {
 public:
-    LightManager(DisplayLights& displayLights, GripLights& gripLights);
+    LightManager(PDNLightStrip& displayLights, PDNLightStrip& gripLights);
     ~LightManager();
 
     // Core functionality
@@ -89,10 +87,6 @@ private:
     void mapStateToGripLights(const LEDState& state);
     void mapStateToDisplayLights(const LEDState& state);
     
-    // FastLED helpers
-    static CRGB convertToFastLED(const LEDState::SingleLEDState& color);
-    static LEDColor convertFromFastLED(const CRGB& color);
-    
     /*
         This method will apply the LEDState to the physical LEDs.
         It will use the arrays extracted from the LEDState to set the color and brightness of the LEDs.
@@ -102,11 +96,11 @@ private:
     void applyLEDState(const LEDState& state);
     
     // Member variables
-    DisplayLights& displayLights;
-    GripLights& gripLights;
+    PDNLightStrip& displayLights;
+    PDNLightStrip& gripLights;
     IAnimation* currentAnimation;
     
     // Member arrays for extracted lights
-    CRGB gripLightArray[6];
-    CRGB displayLightArray[13];
+    LEDState::SingleLEDState gripLightArray[6];
+    LEDState::SingleLEDState displayLightArray[13];
 };

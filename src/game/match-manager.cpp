@@ -48,7 +48,7 @@ void MatchManager::clearCurrentMatch() {
     }
 }
 
-Match* MatchManager::createMatch(const string& match_id, const string& hunter_id, const string& bounty_id) {
+Match* MatchManager::createMatch(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id) {
     // Only allow one active match at a time
     if (activeDuelState.match != nullptr) {
         return nullptr;
@@ -121,7 +121,7 @@ bool MatchManager::finalizeMatch() {
         return false;
     }
 
-    string match_id = activeDuelState.match->getMatchId();
+    std::string match_id = activeDuelState.match->getMatchId();
 
     // Save to storage
     if (appendMatchToStorage(activeDuelState.match)) {
@@ -172,12 +172,12 @@ bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
     return true;
 }
 
-string MatchManager::toJson() {
+std::string MatchManager::toJson() {
     // Create JSON document with an object at the root
-    StaticJsonDocument<2048> doc;  // Adjust size based on max matches
+    JsonDocument doc;  // Adjust size based on max matches
     
     // Create a "matches" array within the root object
-    JsonArray matchArray = doc.createNestedArray("matches");
+    JsonArray matchArray = doc["matches"].to<JsonArray>();
 
     // Read all matches from storage
     uint8_t count = getStoredMatchCount();
@@ -185,8 +185,8 @@ string MatchManager::toJson() {
         Match* match = readMatchFromStorage(i);
         if (match) {
             // Add match to array
-            string matchJson = match->toJson();
-            StaticJsonDocument<256> matchDoc;
+            std::string matchJson = match->toJson();
+            JsonDocument matchDoc;
             deserializeJson(matchDoc, matchJson);
             matchArray.add(matchDoc.as<JsonObject>());
             delete match;
@@ -194,7 +194,7 @@ string MatchManager::toJson() {
     }
 
     // Serialize to string
-    string output;
+    std::string output;
     serializeJson(doc, output);
     return output;
 }
@@ -219,7 +219,7 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     }
 
     // Convert match to JSON for storage
-    string matchJson = match->toJson();
+    std::string matchJson = match->toJson();
     
     // Create key for this match
     char key[16];
@@ -267,7 +267,7 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
     
     // Read match JSON from preferences
-    string matchJson = prefs.getString(key, "").c_str();
+    std::string matchJson = prefs.getString(key, "").c_str();
     if (matchJson.empty()) {
         return nullptr;
     }

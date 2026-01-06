@@ -55,7 +55,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
     }else {
         QuickdrawRequests::getPlayer(
             wirelessManager,
-            String(player->getUserID().c_str()),
+            player->getUserID(),
             [this](const PlayerResponse& response) {
                 ESP_LOGI(TAG, "Successfully fetched player data: %s (%s)", 
                         response.name.c_str(), response.id.c_str());

@@ -3,8 +3,6 @@
 #include <UUID.h>
 #include <string>
 
-using namespace std;
-
 class IdGenerator {
 public:
     // UUID string format: 8-4-4-4-12 chars + 4 hyphens + null terminator = 37
@@ -31,7 +29,7 @@ public:
      * @param uuid The UUID string to convert
      * @param bytes Output buffer for the binary data (must be 16 bytes)
      */
-    static void uuidStringToBytes(const string& uuid, uint8_t* bytes) {
+    static void uuidStringToBytes(const std::string& uuid, uint8_t* bytes) {
         int byteIndex = 0;
         for (size_t i = 0; i < uuid.length(); i++) {
             if (uuid[i] == '-') continue;  // Skip hyphens in UUID string
@@ -52,7 +50,7 @@ public:
      * @param bytes The 16-byte binary UUID
      * @return The formatted UUID string
      */
-    static string uuidBytesToString(const uint8_t* bytes) {
+    static std::string uuidBytesToString(const uint8_t* bytes) {
         char uuid[37];  // 36 chars + null terminator
         int pos = 0;
         
@@ -67,7 +65,7 @@ public:
             pos += 2;
         }
         uuid[36] = '\0';  // Null terminate the string
-        return string(uuid);
+        return std::string(uuid);
     }
 
 private:

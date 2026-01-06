@@ -39,7 +39,7 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (Qui
     packetReceivedCallback = callback;
 }
 
-int QuickdrawWirelessManager::broadcastPacket(const string& macAddress, 
+int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress, 
                                              int command, 
                                              Match match) {
     // Ensure WiFi is in STA mode before sending

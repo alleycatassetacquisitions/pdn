@@ -33,13 +33,13 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
 
     ESP_LOGI("BOUNTY_SEND_CC", "State mounted");
     
-    string bountyId = player->getUserID();
+    std::string bountyId = player->getUserID();
     if (bountyId.empty()) {
         ESP_LOGE("BOUNTY_SEND_CC", "Player ID is empty");
         return;
     }
 
-    string matchId = IdGenerator::GetInstance()->generateId();
+    std::string matchId = IdGenerator::GetInstance()->generateId();
     if (matchId.empty()) {
         ESP_LOGE("BOUNTY_SEND_CC", "Failed to generate match ID");
         return;

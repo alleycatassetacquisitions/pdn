@@ -5,8 +5,6 @@
 #include <cstring>  // For memcpy
 #include <functional>
 
-using namespace std;
-
 enum DebugCommand {
     // Debug Commands
     CHANGE_WIFI_CREDENTIALS = 0,
@@ -41,7 +39,7 @@ class RemoteDebugManager {
 public:
     static RemoteDebugManager* GetInstance();
 
-    void Initialize(string ssid, string password, string baseUrl);
+    void Initialize(std::string ssid, std::string password, std::string baseUrl);
     
     void SetPacketReceivedCallback(std::function<void(DebugPacket)> callback);
     

@@ -13,8 +13,6 @@
 #include "match.hpp"
 #include "id-generator.hpp"
 
-using namespace std;
-
 enum QDCommand {
     // Handshake Commands
     CONNECTION_CONFIRMED = 0, //Bounty -> Hunter
@@ -36,13 +34,13 @@ enum QDCommand {
 };
 
 struct QuickdrawCommand {
-string wifiMacAddr;
+    std::string wifiMacAddr;
     int command;
     Match match;
 
     QuickdrawCommand() : command(0), match(), wifiMacAddr("") {}
 
-    QuickdrawCommand(string macAddress, int command, Match match) :
+    QuickdrawCommand(std::string macAddress, int command, Match match) :
         command(command), match(match), wifiMacAddr(macAddress) {    }
 
 
@@ -61,7 +59,7 @@ public:
 
     void setPacketReceivedCallback(std::function<void(QuickdrawCommand)> callback);
 
-    int broadcastPacket(const string& macAddress, 
+    int broadcastPacket(const std::string& macAddress, 
                        int command, 
                        Match match);
 

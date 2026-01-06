@@ -33,8 +33,8 @@ int PDNSerialOut::read() {
     return Serial1.read();
 }
 
-string PDNSerialOut::readStringUntil(char terminator) {
-    return string(Serial1.readStringUntil(terminator).c_str());
+std::string PDNSerialOut::readStringUntil(char terminator) {
+    return std::string(Serial1.readStringUntil(terminator).c_str());
 }
 
 void PDNSerialOut::print(char msg) {
@@ -45,7 +45,7 @@ void PDNSerialOut::println(char *msg) {
     Serial1.println(msg);
 }
 
-void PDNSerialOut::println(string msg) {
+void PDNSerialOut::println(std::string msg) {
     Serial1.println(msg.c_str());
 }
 
@@ -80,8 +80,8 @@ int PDNSerialIn::read() {
     return Serial2.read();
 }
 
-string PDNSerialIn::readStringUntil(char terminator) {
-    return string(Serial2.readStringUntil(terminator).c_str());
+std::string PDNSerialIn::readStringUntil(char terminator) {
+    return std::string(Serial2.readStringUntil(terminator).c_str());
 }
 
 void PDNSerialIn::print(char msg) {
@@ -92,7 +92,7 @@ void PDNSerialIn::println(char *msg) {
     Serial2.println(msg);
 }
 
-void PDNSerialIn::println(string msg) {
+void PDNSerialIn::println(std::string msg) {
     Serial2.println(msg.c_str());
 }
 

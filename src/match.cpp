@@ -3,7 +3,7 @@
 #include <ArduinoJson.h>
 #include <string.h> // for memcpy
 
-Match::Match(string match_id, string hunter_id, string bounty_id) 
+Match::Match(std::string match_id, std::string hunter_id, std::string bounty_id) 
     : match_id(match_id), hunter(hunter_id), bounty(bounty_id), hunter_draw_time_ms(0), bounty_draw_time_ms(0) {
 }
 
@@ -11,7 +11,7 @@ Match::Match(){
     setupMatch("", "", "");
 }
 
-void Match::setupMatch(string id, string hunter, string bounty)
+void Match::setupMatch(std::string id, std::string hunter, std::string bounty)
 {
     match_id = id;
     this->hunter = hunter;
@@ -29,7 +29,7 @@ void Match::setBountyDrawTime(unsigned long timeMs) {
     bounty_draw_time_ms = timeMs;
 }
 
-string Match::toJson() const
+std::string Match::toJson() const
 {
     ESP_LOGI("Match", "Serializing JSON: %s", match_id.c_str());
     ESP_LOGI("Match", "Hunter: %s", hunter.c_str());
@@ -46,27 +46,27 @@ string Match::toJson() const
     matchObj[JSON_KEY_HUNTER_TIME] = hunter_draw_time_ms;
     matchObj[JSON_KEY_BOUNTY_TIME] = bounty_draw_time_ms;
 
-    string json;
+    std::string json;
     serializeJson(matchObj, json);
 
     ESP_LOGI("Match", "Serialized JSON: %s", json.c_str());
     return json;
 }
 
-void Match::fromJson(const string &json) {
+void Match::fromJson(const std::string &json) {
     ESP_LOGI("Match", "Deserializing JSON: %s", json.c_str());
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
 
     if (!error) {
         if (doc[JSON_KEY_MATCH_ID].is<const char*>()) {
-            match_id = doc[JSON_KEY_MATCH_ID].as<string>();
+            match_id = doc[JSON_KEY_MATCH_ID].as<std::string>();
         }
         if (doc[JSON_KEY_HUNTER_ID].is<const char*>()) {
-            hunter = doc[JSON_KEY_HUNTER_ID].as<string>();
+            hunter = doc[JSON_KEY_HUNTER_ID].as<std::string>();
         }
         if (doc[JSON_KEY_BOUNTY_ID].is<const char*>()) {
-            bounty = doc[JSON_KEY_BOUNTY_ID].as<string>();
+            bounty = doc[JSON_KEY_BOUNTY_ID].as<std::string>();
         }
         if (doc[JSON_KEY_HUNTER_TIME].is<unsigned long>()) {
             hunter_draw_time_ms = doc[JSON_KEY_HUNTER_TIME].as<unsigned long>();

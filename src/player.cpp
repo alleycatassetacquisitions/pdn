@@ -2,16 +2,16 @@
 #include <memory>
 #include <ArduinoJson.h>
 
-Player::Player(const string id0, const Allegiance allegiance0, const bool isHunter0) :
-  id(id0),
-  allegiance(allegiance0),
-  hunter(isHunter0)
+Player::Player(const std::string id, const Allegiance allegiance, const bool isHunter) :
+  id(id),
+  allegiance(allegiance),
+  hunter(isHunter)
 {
 }
 
-string Player::toJson() const {
+std::string Player::toJson() const {
     // Create a JSON object for player
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     JsonObject playerObj = doc.to<JsonObject>();
     playerObj["id"] = id;
     playerObj["name"] = name;
@@ -20,28 +20,28 @@ string Player::toJson() const {
     playerObj["hunter"] = hunter;
 
     // Serialize the JSON object to a string
-    string json;
+    std::string json;
     serializeJson(playerObj, json);
     return json;
 }
 
-void Player::fromJson(const string &json) {
+void Player::fromJson(const std::string &json) {
     // Parse the JSON string into a JSON object
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
 
     // Check if parsing was successful
     if (!error) {
       // Retrieve values from the JSON object
-      id = doc["id"].as<string>();
-      if (doc.containsKey("name")) {
-        name = doc["name"].as<string>();
+      id = doc["id"].as<std::string>();
+      if (doc["name"].is<const char*>()) {
+        name = doc["name"].as<std::string>();
       }
-      if (doc.containsKey("allegiance")) {
-        allegianceStr = doc["allegiance"].as<string>();
+      if (doc["allegiance"].is<const char*>()) {
+        allegianceStr = doc["allegiance"].as<std::string>();
       }
-      if (doc.containsKey("faction")) {
-        faction = doc["faction"].as<string>();
+      if (doc["faction"].is<const char*>()) {
+        faction = doc["faction"].as<std::string>();
       }
       hunter = doc["hunter"];
     } else {
@@ -74,7 +74,7 @@ Allegiance Player::getAllegiance() const
     return allegiance;
 }
 
-void Player::setAllegiance(const string& allegianceStr)
+void Player::setAllegiance(const std::string& allegianceStr)
 {
     this->allegianceStr = allegianceStr;
     
@@ -127,62 +127,62 @@ void Player::setAllegiance(Allegiance allegiance)
     
 }
 
-string Player::getAllegianceString() const
+std::string Player::getAllegianceString() const
 {
     return allegianceStr;
 }
 
-string Player::getName() const
+std::string Player::getName() const
 {
     return name;
 }
 
-void Player::setName(const string& name)
+void Player::setName(const std::string& name)
 {
     this->name = name;
 }
 
-string Player::getFaction() const
+std::string Player::getFaction() const
 {
     return faction;
 }
 
-void Player::setFaction(const string& faction)
+void Player::setFaction(const std::string& faction)
 {
     this->faction = faction;
 }
 
 void Player::setUserID(char* newId)
 {
-  id = string(newId);
+  id = std::string(newId);
 }
 
-string Player::getUserID() const
+std::string Player::getUserID() const
 {
     return id;
 }
 
-void Player::setCurrentMatchId(string matchId) {
+void Player::setCurrentMatchId(std::string matchId) {
     *currentMatchId = matchId;
 }
 
-string* Player::getCurrentMatchId() {
+std::string* Player::getCurrentMatchId() {
     return currentMatchId;
 }
 
-void Player::setCurrentOpponentId(string opponentId) {
+void Player::setCurrentOpponentId(std::string opponentId) {
     *currentOpponentId = opponentId;
 }
 
-string* Player::getCurrentOpponentId() {
+std::string* Player::getCurrentOpponentId() {
     return currentOpponentId;
 }
 
-void Player::setOpponentMacAddress(string macAddress) {
+void Player::setOpponentMacAddress(std::string macAddress) {
     *opponentMacAddress = macAddress;
 }
 
-string* Player::getOpponentMacAddress() {
+std::string* Player::getOpponentMacAddress() {
     return opponentMacAddress;
 }
 

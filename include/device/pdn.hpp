@@ -4,8 +4,7 @@
 #pragma once
 
 #include "device.hpp"
-#include "display-lights.hpp"
-#include "grip-lights.hpp"
+#include "pdn-lights.hpp"
 #include "pdn-button.hpp"
 #include "pdn-display.hpp"
 #include "pdn-haptics.hpp"
@@ -13,8 +12,6 @@
 #include "light-manager.hpp"
 
 #include <string>
-
-using namespace std;
 
 class PDN : public Device {
 
@@ -29,9 +26,9 @@ public:
 
     void onStateChange() override;
 
-    void setDeviceId(string deviceId) override;
+    void setDeviceId(std::string deviceId) override;
 
-    string getDeviceId() override;
+    std::string getDeviceId() override;
 
     void setGlobalLightColor(LEDColor color);
 
@@ -122,12 +119,12 @@ private:
     PDNHaptics haptics;
     PDNButton primary;
     PDNButton secondary;
-    DisplayLights displayLights;
-    GripLights gripLights;
+    PDNLightStrip displayLights;
+    PDNLightStrip gripLights;
     LightManager lightManager;
 
     PDNSerialOut serialOut;
     PDNSerialIn serialIn;
 
-    string deviceId;
+    std::string deviceId;
 };
