@@ -6,8 +6,6 @@
 #include "button.hpp"
 #include "light-interface.hpp"
 
-using namespace std;
-
 //LED Resource Identifiers
 
 class Device : public DeviceSerial {
@@ -20,9 +18,9 @@ public:
 
     virtual void onStateChange() = 0;
 
-    virtual void setDeviceId(string deviceId) = 0;
+    virtual void setDeviceId(std::string deviceId) = 0;
 
-    virtual string getDeviceId() = 0;
+    virtual std::string getDeviceId() = 0;
 
     //Button Methods
     virtual void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction) = 0;

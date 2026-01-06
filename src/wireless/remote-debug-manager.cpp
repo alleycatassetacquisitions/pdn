@@ -15,7 +15,7 @@ RemoteDebugManager* RemoteDebugManager::GetInstance() {
 RemoteDebugManager::RemoteDebugManager() {
 }
 
-void RemoteDebugManager::Initialize(string ssid, string password, string baseUrl) {
+void RemoteDebugManager::Initialize(std::string ssid, std::string password, std::string baseUrl) {
     m_debugPacket.command = CHANGE_WIFI_CREDENTIALS;
     strncpy(m_debugPacket.ssid, ssid.c_str(), sizeof(m_debugPacket.ssid) - 1);
     strncpy(m_debugPacket.password, password.c_str(), sizeof(m_debugPacket.password) - 1);

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include "button.hpp"
 #include <Preferences.h>
 #include "../lib/pdn-libs/match.hpp"
@@ -42,7 +43,7 @@ public:
      * @param bounty_id Bounty's UUID
      * @return Pointer to the newly created match
      */
-    Match* createMatch(const string& match_id, const string& hunter_id, const string& bounty_id);
+    Match* createMatch(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id);
 
     /**
      * Initializes a match received from another player
@@ -86,7 +87,7 @@ public:
      * Converts all stored matches to a JSON array string
      * @return JSON string containing all stored matches
      */
-    string toJson();
+    std::string toJson();
 
     /**
      * Clears all matches from storage

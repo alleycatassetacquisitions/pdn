@@ -13,8 +13,8 @@ PDN::PDN() : display(displayCS, displayDC, displayRST),
              haptics(motorPin),
              primary(primaryButtonPin),
              secondary(secondaryButtonPin),
-             displayLights(numDisplayLights),
-             gripLights(numGripLights),
+             displayLights(DisplayLightsConfig),
+             gripLights(GripLightsConfig),
              lightManager(displayLights, gripLights) {
     this->PDN::initializePins();
 };
@@ -54,7 +54,7 @@ void PDN::initializePins() {
     pinMode(gripLightsPin, OUTPUT);
 }
 
-string PDN::getDeviceId() {
+std::string PDN::getDeviceId() {
     return deviceId;
 }
 
@@ -146,7 +146,7 @@ AnimationType PDN::getCurrentAnimation() const {
     return lightManager.getCurrentAnimation();
 }
 
-void PDN::setDeviceId(string deviceId) {
+void PDN::setDeviceId(std::string deviceId) {
     this->deviceId = deviceId;
 }
 

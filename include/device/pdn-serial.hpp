@@ -6,8 +6,6 @@
 #include "serial-wrapper.hpp"
 #include <string>
 
-using namespace std;
-
 class PDNSerialOut : public HWSerialWrapper {
     public:
     PDNSerialOut();
@@ -19,10 +17,10 @@ class PDNSerialOut : public HWSerialWrapper {
     int available() override;
     int peek() override;
     int read() override;
-    string readStringUntil(char terminator) override;
+    std::string readStringUntil(char terminator) override;
     void print(char msg) override;
     void println(char* msg) override;
-    void println(string msg) override;
+    void println(std::string msg) override;
     void flush() override;
 };
 
@@ -37,9 +35,9 @@ public:
     int available() override;
     int peek() override;
     int read() override;
-    string readStringUntil(char terminator) override;
+    std::string readStringUntil(char terminator) override;
     void print(char msg) override;
     void println(char* msg) override;
-    void println(string msg) override;
+    void println(std::string msg) override;
     void flush() override;
 };

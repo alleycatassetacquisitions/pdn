@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
 #include <WiFi.h>
 #include <esp_http_client.h>
 #include <queue>
@@ -34,16 +33,16 @@ enum WirelessStateId {
  * integrating with ESP-IDF's esp_http_client for asynchronous operation.
  */
 struct HttpRequest {
-    String path;                                  ///< Path to append to base URL
-    std::function<void(const String&)> onSuccess; ///< Callback for successful requests
+    std::string path;                                  ///< Path to append to base URL
+    std::function<void(const std::string&)> onSuccess; ///< Callback for successful requests
     std::function<void(const WirelessErrorInfo&)> onError; ///< Callback for failed requests
-    String method = "GET";                       ///< HTTP method (GET, POST, etc.)
-    String payload = "";                         ///< Request payload (for POST requests)
+    std::string method = "GET";                       ///< HTTP method (GET, POST, etc.)
+    std::string payload = "";                         ///< Request payload (for POST requests)
     bool hasErrorCallback = false;               ///< Whether an error callback was provided
     bool inProgress = false;                     ///< Whether the request is currently in progress
     unsigned long lastAttemptTime = 0;           ///< Time of the last attempt
     int retryCount = 0;                          ///< Number of retry attempts
-    String responseData = "";                    ///< Accumulated response data
+    std::string responseData = "";                    ///< Accumulated response data
     esp_http_client_handle_t client;             ///< ESP-IDF HTTP client handle
 
     /**
@@ -55,11 +54,11 @@ struct HttpRequest {
      * @param requestMethod HTTP method to use (defaults to "GET")
      * @param requestPayload Request body for POST requests
      */
-    HttpRequest(const String& requestPath, 
-                std::function<void(const String&)> successCallback,
+    HttpRequest(const std::string& requestPath, 
+                std::function<void(const std::string&)> successCallback,
                 std::function<void(const WirelessErrorInfo&)> errorCallback,
-                const String& requestMethod = "GET", 
-                const String& requestPayload = "")
+                const std::string& requestMethod = "GET", 
+                const std::string& requestPayload = "")
         : path(requestPath), 
           method(requestMethod), 
           payload(requestPayload), 
@@ -80,10 +79,10 @@ struct HttpRequest {
      * @param requestMethod HTTP method to use (defaults to "GET")
      * @param requestPayload Request body for POST requests
      */
-    HttpRequest(const String& requestPath, 
-                std::function<void(const String&)> successCallback,
-                const String& requestMethod = "GET", 
-                const String& requestPayload = "")
+    HttpRequest(const std::string& requestPath, 
+                std::function<void(const std::string&)> successCallback,
+                const std::string& requestMethod = "GET", 
+                const std::string& requestPayload = "")
         : path(requestPath), 
           method(requestMethod), 
           payload(requestPayload), 
@@ -176,7 +175,7 @@ private:
 
 class WirelessManager : public StateMachine {
 public:
-    WirelessManager(Device* device, const String& wifiSsid, const String& wifiPassword, const String& baseUrl);
+    WirelessManager(Device* device, const std::string& wifiSsid, const std::string& wifiPassword, const std::string& baseUrl);
     
     /**
      * Initialize the wireless manager
@@ -204,11 +203,11 @@ public:
      * @return true if request was successfully queued
      */
     bool makeHttpRequest(
-        const String& path,
-        std::function<void(const String&)> onSuccess,
+        const std::string& path,
+        std::function<void(const std::string&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError,
-        const String& method = "GET",
-        const String& payload = ""
+        const std::string& method = "GET",
+        const std::string& payload = ""
     );
 
     /**
@@ -222,10 +221,10 @@ public:
      * @return true if request was successfully queued
      */
     bool makeHttpRequest(
-        const String& path,
-        std::function<void(const String&)> onSuccess,
-        const String& method = "GET",
-        const String& payload = ""
+        const std::string& path,
+        std::function<void(const std::string&)> onSuccess,
+        const std::string& method = "GET",
+        const std::string& payload = ""
     );
 
     // Force state changes

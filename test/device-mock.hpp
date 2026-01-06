@@ -36,14 +36,14 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         return val;
     }
 
-    string readStringUntil(char terminator) override {
+    std::string readStringUntil(char terminator) override {
         vector<char> buffer;
         while (msgQueue.front() != terminator) {
             buffer.push_back(msgQueue.front());
             msgQueue.pop_front();
         }
         msgQueue.pop_front();
-        return string(&buffer.front(), buffer.size());
+        return std::string(&buffer.front(), buffer.size());
     }
 
     void print(char msg) override {
@@ -57,7 +57,7 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         print(STRING_TERM);
     }
 
-    void println(string msg) override {
+    void println(std::string msg) override {
         const char* str = msg.c_str();
         for(int i = 0; i < msg.length(); i++) {
             print(str[i]);
@@ -94,8 +94,8 @@ class MockDevice : public Device {
     MOCK_METHOD(int, begin, (), (override));
     MOCK_METHOD(void, loop, (), (override));
     MOCK_METHOD(void, onStateChange, (), (override));
-    MOCK_METHOD(void, setDeviceId, (string), (override));
-    MOCK_METHOD(string, getDeviceId, (), (override));
+    MOCK_METHOD(void, setDeviceId, (std::string), (override));
+    MOCK_METHOD(std::string, getDeviceId, (), (override));
     MOCK_METHOD(void, initializePins, (), (override));
 
     //Button Methods
@@ -146,7 +146,7 @@ class MockDevice : public Device {
         return &inputJackSerial;
     }
 
-    string getHead() {
+    std::string getHead() {
         return head;
     }
 

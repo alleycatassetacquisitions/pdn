@@ -5,14 +5,14 @@
 //
 // Created by Elli Furedy on 10/8/2024.
 //
-const string* TEST_OUTGOING_STRING_1 = new string("message");
-const string* TEST_OUTGOING_STRING_2 = new string("another message");
-const string* TEST_OUTGOING_STRING_3 = new string("this is a test");
+const std::string* TEST_OUTGOING_STRING_1 = new std::string("message");
+const std::string* TEST_OUTGOING_STRING_2 = new std::string("another message");
+const std::string* TEST_OUTGOING_STRING_3 = new std::string("this is a test");
 
-const string* TEST_INCOMING_STRING = new string("reading");
-const string* TEST_INCOMING_STRING_1 = new string("read more");
-const string* GARBAGE_STRING = new string("ahefaosen..as");
-const string* INVALID_INCOMING_STRING = new string("this isn't a registered message");
+const std::string* TEST_INCOMING_STRING = new std::string("reading");
+const std::string* TEST_INCOMING_STRING_1 = new std::string("read more");
+const std::string* GARBAGE_STRING = new std::string("ahefaosen..as");
+const std::string* INVALID_INCOMING_STRING = new std::string("this isn't a registered message");
 
 class TestReadingValidMessageState : State {
     public:
@@ -20,7 +20,7 @@ class TestReadingValidMessageState : State {
     }
 
     void onStateMounted(Device *PDN) override {
-        std::vector<const string *> reading;
+        std::vector<const std::string *> reading;
 
         reading.push_back(TEST_INCOMING_STRING);
 
@@ -28,7 +28,7 @@ class TestReadingValidMessageState : State {
     }
 
     void onStateLoop(Device *PDN) override {
-        string* validMessage = waitForValidMessage(PDN);
+        std::string* validMessage = waitForValidMessage(PDN);
         if(validMessage != nullptr) {
             didReadValidMessage = true;
         }

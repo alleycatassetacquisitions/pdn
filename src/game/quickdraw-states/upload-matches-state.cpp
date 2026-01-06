@@ -25,13 +25,13 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
     showLoadingGlyphs(PDN);
     uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
 
-    matchesJson = String(matchManager->toJson().c_str());
+    matchesJson = matchManager->toJson();
     ESP_LOGI(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
 
     QuickdrawRequests::updateMatches(
         wirelessManager,
         matchesJson,
-        [this](const String& jsonResponse) {
+        [this](const std::string& jsonResponse) {
             ESP_LOGI(TAG, "Successfully updated matches: %s", 
                     jsonResponse.c_str());
 

@@ -39,21 +39,21 @@ The expected response looks like this:
 #ifndef QUICKDRAW_REQUESTS_HPP
 #define QUICKDRAW_REQUESTS_HPP
 
-#include <Arduino.h>
+#include <string>
 #include <ArduinoJson.h>
 #include "wireless/wireless-manager.hpp"
 
 // Player API Response Structure
 struct PlayerResponse {
-    String id;
-    String name;
+    std::string id;
+    std::string name;
     bool isHunter;
     int allegiance;
-    String faction;
-    std::vector<String> errors;
+    std::string faction;
+    std::vector<std::string> errors;
 
     // Parse JSON response into this structure
-    bool parseFromJson(const String& json) {
+    bool parseFromJson(const std::string& json) {
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, json);
         
@@ -66,7 +66,7 @@ struct PlayerResponse {
         if (doc["errors"].is<JsonArray>()) {
             JsonArray errorsArray = doc["errors"];
             for (JsonVariant errorVar : errorsArray) {
-                errors.push_back(errorVar.as<String>());
+                errors.push_back(errorVar.as<std::string>());
             }
             if (!errors.empty()) {
                 ESP_LOGW("QuickdrawRequests", "Player response contains errors");
@@ -81,11 +81,11 @@ struct PlayerResponse {
         }
 
         JsonObject data = doc["data"];
-        id = data["id"].as<String>();
-        name = data["name"].as<String>();
+        id = data["id"].as<std::string>();
+        name = data["name"].as<std::string>();
         isHunter = data["hunter"].as<bool>();
         allegiance = data["allegiance"].as<int>();
-        faction = data["faction"].as<String>();
+        faction = data["faction"].as<std::string>();
 
         return true;
     }
@@ -105,15 +105,15 @@ namespace QuickdrawRequests {
      */
     inline void getPlayer(
         WirelessManager* wirelessManager,
-        const String& playerId,
+        const std::string& playerId,
         std::function<void(const PlayerResponse&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError
     ) {
-        String path = "/api/players/" + playerId;
+        std::string path = "/api/players/" + playerId;
         
         wirelessManager->makeHttpRequest(
             path,
-            [onSuccess, onError](const String& response) {
+            [onSuccess, onError](const std::string& response) {
                 PlayerResponse playerResponse;
                 if (playerResponse.parseFromJson(response)) {
                     onSuccess(playerResponse);
@@ -140,8 +140,8 @@ namespace QuickdrawRequests {
      */
     inline void updateMatches(
         WirelessManager* wirelessManager,
-        String matchesJson,
-        std::function<void(const String&)> onSuccess,
+        std::string matchesJson,
+        std::function<void(const std::string&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError
     ) {
         wirelessManager->makeHttpRequest(

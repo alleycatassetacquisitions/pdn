@@ -78,7 +78,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
                  request->path.c_str(), evt->data_len, request->responseData.length());
         
         if (evt->data_len) {
-            request->responseData.concat(String(reinterpret_cast<char*>(evt->data), evt->data_len));
+            request->responseData.append(std::string(reinterpret_cast<char*>(evt->data), evt->data_len));
             ESP_LOGI("WirelessManager", "Response data length now: %d", request->responseData.length());
             
             if (evt->data_len > 0) {
@@ -143,7 +143,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt) {
             state->currentRequest = nullptr;
             
             // Remove the request from the queue if it's been retried too many times or has a response
-            if (request->retryCount >= WirelessState::MAX_RETRIES || !request->responseData.isEmpty()) {
+            if (request->retryCount >= WirelessState::MAX_RETRIES || !request->responseData.empty()) {
                 if (request->hasErrorCallback) {
                     request->onError({
                         WirelessError::CONNECTION_FAILED,
@@ -283,7 +283,7 @@ void WifiState::onStateLoop(Device* device) {
                 // WiFi is now connected
                 channel = WiFi.channel();
                 ESP_LOGI("WirelessManager", "WiFi connected successfully after %d attempts!", wifiConnectionAttempts);
-                ESP_LOGI("WirelessManager", "IP address: %s", WiFi.localIP().toString().c_str());
+                ESP_LOGI("WirelessManager", "IP address: %s", WiFi.localIP().to_string().c_str());
                 ESP_LOGI("WirelessManager", "Channel: %d, RSSI: %d dBm", channel, WiFi.RSSI());
                 wifiConnected = true;
                 
@@ -498,16 +498,16 @@ bool WifiState::processQueuedRequests() {
  */
 void WifiState::initiateHttpRequest(HttpRequest& request) {
     // Construct full URL by combining base URL and path
-    String fullUrl;
-    String baseUrlStr = wifiConfig->baseUrl;
+    std::string fullUrl;
+    std::string baseUrlStr = wifiConfig->baseUrl;
     
     // Check if baseUrl already contains http:// or https://
-    if (baseUrlStr.startsWith("http://") || baseUrlStr.startsWith("https://")) {
+    if (baseUrlStr.find("http://") != std::string::npos || baseUrlStr.find("https://") != std::string::npos) {
         fullUrl = baseUrlStr;
         // Ensure we don't have double slashes between baseUrl and path
-        if (baseUrlStr.endsWith("/") && request.path.startsWith("/")) {
-            fullUrl += request.path.substring(1); // Skip the first slash of the path
-        } else if (!baseUrlStr.endsWith("/") && !request.path.startsWith("/")) {
+        if (baseUrlStr.back() == '/' && request.path.front() == '/') {
+            fullUrl += request.path.substr(1); // Skip the first slash of the path
+        } else if (baseUrlStr.back() != '/' && request.path.front() != '/') {
             fullUrl += "/" + request.path;  // Add slash between baseUrl and path
         } else {
             fullUrl += request.path;  // Use as is
@@ -516,9 +516,9 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
         // Add http:// prefix if missing
         fullUrl = "http://" + baseUrlStr;
         // Handle slashes same as above
-        if (baseUrlStr.endsWith("/") && request.path.startsWith("/")) {
-            fullUrl += request.path.substring(1);
-        } else if (!baseUrlStr.endsWith("/") && !request.path.startsWith("/")) {
+        if (baseUrlStr.back() == '/' && request.path.front() == '/') {
+            fullUrl += request.path.substr(1);
+        } else if (baseUrlStr.back() != '/' && request.path.front() != '/') {
             fullUrl += "/" + request.path;
         } else {
             fullUrl += request.path;
@@ -539,7 +539,7 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
         return;
     } else {
         ESP_LOGI("WirelessManager", "WiFi connected to: %s, IP: %s, RSSI: %d dBm", 
-                 WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+                 WiFi.SSID().c_str(), WiFi.localIP().to_string().c_str(), WiFi.RSSI());
     }
 
     // Check HTTP client with detailed logging
@@ -614,7 +614,7 @@ void WifiState::initiateHttpRequest(HttpRequest& request) {
                  esp_err_to_name(err), err);
         handleRequestError(request, {
             WirelessError::CONNECTION_FAILED,
-            "Failed to perform HTTP request: " + String(esp_err_to_name(err)),
+            "Failed to perform HTTP request: " + std::string(esp_err_to_name(err)),
             request.retryCount < WirelessState::MAX_RETRIES
         });
         
@@ -766,7 +766,7 @@ void WifiState::handleRequestError(HttpRequest& request, WirelessErrorInfo error
 }
 
 // WirelessManager Implementation
-WirelessManager::WirelessManager(Device* device, const String& wifiSsid, const String& wifiPassword, const String& baseUrl)
+WirelessManager::WirelessManager(Device* device, const std::string& wifiSsid, const std::string& wifiPassword, const std::string& baseUrl)
     : StateMachine(device)
     , wifiConfig(wifiSsid, wifiPassword, baseUrl)
     , pendingEspNowSwitch(false)
@@ -838,11 +838,11 @@ void WirelessManager::populateStateMap() {
 }
 
 bool WirelessManager::makeHttpRequest(
-    const String& path,
-    std::function<void(const String&)> onSuccess,
+    const std::string& path,
+    std::function<void(const std::string&)> onSuccess,
     std::function<void(const WirelessErrorInfo&)> onError,
-    const String& method,
-    const String& payload
+    const std::string& method,
+    const std::string& payload
 ) {
     ESP_LOGI("WirelessManager", "Queueing HTTP request to path: %s (method: %s)", path.c_str(), method.c_str());
     
@@ -864,10 +864,10 @@ bool WirelessManager::makeHttpRequest(
 }
 
 bool WirelessManager::makeHttpRequest(
-    const String& path,
-    std::function<void(const String&)> onSuccess,
-    const String& method,
-    const String& payload
+    const std::string& path,
+    std::function<void(const std::string&)> onSuccess,
+    const std::string& method,
+    const std::string& payload
 ) {
     ESP_LOGI("WirelessManager", "Queueing HTTP request to path: %s (method: %s, no error callback)", 
              path.c_str(), method.c_str());
@@ -998,7 +998,7 @@ void WirelessManager::loop() {
                 
                 if (currentWiFiStatus == WL_CONNECTED) {
                     ESP_LOGI("WirelessManager", "WiFi connected to: %s, IP: %s, RSSI: %d dBm", 
-                             WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+                             WiFi.SSID().c_str(), WiFi.localIP().to_string().c_str(), WiFi.RSSI());
                 } else if (currentWiFiStatus != lastWiFiStatus) {
                     ESP_LOGW("WirelessManager", "WiFi not connected, status: %d", currentWiFiStatus);
                 }

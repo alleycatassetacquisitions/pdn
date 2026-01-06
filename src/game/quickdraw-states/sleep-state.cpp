@@ -85,8 +85,9 @@ void Sleep::onStateLoop(Device *PDN) {
             breatheUp = true;
         }
 
-        CRGB color = ColorFromPalette(bountyColors, random8(), pwm_val, LINEARBLEND);
-        PDN->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, LEDColor(color.r, color.g, color.b));
+        //TODO: Convert Transmit to an animation.
+        LEDColor color = bountyColors[random8()];
+        PDN->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
     }
 }
 

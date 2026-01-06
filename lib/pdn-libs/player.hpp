@@ -4,8 +4,6 @@
 #include <string>
 #include <iostream>
 
-using namespace std;
-
 enum class Allegiance {
     ALLEYCAT = 0,
     ENDLINE = 1,
@@ -17,11 +15,11 @@ class Player {
 public:
     Player() = default;
     
-    Player(const string id0, const Allegiance allegiance0, const bool isHunter0);
+    Player(const std::string id, const Allegiance allegiance, const bool isHunter);
     
-    string toJson() const;
+    std::string toJson() const;
 
-    void fromJson(const string &json);
+    void fromJson(const std::string &json);
 
     bool isHunter() const;
 
@@ -31,38 +29,38 @@ public:
 
     Allegiance getAllegiance() const;
 
-    void setAllegiance(const string& allegianceStr);
+    void setAllegiance(const std::string& allegianceStr);
 
     void setAllegiance(int allegiance);
 
     void setAllegiance(Allegiance allegiance);
 
-    string getAllegianceString() const;
+    std::string getAllegianceString() const;
 
-    string getName() const;
+    std::string getName() const;
 
-    void setName(const string& name);
+    void setName(const std::string& name);
 
-    string getFaction() const;
+    std::string getFaction() const;
 
-    void setFaction(const string& faction);
+    void setFaction(const std::string& faction);
 
     void setUserID(char *newId);
 
-    string getUserID() const;
+    std::string getUserID() const;
 
     void clearUserID();
 
-    void setCurrentMatchId(string matchId);
+    void setCurrentMatchId(std::string matchId);
 
-    string *getCurrentMatchId();
+    std::string *getCurrentMatchId();
 
-    void setCurrentOpponentId(string opponentId);
-    string *getCurrentOpponentId();
+    void setCurrentOpponentId(std::string opponentId);
+    std::string *getCurrentOpponentId();
 
-    void setOpponentMacAddress(string macAddress);
+    void setOpponentMacAddress(std::string macAddress);
 
-    string *getOpponentMacAddress();
+    std::string *getOpponentMacAddress();
 
     unsigned long getLastReactionTime();
 
@@ -89,10 +87,10 @@ public:
     void addReactionTime(unsigned long reactionTime);
 
 private:
-    string id = "default";
-    string name = "";
-    string allegianceStr = "none";
-    string faction = "";
+    std::string id = "default";
+    std::string name = "";
+    std::string allegianceStr = "none";
+    std::string faction = "";
 
     int winStreak = 0;
 
@@ -108,9 +106,9 @@ private:
 
     Allegiance allegiance = Allegiance::RESISTANCE;
 
-    string* currentMatchId = new string();
-    string* currentOpponentId = new string();
-    string* opponentMacAddress = new string();
+    std::string* currentMatchId = new std::string();
+    std::string* currentOpponentId = new std::string();
+    std::string* opponentMacAddress = new std::string();
     
     bool hunter = true;
 };

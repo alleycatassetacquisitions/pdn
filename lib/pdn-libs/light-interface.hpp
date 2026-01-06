@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 
-// Forward declarations of types to keep interface clean
 enum class LightIdentifier {
     GLOBAL = 0,
     DISPLAY_LIGHTS = 1,
@@ -12,29 +11,11 @@ enum class LightIdentifier {
 };
 
 struct LEDColor {
-    int red;
-    int green;
-    int blue;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
 
-    LEDColor(int r = 0, int g = 0, int b = 0) : red(r), green(g), blue(b) {}
-};
-
-enum class AnimationType {
-    IDLE,
-    VERTICAL_CHASE,
-    DEVICE_CONNECTED,
-    COUNTDOWN,
-    LOSE,
-    HUNTER_WIN,
-    BOUNTY_WIN,
-    TRANSMIT_BREATH
-};
-
-enum class EaseCurve {
-    LINEAR,
-    EASE_IN_OUT,
-    EASE_OUT,
-    ELASTIC
+    constexpr LEDColor(uint8_t r = 0, uint8_t g = 0, uint8_t b = 0) : red(r), green(g), blue(b) {}
 };
 
 // New struct to represent the state of all LEDs
@@ -73,12 +54,40 @@ struct LEDState {
 
     // Helper to clear all LEDs
     void clear() {
-        for (int i = 0; i < 9; i++) {
+        for (uint8_t i = 0; i < 9; i++) {
             leftLights[i] = SingleLEDState();
             rightLights[i] = SingleLEDState();
         }
         transmitLight = SingleLEDState();
     }
+};
+
+class LightStrip {
+public:
+    virtual ~LightStrip() = default;
+    virtual void setLight(uint8_t index, LEDState::SingleLEDState color) = 0;
+    virtual void setLightBrightness(uint8_t index, uint8_t brightness) = 0;
+    virtual LEDState::SingleLEDState getLight(uint8_t index) = 0;
+    virtual void fade(uint8_t fadeAmount) = 0;
+    virtual void addToLight(uint8_t index, LEDState::SingleLEDState color) = 0;
+};
+
+enum class AnimationType {
+    IDLE,
+    VERTICAL_CHASE,
+    DEVICE_CONNECTED,
+    COUNTDOWN,
+    LOSE,
+    HUNTER_WIN,
+    BOUNTY_WIN,
+    TRANSMIT_BREATH
+};
+
+enum class EaseCurve {
+    LINEAR,
+    EASE_IN_OUT,
+    EASE_OUT,
+    ELASTIC
 };
 
 struct AnimationConfig {
