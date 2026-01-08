@@ -1,7 +1,7 @@
 #pragma once
 
 #include "player.hpp"
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 #include "state.hpp"
 #include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"

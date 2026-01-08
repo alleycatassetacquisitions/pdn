@@ -4,7 +4,8 @@
 #include <FastLED.h>
 #include <Preferences.h>
 
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
+#include "utils/esp32-s3-clock.hpp"
 #include "player.hpp"
 #include "state-machine.hpp"
 #include "device/pdn.hpp"
@@ -42,6 +43,8 @@ void setup() {
     player->setUserID(idGenerator->generateId());
     pdn->begin();
     delay(1000);
+
+    SimpleTimer::setPlatformClock(new Esp32S3Clock());
 
     ESP_LOGI("PDN", "HW and Game Initialized\n");
 

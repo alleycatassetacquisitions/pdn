@@ -1,10 +1,10 @@
-#include <Arduino.h>
+#include "utils/simple-timer.hpp"
 
-#include "simple-timer.hpp"
+PlatformClock* SimpleTimer::clock = nullptr;
 
 void SimpleTimer::updateTime()
 {
-    now = millis();
+    now = clock->milliseconds();
 }
 
 unsigned long SimpleTimer::getElapsedTime()
