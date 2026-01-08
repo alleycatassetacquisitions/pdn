@@ -9,7 +9,7 @@
 #include "state-machine.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 #include "esp-now-comms.hpp"
 
 // Forward declarations

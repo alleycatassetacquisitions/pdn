@@ -8,7 +8,7 @@
 #include <cstring>  // For memcpy
 #include <functional>
 #include <map>
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 #include "player.hpp"
 #include "match.hpp"
 #include "id-generator.hpp"

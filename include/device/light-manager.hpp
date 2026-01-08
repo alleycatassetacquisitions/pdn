@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 #include "light-interface.hpp"
 #include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
 #include "device/pdn-lights.hpp"
