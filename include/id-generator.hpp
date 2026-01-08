@@ -1,7 +1,8 @@
 #pragma once
 
-#include <UUID.h>
+#include "utils/UUID.h"
 #include <string>
+#include <random>
 
 class IdGenerator {
 public:
@@ -70,11 +71,12 @@ public:
 
 private:
     UUID generator;
+    std::random_device randomDevice;
 
-    IdGenerator() {
-        generator.setVariant4Mode();
-        generator.seed(random(999999999), random(999999999));
-    };
+    IdGenerator() : generator(randomDevice()) {
+        generator.setVersion4Mode();
+        generator.seed(randomDevice(), randomDevice());
+    }
 
     /**
      * Converts a single hexadecimal character to its numeric value (0-15).
