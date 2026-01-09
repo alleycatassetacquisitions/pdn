@@ -56,7 +56,7 @@ int RemoteDebugManager::BroadcastDebugPacket() {
     ESP_LOGI("RemoteDebugManager", "Broadcasting debug packet with command: %d", m_debugPacket.command);
     
     // Broadcast the packet using ESP-NOW
-    return espNowManager->SendData(ESP_NOW_BROADCAST_ADDR, PktType::kDebugPacket, 
+    return espNowManager->sendData(PEER_BROADCAST_ADDR, static_cast<uint8_t>(PktType::kDebugPacket), 
                                   (uint8_t*)&m_debugPacket, sizeof(DebugPacket));
 }
 

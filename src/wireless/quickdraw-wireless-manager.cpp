@@ -76,9 +76,9 @@ int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress,
     ESP_LOGI("QWM", "Hunter Draw Time: %ld", qdPacket.hunterDrawTime);
     ESP_LOGI("QWM", "Bounty Draw Time: %ld", qdPacket.bountyDrawTime);
 
-    int ret = EspNowManager::GetInstance()->SendData(
-        ESP_NOW_BROADCAST_ADDR,
-        PktType::kQuickdrawCommand,
+    int ret = EspNowManager::GetInstance()->sendData(
+        PEER_BROADCAST_ADDR,
+        static_cast<uint8_t>(PktType::kQuickdrawCommand),
         (uint8_t*)&qdPacket,
         sizeof(qdPacket));
 
