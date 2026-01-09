@@ -208,25 +208,25 @@ void EspNowState::onStateMounted(Device* device) {
     WiFi.channel(6);
     
     // Initialize ESP-NOW using the manager's initialize method
-    esp_err_t err = EspNowManager::GetInstance()->Initialize();
+    esp_err_t err = EspNowManager::GetInstance()->initialize();
     if (err == ESP_OK) {
         ESP_LOGI("WirelessManager", "ESP-NOW initialized successfully");
         
         // Register packet handlers after successful initialization
-        EspNowManager::GetInstance()->SetPacketHandler(PktType::kQuickdrawCommand,
-      [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg)
+        EspNowManager::GetInstance()->setPacketHandler(static_cast<uint8_t>(PktType::kQuickdrawCommand),
+      [](const PeerCommsInterface::PeerAddress& src, const uint8_t* data, const size_t len, void* userArg)
         {
           QuickdrawWirelessManager* manager = (QuickdrawWirelessManager*)userArg;
-          manager->processQuickdrawCommand(srcMacAddr, data, len);
+          manager->processQuickdrawCommand(src.data(), data, len);
         },
         QuickdrawWirelessManager::GetInstance());
         
         // Register RemoteDebugManager's packet handler
-        EspNowManager::GetInstance()->SetPacketHandler(
-            PktType::kDebugPacket,  // Using the broadcast packet type for debug packets
-            [](const uint8_t* srcMacAddr, const uint8_t* data, const size_t len, void* userArg) {
+        EspNowManager::GetInstance()->setPacketHandler(
+            static_cast<uint8_t>(PktType::kDebugPacket),  // Using the broadcast packet type for debug packets
+            [](const PeerCommsInterface::PeerAddress& srcAddr, const uint8_t* data, const size_t len, void* userArg) {
                 RemoteDebugManager* manager = (RemoteDebugManager*)userArg;
-                manager->ProcessDebugPacket(srcMacAddr, data, len);
+                manager->ProcessDebugPacket(srcAddr.data(), data, len);
             },
             RemoteDebugManager::GetInstance()
         );
@@ -240,7 +240,7 @@ void EspNowState::onStateMounted(Device* device) {
 
 void EspNowState::onStateLoop(Device* device) {
     // Give processing time to ESP-NOW manager
-    EspNowManager::GetInstance()->Update();
+    EspNowManager::GetInstance()->update();
 }
 
 void EspNowState::onStateDismounted(Device* device) {

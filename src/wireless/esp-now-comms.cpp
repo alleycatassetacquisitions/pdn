@@ -26,13 +26,12 @@ EspNowManager *EspNowManager::GetInstance()
     return &instance;
 }
 
-void EspNowManager::Update()
-{
-    //TODO: Is this actually needed anymore?
+void EspNowManager::update() {
+
 }
 
 EspNowManager::EspNowManager() :
-    m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PktHandler, void*>(nullptr, nullptr)),
+    m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
     m_maxRetries(5),
     m_curRetries(0)
 {
@@ -45,10 +44,10 @@ EspNowManager::EspNowManager() :
 #endif
 
     // Initialize ESP-NOW
-    Initialize();
+    initialize();
 }
 
-esp_err_t EspNowManager::Initialize()
+int EspNowManager::initialize()
 {
     //Initialize ESP-NOW
     esp_err_t err = esp_now_init();
@@ -73,7 +72,7 @@ esp_err_t EspNowManager::Initialize()
 
     //Register broadcast peer
     esp_now_peer_info_t broadcastPeer = {};
-    memcpy(broadcastPeer.peer_addr, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
+    memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR.data(), ESP_NOW_ETH_ALEN);
     err = esp_now_add_peer(&broadcastPeer);
     if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
         ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
@@ -108,20 +107,20 @@ void EspNowManager::WifiPromiscuousRecvCallback(void *buf, wifi_promiscuous_pkt_
 }
 #endif
 
-int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, const uint8_t *data, size_t len)
+int EspNowManager::sendData(const PeerAddress& dst, uint8_t packetType, const uint8_t* data, const size_t length)
 {
-    if(len > (255 * MAX_PKT_DATA_SIZE))
+    if(length > (255 * MAX_PKT_DATA_SIZE))
     {
         ESP_LOGW("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
-            len, 
+            length, 
             255 * MAX_PKT_DATA_SIZE);
         return -1;
     }
 
     //Calculate the total number of ESP_NOW_MAX_DATA_LEN (250) byte packets we'll 
     //need to send the whole buffer
-    uint8_t numInCluster = len / MAX_PKT_DATA_SIZE + 
-                           (len % MAX_PKT_DATA_SIZE == 0 ? 0 : 1);
+    uint8_t numInCluster = length / MAX_PKT_DATA_SIZE + 
+                           (length % MAX_PKT_DATA_SIZE == 0 ? 0 : 1);
     
     //Allocate entire send buffer up front so we don't fail an allocation part way through
     //the cluster
@@ -130,7 +129,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
     //This will also be much faster than malloc/free which would be wasteful for such a
     //small allocation
     uint8_t** sendBuffers = (uint8_t**)alloca(sizeof(uint8_t*) * numInCluster);
-    size_t bytesLeft = len;
+    size_t bytesLeft = length;
     for(int i = 0; i < numInCluster; ++i)
     {
         size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
@@ -143,7 +142,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
 
             //TODO: Return better error code once we have them
             ESP_LOGE("ENC", "Failed to allocate buffers for ESP-NOW send queue");
-            ESP_LOGE("ENC", "Needed to allocate a total of %lu bytes\n", len);
+            ESP_LOGE("ENC", "Needed to allocate a total of %lu bytes\n", length);
             return -1;
         }
         bytesLeft -= thisBuffer;
@@ -154,7 +153,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
     bool willNeedToStartSend = m_sendQueue.empty();
 
     //Build up each packet
-    bytesLeft = len;
+    bytesLeft = length;
     for(int pktIdx = 0; pktIdx < numInCluster; ++pktIdx)
     {
         size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
@@ -167,7 +166,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
         hdr->idxInCluster = pktIdx;
         hdr->numPktsInCluster = numInCluster;
         hdr->pktLen = sizeof(DataPktHdr) + thisBuffer;
-        hdr->packetType = packetType;
+        hdr->packetType = static_cast<PktType>(packetType);
 
         //Copy the actual data into the send buffer following the header
         size_t dataOffset = pktIdx * MAX_PKT_DATA_SIZE;
@@ -175,7 +174,7 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
 
         //Now add it to the send queue
         DataSendBuffer buffer;
-        memcpy(buffer.dstMac, dstMac, ESP_NOW_ETH_ALEN);
+        memcpy(buffer.dstMac, dst.data(), ESP_NOW_ETH_ALEN);
         buffer.ptr = sendBuffers[pktIdx];
         buffer.len = hdr->pktLen;
         m_sendQueue.push(buffer);
@@ -191,15 +190,15 @@ int EspNowManager::SendData(const uint8_t* dstMac, const PktType packetType, con
     return 0;
 }
 
-void EspNowManager::SetPacketHandler(const PktType packetType, PktHandler callback, void* userArg)
+void EspNowManager::setPacketHandler(uint8_t packetType, PacketCallback callback, void* userArg)
 {
-    m_pktHandlerCallbacks[(int)packetType].first = callback;
-    m_pktHandlerCallbacks[(int)packetType].second = userArg;
+    m_pktHandlerCallbacks[packetType].first = callback;
+    m_pktHandlerCallbacks[packetType].second = userArg;
 }
 
-void EspNowManager::ClearPacketHandler(const PktType packetType)
+void EspNowManager::clearPacketHandler(uint8_t packetType)
 {
-    m_pktHandlerCallbacks[(int)packetType].first = nullptr;
+    m_pktHandlerCallbacks[packetType].first = nullptr;
 }
 
 #if PDN_ENABLE_RSSI_TRACKING
@@ -343,7 +342,7 @@ int EspNowManager::SendFrontPkt()
     
     //If this is the first packet in cluster, make sure the peer is registered
     DataPktHdr* hdr = (DataPktHdr*)buffer.ptr;
-    if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, ESP_NOW_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
+    if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR.data(), ESP_NOW_ETH_ALEN) != 0))
         EnsurePeerIsRegistered(buffer.dstMac);
 
     esp_err_t err;
@@ -408,10 +407,11 @@ void EspNowManager::HandlePktCallback(const PktType packetType, const uint8_t *s
         return;
     }
 
-    PktHandler callback = m_pktHandlerCallbacks[(int)packetType].first;
+    PacketCallback callback = m_pktHandlerCallbacks[(int)packetType].first;
     if(callback)
     {
-        callback(srcMacAddr, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
+        PeerAddress srcMac = {srcMacAddr[0], srcMacAddr[1], srcMacAddr[2], srcMacAddr[3], srcMacAddr[4], srcMacAddr[5]};
+        callback(srcMac, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
     }
 }
 

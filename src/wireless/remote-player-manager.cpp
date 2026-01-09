@@ -55,8 +55,8 @@ int RemotePlayerManager::BroadcastPlayerInfo()
                   sizeof(broadcastPkt));
 #endif
 
-    int ret = EspNowManager::GetInstance()->SendData(ESP_NOW_BROADCAST_ADDR,
-                                                     PktType::kPlayerInfoBroadcast,
+    int ret = EspNowManager::GetInstance()->sendData(PEER_BROADCAST_ADDR,
+                                                     static_cast<uint8_t>(PktType::kPlayerInfoBroadcast),
                                                      (uint8_t*)&broadcastPkt,
                                                      sizeof(broadcastPkt));
     m_lastBroadcastTime = millis();
