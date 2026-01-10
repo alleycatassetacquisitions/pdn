@@ -3,16 +3,14 @@
 #include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
 #include <esp_log.h>
-#include "wireless/wireless-manager.hpp"
 
-// Logging tag for PlayerRegistration state
 static const char* TAG = "PlayerRegistration";
 
-PlayerRegistration::PlayerRegistration(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
+PlayerRegistration::PlayerRegistration(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
     ESP_LOGI(TAG, "Initializing PlayerRegistration state");
     this->player = player;
     this->matchManager = matchManager;
-    this->wirelessManager = wirelessManager;
+    this->httpClient = httpClient;
 }
 
 PlayerRegistration::~PlayerRegistration() {
@@ -21,10 +19,8 @@ PlayerRegistration::~PlayerRegistration() {
 }
 
 void PlayerRegistration::onStateMounted(Device *PDN) {
-   
     ESP_LOGI(TAG, "State mounted - Starting player registration");
-    // Switch to ESP-NOW mode to listen for debug packets
-    wirelessManager->switchToEspNow();
+
     PDN->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
     drawText("Pairing Code", 8, 16)->
@@ -39,7 +35,6 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
         if(playerRegistration->currentDigit > 9) {
             playerRegistration->currentDigit = 0;
         }
-        ESP_LOGD(TAG, "Primary button clicked - Current digit cycled to: %d", playerRegistration->currentDigit);
         playerRegistration->shouldRender = true;
     }, this);
 
@@ -47,14 +42,10 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
     [](void *ctx) {
         PlayerRegistration* playerRegistration = (PlayerRegistration*)ctx;
         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
-        ESP_LOGD(TAG, "Secondary button clicked - Digit %d set to %d", 
-                 playerRegistration->currentDigitIndex, 
-                 playerRegistration->currentDigit);
 
         playerRegistration->currentDigitIndex++;
         playerRegistration->currentDigit = 0;
         if(playerRegistration->currentDigitIndex >= playerRegistration->DIGIT_COUNT) {
-            // Convert inputId array to string
             char playerId[5];
             snprintf(playerId, sizeof(playerId), "%d%d%d%d", 
                     playerRegistration->inputId[0],
@@ -69,7 +60,6 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
         }
     }, this);
 
-
     ESP_LOGI(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
     if(matchManager->getStoredMatchCount() > 0) {
         ESP_LOGI(TAG, "Starting transmit breath animation");
@@ -81,23 +71,19 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
         config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
         PDN->startAnimation(config);
     }
-    
 }
 
 void PlayerRegistration::onStateLoop(Device *PDN) {
     if(shouldRender) {
-        ESP_LOGD(TAG, "Rendering display - Digit index: %d, Current digit: %d", currentDigitIndex, currentDigit);
         if(currentDigitIndex == 0) {
-            PDN->
-            invalidateScreen()->
+            PDN->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
             renderGlyph(digitGlyphs[currentDigit], 20, 40)->
             render();
         } else if(currentDigitIndex == 1) {
-            PDN->
-            invalidateScreen()->
+            PDN->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
@@ -105,8 +91,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
             renderGlyph(digitGlyphs[currentDigit], 44, 40)->
             render();
         } else if(currentDigitIndex == 2) {
-            PDN->
-            invalidateScreen()->
+            PDN->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
@@ -115,8 +100,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
             renderGlyph(digitGlyphs[currentDigit], 68, 40)->
             render();
         } else if(currentDigitIndex == 3) {
-            PDN->
-            invalidateScreen()->
+            PDN->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
@@ -135,16 +119,12 @@ void PlayerRegistration::onStateDismounted(Device *PDN) {
     PDN->setGlyphMode(FontMode::TEXT);
     PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
     PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
-    //reset all member variables
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
     PDN->stopAnimation();
-    ESP_LOGI(TAG, "State cleanup complete");
 }
 
 bool PlayerRegistration::transitionToUserFetch() {
     return transitionToUserFetchState;
 }
-
-

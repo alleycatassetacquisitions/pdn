@@ -1,6 +1,5 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/esp-now-comms.hpp"
-#include <Arduino.h>
 #include <esp_log.h>
 
 RemoteDebugManager* RemoteDebugManager::s_instance = nullptr;

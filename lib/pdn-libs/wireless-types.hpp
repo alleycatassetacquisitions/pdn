@@ -35,3 +35,18 @@ struct WifiConfig {
 // Callback definitions
 using HttpSuccessCallback = std::function<void(const std::string& jsonResponse)>;
 using HttpErrorCallback = std::function<void(const WirelessErrorInfo& error)>; 
+
+struct HttpRequest {
+    std::string path;
+    std::string method;
+    std::string payload;
+    HttpSuccessCallback onSuccess;
+    HttpErrorCallback onError;
+    bool inProgress;
+    unsigned long lastAttemptTime;
+    int retryCount;
+    std::string responseData;
+
+    HttpRequest(const std::string& path, const std::string& method, const std::string& payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
+        : path(path), method(method), payload(payload), onSuccess(onSuccess), onError(onError), inProgress(false), lastAttemptTime(0), retryCount(0), responseData("") {}
+};
