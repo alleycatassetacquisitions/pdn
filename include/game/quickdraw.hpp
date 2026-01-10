@@ -6,30 +6,23 @@
 #include "state-machine.hpp"
 #include "quickdraw-states.hpp"
 #include "quickdraw-resources.hpp"
-#include "wireless/wireless-manager.hpp"
+#include "http-client-interface.hpp"
 #define MATCH_SIZE sizeof(Match)
-
-// Global includes
-
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN, WirelessManager* wirelessManager);
-
+    Quickdraw(Player *player, Device *PDN, HttpClientInterface* httpClient);
     ~Quickdraw();
 
     void populateStateMap() override;
-
     static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
     
-    // Add getter for WirelessManager
-    WirelessManager* getWirelessManager() { return wirelessManager; }
+    HttpClientInterface* getHttpClient() { return httpClient; }
 
 private:
-
     std::vector<Match> matches;
     int numMatches = 0;
     MatchManager* matchManager;
     Player *player;
-    WirelessManager* wirelessManager;
+    HttpClientInterface* httpClient;
 };

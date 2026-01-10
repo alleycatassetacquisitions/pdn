@@ -4,23 +4,9 @@
 #include "game/quickdraw-resources.hpp"
 #include "wireless/esp-now-comms.hpp"
 #include "game/match-manager.hpp"
-//
-// Created by Elli Furedy on 9/30/2024.
-//
 
-/*
-    void activationIdle()
-    {
-      // msgDelay was to prevent this from broadcasting every loop.
-      if(msgDelay == 0) {
-        comms().write(BATTLE_MESSAGE);
-      }
-      msgDelay = msgDelay + 1;
-    }
- */
-Idle::Idle(Player* player, WirelessManager* wirelessManager) : State(IDLE) {
+Idle::Idle(Player* player) : State(IDLE) {
     this->player = player;
-    this->wirelessManager = wirelessManager;
 }
 
 Idle::~Idle() {
@@ -28,12 +14,8 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
-
     MatchManager::GetInstance()->clearCurrentMatch();
-
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
-
-    wirelessManager->switchToEspNow();
     
     AnimationConfig config;
     
@@ -59,26 +41,13 @@ void Idle::onStateMounted(Device *PDN) {
         idle->displayIsDirty = true;
     };
 
-
-    PDN->setButtonClick(
-        ButtonInteraction::CLICK,
-        ButtonIdentifier::PRIMARY_BUTTON,
-        cycleStats,
-        this
-    );
-
-    PDN->setButtonClick(
-        ButtonInteraction::CLICK,
-        ButtonIdentifier::SECONDARY_BUTTON,
-        cycleStats,
-        this
-    );
+    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON, cycleStats, this);
+    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::SECONDARY_BUTTON, cycleStats, this);
 
     displayIsDirty = true;
 }
 
 void Idle::onStateLoop(Device *PDN) {
-
     EVERY_N_MILLIS(250) {
         if(!player->isHunter()) {
             PDN->writeString(SERIAL_HEARTBEAT.c_str());

@@ -1,8 +1,8 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, WirelessManager* wirelessManager): StateMachine(PDN) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, HttpClientInterface* httpClient): StateMachine(PDN) {
     this->player = player;
-    this->wirelessManager = wirelessManager;
+    this->httpClient = httpClient;
     this->matchManager = MatchManager::GetInstance();
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
@@ -13,19 +13,17 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
-
     matchManager->initialize(player);
 
-    PlayerRegistration* playerRegistration = new PlayerRegistration(player, wirelessManager, matchManager);
-    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager);
+    PlayerRegistration* playerRegistration = new PlayerRegistration(player, httpClient, matchManager);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, httpClient);
     WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);
     AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
     
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    // Wireless manager should be injected into the state here.
-    Idle* idle = new Idle(player, wirelessManager);
+    Idle* idle = new Idle(player);
     
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
@@ -39,11 +37,11 @@ void Quickdraw::populateStateMap() {
     DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager);
     DuelResult* duelResult = new DuelResult(player, matchManager);
     
-    Win* win = new Win(player, wirelessManager);
-    Lose* lose = new Lose(player, wirelessManager);
+    Win* win = new Win(player);
+    Lose* lose = new Lose(player);
     
     Sleep* sleep = new Sleep(player);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(player, httpClient, matchManager);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -89,7 +87,6 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&AllegiancePickerState::transitionToWelcomeMessage, allegiancePicker),
             welcomeMessage));
-            
 
     welcomeMessage->addTransition(
         new StateTransition(
@@ -98,120 +95,103 @@ void Quickdraw::populateStateMap() {
 
     awakenSequence->addTransition(
         new StateTransition(
-            std::bind(&AwakenSequence::transitionToIdle,
-                awakenSequence),
-                idle));
+            std::bind(&AwakenSequence::transitionToIdle, awakenSequence),
+            idle));
 
     idle->addTransition(
         new StateTransition(
-            std::bind(&Idle::transitionToHandshake,
-                idle),
+            std::bind(&Idle::transitionToHandshake, idle),
             handshakeInitiate));
 
-    // Handshake state transitions
     handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToBountySendCC,
-                handshakeInitiate),
+            std::bind(&HandshakeInitiateState::transitionToBountySendCC, handshakeInitiate),
             bountySendCC));
     
     handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToHunterSendId,
-                handshakeInitiate),
+            std::bind(&HandshakeInitiateState::transitionToHunterSendId, handshakeInitiate),
             hunterSendId));
     
-    // Common timeout transition for all handshake states
     handshakeInitiate->addTransition(
         new StateTransition(
-            std::bind(&BaseHandshakeState::transitionToIdle,
-                handshakeInitiate),
+            std::bind(&BaseHandshakeState::transitionToIdle, handshakeInitiate),
             idle));
     
-    // Bounty path
     bountySendCC->addTransition(
         new StateTransition(
-            std::bind(&BountySendConnectionConfirmedState::transitionToConnectionSuccessful,
-                bountySendCC),
+            std::bind(&BountySendConnectionConfirmedState::transitionToConnectionSuccessful, bountySendCC),
             connectionSuccessful));
     
-    // Common timeout transition for all handshake states
     bountySendCC->addTransition(
         new StateTransition(
-            std::bind(&BaseHandshakeState::transitionToIdle,
-                bountySendCC),
+            std::bind(&BaseHandshakeState::transitionToIdle, bountySendCC),
             idle));
     
-    // Hunter path
     hunterSendId->addTransition(
         new StateTransition(
-            std::bind(&HunterSendIdState::transitionToConnectionSuccessful,
-                hunterSendId),
+            std::bind(&HunterSendIdState::transitionToConnectionSuccessful, hunterSendId),
             connectionSuccessful));
     
-    // Common timeout transition for all handshake states
     hunterSendId->addTransition(
         new StateTransition(
-            std::bind(&BaseHandshakeState::transitionToIdle,
-                hunterSendId),
+            std::bind(&BaseHandshakeState::transitionToIdle, hunterSendId),
             idle));
 
     connectionSuccessful->addTransition(
         new StateTransition(
-            std::bind(&ConnectionSuccessful::transitionToCountdown,
-                connectionSuccessful),
+            std::bind(&ConnectionSuccessful::transitionToCountdown, connectionSuccessful),
             duelCountdown));
 
     duelCountdown->addTransition(
         new StateTransition(
-            std::bind(&DuelCountdown::shallWeBattle,
-                duelCountdown),
-                duel));
+            std::bind(&DuelCountdown::shallWeBattle, duelCountdown),
+            duel));
+
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToIdle,
-                duel),
-                idle));
+            std::bind(&Duel::transitionToIdle, duel),
+            idle));
+
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToDuelReceivedResult,
-                duel),
-                duelReceivedResult));
+            std::bind(&Duel::transitionToDuelReceivedResult, duel),
+            duelReceivedResult));
+
     duel->addTransition(
         new StateTransition(
-            std::bind(&Duel::transitionToDuelPushed,
-                duel),
-                duelPushed));
+            std::bind(&Duel::transitionToDuelPushed, duel),
+            duelPushed));
+
     duelPushed->addTransition(
         new StateTransition(
-            std::bind(&DuelPushed::transitionToDuelResult,
-                duelPushed),
-                duelResult));
+            std::bind(&DuelPushed::transitionToDuelResult, duelPushed),
+            duelResult));
+
     duelReceivedResult->addTransition(
         new StateTransition(
-            std::bind(&DuelReceivedResult::transitionToDuelResult,
-                duelReceivedResult),
-                duelResult));
+            std::bind(&DuelReceivedResult::transitionToDuelResult, duelReceivedResult),
+            duelResult));
+
     duelResult->addTransition(
         new StateTransition(
-            std::bind(&DuelResult::transitionToWin,
-                duelResult),
-                win));
+            std::bind(&DuelResult::transitionToWin, duelResult),
+            win));
+
     duelResult->addTransition(
         new StateTransition(
-            std::bind(&DuelResult::transitionToLose,
-                duelResult),
-                lose));
+            std::bind(&DuelResult::transitionToLose, duelResult),
+            lose));
+
     win->addTransition(
         new StateTransition(
-        std::bind(&Win::resetGame,
-            win),
+            std::bind(&Win::resetGame, win),
             uploadMatches));
+
     lose->addTransition(
         new StateTransition(
-            std::bind(&Lose::resetGame,
-                lose),
-                uploadMatches));
+            std::bind(&Lose::resetGame, lose),
+            uploadMatches));
 
     uploadMatches->addTransition(
         new StateTransition(
@@ -236,8 +216,6 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(welcomeMessage);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
-    
-    // Add new handshake states
     stateMap.push_back(handshakeInitiate);
     stateMap.push_back(bountySendCC);
     stateMap.push_back(hunterSendId);

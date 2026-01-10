@@ -3,8 +3,6 @@
 //
 #include "wireless/quickdraw-wireless-manager.hpp"
 
-#include <Arduino.h>
-
 #include "wireless/esp-now-comms.hpp"
 #include "id-generator.hpp"
 #include <WiFi.h>

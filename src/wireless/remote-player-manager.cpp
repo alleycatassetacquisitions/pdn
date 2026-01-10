@@ -1,8 +1,9 @@
-#include <Arduino.h>
+#include <algorithm>
 #include <esp_log.h>
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/esp-now-comms.hpp"
 #include "id-generator.hpp"
+#include "utils/simple-timer.hpp"
 
 #define DEBUG_REMOTE_PLAYER_MANAGER 0
 
@@ -23,7 +24,7 @@ RemotePlayerManager::RemotePlayerManager() :
 
 void RemotePlayerManager::Update()
 {
-    unsigned long now = millis();
+    unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
 
     //Remove players not seen in a long time
     //Single pass removal using Erase-move idiom
@@ -59,7 +60,7 @@ int RemotePlayerManager::BroadcastPlayerInfo()
                                                      static_cast<uint8_t>(PktType::kPlayerInfoBroadcast),
                                                      (uint8_t*)&broadcastPkt,
                                                      sizeof(broadcastPkt));
-    m_lastBroadcastTime = millis();
+    m_lastBroadcastTime = SimpleTimer::getPlatformClock()->milliseconds();
     return ret;
 }
 
@@ -104,7 +105,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
         ESP_LOGD("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
 
         m_remotePlayers.emplace_back(srcMacAddr, pkt->id, pkt->allegiance, pkt->hunter,
-            millis(), 0);
+            SimpleTimer::getPlatformClock()->milliseconds(), 0);
         remotePlayer = m_remotePlayers.end() - 1;
         ESP_LOGI("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
             remotePlayer->playerInfo.getUserID().c_str(),
@@ -117,7 +118,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     //If we have a local record of this player, update their last seen time, regardless of packet type
     if(remotePlayer != m_remotePlayers.end())
     {
-        remotePlayer->lastSeenTime = millis();
+        remotePlayer->lastSeenTime = SimpleTimer::getPlatformClock()->milliseconds();
 #if PDN_ENABLE_RSSI_TRACKING
         remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
         ESP_LOGD("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
