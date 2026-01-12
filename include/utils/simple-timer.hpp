@@ -1,12 +1,11 @@
 #pragma once
 
 #include "platform-clock.hpp"
+#include "esp_log.h"
 
 class SimpleTimer {
 public:
-    SimpleTimer() {
-        updateTime();
-    }
+    SimpleTimer() = default;
 
     static void setPlatformClock(PlatformClock* platformClock) {
         clock = platformClock;
@@ -16,20 +15,51 @@ public:
         return clock;
     }
 
-    void updateTime();
-
-    unsigned long getElapsedTime();
-
-    bool expired();
-
-    void invalidate();
-
-    bool isRunning();
-
-    void setTimer(unsigned long timerDelay);
+    void updateTime(){
+        if (clock == nullptr) {
+            ESP_LOGE("SimpleTimer", "updateTime called with Platform clock not set");
+            return;
+        }
+        now = clock->milliseconds();
+    }
+    
+    unsigned long getElapsedTime()
+    {
+        updateTime();
+        return now - start;
+    }
+    
+    bool expired()
+    {
+        if(running) {
+            return duration < getElapsedTime();
+        }
+    
+        return false;
+    }
+    
+    bool isRunning() {
+        return running;
+    }
+    
+    void invalidate()
+    {
+        duration = 0;
+        running = false;
+    }
+    
+    void setTimer(unsigned long timerDelay)
+    {
+        running = true;
+        duration = timerDelay;
+        updateTime();
+        start = now;
+    }
 
     unsigned long now = 0;
+
 private:
+
     bool running = false;
     unsigned long start = 0;
     unsigned long duration = 0;
