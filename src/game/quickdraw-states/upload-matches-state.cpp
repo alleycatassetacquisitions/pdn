@@ -1,7 +1,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "game/quickdraw-resources.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 
 static const char* TAG = "UploadMatchesState";
 
@@ -9,35 +9,35 @@ UploadMatchesState::UploadMatchesState(Player* player, HttpClientInterface* http
     this->player = player;
     this->httpClient = httpClient;
     this->matchManager = matchManager;
-    ESP_LOGI(TAG, "UploadMatchesState initialized");
+    LOG_I(TAG, "UploadMatchesState initialized");
 }
 
 UploadMatchesState::~UploadMatchesState() {
-    ESP_LOGI(TAG, "UploadMatchesState destroyed");
+    LOG_I(TAG, "UploadMatchesState destroyed");
     player = nullptr;
     httpClient = nullptr;
     matchManager = nullptr;
 }
 
 void UploadMatchesState::onStateMounted(Device *PDN) {
-    ESP_LOGI(TAG, "State mounted - Starting match upload process");
+    LOG_I(TAG, "State mounted - Starting match upload process");
 
     showLoadingGlyphs(PDN);
     uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
 
     matchesJson = matchManager->toJson();
-    ESP_LOGI(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
+    LOG_I(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
 
     QuickdrawRequests::updateMatches(
         httpClient,
         matchesJson,
         [this](const std::string& jsonResponse) {
-            ESP_LOGI(TAG, "Successfully updated matches: %s", jsonResponse.c_str());
+            LOG_I(TAG, "Successfully updated matches: %s", jsonResponse.c_str());
             matchManager->clearStorage();
             routeToNextState();
         },
         [this](const WirelessErrorInfo& error) {
-            ESP_LOGE(TAG, "Failed to update matches: %s (code: %d)", 
+            LOG_E(TAG, "Failed to update matches: %s (code: %d)", 
                 error.message.c_str(), static_cast<int>(error.code));
             routeToNextState();
         }
@@ -55,7 +55,7 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
 void UploadMatchesState::onStateLoop(Device *PDN) {
     uploadMatchesTimer.updateTime();
     if(uploadMatchesTimer.expired()) {
-        ESP_LOGI(TAG, "Retry timer expired");
+        LOG_I(TAG, "Retry timer expired");
         routeToNextState();
     }
 
@@ -63,7 +63,7 @@ void UploadMatchesState::onStateLoop(Device *PDN) {
 }
 
 void UploadMatchesState::onStateDismounted(Device *PDN) {
-    ESP_LOGI(TAG, "State dismounted");
+    LOG_I(TAG, "State dismounted");
     uploadMatchesTimer.invalidate();
     transitionToSleepState = false;
     transitionToPlayerRegistrationState = false;

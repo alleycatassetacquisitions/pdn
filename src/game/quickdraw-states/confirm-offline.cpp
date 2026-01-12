@@ -1,12 +1,12 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 
 static const char* TAG = "ConfirmOfflineState";
 
 ConfirmOfflineState::ConfirmOfflineState(Player* player) : State(QuickdrawStateId::CONFIRM_OFFLINE) {
     this->player = player;
-    ESP_LOGI(TAG, "ConfirmOfflineState mounted");
+    LOG_I(TAG, "ConfirmOfflineState mounted");
 }
 
 ConfirmOfflineState::~ConfirmOfflineState() {
@@ -14,7 +14,7 @@ ConfirmOfflineState::~ConfirmOfflineState() {
 
 void ConfirmOfflineState::onStateMounted(Device *PDN) {
     renderUi(PDN);
-    ESP_LOGI(TAG, "ConfirmOfflineState mounted - setting up button callbacks");
+    LOG_I(TAG, "ConfirmOfflineState mounted - setting up button callbacks");
     PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON, [](void *ctx) {
         ConfirmOfflineState* confirmOfflineState = (ConfirmOfflineState*)ctx;
         confirmOfflineState->menuIndex++;

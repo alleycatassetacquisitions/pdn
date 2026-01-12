@@ -10,22 +10,22 @@ HandshakeInitiateState::~HandshakeInitiateState() {
 }
 
 void HandshakeInitiateState::onStateMounted(Device *PDN) {
-    ESP_LOGI("INITIATE_STATE", "State mounted");
+    LOG_I("INITIATE_STATE", "State mounted");
 }
 
 void HandshakeInitiateState::onStateLoop(Device *PDN) {
     BaseHandshakeState::initTimeout();
     if(player->isHunter()) {
-        ESP_LOGI("INITIATE_STATE", "Player is Hunter, transitioning to HunterSendIdState");
+        LOG_I("INITIATE_STATE", "Player is Hunter, transitioning to HunterSendIdState");
         transitionToHunterSendIdState = true;
     } else {
-        ESP_LOGI("INITIATE_STATE", "Transitioning to BountySendCCState");
+        LOG_I("INITIATE_STATE", "Transitioning to BountySendCCState");
         transitionToBountySendCCState = true;
     }
 }
 
 void HandshakeInitiateState::onStateDismounted(Device *PDN) {
-    ESP_LOGI("INITIATE_STATE", "State dismounted");
+    LOG_I("INITIATE_STATE", "State dismounted");
     transitionToBountySendCCState = false;
     transitionToHunterSendIdState = false;
 }

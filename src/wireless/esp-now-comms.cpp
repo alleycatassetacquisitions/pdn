@@ -2,7 +2,7 @@
 #include <Arduino.h> //For Serial, may be replaced with more specific header?
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include <esp_log.h>
+#include "logger.hpp"
 
 #include "wireless/esp-now-comms.hpp"
 
@@ -53,20 +53,20 @@ int EspNowManager::initialize()
     esp_err_t err = esp_now_init();
     if(err != ESP_OK)
     {
-        ESP_LOGE("ENC", "ESPNOW failed to init: 0x%X\n", err);
+        LOG_E("ENC", "ESPNOW failed to init: 0x%X\n", err);
         return err;
     }
     
     //Register callbacks
     err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
     if(err != ESP_OK) {
-        ESP_LOGE("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
+        LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
         return err;
     }
     
     err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
     if(err != ESP_OK) {
-        ESP_LOGE("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
+        LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
         return err;
     }
 
@@ -75,11 +75,11 @@ int EspNowManager::initialize()
     memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR.data(), ESP_NOW_ETH_ALEN);
     err = esp_now_add_peer(&broadcastPeer);
     if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
-        ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
+        LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
         return err;
     }
 
-    ESP_LOGI("ENC", "ESPNOW Comms initialized");
+    LOG_I("ENC", "ESPNOW Comms initialized");
     return ESP_OK;
 }
 
@@ -111,7 +111,7 @@ int EspNowManager::sendData(const PeerAddress& dst, uint8_t packetType, const ui
 {
     if(length > (255 * MAX_PKT_DATA_SIZE))
     {
-        ESP_LOGW("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
+        LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
             length, 
             255 * MAX_PKT_DATA_SIZE);
         return -1;
@@ -141,8 +141,8 @@ int EspNowManager::sendData(const PeerAddress& dst, uint8_t packetType, const ui
                 free(sendBuffers[j]);
 
             //TODO: Return better error code once we have them
-            ESP_LOGE("ENC", "Failed to allocate buffers for ESP-NOW send queue");
-            ESP_LOGE("ENC", "Needed to allocate a total of %lu bytes\n", length);
+            LOG_E("ENC", "Failed to allocate buffers for ESP-NOW send queue");
+            LOG_E("ENC", "Needed to allocate a total of %lu bytes\n", length);
             return -1;
         }
         bytesLeft -= thisBuffer;
@@ -224,7 +224,7 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
     //Make sure received packet is at least min length
     if(data_len < sizeof(DataPktHdr))
     {
-        ESP_LOGE("ENC", "Recieved buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
+        LOG_E("ENC", "Recieved buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
         return;
     }
 
@@ -265,7 +265,7 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
                 DataRecvBuffer recvBuffer = existingBuffer->second;
                 if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx)
                 {
-                    ESP_LOGW("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
+                    LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
                                   recvBuffer.expectedNextIdx,
                                   pktHdr->idxInCluster);
                     free(recvBuffer.data);
@@ -291,7 +291,7 @@ void EspNowManager::EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *d
             }
             else
             {
-                ESP_LOGW("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
+                LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
                 return;
             }
         }
@@ -319,12 +319,12 @@ void EspNowManager::EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_sta
     {
         if(manager->m_curRetries < manager->m_maxRetries)
         {
-            ESP_LOGW("ENC", "ESPNOW Failed send, retrying");
+            LOG_W("ENC", "ESPNOW Failed send, retrying");
             ++manager->m_curRetries;
         }
         else
         {
-            ESP_LOGE("ENC", "ESPNOW Failed send, giving up");
+            LOG_E("ENC", "ESPNOW Failed send, giving up");
             manager->MoveToNextSendPkt();
         }
     }
@@ -354,7 +354,7 @@ int EspNowManager::SendFrontPkt()
             ++m_curRetries;
             if(m_curRetries >= m_maxRetries)
             {
-                ESP_LOGE("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
+                LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
                 //TODO: Pop all packets in the current cluster?
                 MoveToNextSendPkt();
                 if(!m_sendQueue.empty())
@@ -403,7 +403,7 @@ void EspNowManager::HandlePktCallback(const PktType packetType, const uint8_t *s
 {
     if((int)packetType >= (int)PktType::kNumPacketTypes)
     {
-        ESP_LOGE("ENC", "Recv invalid packet type: %u\n", (int)packetType);
+        LOG_E("ENC", "Recv invalid packet type: %u\n", (int)packetType);
         return;
     }
 

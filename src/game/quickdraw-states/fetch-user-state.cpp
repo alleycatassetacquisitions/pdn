@@ -2,28 +2,28 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 #include "wireless/remote-debug-manager.hpp"
 
 static const char* TAG = "FetchUserDataState";
 
 FetchUserDataState::FetchUserDataState(Player* player, HttpClientInterface* httpClient) : State(QuickdrawStateId::FETCH_USER_DATA) {
-    ESP_LOGI(TAG, "Initializing FetchUserDataState");
+    LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->httpClient = httpClient;
 }   
 
 FetchUserDataState::~FetchUserDataState() {
-    ESP_LOGI(TAG, "Destroying FetchUserDataState");
+    LOG_I(TAG, "Destroying FetchUserDataState");
 }   
 
 void FetchUserDataState::onStateMounted(Device *PDN) {
-    ESP_LOGI(TAG, "State mounted - Starting user data fetch");
+    LOG_I(TAG, "State mounted - Starting user data fetch");
     showLoadingGlyphs(PDN);
     isFetchingUserData = true;
     userDataFetchTimer.setTimer(20000);
     
-    ESP_LOGI(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
+    LOG_I(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
 
     if(player->getUserID() == TEST_BOUNTY_ID) {
         player->setIsHunter(false);
@@ -53,7 +53,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
             httpClient,
             player->getUserID(),
             [this](const PlayerResponse& response) {
-                ESP_LOGI(TAG, "Successfully fetched player data: %s (%s)", 
+                LOG_I(TAG, "Successfully fetched player data: %s (%s)", 
                         response.name.c_str(), response.id.c_str());
                 
                 player->setName(response.name.c_str());
@@ -65,7 +65,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
                 transitionToWelcomeMessageState = true;
             },
             [this](const WirelessErrorInfo& error) {
-                ESP_LOGE(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
+                LOG_E(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
                     error.message.c_str(), static_cast<int>(error.code), error.willRetry);
                 if(!error.willRetry) {
                     isFetchingUserData = false;
@@ -82,7 +82,7 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
     userDataFetchTimer.updateTime();
 
     if(userDataFetchTimer.expired()) {
-        ESP_LOGW(TAG, "User data fetch timer expired");
+        LOG_W(TAG, "User data fetch timer expired");
         isFetchingUserData = false;
         transitionToConfirmOfflineState = true;
     } else if(userDataFetchTimer.isRunning()) {
@@ -93,7 +93,7 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
 }   
 
 void FetchUserDataState::onStateDismounted(Device *PDN) {
-    ESP_LOGI(TAG, "State dismounted");
+    LOG_I(TAG, "State dismounted");
     PDN->setGlyphMode(FontMode::TEXT);
     isFetchingUserData = false;
     transitionToConfirmOfflineState = false;

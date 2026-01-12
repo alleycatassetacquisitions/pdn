@@ -1,9 +1,10 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <esp_log.h>
 #include <FastLED.h>
 #include <Preferences.h>
 
+#include "logger.hpp"
+#include "utils/esp32-s3-logger.hpp"
 #include "utils/simple-timer.hpp"
 #include "utils/esp32-s3-clock.hpp"
 #include "player.hpp"
@@ -41,6 +42,9 @@ Quickdraw* game = nullptr;
 QuickdrawWirelessManager* quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
 RemoteDebugManager* remoteDebugManager = RemoteDebugManager::GetInstance();
 
+// Logger
+Esp32S3Logger logger;
+
 void setupEspNow() {
     // Set up WiFi for ESP-NOW - ESP-NOW requires STA mode
     WiFi.mode(WIFI_STA);
@@ -50,7 +54,7 @@ void setupEspNow() {
     // Initialize ESP-NOW
     esp_err_t err = EspNowManager::GetInstance()->initialize();
     if (err == ESP_OK) {
-        ESP_LOGI("PDN", "ESP-NOW initialized successfully");
+        LOG_I("PDN", "ESP-NOW initialized successfully");
         
         // Register packet handlers
         EspNowManager::GetInstance()->setPacketHandler(
@@ -69,7 +73,7 @@ void setupEspNow() {
             RemoteDebugManager::GetInstance()
         );
     } else {
-        ESP_LOGE("PDN", "ESP-NOW initialization failed: %d", err);
+        LOG_E("PDN", "ESP-NOW initialization failed: %d", err);
     }
 }
 
@@ -77,13 +81,15 @@ void setup() {
     Serial.begin(115200);
     while (!Serial) delay(100);
 
+    // Initialize platform abstractions
+    g_logger = &logger;
+    SimpleTimer::setPlatformClock(new Esp32S3Clock());
+
     player->setUserID(idGenerator->generateId());
     pdn->begin();
     delay(1000);
 
-    SimpleTimer::setPlatformClock(new Esp32S3Clock());
-
-    ESP_LOGI("PDN", "HW and Game Initialized");
+    LOG_I("PDN", "HW and Game Initialized");
 
     // Initialize ESP-NOW for peer-to-peer communication
     setupEspNow();
@@ -97,7 +103,7 @@ void setup() {
     // Initialize quickdraw wireless manager
     quickdrawWirelessManager->initialize(player, 1000);
 
-    ESP_LOGI("PDN", "Wireless services initialized");
+    LOG_I("PDN", "Wireless services initialized");
     
     // Create game with HTTP client
     game = new Quickdraw(player, pdn, &httpClient);

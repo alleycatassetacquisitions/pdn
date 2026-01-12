@@ -1,5 +1,6 @@
 #include "../lib/pdn-libs/match.hpp"
 #include "id-generator.hpp"
+#include "logger.hpp"
 #include <ArduinoJson.h>
 #include <string.h> // for memcpy
 
@@ -31,11 +32,11 @@ void Match::setBountyDrawTime(unsigned long timeMs) {
 
 std::string Match::toJson() const
 {
-    ESP_LOGI("Match", "Serializing JSON: %s", match_id.c_str());
-    ESP_LOGI("Match", "Hunter: %s", hunter.c_str());
-    ESP_LOGI("Match", "Bounty: %s", bounty.c_str());
-    ESP_LOGI("Match", "Hunter draw time: %lu", hunter_draw_time_ms);
-    ESP_LOGI("Match", "Bounty draw time: %lu", bounty_draw_time_ms);
+    LOG_I("Match", "Serializing JSON: %s", match_id.c_str());
+    LOG_I("Match", "Hunter: %s", hunter.c_str());
+    LOG_I("Match", "Bounty: %s", bounty.c_str());
+    LOG_I("Match", "Hunter draw time: %lu", hunter_draw_time_ms);
+    LOG_I("Match", "Bounty draw time: %lu", bounty_draw_time_ms);
 
     JsonDocument doc;
     JsonObject matchObj = doc.to<JsonObject>();
@@ -49,12 +50,12 @@ std::string Match::toJson() const
     std::string json;
     serializeJson(matchObj, json);
 
-    ESP_LOGI("Match", "Serialized JSON: %s", json.c_str());
+    LOG_I("Match", "Serialized JSON: %s", json.c_str());
     return json;
 }
 
 void Match::fromJson(const std::string &json) {
-    ESP_LOGI("Match", "Deserializing JSON: %s", json.c_str());
+    LOG_I("Match", "Deserializing JSON: %s", json.c_str());
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
 
@@ -75,7 +76,7 @@ void Match::fromJson(const std::string &json) {
             bounty_draw_time_ms = doc[JSON_KEY_BOUNTY_TIME].as<unsigned long>();
         }
     } else {
-        ESP_LOGE("Match", "Failed to parse JSON: %s", error.c_str());
+        LOG_E("Match", "Failed to parse JSON: %s", error.c_str());
     }
 }
 

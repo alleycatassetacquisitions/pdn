@@ -1,7 +1,7 @@
 #pragma once
 
 #include "platform-clock.hpp"
-#include "esp_log.h"
+#include "logger.hpp"
 
 class SimpleTimer {
 public:
@@ -17,7 +17,7 @@ public:
 
     void updateTime(){
         if (clock == nullptr) {
-            ESP_LOGE("SimpleTimer", "updateTime called with Platform clock not set");
+            LOG_E("SimpleTimer", "updateTime called with Platform clock not set");
             return;
         }
         now = clock->milliseconds();

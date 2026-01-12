@@ -3,7 +3,7 @@
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
@@ -13,13 +13,13 @@ DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManage
 }
 
 DuelReceivedResult::~DuelReceivedResult() {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
+    LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
     player = nullptr;
     matchManager = nullptr;
 }
 
 void DuelReceivedResult::onStateMounted(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
+    LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
     buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
 
     QuickdrawWirelessManager::GetInstance()->clearCallbacks();
@@ -33,7 +33,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
     buttonPushGraceTimer.updateTime();
 
     if(buttonPushGraceTimer.expired()) {
-        ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
+        LOG_I(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
 
         matchManager->setNeverPressed();
 
@@ -53,7 +53,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
 }   
 
 void DuelReceivedResult::onStateDismounted(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
+    LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
     transitionToDuelResultState = false;
     PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
     PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);

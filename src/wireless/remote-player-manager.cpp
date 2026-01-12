@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <esp_log.h>
+#include "logger.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/esp-now-comms.hpp"
 #include "id-generator.hpp"
@@ -49,7 +49,7 @@ int RemotePlayerManager::BroadcastPlayerInfo()
     broadcastPkt.hunter = m_localPlayerInfo->isHunter();
 
 #if DEBUG_REMOTE_PLAYER_MANAGER
-    ESP_LOGD("RPM", "Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
+    LOG_D("RPM", "Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
                   broadcastPkt.id,
                   broadcastPkt.allegiance,
                   broadcastPkt.hunter ? "Hunter" : "Not Hunter",
@@ -85,7 +85,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
 {
     if(dataLen != sizeof(PlayerInfoPkt))
     {
-        ESP_LOGE("RPM", "Unexpected packet len for PlayerInfoPkt. Got %lu but expected %lu\n",
+        LOG_E("RPM", "Unexpected packet len for PlayerInfoPkt. Got %lu but expected %lu\n",
                       dataLen,
                       sizeof(PlayerInfoPkt));
         //TODO: Return correct error code
@@ -102,12 +102,12 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     if(remotePlayer == m_remotePlayers.end())
     {
 
-        ESP_LOGD("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
+        LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
 
         m_remotePlayers.emplace_back(srcMacAddr, pkt->id, pkt->allegiance, pkt->hunter,
             SimpleTimer::getPlatformClock()->milliseconds(), 0);
         remotePlayer = m_remotePlayers.end() - 1;
-        ESP_LOGI("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
+        LOG_I("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
             remotePlayer->playerInfo.getUserID().c_str(),
             remotePlayer->playerInfo.getAllegiance(),
             remotePlayer->playerInfo.isHunter() ? "Hunter" : "Not Hunter",
@@ -121,7 +121,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
         remotePlayer->lastSeenTime = SimpleTimer::getPlatformClock()->milliseconds();
 #if PDN_ENABLE_RSSI_TRACKING
         remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
-        ESP_LOGD("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
+        LOG_D("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
 #endif
     }
     return 0;

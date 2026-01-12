@@ -3,7 +3,7 @@
 #include "device/pdn.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 
 static const char* TAG = "WelcomeMessage";
 
@@ -15,7 +15,7 @@ WelcomeMessage::~WelcomeMessage() {
 }
 
 void WelcomeMessage::onStateMounted(Device *PDN) {
-    ESP_LOGI(TAG, "WelcomeMessage state mounted");
+    LOG_I(TAG, "WelcomeMessage state mounted");
     renderWelcomeMessage();
     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
@@ -43,7 +43,7 @@ void WelcomeMessage::renderWelcomeMessage() {
 }
 
 void WelcomeMessage::onStateDismounted(Device *PDN) {
-    ESP_LOGI(TAG, "WelcomeMessage state dismounted");
+    LOG_I(TAG, "WelcomeMessage state dismounted");
     welcomeMessageTimer.invalidate();
     transitionToAwakenSequenceState = false;
 }

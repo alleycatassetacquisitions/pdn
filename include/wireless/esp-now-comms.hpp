@@ -4,7 +4,7 @@
 #include <queue>
 #include <unordered_map>
 #include <esp_now.h>
-#include <esp_log.h>
+#include "logger.hpp"
 #include "peer-comms-interface.hpp"
 //Change to 1 to enable tracking rssi for peers
 //This works, but requires wifi to be in promiscuous mode
@@ -143,10 +143,10 @@ static const char* MacToString(const uint8_t* macAddr)
 
 static bool StringToMac(const char* macStr, uint8_t* macAddr)
 {
-    ESP_LOGI("ENC", "Converting MAC string '%s' to bytes", macStr);
+    LOG_I("ENC", "Converting MAC string '%s' to bytes", macStr);
 
     if(strlen(macStr) != 17) { // XX:XX:XX:XX:XX:XX
-        ESP_LOGE("ENC", "Invalid MAC string length: %d", strlen(macStr));
+        LOG_E("ENC", "Invalid MAC string length: %d", strlen(macStr));
         return false;
     }
 
@@ -156,19 +156,19 @@ static bool StringToMac(const char* macStr, uint8_t* macAddr)
         &values[3], &values[4], &values[5]);
 
     if(result != 6) {
-        ESP_LOGE("ENC", "Failed to parse MAC string, only got %d values", result);
+        LOG_E("ENC", "Failed to parse MAC string, only got %d values", result);
         return false;
     }
 
     for(int i = 0; i < 6; i++)
     {
         if(values[i] > 0xFF) {
-            ESP_LOGE("ENC", "MAC byte %d value 0x%X exceeds 0xFF", i, values[i]);
+            LOG_E("ENC", "MAC byte %d value 0x%X exceeds 0xFF", i, values[i]);
             return false;
         }
         macAddr[i] = (uint8_t)values[i];
     }
 
-    ESP_LOGI("ENC", "Successfully converted MAC string to bytes");
+    LOG_I("ENC", "Successfully converted MAC string to bytes");
     return true;
 }

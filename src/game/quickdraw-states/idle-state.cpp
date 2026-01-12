@@ -5,6 +5,7 @@
 #include "wireless/esp-now-comms.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
+#include "logger.hpp"
 
 Idle::Idle(Player* player) : State(IDLE) {
     this->player = player;
@@ -61,7 +62,7 @@ void Idle::onStateLoop(Device *PDN) {
         uint8_t macAddr[6];
         esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
         const char* macStr = MacToString(macAddr);
-        ESP_LOGI("IDLE", "Perparing to Send Mac Address: %s", macStr);
+        LOG_I("IDLE", "Perparing to Send Mac Address: %s", macStr);
         
         PDN->writeString(SEND_MAC_ADDRESS);
         PDN->writeString(macStr);
@@ -85,7 +86,7 @@ void Idle::onStateDismounted(Device *PDN) {
 }
 
 void Idle::serialEventCallbacks(std::string message) {
-    ESP_LOGI("IDLE", "Serial event received: %s", message.c_str());
+    LOG_I("IDLE", "Serial event received: %s", message.c_str());
     if(message.compare(SERIAL_HEARTBEAT) == 0) {
         sendMacAddress = true;  
     } else if(message.compare(SEND_MAC_ADDRESS) == 0) {

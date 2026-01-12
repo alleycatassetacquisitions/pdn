@@ -2,12 +2,12 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/pdn.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 
 static const char* TAG = "PlayerRegistration";
 
 PlayerRegistration::PlayerRegistration(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
-    ESP_LOGI(TAG, "Initializing PlayerRegistration state");
+    LOG_I(TAG, "Initializing PlayerRegistration state");
     this->player = player;
     this->matchManager = matchManager;
     this->httpClient = httpClient;
@@ -15,11 +15,11 @@ PlayerRegistration::PlayerRegistration(Player* player, HttpClientInterface* http
 
 PlayerRegistration::~PlayerRegistration() {
     player = nullptr;
-    ESP_LOGI(TAG, "Destroying PlayerRegistration state");
+    LOG_I(TAG, "Destroying PlayerRegistration state");
 }
 
 void PlayerRegistration::onStateMounted(Device *PDN) {
-    ESP_LOGI(TAG, "State mounted - Starting player registration");
+    LOG_I(TAG, "State mounted - Starting player registration");
 
     PDN->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
@@ -52,7 +52,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
                     playerRegistration->inputId[1],
                     playerRegistration->inputId[2],
                     playerRegistration->inputId[3]);
-            ESP_LOGI(TAG, "Player registration complete - ID: %s", playerId);
+            LOG_I(TAG, "Player registration complete - ID: %s", playerId);
             playerRegistration->player->setUserID(playerId);
             playerRegistration->transitionToUserFetchState = true;
         } else {
@@ -60,9 +60,9 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
         }
     }, this);
 
-    ESP_LOGI(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
+    LOG_I(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
     if(matchManager->getStoredMatchCount() > 0) {
-        ESP_LOGI(TAG, "Starting transmit breath animation");
+        LOG_I(TAG, "Starting transmit breath animation");
         AnimationConfig config;
         config.type = AnimationType::TRANSMIT_BREATH;
         config.loop = true;
@@ -115,7 +115,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
 }
 
 void PlayerRegistration::onStateDismounted(Device *PDN) {
-    ESP_LOGI(TAG, "State dismounted - Cleaning up");
+    LOG_I(TAG, "State dismounted - Cleaning up");
     PDN->setGlyphMode(FontMode::TEXT);
     PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
     PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);

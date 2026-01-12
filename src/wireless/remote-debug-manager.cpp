@@ -1,6 +1,6 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/esp-now-comms.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 
 RemoteDebugManager* RemoteDebugManager::s_instance = nullptr;
 
@@ -50,9 +50,9 @@ int RemoteDebugManager::ProcessDebugPacket(const uint8_t* srcMacAddr, const uint
 int RemoteDebugManager::BroadcastDebugPacket() {
     
     // Get the ESP-NOW manager instance
-    ESP_LOGI("RemoteDebugManager", "Getting ESP-NOW manager instance for broadcasting debug packet");
+    LOG_I("RemoteDebugManager", "Getting ESP-NOW manager instance for broadcasting debug packet");
     EspNowManager* espNowManager = EspNowManager::GetInstance();
-    ESP_LOGI("RemoteDebugManager", "Broadcasting debug packet with command: %d", m_debugPacket.command);
+    LOG_I("RemoteDebugManager", "Broadcasting debug packet with command: %d", m_debugPacket.command);
     
     // Broadcast the packet using ESP-NOW
     return espNowManager->sendData(PEER_BROADCAST_ADDR, static_cast<uint8_t>(PktType::kDebugPacket), 

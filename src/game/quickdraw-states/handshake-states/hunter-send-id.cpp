@@ -16,38 +16,38 @@ HunterSendIdState::~HunterSendIdState() {
 
 
 void HunterSendIdState::onStateMounted(Device *PDN) {
-    ESP_LOGI("HUNTER_SEND_ID", "State mounted");
+    LOG_I("HUNTER_SEND_ID", "State mounted");
     QuickdrawWirelessManager::GetInstance()->setPacketReceivedCallback(std::bind(&HunterSendIdState::onQuickdrawCommandReceived, this, std::placeholders::_1));
 }
 
 void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
     if (!player) {
-        ESP_LOGE("HUNTER_SEND_ID", "Player is null in command handler");
+        LOG_E("HUNTER_SEND_ID", "Player is null in command handler");
         return;
     }
 
-    ESP_LOGI("HUNTER_SEND_ID", "Command received: %d", command.command);
+    LOG_I("HUNTER_SEND_ID", "Command received: %d", command.command);
     
     if (command.command == CONNECTION_CONFIRMED) {
-        ESP_LOGI("HUNTER_SEND_ID", "Received CONNECTION_CONFIRMED from opponent");
+        LOG_I("HUNTER_SEND_ID", "Received CONNECTION_CONFIRMED from opponent");
         
         // Validate received match data
         if (command.match.getMatchId().empty()) {
-            ESP_LOGE("HUNTER_SEND_ID", "Received empty match ID");
+            LOG_E("HUNTER_SEND_ID", "Received empty match ID");
             return;
         }
         if (command.match.getBountyId().empty()) {
-            ESP_LOGE("HUNTER_SEND_ID", "Received empty bounty ID");
+            LOG_E("HUNTER_SEND_ID", "Received empty bounty ID");
             return;
         }
         
-        ESP_LOGI("HUNTER_SEND_ID", "Received match ID: %s, bounty ID: %s", 
+        LOG_I("HUNTER_SEND_ID", "Received match ID: %s, bounty ID: %s", 
                  command.match.getMatchId().c_str(), 
                  command.match.getBountyId().c_str());
 
         // Set opponent MAC address
         if (command.wifiMacAddr.empty()) {
-            ESP_LOGE("HUNTER_SEND_ID", "Received empty MAC address");
+            LOG_E("HUNTER_SEND_ID", "Received empty MAC address");
             return;
         }
         player->setOpponentMacAddress(command.wifiMacAddr);
@@ -60,11 +60,11 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         );
         
         if (!newMatch) {
-            ESP_LOGE("HUNTER_SEND_ID", "Failed to create match");
+            LOG_E("HUNTER_SEND_ID", "Failed to create match");
             return;
         }
 
-        ESP_LOGI("HUNTER_SEND_ID", "Created match with ID: %s", newMatch->getMatchId().c_str());
+        LOG_I("HUNTER_SEND_ID", "Created match with ID: %s", newMatch->getMatchId().c_str());
         
         try {
             QuickdrawWirelessManager::GetInstance()->broadcastPacket(
@@ -72,15 +72,15 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
                 HUNTER_RECEIVE_MATCH,
                 *newMatch
             );
-            ESP_LOGI("HUNTER_SEND_ID", "Sent HUNTER_RECEIVE_MATCH");
+            LOG_I("HUNTER_SEND_ID", "Sent HUNTER_RECEIVE_MATCH");
         } catch (const std::exception& e) {
-            ESP_LOGE("HUNTER_SEND_ID", "Failed to send HUNTER_RECEIVE_MATCH: %s", e.what());
+            LOG_E("HUNTER_SEND_ID", "Failed to send HUNTER_RECEIVE_MATCH: %s", e.what());
         }
     } else if (command.command == BOUNTY_FINAL_ACK) {
-        ESP_LOGI("HUNTER_SEND_ID", "Received BOUNTY_FINAL_ACK from opponent");
+        LOG_I("HUNTER_SEND_ID", "Received BOUNTY_FINAL_ACK from opponent");
         transitionToConnectionSuccessfulState = true;
     } else {
-        ESP_LOGW("HUNTER_SEND_ID", "Received unexpected command: %d", command.command);
+        LOG_W("HUNTER_SEND_ID", "Received unexpected command: %d", command.command);
     }
 }
 
@@ -88,7 +88,7 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
 void HunterSendIdState::onStateLoop(Device *PDN) {}
 
 void HunterSendIdState::onStateDismounted(Device *PDN) {
-    ESP_LOGI("HUNTER_SEND_ID", "State dismounted");
+    LOG_I("HUNTER_SEND_ID", "State dismounted");
     transitionToConnectionSuccessfulState = false;
     BaseHandshakeState::resetTimeout();
     QuickdrawWirelessManager::GetInstance()->clearCallbacks();

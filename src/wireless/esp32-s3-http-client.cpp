@@ -1,5 +1,5 @@
 #include "wireless/esp32-s3-http-client.hpp"
-#include <esp_log.h>
+#include "logger.hpp"
 #include <cmath>
 
 static const char* TAG = "HttpClient";
@@ -10,13 +10,13 @@ esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
     char error_msg[64] = {0};
     
     if (!request) {
-        ESP_LOGE(TAG, "HTTP event with no active request");
+        LOG_E(TAG, "HTTP event with no active request");
         return ESP_OK;
     }
     
     switch (evt->event_id) {
         case HTTP_EVENT_ERROR:
-            ESP_LOGE(TAG, "HTTP error for: %s", request->path.c_str());
+            LOG_E(TAG, "HTTP error for: %s", request->path.c_str());
             request->retryCount++;
             if (request->retryCount >= Esp32S3HttpClient::MAX_RETRIES && request->onError) {
                 request->onError({WirelessError::CONNECTION_FAILED, "HTTP error - max retries", false});
@@ -37,7 +37,7 @@ esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
                     request->onSuccess(request->responseData);
                 }
             } else {
-                ESP_LOGE(TAG, "HTTP %d for: %s", status_code, request->path.c_str());
+                LOG_E(TAG, "HTTP %d for: %s", status_code, request->path.c_str());
                 if (request->onError) {
                     snprintf(error_msg, sizeof(error_msg), "HTTP Error: %d", status_code);
                     request->onError({
@@ -56,7 +56,7 @@ esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
             
         case HTTP_EVENT_DISCONNECTED:
             if (request->inProgress) {
-                ESP_LOGW(TAG, "Disconnected during request: %s", request->path.c_str());
+                LOG_W(TAG, "Disconnected during request: %s", request->path.c_str());
                 request->inProgress = false;
                 client->currentRequest = nullptr;
                 
@@ -98,7 +98,7 @@ bool Esp32S3HttpClient::initialize(WifiConfig* config) {
     httpClientInitialized = false;
     wifiConnectionAttempts = 0;
     
-    ESP_LOGI(TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
+    LOG_I(TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
     startWifiConnection();
     connectionAttemptTimer.setTimer(500);
     
@@ -161,7 +161,7 @@ void Esp32S3HttpClient::checkWifiConnection() {
     
     if (WiFi.status() == WL_CONNECTED) {
         channel = WiFi.channel();
-        ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().to_string().c_str());
+        LOG_I(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
         wifiConnected = true;
         httpClientInitialized = initializeHttpClient();
     } else {
@@ -188,7 +188,7 @@ void Esp32S3HttpClient::logWifiStatusError() {
         default: break;
     }
     
-    ESP_LOGE(TAG, "WiFi failed: %s (%s)", msg, wifiConfig->ssid.c_str());
+    LOG_E(TAG, "WiFi failed: %s (%s)", msg, wifiConfig->ssid.c_str());
 }
 
 bool Esp32S3HttpClient::initializeHttpClient() {
@@ -205,7 +205,7 @@ bool Esp32S3HttpClient::initializeHttpClient() {
     httpClient = esp_http_client_init(&config);
     
     if (!httpClient) {
-        ESP_LOGE(TAG, "Failed to init HTTP client");
+        LOG_E(TAG, "Failed to init HTTP client");
     }
     
     return httpClient != nullptr;
@@ -285,7 +285,7 @@ void Esp32S3HttpClient::initiateHttpRequest(HttpRequest& request) {
     esp_err_t err = esp_http_client_perform(httpClient);
     
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Request failed: %s", esp_err_to_name(err));
+        LOG_E(TAG, "Request failed: %s", esp_err_to_name(err));
         handleRequestError(request, {
             WirelessError::CONNECTION_FAILED,
             esp_err_to_name(err),
@@ -306,7 +306,7 @@ void Esp32S3HttpClient::checkOngoingRequests() {
     unsigned long elapsedTime = currentTime - request.lastAttemptTime;
     
     if (elapsedTime > 15000) {
-        ESP_LOGE(TAG, "Timeout: %s", request.path.c_str());
+        LOG_E(TAG, "Timeout: %s", request.path.c_str());
         
         request.retryCount++;
         request.inProgress = false;

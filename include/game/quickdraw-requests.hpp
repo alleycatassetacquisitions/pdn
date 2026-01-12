@@ -2,7 +2,7 @@
 
 #include <string>
 #include <ArduinoJson.h>
-#include <esp_log.h>
+#include "logger.hpp"
 #include "http-client-interface.hpp"
 #include "wireless-types.hpp"
 
@@ -20,7 +20,7 @@ struct PlayerResponse {
         DeserializationError error = deserializeJson(doc, json);
         
         if (error) {
-            ESP_LOGE("QuickdrawRequests", "Failed to parse player JSON: %s", error.c_str());
+            LOG_E("QuickdrawRequests", "Failed to parse player JSON: %s", error.c_str());
             return false;
         }
 
@@ -30,13 +30,13 @@ struct PlayerResponse {
                 errors.push_back(errorVar.as<std::string>());
             }
             if (!errors.empty()) {
-                ESP_LOGW("QuickdrawRequests", "Player response contains errors");
+                LOG_W("QuickdrawRequests", "Player response contains errors");
                 return false;
             }
         }
 
         if (!doc["data"].is<JsonObject>()) {
-            ESP_LOGE("QuickdrawRequests", "Player response missing data object");
+            LOG_E("QuickdrawRequests", "Player response missing data object");
             return false;
         }
 

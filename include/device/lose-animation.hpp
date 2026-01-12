@@ -13,12 +13,12 @@ public:
         stateStartTime_(0),
         flickerTimer_(0),
         fadeProgress_(255) {
-        ESP_LOGI("LoseAnimation", "Constructor called");
+        LOG_I("LoseAnimation", "Constructor called");
     }
 
 protected:
     void onInit() override {
-        ESP_LOGI("LoseAnimation", "onInit called");
+        LOG_I("LoseAnimation", "onInit called");
         // Reset animation state
         animationState_ = AnimationState::SHORT_CIRCUIT;
         stateStartTime_ = millis();
@@ -33,7 +33,7 @@ protected:
         // Initialize with clear state
         currentState_ = config_.initialState;
         currentState_.clear();
-        ESP_LOGI("LoseAnimation", "Initialized with frame timer: %d ms", config_.speed);
+        LOG_I("LoseAnimation", "Initialized with frame timer: %d ms", config_.speed);
     }
 
     LEDState onAnimate() override {
@@ -48,7 +48,7 @@ protected:
                 if (currentTime - stateStartTime_ > 250) {
                     animationState_ = AnimationState::POWER_DOWN;
                     stateStartTime_ = currentTime;
-                    ESP_LOGI("LoseAnimation", "Transitioning to POWER_DOWN state");
+                    LOG_I("LoseAnimation", "Transitioning to POWER_DOWN state");
                 }
                 break;
                 
@@ -60,7 +60,7 @@ protected:
                 if (currentTime - stateStartTime_ > 1500) {
                     animationState_ = AnimationState::WARNING;
                     stateStartTime_ = currentTime;
-                    ESP_LOGI("LoseAnimation", "Transitioning to WARNING state");
+                    LOG_I("LoseAnimation", "Transitioning to WARNING state");
                 }
                 break;
                 
@@ -210,7 +210,7 @@ private:
         // If we've completed 3 full cycles and we're not looping, mark as complete
         if (!config_.loop && cycleCount >= 3 && warningPhase > 900) {
             isComplete_ = true;
-            ESP_LOGI("LoseAnimation", "Animation complete after 3 warning cycles");
+            LOG_I("LoseAnimation", "Animation complete after 3 warning cycles");
         }
     }
     
