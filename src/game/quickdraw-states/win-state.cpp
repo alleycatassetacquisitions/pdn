@@ -10,9 +10,9 @@ Win::~Win() {
 }
 
 void Win::onStateMounted(Device *PDN) {
-    PDN->setVibration(VIBRATION_OFF);
+    PDN->getHaptics()->setIntensity(VIBRATION_OFF);
 
-    PDN->invalidateScreen()->
+    PDN->getDisplay()->invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::WIN))->
     render();
 
@@ -25,7 +25,7 @@ void Win::onStateMounted(Device *PDN) {
     config.initialState = LEDState();
     config.loopDelayMs = 0;
 
-    PDN->startAnimation(config);
+    PDN->getLightManager()->startAnimation(config);
 }
 
 void Win::onStateLoop(Device *PDN) {
@@ -38,7 +38,7 @@ void Win::onStateLoop(Device *PDN) {
 void Win::onStateDismounted(Device *PDN) {
     winTimer.invalidate();
     reset = false;
-    PDN->setVibration(VIBRATION_OFF);
+    PDN->getHaptics()->setIntensity(VIBRATION_OFF);
 }
 
 bool Win::resetGame() {

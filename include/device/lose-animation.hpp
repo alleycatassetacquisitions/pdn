@@ -3,7 +3,7 @@
 #include "animation-base.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm>
-#include "esp_log.h"
+#include <random>
 
 class LoseAnimation : public AnimationBase {
 public:
@@ -21,7 +21,7 @@ protected:
         LOG_I("LoseAnimation", "onInit called");
         // Reset animation state
         animationState_ = AnimationState::SHORT_CIRCUIT;
-        stateStartTime_ = millis();
+        stateStartTime_ = SimpleTimer::getPlatformClock()->milliseconds();
         flickerTimer_ = 0;
         fadeProgress_ = 255;
         
@@ -37,7 +37,7 @@ protected:
     }
 
     LEDState onAnimate() override {
-        uint32_t currentTime = millis();
+        uint32_t currentTime = SimpleTimer::getPlatformClock()->milliseconds();
         
         switch (animationState_) {
             case AnimationState::SHORT_CIRCUIT:
@@ -86,18 +86,18 @@ private:
         currentState_.clear();
         
         // Even slower, less intense flickering
-        if (currentTime - flickerTimer_ > 80 + random(50)) {  // Further increased from 60+random(40)
+        if (currentTime - flickerTimer_ > 80 + randomInt(0, 49)) {  // Further increased from 60+random(40)
             flickerTimer_ = currentTime;
             
             // Randomize which LEDs light up
             for (int i = 0; i < 9; i++) {
                 // 25% chance for each LED to light up (further reduced from 30%)
-                bool leftLit = random(100) < 25;
-                bool rightLit = random(100) < 25;
+                bool leftLit = randomInt(0, 99) < 25;
+                bool rightLit = randomInt(0, 99) < 25;
                 
                 // Further reduced color intensity
                 LEDColor color;
-                int colorChoice = random(3);
+                int colorChoice = randomInt(0, 2);
                 if (colorChoice == 0) {
                     color = LEDColor(150, 150, 150); // Even dimmer white (reduced from 200)
                 } else if (colorChoice == 1) {
@@ -107,7 +107,7 @@ private:
                 }
                 
                 // Randomize brightness between 50-150 (reduced from 100-200)
-                uint8_t brightness = 50 + random(101);
+                uint8_t brightness = 50 + randomInt(0, 100);
                 
                 // Set LEDs
                 if (leftLit) {
@@ -119,11 +119,11 @@ private:
             }
             
             // Even less frequent surges (15% chance instead of 20%)
-            if (random(100) < 15) {
+            if (randomInt(0, 99) < 15) {
                 LEDColor surgeColor(150, 150, 150); // Even dimmer surge (reduced from 200)
                 // Fewer LEDs light up during a surge
                 for (int i = 0; i < 9; i++) {
-                    if (random(100) < 40) { // 40% chance instead of 50%
+                    if (randomInt(0, 99) < 40) { // 40% chance instead of 50%
                         currentState_.setLEDPair(i, surgeColor, 130); // Fixed lower brightness (reduced from 180)
                     }
                 }
@@ -144,16 +144,24 @@ private:
             }
             
             // Occasionally add a flicker during power down
-            if (random(100) < 5) {
-                int flickerLED = random(9);
+            if (randomInt(0, 99) < 5) {
+                int flickerLED = randomInt(0, 8);
                 // Calculate flicker brightness with bounds checking
-                int extraBrightness = random(100);
+                int extraBrightness = randomInt(0, 99);
                 int totalBrightness = fadeProgress_ + extraBrightness;
                 uint8_t flickerBrightness = (totalBrightness > 255) ? 255 : static_cast<uint8_t>(totalBrightness);
                 
                 currentState_.setLEDPair(flickerLED, powerDownColor, flickerBrightness);
             }
         }
+    }
+    
+    // Helper function for random integers in range [min, max]
+    static int randomInt(int min, int max) {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dist(min, max);
+        return dist(gen);
     }
     
     void animateWarning(uint32_t currentTime) {

@@ -1,13 +1,20 @@
-#include "device/light-manager.hpp"
+#include "light-manager.hpp"
+#include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
+#include "device/idle-animation.hpp"
+#include "device/countdown-animation.hpp"
+#include "device/vertical-chase-animation.hpp"
+#include "device/transmit-breath-animation.hpp"
+#include "device/hunter-win-animation.hpp"
+#include "device/bounty-win-animation.hpp"
+#include "device/lose-animation.hpp"
 #include <algorithm> // For std::min
 #include "esp_log.h"
 #include <FastLED.h>
 
 static const char* TAG = "LightManager";
 
-LightManager::LightManager(PDNLightStrip& displayLights, PDNLightStrip& gripLights)
-    : displayLights(displayLights)
-    , gripLights(gripLights)
+LightManager::LightManager(LightStrip& pdnLights)
+    : pdnLights(pdnLights)
     , currentAnimation(nullptr) {
 }
 
@@ -15,10 +22,6 @@ LightManager::~LightManager() {
     if (currentAnimation) {
         delete currentAnimation;
     }
-}
-
-void LightManager::begin() {
-    // Nothing to initialize
 }
 
 void LightManager::loop() {
@@ -29,9 +32,6 @@ void LightManager::loop() {
         // Apply the state to the physical LEDs
         applyLEDState(state);
     }
-    
-    // Update the physical LEDs
-    FastLED.show();
 }
 
 void LightManager::startAnimation(AnimationConfig config) {
@@ -109,6 +109,10 @@ void LightManager::clear(LightIdentifier lights) {
     FastLED.show();
 }
 
+void LightManager::setGlobalBrightness(uint8_t brightness) {
+    FastLED.setBrightness(brightness);
+}
+
 bool LightManager::isAnimating() const {
     return currentAnimation != nullptr && !currentAnimation->isComplete();
 }
@@ -159,11 +163,11 @@ void LightManager::applyLEDState(const LEDState& state) {
     
     // Apply the grip lights
     for (int i = 0; i < 6; i++) {
-        this->gripLights.setLight(i, gripLightArray[i]);
+        this->pdnLights.setLight(LightIdentifier::GRIP_LIGHTS, i, gripLightArray[i]);
     }
     
     // Apply the display lights
     for (int i = 0; i < 13; i++) {
-        this->displayLights.setLight(i, displayLightArray[i]);
+        this->pdnLights.setLight(LightIdentifier::DISPLAY_LIGHTS, i, displayLightArray[i]);
     }
 }

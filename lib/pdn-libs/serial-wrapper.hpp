@@ -5,10 +5,17 @@
 #pragma once
 
 #include <string>
+#include <functional>
+
+using SerialStringCallback = std::function<void(std::string)>;
+
+enum class SerialIdentifier {
+    OUTPUT_JACK = 0,
+    INPUT_JACK = 1
+};
 
 class HWSerialWrapper {
     public:
-    virtual void begin() = 0;
     virtual ~HWSerialWrapper() {};
     virtual int availableForWrite() = 0;
     virtual int available() = 0;
@@ -19,4 +26,5 @@ class HWSerialWrapper {
     virtual void println(char* msg) = 0;
     virtual void println(std::string msg) = 0;
     virtual void flush() = 0;
+    virtual void setStringCallback(SerialStringCallback callback) = 0;
 };

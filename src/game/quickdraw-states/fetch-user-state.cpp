@@ -94,7 +94,7 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
 
 void FetchUserDataState::onStateDismounted(Device *PDN) {
     LOG_I(TAG, "State dismounted");
-    PDN->setGlyphMode(FontMode::TEXT);
+    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     isFetchingUserData = false;
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
@@ -123,8 +123,8 @@ void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
     const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
     const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);
     
-    PDN->invalidateScreen();
-    PDN->setGlyphMode(FontMode::LOADING_GLYPH);
+    PDN->getDisplay()->invalidateScreen();
+    PDN->getDisplay()->setGlyphMode(FontMode::LOADING_GLYPH);
     
     for (int row = 0; row < GLYPHS_PER_COL; row++) {
         for (int col = 0; col < GLYPHS_PER_ROW; col++) {
@@ -133,12 +133,12 @@ void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
                 int y = 14 + (row * GLYPH_SIZE);
                 int randomIndex = random(0, 8);
                 const char* glyph = loadingGlyphs[randomIndex];
-                PDN->renderGlyph(glyph, x, y);
+                PDN->getDisplay()->renderGlyph(glyph, x, y);
             }
         }
     }
     
-    PDN->render();
+    PDN->getDisplay()->render();
 }  
 
 bool FetchUserDataState::transitionToWelcomeMessage() {

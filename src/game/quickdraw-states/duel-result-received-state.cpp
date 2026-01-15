@@ -27,7 +27,7 @@ void DuelReceivedResult::onStateMounted(Device *PDN) {
 
 void DuelReceivedResult::onStateLoop(Device *PDN) {
     if(matchManager->getHasPressedButton()) {
-        PDN->setVibration(0);
+        PDN->getHaptics()->setIntensity(0);
     }
 
     buttonPushGraceTimer.updateTime();
@@ -55,8 +55,8 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
 void DuelReceivedResult::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
     transitionToDuelResultState = false;
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
     buttonPushGraceTimer.invalidate();
 }
 

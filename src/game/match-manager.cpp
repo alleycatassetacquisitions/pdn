@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 #include "logger.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "wireless/esp-now-comms.hpp"
+#include "device-constants.hpp"
 
 #define MATCH_MANAGER_TAG "MATCH_MANAGER"
 
@@ -23,7 +23,7 @@ MatchManager::MatchManager() {}
 MatchManager::~MatchManager() {
     delete activeDuelState.match;
     activeDuelState.match = nullptr;
-    prefs.end();
+    storage->end();
 }
 
 void MatchManager::clearCurrentMatch() {
@@ -198,13 +198,13 @@ std::string MatchManager::toJson() {
 }
 
 void MatchManager::clearStorage() {
-    prefs.clear();
+    storage->clear();
     updateStoredMatchCount(0);
     LOG_I("PDN", "Cleared match storage\n");
 }
 
 size_t MatchManager::getStoredMatchCount() {
-    return prefs.getUChar(PREF_COUNT_KEY, 0);
+    return storage->readUChar(PREF_COUNT_KEY, 0);
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
@@ -228,15 +228,15 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
     
     // Try to check if preferences is working
-    if (prefs.putUChar("test_key", 123) != 1) {
+    if (storage->writeUChar("test_key", 123) != 1) {
         LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
     } else {
-        uint8_t test_val = prefs.getUChar("test_key", 0);
+        uint8_t test_val = storage->readUChar("test_key", 0);
         LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
     }
 
     // Save match JSON to preferences
-    if (!prefs.putString(key, matchJson.c_str())) {
+    if (storage->write(key, matchJson) != matchJson.length()) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
                 key, matchJson.length());
         
@@ -248,7 +248,7 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
 }
 
 void MatchManager::updateStoredMatchCount(uint8_t count) {
-    if (!prefs.putUChar(PREF_COUNT_KEY, count)) {
+    if (storage->writeUChar(PREF_COUNT_KEY, count) != 1) {
         LOG_E("PDN", "Failed to update match count\n");
     } else {
         LOG_I("PDN", "Updated stored match count to %d\n", count);
@@ -265,7 +265,7 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
     
     // Read match JSON from preferences
-    std::string matchJson = prefs.getString(key, "").c_str();
+    std::string matchJson = storage->read(key, "");
     if (matchJson.empty()) {
         return nullptr;
     }
@@ -280,15 +280,9 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
 
-void MatchManager::initialize(Player* player) {
+void MatchManager::initialize(Player* player, StorageInterface* storage) {
     this->player = player;
-
-     // Open preferences with our namespace
-    if (!prefs.begin(PREF_NAMESPACE, false)) {
-        LOG_W(MATCH_MANAGER_TAG, "Failed to initialize preferences");
-    } else {
-        LOG_W(MATCH_MANAGER_TAG, "Preferences initialized successfully");
-    }
+    this->storage = storage;
 
     duelButtonPush = [](void *ctx) {
         unsigned long now = millis();

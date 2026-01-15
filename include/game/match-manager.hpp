@@ -11,16 +11,12 @@
 #include <vector>
 #include <string>
 #include "button.hpp"
-#include <Preferences.h>
 #include "../lib/pdn-libs/match.hpp"
 #include "player.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "storage-interface.hpp"
 
 // Preferences namespace and keys
-#define PREF_NAMESPACE "matches"
-#define PREF_COUNT_KEY "count"
-#define PREF_MATCH_KEY "match_"  // Will be appended with index
-#define MAX_MATCHES 255
 
 struct ActiveDuelState {
     bool hasReceivedDrawResult = false;
@@ -104,7 +100,7 @@ public:
 
     void listenForMatchResults(QuickdrawCommand command);
 
-    void initialize(Player* player);
+    void initialize(Player* player, StorageInterface* storage);
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -123,6 +119,7 @@ private:
     parameterizedCallbackFunction duelButtonPush;
     parameterizedCallbackFunction buttonMasher;
 
+    StorageInterface* storage;
     /**
      * Appends a match to storage
      * @param match Match to save
@@ -142,7 +139,6 @@ private:
      */
     Match* readMatchFromStorage(uint8_t index);
 
-    Preferences prefs;   // Preferences instance for persistent storage
 };
 
 

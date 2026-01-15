@@ -49,7 +49,7 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
     config.speed = 10;
     config.initialState = LEDState();
     config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-    PDN->startAnimation(config);
+    PDN->getLightManager()->startAnimation(config);
 }
 
 void UploadMatchesState::onStateLoop(Device *PDN) {
@@ -67,7 +67,7 @@ void UploadMatchesState::onStateDismounted(Device *PDN) {
     uploadMatchesTimer.invalidate();
     transitionToSleepState = false;
     transitionToPlayerRegistrationState = false;
-    PDN->stopAnimation();
+    PDN->getLightManager()->stopAnimation();
 }
 
 void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
@@ -78,8 +78,8 @@ void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
     const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
     const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);
     
-    PDN->invalidateScreen();
-    PDN->setGlyphMode(FontMode::LOADING_GLYPH);
+    PDN->getDisplay()->invalidateScreen();
+    PDN->getDisplay()->setGlyphMode(FontMode::LOADING_GLYPH);
     
     for (int row = 0; row < GLYPHS_PER_COL; row++) {
         for (int col = 0; col < GLYPHS_PER_ROW; col++) {
@@ -88,12 +88,12 @@ void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
                 int y = 14 + (row * GLYPH_SIZE);
                 int randomIndex = random(0, 8);
                 const char* glyph = loadingGlyphs[randomIndex];
-                PDN->renderGlyph(glyph, x, y);
+                PDN->getDisplay()->renderGlyph(glyph, x, y);
             }
         }
     }
     
-    PDN->render();
+    PDN->getDisplay()->render();
 }
 
 bool UploadMatchesState::transitionToSleep() {

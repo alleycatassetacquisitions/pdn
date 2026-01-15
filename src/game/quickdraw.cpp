@@ -1,9 +1,10 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, HttpClientInterface* httpClient): StateMachine(PDN) {
+Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
     this->player = player;
-    this->httpClient = httpClient;
+    this->httpClient = PDN->getHttpClient();
     this->matchManager = MatchManager::GetInstance();
+    this->storageManager = PDN->getStorage();
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -13,7 +14,7 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
-    matchManager->initialize(player);
+    matchManager->initialize(player, storageManager);
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player, httpClient, matchManager);
     FetchUserDataState* fetchUserData = new FetchUserDataState(player, httpClient);

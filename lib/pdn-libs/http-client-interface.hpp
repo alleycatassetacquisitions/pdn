@@ -8,10 +8,9 @@ class HttpClientInterface {
 public:
     virtual ~HttpClientInterface() = default;
 
-    virtual bool initialize(WifiConfig* config) = 0;
+    virtual void setWifiConfig(WifiConfig* config) = 0;
     virtual bool isConnected() = 0;
     virtual bool queueRequest(HttpRequest& request) = 0;
-    virtual void update() = 0;
     virtual void disconnect() = 0;
     virtual void updateConfig(WifiConfig* config) = 0;
 };

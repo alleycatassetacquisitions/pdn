@@ -4,16 +4,24 @@
 #include <Preferences.h>
 
 #include "logger.hpp"
-#include "utils/esp32-s3-logger.hpp"
+
+#include "device/drivers/esp32-s3-logger-driver.hpp"
+#include "device/drivers/esp32-s3-clock-driver.hpp"
+#include "device/drivers/esp32-s3-1-button-driver.hpp"
+#include "device/drivers/ws2812b-fastled-driver.hpp"
+#include "device/drivers/esp32-s3-haptics-driver.hpp"
+#include "device/drivers/esp32-s3-serial-driver.hpp"
+#include "device/drivers/esp32-s3-http-client-driver.hpp"
+#include "device/drivers/esp-now-driver.hpp"
+#include "device/drivers/ssd1306-u8g2-driver.hpp"
+#include "device/drivers/esp32-s3-prefs-driver.hpp"
+
 #include "utils/simple-timer.hpp"
-#include "utils/esp32-s3-clock.hpp"
 #include "player.hpp"
 #include "state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
 #include "id-generator.hpp"
-#include "wireless/esp-now-comms.hpp"
-#include "wireless/esp32-s3-http-client.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless-types.hpp"
@@ -21,19 +29,46 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "peer-comms-interface.hpp"
 
-// Core game objects
-Device* pdn = PDN::GetInstance();
-IdGenerator* idGenerator = IdGenerator::GetInstance();
-Player* player = new Player();
-
 // WiFi configuration
 const char* WIFI_SSID = "NeoCore Networks";
 const char* WIFI_PASSWORD = "AlleyCatBountyHunting1";
 const char* BASE_URL = "http://alleycat-server.local:3000";
 WifiConfig wifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-// HTTP client for server communication
-Esp32S3HttpClient httpClient;
+
+// ESP32-s3 Drivers
+Esp32S3Clock clockDriver(PLATFORM_CLOCK_DRIVER_NAME);
+SSD1306U8G2Driver displayDriver(DISPLAY_DRIVER_NAME);
+Esp32S31ButtonDriver primaryButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
+Esp32S31ButtonDriver secondaryButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
+WS2812BFastLEDDriver lightDriver(LIGHT_DRIVER_NAME);
+Esp32S3HapticsDriver hapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
+Esp32s3SerialOut serialOutDriver(SERIAL_OUT_DRIVER_NAME);
+Esp32s3SerialIn serialInDriver(SERIAL_IN_DRIVER_NAME);
+Esp32S3HttpClient httpClientDriver(HTTP_CLIENT_DRIVER_NAME, &wifiConfig);
+EspNowManager* peerCommsDriver = EspNowManager::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+Esp32S3Logger loggerDriver(LOGGER_DRIVER_NAME);
+Esp32S3PrefsDriver storageDriver(STORAGE_DRIVER_NAME, PREF_NAMESPACE);
+
+// Driver Configuration
+DriverConfig pdnConfig = {
+    {DISPLAY_DRIVER_NAME, &displayDriver},
+    {PRIMARY_BUTTON_DRIVER_NAME, &primaryButtonDriver},
+    {SECONDARY_BUTTON_DRIVER_NAME, &secondaryButtonDriver},
+    {LIGHT_DRIVER_NAME, &lightDriver},
+    {HAPTICS_DRIVER_NAME, &hapticsDriver},
+    {SERIAL_OUT_DRIVER_NAME, &serialOutDriver},
+    {SERIAL_IN_DRIVER_NAME, &serialInDriver},
+    {HTTP_CLIENT_DRIVER_NAME, &httpClientDriver},
+    {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
+    {PLATFORM_CLOCK_DRIVER_NAME, &clockDriver},
+    {LOGGER_DRIVER_NAME, &loggerDriver},
+};
+
+// Core game objects
+Device* pdn = PDN::createPDN(pdnConfig);
+IdGenerator* idGenerator = IdGenerator::GetInstance();
+Player* player = new Player();
 
 // Game instance
 Quickdraw* game = nullptr;
@@ -41,9 +76,6 @@ Quickdraw* game = nullptr;
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
 RemoteDebugManager* remoteDebugManager = RemoteDebugManager::GetInstance();
-
-// Logger
-Esp32S3Logger logger;
 
 void setupEspNow() {
     // Set up WiFi for ESP-NOW - ESP-NOW requires STA mode
@@ -82,8 +114,8 @@ void setup() {
     while (!Serial) delay(100);
 
     // Initialize platform abstractions
-    g_logger = &logger;
-    SimpleTimer::setPlatformClock(new Esp32S3Clock());
+    g_logger = &loggerDriver;
+    SimpleTimer::setPlatformClock(&clockDriver);
 
     player->setUserID(idGenerator->generateId());
     pdn->begin();
@@ -94,9 +126,6 @@ void setup() {
     // Initialize ESP-NOW for peer-to-peer communication
     setupEspNow();
     
-    // Initialize HTTP client for server communication
-    httpClient.initialize(&wifiConfig);
-    
     // Initialize remote debug manager
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
@@ -106,9 +135,9 @@ void setup() {
     LOG_I("PDN", "Wireless services initialized");
     
     // Create game with HTTP client
-    game = new Quickdraw(player, pdn, &httpClient);
+    game = new Quickdraw(player, pdn);
     
-    pdn->
+    pdn->getDisplay()->
     invalidateScreen()->
         drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
@@ -119,7 +148,5 @@ void setup() {
 
 void loop() {
     pdn->loop();
-    EspNowManager::GetInstance()->update();
-    httpClient.update();
     game->loop();
 }

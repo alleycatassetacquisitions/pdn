@@ -37,9 +37,9 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
     config.speed = 5;
     config.initialState = LEDState();
     config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-    PDN->startAnimation(config);
+    PDN->getLightManager()->startAnimation(config);
 
-    PDN->
+    PDN->getDisplay()->
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::CONNECT))->
     render();
@@ -48,9 +48,9 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
 void ConnectionSuccessful::onStateLoop(Device *PDN) {
     EVERY_N_MILLIS(flashDelay) {
         if (lightsOn) {
-            PDN->setGlobalBrightness(BRIGHTNESS_MAX);
+            PDN->getLightManager()->setGlobalBrightness(BRIGHTNESS_MAX);
         } else {
-            PDN->setGlobalBrightness(BRIGHTNESS_OFF);
+            PDN->getLightManager()->setGlobalBrightness(BRIGHTNESS_OFF);
         }
 
         lightsOn = !lightsOn;
@@ -59,7 +59,7 @@ void ConnectionSuccessful::onStateLoop(Device *PDN) {
 }
 
 void ConnectionSuccessful::onStateDismounted(Device *PDN) {
-    PDN->setGlobalBrightness(BRIGHTNESS_MAX);
+    PDN->getLightManager()->setGlobalBrightness(BRIGHTNESS_MAX);
     lightsOn = false;
     alertCount = 0;
 }

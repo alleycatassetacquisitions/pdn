@@ -4,19 +4,28 @@
 #pragma once
 
 #include "device.hpp"
-#include "pdn-lights.hpp"
-#include "pdn-button.hpp"
-#include "pdn-display.hpp"
-#include "pdn-haptics.hpp"
-#include "pdn-serial.hpp"
 #include "light-manager.hpp"
 
 #include <string>
 
+const std::string DISPLAY_DRIVER_NAME = "display";
+const std::string PRIMARY_BUTTON_DRIVER_NAME = "primary_button";
+const std::string SECONDARY_BUTTON_DRIVER_NAME = "secondary_button";
+const std::string LIGHT_DRIVER_NAME = "light";
+const std::string HAPTICS_DRIVER_NAME = "haptics";
+const std::string SERIAL_OUT_DRIVER_NAME = "serial_out";
+const std::string SERIAL_IN_DRIVER_NAME = "serial_in";
+const std::string HTTP_CLIENT_DRIVER_NAME = "http_client";
+const std::string PEER_COMMS_DRIVER_NAME = "peer_comms";
+const std::string PLATFORM_CLOCK_DRIVER_NAME = "platform_clock";
+const std::string LOGGER_DRIVER_NAME = "logger";
+const std::string STORAGE_DRIVER_NAME = "storage";
+
 class PDN : public Device {
 
 public:
-    static PDN* GetInstance();
+
+    static PDN* createPDN(DriverConfig& driverConfig);
 
     ~PDN() override;
 
@@ -30,101 +39,39 @@ public:
 
     std::string getDeviceId() override;
 
-    void setGlobalLightColor(LEDColor color);
-
-    void setGlobalBrightness(int brightness);
-
-    void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction) override;
-
-    void setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
-        parameterizedCallbackFunction newFunction, void *parameter) override;
-
-    void removeButtonCallbacks(ButtonIdentifier whichButton) override;
-
-    bool isLongPressed(ButtonIdentifier whichButton) override;
-
-    unsigned long longPressedMillis(ButtonIdentifier whichButton) override;
-
-    void addToLight(LightIdentifier whichLights, int ledNum, LEDColor color);
-
-    void fadeLightsBy(LightIdentifier whichLights, int value);
-
-    void setLight(LightIdentifier whichLights, int ledNum, LEDColor color);
-
-    Display * invalidateScreen() override;
-
-    void render() override;
-
-    Display * drawText(const char *text, int xStart, int yStart) override;
-
-    Display* drawText(const char *text) override;
-
-    Display * drawImage(Image image) override;
-
-    Display * drawImage(Image image, int xStart, int yStart) override;
-
-    Display* drawButton(const char *text, int xCenter, int yCenter) override;
-
-    Display* setGlyphMode(FontMode mode) override;
-
-    Display* renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) override;
-    void setVibration(int value) override;
-
-    int getCurrentVibrationIntensity() override;
-
-    // Animation control methods
-    void startAnimation(AnimationConfig config);
-    void stopAnimation();
-    void pauseAnimation();
-    void resumeAnimation();
-    bool isAnimating() const;
-    bool isPaused() const;
-    bool isAnimationComplete() const;
-    AnimationType getCurrentAnimation() const;
+    Display* getDisplay() override;
+    Haptics* getHaptics() override;
+    Button* getPrimaryButton() override;
+    Button* getSecondaryButton() override;
+    LightManager* getLightManager() override;
+    HttpClientInterface* getHttpClient() override;
+    PeerCommsInterface* getPeerComms() override;
+    StorageInterface* getStorage() override;
 
 protected:
-    PDN();
+    PDN(DriverConfig& driverConfig);
 
-    void initializePins() override;
+    HWSerialWrapper* outputJack();
 
-    HWSerialWrapper* outputJack() override;
-
-    HWSerialWrapper* inputJack() override;
+    HWSerialWrapper* inputJack();
 
 private:
-    PDNButton* getButton(ButtonIdentifier whichButton);
 
-    void attachSingleClick(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachSingleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+    Display* display;
+    Haptics* haptics;
+    Button* primary;
+    Button* secondary;
+    LightStrip* pdnLights;
+    LightManager* lightManager;
 
-    void attachDoubleClick(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachDoubleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
+    HWSerialWrapper* serialOut;
+    HWSerialWrapper* serialIn;
 
-    void attachMultiClick(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachMultiClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
-
-    void attachPress(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
-
-    void attachLongPress(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
-
-    void attachDuringLongPress(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachDuringLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
-
-    void attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction);
-    void attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void* parameter);
-
-    PDNDisplay display;
-    PDNHaptics haptics;
-    PDNButton primary;
-    PDNButton secondary;
-    PDNLightStrip displayLights;
-    PDNLightStrip gripLights;
-    LightManager lightManager;
-
-    PDNSerialOut serialOut;
-    PDNSerialIn serialIn;
+    HttpClientInterface* httpClient;
+    PeerCommsInterface* peerComms;
+    PlatformClock* platformClock;
+    LoggerInterface* logger;
+    StorageInterface* storage;
 
     std::string deviceId;
 };

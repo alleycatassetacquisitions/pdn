@@ -2,10 +2,9 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "wireless/esp-now-comms.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "logger.hpp"
+#include "wireless/mac-functions.hpp"
 
 Idle::Idle(Player* player) : State(IDLE) {
     this->player = player;
@@ -38,15 +37,15 @@ void Idle::onStateMounted(Device *PDN) {
         config.loopDelayMs = 1500;
         config.loop = true;
     }
-    PDN->startAnimation(config);
+    PDN->getLightManager()->startAnimation(config);
 
     parameterizedCallbackFunction cycleStats = [](void *ctx) {
         Idle* idle = (Idle*)ctx;
         idle->displayIsDirty = true;
     };
 
-    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON, cycleStats, this);
-    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::SECONDARY_BUTTON, cycleStats, this);
+    PDN->getPrimaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
+    PDN->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
 
     displayIsDirty = true;
 }
@@ -80,9 +79,9 @@ void Idle::onStateDismounted(Device *PDN) {
     sendMacAddress = false;
     waitingForMacAddress = false;
     statsIndex = 0;
-    PDN->setGlyphMode(FontMode::TEXT);
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 }
 
 void Idle::serialEventCallbacks(std::string message) {
@@ -103,30 +102,30 @@ bool Idle::transitionToHandshake() {
 }
 
 void Idle::cycleStats(Device *PDN) {
-    PDN->invalidateScreen();
-    PDN->drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
+    PDN->getDisplay()->invalidateScreen();
+    PDN->getDisplay()->drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
     if(statsIndex == 0) {
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getWins()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getWins()).c_str(), 88, 40);
     } else if(statsIndex == 1) {        
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getStreak()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getStreak()).c_str(), 88, 40);
     } else if(statsIndex == 2) {
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Losses",70, 20);
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLosses()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Losses",70, 20);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLosses()).c_str(), 88, 40);
     } else if(statsIndex == 3) {
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Matches",70, 20);
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getMatchesPlayed()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Matches",70, 20);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getMatchesPlayed()).c_str(), 88, 40);
     } else if(statsIndex == 4) {
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Last",70, 20)->drawText("Reaction", 70, 35);
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLastReactionTime()).c_str(), 80, 55);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Last",70, 20)->drawText("Reaction", 70, 35);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLastReactionTime()).c_str(), 80, 55);
     } else if(statsIndex == 5) {
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
-        PDN->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getAverageReactionTime()).c_str(), 80, 55);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getAverageReactionTime()).c_str(), 80, 55);
     }
 
-    PDN->render();
+    PDN->getDisplay()->render();
 
     statsIndex++;
     if(statsIndex > statsCount) {

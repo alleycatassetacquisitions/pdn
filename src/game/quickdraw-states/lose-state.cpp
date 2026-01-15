@@ -10,7 +10,7 @@ Lose::~Lose() {
 }
 
 void Lose::onStateMounted(Device *PDN) {
-    PDN->invalidateScreen()->
+    PDN->getDisplay()->invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
     render();
 
@@ -23,7 +23,7 @@ void Lose::onStateMounted(Device *PDN) {
     config.initialState = LEDState();
     config.loopDelayMs = 0;
 
-    PDN->startAnimation(config);
+    PDN->getLightManager()->startAnimation(config);
 }
 
 void Lose::onStateLoop(Device *PDN) {

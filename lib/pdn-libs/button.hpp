@@ -27,24 +27,11 @@ class Button {
     public:
     virtual ~Button() {}
 
-    virtual void setButtonPress(callbackFunction newFunction) = 0;
-    virtual void setButtonSingleClick(callbackFunction newFunction) = 0;
-    virtual void setButtonDoubleClick(callbackFunction newFunction) = 0;
-    virtual void setButtonMultiClick(callbackFunction newFunction) = 0;
-    virtual void setButtonLongPress(callbackFunction newFunction) = 0;
-    virtual void setButtonDuringLongPress(callbackFunction newFunction) = 0;
-    virtual void setButtonLongPressRelease(callbackFunction newFunction) = 0;
-
-    virtual void setButtonPress(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-    virtual void setButtonSingleClick(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-    virtual void setButtonDoubleClick(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-    virtual void setButtonMultiClick(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-    virtual void setButtonLongPress(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-    virtual void setButtonDuringLongPress(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-    virtual void setButtonLongPressRelease(parameterizedCallbackFunction newFunction, void* parameter) = 0;
-
+    virtual void setButtonPress(callbackFunction newFunction, ButtonInteraction interactionType = ButtonInteraction::PRESS) = 0;
+    
+    virtual void setButtonPress(parameterizedCallbackFunction newFunction, void* parameter, ButtonInteraction interactionType = ButtonInteraction::PRESS) = 0;
+    
     virtual void removeButtonCallbacks() = 0;
-    virtual void loop() = 0;
 
     virtual bool isLongPressed() = 0;
 

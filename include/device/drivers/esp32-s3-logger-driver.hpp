@@ -1,19 +1,25 @@
 #pragma once
 
-#include "logger.hpp"
+#include "driver-interface.hpp"
 #include <esp_log.h>
 
 /**
  * ESP32-S3 implementation of LoggerInterface.
  * Wraps ESP-IDF's esp_log functions.
  */
-class Esp32S3Logger : public LoggerInterface {
+class Esp32S3Logger : public LoggerDriverInterface {
 public:
-    void log(LogLevel level, const char* tag, const char* format, ...) override {
-        va_list args;
-        va_start(args, format);
-        vlog(level, tag, format, args);
-        va_end(args);
+    Esp32S3Logger(std::string name) : LoggerDriverInterface(name) {
+    }
+
+    ~Esp32S3Logger() override {
+    }
+
+    int initialize() override {
+        return 0;   
+    }
+
+    void exec() override {
     }
     
     void vlog(LogLevel level, const char* tag, const char* format, va_list args) override {

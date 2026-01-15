@@ -16,11 +16,11 @@ WelcomeMessage::~WelcomeMessage() {
 
 void WelcomeMessage::onStateMounted(Device *PDN) {
     LOG_I(TAG, "WelcomeMessage state mounted");
-    renderWelcomeMessage();
+    renderWelcomeMessage(PDN);
     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 
 } 
 
@@ -31,8 +31,8 @@ void WelcomeMessage::onStateLoop(Device *PDN) {
     }
 }
 
-void WelcomeMessage::renderWelcomeMessage() {
-    PDN::GetInstance()->
+void WelcomeMessage::renderWelcomeMessage(Device *PDN) {
+    PDN->getDisplay()->
     invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
     drawText("**Alias**", 0, 16)->

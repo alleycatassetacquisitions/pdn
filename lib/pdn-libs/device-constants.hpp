@@ -54,3 +54,9 @@ const std::string TEST_HUNTER_ID = "8888";
 const std::string BROADCAST_WIFI = "1111";
 
 const std::string FORCE_MATCH_UPLOAD = "6969";
+
+//STORAGE
+#define PREF_NAMESPACE "matches"
+#define PREF_COUNT_KEY "count"
+#define PREF_MATCH_KEY "match_"  // Will be appended with index
+#define MAX_MATCHES 255

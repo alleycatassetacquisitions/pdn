@@ -21,12 +21,12 @@ DuelPushed::~DuelPushed() {
 void DuelPushed::onStateMounted(Device *PDN) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state mounted");
     
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 
     gracePeriodTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
 
-    PDN->setVibration(0);
+    PDN->getHaptics()->setIntensity(0);
 }
 
 void DuelPushed::onStateLoop(Device *PDN) {

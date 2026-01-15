@@ -53,7 +53,7 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(Device *PDN) {
-    PDN->
+    PDN->getDisplay()->
         invalidateScreen()->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
@@ -70,6 +70,10 @@ void Sleep::onStateLoop(Device *PDN) {
         transitionToAwakenSequenceState = true;
     }
 
+    // TODO: Convert this breathing effect to use the new animation system
+    // The old direct LED control API (setLight) has been removed in favor of animations
+    // This breathing effect should be implemented as a proper Animation class
+    /*
     EVERY_N_MILLIS(16) {
         if (breatheUp) {
             ledBrightness++;
@@ -85,10 +89,10 @@ void Sleep::onStateLoop(Device *PDN) {
             breatheUp = true;
         }
 
-        //TODO: Convert Transmit to an animation.
         LEDColor color = bountyColors[random8()];
-        PDN->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
+        PDN->getLightManager()->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
     }
+    */
 }
 
 void Sleep::onStateDismounted(Device *PDN) {

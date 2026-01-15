@@ -4,7 +4,6 @@
 #include "game/quickdraw-resources.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min
-#include "esp_log.h"
 
 class AnimationBase : public IAnimation {
 public:
@@ -41,7 +40,7 @@ public:
             // Update the current state directly and get it back
             LEDState prevState = currentState_;
             currentState_ = onAnimate();
-            currentState_.timestamp = millis();
+            currentState_.timestamp = SimpleTimer::getPlatformClock()->milliseconds();
         }
 
         return currentState_;

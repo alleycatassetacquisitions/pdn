@@ -2,7 +2,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "wireless/esp-now-comms.hpp"
 #include "game/match-manager.hpp"
 #include "logger.hpp"
 
@@ -34,7 +33,7 @@ void DuelResult::onStateMounted(Device *PDN) {
         player->incrementLosses();
     }
 
-    PDN->setVibration(0);
+    PDN->getHaptics()->setIntensity(0);
 
     // Store reaction time before finalizing match
     if(player->isHunter()) {
@@ -46,7 +45,7 @@ void DuelResult::onStateMounted(Device *PDN) {
     // Now it's safe to finalize the match, which might clear the current match
     matchManager->finalizeMatch();
 
-    PDN->invalidateScreen()->render();
+    PDN->getDisplay()->invalidateScreen()->render();
 }
 
 void DuelResult::onStateLoop(Device *PDN) {
@@ -60,14 +59,14 @@ void DuelResult::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d",
              wonBattle, captured);
 
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 
     QuickdrawWirelessManager::GetInstance()->clearCallbacks();
              
     wonBattle = false;
     captured = false;
-    PDN->stopAnimation();
+    PDN->getLightManager()->stopAnimation();
 }
 
 bool DuelResult::transitionToWin() {

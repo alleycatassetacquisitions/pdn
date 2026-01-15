@@ -1,5 +1,5 @@
 #include "wireless/remote-debug-manager.hpp"
-#include "wireless/esp-now-comms.hpp"
+#include "device/drivers/esp-now-driver.hpp"
 #include "logger.hpp"
 
 RemoteDebugManager* RemoteDebugManager::s_instance = nullptr;

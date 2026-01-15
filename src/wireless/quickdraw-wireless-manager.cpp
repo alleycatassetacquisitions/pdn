@@ -3,7 +3,7 @@
 //
 #include "wireless/quickdraw-wireless-manager.hpp"
 
-#include "wireless/esp-now-comms.hpp"
+#include "device/drivers/esp-now-driver.hpp"
 #include "id-generator.hpp"
 #include <WiFi.h>
 

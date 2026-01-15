@@ -1,7 +1,7 @@
 #include <algorithm>
 #include "logger.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "wireless/esp-now-comms.hpp"
+#include "device/drivers/esp-now-driver.hpp"
 #include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
 

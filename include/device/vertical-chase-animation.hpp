@@ -46,7 +46,7 @@ protected:
         }
 
         // Increment progress for fade in/out and interpolation.
-        progress = min(progress + 20, 255);  // Adjust speed as needed
+        progress = std::min(progress + 20, 255);  // Adjust speed as needed
 
         if(progress > 255) {
             progress = 255;
@@ -60,60 +60,60 @@ protected:
                 break;
             case 11:
                 currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 10:
                 currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 9:
-                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(8, interpolateColor(currentState_.leftLights[8].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 8:
-                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(7, interpolateColor(currentState_.leftLights[7].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 7:
-                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(6, interpolateColor(currentState_.leftLights[6].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 6:
-                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(5, interpolateColor(currentState_.leftLights[5].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 5:
-                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(4, interpolateColor(currentState_.leftLights[4].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), 35);
                 currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[2], currentBezierValue), 35);
-                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 4:
-                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(3, interpolateColor(currentState_.leftLights[3].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[1], currentBezierValue), 35);
-                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[0], currentBezierValue), min(currentBezierValue, 75));
+                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[0], currentBezierValue), std::min(currentBezierValue, 75));
                 break;
             case 3:
-                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(2, interpolateColor(currentState_.leftLights[2].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[2], currentBezierValue), 35);
                 currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[1], currentBezierValue), 35);
                 break;
             case 2:
-                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(1, interpolateColor(currentState_.leftLights[1].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[2], currentBezierValue), 35);
                 break;
             case 1:
-                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[3], currentBezierValue), min(255-currentBezierValue, 35));
+                currentState_.setLEDPair(0, interpolateColor(currentState_.leftLights[0].color, ledColors[3], currentBezierValue), std::min(255-currentBezierValue, 35));
                 break;
             default:
                 break;

@@ -59,22 +59,18 @@ void Duel::onStateMounted(Device *PDN) {
         std::bind(&MatchManager::listenForMatchResults, matchManager, std::placeholders::_1)
     );
 
-    PDN->setButtonClick(
-        ButtonInteraction::CLICK,
-        ButtonIdentifier::PRIMARY_BUTTON,
-        matchManager->getDuelButtonPush(), matchManager);
+    PDN->getPrimaryButton()->setButtonPress(
+        matchManager->getDuelButtonPush(), matchManager, ButtonInteraction::CLICK);
 
-    PDN->setButtonClick(
-        ButtonInteraction::CLICK,
-        ButtonIdentifier::SECONDARY_BUTTON,
-        matchManager->getDuelButtonPush(), matchManager);
+    PDN->getSecondaryButton()->setButtonPress(
+        matchManager->getDuelButtonPush(), matchManager, ButtonInteraction::CLICK);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 
     LOG_I(DUEL_TAG, "Duel timer started for %d ms, duelStartTime: %lu", 
              DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
              
-    PDN->invalidateScreen()->
+    PDN->getDisplay()->invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
     render();
@@ -88,9 +84,9 @@ void Duel::onStateMounted(Device *PDN) {
     config.loop = false;
     config.initialState = COUNTDOWN_DUEL_STATE;
     
-    PDN->startAnimation(config);
+    PDN->getLightManager()->startAnimation(config);
 
-    PDN->setVibration(175);
+    PDN->getHaptics()->setIntensity(175);
 }
 
 void Duel::onStateLoop(Device *PDN) {
