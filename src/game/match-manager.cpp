@@ -1,7 +1,9 @@
 #include "game/match-manager.hpp"
 #include <ArduinoJson.h>
 #include <esp_log.h>
+#include <esp_now.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/esp-now-comms.hpp"
 
 #define MATCH_MANAGER_TAG "MATCH_MANAGER"
 
@@ -28,6 +30,15 @@ MatchManager::~MatchManager() {
 void MatchManager::clearCurrentMatch() {
     if (activeDuelState.match) {
         ESP_LOGI("PDN", "Clearing current match");
+
+        if (player && player->getOpponentMacAddress()) {
+            uint8_t mac[6];
+            if (StringToMac(player->getOpponentMacAddress()->c_str(), mac)) {
+                esp_now_del_peer(mac);
+                ESP_LOGI("PDN", "Removed opponent peer from ESP-NOW");
+            }
+        }
+
         delete activeDuelState.match;
         activeDuelState.match = nullptr;
         activeDuelState.hasReceivedDrawResult = false;

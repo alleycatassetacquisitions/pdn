@@ -69,15 +69,25 @@ int QuickdrawWirelessManager::broadcastPacket(const string& macAddress,
     qdPacket.hunterDrawTime = match.getHunterDrawTime();
     qdPacket.bountyDrawTime = match.getBountyDrawTime();
 
-    ESP_LOGI("QWM", "Broadcasting command %i", command);
+    ESP_LOGI("QWM", "Sending command %i to %s", command, macAddress.c_str());
     ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
     ESP_LOGI("QWM", "Hunter ID: %s", qdPacket.hunterId);
     ESP_LOGI("QWM", "Bounty ID: %s", qdPacket.bountyId);
     ESP_LOGI("QWM", "Hunter Draw Time: %ld", qdPacket.hunterDrawTime);
     ESP_LOGI("QWM", "Bounty Draw Time: %ld", qdPacket.bountyDrawTime);
 
+    uint8_t dstMac[6];
+    const uint8_t* targetMac;
+
+    if (!macAddress.empty() && StringToMac(macAddress.c_str(), dstMac)) {
+        targetMac = dstMac;
+    } else {
+        ESP_LOGW("QWM", "Invalid MAC address, falling back to broadcast");
+        targetMac = ESP_NOW_BROADCAST_ADDR;
+    }
+
     int ret = EspNowManager::GetInstance()->SendData(
-        ESP_NOW_BROADCAST_ADDR,
+        targetMac,
         PktType::kQuickdrawCommand,
         (uint8_t*)&qdPacket,
         sizeof(qdPacket));

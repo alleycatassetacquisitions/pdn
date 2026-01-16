@@ -134,10 +134,10 @@ static uint64_t MacToUInt64(const uint8_t* macAddr)
 static const char* MacToString(const uint8_t* macAddr)
 {
     static char macStr[18];
-    snprintf(macStr, 18, "%X:%X:%X:%X:%X:%X",
+    snprintf(macStr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
         macAddr[0], macAddr[1], macAddr[2],
         macAddr[3], macAddr[4], macAddr[5]);
-        macStr[17] = '\0';
+    macStr[17] = '\0';
     return macStr;
 }
 
