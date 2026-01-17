@@ -2,6 +2,7 @@
 // Created by Elli Furedy on 1/24/2025.
 //
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "peer-comms-interface.hpp"
 
 struct QuickdrawPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
@@ -72,8 +73,9 @@ int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress,
         targetMac = dstMac;
     } else {
         LOG_W("QWM", "Invalid MAC address, falling back to broadcast");
-        targetMac = PEER_BROADCAST_ADDR.data();
+        targetMac = peerComms->getGlobalBroadcastAddress();
     }
+    
 
     int ret = peerComms->sendData(
         targetMac,

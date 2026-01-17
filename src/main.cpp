@@ -68,16 +68,16 @@ void setupEspNow() {
     // Register packet handlers
     EspNowManager::GetInstance()->setPacketHandler(
         static_cast<uint8_t>(PktType::kQuickdrawCommand),
-        [](const PeerCommsInterface::PeerAddress& src, const uint8_t* data, const size_t len, void* userArg) {
-            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src.data(), data, len);
+        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
         },
         QuickdrawWirelessManager::GetInstance()
     );
     
     EspNowManager::GetInstance()->setPacketHandler(
         static_cast<uint8_t>(PktType::kDebugPacket),
-        [](const PeerCommsInterface::PeerAddress& srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr.data(), data, len);
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
         },
         RemoteDebugManager::GetInstance()
     );

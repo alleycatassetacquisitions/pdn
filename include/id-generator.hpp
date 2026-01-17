@@ -73,6 +73,7 @@ private:
     UUID generator;
     std::random_device randomDevice;
 
+    //UUID 
     IdGenerator() : generator(randomDevice()) {
         generator.setVersion4Mode();
         generator.seed(randomDevice(), randomDevice());

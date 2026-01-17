@@ -22,7 +22,7 @@
 #define PDN_ENABLE_RSSI_TRACKING 0
 
 //Use this mac address in order to reach all nearby devices
-constexpr PeerCommsInterface::PeerAddress PEER_BROADCAST_ADDR = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 
@@ -46,7 +46,7 @@ public:
     }
 
     //Queues up data for sending, may not send right away
-    int sendData(const PeerAddress& dst, PktType packetType, const uint8_t* data, const size_t length) override {
+    int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
         if(length > (255 * MAX_PKT_DATA_SIZE))
         {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
@@ -112,7 +112,7 @@ public:
 
             //Now add it to the send queue
             DataSendBuffer buffer;
-            memcpy(buffer.dstMac, dst.data(), ESP_NOW_ETH_ALEN);
+            memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
             buffer.ptr = sendBuffers[pktIdx];
             buffer.len = hdr->pktLen;
             m_sendQueue.push(buffer);
@@ -169,7 +169,7 @@ public:
 
         //Register broadcast peer
         esp_now_peer_info_t broadcastPeer = {};
-        memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR.data(), ESP_NOW_ETH_ALEN);
+        memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
         err = esp_now_add_peer(&broadcastPeer);
         if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
             LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
@@ -374,7 +374,7 @@ private:
         
         //If this is the first packet in cluster, make sure the peer is registered
         DataPktHdr* hdr = (DataPktHdr*)buffer.ptr;
-        if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR.data(), ESP_NOW_ETH_ALEN) != 0))
+        if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
             EnsurePeerIsRegistered(buffer.dstMac);
 
         esp_err_t err;
@@ -447,9 +447,12 @@ private:
         PacketCallback callback = m_pktHandlerCallbacks[(int)packetType].first;
         if(callback)
         {
-            PeerAddress srcMac = {srcMacAddr[0], srcMacAddr[1], srcMacAddr[2], srcMacAddr[3], srcMacAddr[4], srcMacAddr[5]};
-            callback(srcMac, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
+            callback(srcMacAddr, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
         }
+    }
+
+    const uint8_t* getGlobalBroadcastAddress() override {
+        return PEER_BROADCAST_ADDR;
     }
 
     //Storage for retry handling
