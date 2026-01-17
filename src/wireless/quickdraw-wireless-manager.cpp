@@ -3,11 +3,6 @@
 //
 #include "wireless/quickdraw-wireless-manager.hpp"
 
-#include "device/drivers/esp-now-driver.hpp"
-#include "id-generator.hpp"
-#include <WiFi.h>
-
-
 struct QuickdrawPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     char hunterId[5];  // 4 chars + null terminator
@@ -24,9 +19,10 @@ QuickdrawWirelessManager *QuickdrawWirelessManager::GetInstance() {
 
 QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
 
-void QuickdrawWirelessManager::initialize(Player *player, long broadcastDelay) {
+void QuickdrawWirelessManager::initialize(Player *player, PeerCommsInterface* peerComms, long broadcastDelay) {
     this->player = player;
     this->broadcastDelay = broadcastDelay;
+    this->peerComms = peerComms;
 }
 
 void QuickdrawWirelessManager::clearCallbacks() {
@@ -40,11 +36,6 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (Qui
 int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress, 
                                              int command, 
                                              Match match) {
-    // Ensure WiFi is in STA mode before sending
-    if (WiFi.getMode() != WIFI_STA) {
-        LOG_W("QWM", "WiFi not in STA mode, setting it now");
-        WiFi.mode(WIFI_STA);
-    }
     
     QuickdrawPacket qdPacket;
     
@@ -80,11 +71,11 @@ int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress,
     if (!macAddress.empty() && StringToMac(macAddress.c_str(), dstMac)) {
         targetMac = dstMac;
     } else {
-        ESP_LOGW("QWM", "Invalid MAC address, falling back to broadcast");
-        targetMac = ESP_NOW_BROADCAST_ADDR;
+        LOG_W("QWM", "Invalid MAC address, falling back to broadcast");
+        targetMac = PEER_BROADCAST_ADDR.data();
     }
 
-    int ret = EspNowManager::GetInstance()->SendData(
+    int ret = peerComms->sendData(
         targetMac,
         PktType::kQuickdrawCommand,
         (uint8_t*)&qdPacket,

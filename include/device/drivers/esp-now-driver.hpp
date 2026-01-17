@@ -10,6 +10,7 @@
 #include "logger.hpp"
 #include "driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
+#include "peer-comms-types.hpp"
 
 #define DEBUG_PRINT_ESP_NOW 0
 
@@ -22,24 +23,6 @@
 
 //Use this mac address in order to reach all nearby devices
 constexpr PeerCommsInterface::PeerAddress PEER_BROADCAST_ADDR = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-
-//PktType determines which callback will handle the packet on the receiving end
-enum class PktType : uint8_t
-{
-    kPlayerInfoBroadcast = 0,
-    kQuickdrawCommand = 1,
-    kDebugPacket = 2,
-    kNumPacketTypes //Not a real packet type, DO NOT USE
-};
-
-struct DataPktHdr
-{
-    //Total packet length including header
-    uint8_t pktLen;
-    PktType packetType;
-    uint8_t numPktsInCluster;
-    uint8_t idxInCluster;
-} __attribute__((packed));
 
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 
@@ -63,7 +46,7 @@ public:
     }
 
     //Queues up data for sending, may not send right away
-    int sendData(const PeerAddress& dst, uint8_t packetType, const uint8_t* data, const size_t length) override {
+    int sendData(const PeerAddress& dst, PktType packetType, const uint8_t* data, const size_t length) override {
         if(length > (255 * MAX_PKT_DATA_SIZE))
         {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
@@ -121,7 +104,7 @@ public:
             hdr->idxInCluster = pktIdx;
             hdr->numPktsInCluster = numInCluster;
             hdr->pktLen = sizeof(DataPktHdr) + thisBuffer;
-            hdr->packetType = static_cast<PktType>(packetType);
+            hdr->packetType = packetType;
 
             //Copy the actual data into the send buffer following the header
             size_t dataOffset = pktIdx * MAX_PKT_DATA_SIZE;
@@ -151,14 +134,14 @@ public:
     //the existing handler is automatically unregistered
     //userArg will be saved per packet type and will be passed in unmodified to
     //packet handler for that packet type (when a packet of that type is receieved)
-    void setPacketHandler(uint8_t packetType, PacketCallback callback, void* ctx) override {
-        m_pktHandlerCallbacks[packetType].first = callback;
-        m_pktHandlerCallbacks[packetType].second = ctx;
+    void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {
+        m_pktHandlerCallbacks[(int)packetType].first = callback;
+        m_pktHandlerCallbacks[(int)packetType].second = ctx;
     }
 
     //Unregister packet handler for specified packet type
-    void clearPacketHandler(uint8_t packetType) override {
-        m_pktHandlerCallbacks[packetType].first = nullptr;
+    void clearPacketHandler(PktType packetType) override {
+        m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
     // Initializes ESP-NOW and sets up callbacks and broadcast peer

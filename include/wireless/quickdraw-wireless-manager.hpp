@@ -12,6 +12,8 @@
 #include "player.hpp"
 #include "match.hpp"
 #include "id-generator.hpp"
+#include "mac-functions.hpp"
+#include "peer-comms-interface.hpp"
 
 enum QDCommand {
     // Handshake Commands
@@ -53,7 +55,7 @@ class QuickdrawWirelessManager {
 public:
     static QuickdrawWirelessManager* GetInstance();
 
-    void initialize(Player* player, long broadcastCooldown);
+    void initialize(Player* player, PeerCommsInterface* peerComms, long broadcastCooldown);
 
     int processQuickdrawCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
@@ -75,6 +77,8 @@ public:
 
 private:
     QuickdrawWirelessManager();
+
+    PeerCommsInterface* peerComms;
 
     std::function<void(QuickdrawCommand)> packetReceivedCallback;
 
