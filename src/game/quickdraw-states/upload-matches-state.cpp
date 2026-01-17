@@ -19,15 +19,7 @@ UploadMatchesState::~UploadMatchesState() {
     matchManager = nullptr;
 }
 
-void UploadMatchesState::onStateMounted(Device *PDN) {
-    LOG_I(TAG, "State mounted - Starting match upload process");
-
-    showLoadingGlyphs(PDN);
-    uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
-
-    matchesJson = matchManager->toJson();
-    LOG_I(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
-
+void UploadMatchesState::attemptUpload() {
     QuickdrawRequests::updateMatches(
         httpClient,
         matchesJson,
@@ -39,9 +31,33 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
         [this](const WirelessErrorInfo& error) {
             LOG_E(TAG, "Failed to update matches: %s (code: %d)", 
                 error.message.c_str(), static_cast<int>(error.code));
-            routeToNextState();
+            
+            // Try to reconnect and retry the upload
+            if (matchUploadRetryCount < 3) {
+                matchUploadRetryCount++;
+                LOG_I(TAG, "Retrying upload attempt %d/3", matchUploadRetryCount);
+                httpClient->retryConnection();
+                uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
+                shouldRetryUpload = true;
+            } else {
+                LOG_W(TAG, "Max upload retries reached. Proceeding without upload.");
+                routeToNextState();
+            }
         }
     );
+}
+
+void UploadMatchesState::onStateMounted(Device *PDN) {
+    LOG_I(TAG, "State mounted - Starting match upload process");
+
+    showLoadingGlyphs(PDN);
+    uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
+    matchUploadRetryCount = 0;
+
+    matchesJson = matchManager->toJson();
+    LOG_I(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
+
+    attemptUpload();
 
     AnimationConfig config;
     config.type = AnimationType::TRANSMIT_BREATH;
@@ -54,8 +70,16 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
 
 void UploadMatchesState::onStateLoop(Device *PDN) {
     uploadMatchesTimer.updateTime();
+    
+    // Check if we should retry the upload after connection is re-established
+    if (shouldRetryUpload && httpClient->isConnected()) {
+        LOG_I(TAG, "Connection re-established, retrying upload");
+        shouldRetryUpload = false;
+        attemptUpload();
+    }
+    
     if(uploadMatchesTimer.expired()) {
-        LOG_I(TAG, "Retry timer expired");
+        LOG_W(TAG, "Upload timeout expired");
         routeToNextState();
     }
 
@@ -67,6 +91,8 @@ void UploadMatchesState::onStateDismounted(Device *PDN) {
     uploadMatchesTimer.invalidate();
     transitionToSleepState = false;
     transitionToPlayerRegistrationState = false;
+    shouldRetryUpload = false;
+    matchUploadRetryCount = 0;
     PDN->getLightManager()->stopAnimation();
 }
 

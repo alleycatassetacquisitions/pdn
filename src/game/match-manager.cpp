@@ -7,13 +7,7 @@
 #define MATCH_MANAGER_TAG "MATCH_MANAGER"
 
 MatchManager* MatchManager::GetInstance() {
-    static bool firstCall = true;
     static MatchManager instance;
-    
-    if (firstCall) {
-        LOG_W("MATCH_MANAGER", "***** MatchManager singleton initialized for the first time *****");
-        firstCall = false;
-    }
     
     return &instance;
 }

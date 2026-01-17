@@ -1,10 +1,10 @@
 #pragma once
 
 #include "driver-interface.hpp"
-#include <unordered_map>
+#include <map>
 #include <utility>
 
-using DriverConfig = std::unordered_map<std::string, DriverInterface*>;
+using DriverConfig = std::map<std::string, DriverInterface*>;
 
 class DriverManager {
     public:

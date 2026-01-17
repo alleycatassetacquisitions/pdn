@@ -13,4 +13,5 @@ public:
     virtual bool queueRequest(HttpRequest& request) = 0;
     virtual void disconnect() = 0;
     virtual void updateConfig(WifiConfig* config) = 0;
+    virtual void retryConnection() = 0;
 };

@@ -220,7 +220,7 @@ public:
     }
 
 private:
-    inline static EspNowManager* instance = nullptr;
+    static EspNowManager* instance;
 
     EspNowManager(std::string name) :
         PeerCommsDriverInterface(name),
@@ -235,9 +235,7 @@ private:
         esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
         esp_wifi_set_promiscuous(true);
 #endif
-
-        // Initialize ESP-NOW
-        initialize();
+        // ESP-NOW initialization happens in initialize() method, called by DriverManager
     }
 
 #if PDN_ENABLE_RSSI_TRACKING

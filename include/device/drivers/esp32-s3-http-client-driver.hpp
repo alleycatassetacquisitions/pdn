@@ -24,7 +24,7 @@ inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
  */
 class Esp32S3HttpClient : public HttpClientDriverInterface {
 public:
-    static const int MAX_WIFI_CONN_ATTEMPTS = 20;
+    static const int WIFI_CONNECTION_TIMEOUT_MS = 12500;  // 2.5 sec * 5 attempts
     static const uint8_t MAX_RETRIES = 1;
 
     Esp32S3HttpClient(std::string name, WifiConfig* wifiConfig)
@@ -32,7 +32,7 @@ public:
         , wifiConfig(wifiConfig)
         , wifiConnected(false)
         , httpClientInitialized(false)
-        , wifiConnectionAttempts(0)
+        , wifiGivenUp(false)
         , channel(0)
         , httpClient(nullptr)
         , currentRequest(nullptr) {
@@ -45,11 +45,10 @@ public:
     int initialize() override {
         wifiConnected = false;
         httpClientInitialized = false;
-        wifiConnectionAttempts = 0;
+        wifiGivenUp = false;
         
-        LOG_I(HTTP_TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
         startWifiConnection();
-        connectionAttemptTimer.setTimer(500);
+        connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
         
         return 0;
     }
@@ -58,11 +57,11 @@ public:
         wifiConfig = config;
         wifiConnected = false;
         httpClientInitialized = false;
-        wifiConnectionAttempts = 0;
+        wifiGivenUp = false;
         
         LOG_I(HTTP_TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
         startWifiConnection();
-        connectionAttemptTimer.setTimer(500);
+        connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
     }
 
     bool isConnected() override {
@@ -75,11 +74,11 @@ public:
     }
 
     void exec() override {
-        if (!wifiConnected) {
+        if (!wifiConnected && !wifiGivenUp) {
             checkWifiConnection();
-        } else if (!httpClientInitialized) {
+        } else if (wifiConnected && !httpClientInitialized) {
             httpClientInitialized = initializeHttpClient();
-        } else {
+        } else if (wifiConnected) {
             processQueuedRequests();
             checkOngoingRequests();
         }
@@ -87,11 +86,11 @@ public:
 
     void disconnect() override {
         cleanupHttpClient();
-        WiFi.disconnect(true);
+        WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
         
         wifiConnected = false;
         httpClientInitialized = false;
-        wifiConnectionAttempts = 0;
+        wifiGivenUp = false;
         connectionAttemptTimer.invalidate();
     }
 
@@ -107,35 +106,50 @@ public:
         }
     }
 
+    void retryConnection() override {
+        if (!wifiConnected) {
+            LOG_I(HTTP_TAG, "Retrying WiFi connection...");
+            wifiGivenUp = false;
+            startWifiConnection();
+            connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
+        }
+    }
+
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
 private:
     void startWifiConnection() {
         WiFi.mode(WIFI_STA);
+        WiFi.disconnect(false);  // Clear any previous connection but keep radio on
+        WiFi.setAutoReconnect(true);  // Let WiFi stack handle reconnection attempts
+        WiFi.channel(6);
         WiFi.begin(wifiConfig->ssid.c_str(), wifiConfig->password.c_str());
+        LOG_I(HTTP_TAG, "Starting WiFi connection, timeout: %dms", WIFI_CONNECTION_TIMEOUT_MS);
     }
 
     void checkWifiConnection() {
         connectionAttemptTimer.updateTime();
         
-        if (!connectionAttemptTimer.expired()) {
-            return;
-        }
-        
+        // Check if we've connected
         if (WiFi.status() == WL_CONNECTED) {
             channel = WiFi.channel();
             LOG_I(HTTP_TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
             wifiConnected = true;
+            wifiGivenUp = false;
+            connectionAttemptTimer.invalidate();
             httpClientInitialized = initializeHttpClient();
-        } else {
-            wifiConnectionAttempts++;
-            if (wifiConnectionAttempts < MAX_WIFI_CONN_ATTEMPTS) {
-                connectionAttemptTimer.setTimer(500);
-            } else {
-                logWifiStatusError();
-                wifiConnectionAttempts = 0;
-                connectionAttemptTimer.setTimer(10000);
-            }
+            // Leave auto-reconnect ON so WiFi recovers from disconnections
+            return;
+        }
+        
+        // Check if connection timeout expired
+        if (connectionAttemptTimer.expired()) {
+            logWifiStatusError();
+            wifiGivenUp = true;
+            LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
+            WiFi.setAutoReconnect(false);  // Disable auto-reconnect to stop retry spam
+            WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
+            connectionAttemptTimer.invalidate();
         }
     }
 
@@ -309,7 +323,7 @@ private:
     // WiFi connection state
     bool wifiConnected;
     bool httpClientInitialized;
-    int wifiConnectionAttempts;
+    bool wifiGivenUp;
     SimpleTimer connectionAttemptTimer;
 
     // HTTP client state

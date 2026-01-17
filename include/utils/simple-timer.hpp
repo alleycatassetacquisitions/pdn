@@ -17,7 +17,7 @@ public:
 
     void updateTime(){
         if (clock == nullptr) {
-            LOG_E("SimpleTimer", "updateTime called with Platform clock not set");
+            now = 0;
             return;
         }
         now = clock->milliseconds();

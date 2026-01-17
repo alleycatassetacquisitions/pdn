@@ -354,9 +354,9 @@ public:
     DuelReceivedResult(Player* player, MatchManager* matchManager);
     ~DuelReceivedResult();
 
-    void onStateMounted(Device *PDN) override;
+    void onStateMounted(Device *PDN) override;  
     void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;   
     bool transitionToDuelResult();
 
 private:
@@ -372,12 +372,12 @@ public:
     DuelResult(Player* player, MatchManager* matchManager);
     ~DuelResult();
 
-    void onStateMounted(Device *PDN) override;
+    void onStateMounted(Device *PDN) override;  
     void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;   
     bool transitionToWin();
-    bool transitionToLose();
-
+    bool transitionToLose();    
+    
 private:
     Player* player;
     MatchManager* matchManager;
@@ -427,7 +427,7 @@ public:
     }
 
 protected:
-    static SimpleTimer handshakeTimeout;
+    static SimpleTimer* handshakeTimeout;
     static bool timeoutInitialized;
     static const int timeout = 20000;
     
@@ -435,19 +435,20 @@ protected:
     ~BaseHandshakeState() {}
     
     static void initTimeout() {
-        handshakeTimeout.setTimer(timeout);
+        if (!handshakeTimeout) handshakeTimeout = new SimpleTimer();
+        handshakeTimeout->setTimer(timeout);
         timeoutInitialized = true;
     }
     
     static bool isTimedOut() {
-        if (!timeoutInitialized) return false;
-        handshakeTimeout.updateTime();
-        return handshakeTimeout.expired();
+        if (!timeoutInitialized || !handshakeTimeout) return false;
+        handshakeTimeout->updateTime();
+        return handshakeTimeout->expired();
     }
     
     static void resetTimeout() {
         timeoutInitialized = false;
-        handshakeTimeout.invalidate();
+        handshakeTimeout->invalidate();
     }
 };
 
@@ -517,6 +518,7 @@ public:
     void showLoadingGlyphs(Device *PDN);
     bool transitionToPlayerRegistration();
     void routeToNextState();
+    void attemptUpload();
 
 private:
     Player* player;
@@ -528,4 +530,5 @@ private:
     std::string matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
+    bool shouldRetryUpload = false;
 };

@@ -21,6 +21,7 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     peerComms = static_cast<PeerCommsDriverInterface*>(driverConfig[PEER_COMMS_DRIVER_NAME]);
     platformClock = static_cast<PlatformClockDriverInterface*>(driverConfig[PLATFORM_CLOCK_DRIVER_NAME]);
     logger = static_cast<LoggerDriverInterface*>(driverConfig[LOGGER_DRIVER_NAME]);
+    storage = static_cast<StorageDriverInterface*>(driverConfig[STORAGE_DRIVER_NAME]);
 
     lightManager = new LightManager(*lights);
 }
