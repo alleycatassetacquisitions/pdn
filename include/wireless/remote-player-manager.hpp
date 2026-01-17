@@ -1,13 +1,13 @@
 #include <vector>
-#include <esp_now.h>
 #include <cstring>  // For memcpy
 #include <string>
 
+#include "peer-comms-interface.hpp"
 #include "player.hpp"
 
 struct RemotePlayer
 {
-    uint8_t wifiMacAddr[ESP_NOW_ETH_ALEN];
+    uint8_t wifiMacAddr[6];
     Player playerInfo;
     unsigned long lastSeenTime;
     signed rssi;
@@ -18,14 +18,14 @@ struct RemotePlayer
                  lastSeenTime(lastSeen),
                  rssi(rssiDb)
     {
-        memcpy(wifiMacAddr, macAddr, ESP_NOW_ETH_ALEN);
+        memcpy(wifiMacAddr, macAddr, 6);
     }
 };
 
 class RemotePlayerManager
 {
 public:
-    RemotePlayerManager();
+    RemotePlayerManager(PeerCommsInterface* peerComms);
 
     void Update();
 
@@ -38,11 +38,11 @@ public:
 
 protected:
     int BroadcastPlayerInfo();
-
-    Player* m_localPlayerInfo;
-    std::vector<RemotePlayer> m_remotePlayers;
-    unsigned long m_remotePlayerTTL;
-    unsigned long m_broadcastInterval;
-    unsigned long m_lastBroadcastTime;
+    PeerCommsInterface* peerComms;
+    Player* localPlayerInfo;
+    std::vector<RemotePlayer> remotePlayers;
+    unsigned long remotePlayerTTL;
+    unsigned long broadcastInterval;
+    unsigned long lastBroadcastTime;
 
 };

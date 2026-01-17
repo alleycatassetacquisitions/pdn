@@ -1,6 +1,5 @@
 #include "game/quickdraw-states.hpp"
 #include "player.hpp"
-#include "device/pdn.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw.hpp"
 #include "logger.hpp"

@@ -25,7 +25,7 @@ void MatchManager::clearCurrentMatch() {
         if (player && player->getOpponentMacAddress()) {
             uint8_t mac[6];
             if (StringToMac(player->getOpponentMacAddress()->c_str(), mac)) {
-                esp_now_del_peer(mac);
+                peerComms->removePeer(mac);
                 ESP_LOGI("PDN", "Removed opponent peer from ESP-NOW");
             }
         }
@@ -274,12 +274,13 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
 
-void MatchManager::initialize(Player* player, StorageInterface* storage) {
+void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms) {
     this->player = player;
     this->storage = storage;
+    this->peerComms = peerComms;
 
     duelButtonPush = [](void *ctx) {
-        unsigned long now = millis();
+        unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
         
         if (!ctx) {
             LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");

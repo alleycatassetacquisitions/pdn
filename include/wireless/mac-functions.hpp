@@ -1,7 +1,5 @@
 #pragma once
 
-#include <esp_now.h>
-#include <esp_wifi.h>
 #include "logger.hpp"
 #include <cstring>
 #include "peer-comms-interface.hpp"
@@ -10,7 +8,7 @@
 inline uint64_t MacToUInt64(const uint8_t* macAddr)
 {
     uint64_t tmp = 0;
-    for(int i = 0; i < ESP_NOW_ETH_ALEN; ++i)
+    for(int i = 0; i < 6; ++i)
         tmp = (tmp << 8) + macAddr[i];
 
     return tmp;
@@ -22,7 +20,7 @@ inline const char* MacToString(const uint8_t* macAddr)
     snprintf(macStr, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
         macAddr[0], macAddr[1], macAddr[2],
         macAddr[3], macAddr[4], macAddr[5]);
-        
+
     macStr[17] = '\0';
     return macStr;
 }

@@ -5,6 +5,7 @@ Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
     this->httpClient = PDN->getHttpClient();
     this->matchManager = MatchManager::GetInstance();
     this->storageManager = PDN->getStorage();
+    this->peerComms = PDN->getPeerComms();
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -14,7 +15,7 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
-    matchManager->initialize(player, storageManager);
+    matchManager->initialize(player, storageManager, peerComms);
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player, httpClient, matchManager);
     FetchUserDataState* fetchUserData = new FetchUserDataState(player, httpClient);

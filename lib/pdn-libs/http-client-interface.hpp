@@ -14,4 +14,5 @@ public:
     virtual void disconnect() = 0;
     virtual void updateConfig(WifiConfig* config) = 0;
     virtual void retryConnection() = 0;
+    virtual uint8_t* getMacAddress() = 0;
 };

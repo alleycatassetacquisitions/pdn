@@ -1,7 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
-#include "device/pdn.hpp"
 #include "logger.hpp"
 
 static const char* TAG = "PlayerRegistration";

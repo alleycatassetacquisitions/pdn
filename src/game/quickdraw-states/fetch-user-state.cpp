@@ -1,7 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
-#include "device/pdn.hpp"
 #include "logger.hpp"
 #include "wireless/remote-debug-manager.hpp"
 
@@ -86,7 +85,7 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
         isFetchingUserData = false;
         transitionToConfirmOfflineState = true;
     } else if(userDataFetchTimer.isRunning()) {
-        EVERY_N_MILLISECONDS(50) {
+        if(SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
             showLoadingGlyphs(PDN);
         }
     }
@@ -128,10 +127,10 @@ void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
     
     for (int row = 0; row < GLYPHS_PER_COL; row++) {
         for (int col = 0; col < GLYPHS_PER_ROW; col++) {
-            if(random(0, 100) < 50) {
+            if(rand() % 100 < 50) {
                 int x = col * GLYPH_SIZE;
                 int y = 14 + (row * GLYPH_SIZE);
-                int randomIndex = random(0, 8);
+                int randomIndex = rand() % 8;
                 const char* glyph = loadingGlyphs[randomIndex];
                 PDN->getDisplay()->renderGlyph(glyph, x, y);
             }

@@ -1,4 +1,3 @@
-#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
@@ -51,7 +50,7 @@ Duel::~Duel() {
 
 void Duel::onStateMounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Duel state mounted");
-    matchManager->setDuelLocalStartTime(millis());
+    matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
     LOG_I(DUEL_TAG, "Setting up button handlers");
     

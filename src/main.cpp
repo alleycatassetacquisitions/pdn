@@ -67,7 +67,7 @@ RemoteDebugManager* remoteDebugManager = nullptr;
 void setupEspNow() {
     // Register packet handlers
     EspNowManager::GetInstance()->setPacketHandler(
-        static_cast<uint8_t>(PktType::kQuickdrawCommand),
+        PktType::kQuickdrawCommand,
         [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
             ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
         },
@@ -75,7 +75,7 @@ void setupEspNow() {
     );
     
     EspNowManager::GetInstance()->setPacketHandler(
-        static_cast<uint8_t>(PktType::kDebugPacket),
+        PktType::kDebugPacket,
         [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
             ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
         },
@@ -137,11 +137,11 @@ void setup() {
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
     quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
-    remoteDebugManager = RemoteDebugManager::GetInstance();
+    remoteDebugManager = RemoteDebugManager::CreateInstance(peerCommsDriver);
     
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, 1000);
+    quickdrawWirelessManager->initialize(player, peerCommsDriver, 1000);
     
     game = new Quickdraw(player, pdn);
     

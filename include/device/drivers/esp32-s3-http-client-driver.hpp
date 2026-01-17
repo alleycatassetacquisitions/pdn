@@ -115,6 +115,12 @@ public:
         }
     }
 
+    uint8_t* getMacAddress() override {
+        uint8_t macAddr[6];
+        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
+        return macAddr;
+    }
+
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
 private:

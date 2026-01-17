@@ -1,4 +1,4 @@
-#include "device/pdn.hpp"
+
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
@@ -37,7 +37,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
 
         matchManager->setNeverPressed();
 
-        unsigned long pityTime = millis() - matchManager->getDuelLocalStartTime();
+        unsigned long pityTime = SimpleTimer::getPlatformClock()->milliseconds() - matchManager->getDuelLocalStartTime();
 
         player->isHunter() ? 
         matchManager->setHunterDrawTime(pityTime) 

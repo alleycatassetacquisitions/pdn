@@ -27,4 +27,5 @@ private:
     Player *player;
     HttpClientInterface* httpClient;
     StorageInterface* storageManager;
+    PeerCommsInterface* peerComms;
 };

@@ -13,6 +13,8 @@ public:
     virtual void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) = 0;
     virtual void clearPacketHandler(PktType packetType) = 0;
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
+    virtual uint8_t* getMacAddress() = 0;
+    virtual void removePeer(uint8_t* macAddr) = 0;
 
 protected:
 

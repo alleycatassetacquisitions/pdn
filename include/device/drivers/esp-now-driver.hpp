@@ -451,8 +451,18 @@ private:
         }
     }
 
+    uint8_t* getMacAddress() override {
+        uint8_t macAddr[6];
+        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
+        return macAddr;
+    }
+
     const uint8_t* getGlobalBroadcastAddress() override {
         return PEER_BROADCAST_ADDR;
+    }
+
+    void removePeer(uint8_t* macAddr) override {
+        esp_now_del_peer(macAddr);
     }
 
     //Storage for retry handling

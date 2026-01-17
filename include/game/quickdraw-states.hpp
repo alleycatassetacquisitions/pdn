@@ -3,11 +3,11 @@
 #include "player.hpp"
 #include "utils/simple-timer.hpp"
 #include "state.hpp"
-#include <FastLED.h>
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "http-client-interface.hpp"
 #include "quickdraw-resources.hpp"
+#include <cstdlib>
 #include <queue>
 #include <string>
 
@@ -244,8 +244,8 @@ private:
     Player *player;
     bool lightsOn = true;
     int flashDelay = 400;
-    byte transitionThreshold = 12;
-    byte alertCount = 0;
+    uint8_t transitionThreshold = 12;
+    uint8_t alertCount = 0;
 };
 
 class DuelCountdown : public State {

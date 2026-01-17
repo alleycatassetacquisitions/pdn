@@ -1,4 +1,3 @@
-#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -51,15 +50,14 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    EVERY_N_MILLIS(250) {
+    if(SimpleTimer::getPlatformClock()->milliseconds() % 250 == 0) {
         if(!player->isHunter()) {
             PDN->writeString(SERIAL_HEARTBEAT.c_str());
         }
     }
 
     if(sendMacAddress) {
-        uint8_t macAddr[6];
-        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
+        uint8_t* macAddr = PDN->getHttpClient()->getMacAddress();
         const char* macStr = MacToString(macAddr);
         LOG_I("IDLE", "Perparing to Send Mac Address: %s", macStr);
         
@@ -107,22 +105,22 @@ void Idle::cycleStats(Device *PDN) {
 
     if(statsIndex == 0) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getWins()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);
     } else if(statsIndex == 1) {        
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getStreak()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getStreak()).c_str(), 88, 40);
     } else if(statsIndex == 2) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Losses",70, 20);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLosses()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getLosses()).c_str(), 88, 40);
     } else if(statsIndex == 3) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Matches",70, 20);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getMatchesPlayed()).c_str(), 88, 40);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getMatchesPlayed()).c_str(), 88, 40);
     } else if(statsIndex == 4) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Last",70, 20)->drawText("Reaction", 70, 35);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getLastReactionTime()).c_str(), 80, 55);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getLastReactionTime()).c_str(), 80, 55);
     } else if(statsIndex == 5) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(String(player->getAverageReactionTime()).c_str(), 80, 55);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
     }
 
     PDN->getDisplay()->render();

@@ -1,7 +1,7 @@
 #include <algorithm>
 #include "logger.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "device/drivers/esp-now-driver.hpp"
+#include "peer-comms-interface.hpp"
 #include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
 
@@ -15,11 +15,12 @@ struct PlayerInfoPkt
 } __attribute__((packed));
 
 
-RemotePlayerManager::RemotePlayerManager() :
-    m_remotePlayerTTL(60000),
-    m_broadcastInterval(5000),
-    m_lastBroadcastTime(0)
+RemotePlayerManager::RemotePlayerManager(PeerCommsInterface* peerComms) :
+    remotePlayerTTL(60000),
+    broadcastInterval(5000),
+    lastBroadcastTime(0)
 {
+    this->peerComms = peerComms;
 }
 
 void RemotePlayerManager::Update()
@@ -28,13 +29,13 @@ void RemotePlayerManager::Update()
 
     //Remove players not seen in a long time
     //Single pass removal using Erase-move idiom
-    m_remotePlayers.erase(
-        std::remove_if(m_remotePlayers.begin(), m_remotePlayers.end(),
-            [&now,this](RemotePlayer p){ return now - p.lastSeenTime > m_remotePlayerTTL; }),
-        m_remotePlayers.end());
+    remotePlayers.erase(
+        std::remove_if(remotePlayers.begin(), remotePlayers.end(),
+            [&now,this](RemotePlayer p){ return now - p.lastSeenTime > remotePlayerTTL; }),
+        remotePlayers.end());
 
     //Broadcast if we need to
-    if( (m_lastBroadcastTime != 0) && (now - m_lastBroadcastTime >= m_broadcastInterval))
+    if( (lastBroadcastTime != 0) && (now - lastBroadcastTime >= broadcastInterval))
     {
         BroadcastPlayerInfo();
     }
@@ -43,10 +44,10 @@ void RemotePlayerManager::Update()
 int RemotePlayerManager::BroadcastPlayerInfo()
 {
     PlayerInfoPkt broadcastPkt;
-    strncpy(broadcastPkt.id, m_localPlayerInfo->getUserID().c_str(), IdGenerator::UUID_STRING_LENGTH);
+    strncpy(broadcastPkt.id, localPlayerInfo->getUserID().c_str(), IdGenerator::UUID_STRING_LENGTH);
     broadcastPkt.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null termination
-    broadcastPkt.allegiance = m_localPlayerInfo->getAllegiance();
-    broadcastPkt.hunter = m_localPlayerInfo->isHunter();
+    broadcastPkt.allegiance = localPlayerInfo->getAllegiance();
+    broadcastPkt.hunter = localPlayerInfo->isHunter();
 
 #if DEBUG_REMOTE_PLAYER_MANAGER
     LOG_D("RPM", "Broadcasting player info. ID: %s Allegiance: %u %s (pktsize: %lu)\n",
@@ -56,29 +57,29 @@ int RemotePlayerManager::BroadcastPlayerInfo()
                   sizeof(broadcastPkt));
 #endif
 
-    int ret = EspNowManager::GetInstance()->sendData(PEER_BROADCAST_ADDR,
-                                                     static_cast<uint8_t>(PktType::kPlayerInfoBroadcast),
+    int ret = peerComms->sendData(peerComms->getGlobalBroadcastAddress(),
+                                                     PktType::kPlayerInfoBroadcast,
                                                      (uint8_t*)&broadcastPkt,
                                                      sizeof(broadcastPkt));
-    m_lastBroadcastTime = SimpleTimer::getPlatformClock()->milliseconds();
+    lastBroadcastTime = SimpleTimer::getPlatformClock()->milliseconds();
     return ret;
 }
 
 void RemotePlayerManager::StartBroadcastingPlayerInfo(Player *playerInfo, unsigned long broadcastIntervalMillis)
 {
-    m_localPlayerInfo = playerInfo;
-    m_broadcastInterval = broadcastIntervalMillis;
+    localPlayerInfo = playerInfo;
+    broadcastInterval = broadcastIntervalMillis;
     BroadcastPlayerInfo();
 }
 
 void RemotePlayerManager::SetRemotePlayerTTL(unsigned long ttl)
 {
-    m_remotePlayerTTL = ttl;
+    remotePlayerTTL = ttl;
 }
 
 unsigned long RemotePlayerManager::GetRemotePlayerTTL()
 {
-    return m_remotePlayerTTL;
+    return remotePlayerTTL;
 }
 
 int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const uint8_t *data, const size_t dataLen)
@@ -95,18 +96,18 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     const PlayerInfoPkt* pkt = (const PlayerInfoPkt*)data;
 
     //Find our remote player record in local list
-    auto remotePlayer = std::find_if(m_remotePlayers.begin(), m_remotePlayers.end(),
-        [srcMacAddr](RemotePlayer rp) { return memcmp(srcMacAddr, rp.wifiMacAddr, ESP_NOW_ETH_ALEN) == 0;});
+    auto remotePlayer = std::find_if(remotePlayers.begin(), remotePlayers.end(),
+        [srcMacAddr](RemotePlayer rp) { return memcmp(srcMacAddr, rp.wifiMacAddr, 6) == 0;});
 
     //If we don't currently have a record for them, add them
-    if(remotePlayer == m_remotePlayers.end())
+    if(remotePlayer == remotePlayers.end())
     {
 
         LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
 
-        m_remotePlayers.emplace_back(srcMacAddr, pkt->id, pkt->allegiance, pkt->hunter,
+        remotePlayers.emplace_back(srcMacAddr, pkt->id, pkt->allegiance, pkt->hunter,
             SimpleTimer::getPlatformClock()->milliseconds(), 0);
-        remotePlayer = m_remotePlayers.end() - 1;
+        remotePlayer = remotePlayers.end() - 1;
         LOG_I("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
             remotePlayer->playerInfo.getUserID().c_str(),
             remotePlayer->playerInfo.getAllegiance(),
@@ -116,7 +117,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     }
 
     //If we have a local record of this player, update their last seen time, regardless of packet type
-    if(remotePlayer != m_remotePlayers.end())
+    if(remotePlayer != remotePlayers.end())
     {
         remotePlayer->lastSeenTime = SimpleTimer::getPlatformClock()->milliseconds();
 #if PDN_ENABLE_RSSI_TRACKING

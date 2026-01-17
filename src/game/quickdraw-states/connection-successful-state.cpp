@@ -46,7 +46,7 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
 }
 
 void ConnectionSuccessful::onStateLoop(Device *PDN) {
-    EVERY_N_MILLIS(flashDelay) {
+    if(SimpleTimer::getPlatformClock()->milliseconds() % flashDelay == 0) {
         if (lightsOn) {
             PDN->getLightManager()->setGlobalBrightness(BRIGHTNESS_MAX);
         } else {

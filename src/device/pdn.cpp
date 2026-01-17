@@ -1,5 +1,4 @@
 #include "device/pdn.hpp"
-#include <Arduino.h> //TODO: Remove by creating storage driver.
 #include "logger.hpp"
 
 PDN* PDN::createPDN(DriverConfig& driverConfig) {
