@@ -129,6 +129,7 @@ void setup() {
     pdn = PDN::createPDN(pdnConfig);
     
     idGenerator = IdGenerator::GetInstance();
+    idGenerator->seed(clockDriver->milliseconds());
     player = new Player();
     player->setUserID(idGenerator->generateId());
     pdn->begin();

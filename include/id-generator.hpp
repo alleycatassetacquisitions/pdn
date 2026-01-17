@@ -21,6 +21,10 @@ public:
         return generator.toCharArray();
     };
 
+    void seed(unsigned long seed) {
+        generator.seed(seed, randomDevice());
+    }
+
     /**
      * Converts a UUID string to its binary representation.
      * 
