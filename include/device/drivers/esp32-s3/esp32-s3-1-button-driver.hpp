@@ -4,7 +4,7 @@
 #pragma once
 #include <OneButton.h>
 
-#include "driver-interface.hpp"
+#include "device/drivers/driver-interface.hpp"
 
 class Esp32S31ButtonDriver : public ButtonDriverInterface {
     public:

@@ -3,8 +3,8 @@
 #include <WiFi.h>
 #include <esp_http_client.h>
 #include <queue>
-#include "driver-interface.hpp"
-#include "wireless-types.hpp"
+#include "device/drivers/driver-interface.hpp"
+#include "wireless/wireless-types.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler

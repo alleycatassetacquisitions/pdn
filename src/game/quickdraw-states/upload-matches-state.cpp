@@ -1,7 +1,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 
 static const char* TAG = "UploadMatchesState";
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <FastLED.h>
-#include "driver-interface.hpp"
-#include "device-constants.hpp"
+#include "device/drivers/driver-interface.hpp"
+#include "device/device-constants.hpp"
 #include "utils/simple-timer.hpp"
 
 struct PDNLightStripConfig {
@@ -63,7 +63,11 @@ public:
             gripLights[index].nscale8(brightness);
         }
     }
-    
+
+    void setGlobalBrightness(uint8_t brightness) override {
+        FastLED.setBrightness(brightness);
+    }
+
     LEDState::SingleLEDState getLight(LightIdentifier lightSet, uint8_t index) override {
         if(lightSet == LightIdentifier::DISPLAY_LIGHTS) {
             return LEDState::SingleLEDState(LEDColor(displayLights[index].r, displayLights[index].g), displayLights[index].b);

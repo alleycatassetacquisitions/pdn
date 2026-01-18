@@ -1,7 +1,7 @@
 #pragma once
 
-#include "platform-clock.hpp"
-#include "logger.hpp"
+#include "device/drivers/platform-clock.hpp"
+#include "device/drivers/logger.hpp"
 
 class SimpleTimer {
 public:

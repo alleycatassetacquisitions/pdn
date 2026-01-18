@@ -1,5 +1,5 @@
 #include "wireless/remote-debug-manager.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 
 RemoteDebugManager* RemoteDebugManager::instance = nullptr;
 

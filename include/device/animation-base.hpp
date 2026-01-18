@@ -1,6 +1,6 @@
 #pragma once
 
-#include "light-interface.hpp"
+#include "drivers/light-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min

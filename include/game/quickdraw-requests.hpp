@@ -2,9 +2,9 @@
 
 #include <string>
 #include <ArduinoJson.h>
-#include "logger.hpp"
-#include "http-client-interface.hpp"
-#include "wireless-types.hpp"
+#include "device/drivers/logger.hpp"
+#include "device/drivers/http-client-interface.hpp"
+#include "wireless/wireless-types.hpp"
 
 // Player API Response Structure
 struct PlayerResponse {

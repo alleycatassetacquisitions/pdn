@@ -2,8 +2,8 @@
 #include <cstring>  // For memcpy
 #include <string>
 
-#include "peer-comms-interface.hpp"
-#include "player.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
+#include "game/player.hpp"
 
 struct RemotePlayer
 {

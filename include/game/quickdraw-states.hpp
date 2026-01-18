@@ -1,12 +1,12 @@
 #pragma once
 
-#include "player.hpp"
+#include "game/player.hpp"
 #include "utils/simple-timer.hpp"
-#include "state.hpp"
+#include "state/state.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include "http-client-interface.hpp"
-#include "quickdraw-resources.hpp"
+#include "device/drivers/http-client-interface.hpp"
+#include "game/quickdraw-resources.hpp"
 #include <cstdlib>
 #include <queue>
 #include <string>

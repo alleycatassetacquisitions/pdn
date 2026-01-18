@@ -1,5 +1,5 @@
 #include "device/pdn.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 
 PDN* PDN::createPDN(DriverConfig& driverConfig) {
     return new PDN(driverConfig);
@@ -47,8 +47,7 @@ void PDN::loop() {
 }
 
 void PDN::onStateChange() {
-    lightManager->clear(LightIdentifier::DISPLAY_LIGHTS);
-    lightManager->clear(LightIdentifier::GRIP_LIGHTS);
+    lightManager->clear();
     flushSerial();
 }
 

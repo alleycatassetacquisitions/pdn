@@ -140,7 +140,7 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
 
     testing::InSequence sequence;
 
-    EXPECT_CALL(stateMachineDevice, getCurrentVibrationIntensity())
+    EXPECT_CALL(*stateMachineDevice.mockHaptics, getIntensity())
     .Times(numLoopsBeforeTransition*2)
     .WillRepeatedly(testing::Return(0))
     .RetiresOnSaturation();
@@ -150,9 +150,9 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
         ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == TERMINAL_STATE);
     }
 
-    EXPECT_CALL(stateMachineDevice, getCurrentVibrationIntensity())
+    EXPECT_CALL(*stateMachineDevice.mockHaptics, getIntensity())
     .Times(2)
-    .WillRepeatedly(testing::Return(VIBRATION_MAX))
+    .WillRepeatedly(testing::Return(255))
     .RetiresOnSaturation();
 
     stateMachine->loop();
@@ -167,9 +167,9 @@ TEST_F(StateMachineTestSuite, whenTwoTransitionsAreMetSimultaneouslyThenTheFirst
 
     testing::InSequence sequence;
 
-    EXPECT_CALL(stateMachineDevice, getCurrentVibrationIntensity())
+    EXPECT_CALL(*stateMachineDevice.mockHaptics, getIntensity())
     .Times(2)
-    .WillRepeatedly(testing::Return(VIBRATION_MAX));
+    .WillRepeatedly(testing::Return(255));
 
     stateMachine->loop();
 

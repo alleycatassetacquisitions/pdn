@@ -1,8 +1,8 @@
 #pragma once
 
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 #include <cstring>
-#include "peer-comms-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
 
 // Utility functions
 inline uint64_t MacToUInt64(const uint8_t* macAddr)

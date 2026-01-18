@@ -4,31 +4,29 @@
 #include <FastLED.h>
 #include <Preferences.h>
 
-#include "logger.hpp"
-
-#include "device/drivers/esp32-s3-logger-driver.hpp"
-#include "device/drivers/esp32-s3-clock-driver.hpp"
-#include "device/drivers/esp32-s3-1-button-driver.hpp"
-#include "device/drivers/ws2812b-fastled-driver.hpp"
-#include "device/drivers/esp32-s3-haptics-driver.hpp"
-#include "device/drivers/esp32-s3-serial-driver.hpp"
-#include "device/drivers/esp32-s3-http-client-driver.hpp"
-#include "device/drivers/esp-now-driver.hpp"
-#include "device/drivers/ssd1306-u8g2-driver.hpp"
-#include "device/drivers/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
+#include "device/drivers/esp32-s3/ws2812b-fastled-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-haptics-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
+#include "device/drivers/esp32-s3/esp-now-driver.hpp"
+#include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 
 #include "utils/simple-timer.hpp"
-#include "player.hpp"
-#include "state-machine.hpp"
+#include "game/player.hpp"
+#include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
-#include "wireless-types.hpp"
+#include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "peer-comms-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
 
 // WiFi configuration
 const char* WIFI_SSID = "NeoCore Networks";

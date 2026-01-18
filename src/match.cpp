@@ -1,6 +1,6 @@
-#include "../lib/pdn-libs/match.hpp"
+#include "game/match.hpp"
 #include "id-generator.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 #include <ArduinoJson.h>
 #include <string.h> // for memcpy
 

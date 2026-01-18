@@ -1,4 +1,4 @@
-#include "light-manager.hpp"
+#include "device/light-manager.hpp"
 #include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
 #include "device/idle-animation.hpp"
 #include "device/countdown-animation.hpp"
@@ -8,8 +8,6 @@
 #include "device/bounty-win-animation.hpp"
 #include "device/lose-animation.hpp"
 #include <algorithm> // For std::min
-#include "esp_log.h"
-#include <FastLED.h>
 
 static const char* TAG = "LightManager";
 
@@ -82,9 +80,7 @@ void LightManager::stopAnimation() {
         delete currentAnimation;
         currentAnimation = nullptr;
     }
-    clear(LightIdentifier::DISPLAY_LIGHTS);
-    clear(LightIdentifier::GRIP_LIGHTS);
-    FastLED.show();
+    clear();
 }
 
 void LightManager::pauseAnimation() {
@@ -99,18 +95,12 @@ void LightManager::resumeAnimation() {
     }
 }
 
-void LightManager::clear(LightIdentifier lights) {
-    for (int i = 0; i < 6; i++) {
-        gripLightArray[i] = LEDState::SingleLEDState(LEDColor(0,0,0), 0);
-    }
-    for (int i = 0; i < 13; i++) {
-        displayLightArray[i] = LEDState::SingleLEDState(LEDColor(0,0,0), 0);
-    }
-    FastLED.show();
+void LightManager::clear() {
+    applyLEDState(LEDState());
 }
 
 void LightManager::setGlobalBrightness(uint8_t brightness) {
-    FastLED.setBrightness(brightness);
+    pdnLights.setGlobalBrightness(brightness);
 }
 
 bool LightManager::isAnimating() const {

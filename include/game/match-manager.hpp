@@ -10,11 +10,11 @@
 
 #include <vector>
 #include <string>
-#include "button.hpp"
-#include "../lib/pdn-libs/match.hpp"
-#include "player.hpp"
+#include "device/drivers/button.hpp"
+#include "game/match.hpp"
+#include "game/player.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "storage-interface.hpp"
+#include "device/drivers/storage-interface.hpp"
 
 // Preferences namespace and keys
 

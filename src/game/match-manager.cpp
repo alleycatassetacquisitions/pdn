@@ -1,8 +1,8 @@
 #include "game/match-manager.hpp"
 #include <ArduinoJson.h>
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "device-constants.hpp"
+#include "device/device-constants.hpp"
 
 #define MATCH_MANAGER_TAG "MATCH_MANAGER"
 

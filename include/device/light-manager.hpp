@@ -16,7 +16,7 @@
 #pragma once
 
 #include "utils/simple-timer.hpp"
-#include "light-interface.hpp"
+#include "drivers/light-interface.hpp"
 
 class LightManager {
 public:
@@ -34,11 +34,7 @@ public:
 
     void setGlobalBrightness(uint8_t brightness);
     
-    // Direct LED control
-    // void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color);
-    // void setAllLights(LightIdentifier lights, LEDColor color);
-    // void setBrightness(LightIdentifier lights, uint8_t brightness);
-    void clear(LightIdentifier lights);
+    void clear();
     
     // Animation state query
     bool isAnimating() const;

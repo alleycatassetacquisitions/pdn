@@ -3,7 +3,7 @@
 #include <vector>
 #include <cstring>  // For memcpy
 #include <functional>
-#include "peer-comms-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
 
 enum DebugCommand {
     // Debug Commands

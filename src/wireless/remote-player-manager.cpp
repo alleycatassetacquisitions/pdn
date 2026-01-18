@@ -1,7 +1,7 @@
 #include <algorithm>
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "peer-comms-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
 #include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
 

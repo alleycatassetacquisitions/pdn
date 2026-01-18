@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "device-mock.hpp"
-#include "state.hpp"
+#include "state/state.hpp"
 //
 // Created by Elli Furedy on 10/8/2024.
 //

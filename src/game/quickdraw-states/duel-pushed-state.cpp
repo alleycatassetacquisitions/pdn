@@ -2,7 +2,7 @@
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 

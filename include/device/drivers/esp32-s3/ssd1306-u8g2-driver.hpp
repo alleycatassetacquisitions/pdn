@@ -1,9 +1,9 @@
 #pragma once
 
-#include "driver-interface.hpp"
+#include "device/drivers/driver-interface.hpp"
 #include <U8g2lib.h>
 #include <Arduino.h>
-#include "device-constants.hpp"
+#include "device/device-constants.hpp"
 
 
 class SSD1306U8G2Driver : public DisplayDriverInterface {

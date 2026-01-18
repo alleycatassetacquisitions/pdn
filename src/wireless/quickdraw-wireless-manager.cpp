@@ -2,7 +2,7 @@
 // Created by Elli Furedy on 1/24/2025.
 //
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "peer-comms-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
 
 struct QuickdrawPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];

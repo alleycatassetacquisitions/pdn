@@ -1,8 +1,8 @@
 #include "game/quickdraw-states.hpp"
-#include "player.hpp"
+#include "game/player.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 
 static const char* TAG = "WelcomeMessage";
 

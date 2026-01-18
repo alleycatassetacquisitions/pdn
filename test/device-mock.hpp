@@ -4,7 +4,14 @@
 #pragma once
 
 #include <gmock/gmock.h>
-#include "device.hpp"
+#include "device/device.hpp"
+#include "device/drivers/display.hpp"
+#include "device/drivers/button.hpp"
+#include "device/drivers/haptics.hpp"
+#include "device/drivers/http-client-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
+#include "device/drivers/storage-interface.hpp"
+#include "device/light-manager.hpp"
 #include <queue>
 #include <vector>
 
@@ -13,10 +20,6 @@ using namespace std;
 class FakeHWSerialWrapper : public HWSerialWrapper {
     public:
     FakeHWSerialWrapper() : HWSerialWrapper() {}
-
-    void begin() override {
-
-    }
 
     int availableForWrite() override {
         return 1024 - msgQueue.size();
@@ -69,8 +72,12 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         msgQueue.clear();
     }
 
-    deque<char> msgQueue;
+    void setStringCallback(SerialStringCallback callback) override {
+        stringCallback = callback;
+    }
 
+    deque<char> msgQueue;
+    SerialStringCallback stringCallback;
 };
 
 class FakeDevice : public Device {
@@ -87,57 +94,149 @@ protected:
     }
 };
 
-class MockDevice : public Device {
-    public:
+// Mock classes for each interface
+class MockDisplay : public Display {
+public:
+    MOCK_METHOD(Display*, invalidateScreen, (), (override));
+    MOCK_METHOD(void, render, (), (override));
+    MOCK_METHOD(Display*, drawText, (const char*), (override));
+    MOCK_METHOD(Display*, setGlyphMode, (FontMode), (override));
+    MOCK_METHOD(Display*, renderGlyph, (const char*, int, int), (override));
+    MOCK_METHOD(Display*, drawButton, (const char*, int, int), (override));
+    MOCK_METHOD(Display*, drawText, (const char*, int, int), (override));
+    MOCK_METHOD(Display*, drawImage, (Image), (override));
+    MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
+};
 
-    //Device Methods
+class MockButton : public Button {
+public:
+    MOCK_METHOD(void, setButtonPress, (callbackFunction, ButtonInteraction), (override));
+    MOCK_METHOD(void, setButtonPress, (parameterizedCallbackFunction, void*, ButtonInteraction), (override));
+    MOCK_METHOD(void, removeButtonCallbacks, (), (override));
+    MOCK_METHOD(bool, isLongPressed, (), (override));
+    MOCK_METHOD(unsigned long, longPressedMillis, (), (override));
+};
+
+class MockHaptics : public Haptics {
+public:
+    MOCK_METHOD(bool, isOn, (), (override));
+    MOCK_METHOD(void, max, (), (override));
+    MOCK_METHOD(void, setIntensity, (int), (override));
+    MOCK_METHOD(int, getIntensity, (), (override));
+    MOCK_METHOD(void, off, (), (override));
+};
+
+class MockHttpClient : public HttpClientInterface {
+public:
+    MOCK_METHOD(void, setWifiConfig, (WifiConfig*), (override));
+    MOCK_METHOD(bool, isConnected, (), (override));
+    MOCK_METHOD(bool, queueRequest, (HttpRequest&), (override));
+    MOCK_METHOD(void, disconnect, (), (override));
+    MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));
+    MOCK_METHOD(void, retryConnection, (), (override));
+    MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
+};
+
+class MockPeerComms : public PeerCommsInterface {
+public:
+    MOCK_METHOD(int, sendData, (const uint8_t*, PktType, const uint8_t*, const size_t), (override));
+    MOCK_METHOD(void, setPacketHandler, (PktType, PacketCallback, void*), (override));
+    MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
+    MOCK_METHOD(const uint8_t*, getGlobalBroadcastAddress, (), (override));
+    MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
+    MOCK_METHOD(void, removePeer, (uint8_t*), (override));
+};
+
+class MockStorage : public StorageInterface {
+public:
+    MOCK_METHOD(size_t, write, (const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::string, read, (const std::string&, std::string), (override));
+    MOCK_METHOD(bool, remove, (const std::string&), (override));
+    MOCK_METHOD(bool, clear, (), (override));
+    MOCK_METHOD(void, end, (), (override));
+    MOCK_METHOD(uint8_t, readUChar, (const std::string&, uint8_t), (override));
+    MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
+};
+
+// Fake light strip for LightManager
+class FakeLightStrip : public LightStrip {
+public:
+    void setLight(LightIdentifier lightSet, uint8_t index, LEDState::SingleLEDState color) override {}
+    void setLightBrightness(LightIdentifier lightSet, uint8_t index, uint8_t brightness) override {}
+    void setGlobalBrightness(uint8_t brightness) override {}
+    LEDState::SingleLEDState getLight(LightIdentifier lightSet, uint8_t index) override { 
+        return LEDState::SingleLEDState(); 
+    }
+    void fade(LightIdentifier lightSet, uint8_t fadeAmount) override {}
+    void addToLight(LightIdentifier lightSet, uint8_t index, LEDState::SingleLEDState color) override {}
+    void setFPS(uint8_t fps) override {}
+    uint8_t getFPS() const override { return 0; }
+};
+
+// Test-specific implementations of LightManager to avoid animation dependencies
+// These implementations are only compiled in test builds
+#ifdef NATIVE_BUILD
+// Provide minimal LightManager implementation for tests
+inline LightManager::LightManager(LightStrip& pdnLights) : pdnLights(pdnLights), currentAnimation(nullptr) {}
+inline LightManager::~LightManager() {}
+inline void LightManager::loop() {}
+inline void LightManager::startAnimation(AnimationConfig config) {}
+inline void LightManager::stopAnimation() {}
+inline void LightManager::pauseAnimation() {}
+inline void LightManager::resumeAnimation() {}
+inline void LightManager::setGlobalBrightness(uint8_t brightness) {}
+inline void LightManager::clear() {}
+inline bool LightManager::isAnimating() const { return false; }
+inline bool LightManager::isPaused() const { return false; }
+inline bool LightManager::isAnimationComplete() const { return true; }
+inline AnimationType LightManager::getCurrentAnimation() const { return AnimationType::IDLE; }
+inline void LightManager::mapStateToGripLights(const LEDState& state) {}
+inline void LightManager::mapStateToDisplayLights(const LEDState& state) {}
+inline void LightManager::applyLEDState(const LEDState& state) {}
+#endif
+
+class MockDevice : public Device {
+public:
+    MockDevice() : Device(DriverConfig{}) {
+        // Initialize mock pointers
+        mockDisplay = new MockDisplay();
+        mockPrimaryButton = new MockButton();
+        mockSecondaryButton = new MockButton();
+        mockHaptics = new MockHaptics();
+        mockHttpClient = new MockHttpClient();
+        mockPeerComms = new MockPeerComms();
+        mockStorage = new MockStorage();
+        lightManager = new LightManager(fakeLightStrip);
+    }
+
+    ~MockDevice() {
+        delete mockDisplay;
+        delete mockPrimaryButton;
+        delete mockSecondaryButton;
+        delete mockHaptics;
+        delete mockHttpClient;
+        delete mockPeerComms;
+        delete mockStorage;
+        delete lightManager;
+    }
+
+    // Device Methods
     MOCK_METHOD(int, begin, (), (override));
-    MOCK_METHOD(void, loop, (), (override));
     MOCK_METHOD(void, onStateChange, (), (override));
     MOCK_METHOD(void, setDeviceId, (std::string), (override));
     MOCK_METHOD(std::string, getDeviceId, (), (override));
-    MOCK_METHOD(void, initializePins, (), (override));
 
-    //Button Methods
-    MOCK_METHOD(void, setButtonClick, (ButtonInteraction, ButtonIdentifier, parameterizedCallbackFunction, void*), (override));
-    MOCK_METHOD(void, setButtonClick, (ButtonInteraction, ButtonIdentifier, callbackFunction), (override));
-    MOCK_METHOD(void, removeButtonCallbacks, (ButtonIdentifier), (override));
-    MOCK_METHOD(bool, isLongPressed, (ButtonIdentifier), (override));
-    MOCK_METHOD(unsigned long, longPressedMillis, (ButtonIdentifier), (override));
-    MOCK_METHOD(void, setLight, (LightIdentifier, int, LEDColor), (override));
+    // Getters return mock instances
+    Display* getDisplay() override { return mockDisplay; }
+    Button* getPrimaryButton() override { return mockPrimaryButton; }
+    Button* getSecondaryButton() override { return mockSecondaryButton; }
+    Haptics* getHaptics() override { return mockHaptics; }
+    HttpClientInterface* getHttpClient() override { return mockHttpClient; }
+    PeerCommsInterface* getPeerComms() override { return mockPeerComms; }
+    StorageInterface* getStorage() override { return mockStorage; }
+    LightManager* getLightManager() override { return lightManager; }
 
-    //LED Methods
-    MOCK_METHOD(void, setGlobalLightColor, (LEDColor), (override));
-    MOCK_METHOD(void, setGlobalBrightness, (int), (override));
-    MOCK_METHOD(void, addToLight, (LightIdentifier, int, LEDColor), (override));
-    MOCK_METHOD(void, fadeLightsBy, (LightIdentifier, int), (override));
-
-    //Vibration Motor Methods
-    MOCK_METHOD(void, setVibration, (int), (override));
-    MOCK_METHOD(int, getCurrentVibrationIntensity, (), (override));
-
-    //Display Methods
-    MOCK_METHOD(Display*, drawText, (const char*, int, int), (override));
-    MOCK_METHOD(Display*, drawText, (const char*), (override));
-    MOCK_METHOD(Display*, drawImage, (Image), (override));
-    MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
-    MOCK_METHOD(Display*, invalidateScreen, (), (override));
-    MOCK_METHOD(void, render, (), (override));
-    MOCK_METHOD(Display*, setGlyphMode, (FontMode), (override));
-    MOCK_METHOD(Display*, drawButton, (const char*, int, int), (override));
-    MOCK_METHOD(Display*, renderGlyph, (const char*, int, int), (override));
-
-    //Animation Methods
-    MOCK_METHOD(void, startAnimation, (AnimationConfig), (override));
-    MOCK_METHOD(void, stopAnimation, (), (override));
-    MOCK_METHOD(void, pauseAnimation, (), (override));
-    MOCK_METHOD(void, resumeAnimation, (), (override));
-    MOCK_METHOD(bool, isAnimating, (), (const, override));
-    MOCK_METHOD(bool, isPaused, (), (const, override));
-    MOCK_METHOD(bool, isAnimationComplete, (), (const, override));
-    MOCK_METHOD(AnimationType, getCurrentAnimation, (), (const, override));
-
-    //DeviceSerial Fake.
+    // DeviceSerial methods
     HWSerialWrapper* outputJack() override {
         return &outputJackSerial;
     }
@@ -147,8 +246,19 @@ class MockDevice : public Device {
     }
 
     std::string getHead() {
-        return head;
+        return primaryHead;
     }
+
+    // Mock interface instances
+    MockDisplay* mockDisplay;
+    MockButton* mockPrimaryButton;
+    MockButton* mockSecondaryButton;
+    MockHaptics* mockHaptics;
+    MockHttpClient* mockHttpClient;
+    MockPeerComms* mockPeerComms;
+    MockStorage* mockStorage;
+    FakeLightStrip fakeLightStrip;
+    LightManager* lightManager;
 
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;

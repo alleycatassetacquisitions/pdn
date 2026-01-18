@@ -1,13 +1,13 @@
 #pragma once
 
-#include "device.hpp"
-#include "player.hpp"
-#include "match.hpp"
-#include "state-machine.hpp"
-#include "quickdraw-states.hpp"
-#include "quickdraw-resources.hpp"
-#include "http-client-interface.hpp"
-#include "storage-interface.hpp"
+#include "device/device.hpp"
+#include "game/player.hpp"
+#include "game/match.hpp"
+#include "state/state-machine.hpp"
+#include "game/quickdraw-states.hpp"
+#include "game/quickdraw-resources.hpp"
+#include "device/drivers/http-client-interface.hpp"
+#include "device/drivers/storage-interface.hpp"
 #define MATCH_SIZE sizeof(Match)
 
 class Quickdraw : public StateMachine {

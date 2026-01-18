@@ -4,7 +4,7 @@
 #pragma once
 
 #include "device.hpp"
-#include "light-manager.hpp"
+#include "device/light-manager.hpp"
 
 #include <string>
 

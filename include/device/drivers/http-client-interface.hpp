@@ -2,7 +2,7 @@
 
 #include <string>
 #include <functional>
-#include "wireless-types.hpp"
+#include "wireless/wireless-types.hpp"
 
 class HttpClientInterface {
 public:

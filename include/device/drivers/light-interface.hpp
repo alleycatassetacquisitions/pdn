@@ -67,6 +67,7 @@ public:
     virtual ~LightStrip() = default;
     virtual void setLight(LightIdentifier lightSet, uint8_t index, LEDState::SingleLEDState color) = 0;
     virtual void setLightBrightness(LightIdentifier lightSet, uint8_t index, uint8_t brightness) = 0;
+    virtual void setGlobalBrightness(uint8_t brightness) = 0;
     virtual LEDState::SingleLEDState getLight(LightIdentifier lightSet, uint8_t index) = 0;
     virtual void fade(LightIdentifier lightSet, uint8_t fadeAmount) = 0;
     virtual void addToLight(LightIdentifier lightSet, uint8_t index, LEDState::SingleLEDState color) = 0;

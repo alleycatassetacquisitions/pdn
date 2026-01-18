@@ -2,7 +2,7 @@
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 
 Idle::Idle(Player* player) : State(IDLE) {

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <functional>
-#include "peer-comms-types.hpp"
+#include "wireless/peer-comms-types.hpp"
 
 class PeerCommsInterface {
 public:

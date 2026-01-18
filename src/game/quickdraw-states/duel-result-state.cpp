@@ -2,7 +2,7 @@
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
-#include "logger.hpp"
+#include "device/drivers/logger.hpp"
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 

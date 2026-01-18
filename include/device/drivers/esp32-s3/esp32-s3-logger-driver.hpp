@@ -1,6 +1,6 @@
 #pragma once
 
-#include "driver-interface.hpp"
+#include "device/drivers/driver-interface.hpp"
 #include <esp_log.h>
 
 /**

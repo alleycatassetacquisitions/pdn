@@ -7,8 +7,8 @@
 #include <map>
 #include "images-raw.hpp"
 #include "image.hpp"
-#include "light-interface.hpp"
-#include "player.hpp"
+#include "device/drivers/light-interface.hpp"
+#include "game/player.hpp"
 
 typedef std::map<ImageType, Image> ImageCollection;
 

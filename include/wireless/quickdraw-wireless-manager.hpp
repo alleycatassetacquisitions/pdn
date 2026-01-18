@@ -8,11 +8,11 @@
 #include <functional>
 #include <map>
 #include "utils/simple-timer.hpp"
-#include "player.hpp"
-#include "match.hpp"
+#include "game/player.hpp"
+#include "game/match.hpp"
 #include "id-generator.hpp"
 #include "mac-functions.hpp"
-#include "peer-comms-interface.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
 
 enum QDCommand {
     // Handshake Commands

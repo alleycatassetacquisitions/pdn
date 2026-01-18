@@ -6,7 +6,7 @@
 #include <vector>
 #include <string>
 
-#include "device.hpp"
+#include "device/device.hpp"
 
 class State;
 

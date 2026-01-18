@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "driver-interface.hpp"
+#include "drivers/driver-interface.hpp"
 #include <string>
 #include <functional>
 #include "device-constants.hpp"

@@ -3,7 +3,7 @@
 //
 
 #pragma once
-#include "driver-interface.hpp"
+#include "device/drivers/driver-interface.hpp"
 #include <Arduino.h>
 
 class Esp32S3HapticsDriver : public HapticsMotorDriverInterface {
