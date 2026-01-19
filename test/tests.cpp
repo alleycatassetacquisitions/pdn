@@ -1,8 +1,17 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+
+// Existing test headers
 #include "state-machine-tests.hpp"
 #include "state-tests.hpp"
 #include "serial-tests.hpp"
+
+// New test headers
+#include "player-tests.hpp"
+#include "match-tests.hpp"
+#include "utility-tests.hpp"
+#include "match-manager-tests.hpp"
+#include "integration-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -30,7 +39,9 @@ void loop()
 
 #else
 
-//begin State Machine Tests
+// ============================================
+// STATE MACHINE TESTS
+// ============================================
 
 TEST_F(StateMachineTestSuite, testInitialize) {
 
@@ -211,9 +222,9 @@ TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
     ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
 }
 
-//end State Machine Tests
-
-//begin State Tests
+// ============================================
+// STATE TESTS
+// ============================================
 
 TEST_F(StateTestSuite, validMessagesAreCorrectlyReceived) {
     prepareValidMessageTest();
@@ -239,9 +250,9 @@ TEST_F(StateTestSuite, correctMessageIsDeliveredEvenIfGarbageInFront) {
     ASSERT_TRUE(readValidMessageState.didReadValidMessage);
 }
 
-// END state tests
-
-// BEGIN Serial Tests
+// ============================================
+// SERIAL TESTS
+// ============================================
 
 TEST_F(SerialTestSuite, serialWriteAppendsStringStart) {
     serialWriteAppendsStringStart();
@@ -255,13 +266,244 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
     whenHeadIsEmptyReadStringStillReturnsNextString();
 }
 
+// ============================================
+// PLAYER TESTS
+// ============================================
+
+TEST_F(PlayerTestSuite, jsonRoundTripPreservesAllFields) {
+    playerJsonRoundTripPreservesAllFields(player);
+}
+
+TEST_F(PlayerTestSuite, jsonRoundTripWithBountyRole) {
+    playerJsonRoundTripWithBountyRole(player);
+}
+
+TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
+    playerStatsIncrementCorrectly(player);
+}
+
+TEST_F(PlayerTestSuite, streakResetsOnLoss) {
+    playerStreakResetsOnLoss(player);
+}
+
+TEST_F(PlayerTestSuite, allegianceFromIntSetsCorrectly) {
+    playerAllegianceFromIntSetsCorrectly(player);
+}
+
+TEST_F(PlayerTestSuite, allegianceFromStringSetsCorrectly) {
+    playerAllegianceFromStringSetsCorrectly(player);
+}
+
+TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
+    playerReactionTimeAverageCalculatesCorrectly(player);
+}
+
+// ============================================
+// MATCH TESTS
+// ============================================
+
+TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
+    matchJsonRoundTripPreservesAllFields();
+}
+
+TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
+    matchJsonContainsWinnerFlag();
+}
+
+TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
+    matchBinaryRoundTripPreservesAllFields();
+}
+
+TEST_F(MatchTestSuite, binarySizeIsCorrect) {
+    matchBinarySizeIsCorrect();
+}
+
+TEST_F(MatchTestSuite, setupClearsDrawTimes) {
+    matchSetupClearsDrawTimes();
+}
+
+TEST_F(MatchTestSuite, drawTimesSetCorrectly) {
+    matchDrawTimesSetCorrectly();
+}
+
+TEST_F(MatchTestSuite, withZeroDrawTimes) {
+    matchWithZeroDrawTimes();
+}
+
+TEST_F(MatchTestSuite, withLargeDrawTimes) {
+    matchWithLargeDrawTimes();
+}
+
+// ============================================
+// UUID TESTS
+// ============================================
+
+TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+    uuidStringToBytesProducesCorrectOutput();
+}
+
+TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
+    uuidBytesToStringProducesValidFormat();
+}
+
+TEST_F(UUIDTestSuite, roundTripPreservesData) {
+    uuidRoundTripPreservesData();
+}
+
+TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
+    uuidGeneratorProducesValidFormat();
+}
+
+// ============================================
+// MAC ADDRESS TESTS
+// ============================================
+
+TEST_F(MACTestSuite, macToStringProducesCorrectFormat) {
+    macToStringProducesCorrectFormat();
+}
+
+TEST_F(MACTestSuite, macToStringHandlesZeros) {
+    macToStringHandlesZeros();
+}
+
+TEST_F(MACTestSuite, stringToMacParsesValidFormat) {
+    stringToMacParsesValidFormat();
+}
+
+TEST_F(MACTestSuite, stringToMacRejectsInvalidLength) {
+    stringToMacRejectsInvalidLength();
+}
+
+TEST_F(MACTestSuite, macToUInt64ProducesCorrectValue) {
+    macToUInt64ProducesCorrectValue();
+}
+
+TEST_F(MACTestSuite, macRoundTripPreservesData) {
+    macRoundTripPreservesData();
+}
+
+// ============================================
+// TIMER TESTS
+// ============================================
+
+TEST_F(TimerTestSuite, expiresAfterDuration) {
+    timerExpiresAfterDuration(fakeClock);
+}
+
+TEST_F(TimerTestSuite, doesNotExpireBeforeDuration) {
+    timerDoesNotExpireBeforeDuration(fakeClock);
+}
+
+TEST_F(TimerTestSuite, invalidateStopsTimer) {
+    timerInvalidateStopsTimer(fakeClock);
+}
+
+TEST_F(TimerTestSuite, elapsedTimeIsAccurate) {
+    timerElapsedTimeIsAccurate(fakeClock);
+}
+
+TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
+    timerWithNullClockHandlesGracefully();
+}
+
+// ============================================
+// MATCH MANAGER TESTS
+// ============================================
+
+TEST_F(MatchManagerTestSuite, createsMatchCorrectly) {
+    matchManagerCreatesMatchCorrectly(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, preventsMultipleActiveMatches) {
+    matchManagerPreventsMultipleActiveMatches(matchManager);
+}
+
+TEST_F(MatchManagerTestSuite, receiveMatchWorks) {
+    matchManagerReceiveMatchWorks(matchManager);
+}
+
+TEST_F(MatchManagerTestSuite, hunterWinsWhenFaster) {
+    matchManagerHunterWinsWhenFaster(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, hunterLosesWhenSlower) {
+    matchManagerHunterLosesWhenSlower(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, bountyWinsWhenFaster) {
+    matchManagerBountyWinsWhenFaster(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, bountyLosesWhenSlower) {
+    matchManagerBountyLosesWhenSlower(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, hunterWinsWhenBountyNeverPressed) {
+    matchManagerHunterWinsWhenBountyNeverPressed(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, bountyWinsWhenHunterNeverPressed) {
+    matchManagerBountyWinsWhenHunterNeverPressed(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, tracksDuelState) {
+    matchManagerTracksDuelState(matchManager);
+}
+
+TEST_F(MatchManagerTestSuite, gracePeriodPath) {
+    matchManagerGracePeriodPath(matchManager);
+}
+
+TEST_F(MatchManagerTestSuite, clearMatchResetsState) {
+    matchManagerClearMatchResetsState(matchManager);
+}
+
+TEST_F(MatchManagerTestSuite, setDrawTimesRequiresActiveMatch) {
+    matchManagerSetDrawTimesRequiresActiveMatch(matchManager);
+}
+
+TEST_F(MatchManagerTestSuite, duelStartTimeTracking) {
+    matchManagerDuelStartTimeTracking(matchManager);
+}
+
+// ============================================
+// INTEGRATION TESTS
+// ============================================
+
+TEST_F(DuelIntegrationTestSuite, completeDuelFlowHunterWins) {
+    completeDuelFlowHunterWins(this);
+}
+
+TEST_F(DuelIntegrationTestSuite, completeDuelFlowBountyWins) {
+    completeDuelFlowBountyWins(this);
+}
+
+TEST_F(DuelIntegrationTestSuite, matchSerializationRoundTrip) {
+    matchSerializationRoundTrip();
+}
+
+TEST_F(DuelIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
+    playerStatsAccumulateAcrossMatches(hunter);
+}
+
+TEST_F(DuelIntegrationTestSuite, duelWithTiedReactionTimes) {
+    duelWithTiedReactionTimes(this);
+}
+
+TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) {
+    duelWithOpponentTimeout(this);
+}
+
+// ============================================
+// MAIN
+// ============================================
+
 int main(int argc, char **argv)
 {
-    ::testing::InitGoogleTest(&argc, argv);
-    // if you plan to use GMock, replace the line above with
-    // ::testing::InitGoogleMock(&argc, argv);
+    ::testing::InitGoogleMock(&argc, argv);
 
     if (RUN_ALL_TESTS())
+        ;
 
     // Always return zero-code and allow PlatformIO to parse results
     return 0;
