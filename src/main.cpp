@@ -64,7 +64,7 @@ RemoteDebugManager* remoteDebugManager = nullptr;
 
 void setupEspNow() {
     // Register packet handlers
-    EspNowManager::GetInstance()->setPacketHandler(
+    peerCommsDriver->setPacketHandler(
         PktType::kQuickdrawCommand,
         [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
             ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
@@ -72,7 +72,7 @@ void setupEspNow() {
         QuickdrawWirelessManager::GetInstance()
     );
     
-    EspNowManager::GetInstance()->setPacketHandler(
+    peerCommsDriver->setPacketHandler(
         PktType::kDebugPacket,
         [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
             ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
