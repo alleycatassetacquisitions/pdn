@@ -1,7 +1,6 @@
 #include "id-generator.hpp"
 #include "game/quickdraw-states.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "esp_log.h"
 #include "game/match-manager.hpp"
 // Opening Handshake State for a Hunter. we have sent our mac address over serial and are waiting
 // for the opponent to send the match id and their user id.

@@ -7,6 +7,7 @@
 #include "drivers/driver-interface.hpp"
 #include <string>
 #include <functional>
+#include <cassert>
 #include "device-constants.hpp"
 
 enum class SerialByState {

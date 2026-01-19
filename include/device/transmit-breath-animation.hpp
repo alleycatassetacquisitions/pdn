@@ -3,7 +3,6 @@
 #include "animation-base.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min
-#include "esp_log.h"
 
 /*
  * TransmitBreathAnimation

@@ -1,7 +1,5 @@
 #include "game/quickdraw-states.hpp"
 #include "id-generator.hpp"
-#include "esp_log.h"
-
 //
 // Created by Elli Furedy on 9/30/2024.
 //

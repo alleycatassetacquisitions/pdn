@@ -26,11 +26,11 @@ void MatchManager::clearCurrentMatch() {
             uint8_t mac[6];
             if (StringToMac(player->getOpponentMacAddress()->c_str(), mac)) {
                 peerComms->removePeer(mac);
-                ESP_LOGI("PDN", "Removed opponent peer from ESP-NOW");
+                LOG_I(MATCH_MANAGER_TAG, "Removed opponent peer from ESP-NOW");
             }
         }
 
-        LOG_I("PDN", "Clearing current match");
+        LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
         delete activeDuelState.match;
         activeDuelState.match = nullptr;
         activeDuelState.hasReceivedDrawResult = false;
@@ -109,7 +109,7 @@ bool MatchManager::didWin() {
 
 bool MatchManager::finalizeMatch() {
     if (!activeDuelState.match) {
-        LOG_E("PDN", "Cannot finalize match - no active match or ID mismatch\n");
+        LOG_E(MATCH_MANAGER_TAG, "Cannot finalize match - no active match or ID mismatch\n");
         return false;
     }
 
@@ -120,7 +120,7 @@ bool MatchManager::finalizeMatch() {
         // Update stored count
         updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
-        LOG_I("PDN", "Successfully finalized match %s\n", match_id.c_str());
+        LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
         return true;
     }
     

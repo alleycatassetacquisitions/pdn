@@ -4,9 +4,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include <string>
-#include <clib/u8x8.h>
 #include "game/quickdraw-requests.hpp"
-#include <esp_log.h>
 
 #define TAG "SleepState"
 

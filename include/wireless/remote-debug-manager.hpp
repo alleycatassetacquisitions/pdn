@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <string>
 #include <cstring>  // For memcpy
 #include <functional>
 #include "device/drivers/peer-comms-interface.hpp"

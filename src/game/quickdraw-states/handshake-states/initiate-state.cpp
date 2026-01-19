@@ -1,5 +1,4 @@
 #include "game/quickdraw-states.hpp"
-#include "esp_log.h"
 
 HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE) {
     this->player = player;
