@@ -1,9 +1,8 @@
 #include "game/quickdraw-states.hpp"
-#include "player.hpp"
-#include "device/pdn.hpp"
+#include "game/player.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw.hpp"
-#include <esp_log.h>
+#include "device/drivers/logger.hpp"
 
 static const char* TAG = "WelcomeMessage";
 
@@ -15,12 +14,12 @@ WelcomeMessage::~WelcomeMessage() {
 }
 
 void WelcomeMessage::onStateMounted(Device *PDN) {
-    ESP_LOGI(TAG, "WelcomeMessage state mounted");
-    renderWelcomeMessage();
+    LOG_I(TAG, "WelcomeMessage state mounted");
+    renderWelcomeMessage(PDN);
     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 
 } 
 
@@ -31,8 +30,8 @@ void WelcomeMessage::onStateLoop(Device *PDN) {
     }
 }
 
-void WelcomeMessage::renderWelcomeMessage() {
-    PDN::GetInstance()->
+void WelcomeMessage::renderWelcomeMessage(Device *PDN) {
+    PDN->getDisplay()->
     invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
     drawText("**Alias**", 0, 16)->
@@ -43,7 +42,7 @@ void WelcomeMessage::renderWelcomeMessage() {
 }
 
 void WelcomeMessage::onStateDismounted(Device *PDN) {
-    ESP_LOGI(TAG, "WelcomeMessage state dismounted");
+    LOG_I(TAG, "WelcomeMessage state dismounted");
     welcomeMessageTimer.invalidate();
     transitionToAwakenSequenceState = false;
 }

@@ -44,9 +44,9 @@ AwakenSequence::~AwakenSequence() {
 void AwakenSequence::onStateMounted(Device *PDN) {
     activationSequenceTimer.setTimer(activationStepDuration);
     activateMotor= true;
-    PDN->setVibration(125);
+    PDN->getHaptics()->setIntensity(125);
 
-    PDN->
+    PDN->getDisplay()->
     invalidateScreen()->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::STAMP))->
@@ -57,9 +57,9 @@ void AwakenSequence::onStateLoop(Device *PDN) {
     if (activationSequenceTimer.expired()) {
         if (activateMotorCount <= AWAKEN_THRESHOLD) {
             if (activateMotor) {
-                PDN->setVibration(VIBRATION_MAX);
+                PDN->getHaptics()->setIntensity(VIBRATION_MAX);
             } else {
-                PDN->setVibration(VIBRATION_OFF);
+                PDN->getHaptics()->setIntensity(VIBRATION_OFF);
             }
 
             activationSequenceTimer.setTimer(activationStepDuration);
@@ -71,7 +71,7 @@ void AwakenSequence::onStateLoop(Device *PDN) {
 
 void AwakenSequence::onStateDismounted(Device *PDN) {
     activationSequenceTimer.invalidate();
-    PDN->setVibration(VIBRATION_OFF);
+    PDN->getHaptics()->setIntensity(VIBRATION_OFF);
     activateMotorCount = 0;
     activateMotor = false;
 }

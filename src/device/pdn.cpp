@@ -1,333 +1,88 @@
 #include "device/pdn.hpp"
+#include "device/drivers/logger.hpp"
 
-PDN *PDN::GetInstance() {
-    static PDN instance;
-    return &instance;
+PDN* PDN::createPDN(DriverConfig& driverConfig) {
+    return new PDN(driverConfig);
 }
 
 PDN::~PDN() {
 }
 
+PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
+    display = static_cast<DisplayDriverInterface*>(driverConfig[DISPLAY_DRIVER_NAME]);
+    primary = static_cast<ButtonDriverInterface*>(driverConfig[PRIMARY_BUTTON_DRIVER_NAME]);
+    secondary = static_cast<ButtonDriverInterface*>(driverConfig[SECONDARY_BUTTON_DRIVER_NAME]);
+    LightStrip* lights = static_cast<LightDriverInterface*>(driverConfig[LIGHT_DRIVER_NAME]);
+    haptics = static_cast<HapticsMotorDriverInterface*>(driverConfig[HAPTICS_DRIVER_NAME]);
+    serialOut = static_cast<SerialDriverInterface*>(driverConfig[SERIAL_OUT_DRIVER_NAME]);
+    serialIn = static_cast<SerialDriverInterface*>(driverConfig[SERIAL_IN_DRIVER_NAME]);
+    httpClient = static_cast<HttpClientDriverInterface*>(driverConfig[HTTP_CLIENT_DRIVER_NAME]);
+    peerComms = static_cast<PeerCommsDriverInterface*>(driverConfig[PEER_COMMS_DRIVER_NAME]);
+    platformClock = static_cast<PlatformClockDriverInterface*>(driverConfig[PLATFORM_CLOCK_DRIVER_NAME]);
+    logger = static_cast<LoggerDriverInterface*>(driverConfig[LOGGER_DRIVER_NAME]);
+    storage = static_cast<StorageDriverInterface*>(driverConfig[STORAGE_DRIVER_NAME]);
 
-PDN::PDN() : display(displayCS, displayDC, displayRST),
-             haptics(motorPin),
-             primary(primaryButtonPin),
-             secondary(secondaryButtonPin),
-             displayLights(numDisplayLights),
-             gripLights(numGripLights),
-             lightManager(displayLights, gripLights) {
-    this->PDN::initializePins();
-};
+    lightManager = new LightManager(*lights);
+}
 
 int PDN::begin() {
-    serialOut.begin();
-    serialIn.begin();
-
-    FastLED.clear();
-    FastLED.show();
-
-    lightManager.begin();
-
-    //Initialize PSRAM which can be used as
-    //extra heap space by allocating using
-    //ps_malloc instead of malloc
-    if(psramInit())
-    {
-        Serial.println("PSRAM initialized");
-    }
-
     return 1;
 }
 
-void PDN::initializePins() {
-    gpio_reset_pin(GPIO_NUM_38);
-    gpio_reset_pin(GPIO_NUM_39);
-    gpio_reset_pin(GPIO_NUM_40);
-    gpio_reset_pin(GPIO_NUM_41);
-
-    gpio_pad_select_gpio(GPIO_NUM_38);
-    gpio_pad_select_gpio(GPIO_NUM_39);
-    gpio_pad_select_gpio(GPIO_NUM_40);
-    gpio_pad_select_gpio(GPIO_NUM_41);
-
-    pinMode(displayLightsPin, OUTPUT);
-    pinMode(gripLightsPin, OUTPUT);
-}
-
-string PDN::getDeviceId() {
+std::string PDN::getDeviceId() {
     return deviceId;
 }
 
 HWSerialWrapper* PDN::outputJack() {
-    return &serialOut;
+    return serialOut;
 }
 
 HWSerialWrapper* PDN::inputJack() {
-    return &serialIn;
+    return serialIn;
 }
 
 void PDN::loop() {
-    primary.loop();
-    secondary.loop();
-    serialLoop();
-    lightManager.loop();
+    Device::loop();
+    lightManager->loop();
 }
 
 void PDN::onStateChange() {
-    lightManager.clear(LightIdentifier::DISPLAY_LIGHTS);
-    lightManager.clear(LightIdentifier::GRIP_LIGHTS);
+    lightManager->clear();
     flushSerial();
 }
 
-
-void PDN::setGlobalLightColor(LEDColor color) {
-    // lightManager.setAllLights(LightIdentifier::DISPLAY_LIGHTS, color);
-    // lightManager.setAllLights(LightIdentifier::GRIP_LIGHTS, color);
+Display* PDN::getDisplay() {
+    return display;
 }
 
-void PDN::setGlobalBrightness(int brightness) {
-    // lightManager.setBrightness(LightIdentifier::DISPLAY_LIGHTS, brightness);
-    // lightManager.setBrightness(LightIdentifier::GRIP_LIGHTS, brightness);
+Haptics* PDN::getHaptics() {
+    return haptics;
 }
 
-void PDN::fadeLightsBy(LightIdentifier whichLights, int value) {
-    // Convert fade value to brightness (255 - fade)
-    // uint8_t brightness = max(0, 255 - value);
-    // lightManager.setBrightness(whichLights, brightness);
+Button* PDN::getPrimaryButton() {
+    return primary;
 }
 
-void PDN::addToLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
-    // For now, just set the light since LightManager doesn't have an additive mode
-    // lightManager.setLightColor(whichLights, ledNum, color);
+Button* PDN::getSecondaryButton() {
+    return secondary;
 }
 
-void PDN::setLight(LightIdentifier whichLights, int ledNum, LEDColor color) {
-    // lightManager.setLightColor(whichLights, ledNum, color);
+LightManager* PDN::getLightManager() {
+    return lightManager;
 }
 
-void PDN::setVibration(int value) {
-    haptics.setIntensity(value);
+HttpClientInterface* PDN::getHttpClient() {
+    return httpClient;
 }
 
-int PDN::getCurrentVibrationIntensity() {
-    return haptics.getIntensity();
+PeerCommsInterface* PDN::getPeerComms() {
+    return peerComms;
 }
 
-// Animation control methods
-void PDN::startAnimation(AnimationConfig config) {
-    lightManager.startAnimation(config);
+StorageInterface* PDN::getStorage() {
+    return storage;
 }
 
-void PDN::stopAnimation() {
-    lightManager.stopAnimation();
-}
-
-void PDN::pauseAnimation() {
-    lightManager.pauseAnimation();
-}
-
-void PDN::resumeAnimation() {
-    lightManager.resumeAnimation();
-}
-
-bool PDN::isAnimating() const {
-    return lightManager.isAnimating();
-}
-
-bool PDN::isPaused() const {
-    return lightManager.isPaused();
-}
-
-bool PDN::isAnimationComplete() const {
-    return lightManager.isAnimationComplete();
-}
-
-AnimationType PDN::getCurrentAnimation() const {
-    return lightManager.getCurrentAnimation();
-}
-
-void PDN::setDeviceId(string deviceId) {
-    this->deviceId = deviceId;
-}
-
-Display* PDN::drawImage(Image image) {
-    return display.drawImage(image);
-}
-
-Display* PDN::drawText(const char *text, int xStart, int yStart) {
-    return display.drawText(text, xStart, yStart);
-}
-
-Display* PDN::drawText(const char *text) {
-    return display.drawText(text);
-}
-
-Display* PDN::setGlyphMode(FontMode mode) {
-    return display.setGlyphMode(mode);
-}
-
-Display* PDN::renderGlyph(const char* unicodeForGlyph, int xStart, int yStart) {
-    return display.renderGlyph(unicodeForGlyph, xStart, yStart);
-}
-
-Display* PDN::drawButton(const char *text, int xCenter, int yCenter) {
-    return display.drawButton(text, xCenter, yCenter);
-}
-
-PDNButton * PDN::getButton(ButtonIdentifier whichButton) {
-    switch(whichButton) {
-        case ButtonIdentifier::PRIMARY_BUTTON:
-            return &primary;
-        case ButtonIdentifier::SECONDARY_BUTTON:
-            return &secondary;
-    }
-}
-
-void PDN::attachSingleClick(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonSingleClick(newFunction);
-}
-
-void PDN::attachSingleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    getButton(whichButton)->setButtonSingleClick(newFunction, parameter);
-}
-
-void PDN::attachDoubleClick(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonDoubleClick(newFunction);
-}
-
-void PDN::attachDoubleClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    getButton(whichButton)->setButtonDoubleClick(newFunction, parameter);
-}
-
-void PDN::attachMultiClick(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonMultiClick(newFunction);
-}
-
-void PDN::attachMultiClick(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    getButton(whichButton)->setButtonMultiClick(newFunction, parameter);
-}
-
-void PDN::attachPress(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonPress(newFunction);
-}
-
-void PDN::attachPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    getButton(whichButton)->setButtonPress(newFunction, parameter);
-}
-
-void PDN::attachLongPress(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonLongPress(newFunction);
-}
-
-void PDN::attachLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    getButton(whichButton)->setButtonLongPress(newFunction, parameter);
-}
-
-void PDN::attachDuringLongPress(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonDuringLongPress(newFunction);
-}
-
-void PDN::attachDuringLongPress(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction,
-    void *parameter) {
-    getButton(whichButton)->setButtonDuringLongPress(newFunction, parameter);
-}
-
-void PDN::attachLongPressRelease(ButtonIdentifier whichButton, callbackFunction newFunction) {
-    getButton(whichButton)->setButtonLongPressRelease(newFunction);
-}
-
-void PDN::attachLongPressRelease(ButtonIdentifier whichButton, parameterizedCallbackFunction newFunction, void *parameter) {
-    getButton(whichButton)->setButtonLongPressRelease(newFunction, parameter);
-}
-
-//Button Functions
-void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton, callbackFunction newFunction) {
-    switch(interactionType) {
-        case ButtonInteraction::CLICK: {
-            attachSingleClick(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::RELEASE: {
-            attachLongPressRelease(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::PRESS: {
-            attachPress(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::DOUBLE_CLICK: {
-            attachDoubleClick(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::MULTI_CLICK: {
-            attachMultiClick(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::LONG_PRESS: {
-            attachLongPress(whichButton, newFunction);
-            break;
-        }
-        case ButtonInteraction::DURING_LONG_PRESS: {
-            attachDuringLongPress(whichButton, newFunction);
-            break;
-        }
-    }
-}
-
-void PDN::setButtonClick(ButtonInteraction interactionType, ButtonIdentifier whichButton,
-    parameterizedCallbackFunction newFunction, void *parameter) {
-    switch(interactionType) {
-        case ButtonInteraction::CLICK: {
-            attachSingleClick(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::RELEASE: {
-            attachLongPressRelease(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::PRESS: {
-            attachPress(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::DOUBLE_CLICK: {
-            attachDoubleClick(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::MULTI_CLICK: {
-            attachMultiClick(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::LONG_PRESS: {
-            attachLongPress(whichButton, newFunction, parameter);
-            break;
-        }
-        case ButtonInteraction::DURING_LONG_PRESS: {
-            attachDuringLongPress(whichButton, newFunction, parameter);
-            break;
-        }
-    }
-}
-
-void PDN::removeButtonCallbacks(ButtonIdentifier whichButton) {
-    getButton(whichButton)->removeButtonCallbacks();
-}
-
-bool PDN::isLongPressed(ButtonIdentifier whichButton) {
-    return getButton(whichButton)->isLongPressed();
-}
-
-unsigned long PDN::longPressedMillis(ButtonIdentifier whichButton) {
-    return getButton(whichButton)->longPressedMillis();
-}
-
-Display * PDN::invalidateScreen() {
-    return display.invalidateScreen();
-}
-
-void PDN::render() {
-    display.render();
-}
-
-Display* PDN::drawImage(Image image, int xStart, int yStart) {
-    return display.drawImage(image, xStart, yStart);
+void PDN::setDeviceId(std::string id) {
+    deviceId = id;
 }

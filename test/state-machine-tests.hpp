@@ -5,7 +5,8 @@
 #include <gtest/gtest.h>
 
 #include "device-mock.hpp"
-#include "state-machine.hpp"
+#include "state/state-machine.hpp"
+#include "device/device-constants.hpp"
 
 enum TestStateId {
     INITIAL_STATE = 0,
@@ -152,10 +153,10 @@ public:
 
     void onStateLoop(Device *PDN) override {
         stateLoopInvoked++;
-        if(PDN->getCurrentVibrationIntensity() == VIBRATION_MAX) {
+        if(PDN->getHaptics()->getIntensity() == VIBRATION_MAX) {
             transitionToSecond = true;
         }
-        if(PDN->getCurrentVibrationIntensity() == VIBRATION_MAX) {
+        if(PDN->getHaptics()->getIntensity() == VIBRATION_MAX) {
             transitionToFirst = true;
         }
     }

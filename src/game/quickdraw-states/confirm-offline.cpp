@@ -1,12 +1,12 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
-#include <esp_log.h>
+#include "device/drivers/logger.hpp"
 
 static const char* TAG = "ConfirmOfflineState";
 
 ConfirmOfflineState::ConfirmOfflineState(Player* player) : State(QuickdrawStateId::CONFIRM_OFFLINE) {
     this->player = player;
-    ESP_LOGI(TAG, "ConfirmOfflineState mounted");
+    LOG_I(TAG, "ConfirmOfflineState mounted");
 }
 
 ConfirmOfflineState::~ConfirmOfflineState() {
@@ -14,16 +14,16 @@ ConfirmOfflineState::~ConfirmOfflineState() {
 
 void ConfirmOfflineState::onStateMounted(Device *PDN) {
     renderUi(PDN);
-    ESP_LOGI(TAG, "ConfirmOfflineState mounted - setting up button callbacks");
-    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::PRIMARY_BUTTON, [](void *ctx) {
+    LOG_I(TAG, "ConfirmOfflineState mounted - setting up button callbacks");
+    PDN->getPrimaryButton()->setButtonPress([](void *ctx) {
         ConfirmOfflineState* confirmOfflineState = (ConfirmOfflineState*)ctx;
         confirmOfflineState->menuIndex++;
         if(confirmOfflineState->menuIndex > 1) {
             confirmOfflineState->menuIndex = 0;
         }
         confirmOfflineState->displayIsDirty = true;
-    }, this);
-    PDN->setButtonClick(ButtonInteraction::CLICK, ButtonIdentifier::SECONDARY_BUTTON, [](void *ctx) {
+    }, this, ButtonInteraction::CLICK);
+    PDN->getSecondaryButton()->setButtonPress([](void *ctx) {
         ConfirmOfflineState* confirmOfflineState = (ConfirmOfflineState*)ctx;
         int menuIndex = confirmOfflineState->menuIndex;
         if(menuIndex == 0) {
@@ -32,7 +32,7 @@ void ConfirmOfflineState::onStateMounted(Device *PDN) {
         else if(menuIndex == 1) {
             confirmOfflineState->transitionToPlayerRegistrationState = true;
         }
-    }, this);
+    }, this, ButtonInteraction::CLICK);
     uiPageTimer.setTimer(UI_PAGE_TIMEOUT);
 }
 
@@ -53,8 +53,8 @@ void ConfirmOfflineState::onStateLoop(Device *PDN) {
 }
 
 void ConfirmOfflineState::onStateDismounted(Device *PDN) {
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
     uiPage = 0;
     uiPageTimer.invalidate();
     finishedPaging = false;
@@ -72,11 +72,11 @@ bool ConfirmOfflineState::transitionToPlayerRegistration() {
 }
 
 void ConfirmOfflineState::renderUi(Device *PDN) {
-    PDN->invalidateScreen();
+    PDN->getDisplay()->invalidateScreen();
     
     if(uiPage == 0) {
         // Page 0: "Unable to locate asset" - centered and split into multiple lines if needed
-        PDN->setGlyphMode(FontMode::TEXT)
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
             ->drawText("Unable to", 12, 26)
             ->drawText("Locate Asset", 0, 42);
     } 
@@ -87,7 +87,7 @@ void ConfirmOfflineState::renderUi(Device *PDN) {
         int totalWidth = (4 * digitWidth) + (3 * digitSpacing);
         int startX = (128 - totalWidth) / 2;
 
-        PDN->setGlyphMode(FontMode::TEXT)
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
             ->drawText("Proceed with", 3, 16)
             ->drawText("Pairing Code", 3, 32)
             ->setGlyphMode(FontMode::NUMBER_GLYPH)
@@ -104,24 +104,24 @@ void ConfirmOfflineState::renderUi(Device *PDN) {
         int totalWidth = (4 * digitWidth) + (3 * digitSpacing);
         int startX = (128 - totalWidth) / 2;
         
-        PDN->setGlyphMode(FontMode::NUMBER_GLYPH)
+        PDN->getDisplay()->setGlyphMode(FontMode::NUMBER_GLYPH)
             ->renderGlyph(digitGlyphs[getDigitGlyphForIDIndex(0)], startX, 18)
             ->renderGlyph(digitGlyphs[getDigitGlyphForIDIndex(1)], startX + digitWidth + digitSpacing, 18)
             ->renderGlyph(digitGlyphs[getDigitGlyphForIDIndex(2)], startX + (2 * (digitWidth + digitSpacing)), 18)
             ->renderGlyph(digitGlyphs[getDigitGlyphForIDIndex(3)], startX + (3 * (digitWidth + digitSpacing)), 18);
 
         if(menuIndex == 0) {
-            PDN->setGlyphMode(FontMode::TEXT)
+            PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
             ->drawButton("Confirm", 64, 36)
             ->drawText("Reset", 40, 60);
         } else if(menuIndex == 1) {
-            PDN->setGlyphMode(FontMode::TEXT)
+            PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
                 ->drawText("Confirm", 25, 36)
                 ->drawButton("Reset", 64, 60);
         }
     }
     
-    PDN->render();
+    PDN->getDisplay()->render();
 }
 
 int ConfirmOfflineState::getDigitGlyphForIDIndex(int index) {

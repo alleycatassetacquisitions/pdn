@@ -15,27 +15,15 @@
 
 #pragma once
 
-#include <FastLED.h>
-#include "simple-timer.hpp"
-#include "light-interface.hpp"
-#include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
-#include "device/display-lights.hpp"
-#include "device/grip-lights.hpp"
-#include "device/idle-animation.hpp"
-#include "device/countdown-animation.hpp"
-#include "device/vertical-chase-animation.hpp"
-#include "device/transmit-breath-animation.hpp"
-#include "device/hunter-win-animation.hpp"
-#include "device/bounty-win-animation.hpp"
-#include "device/lose-animation.hpp"
+#include "utils/simple-timer.hpp"
+#include "drivers/light-interface.hpp"
 
 class LightManager {
 public:
-    LightManager(DisplayLights& displayLights, GripLights& gripLights);
+    LightManager(LightStrip& pdnLights);
     ~LightManager();
 
     // Core functionality
-    void begin();
     void loop();
     
     // Animation control
@@ -43,12 +31,10 @@ public:
     void stopAnimation();
     void pauseAnimation();
     void resumeAnimation();
+
+    void setGlobalBrightness(uint8_t brightness);
     
-    // Direct LED control
-    // void setLightColor(LightIdentifier lights, uint8_t index, LEDColor color);
-    // void setAllLights(LightIdentifier lights, LEDColor color);
-    // void setBrightness(LightIdentifier lights, uint8_t brightness);
-    void clear(LightIdentifier lights);
+    void clear();
     
     // Animation state query
     bool isAnimating() const;
@@ -89,10 +75,6 @@ private:
     void mapStateToGripLights(const LEDState& state);
     void mapStateToDisplayLights(const LEDState& state);
     
-    // FastLED helpers
-    static CRGB convertToFastLED(const LEDState::SingleLEDState& color);
-    static LEDColor convertFromFastLED(const CRGB& color);
-    
     /*
         This method will apply the LEDState to the physical LEDs.
         It will use the arrays extracted from the LEDState to set the color and brightness of the LEDs.
@@ -102,11 +84,10 @@ private:
     void applyLEDState(const LEDState& state);
     
     // Member variables
-    DisplayLights& displayLights;
-    GripLights& gripLights;
+    LightStrip& pdnLights;
     IAnimation* currentAnimation;
     
     // Member arrays for extracted lights
-    CRGB gripLightArray[6];
-    CRGB displayLightArray[13];
+    LEDState::SingleLEDState gripLightArray[6];
+    LEDState::SingleLEDState displayLightArray[13];
 };

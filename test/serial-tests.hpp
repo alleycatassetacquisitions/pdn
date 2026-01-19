@@ -10,8 +10,8 @@
 
 using namespace std;
 
-string TEST_WRITE_STRING = "this is a test write string.";
-string TEST_READ_STRING = "this is a test read string.";
+std::string TEST_WRITE_STRING = "this is a test write string.";
+std::string TEST_READ_STRING = "this is a test read string.";
 
 class SerialTestSuite : public testing::Test {
 
@@ -52,7 +52,7 @@ protected:
 
         ASSERT_EQ(stateTestDevice.getHead(), "");
 
-        string readResult = stateTestDevice.readString();
+        std::string readResult = stateTestDevice.readString();
 
         ASSERT_EQ(readResult, TEST_WRITE_STRING);
     }

@@ -1,30 +1,31 @@
 #include <vector>
-#include <esp_now.h>
 #include <cstring>  // For memcpy
+#include <string>
 
-#include "player.hpp"
+#include "device/drivers/peer-comms-interface.hpp"
+#include "game/player.hpp"
 
 struct RemotePlayer
 {
-    uint8_t wifiMacAddr[ESP_NOW_ETH_ALEN];
+    uint8_t wifiMacAddr[6];
     Player playerInfo;
     unsigned long lastSeenTime;
     signed rssi;
 
-    RemotePlayer(const uint8_t* macAddr, string id, Allegiance allegiance, bool isHunter,
+    RemotePlayer(const uint8_t* macAddr, std::string id, Allegiance allegiance, bool isHunter,
                  unsigned long lastSeen, signed rssiDb) :
                  playerInfo(id, allegiance, isHunter),
                  lastSeenTime(lastSeen),
                  rssi(rssiDb)
     {
-        memcpy(wifiMacAddr, macAddr, ESP_NOW_ETH_ALEN);
+        memcpy(wifiMacAddr, macAddr, 6);
     }
 };
 
 class RemotePlayerManager
 {
 public:
-    RemotePlayerManager();
+    RemotePlayerManager(PeerCommsInterface* peerComms);
 
     void Update();
 
@@ -37,11 +38,11 @@ public:
 
 protected:
     int BroadcastPlayerInfo();
-
-    Player* m_localPlayerInfo;
-    std::vector<RemotePlayer> m_remotePlayers;
-    unsigned long m_remotePlayerTTL;
-    unsigned long m_broadcastInterval;
-    unsigned long m_lastBroadcastTime;
+    PeerCommsInterface* peerComms;
+    Player* localPlayerInfo;
+    std::vector<RemotePlayer> remotePlayers;
+    unsigned long remotePlayerTTL;
+    unsigned long broadcastInterval;
+    unsigned long lastBroadcastTime;
 
 };
