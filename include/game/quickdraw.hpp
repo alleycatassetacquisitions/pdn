@@ -8,11 +8,13 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
+#include "wireless/remote-debug-manager.hpp"
+
 #define MATCH_SIZE sizeof(Match)
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN);
+    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -28,4 +30,6 @@ private:
     HttpClientInterface* httpClient;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
+    RemoteDebugManager* remoteDebugManager;
 };

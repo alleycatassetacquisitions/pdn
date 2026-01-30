@@ -6,23 +6,25 @@
 
 #define MATCH_MANAGER_TAG "MATCH_MANAGER"
 
-MatchManager* MatchManager::GetInstance() {
-    static MatchManager instance;
-    
-    return &instance;
+MatchManager::MatchManager() 
+    : player(nullptr)
+    , storage(nullptr)
+    , peerComms(nullptr)
+    , quickdrawWirelessManager(nullptr) {
 }
 
-MatchManager::MatchManager() {}
-
-MatchManager::~MatchManager() {
+MatchManager::~MatchManager() { 
     delete activeDuelState.match;
     activeDuelState.match = nullptr;
-    storage->end();
+    quickdrawWirelessManager = nullptr;
+    if (storage) {
+        storage->end();
+    }
 }
 
 void MatchManager::clearCurrentMatch() {
     if (activeDuelState.match) {
-        if (player && player->getOpponentMacAddress()) {
+        if (peerComms && player && player->getOpponentMacAddress()) {
             uint8_t mac[6];
             if (StringToMac(player->getOpponentMacAddress()->c_str(), mac)) {
                 peerComms->removePeer(mac);
@@ -274,10 +276,11 @@ parameterizedCallbackFunction MatchManager::getButtonMasher() {
     return buttonMasher;
 }
 
-void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms) {
+void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms, QuickdrawWirelessManager* quickdrawWirelessManager) {
     this->player = player;
     this->storage = storage;
     this->peerComms = peerComms;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 
     duelButtonPush = [](void *ctx) {
         unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
@@ -290,6 +293,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
         ActiveDuelState* activeDuelState = &matchManager->activeDuelState;
         Player *player = matchManager->player;
+        QuickdrawWirelessManager* quickdrawWirelessManager = matchManager->quickdrawWirelessManager;
 
         if(matchManager->getHasPressedButton()) {
             LOG_I(MATCH_MANAGER_TAG, "Button already pressed - skipping");
@@ -325,10 +329,10 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
         LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s", 
                 player->getOpponentMacAddress()->c_str());
                 
-        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+        quickdrawWirelessManager->broadcastPacket(
             *player->getOpponentMacAddress(),
             QDCommand::DRAW_RESULT,
-            *MatchManager::GetInstance()->getCurrentMatch()
+            *matchManager->getCurrentMatch()
         );
 
         matchManager->setReceivedButtonPush();

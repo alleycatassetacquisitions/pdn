@@ -1,9 +1,11 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(PDN) {
     this->player = player;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->remoteDebugManager = remoteDebugManager;
     this->httpClient = PDN->getHttpClient();
-    this->matchManager = MatchManager::GetInstance();
+    this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
@@ -11,33 +13,37 @@ Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(PDN) {
 
 Quickdraw::~Quickdraw() {
     player = nullptr;
+    quickdrawWirelessManager = nullptr;
+    matchManager = nullptr;
+    storageManager = nullptr;
+    peerComms = nullptr;
     matches.clear();
 }
 
 void Quickdraw::populateStateMap() {
-    matchManager->initialize(player, storageManager, peerComms);
+    matchManager->initialize(player, storageManager, peerComms, quickdrawWirelessManager);
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player, httpClient, matchManager);
-    FetchUserDataState* fetchUserData = new FetchUserDataState(player, httpClient);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, httpClient, remoteDebugManager);
     WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);
     AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
     
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player);
+    Idle* idle = new Idle(player, matchManager, quickdrawWirelessManager);
     
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
-    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player);
-    HunterSendIdState* hunterSendId = new HunterSendIdState(player);
+    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player, matchManager, quickdrawWirelessManager);
+    HunterSendIdState* hunterSendId = new HunterSendIdState(player, matchManager, quickdrawWirelessManager);
 
     ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
     
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager);
-    Duel* duel = new Duel(player, matchManager);
+    Duel* duel = new Duel(player, matchManager, quickdrawWirelessManager);
     DuelPushed* duelPushed = new DuelPushed(player, matchManager);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager);
-    DuelResult* duelResult = new DuelResult(player, matchManager);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, quickdrawWirelessManager);
+    DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager);
     
     Win* win = new Win(player);
     Lose* lose = new Lose(player);

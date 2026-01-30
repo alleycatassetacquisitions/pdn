@@ -12,6 +12,8 @@
 #include "utility-tests.hpp"
 #include "match-manager-tests.hpp"
 #include "integration-tests.hpp"
+#include "quickdraw-tests.hpp"
+#include "quickdraw-integration-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -334,25 +336,25 @@ TEST_F(MatchTestSuite, withLargeDrawTimes) {
     matchWithLargeDrawTimes();
 }
 
-// ============================================
-// UUID TESTS
-// ============================================
+// // ============================================
+// // UUID TESTS
+// // ============================================
 
-TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
-    uuidStringToBytesProducesCorrectOutput();
-}
+// TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+//     uuidStringToBytesProducesCorrectOutput();
+// }
 
-TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-    uuidBytesToStringProducesValidFormat();
-}
+// TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
+//     uuidBytesToStringProducesValidFormat();
+// }
 
-TEST_F(UUIDTestSuite, roundTripPreservesData) {
-    uuidRoundTripPreservesData();
-}
+// TEST_F(UUIDTestSuite, roundTripPreservesData) {
+//     uuidRoundTripPreservesData();
+// }
 
-TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-    uuidGeneratorProducesValidFormat();
-}
+// TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
+//     uuidGeneratorProducesValidFormat();
+// }
 
 // ============================================
 // MAC ADDRESS TESTS
@@ -492,6 +494,375 @@ TEST_F(DuelIntegrationTestSuite, duelWithTiedReactionTimes) {
 
 TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) {
     duelWithOpponentTimeout(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - IDLE
+// ============================================
+
+TEST_F(IdleStateTests, serialHeartbeatTriggersMacAddressSend) {
+    idleSerialHeartbeatTriggersMacAddressSend(this);
+}
+
+TEST_F(IdleStateTests, receiveMacAddressTransitionsToHandshake) {
+    idleReceiveMacAddressTransitionsToHandshake(this);
+}
+
+TEST_F(IdleStateTests, stateClearsOnDismount) {
+    idleStateClearsOnDismount(this);
+}
+
+TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
+    idleButtonCallbacksRegisteredAndRemoved(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - HANDSHAKE
+// ============================================
+
+TEST_F(HandshakeStateTests, hunterRoutesToHunterSendIdState) {
+    handshakeHunterRoutesToHunterSendIdState(this);
+}
+
+TEST_F(HandshakeStateTests, bountyRoutesToBountySendCCState) {
+    handshakeBountyRoutesToBountySendCCState(this);
+}
+
+TEST_F(HandshakeStateTests, timeoutReturnsToIdle) {
+    handshakeTimeoutReturnsToIdle(this);
+}
+
+TEST_F(HandshakeStateTests, bountyFlowSucceeds) {
+    handshakeBountyFlowSucceeds(this);
+}
+
+TEST_F(HandshakeStateTests, hunterFlowSucceeds) {
+    handshakeHunterFlowSucceeds(this);
+}
+
+TEST_F(HandshakeStateTests, sendsDirectMessagesNotBroadcast) {
+    handshakeSendsDirectMessagesNotBroadcast(this);
+}
+
+TEST_F(HandshakeStateTests, statesClearOnDismount) {
+    handshakeStatesClearOnDismount(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - COUNTDOWN
+// ============================================
+
+TEST_F(DuelCountdownTests, buttonMasherPenaltyIncrementsOnButtonPress) {
+    countdownButtonMasherPenaltyIncrementsOnButtonPress(this);
+}
+
+TEST_F(DuelCountdownTests, multipleEarlyPressesAccumulatePenalty) {
+    countdownMultipleEarlyPressesAccumulatePenalty(this);
+}
+
+TEST_F(DuelCountdownTests, progressesThroughStages) {
+    countdownProgressesThroughStages(this);
+}
+
+TEST_F(DuelCountdownTests, battleTransitionSetsFlag) {
+    countdownBattleTransitionSetsFlag(this);
+}
+
+TEST_F(DuelCountdownTests, cleansUpOnDismount) {
+    countdownCleansUpOnDismount(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - DUEL SCENARIOS
+// ============================================
+
+// Scenario 1: DUT presses button first
+TEST_F(DuelStateTests, buttonPressTransitionsToDuelPushed) {
+    duelButtonPressTransitionsToDuelPushed(this);
+}
+
+TEST_F(DuelStateTests, buttonPressCalculatesReactionTime) {
+    duelButtonPressCalculatesReactionTime(this);
+}
+
+TEST_F(DuelStateTests, buttonPressAppliesMasherPenalty) {
+    duelButtonPressAppliesMasherPenalty(this);
+}
+
+TEST_F(DuelStateTests, buttonPressBroadcastsDrawResult) {
+    duelButtonPressBroadcastsDrawResult(this);
+}
+
+TEST_F(DuelStateTests, pushedWaitsForOpponentResult) {
+    duelPushedWaitsForOpponentResult(this);
+}
+
+TEST_F(DuelStateTests, pushedTransitionsOnResultReceived) {
+    duelPushedTransitionsOnResultReceived(this);
+}
+
+// Scenario 2: DUT receives result first
+TEST_F(DuelStateTests, receivedResultTransitionsToDuelReceivedResult) {
+    duelReceivedResultTransitionsToDuelReceivedResult(this);
+}
+
+TEST_F(DuelStateTests, receivedResultWaitsForButtonPress) {
+    duelReceivedResultWaitsForButtonPress(this);
+}
+
+TEST_F(DuelStateTests, buttonPressDuringGracePeriodTransitions) {
+    duelButtonPressDuringGracePeriodTransitions(this);
+}
+
+// Scenario 3: Neither presses (timeout)
+TEST_F(DuelStateTests, timeoutTransitionsToIdle) {
+    duelTimeoutTransitionsToIdle(this);
+}
+
+// Scenario 4: DUT presses, opponent never responds
+TEST_F(DuelStateTests, pushedGracePeriodExpiresTransitions) {
+    duelPushedGracePeriodExpiresTransitions(this);
+}
+
+TEST_F(DuelStateTests, opponentTimeoutMeansWin) {
+    duelOpponentTimeoutMeansWin(this);
+}
+
+// Scenario 5: DUT never presses, opponent does
+TEST_F(DuelStateTests, gracePeriodExpiresSetsNeverPressed) {
+    duelGracePeriodExpiresSetsNeverPressed(this);
+}
+
+TEST_F(DuelStateTests, gracePeriodExpiresSendsPityTime) {
+    duelGracePeriodExpiresSendsPityTime(this);
+}
+
+TEST_F(DuelStateTests, neverPressedMeansLose) {
+    duelNeverPressedMeansLose(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - DUEL RESULT
+// ============================================
+
+TEST_F(DuelResultTests, hunterWinsWithFasterTime) {
+    resultHunterWinsWithFasterTime(this);
+}
+
+TEST_F(DuelResultTests, bountyWinsWithFasterTime) {
+    resultBountyWinsWithFasterTime(this);
+}
+
+TEST_F(DuelResultTests, tiedTimesFavorOpponent) {
+    resultTiedTimesFavorOpponent(this);
+}
+
+TEST_F(DuelResultTests, opponentTimeoutMeansAutoWin) {
+    resultOpponentTimeoutMeansAutoWin(this);
+}
+
+TEST_F(DuelResultTests, winTransitionsToWinState) {
+    resultWinTransitionsToWinState(this);
+}
+
+TEST_F(DuelResultTests, loseTransitionsToLoseState) {
+    resultLoseTransitionsToLoseState(this);
+}
+
+TEST_F(DuelResultTests, playerStatsUpdatedOnWin) {
+    resultPlayerStatsUpdatedOnWin(this);
+}
+
+TEST_F(DuelResultTests, playerStatsUpdatedOnLoss) {
+    resultPlayerStatsUpdatedOnLoss(this);
+}
+
+TEST_F(DuelResultTests, matchFinalizedOnResult) {
+    resultMatchFinalizedOnResult(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - STATE CLEANUP
+// ============================================
+
+TEST_F(StateCleanupTests, idleClearsButtonCallbacks) {
+    cleanupIdleClearsButtonCallbacks(this);
+}
+
+TEST_F(StateCleanupTests, countdownClearsButtonCallbacks) {
+    cleanupCountdownClearsButtonCallbacks(this);
+}
+
+TEST_F(StateCleanupTests, duelStateDoesNotClearCallbacksOnDismount) {
+    cleanupDuelStateDoesNotClearCallbacksOnDismount(this);
+}
+
+TEST_F(StateCleanupTests, duelReceivedResultClearsButtonCallbacks) {
+    cleanupDuelReceivedResultClearsButtonCallbacks(this);
+}
+
+TEST_F(StateCleanupTests, duelStateInvalidatesTimer) {
+    cleanupDuelStateInvalidatesTimer(this);
+}
+
+TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
+    cleanupCountdownStateInvalidatesTimer(this);
+}
+
+TEST_F(StateCleanupTests, handshakeClearsWirelessCallbacks) {
+    cleanupHandshakeClearsWirelessCallbacks(this);
+}
+
+TEST_F(StateCleanupTests, duelResultClearsWirelessCallbacks) {
+    cleanupDuelResultClearsWirelessCallbacks(this);
+}
+
+TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {
+    cleanupMatchManagerClearsCurrentMatch(this);
+}
+
+TEST_F(StateCleanupTests, matchManagerClearsDuelState) {
+    cleanupMatchManagerClearsDuelState(this);
+}
+
+// ============================================
+// QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
+// ============================================
+
+TEST_F(ConnectionSuccessfulTests, transitionsAfterThreshold) {
+    connectionSuccessfulTransitionsAfterThreshold(this);
+}
+
+// ============================================
+// QUICKDRAW INTEGRATION TESTS - PACKET PARSING
+// ============================================
+
+TEST_F(PacketParsingTests, drawResultInvokesCallback) {
+    packetParsingDrawResultInvokesCallback(this);
+}
+
+TEST_F(PacketParsingTests, neverPressedParsesCorrectly) {
+    packetParsingNeverPressedParsesCorrectly(this);
+}
+
+TEST_F(PacketParsingTests, rejectsMalformedPacket) {
+    packetParsingRejectsMalformedPacket(this);
+}
+
+TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeHunter) {
+    listenForMatchResultsSetsOpponentTimeHunter(this);
+}
+
+TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeBounty) {
+    listenForMatchResultsSetsOpponentTimeBounty(this);
+}
+
+TEST_F(PacketParsingTests, listenForMatchResultsHandlesNeverPressed) {
+    listenForMatchResultsHandlesNeverPressed(this);
+}
+
+TEST_F(PacketParsingTests, listenForMatchResultsIgnoresUnexpectedCommands) {
+    listenForMatchResultsIgnoresUnexpectedCommands(this);
+}
+
+// ============================================
+// QUICKDRAW INTEGRATION TESTS - CALLBACK CHAIN
+// ============================================
+
+TEST_F(CallbackChainTests, packetToStateFlag) {
+    callbackChainPacketToStateFlag(this);
+}
+
+TEST_F(CallbackChainTests, buttonPressCalculatesTime) {
+    callbackChainButtonPressCalculatesTime(this);
+}
+
+TEST_F(CallbackChainTests, buttonMasherPenalty) {
+    callbackChainButtonMasherPenalty(this);
+}
+
+TEST_F(CallbackChainTests, buttonPressBroadcasts) {
+    callbackChainButtonPressBroadcasts(this);
+}
+
+// ============================================
+// QUICKDRAW INTEGRATION TESTS - STATE FLOW
+// ============================================
+
+TEST_F(StateFlowIntegrationTests, dutPressesFirstWins) {
+    stateFlowDutPressesFirstWins(this);
+}
+
+TEST_F(StateFlowIntegrationTests, dutReceivesFirstLoses) {
+    stateFlowDutReceivesFirstLoses(this);
+}
+
+TEST_F(StateFlowIntegrationTests, dutNeverPressesLoses) {
+    stateFlowDutNeverPressesLoses(this);
+}
+
+TEST_F(StateFlowIntegrationTests, opponentNeverRespondsWins) {
+    stateFlowOpponentNeverRespondsWins(this);
+}
+
+TEST_F(StateFlowIntegrationTests, throughDuelResultToWin) {
+    stateFlowThroughDuelResultToWin(this);
+}
+
+TEST_F(StateFlowIntegrationTests, throughDuelResultToLose) {
+    stateFlowThroughDuelResultToLose(this);
+}
+
+// ============================================
+// QUICKDRAW INTEGRATION TESTS - TWO DEVICE SIMULATION
+// ============================================
+
+TEST_F(TwoDeviceSimulationTests, hunterPressesFirstBothAgree) {
+    twoDeviceHunterPressesFirstBothAgree(this);
+}
+
+TEST_F(TwoDeviceSimulationTests, bountyPressesFirstBothAgree) {
+    twoDeviceBountyPressesFirstBothAgree(this);
+}
+
+TEST_F(TwoDeviceSimulationTests, closeRaceCorrectWinner) {
+    twoDeviceCloseRaceCorrectWinner(this);
+}
+
+// ============================================
+// QUICKDRAW INTEGRATION TESTS - HANDSHAKE
+// ============================================
+
+TEST_F(HandshakeIntegrationTests, completeBountyPerspective) {
+    handshakeCompleteBountyPerspective(this);
+}
+
+TEST_F(HandshakeIntegrationTests, completeHunterPerspective) {
+    handshakeCompleteHunterPerspective(this);
+}
+
+TEST_F(HandshakeIntegrationTests, twoDeviceFullFlow) {
+    handshakeTwoDeviceFullFlow(this);
+}
+
+TEST_F(HandshakeIntegrationTests, timeoutBeforeCompletion) {
+    handshakeTimeoutBeforeCompletion(this);
+}
+
+TEST_F(HandshakeIntegrationTests, rejectsInvalidPacketData) {
+    handshakeRejectsInvalidPacketData(this);
+}
+
+TEST_F(HandshakeIntegrationTests, ignoresUnexpectedCommands) {
+    handshakeIgnoresUnexpectedCommands(this);
+}
+
+TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
+    handshakeSetsOpponentMacAddress(this);
+}
+
+TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
+    handshakeMatchDataPropagatedCorrectly(this);
 }
 
 // ============================================

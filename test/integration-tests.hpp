@@ -13,7 +13,7 @@
 // ============================================
 
 /**
- * Note: MatchManager is a singleton, so we simulate two-device scenarios by:
+ * Integration tests simulate two-device scenarios by:
  * 1. Setting up one device's perspective
  * 2. Serializing match data (simulating network transmission)
  * 3. Resetting and setting up the other device's perspective
@@ -23,7 +23,7 @@ class DuelIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {
         // Seed ID generator for reproducible tests
-        IdGenerator::GetInstance()->seed(54321);
+        IdGenerator idGenerator = IdGenerator(54321);
         
         // Create two players (simulating two different devices)
         hunter = new Player();
@@ -38,12 +38,13 @@ public:
         bounty->setName("BountyPlayer");
         bounty->setIsHunter(false);
 
-        // Get the singleton match manager
-        matchManager = MatchManager::GetInstance();
+        // Create MatchManager instance
+        matchManager = new MatchManager();
     }
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
+        delete matchManager;
         delete hunter;
         delete bounty;
     }
@@ -51,13 +52,13 @@ public:
     // Helper: Initialize match manager for hunter's device
     void initializeAsHunterDevice() {
         matchManager->clearCurrentMatch();
-        matchManager->initialize(hunter, &hunterStorage, &hunterPeerComms);
+        matchManager->initialize(hunter, &hunterStorage, &hunterPeerComms, &hunterWirelessManager);
     }
 
     // Helper: Initialize match manager for bounty's device
     void initializeAsBountyDevice() {
         matchManager->clearCurrentMatch();
-        matchManager->initialize(bounty, &bountyStorage, &bountyPeerComms);
+        matchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, &bountyWirelessManager);
     }
 
     Player* hunter;
@@ -67,10 +68,12 @@ public:
     // Hunter device mocks
     MockStorage hunterStorage;
     MockPeerComms hunterPeerComms;
+    MockQuickdrawWirelessManager hunterWirelessManager;
     
     // Bounty device mocks
     MockStorage bountyStorage;
     MockPeerComms bountyPeerComms;
+    MockQuickdrawWirelessManager bountyWirelessManager;
 };
 
 // ============================================
@@ -82,7 +85,7 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     const unsigned long BOUNTY_REACTION_MS = 300;
     
     // Generate match ID
-    char* matchId = IdGenerator::GetInstance()->generateId();
+    char* matchId = IdGenerator(54321).generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -165,7 +168,7 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 350;
     const unsigned long BOUNTY_REACTION_MS = 180;
     
-    char* matchId = IdGenerator::GetInstance()->generateId();
+    char* matchId = IdGenerator(54321).generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -220,8 +223,8 @@ inline void matchSerializationRoundTrip() {
     // Simulate creating a match on device A
     Match originalMatch(
         "abcdef12-3456-7890-abcd-ef1234567890",
-        "hunter00-0000-0000-0000-000000000001",
-        "bounty00-0000-0000-0000-000000000002"
+        "a0b1c2d3-0000-0000-0000-000000000001",
+        "b0a1b2c3-0000-0000-0000-000000000002"
     );
     originalMatch.setHunterDrawTime(225);
     originalMatch.setBountyDrawTime(310);

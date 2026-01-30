@@ -5,18 +5,22 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 
-Idle::Idle(Player* player) : State(IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(IDLE) {
+    this->matchManager = matchManager;
     this->player = player;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 Idle::~Idle() {
     player = nullptr;
+    matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 void Idle::onStateMounted(Device *PDN) {
 
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
-    MatchManager::GetInstance()->clearCurrentMatch();
+    quickdrawWirelessManager->clearCallbacks();
+    matchManager->clearCurrentMatch();
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
     
     AnimationConfig config;

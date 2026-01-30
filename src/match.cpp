@@ -32,11 +32,11 @@ void Match::setBountyDrawTime(unsigned long timeMs) {
 
 std::string Match::toJson() const
 {
-    LOG_I("Match", "Serializing JSON: %s", match_id.c_str());
-    LOG_I("Match", "Hunter: %s", hunter.c_str());
-    LOG_I("Match", "Bounty: %s", bounty.c_str());
-    LOG_I("Match", "Hunter draw time: %lu", hunter_draw_time_ms);
-    LOG_I("Match", "Bounty draw time: %lu", bounty_draw_time_ms);
+    // LOG_I("Match", "Serializing JSON: %s", match_id.c_str());
+    // LOG_I("Match", "Hunter: %s", hunter.c_str());
+    // LOG_I("Match", "Bounty: %s", bounty.c_str());
+    // LOG_I("Match", "Hunter draw time: %lu", hunter_draw_time_ms);
+    // LOG_I("Match", "Bounty draw time: %lu", bounty_draw_time_ms);
 
     JsonDocument doc;
     JsonObject matchObj = doc.to<JsonObject>();
@@ -50,12 +50,12 @@ std::string Match::toJson() const
     std::string json;
     serializeJson(matchObj, json);
 
-    LOG_I("Match", "Serialized JSON: %s", json.c_str());
+    // LOG_I("Match", "Serialized JSON: %s", json.c_str());
     return json;
 }
 
 void Match::fromJson(const std::string &json) {
-    LOG_I("Match", "Deserializing JSON: %s", json.c_str());
+    // LOG_I("Match", "Deserializing JSON: %s", json.c_str());
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
 
@@ -76,7 +76,7 @@ void Match::fromJson(const std::string &json) {
             bounty_draw_time_ms = doc[JSON_KEY_BOUNTY_TIME].as<unsigned long>();
         }
     } else {
-        LOG_E("Match", "Failed to parse JSON: %s", error.c_str());
+        // LOG_E("Match", "Failed to parse JSON: %s", error.c_str());
     }
 }
 
@@ -85,17 +85,17 @@ size_t Match::serialize(uint8_t* buffer) const {
     uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
     
     // Serialize match_id
-    IdGenerator::GetInstance()->uuidStringToBytes(match_id, uuidBytes);
+    IdGenerator::uuidStringToBytes(match_id, uuidBytes);
     memcpy(buffer + currentPos, uuidBytes, IdGenerator::UUID_BINARY_SIZE);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
     
     // Serialize hunter id
-    IdGenerator::GetInstance()->uuidStringToBytes(hunter, uuidBytes);
+    IdGenerator::uuidStringToBytes(hunter, uuidBytes);
     memcpy(buffer + currentPos, uuidBytes, IdGenerator::UUID_BINARY_SIZE);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
     
     // Serialize bounty id
-    IdGenerator::GetInstance()->uuidStringToBytes(bounty, uuidBytes);
+    IdGenerator::uuidStringToBytes(bounty, uuidBytes);
     memcpy(buffer + currentPos, uuidBytes, IdGenerator::UUID_BINARY_SIZE);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
     
@@ -114,17 +114,17 @@ size_t Match::deserialize(const uint8_t* buffer) {
     
     // Deserialize match_id
     memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
-    match_id = IdGenerator::GetInstance()->uuidBytesToString(uuidBytes);
+    match_id = IdGenerator::uuidBytesToString(uuidBytes);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
     
     // Deserialize hunter id
     memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
-    hunter = IdGenerator::GetInstance()->uuidBytesToString(uuidBytes);
+    hunter = IdGenerator::uuidBytesToString(uuidBytes);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
     
     // Deserialize bounty id
     memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
-    bounty = IdGenerator::GetInstance()->uuidBytesToString(uuidBytes);
+    bounty = IdGenerator::uuidBytesToString(uuidBytes);
     currentPos += IdGenerator::UUID_BINARY_SIZE;
     
     // Deserialize draw times

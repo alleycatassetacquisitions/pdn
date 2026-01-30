@@ -7,22 +7,24 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager) : State(DUEL_RECEIVED_RESULT) {
+DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL_RECEIVED_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 DuelReceivedResult::~DuelReceivedResult() {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
     player = nullptr;
     matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 void DuelReceivedResult::onStateMounted(Device *PDN) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
     buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
 
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
+    quickdrawWirelessManager->clearCallbacks();
 }
 
 void DuelReceivedResult::onStateLoop(Device *PDN) {
@@ -43,7 +45,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
         matchManager->setHunterDrawTime(pityTime) 
         : matchManager->setBountyDrawTime(pityTime);
         
-        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+        quickdrawWirelessManager->broadcastPacket(
             player->getOpponentMacAddress()->c_str(),
             QDCommand::NEVER_PRESSED,
             *matchManager->getCurrentMatch()

@@ -11,10 +11,11 @@ public:
     static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
-    static IdGenerator *GetInstance() {
-        static IdGenerator instance;
-        return &instance;
-    };
+    //UUID 
+    IdGenerator(unsigned long seed) : generator(seed) {
+        generator.setVersion4Mode();
+        generator.seed(seed, randomDevice());
+    }
 
     char *generateId() {
         generator.generate();
@@ -76,13 +77,6 @@ public:
 private:
     UUID generator;
     std::random_device randomDevice;
-
-    //UUID 
-    IdGenerator() : generator(randomDevice()) {
-        generator.setVersion4Mode();
-        generator.seed(randomDevice(), randomDevice());
-    }
-
     /**
      * Converts a single hexadecimal character to its numeric value (0-15).
      */

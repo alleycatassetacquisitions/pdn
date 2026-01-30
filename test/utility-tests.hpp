@@ -37,7 +37,7 @@ private:
 class UUIDTestSuite : public testing::Test {
 protected:
     void SetUp() override {
-        IdGenerator::GetInstance()->seed(42);
+        IdGenerator idGenerator = IdGenerator(42);
     }
 };
 
@@ -96,7 +96,7 @@ inline void uuidRoundTripPreservesData() {
 }
 
 inline void uuidGeneratorProducesValidFormat() {
-    char* uuid = IdGenerator::GetInstance()->generateId();
+    char* uuid = IdGenerator(42).generateId();
 
     std::string uuidStr(uuid);
     

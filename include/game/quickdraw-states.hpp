@@ -4,6 +4,7 @@
 #include "utils/simple-timer.hpp"
 #include "state/state.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -59,7 +60,7 @@ private:
 
 class FetchUserDataState : public State {
 public:
-    FetchUserDataState(Player* player, HttpClientInterface* httpClient);
+    FetchUserDataState(Player* player, HttpClientInterface* httpClient, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -72,6 +73,7 @@ public:
     void onStateDismounted(Device *PDN) override;
     
 private:
+    RemoteDebugManager* remoteDebugManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
@@ -208,7 +210,7 @@ private:
 
 class Idle : public State {
 public:
-    Idle(Player *player);
+    Idle(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
@@ -219,6 +221,8 @@ public:
 
 private:
     Player *player;
+    MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
@@ -309,7 +313,7 @@ private:
 
 class Duel : public State {
 public:
-    Duel(Player* player, MatchManager* matchManager);
+    Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~Duel();
 
     void onStateMounted(Device *PDN) override;
@@ -323,6 +327,7 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     parameterizedCallbackFunction buttonPress;
     bool transitionToDuelPushedState = false;
     bool transitionToIdleState = false;
@@ -351,7 +356,7 @@ private:
 
 class DuelReceivedResult : public State {
 public:
-    DuelReceivedResult(Player* player, MatchManager* matchManager);
+    DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelReceivedResult();
 
     void onStateMounted(Device *PDN) override;  
@@ -365,11 +370,12 @@ private:
     const int BUTTON_PUSH_GRACE_PERIOD = 750;
     Player* player;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
 };
 
 class DuelResult : public State {
 public:
-    DuelResult(Player* player, MatchManager* matchManager);
+    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelResult();
 
     void onStateMounted(Device *PDN) override;  
@@ -381,6 +387,7 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     bool wonBattle = false;
     bool captured = false;
 };
@@ -473,7 +480,7 @@ private:
 
 class BountySendConnectionConfirmedState : public BaseHandshakeState {
 public:
-    BountySendConnectionConfirmedState(Player* player);
+    BountySendConnectionConfirmedState(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~BountySendConnectionConfirmedState();
     void onQuickdrawCommandReceived(QuickdrawCommand command);
     void onStateMounted(Device *PDN) override;
@@ -483,6 +490,8 @@ public:
 
 private:
     Player* player;
+    MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     SimpleTimer delayTimer;
     const int delay = 100;
     bool transitionToConnectionSuccessfulState = false;
@@ -490,7 +499,7 @@ private:
 
 class HunterSendIdState : public BaseHandshakeState {
 public:
-    HunterSendIdState(Player *player);
+    HunterSendIdState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~HunterSendIdState();
 
     void onStateMounted(Device *PDN) override;
@@ -501,6 +510,8 @@ public:
 
 private:
     Player* player;
+    MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     SimpleTimer delayTimer;
     const int delay = 100;
     bool transitionToConnectionSuccessfulState = false;

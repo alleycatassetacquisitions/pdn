@@ -6,15 +6,18 @@
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager) : State(QuickdrawStateId::DUEL_RESULT), player(player), matchManager(matchManager) {
+DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT), player(player), matchManager(matchManager) {
     LOG_I(DUEL_RESULT_TAG, "Duel result state created for player %s (Hunter: %d)", 
              player->getUserID().c_str(), player->isHunter());
     this->matchManager = matchManager;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 DuelResult::~DuelResult() {
     LOG_I(DUEL_RESULT_TAG, "Duel result state destroyed");
     player = nullptr;
+    matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 void DuelResult::onStateMounted(Device *PDN) {
@@ -61,7 +64,7 @@ void DuelResult::onStateDismounted(Device *PDN) {
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
 
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
+    quickdrawWirelessManager->clearCallbacks();
              
     wonBattle = false;
     captured = false;

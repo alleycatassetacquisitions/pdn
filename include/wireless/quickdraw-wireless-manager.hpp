@@ -48,11 +48,12 @@ struct QuickdrawCommand {
 
 };
 
-typedef std::map<int, QuickdrawCommand> QDCommandTracker;
+using QDCommandTracker = std::map<int, QuickdrawCommand>;
 
 class QuickdrawWirelessManager {
 public:
-    static QuickdrawWirelessManager* GetInstance();
+    QuickdrawWirelessManager();
+    ~QuickdrawWirelessManager();
 
     void initialize(Player* player, PeerCommsInterface* peerComms, long broadcastCooldown);
 
@@ -75,8 +76,6 @@ public:
     void logPacket(QuickdrawCommand packet);
 
 private:
-    QuickdrawWirelessManager();
-
     PeerCommsInterface* peerComms;
 
     std::function<void(QuickdrawCommand)> packetReceivedCallback;

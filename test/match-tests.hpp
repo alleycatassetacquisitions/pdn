@@ -7,8 +7,6 @@
 class MatchTestSuite : public testing::Test {
 protected:
     void SetUp() override {
-        // Seed the ID generator for reproducible tests
-        IdGenerator::GetInstance()->seed(12345);
     }
 };
 

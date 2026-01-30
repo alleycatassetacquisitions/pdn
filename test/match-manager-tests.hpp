@@ -13,16 +13,16 @@
 class MatchManagerTestSuite : public testing::Test {
 protected:
     void SetUp() override {
-        // Get MatchManager instance
-        matchManager = MatchManager::GetInstance();
+        // Create MatchManager instance
+        matchManager = new MatchManager();
         
         // Create a test player
         player = new Player();
         char playerId[] = "test-player-uuid";
         player->setUserID(playerId);
         
-        // Initialize match manager with mocks
-        matchManager->initialize(player, &mockStorage, &mockPeerComms);
+        // Initialize match manager with mocks (4 parameters now)
+        matchManager->initialize(player, &mockStorage, &mockPeerComms, &mockWirelessManager);
         
         // Clear any existing match
         matchManager->clearCurrentMatch();
@@ -30,6 +30,7 @@ protected:
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
+        delete matchManager;
         delete player;
     }
 
@@ -37,6 +38,7 @@ protected:
     Player* player;
     MockStorage mockStorage;
     MockPeerComms mockPeerComms;
+    MockQuickdrawWirelessManager mockWirelessManager;
 };
 
 // ============================================

@@ -13,12 +13,12 @@ struct QuickdrawPacket {
     int command;
 } __attribute__((packed));
 
-QuickdrawWirelessManager *QuickdrawWirelessManager::GetInstance() {
-    static QuickdrawWirelessManager instance;
-    return &instance;
-}
-
 QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
+
+QuickdrawWirelessManager::~QuickdrawWirelessManager() {
+    player = nullptr;
+    peerComms = nullptr;
+}
 
 void QuickdrawWirelessManager::initialize(Player *player, PeerCommsInterface* peerComms, long broadcastDelay) {
     this->player = player;

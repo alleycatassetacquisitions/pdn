@@ -6,14 +6,18 @@
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, HttpClientInterface* httpClient) : State(QuickdrawStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, HttpClientInterface* httpClient, RemoteDebugManager* remoteDebugManager) : State(QuickdrawStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->httpClient = httpClient;
+    this->remoteDebugManager = remoteDebugManager;
 }   
 
 FetchUserDataState::~FetchUserDataState() {
     LOG_I(TAG, "Destroying FetchUserDataState");
+    remoteDebugManager = nullptr;
+    httpClient = nullptr;
+    player = nullptr;
 }   
 
 void FetchUserDataState::onStateMounted(Device *PDN) {
@@ -43,7 +47,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         userDataFetchTimer.invalidate();
         isFetchingUserData = false;
     } else if(player->getUserID() == BROADCAST_WIFI) { 
-        RemoteDebugManager::GetInstance()->BroadcastDebugPacket();
+        remoteDebugManager->BroadcastDebugPacket();
         transitionToPlayerRegistrationState = true;
         userDataFetchTimer.invalidate();
         isFetchingUserData = false;

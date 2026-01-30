@@ -5,18 +5,22 @@
 // Opening Handshake State for a Hunter. we have sent our mac address over serial and are waiting
 // for the opponent to send the match id and their user id.
 
-HunterSendIdState::HunterSendIdState(Player *player) : BaseHandshakeState(HUNTER_SEND_ID_STATE) {
+HunterSendIdState::HunterSendIdState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : BaseHandshakeState(HUNTER_SEND_ID_STATE) {
+    this->matchManager = matchManager;
     this->player = player;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 HunterSendIdState::~HunterSendIdState() {
     player = nullptr;
+    matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 
 void HunterSendIdState::onStateMounted(Device *PDN) {
     LOG_I("HUNTER_SEND_ID", "State mounted");
-    QuickdrawWirelessManager::GetInstance()->setPacketReceivedCallback(std::bind(&HunterSendIdState::onQuickdrawCommandReceived, this, std::placeholders::_1));
+    quickdrawWirelessManager->setPacketReceivedCallback(std::bind(&HunterSendIdState::onQuickdrawCommandReceived, this, std::placeholders::_1));
 }
 
 void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
@@ -52,7 +56,7 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         player->setOpponentMacAddress(command.wifiMacAddr);
         
         // Create new match with validated data
-        Match* newMatch = MatchManager::GetInstance()->createMatch(
+        Match* newMatch = matchManager->createMatch(
             command.match.getMatchId(),
             player->getUserID(),
             command.match.getBountyId()
@@ -66,7 +70,7 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         LOG_I("HUNTER_SEND_ID", "Created match with ID: %s", newMatch->getMatchId().c_str());
         
         try {
-            QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+            quickdrawWirelessManager->broadcastPacket(
                 *player->getOpponentMacAddress(),
                 HUNTER_RECEIVE_MATCH,
                 *newMatch
@@ -90,7 +94,7 @@ void HunterSendIdState::onStateDismounted(Device *PDN) {
     LOG_I("HUNTER_SEND_ID", "State dismounted");
     transitionToConnectionSuccessfulState = false;
     BaseHandshakeState::resetTimeout();
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
+    quickdrawWirelessManager->clearCallbacks();
 }
 
 bool HunterSendIdState::transitionToConnectionSuccessful() {

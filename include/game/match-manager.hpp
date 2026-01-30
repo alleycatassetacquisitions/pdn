@@ -30,7 +30,9 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    static MatchManager* GetInstance();
+
+    MatchManager();
+    ~MatchManager();
     /**
      * Creates a new active match
      * @param match_id UUID of the match
@@ -99,7 +101,7 @@ public:
 
     void listenForMatchResults(QuickdrawCommand command);
 
-    void initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms);
+    void initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms, QuickdrawWirelessManager* quickdrawWirelessManager);
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -110,9 +112,6 @@ protected:
 
 
 private:
-    MatchManager();
-    ~MatchManager();
-
 
     ActiveDuelState activeDuelState;
 
@@ -121,6 +120,7 @@ private:
 
     StorageInterface* storage;
     PeerCommsInterface* peerComms;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     /**
      * Appends a match to storage
      * @param match Match to save

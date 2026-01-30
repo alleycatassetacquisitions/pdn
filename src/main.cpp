@@ -62,14 +62,14 @@ Quickdraw* game = nullptr;
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
 
-void setupEspNow() {
+void setupEspNow(QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, PeerCommsInterface* peerCommsDriver) {
     // Register packet handlers
     peerCommsDriver->setPacketHandler(
         PktType::kQuickdrawCommand,
         [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
             ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
         },
-        QuickdrawWirelessManager::GetInstance()
+        quickdrawWirelessManager
     );
     
     peerCommsDriver->setPacketHandler(
@@ -77,7 +77,7 @@ void setupEspNow() {
         [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
             ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
         },
-        RemoteDebugManager::GetInstance()
+        remoteDebugManager
     );
 }
 
@@ -126,7 +126,7 @@ void setup() {
     // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
-    idGenerator = IdGenerator::GetInstance();
+    idGenerator = new IdGenerator(clockDriver->milliseconds());
     idGenerator->seed(clockDriver->milliseconds());
     player = new Player();
     player->setUserID(idGenerator->generateId());
@@ -134,15 +134,15 @@ void setup() {
     
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
-    quickdrawWirelessManager = QuickdrawWirelessManager::GetInstance();
+    quickdrawWirelessManager = new QuickdrawWirelessManager();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
-    remoteDebugManager = RemoteDebugManager::CreateInstance(peerCommsDriver);
+    remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
     quickdrawWirelessManager->initialize(player, peerCommsDriver, 1000);
     
-    game = new Quickdraw(player, pdn);
+    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
     
     pdn->getDisplay()->
     invalidateScreen()->

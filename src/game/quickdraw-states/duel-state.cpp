@@ -35,9 +35,10 @@ if (peekGameComms() == ZAP) {
     duelTimedOut = true;
   }
  */
-Duel::Duel(Player* player, MatchManager* matchManager) : State(DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL) {
     this->player = player;
     this->matchManager = matchManager;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
     LOG_I(DUEL_TAG, "Duel state created for player %s (Hunter: %d)", 
              player->getUserID().c_str(), player->isHunter());
 }
@@ -46,6 +47,7 @@ Duel::~Duel() {
     LOG_I(DUEL_TAG, "Duel state destroyed");
     this->player = nullptr;
     this->matchManager = nullptr;
+    this->quickdrawWirelessManager = nullptr;
 }
 
 void Duel::onStateMounted(Device *PDN) {
@@ -54,7 +56,7 @@ void Duel::onStateMounted(Device *PDN) {
 
     LOG_I(DUEL_TAG, "Setting up button handlers");
     
-    QuickdrawWirelessManager::GetInstance()->setPacketReceivedCallback(
+    quickdrawWirelessManager->setPacketReceivedCallback(
         std::bind(&MatchManager::listenForMatchResults, matchManager, std::placeholders::_1)
     );
 
@@ -102,32 +104,6 @@ void Duel::onStateLoop(Device *PDN) {
     if(duelTimer.expired()) {
         transitionToIdleState = true;
     }
-        // PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-        // PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
-        
-        // if(!hasReceivedDrawResult && !hasPressedButton) {
-        //     LOG_W(DUEL_TAG, "Duel timer expired with no results and no button press - transitioning to idle");
-        //     transitionToIdleState = true;
-        // } else if(hasReceivedDrawResult && !hasPressedButton) {
-        //     LOG_W(DUEL_TAG, "Duel timer expired with results but no button press - marking as timeout (-1)");
-            
-        //     player->isHunter() ?
-        //     MatchManager::GetInstance()->setHunterDrawTime(DUEL_NO_RESULT_TIME):
-        //     MatchManager::GetInstance()->setBountyDrawTime(DUEL_NO_RESULT_TIME);
-
-        //     QuickdrawWirelessManager::GetInstance()->broadcastPacket(
-        //         player->getOpponentMacAddress() ? *player->getOpponentMacAddress() : "",
-        //         QDCommand::DRAW_RESULT,
-        //         *MatchManager::GetInstance()->getCurrentMatch()
-        //     );
-
-        //     LOG_I(DUEL_TAG, "Transitioning to duel result state (timeout scenario)");
-        //     transitionToDuelReceivedResultState = true;
-        // } else if(!hasReceivedDrawResult && hasPressedButton) {
-        //     LOG_W(DUEL_TAG, "Duel timer expired with button press but no results - marking as timeout (-1)");
-        //     transitionToDuelReceivedResultState = true;
-        // }
-    // }
 }
 
 bool Duel::transitionToIdle() {

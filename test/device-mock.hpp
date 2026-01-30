@@ -12,6 +12,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
+#include "wireless/quickdraw-wireless-manager.hpp"
 #include <queue>
 #include <vector>
 
@@ -158,6 +159,12 @@ public:
     MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
 };
 
+// Mock QuickdrawWirelessManager for MatchManager tests
+class MockQuickdrawWirelessManager : public QuickdrawWirelessManager {
+public:
+    MockQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
+};
+
 // Fake light strip for LightManager
 class FakeLightStrip : public LightStrip {
 public:
@@ -172,28 +179,6 @@ public:
     void setFPS(uint8_t fps) override {}
     uint8_t getFPS() const override { return 0; }
 };
-
-// Test-specific implementations of LightManager to avoid animation dependencies
-// These implementations are only compiled in test builds
-#ifdef NATIVE_BUILD
-// Provide minimal LightManager implementation for tests
-inline LightManager::LightManager(LightStrip& pdnLights) : pdnLights(pdnLights), currentAnimation(nullptr) {}
-inline LightManager::~LightManager() {}
-inline void LightManager::loop() {}
-inline void LightManager::startAnimation(AnimationConfig config) {}
-inline void LightManager::stopAnimation() {}
-inline void LightManager::pauseAnimation() {}
-inline void LightManager::resumeAnimation() {}
-inline void LightManager::setGlobalBrightness(uint8_t brightness) {}
-inline void LightManager::clear() {}
-inline bool LightManager::isAnimating() const { return false; }
-inline bool LightManager::isPaused() const { return false; }
-inline bool LightManager::isAnimationComplete() const { return true; }
-inline AnimationType LightManager::getCurrentAnimation() const { return AnimationType::IDLE; }
-inline void LightManager::mapStateToGripLights(const LEDState& state) {}
-inline void LightManager::mapStateToDisplayLights(const LEDState& state) {}
-inline void LightManager::applyLEDState(const LEDState& state) {}
-#endif
 
 class MockDevice : public Device {
 public:

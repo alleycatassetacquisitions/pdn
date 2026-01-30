@@ -1,21 +1,13 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/logger.hpp"
 
-RemoteDebugManager* RemoteDebugManager::instance = nullptr;
-
-RemoteDebugManager* RemoteDebugManager::CreateInstance(PeerCommsInterface* peerComms) {
-    if (instance == nullptr) {
-        instance = new RemoteDebugManager(peerComms);
-    }
-    return instance;
-}
-
-RemoteDebugManager* RemoteDebugManager::GetInstance() {
-    return instance;
-}
 
 RemoteDebugManager::RemoteDebugManager(PeerCommsInterface* peerComms) {
     this->peerComms = peerComms;
+}
+
+RemoteDebugManager::~RemoteDebugManager() {
+    peerComms = nullptr;
 }
 
 void RemoteDebugManager::Initialize(std::string ssid, std::string password, std::string baseUrl) {

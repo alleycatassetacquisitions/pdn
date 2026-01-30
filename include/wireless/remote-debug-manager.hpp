@@ -38,8 +38,8 @@ struct DebugPacket {
 
 class RemoteDebugManager {
 public:
-    static RemoteDebugManager* GetInstance();
-    static RemoteDebugManager* CreateInstance(PeerCommsInterface* peerComms);
+    RemoteDebugManager(PeerCommsInterface* peerComms);
+    ~RemoteDebugManager();
 
     void Initialize(std::string ssid, std::string password, std::string baseUrl);
     
@@ -52,7 +52,6 @@ public:
     void ClearCallbacks();
 
 private:
-    RemoteDebugManager(PeerCommsInterface* peerComms);
     PeerCommsInterface* peerComms;
     DebugPacket debugPacket;
     

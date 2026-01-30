@@ -1,19 +1,19 @@
 #include "game/quickdraw-states.hpp"
 #include "id-generator.hpp"
-//
-// Created by Elli Furedy on 9/30/2024.
-//
-
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 
 
-BountySendConnectionConfirmedState::BountySendConnectionConfirmedState(Player *player) : BaseHandshakeState(BOUNTY_SEND_CC_STATE) {
+BountySendConnectionConfirmedState::BountySendConnectionConfirmedState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : BaseHandshakeState(BOUNTY_SEND_CC_STATE) {
+    this->matchManager = matchManager;
     this->player = player;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 BountySendConnectionConfirmedState::~BountySendConnectionConfirmedState() {
     player = nullptr;
+    matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 
@@ -37,7 +37,7 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
         return;
     }
 
-    std::string matchId = IdGenerator::GetInstance()->generateId();
+    std::string matchId = IdGenerator(SimpleTimer::getPlatformClock()->milliseconds()).generateId();
     if (matchId.empty()) {
         LOG_E("BOUNTY_SEND_CC", "Failed to generate match ID");
         return;
@@ -46,13 +46,13 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
     LOG_I("BOUNTY_SEND_CC", "Broadcasting packet with matchId: %s, bountyId: %s", 
              matchId.c_str(), bountyId.c_str());
     
-    QuickdrawWirelessManager::GetInstance()->setPacketReceivedCallback(
+    quickdrawWirelessManager->setPacketReceivedCallback(
         std::bind(&BountySendConnectionConfirmedState::onQuickdrawCommandReceived, this, std::placeholders::_1)
     );
 
     try {
         Match initialMatch(matchId, "", bountyId);  // Empty hunter ID initially
-        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+        quickdrawWirelessManager->broadcastPacket(
             *player->getOpponentMacAddress(),
             CONNECTION_CONFIRMED,
             initialMatch
@@ -98,14 +98,14 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
                  command.match.getHunterId().c_str(),
                  command.match.getBountyId().c_str());
 
-        Match* match = MatchManager::GetInstance()->receiveMatch(command.match);
+        Match* match = matchManager->receiveMatch(command.match);
         if (!match) {
             LOG_E("BOUNTY_SEND_CC", "Failed to receive match");
             return;
         }
 
         try {
-            QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+            quickdrawWirelessManager->broadcastPacket(
                 *player->getOpponentMacAddress(),
                 BOUNTY_FINAL_ACK,
                 *match
@@ -128,7 +128,7 @@ void BountySendConnectionConfirmedState::onStateDismounted(Device *PDN) {
     transitionToConnectionSuccessfulState = false;
     LOG_I("BOUNTY_SEND_CC", "State dismounted");
     BaseHandshakeState::resetTimeout();
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
+    quickdrawWirelessManager->clearCallbacks();
 }
 
 bool BountySendConnectionConfirmedState::transitionToConnectionSuccessful() {

@@ -3,8 +3,9 @@
 //
 #pragma once
 
-//Button Resources
+#include <functional>
 
+//Button Resources
 enum class ButtonIdentifier {
     PRIMARY_BUTTON = 0,
     SECONDARY_BUTTON = 1,
