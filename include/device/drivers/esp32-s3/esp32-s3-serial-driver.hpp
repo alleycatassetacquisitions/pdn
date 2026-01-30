@@ -75,7 +75,7 @@ class Esp32s3SerialOut : public SerialDriverInterface {
         Serial1.println(msg);
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         Serial1.println(msg.c_str());
     }
 
@@ -83,7 +83,7 @@ class Esp32s3SerialOut : public SerialDriverInterface {
         Serial1.flush();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
     }
 
@@ -154,7 +154,7 @@ public:
         Serial2.println(msg);
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         Serial2.println(msg.c_str());
     }
 
@@ -162,7 +162,7 @@ public:
         Serial2.flush();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
     }
 

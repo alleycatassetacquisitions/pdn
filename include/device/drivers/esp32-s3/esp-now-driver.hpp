@@ -44,7 +44,7 @@ public:
     // === PEER COMMS INTERFACE === //
 
     void exec() override {
-
+        // ESP-NOW uses interrupt-driven callbacks, no polling needed
     }
 
     void connect() override {
