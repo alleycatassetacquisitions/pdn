@@ -8,16 +8,16 @@
 
 class Esp32S3HapticsDriver : public HapticsMotorDriverInterface {
 public:
-    Esp32S3HapticsDriver(const std::string& name, int pinNumber) 
-        : HapticsMotorDriverInterface(name), pinNumber_(pinNumber), intensity_(0), active_(false) {
+    Esp32S3HapticsDriver(const std::string& name, int pin) 
+        : HapticsMotorDriverInterface(name), pinNumber(pin), intensity(0), active(false) {
     }
 
     ~Esp32S3HapticsDriver() override {
-        analogWrite(pinNumber_, 0);
+        analogWrite(pinNumber, 0);
     }
 
     int initialize() override {
-        pinMode(pinNumber_, OUTPUT);
+        pinMode(pinNumber, OUTPUT);
         return 0;
     }
 
@@ -26,35 +26,35 @@ public:
     }
 
     bool isOn() override {
-        return active_;
+        return active;
     }
 
     void max() override {
-        intensity_ = 255;
-        active_ = true;
-        analogWrite(pinNumber_, 255);
+        intensity = 255;
+        active = true;
+        analogWrite(pinNumber, 255);
     }
 
-    void setIntensity(int intensity) override {
-        if (intensity > 255) intensity_ = 255;
-        else if (intensity < 0) intensity_ = 0;
-        else intensity_ = intensity;
+    void setIntensity(int value) override {
+        if (value > 255) intensity = 255;
+        else if (value < 0) intensity = 0;
+        else intensity = value;
 
-        analogWrite(pinNumber_, intensity_);
+        analogWrite(pinNumber, intensity);
     }
 
     int getIntensity() override {
-        return intensity_;
+        return intensity;
     }
 
     void off() override {
-        intensity_ = 0;
-        active_ = false;
-        analogWrite(pinNumber_, 0);
+        intensity = 0;
+        active = false;
+        analogWrite(pinNumber, 0);
     }
 
 private:
-    int pinNumber_;
-    int intensity_;
-    bool active_;
+    int pinNumber;
+    int intensity;
+    bool active;
 };

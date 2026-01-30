@@ -30,7 +30,7 @@ constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 class EspNowManager : public PeerCommsDriverInterface
 {
 public:
-    static EspNowManager* CreateEspNowManager(std::string name) {
+    static EspNowManager* CreateEspNowManager(const std::string& name) {
         instance = new EspNowManager(name);
         return instance;
     }
@@ -205,11 +205,8 @@ public:
 private:
     static EspNowManager* instance;
 
-    EspNowManager(std::string name) :
-        PeerCommsDriverInterface(name),
-        m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
-        m_maxRetries(5),
-        m_curRetries(0)
+    explicit EspNowManager(const std::string& name) :
+        PeerCommsDriverInterface(name)
     {
 #if PDN_ENABLE_RSSI_TRACKING
         wifi_promiscuous_filter_t filter = {
@@ -455,7 +452,10 @@ private:
     }
 
     //Storage for packet handler callbacks and their user args
-    std::vector<std::pair<PacketCallback, void*> > m_pktHandlerCallbacks;
+    std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks{
+        static_cast<size_t>(PktType::kNumPacketTypes), 
+        std::pair<PacketCallback, void*>(nullptr, nullptr)
+    };
 
     //Handle received packet of a certain type
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
@@ -487,8 +487,8 @@ private:
     }
 
     //Storage for retry handling
-    uint8_t m_maxRetries;
-    uint8_t m_curRetries;
+    uint8_t m_maxRetries = 5;
+    uint8_t m_curRetries = 0;
 
     //Send queue stores packets to send using DataSendBuffer
     struct DataSendBuffer

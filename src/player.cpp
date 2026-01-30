@@ -163,39 +163,39 @@ std::string Player::getUserID() const
 }
 
 void Player::setCurrentMatchId(const std::string& matchId) {
-    currentMatchId_ = matchId;
+    currentMatchId = matchId;
 }
 
 std::string& Player::getCurrentMatchId() {
-    return currentMatchId_;
+    return currentMatchId;
 }
 
 const std::string& Player::getCurrentMatchId() const {
-    return currentMatchId_;
+    return currentMatchId;
 }
 
-void Player::setCurrentOpponentId(const std::string& opponentId) {
-    currentOpponentId_ = opponentId;
+void Player::setCurrentOpponentId(const std::string& opponentIdParam) {
+    currentOpponentId = opponentIdParam;
 }
 
 std::string& Player::getCurrentOpponentId() {
-    return currentOpponentId_;
+    return currentOpponentId;
 }
 
 const std::string& Player::getCurrentOpponentId() const {
-    return currentOpponentId_;
+    return currentOpponentId;
 }
 
 void Player::setOpponentMacAddress(const std::string& macAddress) {
-    opponentMacAddress_ = macAddress;
+    opponentMacAddress = macAddress;
 }
 
 std::string& Player::getOpponentMacAddress() {
-    return opponentMacAddress_;
+    return opponentMacAddress;
 }
 
 const std::string& Player::getOpponentMacAddress() const {
-    return opponentMacAddress_;
+    return opponentMacAddress;
 }
 
 unsigned long Player::getLastReactionTime() {

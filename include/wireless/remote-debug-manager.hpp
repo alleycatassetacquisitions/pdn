@@ -38,12 +38,12 @@ struct DebugPacket {
 
 class RemoteDebugManager {
 public:
-    RemoteDebugManager(PeerCommsInterface* peerComms);
+    explicit RemoteDebugManager(PeerCommsInterface* peerComms);
     ~RemoteDebugManager();
 
-    void Initialize(std::string ssid, std::string password, std::string baseUrl);
+    void Initialize(const std::string& ssid, const std::string& password, const std::string& baseUrl);
     
-    void SetPacketReceivedCallback(std::function<void(DebugPacket)> callback);
+    void SetPacketReceivedCallback(const std::function<void(DebugPacket)>& callback);
     
     int ProcessDebugPacket(const uint8_t* srcMacAddr, const uint8_t* data, const size_t dataLen);
     

@@ -135,8 +135,8 @@ public:
     }
 
     //Checks if the currently received String message is a part of the set of valid messages.
-    bool isMessageValidForState(std::string *msg) {
-        bool isValid = validStringMessages.find(*msg) != validStringMessages.end();
+    bool isMessageValidForState(const std::string& msg) {
+        bool isValid = validStringMessages.find(msg) != validStringMessages.end();
         return isValid;
     }
 
@@ -146,7 +146,7 @@ public:
      */
     std::string *waitForValidMessage(Device *PDN) {
         while (PDN->commsAvailable()) {
-            if (!isMessageValidForState(PDN->peekComms())) {
+            if (!isMessageValidForState(*PDN->peekComms())) {
                 PDN->readString();
             } else {
                 return new std::string(PDN->readString());

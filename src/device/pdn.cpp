@@ -83,6 +83,6 @@ StorageInterface* PDN::getStorage() {
     return storage;
 }
 
-void PDN::setDeviceId(std::string id) {
+void PDN::setDeviceId(const std::string& id) {
     deviceId = id;
 }

@@ -5,7 +5,7 @@
 
 class NativeLightStripDriver : public LightDriverInterface {
 public:
-    NativeLightStripDriver(std::string name) : LightDriverInterface(name) {
+    explicit NativeLightStripDriver(const std::string& name) : LightDriverInterface(name) {
         clear();
     }
 

@@ -9,12 +9,12 @@ using DriverConfig = std::map<std::string, DriverInterface*, std::less<>>;
 
 class DriverManager {
     public:
-    explicit DriverManager(const DriverConfig& driverConfig) : driverConfig_(driverConfig) {}
+    explicit DriverManager(const DriverConfig& config) : driverConfig(config) {}
 
     ~DriverManager() = default;
 
     int initialize() {
-        for(auto& driver : driverConfig_) {
+        for(auto& driver : driverConfig) {
             if(driver.second->initialize() != 0) {
                 return 990 + static_cast<int>(driver.second->type); //Return 990 + driver type to indicate failure
             }
@@ -24,18 +24,18 @@ class DriverManager {
     }
 
     void execDrivers() {
-        for(auto& driver : driverConfig_) {
+        for(auto& driver : driverConfig) {
             driver.second->exec();
         }
     }
 
     void dismountDrivers() {
-        for(auto& driver : driverConfig_) {
+        for(auto& driver : driverConfig) {
             delete driver.second;
         }
-        driverConfig_.clear();
+        driverConfig.clear();
     }
 
-    private:
-    DriverConfig driverConfig_;
+private:
+    DriverConfig driverConfig;
 };

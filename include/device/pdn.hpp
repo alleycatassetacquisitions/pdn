@@ -35,7 +35,7 @@ public:
 
     void onStateChange() override;
 
-    void setDeviceId(std::string deviceId) override;
+    void setDeviceId(const std::string& deviceId) override;
 
     std::string getDeviceId() override;
 
