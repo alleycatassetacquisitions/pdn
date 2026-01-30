@@ -41,11 +41,8 @@ struct QuickdrawCommand {
 
     QuickdrawCommand() : command(0), match(), wifiMacAddr("") {}
 
-    QuickdrawCommand(std::string macAddress, int command, Match match) :
-        command(command), match(match), wifiMacAddr(macAddress) {    }
-
-
-
+    QuickdrawCommand(const std::string& macAddress, int command, const Match& match) :
+        command(command), match(match), wifiMacAddr(macAddress) {}
 };
 
 using QDCommandTracker = std::map<int, QuickdrawCommand>;
@@ -59,7 +56,7 @@ public:
 
     int processQuickdrawCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
-    void setPacketReceivedCallback(std::function<void(QuickdrawCommand)> callback);
+    void setPacketReceivedCallback(const std::function<void(QuickdrawCommand)>& callback);
 
     int broadcastPacket(const std::string& macAddress, 
                        int command, 

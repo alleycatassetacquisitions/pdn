@@ -71,7 +71,7 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         
         try {
             quickdrawWirelessManager->broadcastPacket(
-                *player->getOpponentMacAddress(),
+                player->getOpponentMacAddress(),
                 HUNTER_RECEIVE_MATCH,
                 *newMatch
             );

@@ -30,7 +30,7 @@ void QuickdrawWirelessManager::clearCallbacks() {
     packetReceivedCallback = nullptr;
 }
 
-void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (QuickdrawCommand)> callback) {
+void QuickdrawWirelessManager::setPacketReceivedCallback(const std::function<void (QuickdrawCommand)>& callback) {
     packetReceivedCallback = callback;
 }
 

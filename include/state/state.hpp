@@ -32,8 +32,8 @@ class StateTransition {
 public:
     // Constructor
     StateTransition(std::function<bool()> condition, State *nextState)
-        : condition(condition), nextState(nextState) {
-    };
+        : condition(std::move(condition)), nextState(nextState) {
+    }
 
     // Method to check if the transition condition is met
     bool isConditionMet() const {
@@ -75,17 +75,17 @@ public:
 class State {
 public:
     virtual ~State() {
-        validStringMessages.erase(validStringMessages.begin(), validStringMessages.end());
-        responseStringMessages.erase(responseStringMessages.begin(), responseStringMessages.end());
-        transitions.erase(transitions.begin(), transitions.end());
-    };
+        validStringMessages.clear();
+        responseStringMessages.clear();
+        transitions.clear();
+    }
 
     explicit State(int stateId): name(stateId) {
     }
 
     void addTransition(StateTransition *transition) {
         transitions.push_back(transition);
-    };
+    }
 
     State *checkTransitions() {
         for (StateTransition *transition: transitions) {
@@ -94,18 +94,21 @@ public:
             }
         }
         return nullptr;
-    };
+    }
 
-    int getStateId() const { return name.id; };
+    int getStateId() const { return name.id; }
 
     virtual void onStateMounted(Device *PDN) {
-    };
+        // Override in derived classes
+    }
 
     virtual void onStateLoop(Device *PDN) {
-    };
+        // Override in derived classes
+    }
 
     virtual void onStateDismounted(Device *PDN) {
-    };
+        // Override in derived classes
+    }
 
     virtual bool isTerminalState() {
         return false;
@@ -116,20 +119,20 @@ public:
      * Any message that is received that is *not* in this set
      * will be discarded.
      */
-    virtual void registerValidMessages(std::vector<const std::string *> msgs) {
-        for (auto msg: msgs) {
+    virtual void registerValidMessages(const std::vector<const std::string *>& msgs) {
+        for (const auto* msg: msgs) {
             validStringMessages.insert(*msg);
         }
-    };
+    }
 
     /*
      * This method registers valid messages that can be *sent* during this state's lifecycle.
      */
-    virtual void registerResponseMessage(std::vector<const std::string *> msgs) {
-        for (int i = 0; i < msgs.size(); i++) {
+    virtual void registerResponseMessage(const std::vector<const std::string *>& msgs) {
+        for (size_t i = 0; i < msgs.size(); i++) {
             responseStringMessages.push_back(*msgs.at(i));
         }
-    };
+    }
 
     //Checks if the currently received String message is a part of the set of valid messages.
     bool isMessageValidForState(std::string *msg) {

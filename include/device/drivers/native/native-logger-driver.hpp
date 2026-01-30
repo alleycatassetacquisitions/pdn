@@ -7,7 +7,7 @@
 
 class NativeLoggerDriver : public LoggerDriverInterface {
 public:
-    NativeLoggerDriver(std::string name) : LoggerDriverInterface(name) {}
+    explicit NativeLoggerDriver(const std::string& name) : LoggerDriverInterface(name) {}
 
     ~NativeLoggerDriver() override = default;
 

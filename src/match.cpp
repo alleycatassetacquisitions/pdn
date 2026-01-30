@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 #include <string.h> // for memcpy
 
-Match::Match(std::string match_id, std::string hunter_id, std::string bounty_id) 
+Match::Match(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id) 
     : match_id(match_id), hunter(hunter_id), bounty(bounty_id), hunter_draw_time_ms(0), bounty_draw_time_ms(0) {
 }
 
@@ -12,7 +12,7 @@ Match::Match(){
     setupMatch("", "", "");
 }
 
-void Match::setupMatch(std::string id, std::string hunter, std::string bounty)
+void Match::setupMatch(const std::string& id, const std::string& hunter, const std::string& bounty)
 {
     match_id = id;
     this->hunter = hunter;

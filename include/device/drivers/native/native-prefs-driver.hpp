@@ -6,7 +6,7 @@
 
 class NativePrefsDriver : public StorageDriverInterface {
 public:
-    NativePrefsDriver(std::string name) : StorageDriverInterface(name) {}
+    explicit NativePrefsDriver(const std::string& name) : StorageDriverInterface(name) {}
 
     ~NativePrefsDriver() override = default;
 

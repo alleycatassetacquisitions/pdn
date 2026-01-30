@@ -46,7 +46,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
         : matchManager->setBountyDrawTime(pityTime);
         
         quickdrawWirelessManager->broadcastPacket(
-            player->getOpponentMacAddress()->c_str(),
+            player->getOpponentMacAddress(),
             QDCommand::NEVER_PRESSED,
             *matchManager->getCurrentMatch()
         );

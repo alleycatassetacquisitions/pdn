@@ -2,7 +2,7 @@
 #include <memory>
 #include <ArduinoJson.h>
 
-Player::Player(const std::string id, const Allegiance allegiance, const bool isHunter) :
+Player::Player(const std::string& id, Allegiance allegiance, bool isHunter) :
   id(id),
   allegiance(allegiance),
   hunter(isHunter)
@@ -162,28 +162,40 @@ std::string Player::getUserID() const
     return id;
 }
 
-void Player::setCurrentMatchId(std::string matchId) {
-    *currentMatchId = matchId;
+void Player::setCurrentMatchId(const std::string& matchId) {
+    currentMatchId_ = matchId;
 }
 
-std::string* Player::getCurrentMatchId() {
-    return currentMatchId;
+std::string& Player::getCurrentMatchId() {
+    return currentMatchId_;
 }
 
-void Player::setCurrentOpponentId(std::string opponentId) {
-    *currentOpponentId = opponentId;
+const std::string& Player::getCurrentMatchId() const {
+    return currentMatchId_;
 }
 
-std::string* Player::getCurrentOpponentId() {
-    return currentOpponentId;
+void Player::setCurrentOpponentId(const std::string& opponentId) {
+    currentOpponentId_ = opponentId;
 }
 
-void Player::setOpponentMacAddress(std::string macAddress) {
-    *opponentMacAddress = macAddress;
+std::string& Player::getCurrentOpponentId() {
+    return currentOpponentId_;
 }
 
-std::string* Player::getOpponentMacAddress() {
-    return opponentMacAddress;
+const std::string& Player::getCurrentOpponentId() const {
+    return currentOpponentId_;
+}
+
+void Player::setOpponentMacAddress(const std::string& macAddress) {
+    opponentMacAddress_ = macAddress;
+}
+
+std::string& Player::getOpponentMacAddress() {
+    return opponentMacAddress_;
+}
+
+const std::string& Player::getOpponentMacAddress() const {
+    return opponentMacAddress_;
 }
 
 unsigned long Player::getLastReactionTime() {
