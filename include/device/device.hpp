@@ -10,15 +10,20 @@
 
 class Device : public DeviceSerial {
 public:
+    // Delete copy and move operations (Rule of 5)
+    Device(const Device&) = delete;
+    Device& operator=(const Device&) = delete;
+    Device(Device&&) = delete;
+    Device& operator=(Device&&) = delete;
 
     ~Device() override {
-        driverManager.dismountDrivers();
+        driverManager_.dismountDrivers();
     }
 
     virtual int begin() = 0;
 
     virtual void loop() {
-        driverManager.execDrivers();
+        driverManager_.execDrivers();
     }
 
     virtual void onStateChange() = 0;
@@ -37,10 +42,13 @@ public:
     virtual StorageInterface* getStorage() = 0;
 
 protected:
-
-    Device(DriverConfig deviceConfig) : driverManager(deviceConfig) {
-        driverManager.initialize();
+    explicit Device(const DriverConfig& deviceConfig) : driverManager_(deviceConfig) {
+        driverManager_.initialize();
     }
 
-    DriverManager driverManager;
+    DriverManager& getDriverManager() { return driverManager_; }
+    const DriverManager& getDriverManager() const { return driverManager_; }
+
+private:
+    DriverManager driverManager_;
 };

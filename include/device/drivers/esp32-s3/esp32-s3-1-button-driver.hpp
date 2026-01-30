@@ -8,9 +8,10 @@
 
 class Esp32S31ButtonDriver : public ButtonDriverInterface {
     public:
-    Esp32S31ButtonDriver(std::string name, int buttonPin) : ButtonDriverInterface(name), button(buttonPin, true, true) {}
+    Esp32S31ButtonDriver(const std::string& name, int buttonPin) 
+        : ButtonDriverInterface(name), button_(buttonPin, true, true) {}
 
-    ~Esp32S31ButtonDriver() override {}
+    ~Esp32S31ButtonDriver() override = default;
 
     int initialize() override {
         return 0;
@@ -19,31 +20,31 @@ class Esp32S31ButtonDriver : public ButtonDriverInterface {
     void setButtonPress(callbackFunction newFunction, ButtonInteraction interactionType = ButtonInteraction::PRESS) override {
         switch(interactionType) {
             case ButtonInteraction::PRESS: {
-                button.attachPress(newFunction);
+                button_.attachPress(newFunction);
                 break;
             }
             case ButtonInteraction::CLICK: {
-                button.attachClick(newFunction);
+                button_.attachClick(newFunction);
                 break;
             }
             case ButtonInteraction::DOUBLE_CLICK: {
-                button.attachDoubleClick(newFunction);
+                button_.attachDoubleClick(newFunction);
                 break;
             }
             case ButtonInteraction::MULTI_CLICK: {
-                button.attachMultiClick(newFunction);
+                button_.attachMultiClick(newFunction);
                 break;
             }
             case ButtonInteraction::LONG_PRESS: {
-                button.attachLongPressStart(newFunction);
+                button_.attachLongPressStart(newFunction);
                 break;
             }
             case ButtonInteraction::DURING_LONG_PRESS: {
-                button.attachDuringLongPress(newFunction);
+                button_.attachDuringLongPress(newFunction);
                 break;
             }
             case ButtonInteraction::RELEASE: {
-                button.attachLongPressStop(newFunction);
+                button_.attachLongPressStop(newFunction);
                 break;
             }
         }
@@ -52,52 +53,52 @@ class Esp32S31ButtonDriver : public ButtonDriverInterface {
     void setButtonPress(parameterizedCallbackFunction newFunction, void* parameter, ButtonInteraction interactionType = ButtonInteraction::PRESS) override {
         switch(interactionType) {
             case ButtonInteraction::PRESS: {
-                button.attachPress(newFunction, parameter);
+                button_.attachPress(newFunction, parameter);
                 break;
             }
             case ButtonInteraction::CLICK: {
-                button.attachClick(newFunction, parameter);
+                button_.attachClick(newFunction, parameter);
                 break;
             }
             case ButtonInteraction::DOUBLE_CLICK: {
-                button.attachDoubleClick(newFunction, parameter);
+                button_.attachDoubleClick(newFunction, parameter);
                 break;
             }
             case ButtonInteraction::MULTI_CLICK: {
-                button.attachMultiClick(newFunction, parameter);
+                button_.attachMultiClick(newFunction, parameter);
                 break;
             }
             case ButtonInteraction::LONG_PRESS: {
-                button.attachLongPressStart(newFunction, parameter);
+                button_.attachLongPressStart(newFunction, parameter);
                 break;
             }
             case ButtonInteraction::DURING_LONG_PRESS: {
-                button.attachDuringLongPress(newFunction, parameter);
+                button_.attachDuringLongPress(newFunction, parameter);
                 break;
             }
             case ButtonInteraction::RELEASE: {
-                button.attachLongPressStop(newFunction, parameter);
+                button_.attachLongPressStop(newFunction, parameter);
                 break;
             }
         }
     }
 
     void removeButtonCallbacks() override {
-        button.reset();
+        button_.reset();
     }
 
     void exec() override {
-        button.tick();
+        button_.tick();
     }
 
     bool isLongPressed() override {
-        return button.isLongPressed();
+        return button_.isLongPressed();
     }
 
     unsigned long longPressedMillis() override {
-        return button.getPressedMs();
+        return button_.getPressedMs();
     }
 
 private:
-    OneButton button;
+    OneButton button_;
 };

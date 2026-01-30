@@ -61,9 +61,9 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         print(STRING_TERM);
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         const char* str = msg.c_str();
-        for(int i = 0; i < msg.length(); i++) {
+        for(size_t i = 0; i < msg.length(); i++) {
             print(str[i]);
         }
         print(STRING_TERM);
@@ -73,7 +73,7 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         msgQueue.clear();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
     }
 

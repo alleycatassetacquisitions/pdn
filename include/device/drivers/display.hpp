@@ -17,8 +17,7 @@ enum class FontMode {
 
 class Display {
 public:
-
-    virtual ~Display() {}
+    virtual ~Display() = default;
 
     virtual Display* invalidateScreen() = 0;
 
@@ -38,6 +37,6 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
-protected:
-    Cursor cursor;
+private:
+    Cursor cursor_;
 };

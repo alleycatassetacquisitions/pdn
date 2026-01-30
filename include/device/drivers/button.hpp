@@ -21,12 +21,12 @@ enum class ButtonInteraction {
     RELEASE = 6
 };
 
-typedef void (*callbackFunction)();
-typedef void (*parameterizedCallbackFunction)(void *);
+using callbackFunction = void (*)();
+using parameterizedCallbackFunction = void (*)(void*);
 
 class Button {
     public:
-    virtual ~Button() {}
+    virtual ~Button() = default;
 
     virtual void setButtonPress(callbackFunction newFunction, ButtonInteraction interactionType = ButtonInteraction::PRESS) = 0;
     

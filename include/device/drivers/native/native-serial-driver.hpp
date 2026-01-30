@@ -62,7 +62,7 @@ public:
         outputBuffer_ += '\n';
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         outputBuffer_ += msg;
         outputBuffer_ += '\n';
     }
@@ -72,7 +72,7 @@ public:
         outputBuffer_.clear();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback_ = callback;
     }
 

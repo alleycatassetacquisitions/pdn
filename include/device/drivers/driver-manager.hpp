@@ -3,17 +3,18 @@
 #include "driver-interface.hpp"
 #include <map>
 #include <utility>
+#include <functional>
 
-using DriverConfig = std::map<std::string, DriverInterface*>;
+using DriverConfig = std::map<std::string, DriverInterface*, std::less<>>;
 
 class DriverManager {
     public:
-    DriverManager(DriverConfig driverConfig) : driverConfig(driverConfig) {}
+    explicit DriverManager(const DriverConfig& driverConfig) : driverConfig_(driverConfig) {}
 
-    ~DriverManager() {}
+    ~DriverManager() = default;
 
     int initialize() {
-        for(auto& driver : driverConfig) {
+        for(auto& driver : driverConfig_) {
             if(driver.second->initialize() != 0) {
                 return 990 + static_cast<int>(driver.second->type); //Return 990 + driver type to indicate failure
             }
@@ -23,19 +24,18 @@ class DriverManager {
     }
 
     void execDrivers() {
-        for(auto& driver : driverConfig) {
+        for(auto& driver : driverConfig_) {
             driver.second->exec();
         }
     }
 
     void dismountDrivers() {
-        for(auto& driver : driverConfig) {
+        for(auto& driver : driverConfig_) {
             delete driver.second;
-            driverConfig.erase(driver.first);
         }
-        driverConfig.clear();
+        driverConfig_.clear();
     }
 
     private:
-    DriverConfig driverConfig;
+    DriverConfig driverConfig_;
 };
