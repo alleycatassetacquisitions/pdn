@@ -1,26 +1,27 @@
-#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "wireless/esp-now-comms.hpp"
 #include "game/match-manager.hpp"
-#include <esp_log.h>
+#include "device/drivers/logger.hpp"
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager) : State(QuickdrawStateId::DUEL_RESULT), player(player), matchManager(matchManager) {
-    ESP_LOGI(DUEL_RESULT_TAG, "Duel result state created for player %s (Hunter: %d)", 
+DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT), player(player), matchManager(matchManager) {
+    LOG_I(DUEL_RESULT_TAG, "Duel result state created for player %s (Hunter: %d)", 
              player->getUserID().c_str(), player->isHunter());
     this->matchManager = matchManager;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 DuelResult::~DuelResult() {
-    ESP_LOGI(DUEL_RESULT_TAG, "Duel result state destroyed");
+    LOG_I(DUEL_RESULT_TAG, "Duel result state destroyed");
     player = nullptr;
+    matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 void DuelResult::onStateMounted(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_TAG, "Duel result state mounted");
+    LOG_I(DUEL_RESULT_TAG, "Duel result state mounted");
 
     player->incrementMatchesPlayed();
 
@@ -34,7 +35,7 @@ void DuelResult::onStateMounted(Device *PDN) {
         player->incrementLosses();
     }
 
-    PDN->setVibration(0);
+    PDN->getHaptics()->setIntensity(0);
 
     // Store reaction time before finalizing match
     if(player->isHunter()) {
@@ -46,7 +47,7 @@ void DuelResult::onStateMounted(Device *PDN) {
     // Now it's safe to finalize the match, which might clear the current match
     matchManager->finalizeMatch();
 
-    PDN->invalidateScreen()->render();
+    PDN->getDisplay()->invalidateScreen()->render();
 }
 
 void DuelResult::onStateLoop(Device *PDN) {
@@ -54,32 +55,32 @@ void DuelResult::onStateLoop(Device *PDN) {
 }
 
 void DuelResult::onStateDismounted(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_TAG, "Duel result state dismounted - Cleaning up");
+    LOG_I(DUEL_RESULT_TAG, "Duel result state dismounted - Cleaning up");
     
     // Log state before reset
-    ESP_LOGI(DUEL_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d",
+    LOG_I(DUEL_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d",
              wonBattle, captured);
 
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
+    quickdrawWirelessManager->clearCallbacks();
              
     wonBattle = false;
     captured = false;
-    PDN->stopAnimation();
+    PDN->getLightManager()->stopAnimation();
 }
 
 bool DuelResult::transitionToWin() {
     if (wonBattle) {
-        ESP_LOGI(DUEL_RESULT_TAG, "Transitioning to win state");
+        LOG_I(DUEL_RESULT_TAG, "Transitioning to win state");
     }
     return wonBattle;
 }
 
 bool DuelResult::transitionToLose() {
     if (captured) {
-        ESP_LOGI(DUEL_RESULT_TAG, "Transitioning to lose state");
+        LOG_I(DUEL_RESULT_TAG, "Transitioning to lose state");
     }
     return captured;
 }

@@ -1,35 +1,35 @@
 #pragma once
 
-#include "device.hpp"
-#include "player.hpp"
-#include "match.hpp"
-#include "state-machine.hpp"
-#include "quickdraw-states.hpp"
-#include "quickdraw-resources.hpp"
-#include "wireless/wireless-manager.hpp"
+#include "device/device.hpp"
+#include "game/player.hpp"
+#include "game/match.hpp"
+#include "state/state-machine.hpp"
+#include "game/quickdraw-states.hpp"
+#include "game/quickdraw-resources.hpp"
+#include "device/drivers/http-client-interface.hpp"
+#include "device/drivers/storage-interface.hpp"
+#include "wireless/remote-debug-manager.hpp"
+
 #define MATCH_SIZE sizeof(Match)
-
-// Global includes
-
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN, WirelessManager* wirelessManager);
-
+    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager);
     ~Quickdraw();
 
     void populateStateMap() override;
-
     static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
     
-    // Add getter for WirelessManager
-    WirelessManager* getWirelessManager() { return wirelessManager; }
+    HttpClientInterface* getHttpClient() { return httpClient; }
 
 private:
-
     std::vector<Match> matches;
     int numMatches = 0;
     MatchManager* matchManager;
     Player *player;
-    WirelessManager* wirelessManager;
+    HttpClientInterface* httpClient;
+    StorageInterface* storageManager;
+    PeerCommsInterface* peerComms;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
+    RemoteDebugManager* remoteDebugManager;
 };

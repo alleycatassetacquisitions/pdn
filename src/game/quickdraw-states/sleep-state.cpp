@@ -4,9 +4,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include <string>
-#include <clib/u8x8.h>
 #include "game/quickdraw-requests.hpp"
-#include <esp_log.h>
 
 #define TAG "SleepState"
 
@@ -53,7 +51,7 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(Device *PDN) {
-    PDN->
+    PDN->getDisplay()->
         invalidateScreen()->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
@@ -70,6 +68,10 @@ void Sleep::onStateLoop(Device *PDN) {
         transitionToAwakenSequenceState = true;
     }
 
+    // TODO: Convert this breathing effect to use the new animation system
+    // The old direct LED control API (setLight) has been removed in favor of animations
+    // This breathing effect should be implemented as a proper Animation class
+    /*
     EVERY_N_MILLIS(16) {
         if (breatheUp) {
             ledBrightness++;
@@ -85,9 +87,10 @@ void Sleep::onStateLoop(Device *PDN) {
             breatheUp = true;
         }
 
-        CRGB color = ColorFromPalette(bountyColors, random8(), pwm_val, LINEARBLEND);
-        PDN->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, LEDColor(color.r, color.g, color.b));
+        LEDColor color = bountyColors[random8()];
+        PDN->getLightManager()->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
     }
+    */
 }
 
 void Sleep::onStateDismounted(Device *PDN) {

@@ -1,49 +1,51 @@
-#include "device/pdn.hpp"
+
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include <esp_log.h>
+#include "device/drivers/logger.hpp"
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager) : State(DUEL_RECEIVED_RESULT) {
+DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL_RECEIVED_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
+    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 DuelReceivedResult::~DuelReceivedResult() {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
+    LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
     player = nullptr;
     matchManager = nullptr;
+    quickdrawWirelessManager = nullptr;
 }
 
 void DuelReceivedResult::onStateMounted(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
+    LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
     buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
 
-    QuickdrawWirelessManager::GetInstance()->clearCallbacks();
+    quickdrawWirelessManager->clearCallbacks();
 }
 
 void DuelReceivedResult::onStateLoop(Device *PDN) {
     if(matchManager->getHasPressedButton()) {
-        PDN->setVibration(0);
+        PDN->getHaptics()->setIntensity(0);
     }
 
     buttonPushGraceTimer.updateTime();
 
     if(buttonPushGraceTimer.expired()) {
-        ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
+        LOG_I(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
 
         matchManager->setNeverPressed();
 
-        unsigned long pityTime = millis() - matchManager->getDuelLocalStartTime();
+        unsigned long pityTime = SimpleTimer::getPlatformClock()->milliseconds() - matchManager->getDuelLocalStartTime();
 
         player->isHunter() ? 
         matchManager->setHunterDrawTime(pityTime) 
         : matchManager->setBountyDrawTime(pityTime);
         
-        QuickdrawWirelessManager::GetInstance()->broadcastPacket(
+        quickdrawWirelessManager->broadcastPacket(
             player->getOpponentMacAddress()->c_str(),
             QDCommand::NEVER_PRESSED,
             *matchManager->getCurrentMatch()
@@ -53,10 +55,10 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
 }   
 
 void DuelReceivedResult::onStateDismounted(Device *PDN) {
-    ESP_LOGI(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
+    LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
     transitionToDuelResultState = false;
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
     buttonPushGraceTimer.invalidate();
 }
 

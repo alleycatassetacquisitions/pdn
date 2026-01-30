@@ -9,17 +9,14 @@
 #pragma once
 
 #include <vector>
-#include "button.hpp"
-#include <Preferences.h>
-#include "../lib/pdn-libs/match.hpp"
-#include "player.hpp"
+#include <string>
+#include "device/drivers/button.hpp"
+#include "game/match.hpp"
+#include "game/player.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "device/drivers/storage-interface.hpp"
 
 // Preferences namespace and keys
-#define PREF_NAMESPACE "matches"
-#define PREF_COUNT_KEY "count"
-#define PREF_MATCH_KEY "match_"  // Will be appended with index
-#define MAX_MATCHES 255
 
 struct ActiveDuelState {
     bool hasReceivedDrawResult = false;
@@ -33,8 +30,9 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    static MatchManager* GetInstance();
 
+    MatchManager();
+    ~MatchManager();
     /**
      * Creates a new active match
      * @param match_id UUID of the match
@@ -42,7 +40,7 @@ public:
      * @param bounty_id Bounty's UUID
      * @return Pointer to the newly created match
      */
-    Match* createMatch(const string& match_id, const string& hunter_id, const string& bounty_id);
+    Match* createMatch(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id);
 
     /**
      * Initializes a match received from another player
@@ -86,7 +84,7 @@ public:
      * Converts all stored matches to a JSON array string
      * @return JSON string containing all stored matches
      */
-    string toJson();
+    std::string toJson();
 
     /**
      * Clears all matches from storage
@@ -103,7 +101,7 @@ public:
 
     void listenForMatchResults(QuickdrawCommand command);
 
-    void initialize(Player* player);
+    void initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms, QuickdrawWirelessManager* quickdrawWirelessManager);
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -114,14 +112,15 @@ protected:
 
 
 private:
-    MatchManager();
-    ~MatchManager();
 
     ActiveDuelState activeDuelState;
 
     parameterizedCallbackFunction duelButtonPush;
     parameterizedCallbackFunction buttonMasher;
 
+    StorageInterface* storage;
+    PeerCommsInterface* peerComms;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     /**
      * Appends a match to storage
      * @param match Match to save
@@ -141,7 +140,6 @@ private:
      */
     Match* readMatchFromStorage(uint8_t index);
 
-    Preferences prefs;   // Preferences instance for persistent storage
 };
 
 

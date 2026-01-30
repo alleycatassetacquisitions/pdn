@@ -1,9 +1,8 @@
 #pragma once
 
-#include <UUID.h>
+#include "utils/UUID.h"
 #include <string>
-
-using namespace std;
+#include <random>
 
 class IdGenerator {
 public:
@@ -12,15 +11,20 @@ public:
     static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
-    static IdGenerator *GetInstance() {
-        static IdGenerator instance;
-        return &instance;
-    };
+    //UUID 
+    IdGenerator(unsigned long seed) : generator(seed) {
+        generator.setVersion4Mode();
+        generator.seed(seed, randomDevice());
+    }
 
     char *generateId() {
         generator.generate();
         return generator.toCharArray();
     };
+
+    void seed(unsigned long seed) {
+        generator.seed(seed, randomDevice());
+    }
 
     /**
      * Converts a UUID string to its binary representation.
@@ -31,7 +35,7 @@ public:
      * @param uuid The UUID string to convert
      * @param bytes Output buffer for the binary data (must be 16 bytes)
      */
-    static void uuidStringToBytes(const string& uuid, uint8_t* bytes) {
+    static void uuidStringToBytes(const std::string& uuid, uint8_t* bytes) {
         int byteIndex = 0;
         for (size_t i = 0; i < uuid.length(); i++) {
             if (uuid[i] == '-') continue;  // Skip hyphens in UUID string
@@ -52,7 +56,7 @@ public:
      * @param bytes The 16-byte binary UUID
      * @return The formatted UUID string
      */
-    static string uuidBytesToString(const uint8_t* bytes) {
+    static std::string uuidBytesToString(const uint8_t* bytes) {
         char uuid[37];  // 36 chars + null terminator
         int pos = 0;
         
@@ -67,17 +71,12 @@ public:
             pos += 2;
         }
         uuid[36] = '\0';  // Null terminate the string
-        return string(uuid);
+        return std::string(uuid);
     }
 
 private:
     UUID generator;
-
-    IdGenerator() {
-        generator.setVariant4Mode();
-        generator.seed(random(999999999), random(999999999));
-    };
-
+    std::random_device randomDevice;
     /**
      * Converts a single hexadecimal character to its numeric value (0-15).
      */

@@ -1,18 +1,16 @@
 #pragma once
 
-#include "player.hpp"
-#include "simple-timer.hpp"
-#include "state.hpp"
-#include <FastLED.h>
+#include "game/player.hpp"
+#include "utils/simple-timer.hpp"
+#include "state/state.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
-#include "wireless/wireless-manager.hpp"
-#include "quickdraw-resources.hpp"
+#include "device/drivers/http-client-interface.hpp"
+#include "game/quickdraw-resources.hpp"
+#include <cstdlib>
 #include <queue>
-
-using namespace std;
-
-// Quickdraw States
+#include <string>
 
 enum QuickdrawStateId {
     PLAYER_REGISTRATION = 0,
@@ -40,7 +38,7 @@ enum QuickdrawStateId {
 
 class PlayerRegistration : public State {
 public:
-    PlayerRegistration(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+    PlayerRegistration(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager);
     ~PlayerRegistration();
 
     void onStateMounted(Device *PDN) override;
@@ -48,12 +46,11 @@ public:
     void onStateDismounted(Device *PDN) override;
     bool transitionToUserFetch();
 
-
 private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
-    WirelessManager* wirelessManager;
+    HttpClientInterface* httpClient;
     MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
@@ -63,7 +60,7 @@ private:
 
 class FetchUserDataState : public State {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager);
+    FetchUserDataState(Player* player, HttpClientInterface* httpClient, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -76,11 +73,12 @@ public:
     void onStateDismounted(Device *PDN) override;
     
 private:
+    RemoteDebugManager* remoteDebugManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     bool transitionToUploadMatchesState = false;
-    WirelessManager* wirelessManager;
+    HttpClientInterface* httpClient;
     bool isFetchingUserData = false;
     Player* player;
     SimpleTimer userDataFetchTimer;
@@ -114,7 +112,6 @@ private:
     bool transitionToPlayerRegistrationState = false;
     parameterizedCallbackFunction confirmCallback;
     parameterizedCallbackFunction cancelCallback;
-
 };
 
 class ChooseRoleState : public State {
@@ -162,7 +159,7 @@ public:
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-    void renderWelcomeMessage();
+    void renderWelcomeMessage(Device *PDN);
     bool transitionToGameplay();
 
 private:
@@ -172,19 +169,14 @@ private:
     const int WELCOME_MESSAGE_TIMEOUT = 5000;
 };
 
-
 class Sleep : public State {
 public:
     Sleep(Player* player);
-
     ~Sleep();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool transitionToAwakenSequence();
 
 private:
@@ -195,23 +187,16 @@ private:
     int ledBrightness = 0;
     float pwm_val = 0.0;
     static constexpr int smoothingPoints = 255;
-
     static constexpr unsigned long SLEEP_DURATION = 60000UL;
 };
 
-/*
- * TODO: Could this become a more generic alarm state?
- */
 class AwakenSequence : public State {
 public:
     AwakenSequence(Player* player);
     ~AwakenSequence();
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool transitionToIdle();
 
 private:
@@ -225,81 +210,59 @@ private:
 
 class Idle : public State {
 public:
-    Idle(Player *player, WirelessManager* wirelessManager);
-
+    Idle(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool transitionToHandshake();
-
     void cycleStats(Device *PDN);
 
 private:
     Player *player;
-    WirelessManager* wirelessManager;
+    MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
-
     bool displayIsDirty = false;
-
     int statsIndex = 0;
     int statsCount = 5;
 
-    void serialEventCallbacks(string message);
-
+    void serialEventCallbacks(std::string message);
     void ledAnimation(Device *PDN);
 };
 
-/*
- * TODO: Lockdown gets cleared in this state.
- */
 class ConnectionSuccessful : public State {
 public:
     ConnectionSuccessful(Player *player);
-
     ~ConnectionSuccessful();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool transitionToCountdown();
 
 private:
     Player *player;
     bool lightsOn = true;
     int flashDelay = 400;
-    byte transitionThreshold = 12;
-    byte alertCount = 0;
+    uint8_t transitionThreshold = 12;
+    uint8_t alertCount = 0;
 };
 
-/*
- * TODO: User Powerup prompt.
- */
 class DuelCountdown : public State {
 public:
     DuelCountdown(Player* player, MatchManager* matchManager);
-
     ~DuelCountdown();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool shallWeBattle();
 
 private:
-
     enum class CountdownStep {
         THREE = 3,
         TWO = 2,
@@ -348,32 +311,23 @@ private:
     MatchManager* matchManager;
 };
 
-/*
- * TODO: Add logic for spending LED here.
- */
 class Duel : public State {
 public:
-    Duel(Player* player, MatchManager* matchManager);
-
+    Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~Duel();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     void onQuickdrawCommandReceived(QuickdrawCommand command);
-
     bool transitionToIdle();
-
     bool transitionToDuelPushed();
-
     bool transitionToDuelReceivedResult();
 
 private:
     Player* player;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     parameterizedCallbackFunction buttonPress;
     bool transitionToDuelPushedState = false;
     bool transitionToIdleState = false;
@@ -385,17 +339,12 @@ private:
 class DuelPushed : public State {
 public:
     DuelPushed(Player* player, MatchManager* matchManager);
-
     ~DuelPushed();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     void onQuickdrawCommandReceived(QuickdrawCommand command);
-
     bool transitionToDuelResult();
 
 private:
@@ -407,16 +356,12 @@ private:
 
 class DuelReceivedResult : public State {
 public:
-    DuelReceivedResult(Player* player, MatchManager* matchManager);
-
+    DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelReceivedResult();
 
     void onStateMounted(Device *PDN) override;  
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;   
-    
     bool transitionToDuelResult();
 
 private:
@@ -425,120 +370,92 @@ private:
     const int BUTTON_PUSH_GRACE_PERIOD = 750;
     Player* player;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
 };
 
 class DuelResult : public State {
 public:
-    DuelResult(Player* player, MatchManager* matchManager);
-
+    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelResult();
 
     void onStateMounted(Device *PDN) override;  
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;   
-    
     bool transitionToWin();
-
     bool transitionToLose();    
     
 private:
     Player* player;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     bool wonBattle = false;
     bool captured = false;
 };
 
-
-/*
- * TODO: Implement Score update here.
- * TODO: Allow for score multipliers here.
- * TODO: Add Score change display.
- */
 class Win : public State {
 public:
-    Win(Player *player, WirelessManager* wirelessManager);
-
+    Win(Player *player);
     ~Win();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool resetGame();
-
     bool isTerminalState() override;
 
 private:
     SimpleTimer winTimer = SimpleTimer();
-    WirelessManager* wirelessManager;
     Player *player;
     bool reset = false;
 };
 
-/*
- * TODO: Add Score change display.
- */
 class Lose : public State {
 public:
-    Lose(Player *player, WirelessManager* wirelessManager);
-
+    Lose(Player *player);
     ~Lose();
 
     void onStateMounted(Device *PDN) override;
-
     void onStateLoop(Device *PDN) override;
-
     void onStateDismounted(Device *PDN) override;
-
     bool resetGame();
-
     bool isTerminalState() override;
 
 private:
     SimpleTimer loseTimer = SimpleTimer();
-    WirelessManager* wirelessManager;
     Player *player;
     bool reset = false;
 };
 
 // Base class for all handshake states
 class BaseHandshakeState : public State {
-
 public:
-    // Common transition to idle if timeout occurs
     bool transitionToIdle() {
         return isTimedOut();
     }
 
 protected:
-    static SimpleTimer handshakeTimeout;
+    static SimpleTimer* handshakeTimeout;
     static bool timeoutInitialized;
-    static const int timeout = 20000; // 20 seconds timeout
+    static const int timeout = 20000;
     
-    BaseHandshakeState(QuickdrawStateId stateId) : State(stateId) {
-    }
-    
-    ~BaseHandshakeState() {
-    }
+    BaseHandshakeState(QuickdrawStateId stateId) : State(stateId) {}
+    ~BaseHandshakeState() {}
     
     static void initTimeout() {
-        handshakeTimeout.setTimer(timeout);
+        if (!handshakeTimeout) handshakeTimeout = new SimpleTimer();
+        handshakeTimeout->setTimer(timeout);
         timeoutInitialized = true;
     }
     
     static bool isTimedOut() {
-        if (!timeoutInitialized) return false;
-        handshakeTimeout.updateTime();
-        return handshakeTimeout.expired();
+        if (!timeoutInitialized || !handshakeTimeout) return false;
+        handshakeTimeout->updateTime();
+        return handshakeTimeout->expired();
     }
     
     static void resetTimeout() {
         timeoutInitialized = false;
-        handshakeTimeout.invalidate();
+        handshakeTimeout->invalidate();
     }
 };
 
@@ -563,7 +480,7 @@ private:
 
 class BountySendConnectionConfirmedState : public BaseHandshakeState {
 public:
-    BountySendConnectionConfirmedState(Player* player);
+    BountySendConnectionConfirmedState(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~BountySendConnectionConfirmedState();
     void onQuickdrawCommandReceived(QuickdrawCommand command);
     void onStateMounted(Device *PDN) override;
@@ -573,6 +490,8 @@ public:
 
 private:
     Player* player;
+    MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     SimpleTimer delayTimer;
     const int delay = 100;
     bool transitionToConnectionSuccessfulState = false;
@@ -580,7 +499,7 @@ private:
 
 class HunterSendIdState : public BaseHandshakeState {
 public:
-    HunterSendIdState(Player *player);
+    HunterSendIdState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~HunterSendIdState();
 
     void onStateMounted(Device *PDN) override;
@@ -591,6 +510,8 @@ public:
 
 private:
     Player* player;
+    MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
     SimpleTimer delayTimer;
     const int delay = 100;
     bool transitionToConnectionSuccessfulState = false;
@@ -598,30 +519,27 @@ private:
 
 class UploadMatchesState : public State {
 public:
-    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+    UploadMatchesState(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager);
     ~UploadMatchesState();
     
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-
     bool transitionToSleep();
-
     void showLoadingGlyphs(Device *PDN);
-
     bool transitionToPlayerRegistration();
-
     void routeToNextState();
+    void attemptUpload();
 
 private:
     Player* player;
-    WirelessManager* wirelessManager;
+    HttpClientInterface* httpClient;
     MatchManager* matchManager;
     SimpleTimer uploadMatchesTimer;
     int matchUploadRetryCount = 0;
     const int UPLOAD_MATCHES_TIMEOUT = 10000;
-    String matchesJson;
+    std::string matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
-    
+    bool shouldRetryUpload = false;
 };

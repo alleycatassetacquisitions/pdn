@@ -2,13 +2,7 @@
 // Created by Elli Furedy on 1/24/2025.
 //
 #include "wireless/quickdraw-wireless-manager.hpp"
-
-#include <Arduino.h>
-
-#include "wireless/esp-now-comms.hpp"
-#include "id-generator.hpp"
-#include <WiFi.h>
-
+#include "device/drivers/peer-comms-interface.hpp"
 
 struct QuickdrawPacket {
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
@@ -19,16 +13,17 @@ struct QuickdrawPacket {
     int command;
 } __attribute__((packed));
 
-QuickdrawWirelessManager *QuickdrawWirelessManager::GetInstance() {
-    static QuickdrawWirelessManager instance;
-    return &instance;
-}
-
 QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
 
-void QuickdrawWirelessManager::initialize(Player *player, long broadcastDelay) {
+QuickdrawWirelessManager::~QuickdrawWirelessManager() {
+    player = nullptr;
+    peerComms = nullptr;
+}
+
+void QuickdrawWirelessManager::initialize(Player *player, PeerCommsInterface* peerComms, long broadcastDelay) {
     this->player = player;
     this->broadcastDelay = broadcastDelay;
+    this->peerComms = peerComms;
 }
 
 void QuickdrawWirelessManager::clearCallbacks() {
@@ -39,14 +34,9 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(std::function<void (Qui
     packetReceivedCallback = callback;
 }
 
-int QuickdrawWirelessManager::broadcastPacket(const string& macAddress, 
+int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress, 
                                              int command, 
                                              Match match) {
-    // Ensure WiFi is in STA mode before sending
-    if (WiFi.getMode() != WIFI_STA) {
-        ESP_LOGW("QWM", "WiFi not in STA mode, setting it now");
-        WiFi.mode(WIFI_STA);
-    }
     
     QuickdrawPacket qdPacket;
     
@@ -69,12 +59,12 @@ int QuickdrawWirelessManager::broadcastPacket(const string& macAddress,
     qdPacket.hunterDrawTime = match.getHunterDrawTime();
     qdPacket.bountyDrawTime = match.getBountyDrawTime();
 
-    ESP_LOGI("QWM", "Sending command %i to %s", command, macAddress.c_str());
-    ESP_LOGI("QWM", "Match ID: %s", qdPacket.matchId);
-    ESP_LOGI("QWM", "Hunter ID: %s", qdPacket.hunterId);
-    ESP_LOGI("QWM", "Bounty ID: %s", qdPacket.bountyId);
-    ESP_LOGI("QWM", "Hunter Draw Time: %ld", qdPacket.hunterDrawTime);
-    ESP_LOGI("QWM", "Bounty Draw Time: %ld", qdPacket.bountyDrawTime);
+    LOG_I("QWM", "Sending command %i to %s", command, macAddress.c_str());
+    LOG_I("QWM", "Match ID: %s", qdPacket.matchId);
+    LOG_I("QWM", "Hunter ID: %s", qdPacket.hunterId);
+    LOG_I("QWM", "Bounty ID: %s", qdPacket.bountyId);
+    LOG_I("QWM", "Hunter Draw Time: %ld", qdPacket.hunterDrawTime);
+    LOG_I("QWM", "Bounty Draw Time: %ld", qdPacket.bountyDrawTime);
 
     uint8_t dstMac[6];
     const uint8_t* targetMac;
@@ -82,11 +72,12 @@ int QuickdrawWirelessManager::broadcastPacket(const string& macAddress,
     if (!macAddress.empty() && StringToMac(macAddress.c_str(), dstMac)) {
         targetMac = dstMac;
     } else {
-        ESP_LOGW("QWM", "Invalid MAC address, falling back to broadcast");
-        targetMac = ESP_NOW_BROADCAST_ADDR;
+        LOG_W("QWM", "Invalid MAC address, falling back to broadcast");
+        targetMac = peerComms->getGlobalBroadcastAddress();
     }
+    
 
-    int ret = EspNowManager::GetInstance()->SendData(
+    int ret = peerComms->sendData(
         targetMac,
         PktType::kQuickdrawCommand,
         (uint8_t*)&qdPacket,
@@ -100,7 +91,7 @@ int QuickdrawWirelessManager::processQuickdrawCommand(const uint8_t *macAddress,
     const size_t dataLen) {
 
     if(dataLen != sizeof(QuickdrawPacket)) {
-        ESP_LOGE("RPM", "Unexpected packet len for PlayerInfoPkt. Got %lu but expected %lu\n",
+        LOG_E("RPM", "Unexpected packet len for PlayerInfoPkt. Got %lu but expected %lu\n",
                       dataLen, sizeof(QuickdrawPacket));
 
         return -1;

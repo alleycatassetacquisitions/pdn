@@ -1,7 +1,7 @@
 #pragma once
 
 #include "animation-base.hpp"
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 
 class CountdownAnimation : public AnimationBase {
 public:

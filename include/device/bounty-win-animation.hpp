@@ -1,9 +1,9 @@
 #pragma once
 
 #include "animation-base.hpp"
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min
-#include "esp_log.h"
+#include <random>
 
 class BountyWinAnimation : public AnimationBase {
 public:
@@ -34,7 +34,7 @@ protected:
     }
 
     LEDState onAnimate() override {
-        uint32_t currentTime = millis();
+        uint32_t currentTime = SimpleTimer::getPlatformClock()->milliseconds();
         
         // Decay all LED brightnesses by 5%
         for (int i = 0; i < 9; i++) {
@@ -49,10 +49,10 @@ protected:
         // Decay transmit light
         currentState_.transmitLight.brightness = (currentState_.transmitLight.brightness * 95) / 100;
         
-        if (random(3) == 0) {
-            currentState_.setLED(random(2) == 0, random(6)+3, twinkleColor, 255);
+        if (randomInt(0, 2) == 0) {
+            currentState_.setLED(randomInt(0, 1) == 0, randomInt(0, 5)+3, twinkleColor, 255);
 
-            int index = random(6);
+            int index = randomInt(0, 5);
             if (index < 3) {
                 currentState_.setLED(true, index, gripColors[index], 255);
             } else {
@@ -65,6 +65,14 @@ protected:
     }
 
 private:
+    // Helper function for random integers in range [min, max]
+    static int randomInt(int min, int max) {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dist(min, max);
+        return dist(gen);
+    }
+
     uint32_t lastFrameTime_;   // Last frame time for timing calculations
     LEDColor twinkleColor = LEDColor(222, 97, 7);
     LEDColor gripColors[6] = {

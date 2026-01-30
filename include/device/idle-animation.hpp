@@ -1,9 +1,8 @@
 #pragma once
 
 #include "animation-base.hpp"
-#include "simple-timer.hpp"
+#include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min
-#include "esp_log.h"
 
 class IdleAnimation : public AnimationBase {
 public:

@@ -1,11 +1,10 @@
 #pragma once
 
 #include <vector>
-#include <esp_now.h>
+#include <string>
 #include <cstring>  // For memcpy
 #include <functional>
-
-using namespace std;
+#include "device/drivers/peer-comms-interface.hpp"
 
 enum DebugCommand {
     // Debug Commands
@@ -39,9 +38,10 @@ struct DebugPacket {
 
 class RemoteDebugManager {
 public:
-    static RemoteDebugManager* GetInstance();
+    RemoteDebugManager(PeerCommsInterface* peerComms);
+    ~RemoteDebugManager();
 
-    void Initialize(string ssid, string password, string baseUrl);
+    void Initialize(std::string ssid, std::string password, std::string baseUrl);
     
     void SetPacketReceivedCallback(std::function<void(DebugPacket)> callback);
     
@@ -52,11 +52,10 @@ public:
     void ClearCallbacks();
 
 private:
-    RemoteDebugManager();
-
-    DebugPacket m_debugPacket;
+    PeerCommsInterface* peerComms;
+    DebugPacket debugPacket;
     
-    std::function<void(DebugPacket)> m_packetReceivedCallback;
+    std::function<void(DebugPacket)> packetReceivedCallback;
     
-    static RemoteDebugManager* s_instance;
+    static RemoteDebugManager* instance;
 }; 

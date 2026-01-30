@@ -1,9 +1,8 @@
-#include "device/pdn.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
-#include <esp_log.h>
+#include "device/drivers/logger.hpp"
 
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
@@ -13,20 +12,20 @@ DuelPushed::DuelPushed(Player* player, MatchManager* matchManager) : State(DUEL_
 }
 
 DuelPushed::~DuelPushed() {
-    ESP_LOGI(DUEL_PUSHED_TAG, "DuelPushed state destroyed");
+    LOG_I(DUEL_PUSHED_TAG, "DuelPushed state destroyed");
     player = nullptr;
     matchManager = nullptr;
 }
 
 void DuelPushed::onStateMounted(Device *PDN) {
-    ESP_LOGI(DUEL_PUSHED_TAG, "DuelPushed state mounted");
+    LOG_I(DUEL_PUSHED_TAG, "DuelPushed state mounted");
     
-    PDN->removeButtonCallbacks(ButtonIdentifier::PRIMARY_BUTTON);
-    PDN->removeButtonCallbacks(ButtonIdentifier::SECONDARY_BUTTON);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
 
     gracePeriodTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
 
-    PDN->setVibration(0);
+    PDN->getHaptics()->setIntensity(0);
 }
 
 void DuelPushed::onStateLoop(Device *PDN) {
@@ -34,7 +33,7 @@ void DuelPushed::onStateLoop(Device *PDN) {
 }
 
 void DuelPushed::onStateDismounted(Device *PDN) {
-    ESP_LOGI(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
+    LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
     gracePeriodTimer.invalidate();
 }
 
