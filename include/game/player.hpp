@@ -14,8 +14,9 @@ enum class Allegiance {
 class Player {
 public:
     Player() = default;
+    ~Player() = default;
     
-    Player(const std::string id, const Allegiance allegiance, const bool isHunter);
+    Player(const std::string& id, Allegiance allegiance, bool isHunter);
     
     std::string toJson() const;
 
@@ -51,16 +52,19 @@ public:
 
     void clearUserID();
 
-    void setCurrentMatchId(std::string matchId);
+    void setCurrentMatchId(const std::string& matchId);
 
-    std::string *getCurrentMatchId();
+    std::string& getCurrentMatchId();
+    const std::string& getCurrentMatchId() const;
 
-    void setCurrentOpponentId(std::string opponentId);
-    std::string *getCurrentOpponentId();
+    void setCurrentOpponentId(const std::string& opponentId);
+    std::string& getCurrentOpponentId();
+    const std::string& getCurrentOpponentId() const;
 
-    void setOpponentMacAddress(std::string macAddress);
+    void setOpponentMacAddress(const std::string& macAddress);
 
-    std::string *getOpponentMacAddress();
+    std::string& getOpponentMacAddress();
+    const std::string& getOpponentMacAddress() const;
 
     unsigned long getLastReactionTime();
 
@@ -106,9 +110,9 @@ private:
 
     Allegiance allegiance = Allegiance::RESISTANCE;
 
-    std::string* currentMatchId = new std::string();
-    std::string* currentOpponentId = new std::string();
-    std::string* opponentMacAddress = new std::string();
+    std::string currentMatchId_;
+    std::string currentOpponentId_;
+    std::string opponentMacAddress_;
     
     bool hunter = true;
 };
