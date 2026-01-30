@@ -12,7 +12,7 @@ public:
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
     //UUID 
-    IdGenerator(unsigned long seed) : generator(seed) {
+    explicit IdGenerator(unsigned long seed) : generator(seed) {
         generator.setVersion4Mode();
         generator.seed(seed, randomDevice());
     }

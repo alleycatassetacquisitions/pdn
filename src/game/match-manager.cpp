@@ -4,7 +4,7 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/device-constants.hpp"
 
-#define MATCH_MANAGER_TAG "MATCH_MANAGER"
+static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
 MatchManager::MatchManager() 
     : player(nullptr)
@@ -52,7 +52,7 @@ Match* MatchManager::createMatch(const std::string& match_id, const std::string&
     return activeDuelState.match;
 }
 
-Match* MatchManager::receiveMatch(Match match) {
+Match* MatchManager::receiveMatch(const Match& match) {
     // Only allow one active match at a time
     if (activeDuelState.match != nullptr) {
         return nullptr;

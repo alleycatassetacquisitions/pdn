@@ -4,8 +4,8 @@
 
 class NativeHapticsDriver : public HapticsMotorDriverInterface {
 public:
-    NativeHapticsDriver(const std::string& name, int pinNumber) 
-        : HapticsMotorDriverInterface(name), pinNumber_(pinNumber), intensity_(0), active_(false) {
+    NativeHapticsDriver(const std::string& name, int pin) 
+        : HapticsMotorDriverInterface(name), pinNumber(pin), intensity(0), active(false) {
     }
 
     ~NativeHapticsDriver() override = default;
@@ -17,31 +17,31 @@ public:
     void exec() override {
         // No periodic execution needed for native haptics driver
     }
-    
+
     bool isOn() override {
-        return active_;
+        return active;
     }
 
     void max() override {
-        intensity_ = 255;
-        active_ = true;
+        intensity = 255;
+        active = true;
     }
 
-    void setIntensity(int intensity) override {
-        intensity_ = intensity;
+    void setIntensity(int value) override {
+        intensity = value;
     }
 
     int getIntensity() override {
-        return intensity_;
+        return intensity;
     }
 
     void off() override {
-        intensity_ = 0;
-        active_ = false;
+        intensity = 0;
+        active = false;
     }
 
 private:
-    int pinNumber_;
-    int intensity_;
-    bool active_;
+    int pinNumber;
+    int intensity;
+    bool active;
 };

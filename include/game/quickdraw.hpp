@@ -10,7 +10,7 @@
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
 
-#define MATCH_SIZE sizeof(Match)
+constexpr size_t MATCH_SIZE = sizeof(Match);
 
 class Quickdraw : public StateMachine {
 public:

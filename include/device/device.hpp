@@ -18,18 +18,18 @@ public:
     Device& operator=(Device&&) = delete;
 
     ~Device() override {
-        driverManager_.dismountDrivers();
+        driverManager.dismountDrivers();
     }
 
     virtual int begin() = 0;
 
     virtual void loop() {
-        driverManager_.execDrivers();
+        driverManager.execDrivers();
     }
 
     virtual void onStateChange() = 0;
 
-    virtual void setDeviceId(std::string deviceId) = 0;
+    virtual void setDeviceId(const std::string& deviceId) = 0;
 
     virtual std::string getDeviceId() = 0;
 
@@ -44,13 +44,10 @@ public:
     virtual WirelessManager* getWirelessManager() = 0;
 
 protected:
-    explicit Device(const DriverConfig& deviceConfig) : driverManager_(deviceConfig) {
-        driverManager_.initialize();
+    explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {
+        driverManager.initialize();
     }
 
-    DriverManager& getDriverManager() { return driverManager_; }
-    const DriverManager& getDriverManager() const { return driverManager_; }
-
 private:
-    DriverManager driverManager_;
+    DriverManager driverManager;
 };

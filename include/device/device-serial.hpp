@@ -141,10 +141,10 @@ protected:
 
     virtual HWSerialWrapper* inputJack() = 0;
 
-private:
     std::string primaryHead = "";
     std::string auxiliaryHead = "";
 
+private:
     SerialIdentifier currentCommsJack = SerialIdentifier::OUTPUT_JACK;
     std::function<void(std::string)> onPrimaryJackStringReceivedCallback;
     std::function<void(std::string)> onAuxiliaryJackStringReceivedCallback;

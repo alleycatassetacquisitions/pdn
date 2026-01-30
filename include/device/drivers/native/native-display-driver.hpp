@@ -3,18 +3,18 @@
 #include "device/drivers/driver-interface.hpp"
 
 class NativeDisplayDriver : public DisplayDriverInterface {
-    public:
-    NativeDisplayDriver(std::string name) : DisplayDriverInterface(name) {
+public:
+    explicit NativeDisplayDriver(const std::string& name) : DisplayDriverInterface(name) {
     }
 
-    ~NativeDisplayDriver() override {
-    }
+    ~NativeDisplayDriver() override = default;
 
     int initialize() override {
         return 0;
     }
 
     void exec() override {
+        // No periodic execution needed for native display driver
     }
 
     Display* invalidateScreen() override {
@@ -22,6 +22,7 @@ class NativeDisplayDriver : public DisplayDriverInterface {
     }
 
     void render() override {
+        // Native display doesn't render to hardware
     }
 
     Display* drawText(const char *text) override {

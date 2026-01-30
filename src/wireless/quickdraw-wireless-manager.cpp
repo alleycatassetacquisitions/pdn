@@ -36,7 +36,7 @@ void QuickdrawWirelessManager::setPacketReceivedCallback(const std::function<voi
 
 int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress, 
                                              int command, 
-                                             Match match) {
+                                             const Match& match) {
     
     QuickdrawPacket qdPacket;
     
@@ -131,7 +131,7 @@ int QuickdrawWirelessManager::getPacketAckCount(int command) {
 }
 
 
-void QuickdrawWirelessManager::logPacket(QuickdrawCommand packet) {
+void QuickdrawWirelessManager::logPacket(const QuickdrawCommand& packet) {
     // if(commandTracker.find(packet.command) == commandTracker.end()) {
         //No command found, place it in the tracker.
         commandTracker[packet.command] = packet;

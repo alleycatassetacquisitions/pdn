@@ -110,9 +110,9 @@ private:
 
     Allegiance allegiance = Allegiance::RESISTANCE;
 
-    std::string currentMatchId_;
-    std::string currentOpponentId_;
-    std::string opponentMacAddress_;
+    std::string currentMatchId;
+    std::string currentOpponentId;
+    std::string opponentMacAddress;
     
     bool hunter = true;
 };

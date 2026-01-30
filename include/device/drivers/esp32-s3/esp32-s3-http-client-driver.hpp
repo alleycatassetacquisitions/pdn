@@ -10,7 +10,7 @@
 
 // Forward declaration for the event handler
 class Esp32S3HttpClient;
-static const char* HTTP_TAG = "HttpClient";
+static const char* const HTTP_TAG = "HttpClient";
 
 // Fallback channel for ESP-NOW when WiFi connection fails
 // IMPORTANT: Configure your WiFi AP to use this same channel for reliable ESP-NOW!
@@ -32,15 +32,9 @@ public:
     static const int WIFI_CONNECTION_TIMEOUT_MS = 12500;  // 2.5 sec * 5 attempts
     static const uint8_t MAX_RETRIES = 1;
 
-    Esp32S3HttpClient(std::string name, WifiConfig* wifiConfig)
+    Esp32S3HttpClient(const std::string& name, WifiConfig* config)
         : HttpClientDriverInterface(name)
-        , wifiConfig(wifiConfig)
-        , wifiConnected(false)
-        , httpClientInitialized(false)
-        , wifiGivenUp(false)
-        , channel(0)
-        , httpClient(nullptr)
-        , currentRequest(nullptr) {
+        , wifiConfig(config) {
     }
 
     ~Esp32S3HttpClient() override {
@@ -362,7 +356,7 @@ private:
         }
     }
 
-    void handleRequestError(HttpRequest& request, WirelessErrorInfo error) {
+    void handleRequestError(HttpRequest& request, const WirelessErrorInfo& error) {
         if (request.onError) {
             request.onError(error);
         }
@@ -447,20 +441,20 @@ private:
     }
 
     // Configuration
-    WifiConfig* wifiConfig;
+    WifiConfig* wifiConfig = nullptr;
     uint8_t macAddress_[6];
     
     // WiFi connection state
-    bool wifiConnected;
-    bool httpClientInitialized;
-    bool wifiGivenUp;
+    bool wifiConnected = false;
+    bool httpClientInitialized = false;
+    bool wifiGivenUp = false;
     SimpleTimer connectionAttemptTimer;
 
     // HTTP client state
-    uint8_t channel;
+    uint8_t channel = 0;
     std::queue<HttpRequest> httpQueue;
-    esp_http_client_handle_t httpClient;
-    HttpRequest* currentRequest;
+    esp_http_client_handle_t httpClient = nullptr;
+    HttpRequest* currentRequest = nullptr;
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
 };
 

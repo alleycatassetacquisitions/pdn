@@ -60,7 +60,7 @@ public:
 
     int broadcastPacket(const std::string& macAddress, 
                        int command, 
-                       Match match);
+                       const Match& match);
 
     void clearCallbacks();
 
@@ -70,7 +70,7 @@ public:
 
     void clearPacket(int command);
 
-    void logPacket(QuickdrawCommand packet);
+    void logPacket(const QuickdrawCommand& packet);
 
 private:
     WirelessManager* wirelessManager;
