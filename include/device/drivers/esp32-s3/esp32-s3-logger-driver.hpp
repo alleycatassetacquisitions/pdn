@@ -23,17 +23,15 @@ public:
     }
     
     void vlog(LogLevel level, const char* tag, const char* format, va_list args) override {
-        esp_log_level_t esp_level;
+        char buffer[256];
+        vsnprintf(buffer, sizeof(buffer), format, args);
         
         switch (level) {
-            case LogLevel::ERROR:   esp_level = ESP_LOG_ERROR; break;
-            case LogLevel::WARN:    esp_level = ESP_LOG_WARN; break;
-            case LogLevel::INFO:    esp_level = ESP_LOG_INFO; break;
-            case LogLevel::DEBUG:   esp_level = ESP_LOG_DEBUG; break;
-            case LogLevel::VERBOSE: esp_level = ESP_LOG_VERBOSE; break;
-            default: return;
+            case LogLevel::ERROR:   ESP_LOGE(tag, "%s", buffer); break;
+            case LogLevel::WARN:    ESP_LOGW(tag, "%s", buffer); break;
+            case LogLevel::INFO:    ESP_LOGI(tag, "%s", buffer); break;
+            case LogLevel::DEBUG:   ESP_LOGD(tag, "%s", buffer); break;
+            case LogLevel::VERBOSE: ESP_LOGV(tag, "%s", buffer); break;
         }
-        
-        esp_log_writev(esp_level, tag, format, args);
     }
 };

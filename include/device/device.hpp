@@ -7,6 +7,7 @@
 #include "drivers/light-interface.hpp"
 #include "light-manager.hpp"
 #include "drivers/driver-manager.hpp"
+#include "wireless-manager.hpp"
 
 class Device : public DeviceSerial {
 public:
@@ -35,6 +36,7 @@ public:
     virtual HttpClientInterface* getHttpClient() = 0;
     virtual PeerCommsInterface* getPeerComms() = 0;
     virtual StorageInterface* getStorage() = 0;
+    virtual WirelessManager* getWirelessManager() = 0;
 
 protected:
 

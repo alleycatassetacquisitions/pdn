@@ -5,6 +5,7 @@
 #pragma once
 
 #include "device/drivers/driver-interface.hpp"
+#include "device/drivers/logger.hpp"
 #include <Arduino.h>
 #include "device/device-constants.hpp"
 #include <HardwareSerial.h>
@@ -28,16 +29,20 @@ class Esp32s3SerialOut : public SerialDriverInterface {
         pinMode(TXt, OUTPUT);
         pinMode(TXr, INPUT);
 
-        Serial1.begin(BAUDRATE, SERIAL_8E2, TXr, TXt, true);
+        Serial1.begin(BAUDRATE, SERIAL_8N1, TXr, TXt, true);
+        Serial1.setTimeout(100);  // 100ms timeout for readStringUntil
         return 0;
     };
 
     void exec() override {
-        char incomingChar = Serial1.read();
-        if (incomingChar == STRING_START) {
-            std::string receivedString = std::string(Serial1.readStringUntil(STRING_TERM).c_str());
-            if (stringCallback) {
-                stringCallback(receivedString);
+        while (Serial1.available() > 0) {
+            char incomingChar = Serial1.read();
+            if (incomingChar == STRING_START) {
+                std::string receivedString = std::string(Serial1.readStringUntil(STRING_TERM).c_str());
+                LOG_D("SERIAL1", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
+                if (stringCallback) {
+                    stringCallback(receivedString);
+                }
             }
         }
     }
@@ -103,16 +108,20 @@ public:
         pinMode(RXt, OUTPUT);
         pinMode(RXr, INPUT);
 
-        Serial2.begin(BAUDRATE, SERIAL_8E2, RXr, RXt, true);
+        Serial2.begin(BAUDRATE, SERIAL_8N1, RXr, RXt, true);
+        Serial2.setTimeout(100);  // 100ms timeout for readStringUntil
         return 0;
     };
 
     void exec() override {
-        char incomingChar = Serial2.read();
-        if (incomingChar == STRING_START) {
-            std::string receivedString = std::string(Serial2.readStringUntil(STRING_TERM).c_str());
-            if (stringCallback) {
-                stringCallback(receivedString);
+        while (Serial2.available() > 0) {
+            char incomingChar = Serial2.read();
+            if (incomingChar == STRING_START) {
+                std::string receivedString = std::string(Serial2.readStringUntil(STRING_TERM).c_str());
+                LOG_D("SERIAL2", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
+                if (stringCallback) {
+                    stringCallback(receivedString);
+                }
             }
         }
     }

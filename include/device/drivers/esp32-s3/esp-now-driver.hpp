@@ -4,7 +4,8 @@
 #include <vector>
 #include <queue>
 #include <unordered_map>
-#include <Arduino.h> //For Serial, may be replaced with more specific header?
+#include <Arduino.h>
+#include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include "device/drivers/logger.hpp"
@@ -170,13 +171,16 @@ public:
         //Register broadcast peer
         esp_now_peer_info_t broadcastPeer = {};
         memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
+        broadcastPeer.channel = 0;  // 0 = current channel
+        broadcastPeer.ifidx = WIFI_IF_STA;  // Use STA interface
+        broadcastPeer.encrypt = false;
         err = esp_now_add_peer(&broadcastPeer);
         if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
             LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
             return -1;
         }
 
-        LOG_I("ENC", "ESPNOW Comms initialized");
+        LOG_I("ENC", "ESPNOW initialization complete");
 
         return 0;
     }
@@ -428,7 +432,19 @@ private:
 
         esp_now_peer_info_t new_peer = {};
         memcpy(new_peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
-        esp_now_add_peer(&new_peer);
+        new_peer.channel = 0;  // 0 = current channel
+        new_peer.ifidx = WIFI_IF_STA;  // Use STA interface
+        new_peer.encrypt = false;
+        
+        esp_err_t err = esp_now_add_peer(&new_peer);
+        if (err != ESP_OK) {
+            LOG_E("ENC", "Failed to add peer: 0x%X", err);
+            return -1;
+        }
+        
+        LOG_I("ENC", "Added peer: %02X:%02X:%02X:%02X:%02X:%02X",
+              mac_addr[0], mac_addr[1], mac_addr[2],
+              mac_addr[3], mac_addr[4], mac_addr[5]);
 
         return 0;
     }
@@ -452,9 +468,8 @@ private:
     }
 
     uint8_t* getMacAddress() override {
-        uint8_t macAddr[6];
-        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
-        return macAddr;
+        esp_read_mac(macAddress_, ESP_MAC_WIFI_STA);
+        return macAddress_;
     }
 
     const uint8_t* getGlobalBroadcastAddress() override {
@@ -464,6 +479,9 @@ private:
     void removePeer(uint8_t* macAddr) override {
         esp_now_del_peer(macAddr);
     }
+
+    //Storage for MAC address
+    uint8_t macAddress_[6];
 
     //Storage for retry handling
     uint8_t m_maxRetries;

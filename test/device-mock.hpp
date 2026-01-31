@@ -136,6 +136,8 @@ public:
     MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));
     MOCK_METHOD(void, retryConnection, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
+    MOCK_METHOD(void, enablePeerCommsMode, (uint8_t), (override));
+    MOCK_METHOD(bool, enableHttpMode, (), (override));
 };
 
 class MockPeerComms : public PeerCommsInterface {

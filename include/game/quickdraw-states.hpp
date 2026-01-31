@@ -223,6 +223,8 @@ private:
     Player *player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* quickdrawWirelessManager;
+    SimpleTimer heartbeatTimer;
+    const int HEARTBEAT_INTERVAL_MS = 250;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;

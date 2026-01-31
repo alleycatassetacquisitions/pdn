@@ -1,6 +1,7 @@
 #pragma once
 
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <esp_http_client.h>
 #include <queue>
 #include "device/drivers/driver-interface.hpp"
@@ -10,6 +11,10 @@
 // Forward declaration for the event handler
 class Esp32S3HttpClient;
 static const char* HTTP_TAG = "HttpClient";
+
+// Fallback channel for ESP-NOW when WiFi connection fails
+// IMPORTANT: Configure your WiFi AP to use this same channel for reliable ESP-NOW!
+static constexpr uint8_t ESPNOW_FALLBACK_CHANNEL = 6;
 
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
@@ -116,9 +121,68 @@ public:
     }
 
     uint8_t* getMacAddress() override {
-        uint8_t macAddr[6];
-        esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
-        return macAddr;
+        esp_read_mac(macAddress_, ESP_MAC_WIFI_STA);
+        return macAddress_;
+    }
+
+    void enablePeerCommsMode(uint8_t channel) override {
+        LOG_I(HTTP_TAG, "Enabling ESP-NOW mode on channel %d", channel);
+        
+        // Disconnect from AP but keep WiFi radio and ESP-NOW intact
+        // IMPORTANT: Use false to preserve WiFi stack state (ESP-NOW depends on it)
+        WiFi.disconnect(false);
+        
+        // Ensure we're in STA mode
+        WiFi.mode(WIFI_STA);
+        
+        // Force the specified channel for ESP-NOW using ESP-IDF API
+        esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+        
+        wifiConnected = false;
+        wifiGivenUp = false;
+        connectionAttemptTimer.invalidate();
+        
+        // Verify channel was set
+        uint8_t primary_channel;
+        wifi_second_chan_t second;
+        esp_wifi_get_channel(&primary_channel, &second);
+        LOG_I(HTTP_TAG, "ESP-NOW mode enabled, channel now: %d", primary_channel);
+    }
+
+    bool enableHttpMode() override {
+        LOG_I(HTTP_TAG, "Enabling HTTP mode...");
+        
+        if (wifiConnected && WiFi.status() == WL_CONNECTED) {
+            LOG_D(HTTP_TAG, "Already connected to WiFi");
+            return true;
+        }
+        
+        // Start WiFi connection
+        startWifiConnection();
+        
+        // Wait for connection with timeout
+        int attempts = 0;
+        const int maxAttempts = 50;  // 5 seconds max (50 * 100ms)
+        while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
+            delay(100);
+            attempts++;
+        }
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            wifiConnected = true;
+            wifiGivenUp = false;
+            channel = WiFi.channel();
+            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", 
+                  WiFi.localIP().toString().c_str(), channel);
+            
+            if (!httpClientInitialized) {
+                httpClientInitialized = initializeHttpClient();
+            }
+            return true;
+        } else {
+            LOG_W(HTTP_TAG, "WiFi connection failed after %d attempts", attempts);
+            return false;
+        }
     }
 
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
@@ -139,7 +203,7 @@ private:
         // Check if we've connected
         if (WiFi.status() == WL_CONNECTED) {
             channel = WiFi.channel();
-            LOG_I(HTTP_TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
+            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", WiFi.localIP().toString().c_str(), channel);
             wifiConnected = true;
             wifiGivenUp = false;
             connectionAttemptTimer.invalidate();
@@ -155,6 +219,12 @@ private:
             LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
             WiFi.setAutoReconnect(false);  // Disable auto-reconnect to stop retry spam
             WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
+            
+            // Force fallback channel for ESP-NOW compatibility
+            // IMPORTANT: Configure your WiFi AP to use this same channel!
+            WiFi.channel(ESPNOW_FALLBACK_CHANNEL);
+            LOG_I(HTTP_TAG, "Set fallback WiFi channel to %d for ESP-NOW", ESPNOW_FALLBACK_CHANNEL);
+            
             connectionAttemptTimer.invalidate();
         }
     }
@@ -325,6 +395,7 @@ private:
 
     // Configuration
     WifiConfig* wifiConfig;
+    uint8_t macAddress_[6];
     
     // WiFi connection state
     bool wifiConnected;

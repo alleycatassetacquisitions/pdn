@@ -84,8 +84,10 @@ class DeviceSerial {
     void setOnStringReceivedCallback(std::function<void(std::string)> callback, SerialByState whichJack = SerialByState::PRIMARY) {
         if (whichJack == SerialByState::PRIMARY) {
             onPrimaryJackStringReceivedCallback = callback;
+            getPrimaryCommsJack()->setStringCallback(callback);
         } else {
             onAuxiliaryJackStringReceivedCallback = callback;
+            getAuxiliaryCommsJack()->setStringCallback(callback);
         }
     }
 
@@ -93,6 +95,8 @@ class DeviceSerial {
     void clearCallbacks() {
         onPrimaryJackStringReceivedCallback = nullptr;
         onAuxiliaryJackStringReceivedCallback = nullptr;
+        getPrimaryCommsJack()->setStringCallback(nullptr);
+        getAuxiliaryCommsJack()->setStringCallback(nullptr);
     }
 
     void flushSerial() {

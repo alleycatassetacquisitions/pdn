@@ -29,8 +29,8 @@
 #include "device/drivers/peer-comms-interface.hpp"
 
 // WiFi configuration
-const char* WIFI_SSID = "NeoCore Networks";
-const char* WIFI_PASSWORD = "AlleyCatBountyHunting1";
+const char* WIFI_SSID = "The Lab";
+const char* WIFI_PASSWORD = "C00KIECAT";
 const char* BASE_URL = "http://alleycat-server.local:3000";
 
 WifiConfig* wifiConfig = nullptr;

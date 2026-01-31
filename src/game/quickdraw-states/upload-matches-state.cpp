@@ -49,6 +49,9 @@ void UploadMatchesState::attemptUpload() {
 
 void UploadMatchesState::onStateMounted(Device *PDN) {
     LOG_I(TAG, "State mounted - Starting match upload process");
+    
+    // Switch to WiFi mode for HTTP upload
+    PDN->getWirelessManager()->enableWifiMode();
 
     showLoadingGlyphs(PDN);
     uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
