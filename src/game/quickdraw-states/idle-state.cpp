@@ -86,7 +86,7 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->getSecondaryButton()->removeButtonCallbacks();
 }
 
-void Idle::serialEventCallbacks(std::string message) {
+void Idle::serialEventCallbacks(const std::string& message) {
     LOG_I("IDLE", "Serial event received: %s", message.c_str());
     if(message.compare(SERIAL_HEARTBEAT) == 0) {
         sendMacAddress = true;  

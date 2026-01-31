@@ -2,6 +2,6 @@
 
 class PlatformClock {
 public:
-    virtual ~PlatformClock() {}
+    virtual ~PlatformClock() = default;
     virtual unsigned long milliseconds() = 0;
 };

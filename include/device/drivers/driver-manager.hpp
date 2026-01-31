@@ -14,9 +14,9 @@ class DriverManager {
     ~DriverManager() = default;
 
     int initialize() {
-        for(auto& driver : driverConfig) {
-            if(driver.second->initialize() != 0) {
-                return 990 + static_cast<int>(driver.second->type); //Return 990 + driver type to indicate failure
+        for(auto& [driverName, driverPtr] : driverConfig) {
+            if(driverPtr->initialize() != 0) {
+                return 990 + static_cast<int>(driverPtr->type); //Return 990 + driver type to indicate failure
             }
         }
 
@@ -24,14 +24,14 @@ class DriverManager {
     }
 
     void execDrivers() {
-        for(auto& driver : driverConfig) {
-            driver.second->exec();
+        for(auto& [driverName, driverPtr] : driverConfig) {
+            driverPtr->exec();
         }
     }
 
     void dismountDrivers() {
-        for(auto& driver : driverConfig) {
-            delete driver.second;
+        for(auto& [driverName, driverPtr] : driverConfig) {
+            delete driverPtr;
         }
         driverConfig.clear();
     }

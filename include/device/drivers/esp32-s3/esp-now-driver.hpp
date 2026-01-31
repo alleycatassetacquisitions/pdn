@@ -66,7 +66,7 @@ public:
         //require a very small amount of memory making the risk of stack overflow very small
         //This will also be much faster than malloc/free which would be wasteful for such a
         //small allocation
-        uint8_t** sendBuffers = (uint8_t**)alloca(sizeof(uint8_t*) * numInCluster);
+        auto sendBuffers = static_cast<uint8_t**>(alloca(sizeof(uint8_t*) * numInCluster));
         size_t bytesLeft = length;
         for(int i = 0; i < numInCluster; ++i)
         {
@@ -100,7 +100,7 @@ public:
 #endif
 
             //Each packet needs a header, build it directly in the send buffer
-            DataPktHdr* hdr = (DataPktHdr*)sendBuffers[pktIdx];
+            auto* hdr = reinterpret_cast<DataPktHdr*>(sendBuffers[pktIdx]);
             hdr->idxInCluster = pktIdx;
             hdr->numPktsInCluster = numInCluster;
             hdr->pktLen = sizeof(DataPktHdr) + thisBuffer;
@@ -256,7 +256,7 @@ private:
             return;
         }
 
-        const DataPktHdr* pktHdr = (const DataPktHdr*)data;
+        const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
@@ -388,10 +388,10 @@ private:
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
-        DataSendBuffer buffer = m_sendQueue.front();
+        auto buffer = m_sendQueue.front();
         
         //If this is the first packet in cluster, make sure the peer is registered
-        DataPktHdr* hdr = (DataPktHdr*)buffer.ptr;
+        auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
         if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
             EnsurePeerIsRegistered(buffer.dstMac);
 

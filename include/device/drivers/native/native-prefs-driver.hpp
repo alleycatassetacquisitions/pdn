@@ -21,7 +21,7 @@ public:
         return value.size();
     }
 
-    std::string read(const std::string& key, std::string defaultValue) override {
+    std::string read(const std::string& key, const std::string& defaultValue) override {
         auto it = stringStorage_.find(key);
         if (it != stringStorage_.end()) {
             return it->second;
