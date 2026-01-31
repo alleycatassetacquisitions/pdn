@@ -229,6 +229,21 @@ public:
 private:
     static EspNowManager* instance;
 
+    // Struct definitions must come before methods that use them
+    struct DataSendBuffer
+    {
+        uint8_t dstMac[6];
+        uint8_t* ptr;
+        size_t len;
+    };
+
+    struct DataRecvBuffer
+    {
+        uint8_t* data;
+        unsigned long mostRecentRecvPktTime;
+        uint8_t expectedNextIdx;
+    };
+
     explicit EspNowManager(const std::string& name) :
         PeerCommsDriverInterface(name),
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
@@ -275,7 +290,7 @@ private:
         err = esp_now_add_peer(&broadcastPeer);
         
         if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
-            ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
+            LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
             return err;
         }
 
@@ -317,9 +332,7 @@ private:
             mac_addr[3], mac_addr[4], mac_addr[5]);
 #endif
 
-        //Make sure received packet is at least min length
-        if(data_len < sizeof(DataPktHdr))
-        {
+        if(data_len < sizeof(DataPktHdr)) {
             LOG_E("ENC", "Recieved buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
             return;
         }
@@ -330,74 +343,96 @@ private:
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
 
-        //Check for multipacket cluster
-        if(pktHdr->numPktsInCluster > 1)
-        {
-            //Need a static array to use as map key
-            //TODO: Is there a way to just cast mac_addr?
-            uint64_t tmpMacAddr = MacToUInt64(mac_addr);
-            //If this is the first packet, we'll need some special handling
-            if(pktHdr->idxInCluster == 0)
-            {
-                //If there's an existing cluster for this mac address, release it
-                //as that means we lost a packet somewhere
-                auto existingBuffer = manager->m_recvBuffers.find(tmpMacAddr);
-                if(existingBuffer != manager->m_recvBuffers.end())
-                {
-                    free(existingBuffer->second.data);
-                    manager->m_recvBuffers.erase(existingBuffer);
-                }
-
-                DataRecvBuffer newBuffer;
-                newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
-                newBuffer.expectedNextIdx = 1;
-                manager->m_recvBuffers[tmpMacAddr] = newBuffer;
-            }
-            {
-                auto existingBuffer = manager->m_recvBuffers.find(tmpMacAddr);
-                //At this point, we should have a recv buffer for this mac address
-                //if we don't, we missed the start packet in this cluster
-                if(existingBuffer != manager->m_recvBuffers.end())
-                {
-                    DataRecvBuffer recvBuffer = existingBuffer->second;
-                    if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx)
-                    {
-                        LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
-                                      recvBuffer.expectedNextIdx,
-                                      pktHdr->idxInCluster);
-                        free(recvBuffer.data);
-                        manager->m_recvBuffers.erase(existingBuffer);
-                        return;
-                    }
-
-                    //Copy data into our recv buffer
-                    size_t bufferOffset = pktHdr->idxInCluster * MAX_PKT_DATA_SIZE;
-                    memcpy(recvBuffer.data + bufferOffset, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
-                    ++existingBuffer->second.expectedNextIdx;
-                    
-                    //Check for this being the last packet in cluster
-                    if(existingBuffer->second.expectedNextIdx == pktHdr->numPktsInCluster)
-                    {
-                        size_t totalClusterSize = (pktHdr->numPktsInCluster - 1) * MAX_PKT_DATA_SIZE;
-                        totalClusterSize += pktHdr->pktLen - sizeof(DataPktHdr);
-                        manager->HandlePktCallback(pktHdr->packetType, mac_addr, recvBuffer.data, totalClusterSize);
-                        free(recvBuffer.data);
-                        manager->m_recvBuffers.erase(existingBuffer);
-                        return;
-                    }
-                }
-                else
-                {
-                    LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
-                    return;
-                }
-            }
+        if(pktHdr->numPktsInCluster > 1) {
+            manager->handleMultiPacketCluster(mac_addr, data, pktHdr);
+        } else {
+            manager->handleSinglePacket(mac_addr, data, pktHdr);
         }
-        else
-        {
-            //Single packet cluster
-            manager->HandlePktCallback(pktHdr->packetType, mac_addr, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
+    }
+
+    // Helper methods for packet reception
+    void handleSinglePacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
+        HandlePktCallback(pktHdr->packetType, mac_addr, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
+    }
+
+    void handleMultiPacketCluster(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
+        uint64_t macAddr64 = MacToUInt64(mac_addr);
+        
+        if(pktHdr->idxInCluster == 0) {
+            handleFirstPacketInCluster(macAddr64, pktHdr);
         }
+        
+        handleSubsequentPacket(mac_addr, data, pktHdr, macAddr64);
+    }
+
+    void handleFirstPacketInCluster(uint64_t macAddr64, const DataPktHdr* pktHdr) {
+        // If there's an existing cluster for this mac address, release it
+        // as that means we lost a packet somewhere
+        auto existingBuffer = m_recvBuffers.find(macAddr64);
+        if(existingBuffer != m_recvBuffers.end()) {
+            free(existingBuffer->second.data);
+            m_recvBuffers.erase(existingBuffer);
+        }
+
+        DataRecvBuffer newBuffer;
+        newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
+        newBuffer.expectedNextIdx = 1;
+        m_recvBuffers[macAddr64] = newBuffer;
+    }
+
+    void handleSubsequentPacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr, uint64_t macAddr64) {
+        auto existingBuffer = m_recvBuffers.find(macAddr64);
+        
+        // If no buffer exists, we missed the start packet
+        if(existingBuffer == m_recvBuffers.end()) {
+            LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
+            return;
+        }
+
+        DataRecvBuffer& recvBuffer = existingBuffer->second;
+        
+        if(!validatePacketSequence(pktHdr, recvBuffer, existingBuffer)) {
+            return;
+        }
+
+        copyPacketData(data, pktHdr, recvBuffer);
+        ++existingBuffer->second.expectedNextIdx;
+        
+        if(isClusterComplete(existingBuffer->second, pktHdr)) {
+            finalizeCluster(mac_addr, pktHdr, recvBuffer, existingBuffer);
+        }
+    }
+
+    bool validatePacketSequence(const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer, 
+                                std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
+        if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx) {
+            LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
+                  recvBuffer.expectedNextIdx, pktHdr->idxInCluster);
+            free(recvBuffer.data);
+            m_recvBuffers.erase(existingBuffer);
+            return false;
+        }
+        return true;
+    }
+
+    void copyPacketData(const uint8_t* data, const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer) {
+        size_t bufferOffset = pktHdr->idxInCluster * MAX_PKT_DATA_SIZE;
+        memcpy(recvBuffer.data + bufferOffset, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
+    }
+
+    bool isClusterComplete(const DataRecvBuffer& recvBuffer, const DataPktHdr* pktHdr) {
+        return recvBuffer.expectedNextIdx == pktHdr->numPktsInCluster;
+    }
+
+    void finalizeCluster(const uint8_t* mac_addr, const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer,
+                         std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
+        size_t totalClusterSize = (pktHdr->numPktsInCluster - 1) * MAX_PKT_DATA_SIZE;
+        totalClusterSize += pktHdr->pktLen - sizeof(DataPktHdr);
+        
+        HandlePktCallback(pktHdr->packetType, mac_addr, recvBuffer.data, totalClusterSize);
+        
+        free(recvBuffer.data);
+        m_recvBuffers.erase(existingBuffer);
     }
 
     static void EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -558,25 +593,10 @@ private:
     uint8_t m_maxRetries;
     uint8_t m_curRetries;
 
-    //Send queue stores packets to send using DataSendBuffer
-    struct DataSendBuffer
-    {
-        uint8_t dstMac[6];
-        uint8_t* ptr;
-        size_t len;
-    };
-
     //Packet send queue
     std::queue<DataSendBuffer> m_sendQueue;
 
-    //When receiving a buffer that's split across multiple packets,
-    //this struct will track the data while it's being received
-    struct DataRecvBuffer
-    {
-        uint8_t* data;
-        unsigned long mostRecentRecvPktTime;
-        uint8_t expectedNextIdx;
-    };
+    //Receive buffer tracking for multi-packet clusters
     std::unordered_map<uint64_t, DataRecvBuffer> m_recvBuffers;
 
 #if PDN_ENABLE_RSSI_TRACKING
