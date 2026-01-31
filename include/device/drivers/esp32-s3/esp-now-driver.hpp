@@ -205,6 +205,21 @@ public:
 private:
     static EspNowManager* instance;
 
+    // Struct definitions must come before methods that use them
+    struct DataSendBuffer
+    {
+        uint8_t dstMac[6];
+        uint8_t* ptr;
+        size_t len;
+    };
+
+    struct DataRecvBuffer
+    {
+        uint8_t* data;
+        unsigned long mostRecentRecvPktTime;
+        uint8_t expectedNextIdx;
+    };
+
     explicit EspNowManager(const std::string& name) :
         PeerCommsDriverInterface(name)
     {
@@ -473,7 +488,7 @@ private:
     }
 
     uint8_t* getMacAddress() override {
-        uint8_t macAddr[6];
+        static uint8_t macAddr[6];
         esp_read_mac(macAddr, ESP_MAC_WIFI_STA);
         return macAddr;
     }
@@ -490,25 +505,10 @@ private:
     uint8_t m_maxRetries = 5;
     uint8_t m_curRetries = 0;
 
-    //Send queue stores packets to send using DataSendBuffer
-    struct DataSendBuffer
-    {
-        uint8_t dstMac[6];
-        uint8_t* ptr;
-        size_t len;
-    };
-
     //Packet send queue
     std::queue<DataSendBuffer> m_sendQueue;
 
-    //When receiving a buffer that's split across multiple packets,
-    //this struct will track the data while it's being received
-    struct DataRecvBuffer
-    {
-        uint8_t* data;
-        unsigned long mostRecentRecvPktTime;
-        uint8_t expectedNextIdx;
-    };
+    //Receive buffer tracking for multi-packet clusters
     std::unordered_map<uint64_t, DataRecvBuffer> m_recvBuffers;
 
 #if PDN_ENABLE_RSSI_TRACKING

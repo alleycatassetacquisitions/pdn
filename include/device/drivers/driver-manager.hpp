@@ -5,7 +5,7 @@
 #include <utility>
 #include <functional>
 
-using DriverConfig = std::map<std::string, DriverInterface*, std::less<>>;
+using DriverConfig = std::map<std::string, DriverInterface*>;
 
 class DriverManager {
     public:
@@ -14,9 +14,9 @@ class DriverManager {
     ~DriverManager() = default;
 
     int initialize() {
-        for(auto& [driverName, driverPtr] : driverConfig) {
-            if(driverPtr->initialize() != 0) {
-                return 990 + static_cast<int>(driverPtr->type); //Return 990 + driver type to indicate failure
+        for(auto& driver : driverConfig) {
+            if(driver.second->initialize() != 0) {
+                return 990 + static_cast<int>(driver.second->type); //Return 990 + driver type to indicate failure
             }
         }
 
@@ -24,14 +24,14 @@ class DriverManager {
     }
 
     void execDrivers() {
-        for(auto& [driverName, driverPtr] : driverConfig) {
-            driverPtr->exec();
+        for(auto& driver : driverConfig) {
+            driver.second->exec();
         }
     }
 
     void dismountDrivers() {
-        for(auto& [driverName, driverPtr] : driverConfig) {
-            delete driverPtr;
+        for(auto& driver : driverConfig) {
+            delete driver.second;
         }
         driverConfig.clear();
     }
