@@ -17,7 +17,7 @@ const PDNLightStripConfig GripLightsConfig(LightIdentifier::GRIP_LIGHTS, numGrip
 
 class WS2812BFastLEDDriver : public LightDriverInterface {
 public:
-    WS2812BFastLEDDriver(std::string name) : LightDriverInterface(name) {
+    explicit WS2812BFastLEDDriver(const std::string& name) : LightDriverInterface(name) {
         displayLights = new CRGB[DisplayLightsConfig.numLights];
         gripLights = new CRGB[GripLightsConfig.numLights];
     };

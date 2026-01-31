@@ -28,7 +28,7 @@ class DriverInterface {
 public:
     DriverType type;
     std::string name;
-    DriverInterface(DriverType type, const std::string& name) : type(type), name(name) {}
+    DriverInterface(DriverType driverType, const std::string& driverName) : type(driverType), name(driverName) {}
     virtual ~DriverInterface() = default;
     virtual int initialize() = 0; //Returns 0 on success, -1 on failure
     virtual void exec() = 0;

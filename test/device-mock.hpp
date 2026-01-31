@@ -157,7 +157,7 @@ public:
 class MockStorage : public StorageInterface {
 public:
     MOCK_METHOD(size_t, write, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(std::string, read, (const std::string&, std::string), (override));
+    MOCK_METHOD(std::string, read, (const std::string&, const std::string&), (override));
     MOCK_METHOD(bool, remove, (const std::string&), (override));
     MOCK_METHOD(bool, clear, (), (override));
     MOCK_METHOD(void, end, (), (override));

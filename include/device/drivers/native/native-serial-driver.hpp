@@ -6,7 +6,7 @@
 
 class NativeSerialDriver : public SerialDriverInterface {
 public:
-    NativeSerialDriver(std::string name) : SerialDriverInterface(name) {}
+    explicit NativeSerialDriver(const std::string& name) : SerialDriverInterface(name) {}
 
     ~NativeSerialDriver() override = default;
 

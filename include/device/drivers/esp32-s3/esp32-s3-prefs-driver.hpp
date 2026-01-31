@@ -28,7 +28,7 @@ public:
         return prefs.putString(key.c_str(), value.c_str());
     }
     
-    std::string read(const std::string& key, std::string defaultValue) override {
+    std::string read(const std::string& key, const std::string& defaultValue) override {
         return std::string(prefs.getString(key.c_str(), defaultValue.c_str()).c_str());
     }
 

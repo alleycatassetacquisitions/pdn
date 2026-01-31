@@ -460,8 +460,8 @@ private:
 
 // Event handler must be defined after the class
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
-    Esp32S3HttpClient* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
-    HttpRequest* request = client->currentRequest;
+    auto* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
+    auto* request = client->currentRequest;
     
     if (!request) {
         LOG_E(HTTP_TAG, "HTTP event with no active request");
