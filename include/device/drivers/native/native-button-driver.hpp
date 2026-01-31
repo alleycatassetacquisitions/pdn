@@ -8,17 +8,16 @@ using ButtonParameterizedCallbackMap = std::map<ButtonInteraction, parameterized
 
 class NativeButtonDriver : public ButtonDriverInterface {
     public:
-    NativeButtonDriver(std::string name, int buttonPin) : ButtonDriverInterface(name) {};
+    NativeButtonDriver(const std::string& name, int buttonPin) : ButtonDriverInterface(name) {}
     
-    ~NativeButtonDriver() override {
-    }
+    ~NativeButtonDriver() override = default;
 
     int initialize() override {
         return 0;
     }
 
     void exec() override {
-        return;
+        // No periodic execution needed for native button driver
     }
 
     bool isLongPressed() override {

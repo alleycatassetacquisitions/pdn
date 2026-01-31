@@ -7,7 +7,7 @@
 
 class NativePeerCommsDriver : public PeerCommsDriverInterface {
 public:
-    NativePeerCommsDriver(std::string name) : PeerCommsDriverInterface(name) {
+    explicit NativePeerCommsDriver(const std::string& name) : PeerCommsDriverInterface(name) {
         // Get unique MAC from broker
         NativePeerBroker::getInstance().generateUniqueMac(macAddress_);
     }
@@ -23,7 +23,7 @@ public:
     }
 
     void exec() override {
-        // Process incoming packets - the broker will call receivePacket directly
+        // Packet delivery handled by broker calling receivePacket directly
     }
 
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {

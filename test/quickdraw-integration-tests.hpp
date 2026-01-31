@@ -1105,8 +1105,8 @@ inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
     suite->bountySendsToHunter(QDCommand::CONNECTION_CONFIRMED, matchId, "", "boun");
     
     // Hunter should have set opponent MAC from the packet
-    ASSERT_NE(suite->hunter->getOpponentMacAddress(), nullptr);
-    EXPECT_EQ(*suite->hunter->getOpponentMacAddress(), "BB:BB:BB:BB:BB:BB");
+    ASSERT_FALSE(suite->hunter->getOpponentMacAddress().empty());
+    EXPECT_EQ(suite->hunter->getOpponentMacAddress(), "BB:BB:BB:BB:BB:BB");
 }
 
 // Test: Match data is correctly propagated through handshake

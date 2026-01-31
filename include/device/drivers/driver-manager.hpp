@@ -3,14 +3,15 @@
 #include "driver-interface.hpp"
 #include <map>
 #include <utility>
+#include <functional>
 
 using DriverConfig = std::map<std::string, DriverInterface*>;
 
 class DriverManager {
     public:
-    DriverManager(DriverConfig driverConfig) : driverConfig(driverConfig) {}
+    explicit DriverManager(const DriverConfig& config) : driverConfig(config) {}
 
-    ~DriverManager() {}
+    ~DriverManager() = default;
 
     int initialize() {
         for(auto& driver : driverConfig) {
@@ -31,11 +32,10 @@ class DriverManager {
     void dismountDrivers() {
         for(auto& driver : driverConfig) {
             delete driver.second;
-            driverConfig.erase(driver.first);
         }
         driverConfig.clear();
     }
 
-    private:
+private:
     DriverConfig driverConfig;
 };

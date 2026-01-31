@@ -47,7 +47,7 @@ public:
      * @param match_json JSON string containing match data
      * @return Pointer to the initialized match, nullptr if invalid
      */
-    Match* receiveMatch(Match match);
+    Match* receiveMatch(const Match& match);
 
     /**
      * Finalizes a match by saving it to storage and removing from active matches

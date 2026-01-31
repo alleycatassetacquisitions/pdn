@@ -10,7 +10,7 @@ RemoteDebugManager::~RemoteDebugManager() {
     peerComms = nullptr;
 }
 
-void RemoteDebugManager::Initialize(std::string ssid, std::string password, std::string baseUrl) {
+void RemoteDebugManager::Initialize(const std::string& ssid, const std::string& password, const std::string& baseUrl) {
     debugPacket.command = CHANGE_WIFI_CREDENTIALS;
     strncpy(debugPacket.ssid, ssid.c_str(), sizeof(debugPacket.ssid) - 1);
     strncpy(debugPacket.password, password.c_str(), sizeof(debugPacket.password) - 1);
@@ -20,7 +20,7 @@ void RemoteDebugManager::Initialize(std::string ssid, std::string password, std:
     debugPacket.baseUrl[sizeof(debugPacket.baseUrl) - 1] = '\0';
 }
 
-void RemoteDebugManager::SetPacketReceivedCallback(std::function<void(DebugPacket)> callback) {
+void RemoteDebugManager::SetPacketReceivedCallback(const std::function<void(DebugPacket)>& callback) {
     packetReceivedCallback = callback;
 }
 

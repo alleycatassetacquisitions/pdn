@@ -16,7 +16,7 @@ enum class SerialIdentifier {
 
 class HWSerialWrapper {
     public:
-    virtual ~HWSerialWrapper() {};
+    virtual ~HWSerialWrapper() = default;
     virtual int availableForWrite() = 0;
     virtual int available() = 0;
     virtual int peek() = 0;
@@ -24,7 +24,7 @@ class HWSerialWrapper {
     virtual std::string readStringUntil(char terminator) = 0;
     virtual void print(char msg) = 0;
     virtual void println(char* msg) = 0;
-    virtual void println(std::string msg) = 0;
+    virtual void println(const std::string& msg) = 0;
     virtual void flush() = 0;
-    virtual void setStringCallback(SerialStringCallback callback) = 0;
+    virtual void setStringCallback(const SerialStringCallback& callback) = 0;
 };

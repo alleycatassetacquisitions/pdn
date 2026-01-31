@@ -11,8 +11,9 @@
 #include <string>
 
 class Esp32s3SerialOut : public SerialDriverInterface {
-    public:
-    Esp32s3SerialOut(std::string name) : SerialDriverInterface(name) {};
+public:
+    explicit Esp32s3SerialOut(const std::string& name) : SerialDriverInterface(name) {}
+    
     ~Esp32s3SerialOut() override {
         stringCallback = nullptr;
     }
@@ -70,7 +71,7 @@ class Esp32s3SerialOut : public SerialDriverInterface {
         Serial1.println(msg);
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         Serial1.println(msg.c_str());
     }
 
@@ -78,7 +79,7 @@ class Esp32s3SerialOut : public SerialDriverInterface {
         Serial1.flush();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
     }
 
@@ -88,7 +89,8 @@ class Esp32s3SerialOut : public SerialDriverInterface {
 
 class Esp32s3SerialIn : public SerialDriverInterface {
 public:
-    Esp32s3SerialIn(std::string name) : SerialDriverInterface(name) {};
+    explicit Esp32s3SerialIn(const std::string& name) : SerialDriverInterface(name) {}
+    
     ~Esp32s3SerialIn() override {
         stringCallback = nullptr;
     }
@@ -145,7 +147,7 @@ public:
         Serial2.println(msg);
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         Serial2.println(msg.c_str());
     }
 
@@ -153,7 +155,7 @@ public:
         Serial2.flush();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
     }
 

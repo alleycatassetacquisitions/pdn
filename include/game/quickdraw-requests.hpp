@@ -56,8 +56,8 @@ namespace QuickdrawRequests {
     inline void getPlayer(
         HttpClientInterface* httpClient,
         const std::string& playerId,
-        std::function<void(const PlayerResponse&)> onSuccess,
-        std::function<void(const WirelessErrorInfo&)> onError
+        const std::function<void(const PlayerResponse&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError
     ) {
         std::string path = "/api/players/" + playerId;
         
@@ -85,9 +85,9 @@ namespace QuickdrawRequests {
 
     inline void updateMatches(
         HttpClientInterface* httpClient,
-        std::string matchesJson,
-        std::function<void(const std::string&)> onSuccess,
-        std::function<void(const WirelessErrorInfo&)> onError
+        const std::string& matchesJson,
+        const std::function<void(const std::string&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError
     ) {
         HttpRequest request(
             "/api/matches",

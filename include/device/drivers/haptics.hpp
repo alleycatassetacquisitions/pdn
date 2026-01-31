@@ -34,8 +34,7 @@
 
 class Haptics {
 public:
-
-    virtual ~Haptics(){}
+    virtual ~Haptics() = default;
 
     virtual bool isOn() = 0;
 
@@ -49,10 +48,4 @@ public:
 
     // void loadPattern(HapticsPattern pattern);
     // int playPattern();
-
-protected:
-    int pinNumber;
-    int intensity;
-    // HapticsPattern currentPattern;
-    bool active = false;
 };

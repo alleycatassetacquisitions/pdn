@@ -20,7 +20,7 @@
  */
 class NativeDashboard {
 public:
-    NativeDashboard(int numDevices) : numDevices_(numDevices) {
+    explicit NativeDashboard(int numDevices) : numDevices_(numDevices) {
         startTime_ = std::chrono::steady_clock::now();
     }
 
