@@ -12,6 +12,7 @@
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "device/device-constants.hpp"
 
 #define DEBUG_PRINT_ESP_NOW 0
 
@@ -44,6 +45,57 @@ public:
 
     void exec() override {
 
+    }
+
+    void connect() override {
+        // Set WiFi to station mode
+        WiFi.mode(WIFI_STA);
+        
+        // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
+        // ESP-NOW requires the WiFi radio to be active!
+        WiFi.disconnect(false);
+        
+        // Small delay to let WiFi stabilize after mode change
+        delay(100);
+        
+        // Set the channel using ESP-IDF API for reliability
+        esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+        if (err != ESP_OK) {
+            LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
+        }
+        
+        // Verify the channel was set correctly
+        uint8_t primary_channel;
+        wifi_second_chan_t secondary_channel;
+        esp_wifi_get_channel(&primary_channel, &secondary_channel);
+        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
+
+        initializeEspNow();
+
+        peerCommsState = PeerCommsState::CONNECTED;
+    }
+
+    void disconnect() override {
+        esp_err_t err = esp_now_deinit();
+        if(err != ESP_OK) {
+            LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
+            return;
+        }
+
+        peerCommsState = PeerCommsState::DISCONNECTED;
+    }
+
+    PeerCommsState getPeerCommsState() override {
+        return peerCommsState;
+    }
+
+    void setPeerCommsState(PeerCommsState state) override {
+        if(state == PeerCommsState::CONNECTED && peerCommsState != PeerCommsState::CONNECTED) {
+            connect();
+        }
+        else if(state == PeerCommsState::DISCONNECTED && peerCommsState != PeerCommsState::DISCONNECTED) {
+            disconnect();
+        }
     }
 
     //Queues up data for sending, may not send right away
@@ -145,43 +197,11 @@ public:
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
-    // Initializes ESP-NOW and sets up callbacks and broadcast peer
+    // Called by DriverManager at startup - we don't initialize ESP-NOW here
+    // because WiFi must be set up first. Actual init happens in connect().
     int initialize() override {
-        //Initialize ESP-NOW
-        esp_err_t err = esp_now_init();
-        if(err != ESP_OK)
-        {
-            LOG_E("ENC", "ESPNOW failed to init: 0x%X\n", err);
-            return -1;
-        }
-        
-        //Register callbacks
-        err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
-        if(err != ESP_OK) {
-            LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
-            return -1;
-        }
-        
-        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
-        if(err != ESP_OK) {
-            LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
-            return -1;
-        }
-
-        //Register broadcast peer
-        esp_now_peer_info_t broadcastPeer = {};
-        memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
-        broadcastPeer.channel = 0;  // 0 = current channel
-        broadcastPeer.ifidx = WIFI_IF_STA;  // Use STA interface
-        broadcastPeer.encrypt = false;
-        err = esp_now_add_peer(&broadcastPeer);
-        if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
-            LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
-            return -1;
-        }
-
-        LOG_I("ENC", "ESPNOW initialization complete");
-
+        // No-op: ESP-NOW initialization requires WiFi to be running first.
+        // The actual initialization happens in connect() -> initializeEspNow()
         return 0;
     }
 
@@ -222,7 +242,46 @@ private:
         esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
         esp_wifi_set_promiscuous(true);
 #endif
-        // ESP-NOW initialization happens in initialize() method, called by DriverManager
+        // ESP-NOW initialization happens in connect() -> initializeEspNow()
+        // after WiFi has been set up
+    }
+
+    // Actually initializes ESP-NOW - must be called after WiFi is configured
+    int initializeEspNow() {
+        // Initialize ESP-NOW
+        esp_err_t err = esp_now_init();
+        if(err != ESP_OK)
+        {
+            LOG_E("ENC", "ESPNOW failed to init: 0x%X\n", err);
+            return -1;
+        }
+        
+        // Register callbacks
+        err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
+        if(err != ESP_OK) {
+            LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
+            return -1;
+        }
+        
+        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
+        if(err != ESP_OK) {
+            LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
+            return -1;
+        }
+
+        // Register broadcast peer
+        esp_now_peer_info_t broadcastPeer = {};
+        memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
+        err = esp_now_add_peer(&broadcastPeer);
+        
+        if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
+            ESP_LOGE("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
+            return err;
+        }
+
+        LOG_I("ENC", "ESPNOW initialization complete");
+
+        return 0;
     }
 
 #if PDN_ENABLE_RSSI_TRACKING
@@ -349,18 +408,27 @@ private:
 
         if(status == ESP_NOW_SEND_SUCCESS)
         {
+            LOG_D("ENC", "Send SUCCESS to %02X:%02X:%02X:%02X:%02X:%02X",
+                  mac_addr[0], mac_addr[1], mac_addr[2],
+                  mac_addr[3], mac_addr[4], mac_addr[5]);
             manager->MoveToNextSendPkt();
         }
         else
         {
             if(manager->m_curRetries < manager->m_maxRetries)
             {
-                LOG_W("ENC", "ESPNOW Failed send, retrying");
+                LOG_W("ENC", "Send FAILED to %02X:%02X:%02X:%02X:%02X:%02X (retry %d/%d)",
+                      mac_addr[0], mac_addr[1], mac_addr[2],
+                      mac_addr[3], mac_addr[4], mac_addr[5],
+                      manager->m_curRetries + 1, manager->m_maxRetries);
                 ++manager->m_curRetries;
             }
             else
             {
-                LOG_E("ENC", "ESPNOW Failed send, giving up");
+                LOG_E("ENC", "Send FAILED to %02X:%02X:%02X:%02X:%02X:%02X - giving up after %d retries",
+                      mac_addr[0], mac_addr[1], mac_addr[2],
+                      mac_addr[3], mac_addr[4], mac_addr[5],
+                      manager->m_maxRetries);
                 manager->MoveToNextSendPkt();
             }
         }
@@ -479,6 +547,8 @@ private:
     void removePeer(uint8_t* macAddr) override {
         esp_now_del_peer(macAddr);
     }
+
+    PeerCommsState peerCommsState = PeerCommsState::DISCONNECTED;
 
     //Storage for MAC address
     uint8_t macAddress_[6];

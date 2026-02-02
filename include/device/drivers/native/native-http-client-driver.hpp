@@ -33,7 +33,7 @@ public:
 
     bool isConnected() override {
         // Stub always reports disconnected - can be toggled for testing
-        return connected;
+        return connected && httpClientState == HttpClientState::CONNECTED;
     }
 
     bool queueRequest(HttpRequest& request) override {
@@ -50,6 +50,7 @@ public:
 
     void disconnect() override {
         connected = false;
+        httpClientState = HttpClientState::DISCONNECTED;
     }
 
     void updateConfig(WifiConfig* config) override {
@@ -64,29 +65,28 @@ public:
         return macAddress;
     }
 
-    void enablePeerCommsMode(uint8_t channel) override {
-        // In native simulation, just track the mode
-        peerCommsMode = true;
-        connected = false;
-        currentChannel = channel;
+    void setHttpClientState(HttpClientState state) override {
+        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+            // Simulate connection
+            connected = true;
+            httpClientState = HttpClientState::CONNECTED;
+        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+            disconnect();
+        }
     }
 
-    bool enableHttpMode() override {
-        // In native simulation, simulate instant connection
-        peerCommsMode = false;
-        connected = true;
-        return true;
+    HttpClientState getHttpClientState() override {
+        return httpClientState;
     }
 
     // Test helper methods
-    void setConnected(bool connected) { connected = connected; }
-    bool isPeerCommsMode() const { return peerCommsMode; }
+    void setConnected(bool isConnected) { connected = isConnected; }
     uint8_t getCurrentChannel() const { return currentChannel; }
 
 private:
     WifiConfig wifiConfig;
     bool connected = false;
-    bool peerCommsMode = false;
     uint8_t currentChannel = 0;
     uint8_t macAddress[6];
+    HttpClientState httpClientState = HttpClientState::DISCONNECTED;
 };

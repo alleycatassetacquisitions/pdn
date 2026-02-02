@@ -72,7 +72,6 @@ void Idle::onStateLoop(Device *PDN) {
         std::string message = SEND_MAC_ADDRESS + std::string(macStr);
         PDN->writeString(message.c_str());
         transitionToHandshakeState = true;
-        sendMacAddress = false;
     }
 
     if(displayIsDirty) {

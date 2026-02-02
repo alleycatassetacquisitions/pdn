@@ -52,9 +52,6 @@ public:
         httpClientInitialized = false;
         wifiGivenUp = false;
         
-        startWifiConnection();
-        connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
-        
         return 0;
     }
 
@@ -97,6 +94,7 @@ public:
         httpClientInitialized = false;
         wifiGivenUp = false;
         connectionAttemptTimer.invalidate();
+        httpClientState = HttpClientState::DISCONNECTED;
     }
 
     void updateConfig(WifiConfig* config) override {
@@ -125,36 +123,25 @@ public:
         return macAddress_;
     }
 
-    void enablePeerCommsMode(uint8_t channel) override {
-        LOG_I(HTTP_TAG, "Enabling ESP-NOW mode on channel %d", channel);
-        
-        // Disconnect from AP but keep WiFi radio and ESP-NOW intact
-        // IMPORTANT: Use false to preserve WiFi stack state (ESP-NOW depends on it)
-        WiFi.disconnect(false);
-        
-        // Ensure we're in STA mode
-        WiFi.mode(WIFI_STA);
-        
-        // Force the specified channel for ESP-NOW using ESP-IDF API
-        esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-        
-        wifiConnected = false;
-        wifiGivenUp = false;
-        connectionAttemptTimer.invalidate();
-        
-        // Verify channel was set
-        uint8_t primary_channel;
-        wifi_second_chan_t second;
-        esp_wifi_get_channel(&primary_channel, &second);
-        LOG_I(HTTP_TAG, "ESP-NOW mode enabled, channel now: %d", primary_channel);
+    void setHttpClientState(HttpClientState state) override {
+        if(state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+            connect();
+        }
+        else if(state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+            disconnect();
+        }
+        httpClientState = state;
     }
 
-    bool enableHttpMode() override {
+    HttpClientState getHttpClientState() override {
+        return httpClientState;
+    }
+
+    void connect() {
         LOG_I(HTTP_TAG, "Enabling HTTP mode...");
         
         if (wifiConnected && WiFi.status() == WL_CONNECTED) {
             LOG_D(HTTP_TAG, "Already connected to WiFi");
-            return true;
         }
         
         // Start WiFi connection
@@ -178,10 +165,9 @@ public:
             if (!httpClientInitialized) {
                 httpClientInitialized = initializeHttpClient();
             }
-            return true;
+            httpClientState = HttpClientState::CONNECTED;
         } else {
             LOG_W(HTTP_TAG, "WiFi connection failed after %d attempts", attempts);
-            return false;
         }
     }
 
@@ -408,6 +394,7 @@ private:
     std::queue<HttpRequest> httpQueue;
     esp_http_client_handle_t httpClient;
     HttpRequest* currentRequest;
+    HttpClientState httpClientState = HttpClientState::DISCONNECTED;
 };
 
 // Event handler must be defined after the class

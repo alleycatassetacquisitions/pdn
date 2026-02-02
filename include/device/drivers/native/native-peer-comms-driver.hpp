@@ -26,7 +26,31 @@ public:
         // Process incoming packets - the broker will call receivePacket directly
     }
 
+    void connect() override {
+        // In native simulation, connect is instant
+        peerCommsState_ = PeerCommsState::CONNECTED;
+    }
+
+    void disconnect() override {
+        peerCommsState_ = PeerCommsState::DISCONNECTED;
+    }
+
+    PeerCommsState getPeerCommsState() override {
+        return peerCommsState_;
+    }
+
+    void setPeerCommsState(PeerCommsState state) override {
+        if (state == PeerCommsState::CONNECTED && peerCommsState_ != PeerCommsState::CONNECTED) {
+            connect();
+        } else if (state == PeerCommsState::DISCONNECTED && peerCommsState_ != PeerCommsState::DISCONNECTED) {
+            disconnect();
+        }
+    }
+
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
+        if (peerCommsState_ != PeerCommsState::CONNECTED) {
+            return -1;  // Cannot send when disconnected
+        }
         NativePeerBroker::getInstance().sendPacket(macAddress_, dst, packetType, data, length);
         return 0; // Success
     }
@@ -57,6 +81,11 @@ public:
      */
     void receivePacket(const uint8_t* srcMac, PktType packetType, 
                        const uint8_t* data, size_t length) {
+        // Only process packets when connected
+        if (peerCommsState_ != PeerCommsState::CONNECTED) {
+            return;
+        }
+        
         auto it = handlers_.find(packetType);
         if (it != handlers_.end()) {
             it->second.callback(srcMac, data, length, it->second.context);
@@ -82,6 +111,7 @@ private:
 
     std::map<PktType, HandlerEntry> handlers_;
     uint8_t macAddress_[6];
+    PeerCommsState peerCommsState_ = PeerCommsState::DISCONNECTED;
 };
 
 // Implementation of broker's deliverPackets that depends on NativePeerCommsDriver

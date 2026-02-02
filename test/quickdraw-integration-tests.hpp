@@ -54,14 +54,14 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new QuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         // Create a match
         matchManager->createMatch("test-match-uuid-1234567890", player->getUserID(), "boun");
         matchManager->setDuelLocalStartTime(10000);
 
-        ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
     void TearDown() override {
@@ -88,6 +88,7 @@ public:
         return packet;
     }
 
+    MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
     Player* player;
@@ -249,7 +250,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new QuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         matchManager->createMatch("callback-test-match-id-12345", player->getUserID(), "boun");
@@ -258,7 +259,7 @@ public:
         // Set up default mock expectations
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
     void TearDown() override {
@@ -359,7 +360,7 @@ inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
     suite->fakeClock->advance(150);
     
     // Expect sendData to be called
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .Times(1)
         .WillOnce(Return(1));
     
@@ -388,7 +389,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new QuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         matchManager->createMatch("flow-test-match-id-1234567890", player->getUserID(), "boun");
@@ -396,7 +397,7 @@ public:
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockHaptics, getIntensity()).WillByDefault(Return(0));
-        ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, write(_, _)).WillByDefault(Return(100));
         ON_CALL(storage, writeUChar(_, _)).WillByDefault(Return(1));
         ON_CALL(storage, readUChar(_, _)).WillByDefault(Return(0));
@@ -654,7 +655,7 @@ public:
 
         hunterMatchManager = new MatchManager();
         hunterWirelessManager = new QuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, &hunterPeerComms, 100);
+        hunterWirelessManager->initialize(hunter, hunterDevice.wirelessManager, 100);
         hunterMatchManager->initialize(hunter, &hunterStorage, &hunterPeerComms, hunterWirelessManager);
 
         // Bounty setup
@@ -666,7 +667,7 @@ public:
 
         bountyMatchManager = new MatchManager();
         bountyWirelessManager = new QuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, &bountyPeerComms, 100);
+        bountyWirelessManager->initialize(bounty, bountyDevice.wirelessManager, 100);
         bountyMatchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, bountyWirelessManager);
 
         // Create match on both sides
@@ -676,8 +677,8 @@ public:
         hunterMatchManager->setDuelLocalStartTime(10000);
         bountyMatchManager->setDuelLocalStartTime(10000);
 
-        ON_CALL(hunterPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(bountyPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*hunterDevice.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*bountyDevice.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
     void TearDown() override {
@@ -739,6 +740,8 @@ public:
     MatchManager* bountyMatchManager;
     QuickdrawWirelessManager* hunterWirelessManager;
     QuickdrawWirelessManager* bountyWirelessManager;
+    MockDevice hunterDevice;
+    MockDevice bountyDevice;
     MockPeerComms hunterPeerComms;
     MockPeerComms bountyPeerComms;
     MockStorage hunterStorage;
@@ -853,7 +856,7 @@ public:
 
         hunterMatchManager = new MatchManager();
         hunterWirelessManager = new QuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, &hunterPeerComms, 100);
+        hunterWirelessManager->initialize(hunter, hunterDevice.wirelessManager, 100);
         hunterMatchManager->initialize(hunter, &hunterStorage, &hunterPeerComms, hunterWirelessManager);
 
         // Bounty setup
@@ -865,7 +868,7 @@ public:
 
         bountyMatchManager = new MatchManager();
         bountyWirelessManager = new QuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, &bountyPeerComms, 100);
+        bountyWirelessManager->initialize(bounty, bountyDevice.wirelessManager, 100);
         bountyMatchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, bountyWirelessManager);
 
         // Default mock expectations
@@ -873,8 +876,8 @@ public:
         ON_CALL(*hunterDevice.mockDisplay, drawImage(_)).WillByDefault(Return(hunterDevice.mockDisplay));
         ON_CALL(*bountyDevice.mockDisplay, invalidateScreen()).WillByDefault(Return(bountyDevice.mockDisplay));
         ON_CALL(*bountyDevice.mockDisplay, drawImage(_)).WillByDefault(Return(bountyDevice.mockDisplay));
-        ON_CALL(hunterPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(bountyPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*hunterDevice.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*bountyDevice.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
     void TearDown() override {

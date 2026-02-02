@@ -2,6 +2,10 @@
 
 #include <string>
 
+// Fixed channel for ESP-NOW communication
+// All devices must use the same channel for reliable ESP-NOW
+static constexpr uint8_t ESPNOW_CHANNEL = 6;
+
 const uint8_t primaryButtonPin = 15;
 const uint8_t secondaryButtonPin = 16;
 const uint8_t motorPin = 17;

@@ -103,8 +103,8 @@ void setup() {
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME);
     
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
-    httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     peerCommsDriver = EspNowManager::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, PREF_NAMESPACE);
 
     // Create driver configuration
@@ -140,7 +140,10 @@ void setup() {
     
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, peerCommsDriver, 1000);
+    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
+    
+    // Register ESP-NOW packet handlers
+    setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
     
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
     

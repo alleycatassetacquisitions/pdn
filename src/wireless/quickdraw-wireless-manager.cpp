@@ -17,13 +17,13 @@ QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
 
 QuickdrawWirelessManager::~QuickdrawWirelessManager() {
     player = nullptr;
-    peerComms = nullptr;
+    wirelessManager = nullptr;
 }
 
-void QuickdrawWirelessManager::initialize(Player *player, PeerCommsInterface* peerComms, long broadcastDelay) {
+void QuickdrawWirelessManager::initialize(Player *player, WirelessManager* wirelessManager, long broadcastDelay) {
     this->player = player;
     this->broadcastDelay = broadcastDelay;
-    this->peerComms = peerComms;
+    this->wirelessManager = wirelessManager;
 }
 
 void QuickdrawWirelessManager::clearCallbacks() {
@@ -69,19 +69,19 @@ int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress,
     uint8_t dstMac[6];
     const uint8_t* targetMac;
 
+    int ret;
+
     if (!macAddress.empty() && StringToMac(macAddress.c_str(), dstMac)) {
         targetMac = dstMac;
-    } else {
-        LOG_W("QWM", "Invalid MAC address, falling back to broadcast");
-        targetMac = peerComms->getGlobalBroadcastAddress();
-    }
-    
 
-    int ret = peerComms->sendData(
-        targetMac,
-        PktType::kQuickdrawCommand,
-        (uint8_t*)&qdPacket,
-        sizeof(qdPacket));
+        ret = wirelessManager->sendEspNowData(
+            targetMac,
+            PktType::kQuickdrawCommand,
+            (uint8_t*)&qdPacket,
+            sizeof(qdPacket));
+    } else {
+        ret = -1;
+    }
 
     return ret;
 }

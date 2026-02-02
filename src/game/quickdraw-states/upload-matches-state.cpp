@@ -5,9 +5,9 @@
 
 static const char* TAG = "UploadMatchesState";
 
-UploadMatchesState::UploadMatchesState(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager) : State(UPLOAD_MATCHES) {
+UploadMatchesState::UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : State(UPLOAD_MATCHES) {
     this->player = player;
-    this->httpClient = httpClient;
+    this->wirelessManager = wirelessManager;
     this->matchManager = matchManager;
     LOG_I(TAG, "UploadMatchesState initialized");
 }
@@ -15,13 +15,13 @@ UploadMatchesState::UploadMatchesState(Player* player, HttpClientInterface* http
 UploadMatchesState::~UploadMatchesState() {
     LOG_I(TAG, "UploadMatchesState destroyed");
     player = nullptr;
-    httpClient = nullptr;
+    wirelessManager = nullptr;
     matchManager = nullptr;
 }
 
 void UploadMatchesState::attemptUpload() {
     QuickdrawRequests::updateMatches(
-        httpClient,
+        wirelessManager,
         matchesJson,
         [this](const std::string& jsonResponse) {
             LOG_I(TAG, "Successfully updated matches: %s", jsonResponse.c_str());
@@ -32,11 +32,10 @@ void UploadMatchesState::attemptUpload() {
             LOG_E(TAG, "Failed to update matches: %s (code: %d)", 
                 error.message.c_str(), static_cast<int>(error.code));
             
-            // Try to reconnect and retry the upload
+            // Retry the upload - WirelessManager handles mode switching automatically
             if (matchUploadRetryCount < 3) {
                 matchUploadRetryCount++;
                 LOG_I(TAG, "Retrying upload attempt %d/3", matchUploadRetryCount);
-                httpClient->retryConnection();
                 uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
                 shouldRetryUpload = true;
             } else {
@@ -75,7 +74,7 @@ void UploadMatchesState::onStateLoop(Device *PDN) {
     uploadMatchesTimer.updateTime();
     
     // Check if we should retry the upload after connection is re-established
-    if (shouldRetryUpload && httpClient->isConnected()) {
+    if (shouldRetryUpload && wirelessManager->isWifiConnected()) {
         LOG_I(TAG, "Connection re-established, retrying upload");
         shouldRetryUpload = false;
         attemptUpload();

@@ -28,6 +28,8 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
 }
 
 int PDN::begin() {
+    // Initialize wireless manager to set up initial state
+    wirelessManager->initialize();
     return 1;
 }
 
