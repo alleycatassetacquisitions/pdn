@@ -7,8 +7,6 @@
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
 DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT), player(player), matchManager(matchManager) {
-    LOG_I(DUEL_RESULT_TAG, "Duel result state created for player %s (Hunter: %d)", 
-             player->getUserID().c_str(), player->isHunter());
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
 }

@@ -6,17 +6,17 @@
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, HttpClientInterface* httpClient, RemoteDebugManager* remoteDebugManager) : State(QuickdrawStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager) : State(QuickdrawStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
-    this->httpClient = httpClient;
+    this->wirelessManager = wirelessManager;
     this->remoteDebugManager = remoteDebugManager;
 }   
 
 FetchUserDataState::~FetchUserDataState() {
     LOG_I(TAG, "Destroying FetchUserDataState");
     remoteDebugManager = nullptr;
-    httpClient = nullptr;
+    wirelessManager = nullptr;
     player = nullptr;
 }   
 
@@ -53,7 +53,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         isFetchingUserData = false;
     } else {
         QuickdrawRequests::getPlayer(
-            httpClient,
+            PDN->getWirelessManager(),
             player->getUserID(),
             [this](const PlayerResponse& response) {
                 LOG_I(TAG, "Successfully fetched player data: %s (%s)", 

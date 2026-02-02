@@ -5,11 +5,10 @@
 
 static const char* TAG = "PlayerRegistration";
 
-PlayerRegistration::PlayerRegistration(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
+PlayerRegistration::PlayerRegistration(Player* player, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
     LOG_I(TAG, "Initializing PlayerRegistration state");
     this->player = player;
     this->matchManager = matchManager;
-    this->httpClient = httpClient;
 }
 
 PlayerRegistration::~PlayerRegistration() {

@@ -39,8 +39,6 @@ Duel::Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager*
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
-    LOG_I(DUEL_TAG, "Duel state created for player %s (Hunter: %d)", 
-             player->getUserID().c_str(), player->isHunter());
 }
 
 Duel::~Duel() {

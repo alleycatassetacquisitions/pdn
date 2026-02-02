@@ -3,7 +3,7 @@
 #include <string>
 #include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
-#include "device/drivers/http-client-interface.hpp"
+#include "device/wireless-manager.hpp"
 #include "wireless/wireless-types.hpp"
 
 // Player API Response Structure
@@ -53,8 +53,12 @@ struct PlayerResponse {
 
 namespace QuickdrawRequests {
 
+    /**
+     * Fetch player data from the server.
+     * Automatically switches to WiFi mode if needed.
+     */
     inline void getPlayer(
-        HttpClientInterface* httpClient,
+        WirelessManager* wirelessManager,
         const std::string& playerId,
         std::function<void(const PlayerResponse&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError
@@ -80,11 +84,15 @@ namespace QuickdrawRequests {
             onError
         );
         
-        httpClient->queueRequest(request);
+        wirelessManager->queueHttpRequest(request);
     }
 
+    /**
+     * Upload match results to the server.
+     * Automatically switches to WiFi mode if needed.
+     */
     inline void updateMatches(
-        HttpClientInterface* httpClient,
+        WirelessManager* wirelessManager,
         std::string matchesJson,
         std::function<void(const std::string&)> onSuccess,
         std::function<void(const WirelessErrorInfo&)> onError
@@ -97,7 +105,7 @@ namespace QuickdrawRequests {
             onError
         );
         
-        httpClient->queueRequest(request);
+        wirelessManager->queueHttpRequest(request);
     }
 
 }

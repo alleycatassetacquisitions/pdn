@@ -4,7 +4,7 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->httpClient = PDN->getHttpClient();
+    this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
@@ -23,8 +23,8 @@ Quickdraw::~Quickdraw() {
 void Quickdraw::populateStateMap() {
     matchManager->initialize(player, storageManager, peerComms, quickdrawWirelessManager);
 
-    PlayerRegistration* playerRegistration = new PlayerRegistration(player, httpClient, matchManager);
-    FetchUserDataState* fetchUserData = new FetchUserDataState(player, httpClient, remoteDebugManager);
+    PlayerRegistration* playerRegistration = new PlayerRegistration(player, matchManager);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager, remoteDebugManager);
     WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);
@@ -49,7 +49,7 @@ void Quickdraw::populateStateMap() {
     Lose* lose = new Lose(player);
     
     Sleep* sleep = new Sleep(player);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(player, httpClient, matchManager);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
     playerRegistration->addTransition(
         new StateTransition(

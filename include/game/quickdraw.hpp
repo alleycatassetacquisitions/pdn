@@ -19,15 +19,13 @@ public:
 
     void populateStateMap() override;
     static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
-    
-    HttpClientInterface* getHttpClient() { return httpClient; }
 
 private:
     std::vector<Match> matches;
     int numMatches = 0;
     MatchManager* matchManager;
     Player *player;
-    HttpClientInterface* httpClient;
+    WirelessManager* wirelessManager;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
     QuickdrawWirelessManager* quickdrawWirelessManager;

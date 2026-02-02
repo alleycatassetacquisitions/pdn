@@ -163,8 +163,8 @@ public:
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
         
-        // Initialize wireless manager with peer comms
-        wirelessManager->initialize(player, &peerComms, 100);
+        // Initialize wireless manager with WirelessManager from MockDevice
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         // Set up default mock expectations
@@ -262,7 +262,7 @@ inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
     
     // Expect packet to be sent when state mounts
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
     BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
@@ -285,7 +285,7 @@ inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
     
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
     HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
@@ -317,7 +317,7 @@ inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite)
     
     // Capture the MAC address used in sendData
     uint8_t capturedMac[6];
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillOnce(Invoke([&capturedMac](const uint8_t* mac, PktType type, const uint8_t* data, size_t len) {
             memcpy(capturedMac, mac, 6);
             return 1;
@@ -340,7 +340,7 @@ inline void handshakeStatesClearOnDismount(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
     
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
     HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
@@ -380,7 +380,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         countdownState = new DuelCountdown(player, matchManager);
@@ -569,7 +569,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         // Create a match for testing
@@ -577,7 +577,7 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
     void TearDown() override {
@@ -694,7 +694,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
     // Expect sendData to be called when button is pressed
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .Times(testing::AtLeast(1))
         .WillRepeatedly(Return(1));
     
@@ -870,7 +870,7 @@ inline void duelGracePeriodExpiresSetsNeverPressed(DuelStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
     DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
@@ -889,7 +889,7 @@ inline void duelGracePeriodExpiresSendsPityTime(DuelStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
     DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
@@ -937,7 +937,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -1143,14 +1143,14 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, write(_, _)).WillByDefault(Return(100));
         ON_CALL(storage, writeUChar(_, _)).WillByDefault(Return(1));
         ON_CALL(storage, readUChar(_, _)).WillByDefault(Return(0));

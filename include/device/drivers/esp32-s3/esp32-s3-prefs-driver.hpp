@@ -47,7 +47,7 @@ public:
     }
 
     size_t writeUChar(const std::string& key, uint8_t value) override {
-        prefs.putUChar(key.c_str(), value);
+        return prefs.putUChar(key.c_str(), value);
     }
 
 private:

@@ -47,6 +47,7 @@ public:
     HttpClientInterface* getHttpClient() override;
     PeerCommsInterface* getPeerComms() override;
     StorageInterface* getStorage() override;
+    WirelessManager* getWirelessManager() override;
 
 protected:
     PDN(DriverConfig& driverConfig);
@@ -72,6 +73,7 @@ private:
     PlatformClock* platformClock;
     LoggerInterface* logger;
     StorageInterface* storage;
+    WirelessManager* wirelessManager;
 
     std::string deviceId;
 };

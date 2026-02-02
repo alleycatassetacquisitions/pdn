@@ -1,5 +1,6 @@
 #include "device/pdn.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/wireless-manager.hpp"
 
 PDN* PDN::createPDN(DriverConfig& driverConfig) {
     return new PDN(driverConfig);
@@ -23,9 +24,12 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     storage = static_cast<StorageDriverInterface*>(driverConfig[STORAGE_DRIVER_NAME]);
 
     lightManager = new LightManager(*lights);
+    wirelessManager = new WirelessManager(peerComms, httpClient);
 }
 
 int PDN::begin() {
+    // Initialize wireless manager to set up initial state
+    wirelessManager->initialize();
     return 1;
 }
 
@@ -81,6 +85,10 @@ PeerCommsInterface* PDN::getPeerComms() {
 
 StorageInterface* PDN::getStorage() {
     return storage;
+}
+
+WirelessManager* PDN::getWirelessManager() {
+    return wirelessManager;
 }
 
 void PDN::setDeviceId(std::string id) {

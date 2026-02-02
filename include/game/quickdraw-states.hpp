@@ -38,7 +38,7 @@ enum QuickdrawStateId {
 
 class PlayerRegistration : public State {
 public:
-    PlayerRegistration(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager);
+    PlayerRegistration(Player* player, MatchManager* matchManager);
     ~PlayerRegistration();
 
     void onStateMounted(Device *PDN) override;
@@ -50,7 +50,6 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
-    HttpClientInterface* httpClient;
     MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
@@ -60,7 +59,7 @@ private:
 
 class FetchUserDataState : public State {
 public:
-    FetchUserDataState(Player* player, HttpClientInterface* httpClient, RemoteDebugManager* remoteDebugManager);
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -78,7 +77,7 @@ private:
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     bool transitionToUploadMatchesState = false;
-    HttpClientInterface* httpClient;
+    WirelessManager* wirelessManager;
     bool isFetchingUserData = false;
     Player* player;
     SimpleTimer userDataFetchTimer;
@@ -223,6 +222,8 @@ private:
     Player *player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* quickdrawWirelessManager;
+    SimpleTimer heartbeatTimer;
+    const int HEARTBEAT_INTERVAL_MS = 250;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
@@ -519,7 +520,7 @@ private:
 
 class UploadMatchesState : public State {
 public:
-    UploadMatchesState(Player* player, HttpClientInterface* httpClient, MatchManager* matchManager);
+    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
     ~UploadMatchesState();
     
     void onStateMounted(Device *PDN) override;
@@ -533,7 +534,7 @@ public:
 
 private:
     Player* player;
-    HttpClientInterface* httpClient;
+    WirelessManager* wirelessManager;
     MatchManager* matchManager;
     SimpleTimer uploadMatchesTimer;
     int matchUploadRetryCount = 0;

@@ -8,10 +8,10 @@ public:
     NativeHttpClientDriver(std::string name) : HttpClientDriverInterface(name) {
         // Generate a fake MAC address for this instance
         for (int i = 0; i < 6; i++) {
-            macAddress_[i] = static_cast<uint8_t>(rand() % 256);
+            macAddress[i] = static_cast<uint8_t>(rand() % 256);
         }
         // Set local MAC prefix
-        macAddress_[0] = 0x02; // Locally administered
+        macAddress[0] = 0x02; // Locally administered
     }
 
     ~NativeHttpClientDriver() override = default;
@@ -27,13 +27,13 @@ public:
 
     void setWifiConfig(WifiConfig* config) override {
         if (config) {
-            wifiConfig_ = *config;
+            wifiConfig = *config;
         }
     }
 
     bool isConnected() override {
         // Stub always reports disconnected - can be toggled for testing
-        return connected_;
+        return connected && httpClientState == HttpClientState::CONNECTED;
     }
 
     bool queueRequest(HttpRequest& request) override {
@@ -49,7 +49,8 @@ public:
     }
 
     void disconnect() override {
-        connected_ = false;
+        connected = false;
+        httpClientState = HttpClientState::DISCONNECTED;
     }
 
     void updateConfig(WifiConfig* config) override {
@@ -61,14 +62,31 @@ public:
     }
 
     uint8_t* getMacAddress() override {
-        return macAddress_;
+        return macAddress;
+    }
+
+    void setHttpClientState(HttpClientState state) override {
+        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+            // Simulate connection
+            connected = true;
+            httpClientState = HttpClientState::CONNECTED;
+        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+            disconnect();
+        }
+    }
+
+    HttpClientState getHttpClientState() override {
+        return httpClientState;
     }
 
     // Test helper methods
-    void setConnected(bool connected) { connected_ = connected; }
+    void setConnected(bool isConnected) { connected = isConnected; }
+    uint8_t getCurrentChannel() const { return currentChannel; }
 
 private:
-    WifiConfig wifiConfig_;
-    bool connected_ = false;
-    uint8_t macAddress_[6];
+    WifiConfig wifiConfig;
+    bool connected = false;
+    uint8_t currentChannel = 0;
+    uint8_t macAddress[6];
+    HttpClientState httpClientState = HttpClientState::DISCONNECTED;
 };

@@ -19,10 +19,12 @@ Idle::~Idle() {
 
 void Idle::onStateMounted(Device *PDN) {
 
+    // Switch to ESP-NOW mode for peer-to-peer communication
+    PDN->getWirelessManager()->enablePeerCommsMode();
+
     quickdrawWirelessManager->clearCallbacks();
     matchManager->clearCurrentMatch();
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
-    
     AnimationConfig config;
     
     if(player->isHunter()) {
@@ -39,6 +41,8 @@ void Idle::onStateMounted(Device *PDN) {
         config.initialState = BOUNTY_IDLE_STATE;
         config.loopDelayMs = 1500;
         config.loop = true;
+
+        heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
     }
     PDN->getLightManager()->startAnimation(config);
 
@@ -54,19 +58,19 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    if(SimpleTimer::getPlatformClock()->milliseconds() % 250 == 0) {
-        if(!player->isHunter()) {
-            PDN->writeString(SERIAL_HEARTBEAT.c_str());
-        }
+    if(!player->isHunter() && heartbeatTimer.expired()) {
+        PDN->writeString(SERIAL_HEARTBEAT.c_str());
+        heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
     }
 
     if(sendMacAddress) {
         uint8_t* macAddr = PDN->getHttpClient()->getMacAddress();
         const char* macStr = MacToString(macAddr);
-        LOG_I("IDLE", "Perparing to Send Mac Address: %s", macStr);
+        LOG_I("IDLE", "Preparing to Send Mac Address: %s", macStr);
         
-        PDN->writeString(SEND_MAC_ADDRESS);
-        PDN->writeString(macStr);
+        // Send as single concatenated message to avoid fragmentation
+        std::string message = SEND_MAC_ADDRESS + std::string(macStr);
+        PDN->writeString(message.c_str());
         transitionToHandshakeState = true;
     }
 
@@ -80,21 +84,23 @@ void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
     sendMacAddress = false;
     waitingForMacAddress = false;
+    heartbeatTimer.invalidate();
     statsIndex = 0;
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
+    PDN->clearCallbacks();  // Clear serial callbacks
 }
 
 void Idle::serialEventCallbacks(std::string message) {
     LOG_I("IDLE", "Serial event received: %s", message.c_str());
     if(message.compare(SERIAL_HEARTBEAT) == 0) {
         sendMacAddress = true;  
-    } else if(message.compare(SEND_MAC_ADDRESS) == 0) {
-        waitingForMacAddress = true;
-    } else if(waitingForMacAddress) {
-        waitingForMacAddress = false;
-        player->setOpponentMacAddress(message);
+    } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
+        // Message starts with "smac" - extract MAC address after prefix
+        std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());
+        LOG_I("IDLE", "Received opponent MAC address: %s", macAddress.c_str());
+        player->setOpponentMacAddress(macAddress);
         transitionToHandshakeState = true;
     }
 }

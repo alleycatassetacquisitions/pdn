@@ -12,7 +12,7 @@
 #include "game/match.hpp"
 #include "id-generator.hpp"
 #include "mac-functions.hpp"
-#include "device/drivers/peer-comms-interface.hpp"
+#include "device/wireless-manager.hpp"
 
 enum QDCommand {
     // Handshake Commands
@@ -55,7 +55,7 @@ public:
     QuickdrawWirelessManager();
     ~QuickdrawWirelessManager();
 
-    void initialize(Player* player, PeerCommsInterface* peerComms, long broadcastCooldown);
+    void initialize(Player* player, WirelessManager* wirelessManager, long broadcastCooldown);
 
     int processQuickdrawCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
@@ -76,7 +76,7 @@ public:
     void logPacket(QuickdrawCommand packet);
 
 private:
-    PeerCommsInterface* peerComms;
+    WirelessManager* wirelessManager;
 
     std::function<void(QuickdrawCommand)> packetReceivedCallback;
 

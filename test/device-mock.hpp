@@ -136,6 +136,8 @@ public:
     MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));
     MOCK_METHOD(void, retryConnection, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
+    MOCK_METHOD(void, setHttpClientState, (HttpClientState), (override));
+    MOCK_METHOD(HttpClientState, getHttpClientState, (), (override));
 };
 
 class MockPeerComms : public PeerCommsInterface {
@@ -146,6 +148,10 @@ public:
     MOCK_METHOD(const uint8_t*, getGlobalBroadcastAddress, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
     MOCK_METHOD(void, removePeer, (uint8_t*), (override));
+    MOCK_METHOD(void, connect, (), (override));
+    MOCK_METHOD(void, disconnect, (), (override));
+    MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
+    MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
 };
 
 class MockStorage : public StorageInterface {
@@ -192,6 +198,7 @@ public:
         mockPeerComms = new MockPeerComms();
         mockStorage = new MockStorage();
         lightManager = new LightManager(fakeLightStrip);
+        wirelessManager = new WirelessManager(mockPeerComms, mockHttpClient);
     }
 
     ~MockDevice() {
@@ -203,6 +210,7 @@ public:
         delete mockPeerComms;
         delete mockStorage;
         delete lightManager;
+        delete wirelessManager;
     }
 
     // Device Methods
@@ -220,6 +228,7 @@ public:
     PeerCommsInterface* getPeerComms() override { return mockPeerComms; }
     StorageInterface* getStorage() override { return mockStorage; }
     LightManager* getLightManager() override { return lightManager; }
+    WirelessManager* getWirelessManager() override { return wirelessManager; }
 
     // DeviceSerial methods
     HWSerialWrapper* outputJack() override {
@@ -244,6 +253,7 @@ public:
     MockStorage* mockStorage;
     FakeLightStrip fakeLightStrip;
     LightManager* lightManager;
+    WirelessManager* wirelessManager;
 
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;

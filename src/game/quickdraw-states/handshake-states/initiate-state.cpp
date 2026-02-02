@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "device/wireless-manager.hpp"
 
 HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE) {
     this->player = player;
