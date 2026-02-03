@@ -13,8 +13,7 @@ public:
         frameTimer_.setTimer(16); // Default 16ms between frames
     }
     
-    virtual ~AnimationBase() {
-    }
+    ~AnimationBase() override = default;
 
     void init(const AnimationConfig& config) override {
         config_ = config;

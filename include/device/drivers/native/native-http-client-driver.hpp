@@ -5,7 +5,7 @@
 
 class NativeHttpClientDriver : public HttpClientDriverInterface {
 public:
-    NativeHttpClientDriver(std::string name) : HttpClientDriverInterface(name) {
+    explicit NativeHttpClientDriver(const std::string& name) : HttpClientDriverInterface(name) {
         // Generate a fake MAC address for this instance
         for (int i = 0; i < 6; i++) {
             macAddress[i] = static_cast<uint8_t>(rand() % 256);

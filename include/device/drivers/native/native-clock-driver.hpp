@@ -5,17 +5,17 @@
 
 class NativeClockDriver : public PlatformClockDriverInterface {
     public:
-    NativeClockDriver(std::string name) : PlatformClockDriverInterface(name) {
+    explicit NativeClockDriver(const std::string& name) : PlatformClockDriverInterface(name) {
     }
 
-    ~NativeClockDriver() override {
-    }
+    ~NativeClockDriver() override = default;
 
     int initialize() override {
         return 0;
     }
 
     void exec() override {
+        // No periodic execution needed for clock driver
     }
 
     unsigned long milliseconds() override {

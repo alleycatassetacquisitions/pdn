@@ -8,9 +8,10 @@
 
 class Esp32S31ButtonDriver : public ButtonDriverInterface {
     public:
-    Esp32S31ButtonDriver(std::string name, int buttonPin) : ButtonDriverInterface(name), button(buttonPin, true, true) {}
+    Esp32S31ButtonDriver(const std::string& name, int buttonPin) 
+        : ButtonDriverInterface(name), button(buttonPin, true, true) {}
 
-    ~Esp32S31ButtonDriver() override {}
+    ~Esp32S31ButtonDriver() override = default;
 
     int initialize() override {
         return 0;

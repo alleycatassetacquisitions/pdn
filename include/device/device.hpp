@@ -11,6 +11,11 @@
 
 class Device : public DeviceSerial {
 public:
+    // Delete copy and move operations (Rule of 5)
+    Device(const Device&) = delete;
+    Device& operator=(const Device&) = delete;
+    Device(Device&&) = delete;
+    Device& operator=(Device&&) = delete;
 
     ~Device() override {
         driverManager.dismountDrivers();
@@ -24,7 +29,7 @@ public:
 
     virtual void onStateChange() = 0;
 
-    virtual void setDeviceId(std::string deviceId) = 0;
+    virtual void setDeviceId(const std::string& deviceId) = 0;
 
     virtual std::string getDeviceId() = 0;
 
@@ -39,10 +44,10 @@ public:
     virtual WirelessManager* getWirelessManager() = 0;
 
 protected:
-
-    Device(DriverConfig deviceConfig) : driverManager(deviceConfig) {
+    explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {
         driverManager.initialize();
     }
 
+private:
     DriverManager driverManager;
 };

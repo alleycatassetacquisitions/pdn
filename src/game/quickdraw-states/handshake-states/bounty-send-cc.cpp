@@ -24,8 +24,8 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
         return;
     }
 
-    if (!player->getOpponentMacAddress()) {
-        LOG_E("BOUNTY_SEND_CC", "Opponent MAC address is null");
+    if (player->getOpponentMacAddress().empty()) {
+        LOG_E("BOUNTY_SEND_CC", "Opponent MAC address is empty");
         return;
     }
 
@@ -53,7 +53,7 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
     try {
         Match initialMatch(matchId, "", bountyId);  // Empty hunter ID initially
         quickdrawWirelessManager->broadcastPacket(
-            *player->getOpponentMacAddress(),
+            player->getOpponentMacAddress(),
             CONNECTION_CONFIRMED,
             initialMatch
         );
@@ -69,8 +69,8 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
         return;
     }
 
-    if (!player->getOpponentMacAddress()) {
-        LOG_E("BOUNTY_SEND_CC", "Opponent MAC address is null");
+    if (player->getOpponentMacAddress().empty()) {
+        LOG_E("BOUNTY_SEND_CC", "Opponent MAC address is empty");
         return;
     }
 
@@ -106,7 +106,7 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
 
         try {
             quickdrawWirelessManager->broadcastPacket(
-                *player->getOpponentMacAddress(),
+                player->getOpponentMacAddress(),
                 BOUNTY_FINAL_ACK,
                 *match
             );

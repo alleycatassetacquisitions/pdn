@@ -61,9 +61,9 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         print(STRING_TERM);
     }
 
-    void println(std::string msg) override {
+    void println(const std::string& msg) override {
         const char* str = msg.c_str();
-        for(int i = 0; i < msg.length(); i++) {
+        for(size_t i = 0; i < msg.length(); i++) {
             print(str[i]);
         }
         print(STRING_TERM);
@@ -73,7 +73,7 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         msgQueue.clear();
     }
 
-    void setStringCallback(SerialStringCallback callback) override {
+    void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback = callback;
     }
 
@@ -157,7 +157,7 @@ public:
 class MockStorage : public StorageInterface {
 public:
     MOCK_METHOD(size_t, write, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(std::string, read, (const std::string&, std::string), (override));
+    MOCK_METHOD(std::string, read, (const std::string&, const std::string&), (override));
     MOCK_METHOD(bool, remove, (const std::string&), (override));
     MOCK_METHOD(bool, clear, (), (override));
     MOCK_METHOD(void, end, (), (override));
@@ -216,7 +216,7 @@ public:
     // Device Methods
     MOCK_METHOD(int, begin, (), (override));
     MOCK_METHOD(void, onStateChange, (), (override));
-    MOCK_METHOD(void, setDeviceId, (std::string), (override));
+    MOCK_METHOD(void, setDeviceId, (const std::string&), (override));
     MOCK_METHOD(std::string, getDeviceId, (), (override));
 
     // Getters return mock instances

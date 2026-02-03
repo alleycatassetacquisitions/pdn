@@ -8,15 +8,15 @@
 
 class SSD1306U8G2Driver : public DisplayDriverInterface {
 public:
-    SSD1306U8G2Driver(std::string name) : DisplayDriverInterface(name), screen(U8G2_R0, displayCS, displayDC, displayRST) {
+    explicit SSD1306U8G2Driver(const std::string& name) 
+        : DisplayDriverInterface(name), screen(U8G2_R0, displayCS, displayDC, displayRST) {
         pinMode(displayCS, OUTPUT);
         pinMode(displayDC, OUTPUT);
         digitalWrite(displayCS, 0);
         digitalWrite(displayDC, 0);
     }
 
-    ~SSD1306U8G2Driver() override {
-    }
+    ~SSD1306U8G2Driver() override = default;
 
     int initialize() override {
         screen.begin();
@@ -29,6 +29,7 @@ public:
     }
 
     void exec() override {
+        // Display updates happen on render(), no periodic execution needed
     }
 
     Display* invalidateScreen() override {
@@ -118,7 +119,6 @@ public:
         }
         return this;
     }
-
 
 private:
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI screen;

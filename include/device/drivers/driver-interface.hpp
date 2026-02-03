@@ -28,7 +28,7 @@ class DriverInterface {
 public:
     DriverType type;
     std::string name;
-    DriverInterface(DriverType type, std::string name) : type(type), name(name) {}
+    DriverInterface(DriverType driverType, const std::string& driverName) : type(driverType), name(driverName) {}
     virtual ~DriverInterface() = default;
     virtual int initialize() = 0; //Returns 0 on success, -1 on failure
     virtual void exec() = 0;
@@ -36,60 +36,60 @@ public:
 
 class DisplayDriverInterface : public DriverInterface, public Display {
 public:
-    DisplayDriverInterface(std::string name) : DriverInterface(DriverType::SCREEN, name) {}
-    virtual ~DisplayDriverInterface() = default;
+    explicit DisplayDriverInterface(const std::string& name) : DriverInterface(DriverType::SCREEN, name) {}
+    ~DisplayDriverInterface() override = default;
 };
 
 class ButtonDriverInterface : public DriverInterface, public Button {
 public:
-    ButtonDriverInterface(std::string name) : DriverInterface(DriverType::BUTTON, name) {}
-    virtual ~ButtonDriverInterface() = default;
+    explicit ButtonDriverInterface(const std::string& name) : DriverInterface(DriverType::BUTTON, name) {}
+    ~ButtonDriverInterface() override = default;
 };
 
 class LightDriverInterface : public DriverInterface, public LightStrip {
 public:
-    LightDriverInterface(std::string name) : DriverInterface(DriverType::LIGHT, name) {}
-    virtual ~LightDriverInterface() = default;
+    explicit LightDriverInterface(const std::string& name) : DriverInterface(DriverType::LIGHT, name) {}
+    ~LightDriverInterface() override = default;
 };
 
 class HapticsMotorDriverInterface : public DriverInterface, public Haptics {
 public:
-    HapticsMotorDriverInterface(std::string name) : DriverInterface(DriverType::HAPTICS, name) {}
-    virtual ~HapticsMotorDriverInterface() = default;
+    explicit HapticsMotorDriverInterface(const std::string& name) : DriverInterface(DriverType::HAPTICS, name) {}
+    ~HapticsMotorDriverInterface() override = default;
 };
 
 class SerialDriverInterface : public DriverInterface, public HWSerialWrapper {
 public:
-    SerialDriverInterface(std::string name) : DriverInterface(DriverType::SERIAL_JACK, name) {}
-    virtual ~SerialDriverInterface() = default;
+    explicit SerialDriverInterface(const std::string& name) : DriverInterface(DriverType::SERIAL_JACK, name) {}
+    ~SerialDriverInterface() override = default;
 };
 
 class HttpClientDriverInterface : public DriverInterface, public HttpClientInterface {
 public:
-    HttpClientDriverInterface(std::string name) : DriverInterface(DriverType::HTTP_CLIENT, name) {}
-    virtual ~HttpClientDriverInterface() = default;
+    explicit HttpClientDriverInterface(const std::string& name) : DriverInterface(DriverType::HTTP_CLIENT, name) {}
+    ~HttpClientDriverInterface() override = default;
 };
 
 class PeerCommsDriverInterface : public DriverInterface, public PeerCommsInterface {
 public:
-    PeerCommsDriverInterface(std::string name) : DriverInterface(DriverType::PEER_COMMS, name) {}
-    virtual ~PeerCommsDriverInterface() = default;
+    explicit PeerCommsDriverInterface(const std::string& name) : DriverInterface(DriverType::PEER_COMMS, name) {}
+    ~PeerCommsDriverInterface() override = default;
 };
 
 class PlatformClockDriverInterface : public DriverInterface, public PlatformClock {
 public:
-    PlatformClockDriverInterface(std::string name) : DriverInterface(DriverType::PLATFORM_CLOCK, name) {}
-    virtual ~PlatformClockDriverInterface() = default;
+    explicit PlatformClockDriverInterface(const std::string& name) : DriverInterface(DriverType::PLATFORM_CLOCK, name) {}
+    ~PlatformClockDriverInterface() override = default;
 };
 
 class LoggerDriverInterface : public DriverInterface, public LoggerInterface {
 public:
-    LoggerDriverInterface(std::string name) : DriverInterface(DriverType::LOGGER, name) {}
-    virtual ~LoggerDriverInterface() = default;
+    explicit LoggerDriverInterface(const std::string& name) : DriverInterface(DriverType::LOGGER, name) {}
+    ~LoggerDriverInterface() override = default;
 };
 
 class StorageDriverInterface : public DriverInterface, public StorageInterface {
 public:
-    StorageDriverInterface(std::string name) : DriverInterface(DriverType::STORAGE, name) {}
-    virtual ~StorageDriverInterface() = default;
+    explicit StorageDriverInterface(const std::string& name) : DriverInterface(DriverType::STORAGE, name) {}
+    ~StorageDriverInterface() override = default;
 };

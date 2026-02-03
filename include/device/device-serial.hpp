@@ -17,9 +17,9 @@ enum class SerialByState {
 
 class DeviceSerial {
     public:
-    virtual ~DeviceSerial() {}
+    virtual ~DeviceSerial() = default;
 
-    void writeString(std::string msg, SerialByState whichJack = SerialByState::PRIMARY) {
+    void writeString(const std::string& msg, SerialByState whichJack = SerialByState::PRIMARY) {
         if (whichJack == SerialByState::PRIMARY) {
             getPrimaryCommsJack()->print(STRING_START);
             getPrimaryCommsJack()->println(msg);
@@ -81,7 +81,7 @@ class DeviceSerial {
         return TRANSMIT_QUEUE_MAX_SIZE - getJackByState(whichJack)->availableForWrite();
     }
 
-    void setOnStringReceivedCallback(std::function<void(std::string)> callback, SerialByState whichJack = SerialByState::PRIMARY) {
+    void setOnStringReceivedCallback(const std::function<void(std::string)>& callback, SerialByState whichJack = SerialByState::PRIMARY) {
         if (whichJack == SerialByState::PRIMARY) {
             onPrimaryJackStringReceivedCallback = callback;
             getPrimaryCommsJack()->setStringCallback(callback);
@@ -145,7 +145,6 @@ protected:
     std::string auxiliaryHead = "";
 
 private:
-
     SerialIdentifier currentCommsJack = SerialIdentifier::OUTPUT_JACK;
     std::function<void(std::string)> onPrimaryJackStringReceivedCallback;
     std::function<void(std::string)> onAuxiliaryJackStringReceivedCallback;

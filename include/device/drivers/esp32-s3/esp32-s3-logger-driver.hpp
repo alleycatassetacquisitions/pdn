@@ -10,17 +10,17 @@
  */
 class Esp32S3Logger : public LoggerDriverInterface {
 public:
-    Esp32S3Logger(std::string name) : LoggerDriverInterface(name) {
+    explicit Esp32S3Logger(const std::string& name) : LoggerDriverInterface(name) {
     }
 
-    ~Esp32S3Logger() override {
-    }
+    ~Esp32S3Logger() override = default;
 
     int initialize() override {
         return 0;   
     }
 
     void exec() override {
+        // No periodic execution needed for logger driver
     }
     
     void vlog(LogLevel level, const char* tag, const char* file, int line, const char* format, va_list args) override {

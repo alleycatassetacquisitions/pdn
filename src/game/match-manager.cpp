@@ -4,7 +4,7 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/device-constants.hpp"
 
-#define MATCH_MANAGER_TAG "MATCH_MANAGER"
+static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
 MatchManager::MatchManager() 
     : player(nullptr)
@@ -24,9 +24,9 @@ MatchManager::~MatchManager() {
 
 void MatchManager::clearCurrentMatch() {
     if (activeDuelState.match) {
-        if (peerComms && player && player->getOpponentMacAddress()) {
+        if (peerComms && player && !player->getOpponentMacAddress().empty()) {
             uint8_t mac[6];
-            if (StringToMac(player->getOpponentMacAddress()->c_str(), mac)) {
+            if (StringToMac(player->getOpponentMacAddress().c_str(), mac)) {
                 peerComms->removePeer(mac);
                 LOG_I(MATCH_MANAGER_TAG, "Removed opponent peer from ESP-NOW");
             }
@@ -52,7 +52,7 @@ Match* MatchManager::createMatch(const std::string& match_id, const std::string&
     return activeDuelState.match;
 }
 
-Match* MatchManager::receiveMatch(Match match) {
+Match* MatchManager::receiveMatch(const Match& match) {
     // Only allow one active match at a time
     if (activeDuelState.match != nullptr) {
         return nullptr;
@@ -321,16 +321,16 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
         LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
 
         // Send a packet with the reaction time
-        if (!player->getOpponentMacAddress()) {
-            LOG_E(MATCH_MANAGER_TAG, "Cannot send packet - opponent MAC address is null");
+        if (player->getOpponentMacAddress().empty()) {
+            LOG_E(MATCH_MANAGER_TAG, "Cannot send packet - opponent MAC address is empty");
             return;
         }
 
         LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s", 
-                player->getOpponentMacAddress()->c_str());
+                player->getOpponentMacAddress().c_str());
                 
         quickdrawWirelessManager->broadcastPacket(
-            *player->getOpponentMacAddress(),
+            player->getOpponentMacAddress(),
             QDCommand::DRAW_RESULT,
             *matchManager->getCurrentMatch()
         );

@@ -37,7 +37,7 @@
 
 class StateMachine {
 public:
-    StateMachine(Device *PDN) {
+    explicit StateMachine(Device *PDN) {
         this->PDN = PDN;
     }
 

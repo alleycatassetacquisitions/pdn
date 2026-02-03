@@ -5,11 +5,12 @@
 
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
-    Esp32S3PrefsDriver(std::string name, std::string prefsName) : StorageDriverInterface(name), prefsName(prefsName) {
+    Esp32S3PrefsDriver(const std::string& name, const std::string& prefsNameParam) 
+        : StorageDriverInterface(name), prefsName(prefsNameParam) {
         psramInit();
     }
         
-    ~Esp32S3PrefsDriver() override {}
+    ~Esp32S3PrefsDriver() override = default;
 
     int initialize() override {
         if(!prefs.begin(prefsName.c_str(), false)) {
@@ -20,13 +21,14 @@ public:
     }
     
     void exec() override {
+        // No periodic execution needed for preferences driver
     }
     
     size_t write(const std::string& key, const std::string& value) override {
         return prefs.putString(key.c_str(), value.c_str());
     }
     
-    std::string read(const std::string& key, std::string defaultValue) override {
+    std::string read(const std::string& key, const std::string& defaultValue) override {
         return std::string(prefs.getString(key.c_str(), defaultValue.c_str()).c_str());
     }
 

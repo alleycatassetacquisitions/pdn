@@ -86,7 +86,7 @@ private:
 
 class ConfirmOfflineState : public State {
 public:
-    ConfirmOfflineState(Player* player);
+    explicit ConfirmOfflineState(Player* player);
     ~ConfirmOfflineState();
 
     void onStateMounted(Device *PDN) override;
@@ -115,7 +115,7 @@ private:
 
 class ChooseRoleState : public State {
 public:
-    ChooseRoleState(Player* player);
+    explicit ChooseRoleState(Player* player);
     ~ChooseRoleState();
     
     void onStateMounted(Device *PDN) override;
@@ -133,7 +133,7 @@ private:
 
 class AllegiancePickerState : public State {
 public:
-    AllegiancePickerState(Player* player);
+    explicit AllegiancePickerState(Player* player);
     ~AllegiancePickerState();
     
     void onStateMounted(Device *PDN) override;
@@ -152,7 +152,7 @@ private:
 
 class WelcomeMessage : public State {
 public:
-    WelcomeMessage(Player* player);
+    explicit WelcomeMessage(Player* player);
     ~WelcomeMessage();
 
     void onStateMounted(Device *PDN) override;
@@ -170,7 +170,7 @@ private:
 
 class Sleep : public State {
 public:
-    Sleep(Player* player);
+    explicit Sleep(Player* player);
     ~Sleep();
 
     void onStateMounted(Device *PDN) override;
@@ -191,7 +191,7 @@ private:
 
 class AwakenSequence : public State {
 public:
-    AwakenSequence(Player* player);
+    explicit AwakenSequence(Player* player);
     ~AwakenSequence();
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
@@ -231,13 +231,13 @@ private:
     int statsIndex = 0;
     int statsCount = 5;
 
-    void serialEventCallbacks(std::string message);
+    void serialEventCallbacks(const std::string& message);
     void ledAnimation(Device *PDN);
 };
 
 class ConnectionSuccessful : public State {
 public:
-    ConnectionSuccessful(Player *player);
+    explicit ConnectionSuccessful(Player *player);
     ~ConnectionSuccessful();
 
     void onStateMounted(Device *PDN) override;
@@ -395,7 +395,7 @@ private:
 
 class Win : public State {
 public:
-    Win(Player *player);
+    explicit Win(Player *player);
     ~Win();
 
     void onStateMounted(Device *PDN) override;
@@ -412,7 +412,7 @@ private:
 
 class Lose : public State {
 public:
-    Lose(Player *player);
+    explicit Lose(Player *player);
     ~Lose();
 
     void onStateMounted(Device *PDN) override;
@@ -439,8 +439,8 @@ protected:
     static bool timeoutInitialized;
     static const int timeout = 20000;
     
-    BaseHandshakeState(QuickdrawStateId stateId) : State(stateId) {}
-    ~BaseHandshakeState() {}
+    explicit BaseHandshakeState(QuickdrawStateId stateId) : State(stateId) {}
+    ~BaseHandshakeState() override = default;
     
     static void initTimeout() {
         if (!handshakeTimeout) handshakeTimeout = new SimpleTimer();
@@ -462,7 +462,7 @@ protected:
 
 class HandshakeInitiateState : public BaseHandshakeState {
 public:
-    HandshakeInitiateState(Player *player);
+    explicit HandshakeInitiateState(Player *player);
     ~HandshakeInitiateState();
 
     void onStateMounted(Device *PDN) override;
