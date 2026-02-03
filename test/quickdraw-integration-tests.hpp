@@ -11,6 +11,7 @@
 #include "id-generator.hpp"
 #include "utility-tests.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "device/wireless-manager.hpp"
 
 using ::testing::_;
 using ::testing::Return;
@@ -52,9 +53,10 @@ public:
         player->setIsHunter(true);
         player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
 
+        deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         matchManager = new MatchManager();
         wirelessManager = new QuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, deviceWirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         // Create a match
@@ -68,6 +70,7 @@ public:
         matchManager->clearCurrentMatch();
         delete matchManager;
         delete wirelessManager;
+        delete deviceWirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -89,10 +92,12 @@ public:
     }
 
     MockPeerComms peerComms;
+    MockHttpClient httpClient;
     MockStorage storage;
     Player* player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* wirelessManager;
+    WirelessManager* deviceWirelessManager;
     FakePlatformClock* fakeClock;
 };
 
@@ -247,9 +252,10 @@ public:
         player->setIsHunter(true);
         player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
 
+        deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         matchManager = new MatchManager();
         wirelessManager = new QuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, deviceWirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         matchManager->createMatch("callback-test-match-id-12345", player->getUserID(), "boun");
@@ -265,6 +271,7 @@ public:
         matchManager->clearCurrentMatch();
         delete matchManager;
         delete wirelessManager;
+        delete deviceWirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -286,10 +293,12 @@ public:
 
     MockDevice device;
     MockPeerComms peerComms;
+    MockHttpClient httpClient;
     MockStorage storage;
     Player* player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* wirelessManager;
+    WirelessManager* deviceWirelessManager;
     FakePlatformClock* fakeClock;
 };
 
@@ -386,9 +395,10 @@ public:
         player->setIsHunter(true);
         player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
 
+        deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         matchManager = new MatchManager();
         wirelessManager = new QuickdrawWirelessManager();
-        wirelessManager->initialize(player, &peerComms, 100);
+        wirelessManager->initialize(player, deviceWirelessManager, 100);
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
         matchManager->createMatch("flow-test-match-id-1234567890", player->getUserID(), "boun");
@@ -406,6 +416,7 @@ public:
         matchManager->clearCurrentMatch();
         delete matchManager;
         delete wirelessManager;
+        delete deviceWirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -427,10 +438,12 @@ public:
 
     MockDevice device;
     MockPeerComms peerComms;
+    MockHttpClient httpClient;
     MockStorage storage;
     Player* player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* wirelessManager;
+    WirelessManager* deviceWirelessManager;
     FakePlatformClock* fakeClock;
 };
 
@@ -652,9 +665,10 @@ public:
         hunter->setIsHunter(true);
         hunter->setOpponentMacAddress("BB:BB:BB:BB:BB:BB");
 
+        hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
         hunterMatchManager = new MatchManager();
         hunterWirelessManager = new QuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, &hunterPeerComms, 100);
+        hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager, 100);
         hunterMatchManager->initialize(hunter, &hunterStorage, &hunterPeerComms, hunterWirelessManager);
 
         // Bounty setup
@@ -664,9 +678,10 @@ public:
         bounty->setIsHunter(false);
         bounty->setOpponentMacAddress("AA:AA:AA:AA:AA:AA");
 
+        bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
         bountyMatchManager = new MatchManager();
         bountyWirelessManager = new QuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, &bountyPeerComms, 100);
+        bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager, 100);
         bountyMatchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, bountyWirelessManager);
 
         // Create match on both sides
@@ -687,6 +702,8 @@ public:
         delete bountyMatchManager;
         delete hunterWirelessManager;
         delete bountyWirelessManager;
+        delete hunterDeviceWirelessManager;
+        delete bountyDeviceWirelessManager;
         delete hunter;
         delete bounty;
         SimpleTimer::setPlatformClock(nullptr);
@@ -739,8 +756,12 @@ public:
     MatchManager* bountyMatchManager;
     QuickdrawWirelessManager* hunterWirelessManager;
     QuickdrawWirelessManager* bountyWirelessManager;
+    WirelessManager* hunterDeviceWirelessManager;
+    WirelessManager* bountyDeviceWirelessManager;
     MockPeerComms hunterPeerComms;
     MockPeerComms bountyPeerComms;
+    MockHttpClient hunterHttpClient;
+    MockHttpClient bountyHttpClient;
     MockStorage hunterStorage;
     MockStorage bountyStorage;
     FakePlatformClock* fakeClock;
@@ -851,9 +872,10 @@ public:
         hunter->setIsHunter(true);
         hunter->setOpponentMacAddress("BB:BB:BB:BB:BB:BB");
 
+        hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
         hunterMatchManager = new MatchManager();
         hunterWirelessManager = new QuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, &hunterPeerComms, 100);
+        hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager, 100);
         hunterMatchManager->initialize(hunter, &hunterStorage, &hunterPeerComms, hunterWirelessManager);
 
         // Bounty setup
@@ -863,9 +885,10 @@ public:
         bounty->setIsHunter(false);
         bounty->setOpponentMacAddress("AA:AA:AA:AA:AA:AA");
 
+        bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
         bountyMatchManager = new MatchManager();
         bountyWirelessManager = new QuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, &bountyPeerComms, 100);
+        bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager, 100);
         bountyMatchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, bountyWirelessManager);
 
         // Default mock expectations
@@ -884,6 +907,8 @@ public:
         delete bountyMatchManager;
         delete hunterWirelessManager;
         delete bountyWirelessManager;
+        delete hunterDeviceWirelessManager;
+        delete bountyDeviceWirelessManager;
         delete hunter;
         delete bounty;
         SimpleTimer::setPlatformClock(nullptr);
@@ -932,10 +957,14 @@ public:
     MatchManager* bountyMatchManager;
     QuickdrawWirelessManager* hunterWirelessManager;
     QuickdrawWirelessManager* bountyWirelessManager;
+    WirelessManager* hunterDeviceWirelessManager;
+    WirelessManager* bountyDeviceWirelessManager;
     MockDevice hunterDevice;
     MockDevice bountyDevice;
     MockPeerComms hunterPeerComms;
     MockPeerComms bountyPeerComms;
+    MockHttpClient hunterHttpClient;
+    MockHttpClient bountyHttpClient;
     MockStorage hunterStorage;
     MockStorage bountyStorage;
     FakePlatformClock* fakeClock;
