@@ -23,6 +23,7 @@
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/peer-comms-types.hpp"
 
 // CLI components
 #include "cli/cli-serial-broker.hpp"
@@ -188,6 +189,16 @@ public:
         // Create QuickdrawWirelessManager (required by game states even when mocking)
         instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
         instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
+        
+        // Register ESP-NOW packet handlers (similar to setupEspNow in main.cpp)
+        // This is required for devices to actually receive and process ESP-NOW packets
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kQuickdrawCommand,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+                ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
+            },
+            instance.quickdrawWirelessManager
+        );
         
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);

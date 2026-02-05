@@ -251,6 +251,7 @@ private:
     int flashDelay = 400;
     uint8_t transitionThreshold = 12;
     uint8_t alertCount = 0;
+    SimpleTimer flashTimer;
 };
 
 class DuelCountdown : public State {

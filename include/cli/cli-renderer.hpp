@@ -8,6 +8,8 @@
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
+#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/native/native-peer-broker.hpp"
 
 namespace cli {
 
@@ -157,6 +159,18 @@ private:
     }
     
     /**
+     * Get human-readable packet type name.
+     */
+    static std::string getPacketTypeName(PktType type) {
+        switch (type) {
+            case PktType::kPlayerInfoBroadcast: return "INFO";
+            case PktType::kQuickdrawCommand: return "CMD";
+            case PktType::kDebugPacket: return "DBG";
+            default: return "?" + std::to_string(static_cast<int>(type));
+        }
+    }
+    
+    /**
      * Render a single device panel into the frame buffer.
      * @param isSelected Whether this device is currently selected (affects header color)
      */
@@ -240,16 +254,32 @@ private:
             displayRows[i] = truncate(textHistory[i], 50);
         }
         
-        // Build ESP-NOW packet history string
-        std::string espNowStr = "(none)";
+        // Build ESP-NOW packet history strings (separate TX and RX)
+        std::string espNowTxStr = "(none)";
+        std::string espNowRxStr = "(none)";
         const auto& pktHistory = device.peerCommsDriver->getPacketHistory();
-        if (!pktHistory.empty()) {
-            espNowStr = "";
-            int count = 0;
-            for (auto it = pktHistory.rbegin(); it != pktHistory.rend() && count < 3; ++it, ++count) {
-                if (count > 0) espNowStr += ", ";
-                espNowStr += it->isSent ? "TX:" : "RX:";
-                espNowStr += std::to_string(static_cast<int>(it->packetType));
+        
+        // Collect TX packets
+        int txCount = 0;
+        for (auto it = pktHistory.rbegin(); it != pktHistory.rend() && txCount < 3; ++it) {
+            if (it->isSent) {
+                if (txCount == 0) espNowTxStr = "";
+                if (txCount > 0) espNowTxStr += ", ";
+                espNowTxStr += getPacketTypeName(it->packetType);
+                espNowTxStr += "->" + truncate(it->dstMac, 8);
+                txCount++;
+            }
+        }
+        
+        // Collect RX packets
+        int rxCount = 0;
+        for (auto it = pktHistory.rbegin(); it != pktHistory.rend() && rxCount < 3; ++it) {
+            if (!it->isSent) {
+                if (rxCount == 0) espNowRxStr = "";
+                if (rxCount > 0) espNowRxStr += ", ";
+                espNowRxStr += getPacketTypeName(it->packetType);
+                espNowRxStr += "<-" + truncate(it->srcMac, 8);
+                rxCount++;
             }
         }
         
@@ -354,10 +384,17 @@ private:
         bufferLine(format("|   TX: %s", inSentStr.c_str()));
         bufferLine(format("|   RX: %s", inRecvStr.c_str()));
         
-        bufferLine(format("| ESP-NOW: %s  MAC=%s  Pkts: %s",
+        // Get broker stats
+        size_t pendingPkts = NativePeerBroker::getInstance().getPendingPacketCount();
+        size_t peerCount = NativePeerBroker::getInstance().getPeerCount();
+        
+        bufferLine(format("| ESP-NOW: %s  MAC=%s  Peers=%zu  Pending=%zu",
                    device.peerCommsDriver->getStateString().c_str(),
                    device.peerCommsDriver->getMacString().c_str(),
-                   espNowStr.c_str()));
+                   peerCount,
+                   pendingPkts));
+        bufferLine(format("|   TX: %s", espNowTxStr.c_str()));
+        bufferLine(format("|   RX: %s", espNowRxStr.c_str()));
         
         // Build HTTP history string
         std::string httpStr = "(none)";

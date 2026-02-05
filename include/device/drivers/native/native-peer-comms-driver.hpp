@@ -4,6 +4,7 @@
 #include "device/drivers/native/native-peer-broker.hpp"
 #include <map>
 #include <deque>
+#include <vector>
 #include <cstring>
 
 // Track packet history for CLI display
@@ -175,14 +176,26 @@ private:
 
 // Implementation of broker's deliverPackets that depends on NativePeerCommsDriver
 inline void NativePeerBroker::deliverPackets() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // Copy pending packets and peer map while holding lock, then release
+    // before delivering. This prevents deadlock when a packet handler
+    // tries to send a response packet (which would try to acquire mutex_).
+    std::vector<PeerPacket> packetsToDeliver;
+    std::map<std::array<uint8_t, 6>, NativePeerCommsDriver*> peersCopy;
     
-    while (!pendingPackets_.empty()) {
-        PeerPacket& packet = pendingPackets_.front();
-        
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        while (!pendingPackets_.empty()) {
+            packetsToDeliver.push_back(std::move(pendingPackets_.front()));
+            pendingPackets_.pop();
+        }
+        peersCopy = peers_;
+    }
+    
+    // Now deliver packets without holding the lock
+    for (auto& packet : packetsToDeliver) {
         if (packet.isBroadcast) {
             // Deliver to all peers except sender
-            for (auto& [mac, peer] : peers_) {
+            for (auto& [mac, peer] : peersCopy) {
                 if (!macEquals(mac, packet.srcMac.data())) {
                     peer->receivePacket(packet.srcMac.data(), packet.packetType,
                                        packet.data.data(), packet.data.size());
@@ -190,13 +203,11 @@ inline void NativePeerBroker::deliverPackets() {
             }
         } else {
             // Deliver to specific peer
-            auto it = peers_.find(packet.dstMac);
-            if (it != peers_.end()) {
+            auto it = peersCopy.find(packet.dstMac);
+            if (it != peersCopy.end()) {
                 it->second->receivePacket(packet.srcMac.data(), packet.packetType,
                                          packet.data.data(), packet.data.size());
             }
         }
-        
-        pendingPackets_.pop();
     }
 }
