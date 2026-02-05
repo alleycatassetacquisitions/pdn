@@ -2,6 +2,7 @@
 
 #ifdef NATIVE_BUILD
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
