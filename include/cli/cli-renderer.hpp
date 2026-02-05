@@ -7,6 +7,7 @@
 
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
+#include "cli/cli-serial-broker.hpp"
 
 namespace cli {
 
@@ -177,7 +178,7 @@ private:
             }
         }
         
-        // Build serial history strings
+        // Build serial history strings for OUT jack
         std::string outSentStr = "(none)";
         const auto& outSent = device.serialOutDriver->getSentHistory();
         if (!outSent.empty()) {
@@ -185,6 +186,27 @@ private:
             for (size_t i = 0; i < outSent.size() && i < 3; i++) {
                 if (i > 0) outSentStr += ", ";
                 outSentStr += truncate(outSent[outSent.size() - 1 - i], 15);
+            }
+        }
+        
+        std::string outRecvStr = "(none)";
+        const auto& outRecv = device.serialOutDriver->getReceivedHistory();
+        if (!outRecv.empty()) {
+            outRecvStr = "";
+            for (size_t i = 0; i < outRecv.size() && i < 3; i++) {
+                if (i > 0) outRecvStr += ", ";
+                outRecvStr += truncate(outRecv[outRecv.size() - 1 - i], 15);
+            }
+        }
+        
+        // Build serial history strings for IN jack
+        std::string inSentStr = "(none)";
+        const auto& inSent = device.serialInDriver->getSentHistory();
+        if (!inSent.empty()) {
+            inSentStr = "";
+            for (size_t i = 0; i < inSent.size() && i < 3; i++) {
+                if (i > 0) inSentStr += ", ";
+                inSentStr += truncate(inSent[inSent.size() - 1 - i], 15);
             }
         }
         
@@ -293,15 +315,44 @@ private:
                    device.hapticsDriver->isOn() ? "ON" : "OFF",
                    device.hapticsDriver->getIntensity()));
         
-        bufferLine(format("| Serial OUT: in=%zu out=%zu  Sent: %s",
+        // Get serial connection info from broker
+        std::string outConnLabel = "";
+        std::string inConnLabel = "";
+        const auto& connections = SerialCableBroker::getInstance().getConnections();
+        for (const auto& conn : connections) {
+            if (conn.deviceA == device.deviceIndex || conn.deviceB == device.deviceIndex) {
+                // This device is part of this connection
+                bool isDeviceA = (conn.deviceA == device.deviceIndex);
+                int otherDevice = isDeviceA ? conn.deviceB : conn.deviceA;
+                JackType myJack = isDeviceA ? conn.jackA : conn.jackB;
+                
+                if (myJack == JackType::OUTPUT_JACK) {
+                    outConnLabel = format(" \033[32m<->[Dev%d]\033[0m", otherDevice);
+                } else {
+                    inConnLabel = format(" \033[32m<->[Dev%d]\033[0m", otherDevice);
+                }
+            }
+        }
+        
+        // Determine which jack is PRIMARY based on role
+        const char* outPrimaryLabel = device.isHunter ? " (PRIMARY)" : "";
+        const char* inPrimaryLabel = device.isHunter ? "" : " (PRIMARY)";
+        
+        bufferLine(format("| Serial OUT%s: in=%zu out=%zu%s",
+                   outPrimaryLabel,
                    device.serialOutDriver->getInputQueueSize(),
                    device.serialOutDriver->getOutputBufferSize(),
-                   outSentStr.c_str()));
+                   outConnLabel.c_str()));
+        bufferLine(format("|   TX: %s", outSentStr.c_str()));
+        bufferLine(format("|   RX: %s", outRecvStr.c_str()));
         
-        bufferLine(format("| Serial IN:  in=%zu out=%zu  Recv: %s",
+        bufferLine(format("| Serial IN%s:  in=%zu out=%zu%s",
+                   inPrimaryLabel,
                    device.serialInDriver->getInputQueueSize(),
                    device.serialInDriver->getOutputBufferSize(),
-                   inRecvStr.c_str()));
+                   inConnLabel.c_str()));
+        bufferLine(format("|   TX: %s", inSentStr.c_str()));
+        bufferLine(format("|   RX: %s", inRecvStr.c_str()));
         
         bufferLine(format("| ESP-NOW: %s  MAC=%s  Pkts: %s",
                    device.peerCommsDriver->getStateString().c_str(),

@@ -2,14 +2,20 @@
 
 #ifdef NATIVE_BUILD
 
+// ============================================================================
+// PLATFORM REQUIREMENT: This CLI tool requires a Unix/POSIX terminal.
+// Windows is not currently supported due to differences in terminal handling.
+// Use WSL, Git Bash, or a Linux/macOS system to run this tool.
+// ============================================================================
+#ifdef _WIN32
+#error "The PDN CLI simulator requires a Unix/POSIX terminal. Please use WSL, Git Bash, or a Unix-based system."
+#endif
+
 #include <cstdio>
 #include <string>
-
-#ifndef _WIN32
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
-#endif
 
 namespace cli {
 
@@ -84,9 +90,8 @@ public:
         fflush(stdout);
     }
 
-#ifndef _WIN32
     /**
-     * Configure terminal for non-blocking, raw input (Unix only).
+     * Configure terminal for non-blocking, raw input.
      * Returns the old termios settings for restoration later.
      */
     static struct termios enableRawMode() {
@@ -100,14 +105,14 @@ public:
     }
 
     /**
-     * Restore terminal settings (Unix only).
+     * Restore terminal settings.
      */
     static void restoreTerminal(const struct termios& oldTermios) {
         tcsetattr(STDIN_FILENO, TCSANOW, &oldTermios);
     }
 
     /**
-     * Read a single character from stdin (non-blocking, Unix only).
+     * Read a single character from stdin (non-blocking).
      * Returns -1 if no character available, otherwise the character.
      */
     static int readChar() {
@@ -147,7 +152,6 @@ public:
         
         return c;
     }
-#endif
 };
 
 /**

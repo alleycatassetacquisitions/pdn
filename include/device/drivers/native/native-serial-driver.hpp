@@ -56,8 +56,7 @@ public:
         if (!result.empty() && result.back() == terminator) {
             result.pop_back();
         }
-        // Track received message
-        addToHistory(receivedHistory_, result);
+        // Note: History tracking is done in injectInput() when data arrives
         return result;
     }
 
@@ -83,8 +82,10 @@ public:
     }
 
     void flush() override {
-        // In native, could print to stdout if desired
-        outputBuffer_.clear();
+        // In native simulation, we intentionally do NOT clear the buffer here.
+        // This prevents data loss when state transitions call flushSerial() before
+        // the SerialCableBroker has a chance to transfer the data.
+        // The broker calls clearOutput() after successfully transferring data.
     }
 
     void setStringCallback(const SerialStringCallback& callback) override {
@@ -98,8 +99,25 @@ public:
             inputBuffer_.pop();  // Drop oldest
         }
         inputBuffer_.push(input);
+        
+        // Clean the message by stripping framing (if present)
+        // Framing: STRING_START (*) at beginning, STRING_TERM (\r) at end
+        std::string cleanMsg = input;
+        // Remove STRING_START prefix if present
+        if (!cleanMsg.empty() && cleanMsg[0] == '*') {
+            cleanMsg = cleanMsg.substr(1);
+        }
+        // Remove STRING_TERM suffix if present
+        if (!cleanMsg.empty() && cleanMsg.back() == '\r') {
+            cleanMsg.pop_back();
+        }
+        
+        // Track the clean message in history for UI display
+        addToHistory(receivedHistory_, cleanMsg);
+        
+        // Invoke callback with clean message
         if (stringCallback_) {
-            stringCallback_(input);
+            stringCallback_(cleanMsg);
         }
     }
 

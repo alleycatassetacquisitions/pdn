@@ -207,7 +207,6 @@ int main(int argc, char** argv) {
     // Main loop
     while (g_running) {
         // Handle input (non-blocking)
-        #ifndef _WIN32
         int key = cli::Terminal::readKey();
         while (key != static_cast<int>(cli::Key::NONE)) {
             if (key == static_cast<int>(cli::Key::ARROW_UP)) {
@@ -260,7 +259,6 @@ int main(int argc, char** argv) {
             }
             key = cli::Terminal::readKey();
         }
-        #endif
         
         // Deliver pending peer-to-peer messages
         NativePeerBroker::getInstance().deliverPackets();
