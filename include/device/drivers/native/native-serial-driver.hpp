@@ -2,6 +2,7 @@
 
 #include "device/drivers/driver-interface.hpp"
 #include <queue>
+#include <deque>
 #include <string>
 
 class NativeSerialDriver : public SerialDriverInterface {
@@ -50,6 +51,8 @@ public:
         if (!result.empty() && result.back() == terminator) {
             result.pop_back();
         }
+        // Track received message
+        addToHistory(receivedHistory_, result);
         return result;
     }
 
@@ -60,11 +63,15 @@ public:
     void println(char* msg) override {
         outputBuffer_ += msg;
         outputBuffer_ += '\n';
+        // Track sent message
+        addToHistory(sentHistory_, std::string(msg));
     }
 
     void println(const std::string& msg) override {
         outputBuffer_ += msg;
         outputBuffer_ += '\n';
+        // Track sent message
+        addToHistory(sentHistory_, msg);
     }
 
     void flush() override {
@@ -91,9 +98,29 @@ public:
     void clearOutput() {
         outputBuffer_.clear();
     }
+    
+    // Message history access for CLI display
+    const std::deque<std::string>& getSentHistory() const { return sentHistory_; }
+    const std::deque<std::string>& getReceivedHistory() const { return receivedHistory_; }
+    
+    // Get current buffer sizes for display
+    size_t getInputQueueSize() const { return inputBuffer_.size(); }
+    size_t getOutputBufferSize() const { return outputBuffer_.size(); }
 
 private:
     std::queue<std::string> inputBuffer_;
     std::string outputBuffer_;
     SerialStringCallback stringCallback_;
+    
+    // Message history (most recent at back)
+    std::deque<std::string> sentHistory_;
+    std::deque<std::string> receivedHistory_;
+    static const size_t MAX_HISTORY = 5;
+    
+    void addToHistory(std::deque<std::string>& history, const std::string& msg) {
+        history.push_back(msg);
+        while (history.size() > MAX_HISTORY) {
+            history.pop_front();
+        }
+    }
 };

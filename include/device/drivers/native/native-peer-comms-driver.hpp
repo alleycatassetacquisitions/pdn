@@ -3,7 +3,17 @@
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
 #include <map>
+#include <deque>
 #include <cstring>
+
+// Track packet history for CLI display
+struct PacketHistoryEntry {
+    bool isSent;  // true = sent, false = received
+    std::string srcMac;
+    std::string dstMac;
+    PktType packetType;
+    size_t length;
+};
 
 class NativePeerCommsDriver : public PeerCommsDriverInterface {
 public:
@@ -51,6 +61,16 @@ public:
         if (peerCommsState_ != PeerCommsState::CONNECTED) {
             return -1;  // Cannot send when disconnected
         }
+        
+        // Track sent packet
+        PacketHistoryEntry entry;
+        entry.isSent = true;
+        entry.srcMac = getMacString();
+        entry.dstMac = macToString(dst);
+        entry.packetType = packetType;
+        entry.length = length;
+        addToHistory(entry);
+        
         NativePeerBroker::getInstance().sendPacket(macAddress_, dst, packetType, data, length);
         return 0; // Success
     }
@@ -86,6 +106,15 @@ public:
             return;
         }
         
+        // Track received packet
+        PacketHistoryEntry entry;
+        entry.isSent = false;
+        entry.srcMac = macToString(srcMac);
+        entry.dstMac = getMacString();
+        entry.packetType = packetType;
+        entry.length = length;
+        addToHistory(entry);
+        
         auto it = handlers_.find(packetType);
         if (it != handlers_.end()) {
             it->second.callback(srcMac, data, length, it->second.context);
@@ -102,6 +131,20 @@ public:
                  macAddress_[3], macAddress_[4], macAddress_[5]);
         return std::string(buf);
     }
+    
+    /**
+     * Get connection state as string for display.
+     */
+    std::string getStateString() const {
+        return peerCommsState_ == PeerCommsState::CONNECTED ? "CONNECTED" : "DISCONNECTED";
+    }
+    
+    /**
+     * Get packet history for CLI display.
+     */
+    const std::deque<PacketHistoryEntry>& getPacketHistory() const {
+        return packetHistory_;
+    }
 
 private:
     struct HandlerEntry {
@@ -112,6 +155,22 @@ private:
     std::map<PktType, HandlerEntry> handlers_;
     uint8_t macAddress_[6];
     PeerCommsState peerCommsState_ = PeerCommsState::DISCONNECTED;
+    std::deque<PacketHistoryEntry> packetHistory_;
+    static const size_t MAX_HISTORY = 5;
+    
+    void addToHistory(const PacketHistoryEntry& entry) {
+        packetHistory_.push_back(entry);
+        while (packetHistory_.size() > MAX_HISTORY) {
+            packetHistory_.pop_front();
+        }
+    }
+    
+    static std::string macToString(const uint8_t* mac) {
+        char buf[18];
+        snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        return std::string(buf);
+    }
 };
 
 // Implementation of broker's deliverPackets that depends on NativePeerCommsDriver
