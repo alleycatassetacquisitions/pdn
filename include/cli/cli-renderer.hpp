@@ -28,11 +28,36 @@ public:
                   const std::string& commandResult,
                   const std::string& commandBuffer,
                   int selectedDeviceIndex) {
-        // Build all device panels into the frame buffer
         currentFrame_.clear();
         
-        for (auto& device : devices) {
-            renderDevicePanel(device);
+        // Device selector bar (shows all devices, highlights selected)
+        if (devices.size() > 1) {
+            std::string selectorBar = "Devices: ";
+            for (size_t i = 0; i < devices.size(); i++) {
+                if (i > 0) selectorBar += "  ";
+                
+                if (static_cast<int>(i) == selectedDeviceIndex) {
+                    // Selected device - highlighted
+                    selectorBar += format("\033[1;7;33m[%d] %s %s\033[0m",
+                                          static_cast<int>(i),
+                                          devices[i].deviceId.c_str(),
+                                          devices[i].isHunter ? "H" : "B");
+                } else {
+                    // Unselected device - dim
+                    selectorBar += format("\033[90m[%d] %s %s\033[0m",
+                                          static_cast<int>(i),
+                                          devices[i].deviceId.c_str(),
+                                          devices[i].isHunter ? "H" : "B");
+                }
+            }
+            selectorBar += "   \033[90m(LEFT/RIGHT to switch)\033[0m";
+            bufferLine(selectorBar);
+            bufferLine("");
+        }
+        
+        // Render only the selected device panel
+        if (selectedDeviceIndex >= 0 && selectedDeviceIndex < static_cast<int>(devices.size())) {
+            renderDevicePanel(devices[selectedDeviceIndex], true);
         }
         
         // Blank line
@@ -132,8 +157,9 @@ private:
     
     /**
      * Render a single device panel into the frame buffer.
+     * @param isSelected Whether this device is currently selected (affects header color)
      */
-    void renderDevicePanel(DeviceInstance& device) {
+    void renderDevicePanel(DeviceInstance& device, bool isSelected = false) {
         State* currentState = device.game->getCurrentState();
         int stateId = currentState ? currentState->getStateId() : -1;
         
@@ -231,10 +257,14 @@ private:
                  leftLeds[8].color.red, leftLeds[8].color.green, leftLeds[8].color.blue, leftLeds[8].brightness);
         std::string ledDebugStr = rgbBuf;
         
-        // Buffer all lines
-        bufferLine(format("\033[1;33m+-- Device [%s] %-6s ---------------------------------------------+\033[0m",
+        // Buffer all lines - use brighter color for selected device
+        const char* headerColor = isSelected ? "\033[1;33m" : "\033[33m";  // Bold yellow vs dim yellow
+        const char* selectedMarker = isSelected ? " *SELECTED*" : "";
+        bufferLine(format("%s+-- Device [%s] %-6s%s -------------------------------+\033[0m",
+                   headerColor,
                    device.deviceId.c_str(),
-                   device.isHunter ? "HUNTER" : "BOUNTY"));
+                   device.isHunter ? "HUNTER" : "BOUNTY",
+                   selectedMarker));
         
         bufferLine(format("| Player: ID=%-4s  Allegiance=%-10s  W=%d L=%d Streak=%d",
                    device.player->getUserID().c_str(),
@@ -278,12 +308,29 @@ private:
                    device.peerCommsDriver->getMacString().c_str(),
                    espNowStr.c_str()));
         
-        bufferLine(format("| HTTP: %s",
-                   device.httpClientDriver->isConnected() ? "Connected" : "Disconnected"));
+        // Build HTTP history string
+        std::string httpStr = "(none)";
+        const auto& httpHistory = device.httpClientDriver->getRequestHistory();
+        if (!httpHistory.empty()) {
+            httpStr = "";
+            int count = 0;
+            for (auto it = httpHistory.rbegin(); it != httpHistory.rend() && count < 3; ++it, ++count) {
+                if (count > 0) httpStr += ", ";
+                httpStr += it->method + " " + truncate(it->path, 20);
+                httpStr += it->success ? " [OK]" : format(" [%d]", it->statusCode);
+            }
+        }
+        
+        bufferLine(format("| HTTP: %s  Pending=%zu  Mock=%s",
+                   device.httpClientDriver->isConnected() ? "Connected" : "Disconnected",
+                   device.httpClientDriver->getPendingRequestCount(),
+                   device.httpClientDriver->isMockServerEnabled() ? "ON" : "OFF"));
+        
+        bufferLine(format("|   Requests: %s", httpStr.c_str()));
         
         bufferLine(format("| Errors: %s", errorStr.c_str()));
         
-        bufferLine("\033[1;33m+--------------------------------------------------------------+\033[0m");
+        bufferLine(format("%s+--------------------------------------------------------------+\033[0m", headerColor));
     }
 };
 

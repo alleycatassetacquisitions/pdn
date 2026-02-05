@@ -24,6 +24,10 @@
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 
+// CLI components
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
+
 namespace cli {
 
 /**
@@ -139,8 +143,19 @@ public:
         instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
         instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
         instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
+        instance.httpClientDriver->setMockServerEnabled(true);  // Enable mock HTTP server
+        instance.httpClientDriver->setConnected(true);  // Simulate WiFi connection
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
         instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+        
+        // Configure mock HTTP server with this device's player data
+        MockPlayerConfig playerConfig;
+        playerConfig.id = instance.deviceId;
+        playerConfig.name = (isHunter ? "Hunter" : "Bounty") + instance.deviceId;
+        playerConfig.isHunter = isHunter;
+        playerConfig.allegiance = 1;  // RESISTANCE
+        playerConfig.faction = isHunter ? "Guild" : "Rebels";
+        MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
         
         // Create driver configuration
         DriverConfig pdnConfig = {
@@ -178,6 +193,15 @@ public:
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
         instance.game->initialize();
         
+        // Skip PlayerRegistration state and go directly to FetchUserDataState
+        // This prevents the registration flow from overwriting the player ID
+        // State index 1 = FetchUserDataState (based on Quickdraw::populateStateMap order)
+        instance.game->skipToState(1);
+        
+        // Register with SerialCableBroker for cable simulation
+        SerialCableBroker::getInstance().registerDevice(
+            deviceIndex, instance.serialOutDriver, instance.serialInDriver, isHunter);
+        
         return instance;
     }
     
@@ -185,6 +209,12 @@ public:
      * Clean up a device instance and free all resources.
      */
     static void destroyDevice(DeviceInstance& device) {
+        // Unregister from SerialCableBroker
+        SerialCableBroker::getInstance().unregisterDevice(device.deviceIndex);
+        
+        // Remove player config from mock HTTP server
+        MockHttpServer::getInstance().removePlayer(device.deviceId);
+        
         delete device.game;
         delete device.quickdrawWirelessManager;
         delete device.player;

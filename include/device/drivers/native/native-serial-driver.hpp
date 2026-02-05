@@ -7,6 +7,10 @@
 
 class NativeSerialDriver : public SerialDriverInterface {
 public:
+    // Maximum buffer sizes to prevent unbounded growth
+    static constexpr size_t MAX_OUTPUT_BUFFER_SIZE = 255;
+    static constexpr size_t MAX_INPUT_QUEUE_SIZE = 32;
+    
     explicit NativeSerialDriver(const std::string& name) : SerialDriverInterface(name) {}
 
     ~NativeSerialDriver() override = default;
@@ -20,7 +24,8 @@ public:
     }
 
     int availableForWrite() override {
-        return 1024; // Always ready to write
+        // Return remaining space in output buffer
+        return static_cast<int>(MAX_OUTPUT_BUFFER_SIZE - outputBuffer_.size());
     }
 
     int available() override {
@@ -58,11 +63,13 @@ public:
 
     void print(char msg) override {
         outputBuffer_ += msg;
+        trimOutputBuffer();
     }
 
     void println(char* msg) override {
         outputBuffer_ += msg;
         outputBuffer_ += '\n';
+        trimOutputBuffer();
         // Track sent message
         addToHistory(sentHistory_, std::string(msg));
     }
@@ -70,6 +77,7 @@ public:
     void println(const std::string& msg) override {
         outputBuffer_ += msg;
         outputBuffer_ += '\n';
+        trimOutputBuffer();
         // Track sent message
         addToHistory(sentHistory_, msg);
     }
@@ -85,6 +93,10 @@ public:
 
     // Test helper methods
     void injectInput(const std::string& input) {
+        // Enforce FIFO limit on input queue
+        while (inputBuffer_.size() >= MAX_INPUT_QUEUE_SIZE) {
+            inputBuffer_.pop();  // Drop oldest
+        }
         inputBuffer_.push(input);
         if (stringCallback_) {
             stringCallback_(input);
@@ -121,6 +133,16 @@ private:
         history.push_back(msg);
         while (history.size() > MAX_HISTORY) {
             history.pop_front();
+        }
+    }
+    
+    /**
+     * Trim output buffer to max size using FIFO - drops oldest data from front.
+     */
+    void trimOutputBuffer() {
+        if (outputBuffer_.size() > MAX_OUTPUT_BUFFER_SIZE) {
+            // Keep only the newest data (from the end)
+            outputBuffer_ = outputBuffer_.substr(outputBuffer_.size() - MAX_OUTPUT_BUFFER_SIZE);
         }
     }
 };

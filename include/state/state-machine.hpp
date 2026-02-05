@@ -52,6 +52,24 @@ public:
         currentState = stateMap[0];
         currentState->onStateMounted(PDN);
     }
+    
+    /**
+     * Skip to a specific state by index, bypassing intermediate states.
+     * Useful for testing scenarios where you want to start at a later state.
+     * @param stateIndex The index in stateMap to skip to
+     * @return true if successful, false if index out of range
+     */
+    bool skipToState(int stateIndex) {
+        if (stateIndex < 0 || stateIndex >= static_cast<int>(stateMap.size())) {
+            return false;
+        }
+        if (currentState) {
+            currentState->onStateDismounted(PDN);
+        }
+        currentState = stateMap[stateIndex];
+        currentState->onStateMounted(PDN);
+        return true;
+    }
 
     virtual void populateStateMap() = 0;
 
