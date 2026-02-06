@@ -19,43 +19,37 @@ PCB's were designed in KiCad 8 and will be uploaded to a separate repository soo
 
 ## About the Project
 
-The PDN is designed to enhance the gameplay experience of participants in the Neotropolis event by providing them with a customizable, portable device that tracks in-game activities, facilitates missions, and engages players through real-time updates and interactions.
-
-These devices are based on an ESP32-S3 microcontroller features wireless communication, LED displays, haptics and an OLED screen. The PDN is central to the Alleycat bounty hunting game's infrastructure, ensuring seamless score tracking, player identification, and interaction with the game world.
+The Alleycat Asset Acquisitions Portable Data Node is the premiere device for facilitating immersive experiences and in person, interactive play. You can find Elli Furedy's talk from Hackaday Supercon 2025 on the PDN and Alleycat's philosophies [here](https://youtu.be/ndodsA254HA).
 
 ## Project Goals
 
-- **Enhanced Player Experience**: Provide users with interactive devices that allow them to participate more deeply in game missions and challenges.
-- **Scalability**: Develop a robust framework that supports multiple PDNs operating simultaneously within the game environment.
-- **Open Source Collaboration**: Foster collaboration by making the PDN's software and hardware designs available to the community for further improvement.
-- **User-Friendly Updates**: Integrate features like **ESP Web Tools** to allow users to easily update their PDNs from their browsers.
+- **Immersive Icebreaker**: At it's core, the PDN is designed to facilitate face to face experiences.
+- **Open Source Collaboration**: Foster collaboration by making the PDN's software and hardware designs available to the community for further improvement. Check out the PDN CLI tool for development tools without needing a physical device.
 
 ## Features
 
-- **Customizable Firmware**: Easily update or modify PDN firmware via a web interface using **ESP Web Tools**.
-- **Real-Time Tracking**: Players' progress, scores, and actions are tracked and updated in real time.
-- **Built-in Display and LEDs**: The PDN features a screen for player updates and visual indicators for mission progress.
-- **Multiplayer Support**: Sync multiple PDNs for group missions and team-based activities.
-- **Modular Design**: Designed to accommodate hardware changes, making it adaptable to new game mechanics and hardware innovations.
+- **Extensible Platform**: The PDN currently supports a single experience - the Neotropolis Quickdraw game, however, it is trivial to create new State Machines to support new game experiences.
+- **Peripheral Rich**: The base PDN design supports a 128x64 OLED, 19 LEDs, vibration haptics, 2 buttons, ESP-NOW, HTTP and Serial communication.
+- **Real-Time Tracking**: The PDN supports connecting to a server to update player data in real time.
+- **Modular Design**: The PDN framework works off of a "Driver" framework that allows for customizing the hardware, whether to support new hardware platforms or new peripherals.
 
 ## Installation
 
 ### Prerequisites
 
 - **PlatformIO Core**: Ensure you have PlatformIO installed as it is used for development and flashing the firmware.
-- **USB-C Cable**
-- **PDN Hardware**: Hardware will be published soon in an accompanying repository.
+- **Unix Style Terminal**: 
 
 ### Steps
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/AlleycatAssetAcquisitions/PDN-Project.git
+   git clone https://github.com/AlleycatAssetAcquisitions/pdn
    ```
 
 2. Navigate to the project directory:
    ```bash
-   cd PDN-Project/pdn-code
+   cd pdn/
    ```
 
 3. Install PlatformIO Core:
@@ -65,8 +59,12 @@ These devices are based on an ESP32-S3 microcontroller features wireless communi
 
 4. Build the project using PlatformIO:
    ```bash
-   platformio run
+   pio run -e <build-target>
    ```
+   Depending on your use case, there are a number of build targets:
+   - esp32-s3_release - Release build (NO LOGS)
+   - esp32-s3_debug - Standard Development build
+   - native_cli - Build the native CLI tool for simulated development.
 
 5. Flash the PDN firmware to your device:
    ```bash
@@ -75,8 +73,11 @@ These devices are based on an ESP32-S3 microcontroller features wireless communi
 
 ## Usage
 
-1. **Power on the PDN**: Once powered, the PDN will connect to the local network and sync with the game server.
-2. **Firmware Updates**: Users can update their PDN firmware via the browser using the integrated **ESP Web Tools**.
+1. **Power on the PDN**: Once powered, the PDN will ask for your player registration code. This is a 4 digit code that is transmitted to the server to fetch player details. The **top button** cycles through digits, 0 through 9, while the **bottom button** functions as a confirm operation.
+
+2. **Log in to Device**: After entering the code, the device will attempt to fetch data from the server. If there is no server running, it will default to offline mode. You will need to **confirm the player code**, **select a role - Hunter/Bounty** and then confirm. The device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
+
+3. **For Simulated Development**: See CLI_README.md for development without a hardware device.
 
 ## Development
 
@@ -89,25 +90,33 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
    git checkout -b feature/NewFeature
    ```
 
-2. **Develop your feature**, ensuring to follow the project's coding standards.
-3. **Commit and push your changes**:
+2. **Develop your feature**
+3. **Test on Device/CLI** - CLI tests are sufficient if the hardware layer is unchanged, if any changes are made to drivers our core device logic, features need to be tested on device as well.
+3. **Add any new tests** - these should be located in `test/test_core`
+4. **Run the test suite** - ensure your changes haven't broken any unit tests.
+   ```bash
+   pio test -e native
+   pio test -e native_cli
+   ```
+5. **Commit and push your changes**:
    ```bash
    git commit -m "Add New Feature"
    git push origin feature/NewFeature
    ```
-
-4. **Create a pull request** for review.
+6. **Create a pull request** for review. Ensure your PR is passing all checks before merging.
 
 ### Code Structure
 
-- `include/`: Header files defining key classes and functionality, such as `comms.hpp`, `player.hpp`, and `states.hpp`.
-- `src/`: Implementation files like `main.cpp`, `player.cpp`, and `match.cpp`.
-- `test/`: Unit testing files for ensuring code stability, including `example_test.cpp`.
+- `include/device/`: This is the hardware abstraction layer that hides all the hardware implementation.
+- `include/device/drivers/`: Provides the concrete implementation of hardware peripherals. The native drivers are used for running the CLI tool. 
+- `include/game/`: Contains code for game experiences.
+- `include/state/`: The core plumbing of the State Machine, the core class that powers games.
+- `test/`: Unit testing files for ensuring code stability.
 - `platformio.ini`: Project configuration file for PlatformIO, defining build environments and dependencies.
 
 ## Contributing
 
-We welcome contributions to the PDN project. Whether you have feature suggestions, bug reports, or improvements, please follow our [contributing guidelines](CONTRIBUTING.md).
+Alleycat wants YOUR HELP! Whether you have feature suggestions, bug reports, or improvements, please follow our [contributing guidelines](CONTRIBUTING.md).
 
 ### How to Contribute
 
