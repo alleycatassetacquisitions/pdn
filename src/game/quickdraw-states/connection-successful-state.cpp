@@ -43,10 +43,13 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
     invalidateScreen()->
     drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::CONNECT))->
     render();
+    
+    // Start the flash timer
+    flashTimer.setTimer(flashDelay);
 }
 
 void ConnectionSuccessful::onStateLoop(Device *PDN) {
-    if(SimpleTimer::getPlatformClock()->milliseconds() % flashDelay == 0) {
+    if(flashTimer.expired()) {
         if (lightsOn) {
             PDN->getLightManager()->setGlobalBrightness(BRIGHTNESS_MAX);
         } else {
@@ -55,6 +58,7 @@ void ConnectionSuccessful::onStateLoop(Device *PDN) {
 
         lightsOn = !lightsOn;
         alertCount++;
+        flashTimer.setTimer(flashDelay);
     }
 }
 

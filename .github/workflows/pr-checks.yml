@@ -29,5 +29,7 @@ jobs:
       run: pio lib install
     - name: Run Platformio Tests
       run:  platformio test -e native
+    - name: Run CLI Simulator Tests
+      run: platformio test -e native_cli
     - name: Build ESP32-s3 Image
       run:  platformio run -e esp32-s3_release

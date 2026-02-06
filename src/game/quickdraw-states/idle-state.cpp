@@ -64,7 +64,7 @@ void Idle::onStateLoop(Device *PDN) {
     }
 
     if(sendMacAddress) {
-        uint8_t* macAddr = PDN->getHttpClient()->getMacAddress();
+        uint8_t* macAddr = PDN->getWirelessManager()->getMacAddress();
         const char* macStr = MacToString(macAddr);
         LOG_I("IDLE", "Preparing to Send Mac Address: %s", macStr);
         

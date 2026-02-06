@@ -3,7 +3,18 @@
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
 #include <map>
+#include <deque>
+#include <vector>
 #include <cstring>
+
+// Track packet history for CLI display
+struct PacketHistoryEntry {
+    bool isSent;  // true = sent, false = received
+    std::string srcMac;
+    std::string dstMac;
+    PktType packetType;
+    size_t length;
+};
 
 class NativePeerCommsDriver : public PeerCommsDriverInterface {
 public:
@@ -51,6 +62,16 @@ public:
         if (peerCommsState_ != PeerCommsState::CONNECTED) {
             return -1;  // Cannot send when disconnected
         }
+        
+        // Track sent packet
+        PacketHistoryEntry entry;
+        entry.isSent = true;
+        entry.srcMac = getMacString();
+        entry.dstMac = macToString(dst);
+        entry.packetType = packetType;
+        entry.length = length;
+        addToHistory(entry);
+        
         NativePeerBroker::getInstance().sendPacket(macAddress_, dst, packetType, data, length);
         return 0; // Success
     }
@@ -86,6 +107,15 @@ public:
             return;
         }
         
+        // Track received packet
+        PacketHistoryEntry entry;
+        entry.isSent = false;
+        entry.srcMac = macToString(srcMac);
+        entry.dstMac = getMacString();
+        entry.packetType = packetType;
+        entry.length = length;
+        addToHistory(entry);
+        
         auto it = handlers_.find(packetType);
         if (it != handlers_.end()) {
             it->second.callback(srcMac, data, length, it->second.context);
@@ -102,6 +132,20 @@ public:
                  macAddress_[3], macAddress_[4], macAddress_[5]);
         return std::string(buf);
     }
+    
+    /**
+     * Get connection state as string for display.
+     */
+    std::string getStateString() const {
+        return peerCommsState_ == PeerCommsState::CONNECTED ? "CONNECTED" : "DISCONNECTED";
+    }
+    
+    /**
+     * Get packet history for CLI display.
+     */
+    const std::deque<PacketHistoryEntry>& getPacketHistory() const {
+        return packetHistory_;
+    }
 
 private:
     struct HandlerEntry {
@@ -112,18 +156,46 @@ private:
     std::map<PktType, HandlerEntry> handlers_;
     uint8_t macAddress_[6];
     PeerCommsState peerCommsState_ = PeerCommsState::DISCONNECTED;
+    std::deque<PacketHistoryEntry> packetHistory_;
+    static const size_t MAX_HISTORY = 5;
+    
+    void addToHistory(const PacketHistoryEntry& entry) {
+        packetHistory_.push_back(entry);
+        while (packetHistory_.size() > MAX_HISTORY) {
+            packetHistory_.pop_front();
+        }
+    }
+    
+    static std::string macToString(const uint8_t* mac) {
+        char buf[18];
+        snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        return std::string(buf);
+    }
 };
 
 // Implementation of broker's deliverPackets that depends on NativePeerCommsDriver
 inline void NativePeerBroker::deliverPackets() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    // Copy pending packets and peer map while holding lock, then release
+    // before delivering. This prevents deadlock when a packet handler
+    // tries to send a response packet (which would try to acquire mutex_).
+    std::vector<PeerPacket> packetsToDeliver;
+    std::map<std::array<uint8_t, 6>, NativePeerCommsDriver*> peersCopy;
     
-    while (!pendingPackets_.empty()) {
-        PeerPacket& packet = pendingPackets_.front();
-        
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        while (!pendingPackets_.empty()) {
+            packetsToDeliver.push_back(std::move(pendingPackets_.front()));
+            pendingPackets_.pop();
+        }
+        peersCopy = peers_;
+    }
+    
+    // Now deliver packets without holding the lock
+    for (auto& packet : packetsToDeliver) {
         if (packet.isBroadcast) {
             // Deliver to all peers except sender
-            for (auto& [mac, peer] : peers_) {
+            for (auto& [mac, peer] : peersCopy) {
                 if (!macEquals(mac, packet.srcMac.data())) {
                     peer->receivePacket(packet.srcMac.data(), packet.packetType,
                                        packet.data.data(), packet.data.size());
@@ -131,13 +203,11 @@ inline void NativePeerBroker::deliverPackets() {
             }
         } else {
             // Deliver to specific peer
-            auto it = peers_.find(packet.dstMac);
-            if (it != peers_.end()) {
+            auto it = peersCopy.find(packet.dstMac);
+            if (it != peersCopy.end()) {
                 it->second->receivePacket(packet.srcMac.data(), packet.packetType,
                                          packet.data.data(), packet.data.size());
             }
         }
-        
-        pendingPackets_.pop();
     }
 }

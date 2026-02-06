@@ -5,6 +5,8 @@
 
 class NativeLightStripDriver : public LightDriverInterface {
 public:
+    static constexpr uint8_t MIN_VISIBLE_BRIGHTNESS = 85;  // Floor for non-zero brightness in CLI
+    
     explicit NativeLightStripDriver(const std::string& name) : LightDriverInterface(name) {
         clear();
     }
@@ -19,8 +21,17 @@ public:
         // In a real implementation, this would push updates to hardware
         // For native, we just store state for dashboard to read
     }
+    
+    // Apply brightness floor for CLI visibility (low values are invisible in terminal)
+    LEDState::SingleLEDState applyBrightnessFloor(LEDState::SingleLEDState led) {
+        if (led.brightness > 0 && led.brightness < MIN_VISIBLE_BRIGHTNESS) {
+            led.brightness = MIN_VISIBLE_BRIGHTNESS;
+        }
+        return led;
+    }
 
     void setLight(LightIdentifier lightSet, uint8_t index, LEDState::SingleLEDState color) override {
+        color = applyBrightnessFloor(color);
         switch (lightSet) {
             case LightIdentifier::LEFT_LIGHTS:
                 if (index < 9) leftLights_[index] = color;
@@ -32,16 +43,23 @@ public:
                 transmitLight_ = color;
                 break;
             case LightIdentifier::DISPLAY_LIGHTS:
-                if (index < 9) {
-                    leftLights_[index] = color;
-                    rightLights_[index] = color;
+                // Display lights mapping from LightManager::mapStateToDisplayLights:
+                // index 0-5 = left[3..8], index 6-11 = right[8..3], index 12 = transmit
+                if (index < 6) {
+                    leftLights_[index + 3] = color;  // index 0->3, 1->4, ... 5->8
+                } else if (index < 12) {
+                    rightLights_[14 - index] = color;  // index 6->8, 7->7, ... 11->3
+                } else if (index == 12) {
+                    transmitLight_ = color;
                 }
                 break;
             case LightIdentifier::GRIP_LIGHTS:
-                // Grip lights map to specific indices - assume bottom 3
+                // Grip lights mapping from LightManager::mapStateToGripLights:
+                // index 0-2 = left[2..0], index 3-5 = right[0..2]
                 if (index < 3) {
-                    leftLights_[index] = color;
-                    rightLights_[index] = color;
+                    leftLights_[2 - index] = color;  // index 0->2, 1->1, 2->0
+                } else if (index < 6) {
+                    rightLights_[index - 3] = color;  // index 3->0, 4->1, 5->2
                 }
                 break;
             case LightIdentifier::GLOBAL:
@@ -66,15 +84,21 @@ public:
                 transmitLight_.brightness = brightness;
                 break;
             case LightIdentifier::DISPLAY_LIGHTS:
-                if (index < 9) {
-                    leftLights_[index].brightness = brightness;
-                    rightLights_[index].brightness = brightness;
+                // Same mapping as setLight
+                if (index < 6) {
+                    leftLights_[index + 3].brightness = brightness;
+                } else if (index < 12) {
+                    rightLights_[14 - index].brightness = brightness;
+                } else if (index == 12) {
+                    transmitLight_.brightness = brightness;
                 }
                 break;
             case LightIdentifier::GRIP_LIGHTS:
+                // Same mapping as setLight
                 if (index < 3) {
-                    leftLights_[index].brightness = brightness;
-                    rightLights_[index].brightness = brightness;
+                    leftLights_[2 - index].brightness = brightness;
+                } else if (index < 6) {
+                    rightLights_[index - 3].brightness = brightness;
                 }
                 break;
             case LightIdentifier::GLOBAL:

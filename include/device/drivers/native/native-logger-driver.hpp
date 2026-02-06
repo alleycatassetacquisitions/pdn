@@ -4,6 +4,18 @@
 #include <cstdio>
 #include <cstring>
 #include <chrono>
+#include <string>
+#include <vector>
+#include <deque>
+
+struct LogEntry {
+    LogLevel level;
+    std::string tag;
+    std::string file;
+    int line;
+    std::string message;
+    long long timestamp;
+};
 
 class NativeLoggerDriver : public LoggerDriverInterface {
 public:
@@ -16,6 +28,35 @@ public:
     }
 
     void exec() override {}
+
+    // Control whether logs are printed to stdout
+    void setSuppressOutput(bool suppress) {
+        suppressOutput_ = suppress;
+    }
+    
+    bool isSuppressed() const {
+        return suppressOutput_;
+    }
+    
+    // Get buffered logs (returns copy and clears buffer)
+    std::vector<LogEntry> getAndClearLogs() {
+        std::vector<LogEntry> result(logBuffer_.begin(), logBuffer_.end());
+        logBuffer_.clear();
+        return result;
+    }
+    
+    // Get recent logs without clearing (for display)
+    const std::deque<LogEntry>& getRecentLogs() const {
+        return logBuffer_;
+    }
+    
+    // Set max buffer size
+    void setMaxBufferSize(size_t size) {
+        maxBufferSize_ = size;
+        while (logBuffer_.size() > maxBufferSize_) {
+            logBuffer_.pop_front();
+        }
+    }
 
     void vlog(LogLevel level, const char* tag, const char* file, int line, const char* format, va_list args) override {
         // Get timestamp in milliseconds since start
@@ -42,17 +83,35 @@ public:
         if (lastSlash) filename = lastSlash + 1;
         if (lastBackslash && lastBackslash > filename) filename = lastBackslash + 1;
 
-        // Print timestamp, level, tag, and source location
-        printf("%s[%6lld][%s][%s:%d][%s] ", colorCode, (long long)elapsed, levelStr, filename, line, tag);
+        // Format the message
+        char msgBuffer[1024];
+        vsnprintf(msgBuffer, sizeof(msgBuffer), format, args);
         
-        // Print the formatted message
-        vprintf(format, args);
+        // Buffer the log entry
+        LogEntry entry;
+        entry.level = level;
+        entry.tag = tag;
+        entry.file = filename;
+        entry.line = line;
+        entry.message = msgBuffer;
+        entry.timestamp = elapsed;
         
-        // Reset color and newline
-        printf("\033[0m\n");
-        fflush(stdout);
+        logBuffer_.push_back(entry);
+        while (logBuffer_.size() > maxBufferSize_) {
+            logBuffer_.pop_front();
+        }
+
+        // Only print if not suppressed
+        if (!suppressOutput_) {
+            printf("%s[%6lld][%s][%s:%d][%s] %s\033[0m\n", 
+                   colorCode, (long long)elapsed, levelStr, filename, line, tag, msgBuffer);
+            fflush(stdout);
+        }
     }
 
 private:
     std::chrono::steady_clock::time_point startTime_ = std::chrono::steady_clock::now();
+    bool suppressOutput_ = false;
+    std::deque<LogEntry> logBuffer_;
+    size_t maxBufferSize_ = 100;  // Keep last 100 log entries
 };
