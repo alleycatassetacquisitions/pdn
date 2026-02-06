@@ -1363,8 +1363,8 @@ public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
-        // Start at a value where advancing by 400 will hit multiples of 400
-        // The state uses milliseconds() % 400 == 0 to trigger flashes
+        // The state uses a SimpleTimer with 400ms delay to trigger flashes
+        // Starting time doesn't matter since the timer tracks elapsed time
         fakeClock->setTime(800);
 
         player = new Player();
@@ -1398,9 +1398,10 @@ inline void connectionSuccessfulTransitionsAfterThreshold(ConnectionSuccessfulTe
     EXPECT_FALSE(connState.transitionToCountdown());
     
     // Simulate flash cycles - need alertCount > 12 (threshold), so 13 flashes
-    // Each flash happens when milliseconds() % 400 == 0
+    // Each flash happens when the flashTimer expires (duration > elapsed)
+    // The timer uses strict inequality, so we need to advance by more than 400ms
     for (int i = 0; i < 13; i++) {
-        suite->fakeClock->advance(400);
+        suite->fakeClock->advance(401);
         connState.onStateLoop(&suite->device);
     }
     
