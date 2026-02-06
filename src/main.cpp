@@ -28,10 +28,17 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 
-// WiFi configuration
-const char* WIFI_SSID = "The Lab";
-const char* WIFI_PASSWORD = "C00KIECAT";
-const char* BASE_URL = "http://alleycat-server.local:3000";
+// WiFi configuration - injected at compile time from wifi_credentials.ini
+// See wifi_credentials.ini.example for template
+#ifndef WIFI_SSID
+#error "WIFI_SSID not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
+#endif
+#ifndef WIFI_PASSWORD
+#error "WIFI_PASSWORD not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
+#endif
+#ifndef BASE_URL
+#error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
+#endif
 
 WifiConfig* wifiConfig = nullptr;
 
@@ -102,6 +109,7 @@ void setup() {
     serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME);
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME);
     
+    // WiFi credentials are compile-time constants from build flags
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowManager::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
@@ -138,6 +146,7 @@ void setup() {
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     
+    // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
     quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
