@@ -57,7 +57,13 @@ The Alleycat Asset Acquisitions Portable Data Node is the premiere device for fa
    platformio upgrade
    ```
 
-4. Build the project using PlatformIO:
+4. Configure WiFi credentials (for ESP32-S3 builds):
+   ```bash
+   cp wifi_credentials.ini.example wifi_credentials.ini
+   ```
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL. This file is excluded from version control for security.
+
+5. Build the project using PlatformIO:
    ```bash
    pio run -e <build-target>
    ```
@@ -66,7 +72,7 @@ The Alleycat Asset Acquisitions Portable Data Node is the premiere device for fa
    - esp32-s3_debug - Standard Development build
    - native_cli - Build the native CLI tool for simulated development.
 
-5. Flash the PDN firmware to your device:
+6. Flash the PDN firmware to your device:
    ```bash
    platformio run --target upload
    ```
