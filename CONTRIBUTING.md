@@ -29,7 +29,7 @@ Before contributing, please ensure that you follow these steps:
 
 3. **Test Your Changes**: Test your changes thoroughly by flashing the firmware to a compatible microcontroller (ESP32-s3) and ensuring it works as intended in the game environment. Make use of the test files in the `test/` folder.
 
-4. **Submit a Pull Request**: Once your contribution is ready, commit your changes and push them to your fork. Open a pull request (PR) on the main repository for review. Provide a clear description of the changes made and link to any related issues.
+4. **Submit a Pull Request**: Once your contribution is ready, commit your changes and push them to your fork. Open a pull request (PR) on the main repository for review. Provide a clear description of the changes made and link to any related issues. **Note**: Do not commit `wifi_credentials.ini` - the CI/CD pipeline automatically creates this file with dummy values for automated builds.
 
 5. **Code Review & Feedback**: A maintainer will review your PR and may provide feedback or request changes. Be open to collaborating and making any necessary adjustments to ensure your contribution aligns with the project’s standards.
 

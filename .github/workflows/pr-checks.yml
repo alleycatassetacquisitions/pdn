@@ -24,6 +24,13 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install platformio
+    - name: Create WiFi credentials file for CI
+      run: |
+        cp wifi_credentials.ini.example wifi_credentials.ini
+        # Use dummy values for CI builds
+        sed -i 's/YourWiFiSSID/CI_SSID/' wifi_credentials.ini
+        sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
+        sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
     # It is important to first install the libraries before compiling, since otherwise compilation might fail to find the just-installed libraries
     - name: Install platformIO libraries
       run: pio lib install
