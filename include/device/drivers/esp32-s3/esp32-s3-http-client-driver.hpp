@@ -2,6 +2,7 @@
 
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
 #include "device/drivers/driver-interface.hpp"

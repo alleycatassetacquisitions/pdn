@@ -281,9 +281,6 @@ int main(int argc, char** argv) {
     
     // Restore terminal settings and cursor
     cli::Terminal::showCursor();
-    #ifndef _WIN32
-    cli::Terminal::restoreTerminal(oldTermios);
-    #endif
     
     // Move cursor below the UI for clean shutdown message
     printf("\n\nShutting down...\n");

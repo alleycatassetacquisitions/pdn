@@ -7,6 +7,7 @@
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/logger.hpp"
 #include <Arduino.h>
+#include <esp_rom_gpio.h>
 #include "device/device-constants.hpp"
 #include <HardwareSerial.h>
 #include <string>
@@ -24,8 +25,8 @@ public:
         gpio_reset_pin(GPIO_NUM_38);
         gpio_reset_pin(GPIO_NUM_39);
 
-        gpio_pad_select_gpio(GPIO_NUM_38);
-        gpio_pad_select_gpio(GPIO_NUM_39);
+        esp_rom_gpio_pad_select_gpio(GPIO_NUM_38);
+        esp_rom_gpio_pad_select_gpio(GPIO_NUM_39);
         
         pinMode(TXt, OUTPUT);
         pinMode(TXr, INPUT);
@@ -104,8 +105,8 @@ public:
         gpio_reset_pin(GPIO_NUM_40);
         gpio_reset_pin(GPIO_NUM_41);
 
-        gpio_pad_select_gpio(GPIO_NUM_40);
-        gpio_pad_select_gpio(GPIO_NUM_41);
+        esp_rom_gpio_pad_select_gpio(GPIO_NUM_40);
+        esp_rom_gpio_pad_select_gpio(GPIO_NUM_41);
 
         pinMode(RXt, OUTPUT);
         pinMode(RXr, INPUT);

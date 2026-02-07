@@ -38,7 +38,8 @@ The Alleycat Asset Acquisitions Portable Data Node is the premiere device for fa
 ### Prerequisites
 
 - **PlatformIO Core**: Ensure you have PlatformIO installed as it is used for development and flashing the firmware.
-- **Unix Style Terminal**: 
+- **pioarduino Platform**: This project uses [pioarduino](https://github.com/pioarduino/platform-espressif32), a community fork of the Espressif32 platform with support for newer ESP-IDF and Arduino framework versions.
+- **Unix Style Terminal**: Required for the CLI simulator tool. Windows users should use WSL (Windows Subsystem for Linux).
 
 ### Steps
 
@@ -54,6 +55,8 @@ The Alleycat Asset Acquisitions Portable Data Node is the premiere device for fa
 
 3. Install PlatformIO Core:
    ```bash
+   pip install platformio
+   # or
    platformio upgrade
    ```
 
@@ -68,14 +71,36 @@ The Alleycat Asset Acquisitions Portable Data Node is the premiere device for fa
    pio run -e <build-target>
    ```
    Depending on your use case, there are a number of build targets:
-   - esp32-s3_release - Release build (NO LOGS)
-   - esp32-s3_debug - Standard Development build
-   - native_cli - Build the native CLI tool for simulated development.
+   - `esp32-s3_release` - Release build (NO LOGS)
+   - `esp32-s3_debug` - Standard Development build
+   - `native_cli` - Build the native CLI tool for simulated development (Unix/WSL only)
 
 6. Flash the PDN firmware to your device:
    ```bash
    platformio run --target upload
    ```
+
+### Migration from Standard PlatformIO Espressif32
+
+This project recently migrated from the standard PlatformIO Espressif32 platform to **pioarduino** for access to newer ESP-IDF versions and improved Arduino framework support.
+
+Uninstall PlatformIO from your IDE.
+Install pioarduino.
+Restart your IDE.
+
+If you're experiencing build issues after pulling recent changes, perform a clean install:
+
+```bash
+# Remove old platform packages
+rm -rf ~/.platformio/platforms/espressif32*
+rm -rf ~/.platformio/packages/framework-arduinoespressif32*
+
+# Clean the project build cache
+rm -rf .pio/
+
+# Rebuild
+pio run -e esp32-s3_release
+```
 
 ## Usage
 
@@ -98,11 +123,11 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
 
 2. **Develop your feature**
 3. **Test on Device/CLI** - CLI tests are sufficient if the hardware layer is unchanged, if any changes are made to drivers our core device logic, features need to be tested on device as well.
-3. **Add any new tests** - these should be located in `test/test_core`
+3. **Add any new tests** - these should be located in `test/test_core` or `test/test_cli`
 4. **Run the test suite** - ensure your changes haven't broken any unit tests.
    ```bash
-   pio test -e native
-   pio test -e native_cli
+   pio test -e native          # Core unit tests
+   pio test -e native_cli_test # CLI-specific tests
    ```
 5. **Commit and push your changes**:
    ```bash
