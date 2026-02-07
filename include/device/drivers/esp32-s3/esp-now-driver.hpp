@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_mac.h>
 #include "device/drivers/logger.hpp"
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
@@ -71,7 +72,6 @@ public:
         LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
 
         initializeEspNow();
-
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
@@ -216,14 +216,14 @@ public:
 
     // Public methods for ESP-NOW callback handling 
     // (used when re-initializing ESP-NOW in EspNowState)
-    void HandleReceivedData(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+    void HandleReceivedData(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         // This simply forwards to the static callback method
-        EspNowRecvCallback(mac_addr, data, data_len);
+        EspNowRecvCallback(esp_now_info, data, data_len);
     }
 
-    void HandleSendStatus(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    void HandleSendStatus(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
         // This simply forwards to the static callback method
-        EspNowSendCallback(mac_addr, status);
+        EspNowSendCallback(esp_now_info, status);
     }
 
 private:
@@ -323,13 +323,13 @@ private:
 #endif
 
     //ESP-NOW callbacks
-    static void EspNowRecvCallback(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+    static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         EspNowManager* manager = EspNowManager::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
-            mac_addr[0], mac_addr[1], mac_addr[2],
-            mac_addr[3], mac_addr[4], mac_addr[5]);
+            esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2],
+            esp_now_info->src_addr[3], esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
 #endif
 
         if(data_len < sizeof(DataPktHdr)) {
@@ -344,9 +344,9 @@ private:
 #endif
 
         if(pktHdr->numPktsInCluster > 1) {
-            manager->handleMultiPacketCluster(mac_addr, data, pktHdr);
+            manager->handleMultiPacketCluster(esp_now_info->src_addr, data, pktHdr);
         } else {
-            manager->handleSinglePacket(mac_addr, data, pktHdr);
+            manager->handleSinglePacket(esp_now_info->src_addr, data, pktHdr);
         }
     }
 
@@ -435,7 +435,7 @@ private:
         m_recvBuffers.erase(existingBuffer);
     }
 
-    static void EspNowSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
         EspNowManager* manager = EspNowManager::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
@@ -444,26 +444,20 @@ private:
 
         if(status == ESP_NOW_SEND_SUCCESS)
         {
-            LOG_D("ENC", "Send SUCCESS to %02X:%02X:%02X:%02X:%02X:%02X",
-                  mac_addr[0], mac_addr[1], mac_addr[2],
-                  mac_addr[3], mac_addr[4], mac_addr[5]);
+            LOG_D("ENC", "Send SUCCESS");
             manager->MoveToNextSendPkt();
         }
         else
         {
             if(manager->m_curRetries < manager->m_maxRetries)
             {
-                LOG_W("ENC", "Send FAILED to %02X:%02X:%02X:%02X:%02X:%02X (retry %d/%d)",
-                      mac_addr[0], mac_addr[1], mac_addr[2],
-                      mac_addr[3], mac_addr[4], mac_addr[5],
+                LOG_W("ENC", "Send FAILED (retry %d/%d)",
                       manager->m_curRetries + 1, manager->m_maxRetries);
                 ++manager->m_curRetries;
             }
             else
             {
-                LOG_E("ENC", "Send FAILED to %02X:%02X:%02X:%02X:%02X:%02X - giving up after %d retries",
-                      mac_addr[0], mac_addr[1], mac_addr[2],
-                      mac_addr[3], mac_addr[4], mac_addr[5],
+                LOG_E("ENC", "Send FAILED - giving up after %d retries",
                       manager->m_maxRetries);
                 manager->MoveToNextSendPkt();
             }

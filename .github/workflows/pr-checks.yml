@@ -1,42 +1,97 @@
 name: PR Checks
 
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
+# Triggers on pull requests to main branch
 on:
   pull_request:
     branches: main
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  # Native tests (runs on all platforms for maximum compatibility)
+  test:
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         submodules: 'true'
+    
     - name: Set up Python
-      uses: actions/setup-python@v1
-    - name: Install dependencies
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'  # pioarduino requires Python 3.10-3.13
+    
+    - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
         pip install platformio
+    
     - name: Create WiFi credentials file for CI
       run: |
         cp wifi_credentials.ini.example wifi_credentials.ini
-        # Use dummy values for CI builds
         sed -i 's/YourWiFiSSID/CI_SSID/' wifi_credentials.ini
         sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
         sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
-    # It is important to first install the libraries before compiling, since otherwise compilation might fail to find the just-installed libraries
-    - name: Install platformIO libraries
-      run: pio lib install
-    - name: Run Platformio Tests
-      run:  platformio test -e native
-    - name: Run CLI Simulator Tests
-      run: platformio test -e native_cli
-    - name: Build ESP32-s3 Image
-      run:  platformio run -e esp32-s3_release
+    
+    - name: Run Core Unit Tests
+      run: pio test -e native
+    
+    - name: Run CLI Unit Tests
+      run: pio test -e native_cli_test
+
+  # ESP32 build verification
+  build-esp32:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'  # pioarduino requires Python 3.10-3.13
+    
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+    
+    - name: Create WiFi credentials file for CI
+      run: |
+        cp wifi_credentials.ini.example wifi_credentials.ini
+        sed -i 's/YourWiFiSSID/CI_SSID/' wifi_credentials.ini
+        sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
+        sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
+    
+    - name: Build ESP32-S3 Release
+      run: pio run -e esp32-s3_release
+  
+  # Native CLI build verification (Unix only)
+  build-cli:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install PlatformIO
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+    
+    - name: Create WiFi credentials file for CI
+      run: |
+        cp wifi_credentials.ini.example wifi_credentials.ini
+        sed -i 's/YourWiFiSSID/CI_SSID/' wifi_credentials.ini
+        sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
+        sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
+    
+    - name: Build Native CLI
+      run: pio run -e native_cli
