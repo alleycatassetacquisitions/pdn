@@ -21,6 +21,8 @@ PCB's were designed in KiCad 8 and will be uploaded to a separate repository soo
 
 The Alleycat Asset Acquisitions Portable Data Node is the premiere device for facilitating immersive experiences and in person, interactive play. You can find Elli Furedy's talk from Hackaday Supercon 2025 on the PDN and Alleycat's philosophies [here](https://youtu.be/ndodsA254HA).
 
+You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisitions/pdn).
+
 ## Project Goals
 
 - **Immersive Icebreaker**: At it's core, the PDN is designed to facilitate face to face experiences.
