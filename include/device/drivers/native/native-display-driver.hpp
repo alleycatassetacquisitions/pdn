@@ -181,19 +181,17 @@ public:
 
     Display* drawImage(Image image) override {
         currentImage_ = image;
-        // Fill screen with pattern to indicate image
-        for (int y = 0; y < HEIGHT; y += 4) {
-            for (int x = 0; x < WIDTH; x += 4) {
-                setPixel(x, y, true);
-            }
-        }
+        drawImage(image, -1, -1);
         return this;
     }
 
     Display* drawImage(Image image, int xStart, int yStart) override {
         currentImage_ = image;
-        // Draw placeholder pattern for image
-        drawRect(xStart, yStart, 32, 32);
+        int x = image.defaultStartX;
+        int y = image.defaultStartY;
+        if (xStart != -1) x = xStart;
+        if (yStart != -1) y = yStart;
+        decodeXBMToBuffer(image.rawImage, image.width, image.height, x, y);
         return this;
     }
     
@@ -270,6 +268,46 @@ public:
         return lines;
     }
 
+    /*
+     * Render display as braille art (U+2800-U+28FF).
+     * Each braille character encodes a 2x4 pixel grid with 8 bits of detail,
+     * vs 2 bits for half-block characters. Same 64x16 terminal footprint
+     * but dramatically better text legibility.
+     *
+     * Braille dot layout:
+     *   (0,0)=0x01  (1,0)=0x08
+     *   (0,1)=0x02  (1,1)=0x10
+     *   (0,2)=0x04  (1,2)=0x20
+     *   (0,3)=0x40  (1,3)=0x80
+     */
+    std::vector<std::string> renderToBraille() const {
+        std::vector<std::string> lines;
+
+        for (int y = 0; y < HEIGHT; y += 4) {
+            std::string line;
+            for (int x = 0; x < WIDTH; x += 2) {
+                uint8_t dots = 0;
+                if (getPixel(x,   y))   dots |= 0x01;
+                if (getPixel(x,   y+1)) dots |= 0x02;
+                if (getPixel(x,   y+2)) dots |= 0x04;
+                if (getPixel(x,   y+3)) dots |= 0x40;
+                if (getPixel(x+1, y))   dots |= 0x08;
+                if (getPixel(x+1, y+1)) dots |= 0x10;
+                if (getPixel(x+1, y+2)) dots |= 0x20;
+                if (getPixel(x+1, y+3)) dots |= 0x80;
+
+                // UTF-8 encode U+2800+dots (3-byte sequence)
+                uint32_t cp = 0x2800 + dots;
+                line += static_cast<char>(0xE0 | (cp >> 12));
+                line += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                line += static_cast<char>(0x80 | (cp & 0x3F));
+            }
+            lines.push_back(line);
+        }
+
+        return lines;
+    }
+
 private:
     bool screenBuffer_[HEIGHT][WIDTH];
     FontMode currentFontMode_ = FontMode::TEXT;
@@ -289,6 +327,26 @@ private:
         }
     }
     
+    /*
+     * Decode XBM bitmap data into the screen buffer.
+     * XBM format: LSB-first, row-major, ceil(width/8) bytes per row.
+     * This mirrors what U8g2's drawXBMP() does on the ESP32.
+     */
+    void decodeXBMToBuffer(const unsigned char* data, int imgWidth, int imgHeight, int offsetX, int offsetY) {
+        if (!data) return;
+        int bytesPerRow = (imgWidth + 7) / 8;
+        for (int row = 0; row < imgHeight; row++) {
+            for (int col = 0; col < imgWidth; col++) {
+                int byteIndex = row * bytesPerRow + col / 8;
+                int bitIndex = col % 8;  // LSB first
+                bool pixelOn = (data[byteIndex] >> bitIndex) & 1;
+                if (pixelOn) {
+                    setPixel(offsetX + col, offsetY + row, true);
+                }
+            }
+        }
+    }
+
     void clearBuffer() {
         memset(screenBuffer_, 0, sizeof(screenBuffer_));
     }
@@ -329,13 +387,13 @@ private:
                 int fontIndex = c - ' ';
                 const uint8_t* glyph = FONT_5X7[fontIndex];
                 
-                // Draw the glyph
-                for (int col = 0; col < 5; col++) {
-                    uint8_t columnData = glyph[col];
-                    for (int row = 0; row < 7; row++) {
-                        if (columnData & (1 << row)) {
-                            setPixel(cursorX + col, y + row, true);
-                        }
+                // Draw the glyph with black background so text is
+                // always visible over images (CLI has no XOR blending)
+                for (int col = 0; col < 6; col++) {
+                    uint8_t columnData = (col < 5) ? glyph[col] : 0;
+                    for (int row = 0; row < 8; row++) {
+                        bool on = (row < 7) && (columnData & (1 << row));
+                        setPixel(cursorX + col, y + row, on);
                     }
                 }
             }

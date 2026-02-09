@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
                 }
             } else if (key == '\n' || key == '\r') {
                 // Execute command on Enter
-                auto result = commandProcessor.execute(g_commandBuffer, devices, g_selectedDevice);
+                auto result = commandProcessor.execute(g_commandBuffer, devices, g_selectedDevice, renderer);
                 g_commandResult = result.message;
                 if (result.shouldQuit) {
                     g_running = false;

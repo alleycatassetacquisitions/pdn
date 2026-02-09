@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <sys/ioctl.h>
 
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
@@ -23,7 +24,15 @@ public:
     static constexpr int STATUS_START_ROW = 14;
     
     Renderer() = default;
-    
+
+    void setDisplayMirror(bool enabled) { displayMirrorEnabled_ = enabled; }
+    void toggleDisplayMirror() { displayMirrorEnabled_ = !displayMirrorEnabled_; }
+    bool isDisplayMirrorEnabled() const { return displayMirrorEnabled_; }
+
+    void setCaptions(bool enabled) { captionsEnabled_ = enabled; }
+    void toggleCaptions() { captionsEnabled_ = !captionsEnabled_; }
+    bool isCaptionsEnabled() const { return captionsEnabled_; }
+
     /**
      * Render the full UI for all devices, command result, and prompt.
      */
@@ -86,6 +95,8 @@ public:
     }
 
 private:
+    bool displayMirrorEnabled_ = false;
+    bool captionsEnabled_ = true;
     std::vector<std::string> previousFrame_;
     std::vector<std::string> currentFrame_;
     
@@ -97,36 +108,56 @@ private:
     }
     
     /**
+     * Get terminal height to prevent cursor positioning past the screen edge.
+     * Writing past the terminal height causes scrolling that corrupts
+     * all subsequent absolute cursor positions.
+     */
+    static int getTerminalHeight() {
+        struct winsize ws;
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0) {
+            return static_cast<int>(ws.ws_row);
+        }
+        return 50;
+    }
+
+    /**
      * Render the current frame using differential updates.
+     * Lines beyond terminal height are skipped to prevent scroll corruption.
      */
     void renderDiff() {
+        int termHeight = getTerminalHeight();
+
         // Ensure we have enough lines in previous frame for comparison
         while (previousFrame_.size() < currentFrame_.size()) {
             previousFrame_.push_back("");
         }
-        
-        // Compare and update only changed lines
+
+        // Compare and update only changed lines (within terminal bounds)
         for (size_t i = 0; i < currentFrame_.size(); i++) {
+            int row = STATUS_START_ROW + static_cast<int>(i);
+            if (row >= termHeight) break;
+
             if (i >= previousFrame_.size() || currentFrame_[i] != previousFrame_[i]) {
-                // Line changed - move to it and rewrite
-                Terminal::moveCursor(STATUS_START_ROW + static_cast<int>(i), 1);
+                Terminal::moveCursor(row, 1);
                 Terminal::clearLine();
                 printf("%s", currentFrame_[i].c_str());
             }
         }
-        
-        // Clear any extra lines from previous frame
+
+        // Clear any extra lines from previous frame (within terminal bounds)
         if (previousFrame_.size() > currentFrame_.size()) {
             for (size_t i = currentFrame_.size(); i < previousFrame_.size(); i++) {
-                Terminal::moveCursor(STATUS_START_ROW + static_cast<int>(i), 1);
+                int row = STATUS_START_ROW + static_cast<int>(i);
+                if (row >= termHeight) break;
+                Terminal::moveCursor(row, 1);
                 Terminal::clearLine();
             }
         }
-        
+
         // Store current frame as previous for next comparison
         previousFrame_ = currentFrame_;
         currentFrame_.clear();
-        
+
         Terminal::flush();
     }
     
@@ -247,11 +278,17 @@ private:
             }
         }
         
-        // Build display text history (up to 4 rows)
-        const auto& textHistory = device.displayDriver->getTextHistory();
+        // Build display content - always collect captions, optionally render mirror
+        std::vector<std::string> asciiMirrorLines;
         std::vector<std::string> displayRows(4, "");
+
+        const auto& textHistory = device.displayDriver->getTextHistory();
         for (size_t i = 0; i < textHistory.size() && i < 4; i++) {
-            displayRows[i] = truncate(textHistory[i], 50);
+            displayRows[i] = truncate(textHistory[i], 40);
+        }
+
+        if (displayMirrorEnabled_) {
+            asciiMirrorLines = device.displayDriver->renderToBraille();
         }
         
         // Build ESP-NOW packet history strings (separate TX and RX)
@@ -330,13 +367,41 @@ private:
         
         bufferLine(format("| History: %s", historyStr.c_str()));
         
-        // Display info (4 rows showing text history, most recent first)
-        bufferLine(format("| Display: Font=%-6s  [0] %s",
-                   device.displayDriver->getFontModeName().c_str(),
-                   displayRows[0].empty() ? "(blank)" : displayRows[0].c_str()));
-        bufferLine(format("|                       [1] %s", displayRows[1].c_str()));
-        bufferLine(format("|                       [2] %s", displayRows[2].c_str()));
-        bufferLine(format("|                       [3] %s", displayRows[3].c_str()));
+        // Display info
+        if (displayMirrorEnabled_) {
+            bufferLine(format("| Display: Font=%-6s    Mirror=ON",
+                       device.displayDriver->getFontModeName().c_str()));
+
+            // Top border — with Captions header when enabled
+            if (captionsEnabled_) {
+                bufferLine("|  +----------------------------------------------------------------+  Captions:");
+            } else {
+                bufferLine("|  +----------------------------------------------------------------+");
+            }
+
+            // Mirror lines — first 4 get captions alongside when enabled
+            for (size_t i = 0; i < asciiMirrorLines.size(); i++) {
+                std::string line = "|  |" + asciiMirrorLines[i] + "|";
+                if (captionsEnabled_ && i < 4) {
+                    std::string caption = displayRows[i].empty() ? "" : displayRows[i];
+                    line += "  [" + std::to_string(i) + "] " + caption;
+                }
+                bufferLine(line);
+            }
+
+            bufferLine("|  +----------------------------------------------------------------+");
+        } else if (captionsEnabled_) {
+            bufferLine(format("| Display: Font=%-6s  Captions:",
+                       device.displayDriver->getFontModeName().c_str()));
+            bufferLine(format("|                       [0] %s",
+                       displayRows[0].empty() ? "(blank)" : displayRows[0].c_str()));
+            bufferLine(format("|                       [1] %s", displayRows[1].c_str()));
+            bufferLine(format("|                       [2] %s", displayRows[2].c_str()));
+            bufferLine(format("|                       [3] %s", displayRows[3].c_str()));
+        } else {
+            bufferLine(format("| Display: Font=%-6s",
+                       device.displayDriver->getFontModeName().c_str()));
+        }
         
         bufferLine(ledStr);
         bufferLine(ledDebugStr);
