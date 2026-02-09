@@ -17,13 +17,13 @@ const ImageCollection alleycatImageCollection = {
 {ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_alley_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_alley_stamp, 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(image_alley_connect, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(image_alley_count3, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(image_alley_count2, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(image_alley_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_alley_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_alley_loser, 128, 64, 0, 0)},
+{ImageType::CONNECT, Image(image_alley_connect, 128, 64, 0, 0, "CONNECTED")},
+{ImageType::COUNTDOWN_THREE, Image(image_alley_count3, 128, 64, 0, 0, "3")},
+{ImageType::COUNTDOWN_TWO, Image(image_alley_count2, 128, 64, 0, 0, "2")},
+{ImageType::COUNTDOWN_ONE, Image(image_alley_count1, 128, 64, 0, 0, "1")},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0, "DRAW!")},
+{ImageType::WIN, Image(image_alley_victor, 128, 64, 0, 0, "VICTORY")},
+{ImageType::LOSE, Image(image_alley_loser, 128, 64, 0, 0, "DEFEATED")},
 };
 
 const ImageCollection helixImageCollection = {
@@ -31,13 +31,13 @@ const ImageCollection helixImageCollection = {
     {ImageType::LOGO_LEFT, Image(image_logo_helix, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_helix_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_helix_stamp, 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(image_helix_connect, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(image_helix_count3, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(image_helix_count2, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(image_helix_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_helix_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_helix_loser, 128, 64, 0, 0)},
+{ImageType::CONNECT, Image(image_helix_connect, 128, 64, 0, 0, "CONNECTED")},
+{ImageType::COUNTDOWN_THREE, Image(image_helix_count3, 128, 64, 0, 0, "3")},
+{ImageType::COUNTDOWN_TWO, Image(image_helix_count2, 128, 64, 0, 0, "2")},
+{ImageType::COUNTDOWN_ONE, Image(image_helix_count1, 128, 64, 0, 0, "1")},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0, "DRAW!")},
+{ImageType::WIN, Image(image_helix_victor, 128, 64, 0, 0, "VICTORY")},
+{ImageType::LOSE, Image(image_helix_loser, 128, 64, 0, 0, "DEFEATED")},
 };
 
 const ImageCollection endlineImageCollection = {
@@ -45,13 +45,13 @@ const ImageCollection endlineImageCollection = {
 {ImageType::LOGO_LEFT, Image(image_logo_endline, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_endline_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_endline_stamp, 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(image_endline_connect, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(image_endline_count3, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(image_endline_count2, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(image_endline_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_endline_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_endline_loser, 128, 64, 0, 0)},
+{ImageType::CONNECT, Image(image_endline_connect, 128, 64, 0, 0, "CONNECTED")},
+{ImageType::COUNTDOWN_THREE, Image(image_endline_count3, 128, 64, 0, 0, "3")},
+{ImageType::COUNTDOWN_TWO, Image(image_endline_count2, 128, 64, 0, 0, "2")},
+{ImageType::COUNTDOWN_ONE, Image(image_endline_count1, 128, 64, 0, 0, "1")},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0, "DRAW!")},
+{ImageType::WIN, Image(image_endline_victor, 128, 64, 0, 0, "VICTORY")},
+{ImageType::LOSE, Image(image_endline_loser, 128, 64, 0, 0, "DEFEATED")},
 };
 
 const ImageCollection resistanceImageCollection = {
@@ -59,13 +59,13 @@ const ImageCollection resistanceImageCollection = {
 {ImageType::LOGO_LEFT, Image(image_resistance_stamp, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_resistance_0, 128, 64, 0, 0)},
 {ImageType::STAMP, Image(image_resistance_stamp, 128, 64, 64, 0)},
-{ImageType::CONNECT, Image(image_resistance_connect, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_THREE, Image(image_resistance_count3, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_TWO, Image(image_resistance_count2, 128, 64, 0, 0)},
-{ImageType::COUNTDOWN_ONE, Image(image_resistance_count1, 128, 64, 0, 0)},
-{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_resistance_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_resistance_loser, 128, 64, 0, 0)},
+{ImageType::CONNECT, Image(image_resistance_connect, 128, 64, 0, 0, "CONNECTED")},
+{ImageType::COUNTDOWN_THREE, Image(image_resistance_count3, 128, 64, 0, 0, "3")},
+{ImageType::COUNTDOWN_TWO, Image(image_resistance_count2, 128, 64, 0, 0, "2")},
+{ImageType::COUNTDOWN_ONE, Image(image_resistance_count1, 128, 64, 0, 0, "1")},
+{ImageType::DRAW, Image(image_draw, 128, 64, 64, 0, "DRAW!")},
+{ImageType::WIN, Image(image_resistance_victor, 128, 64, 0, 0, "VICTORY")},
+{ImageType::LOSE, Image(image_resistance_loser, 128, 64, 0, 0, "DEFEATED")},
 };
 
 // Equivalent LEDColor palettes (derived from FastLED HTML colors in crgb.h):
