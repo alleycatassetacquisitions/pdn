@@ -749,6 +749,38 @@ void displayDriverRenderToBrailleDotMapping(NativeDisplayDriverTestSuite* suite)
     ASSERT_EQ(lines[0].substr(0, 3), expected);
 }
 
+// --- Opaque rendering tests ---
+
+// Test: Opaque rendering — 0-bits in a second image clear pixels from a first image
+void displayDriverOpaqueImageClearing(NativeDisplayDriverTestSuite* suite) {
+    // First image: all white (all pixels on)
+    unsigned char whiteData[16];  // 8x1 row = 1 byte, but use 128x1 = 16 bytes
+    memset(whiteData, 0xFF, sizeof(whiteData));
+    Image whiteImg(whiteData, 128, 1, 0, 0);
+
+    // Second image: alternating pattern (some pixels off)
+    // 0xAA = 10101010 LSB-first: pixels 1,3,5,7 on; 0,2,4,6 off
+    unsigned char mixedData[16];
+    memset(mixedData, 0xAA, sizeof(mixedData));
+    Image mixedImg(mixedData, 128, 1, 0, 0);
+
+    suite->driver_->invalidateScreen();
+    suite->driver_->drawImage(whiteImg);
+
+    // All pixels should be on after first image
+    ASSERT_TRUE(suite->driver_->getPixel(0, 0));
+    ASSERT_TRUE(suite->driver_->getPixel(1, 0));
+
+    // Draw second image on top — 0-bits should clear pixels
+    suite->driver_->drawImage(mixedImg);
+
+    // 0xAA LSB-first: bit0=0, bit1=1, bit2=0, bit3=1, ...
+    ASSERT_FALSE(suite->driver_->getPixel(0, 0));  // bit 0 = 0 → cleared
+    ASSERT_TRUE(suite->driver_->getPixel(1, 0));   // bit 1 = 1 → still on
+    ASSERT_FALSE(suite->driver_->getPixel(2, 0));  // bit 2 = 0 → cleared
+    ASSERT_TRUE(suite->driver_->getPixel(3, 0));   // bit 3 = 1 → still on
+}
+
 // ============================================
 // CLI DISPLAY COMMAND TEST SUITE
 // ============================================

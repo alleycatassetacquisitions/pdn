@@ -312,6 +312,14 @@ TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleDotMapping) {
 }
 
 // ============================================
+// NATIVE DISPLAY DRIVER TESTS - Opaque Rendering
+// ============================================
+
+TEST_F(NativeDisplayDriverTestSuite, OpaqueImageClearing) {
+    displayDriverOpaqueImageClearing(this);
+}
+
+// ============================================
 // CLI DISPLAY COMMAND TESTS
 // ============================================
 
