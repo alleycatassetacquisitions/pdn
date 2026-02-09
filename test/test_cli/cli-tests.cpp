@@ -312,6 +312,22 @@ TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleDotMapping) {
 }
 
 // ============================================
+// NATIVE DISPLAY DRIVER TESTS - Image Captions & Opaque Rendering
+// ============================================
+
+TEST_F(NativeDisplayDriverTestSuite, ImageCaptionAddsToHistory) {
+    displayDriverImageCaptionAddsToHistory(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, ImageNullNameNoCaption) {
+    displayDriverImageNullNameNoCaption(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, OpaqueImageClearing) {
+    displayDriverOpaqueImageClearing(this);
+}
+
+// ============================================
 // CLI DISPLAY COMMAND TESTS
 // ============================================
 
