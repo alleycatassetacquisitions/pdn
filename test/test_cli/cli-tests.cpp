@@ -200,6 +200,190 @@ TEST_F(NativeLightStripDriverTestSuite, GlobalBrightness) {
 }
 
 // ============================================
+// NATIVE DISPLAY DRIVER TESTS - Old Behavior
+// ============================================
+
+TEST_F(NativeDisplayDriverTestSuite, DrawTextAddsToHistory) {
+    displayDriverDrawTextAddsToHistory(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, DrawTextPositionedAddsToHistory) {
+    displayDriverDrawTextPositionedAddsToHistory(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, DrawButtonAddsToHistory) {
+    displayDriverDrawButtonAddsToHistory(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, InvalidateScreenClearsBuffer) {
+    displayDriverInvalidateScreenClearsBuffer(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, TextHistoryMaxSize) {
+    displayDriverTextHistoryMaxSize(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, TextHistoryNoDuplicates) {
+    displayDriverTextHistoryNoDuplicates(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, DrawTextRendersToBuffer) {
+    displayDriverDrawTextRendersToBuffer(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, MethodChainingWorks) {
+    displayDriverMethodChainingWorks(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, FontModeTracking) {
+    displayDriverFontModeTracking(this);
+}
+
+// ============================================
+// NATIVE DISPLAY DRIVER TESTS - XBM & Mirror
+// ============================================
+
+TEST_F(NativeDisplayDriverTestSuite, XBMDecoding) {
+    displayDriverXBMDecoding(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, FullWhiteImage) {
+    displayDriverFullWhiteImage(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, ImageOffset) {
+    displayDriverImageOffset(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, ImageSentinelPosition) {
+    displayDriverImageSentinelPosition(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, ImageExplicitPosition) {
+    displayDriverImageExplicitPosition(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, NullImageSafety) {
+    displayDriverNullImageSafety(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, DoubleDrawImage) {
+    displayDriverDoubleDrawImage(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, DrawImageThenText) {
+    displayDriverDrawImageThenText(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToAsciiDimensions) {
+    displayDriverRenderToAsciiDimensions(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToAsciiContent) {
+    displayDriverRenderToAsciiContent(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToAsciiFullBlock) {
+    displayDriverRenderToAsciiFullBlock(this);
+}
+
+// ============================================
+// NATIVE DISPLAY DRIVER TESTS - Braille
+// ============================================
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleDimensions) {
+    displayDriverRenderToBrailleDimensions(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleBlank) {
+    displayDriverRenderToBrailleBlank(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleContent) {
+    displayDriverRenderToBrailleContent(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleFullBlock) {
+    displayDriverRenderToBrailleFullBlock(this);
+}
+
+TEST_F(NativeDisplayDriverTestSuite, RenderToBrailleDotMapping) {
+    displayDriverRenderToBrailleDotMapping(this);
+}
+
+// ============================================
+// CLI DISPLAY COMMAND TESTS
+// ============================================
+
+TEST_F(CliDisplayCommandTestSuite, MirrorToggle) {
+    cliCommandMirrorToggle(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, MirrorOnOff) {
+    cliCommandMirrorOnOff(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, CaptionsToggle) {
+    cliCommandCaptionsToggle(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, CaptionsOnOff) {
+    cliCommandCaptionsOnOff(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, CaptionsAlias) {
+    cliCommandCaptionsAlias(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayOn) {
+    cliCommandDisplayOn(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayOff) {
+    cliCommandDisplayOff(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayToggleBothOff) {
+    cliCommandDisplayToggleBothOff(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayToggleBothOn) {
+    cliCommandDisplayToggleBothOn(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayToggleDisagree) {
+    cliCommandDisplayToggleDisagree(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayToggleDisagreeReverse) {
+    cliCommandDisplayToggleDisagreeReverse(this);
+}
+
+TEST_F(CliDisplayCommandTestSuite, DisplayAlias) {
+    cliCommandDisplayAlias(this);
+}
+
+// ============================================
+// CLI COMMAND / REBOOT TESTS
+// ============================================
+
+TEST_F(CliCommandTestSuite, MockHttpFetchTransitions) {
+    cliDeviceMockHttpFetchTransitions(this);
+}
+
+TEST_F(CliCommandTestSuite, RebootResetsState) {
+    cliCommandRebootResetsState(this);
+}
+
+TEST_F(CliCommandTestSuite, RebootFromLaterState) {
+    cliCommandRebootFromLaterState(this);
+}
+
+TEST_F(CliCommandTestSuite, RebootClearsHistory) {
+    cliCommandRebootClearsHistory(this);
+}
+
+// ============================================
 // MAIN
 // ============================================
 

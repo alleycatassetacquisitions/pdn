@@ -7,6 +7,7 @@
 #include <cstdlib>
 
 #include "cli/cli-device.hpp"
+#include "cli/cli-renderer.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
 
@@ -33,7 +34,8 @@ public:
      */
     CommandResult execute(const std::string& cmd,
                           std::vector<DeviceInstance>& devices,
-                          int& selectedDevice) {
+                          int& selectedDevice,
+                          Renderer& renderer) {
         CommandResult result;
         
         if (cmd.empty()) {
@@ -90,7 +92,19 @@ public:
         if (command == "add" || command == "new") {
             return cmdAdd(tokens, devices, selectedDevice);
         }
-        
+        if (command == "mirror" || command == "m") {
+            return cmdMirror(tokens, renderer);
+        }
+        if (command == "captions" || command == "cap") {
+            return cmdCaptions(tokens, renderer);
+        }
+        if (command == "display" || command == "d") {
+            return cmdDisplay(tokens, renderer);
+        }
+        if (command == "reboot" || command == "restart") {
+            return cmdReboot(tokens, devices, selectedDevice);
+        }
+
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
     }
@@ -100,13 +114,13 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot";
         return result;
     }
     
     static CommandResult cmdHelp2(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "add [hunter|bounty] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet";
+        result.message = "add [hunter|bounty] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device";
         return result;
     }
     
@@ -430,6 +444,114 @@ private:
         return result;
     }
     
+    static CommandResult cmdMirror(const std::vector<std::string>& tokens, Renderer& renderer) {
+        CommandResult result;
+        if (tokens.size() >= 2) {
+            std::string arg = tokens[1];
+            for (char& c : arg) {
+                if (c >= 'A' && c <= 'Z') c += 32;
+            }
+            if (arg == "on") {
+                renderer.setDisplayMirror(true);
+            } else if (arg == "off") {
+                renderer.setDisplayMirror(false);
+            } else {
+                result.message = "Usage: mirror [on|off] - toggles without argument";
+                return result;
+            }
+        } else {
+            renderer.toggleDisplayMirror();
+        }
+        result.message = std::string("Display mirror ") + (renderer.isDisplayMirrorEnabled() ? "ON" : "OFF");
+        return result;
+    }
+
+    static CommandResult cmdCaptions(const std::vector<std::string>& tokens, Renderer& renderer) {
+        CommandResult result;
+        if (tokens.size() >= 2) {
+            std::string arg = tokens[1];
+            for (char& c : arg) {
+                if (c >= 'A' && c <= 'Z') c += 32;
+            }
+            if (arg == "on") {
+                renderer.setCaptions(true);
+            } else if (arg == "off") {
+                renderer.setCaptions(false);
+            } else {
+                result.message = "Usage: captions [on|off] - toggles without argument";
+                return result;
+            }
+        } else {
+            renderer.toggleCaptions();
+        }
+        result.message = std::string("Captions ") + (renderer.isCaptionsEnabled() ? "ON" : "OFF");
+        return result;
+    }
+
+    static CommandResult cmdDisplay(const std::vector<std::string>& tokens, Renderer& renderer) {
+        CommandResult result;
+        if (tokens.size() >= 2) {
+            std::string arg = tokens[1];
+            for (char& c : arg) {
+                if (c >= 'A' && c <= 'Z') c += 32;
+            }
+            if (arg == "on") {
+                renderer.setDisplayMirror(true);
+                renderer.setCaptions(true);
+            } else if (arg == "off") {
+                renderer.setDisplayMirror(false);
+                renderer.setCaptions(false);
+            } else {
+                result.message = "Usage: display [on|off] - toggles without argument";
+                return result;
+            }
+        } else {
+            // Toggle: if mirror and captions disagree, force both on
+            if (renderer.isDisplayMirrorEnabled() != renderer.isCaptionsEnabled()) {
+                renderer.setDisplayMirror(true);
+                renderer.setCaptions(true);
+            } else {
+                renderer.toggleDisplayMirror();
+                renderer.toggleCaptions();
+            }
+        }
+        result.message = std::string("Display: Mirror=") +
+                         (renderer.isDisplayMirrorEnabled() ? "ON" : "OFF") +
+                         " Captions=" +
+                         (renderer.isCaptionsEnabled() ? "ON" : "OFF");
+        return result;
+    }
+
+    static CommandResult cmdReboot(const std::vector<std::string>& tokens,
+                                   std::vector<DeviceInstance>& devices,
+                                   int selectedDevice) {
+        CommandResult result;
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 2) {
+            targetDevice = findDevice(tokens[1], devices, selectedDevice);
+        }
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+        auto& dev = devices[targetDevice];
+
+        // Ensure mock HTTP is ready for the new FetchUserData cycle
+        dev.httpClientDriver->setMockServerEnabled(true);
+        dev.httpClientDriver->setConnected(true);
+
+        // Clear UI state history
+        dev.stateHistory.clear();
+        dev.lastStateId = -1;
+
+        // skipToState(1) calls onStateDismounted on current state,
+        // then onStateMounted on FetchUserData — same as initial boot
+        dev.game->skipToState(1);
+
+        result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
+        return result;
+    }
+
     static CommandResult cmdAdd(const std::vector<std::string>& tokens,
                                 std::vector<DeviceInstance>& devices,
                                 int& selectedDevice) {
