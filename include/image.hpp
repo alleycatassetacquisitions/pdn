@@ -18,14 +18,16 @@ enum class ImageType {
 };
 
 struct Image {
-    Image() : rawImage(nullptr), width(0), height(0), defaultStartX(0), defaultStartY(0) {}
-    
-    Image(const unsigned char* rawImage, int width, int height, int defaultStartX, int defaultStartY) {
+    Image() : rawImage(nullptr), width(0), height(0), defaultStartX(0), defaultStartY(0), name(nullptr) {}
+
+    Image(const unsigned char* rawImage, int width, int height,
+          int defaultStartX, int defaultStartY, const char* name = nullptr) {
         this->rawImage = rawImage;
         this->width = width;
         this->height = height;
         this->defaultStartX = defaultStartX;
         this->defaultStartY = defaultStartY;
+        this->name = name;
     }
 
     const unsigned char* rawImage;
@@ -33,4 +35,5 @@ struct Image {
     int height;
     int defaultStartX;
     int defaultStartY;
+    const char* name;
 };

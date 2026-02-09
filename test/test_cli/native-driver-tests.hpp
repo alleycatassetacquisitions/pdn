@@ -749,7 +749,32 @@ void displayDriverRenderToBrailleDotMapping(NativeDisplayDriverTestSuite* suite)
     ASSERT_EQ(lines[0].substr(0, 3), expected);
 }
 
-// --- Opaque rendering tests ---
+// --- Image caption and opaque rendering tests ---
+
+// Test: drawImage with a named image adds caption to text history
+void displayDriverImageCaptionAddsToHistory(NativeDisplayDriverTestSuite* suite) {
+    const unsigned char xbmData[] = { 0xFF };
+    Image img(xbmData, 8, 1, 0, 0, "DRAW!");
+
+    suite->driver_->invalidateScreen();
+    suite->driver_->drawImage(img);
+
+    const auto& history = suite->driver_->getTextHistory();
+    ASSERT_EQ(history.size(), 1u);
+    ASSERT_EQ(history[0], "DRAW!");
+}
+
+// Test: drawImage with null name does not add to text history
+void displayDriverImageNullNameNoCaption(NativeDisplayDriverTestSuite* suite) {
+    const unsigned char xbmData[] = { 0xFF };
+    Image img(xbmData, 8, 1, 0, 0);  // no name (nullptr)
+
+    suite->driver_->invalidateScreen();
+    suite->driver_->drawImage(img);
+
+    const auto& history = suite->driver_->getTextHistory();
+    ASSERT_TRUE(history.empty());
+}
 
 // Test: Opaque rendering — 0-bits in a second image clear pixels from a first image
 void displayDriverOpaqueImageClearing(NativeDisplayDriverTestSuite* suite) {

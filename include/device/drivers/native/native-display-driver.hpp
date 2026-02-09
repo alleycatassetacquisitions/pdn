@@ -187,6 +187,9 @@ public:
 
     Display* drawImage(Image image, int xStart, int yStart) override {
         currentImage_ = image;
+        if (image.name) {
+            addToTextHistory(image.name);
+        }
         int x = image.defaultStartX;
         int y = image.defaultStartY;
         if (xStart != -1) x = xStart;
