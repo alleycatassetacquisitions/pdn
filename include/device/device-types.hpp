@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string>
-#include <stdexcept>
 
 enum class DeviceType : uint8_t {
     PLAYER = 0,
@@ -102,6 +101,36 @@ inline bool isChallengeDeviceCode(const std::string& code) {
     return code == "7001" || code == "7002" || code == "7003" ||
            code == "7004" || code == "7005" || code == "7006" ||
            code == "7007";
+}
+
+/*
+ * Lookup: game display name string -> GameType
+ * Used by CLI commands and --npc flag to parse user-typed game names.
+ * Returns true if name was recognized, fills out gameType.
+ */
+inline bool parseGameName(const std::string& name, GameType& gameType) {
+    if (name == "signal-echo" || name == "signalecho" || name == "7007") {
+        gameType = GameType::SIGNAL_ECHO; return true;
+    }
+    if (name == "ghost-runner" || name == "7001") {
+        gameType = GameType::GHOST_RUNNER; return true;
+    }
+    if (name == "spike-vector" || name == "7002") {
+        gameType = GameType::SPIKE_VECTOR; return true;
+    }
+    if (name == "firewall-decrypt" || name == "7003") {
+        gameType = GameType::FIREWALL_DECRYPT; return true;
+    }
+    if (name == "cipher-path" || name == "7004") {
+        gameType = GameType::CIPHER_PATH; return true;
+    }
+    if (name == "exploit-sequencer" || name == "7005") {
+        gameType = GameType::EXPLOIT_SEQUENCER; return true;
+    }
+    if (name == "breach-defense" || name == "7006") {
+        gameType = GameType::BREACH_DEFENSE; return true;
+    }
+    return false;
 }
 
 /*

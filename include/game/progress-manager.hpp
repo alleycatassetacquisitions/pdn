@@ -2,7 +2,6 @@
 
 #include "game/player.hpp"
 #include "device/drivers/storage-interface.hpp"
-#include "device/drivers/http-client-interface.hpp"
 #include "device/wireless-manager.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"

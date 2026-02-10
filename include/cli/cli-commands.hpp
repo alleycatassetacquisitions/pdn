@@ -635,21 +635,7 @@ private:
             }
 
             GameType gameType;
-            if (gameName == "signal-echo" || gameName == "signalecho" || gameName == "7007") {
-                gameType = GameType::SIGNAL_ECHO;
-            } else if (gameName == "ghost-runner" || gameName == "7001") {
-                gameType = GameType::GHOST_RUNNER;
-            } else if (gameName == "spike-vector" || gameName == "7002") {
-                gameType = GameType::SPIKE_VECTOR;
-            } else if (gameName == "firewall-decrypt" || gameName == "7003") {
-                gameType = GameType::FIREWALL_DECRYPT;
-            } else if (gameName == "cipher-path" || gameName == "7004") {
-                gameType = GameType::CIPHER_PATH;
-            } else if (gameName == "exploit-sequencer" || gameName == "7005") {
-                gameType = GameType::EXPLOIT_SEQUENCER;
-            } else if (gameName == "breach-defense" || gameName == "7006") {
-                gameType = GameType::BREACH_DEFENSE;
-            } else {
+            if (!parseGameName(gameName, gameType)) {
                 result.message = "Unknown game: " + tokens[2] + ". Options: signal-echo, ghost-runner, spike-vector, firewall-decrypt, cipher-path, exploit-sequencer, breach-defense";
                 return result;
             }

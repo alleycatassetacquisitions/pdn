@@ -223,7 +223,7 @@ private:
         } else {
             for (size_t i = 0; i < device.stateHistory.size(); i++) {
                 if (i > 0) historyStr += " -> ";
-                historyStr += getStateName(device.stateHistory[i]);
+                historyStr += getStateName(device.stateHistory[i], device.deviceType);
             }
         }
         

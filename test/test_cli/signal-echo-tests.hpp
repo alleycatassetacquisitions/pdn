@@ -801,8 +801,8 @@ void echoDiffHardModeWinUnlocksColorProfile(SignalEchoDifficultyTestSuite* suite
     suite->destroyDevice(device);
 }
 
-// Test: LED flashes red on mistake
-void echoDiffLedFlashesRedOnMistake(SignalEchoDifficultyTestSuite* suite) {
+// Test: Wrong input registers a mistake
+void echoDiffMistakeIsRegistered(SignalEchoDifficultyTestSuite* suite) {
     SignalEchoConfig config = SIGNAL_ECHO_EASY;
     config.rngSeed = 42;
     config.displaySpeedMs = 10;
@@ -816,37 +816,12 @@ void echoDiffLedFlashesRedOnMistake(SignalEchoDifficultyTestSuite* suite) {
     device.pdn->loop();
     device.game->loop();
 
-    // Wrong press — should trigger red LED via LightManager
+    // Wrong press — should register mistake (triggers LED flash + haptic buzz)
     device.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     device.pdn->loop();
     device.game->loop();
 
     // Verify mistake was registered
-    ASSERT_EQ(game->getSession().mistakes, 1);
-
-    suite->destroyDevice(device);
-}
-
-// Test: Haptic buzz on mistake
-void echoDiffHapticBuzzOnMistake(SignalEchoDifficultyTestSuite* suite) {
-    SignalEchoConfig config = SIGNAL_ECHO_EASY;
-    config.rngSeed = 42;
-    config.displaySpeedMs = 10;
-    auto device = suite->createDevice(config);
-    auto* game = dynamic_cast<SignalEcho*>(device.game);
-
-    game->getSession().currentSequence = {true, true, true, true};
-    game->getSession().inputIndex = 0;
-
-    game->skipToState(2);
-    device.pdn->loop();
-    device.game->loop();
-
-    device.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    device.pdn->loop();
-    device.game->loop();
-
-    // Verify mistake was registered (haptics would be triggered in handleInput)
     ASSERT_EQ(game->getSession().mistakes, 1);
 
     suite->destroyDevice(device);

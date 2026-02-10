@@ -740,12 +740,8 @@ TEST_F(SignalEchoDifficultyTestSuite, HardModeWinUnlocksColorProfile) {
     echoDiffHardModeWinUnlocksColorProfile(this);
 }
 
-TEST_F(SignalEchoDifficultyTestSuite, LedFlashesRedOnMistake) {
-    echoDiffLedFlashesRedOnMistake(this);
-}
-
-TEST_F(SignalEchoDifficultyTestSuite, HapticBuzzOnMistake) {
-    echoDiffHapticBuzzOnMistake(this);
+TEST_F(SignalEchoDifficultyTestSuite, MistakeIsRegistered) {
+    echoDiffMistakeIsRegistered(this);
 }
 
 // ============================================

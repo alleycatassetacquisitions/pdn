@@ -30,6 +30,7 @@ const LEDColor signalEchoIdleColors[8] = {
 };
 
 // Default/neutral palette — used when no color profile equipped
+// Used by Features C/D (color profile application to device LEDs)
 const LEDColor defaultProfileColors[4] = {
     LEDColor(255, 255, 100),  // Warm yellow
     LEDColor(255, 255, 200),  // Pale yellow
@@ -37,6 +38,7 @@ const LEDColor defaultProfileColors[4] = {
     LEDColor(200, 200, 150),  // Dim warm
 };
 
+// Used by Features C/D (color profile application to device LEDs)
 const LEDColor defaultProfileIdleColors[8] = {
     LEDColor(255, 255, 100),  LEDColor(255, 255, 255),
     LEDColor(255, 255, 200),  LEDColor(200, 200, 150),

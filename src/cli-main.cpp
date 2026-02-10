@@ -173,21 +173,7 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
         for (char& c : name) {
             if (c >= 'A' && c <= 'Z') c += 32;
         }
-        if (name == "signal-echo" || name == "signalecho") {
-            npcGameType = GameType::SIGNAL_ECHO;
-        } else if (name == "ghost-runner") {
-            npcGameType = GameType::GHOST_RUNNER;
-        } else if (name == "spike-vector") {
-            npcGameType = GameType::SPIKE_VECTOR;
-        } else if (name == "firewall-decrypt") {
-            npcGameType = GameType::FIREWALL_DECRYPT;
-        } else if (name == "cipher-path") {
-            npcGameType = GameType::CIPHER_PATH;
-        } else if (name == "exploit-sequencer") {
-            npcGameType = GameType::EXPLOIT_SEQUENCER;
-        } else if (name == "breach-defense") {
-            npcGameType = GameType::BREACH_DEFENSE;
-        }
+        parseGameName(name, npcGameType);
 
         int npcIndex = static_cast<int>(devices.size());
         devices.push_back(cli::DeviceFactory::createChallengeDevice(npcIndex, npcGameType));

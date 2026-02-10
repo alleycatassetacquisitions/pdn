@@ -7,7 +7,6 @@
 #include <functional>
 #include <deque>
 #include <cstdio>
-#include <regex>
 #include <vector>
 #include <ArduinoJson.h>
 

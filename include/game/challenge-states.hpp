@@ -7,7 +7,6 @@
 #include "game/challenge-result-manager.hpp"
 #include <string>
 #include <vector>
-#include <cstdlib>
 
 class ChallengeGame;
 
