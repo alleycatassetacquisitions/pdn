@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <gtest/gtest.h>
 #include "cli/cli-event-logger.hpp"
 #include "cli/cli-device.hpp"
@@ -496,4 +497,329 @@ void scriptRunnerReportsLineNumber(ScriptRunnerTestSuite* suite) {
     ASSERT_FALSE(error.empty());
     // "assert-state 0 Sleep" is on line 4 of the original text
     ASSERT_TRUE(error.find("Line 4") != std::string::npos);
+}
+
+// ============================================================
+// Feature A/B/E Validation Tests
+// ============================================================
+
+#include "game/challenge-states.hpp"
+#include "game/signal-echo/signal-echo-states.hpp"
+#include "game/signal-echo/signal-echo-resources.hpp"
+
+// RAII guard to save/restore global state (g_logger, SimpleTimer clock).
+// Ensures globals are restored even when ASSERT_ macros abort the test function.
+struct ScopedGlobals {
+    LoggerInterface* prevLogger;
+    PlatformClock* prevClock;
+    NativeLoggerDriver tempLogger;
+
+    ScopedGlobals(const std::string& name, PlatformClock* clock) :
+        prevLogger(g_logger),
+        prevClock(SimpleTimer::getPlatformClock()),
+        tempLogger(name)
+    {
+        tempLogger.setSuppressOutput(true);
+        g_logger = &tempLogger;
+        SimpleTimer::setPlatformClock(clock);
+    }
+
+    ~ScopedGlobals() {
+        SimpleTimer::setPlatformClock(prevClock);
+        g_logger = prevLogger;
+    }
+};
+
+/*
+ * Feature A: NPC broadcasts cdev message, player receives it.
+ *
+ * This test spawns an NPC challenge device, manually attaches
+ * event logger callbacks (since ScriptRunnerTestSuite's SetUp
+ * only hooks the original 2 player devices), cables the NPC to
+ * the player, advances time past the broadcast interval, and
+ * asserts that the cdev message was sent by the NPC and received
+ * by the player.
+ */
+void featureA_NpcBroadcastsCdev(ScriptRunnerTestSuite* suite) {
+    ScopedGlobals globals("featureA_logger", suite->devices[0].clockDriver);
+
+    // Spawn NPC challenge device at index 2
+    suite->devices.push_back(
+        cli::DeviceFactory::createChallengeDevice(2, GameType::SIGNAL_ECHO));
+
+    // Attach write callback on NPC's serialOutDriver to log SERIAL_TX events
+    suite->devices[2].serialOutDriver->setWriteCallback(
+        [suite](const std::string& msg) {
+            cli::Event evt;
+            evt.type = cli::EventType::SERIAL_TX;
+            evt.deviceIndex = 2;
+            evt.message = msg;
+            suite->eventLogger.log(evt);
+        });
+
+    // Attach read callback on Player's serialInDriver to log SERIAL_RX events.
+    // The NPC (hunter) and Player 0 (hunter) are same-role, so
+    // NPC.output -> Player.input (auxiliary jack).
+    suite->devices[0].serialInDriver->setReadCallback(
+        [suite](const std::string& msg) {
+            cli::Event evt;
+            evt.type = cli::EventType::SERIAL_RX;
+            evt.deviceIndex = 0;
+            evt.message = msg;
+            suite->eventLogger.log(evt);
+        });
+
+    // Connect player 0 to NPC 2 via serial cable
+    cli::SerialCableBroker::getInstance().connect(0, 2);
+
+    // Run ticks: advance clocks past NPC broadcast interval (500ms)
+    // and run loop iterations to process broadcasts and serial transfers.
+    for (int i = 0; i < 30; i++) {
+        for (auto& dev : suite->devices) {
+            dev.clockDriver->advance(33);
+        }
+        NativePeerBroker::getInstance().deliverPackets();
+        cli::SerialCableBroker::getInstance().transferData();
+        for (auto& dev : suite->devices) {
+            dev.pdn->loop();
+            dev.game->loop();
+        }
+    }
+
+    // NPC should have sent a cdev message
+    ASSERT_TRUE(suite->eventLogger.hasEvent(cli::EventType::SERIAL_TX, "cdev:"))
+        << "NPC should broadcast cdev message";
+
+    // Player should have received the cdev message on its input jack
+    auto rxEvents = suite->eventLogger.getByTypeAndDevice(cli::EventType::SERIAL_RX, 0);
+    bool foundCdev = false;
+    for (const auto& e : rxEvents) {
+        if (e.message.find("cdev:") != std::string::npos) {
+            foundCdev = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(foundCdev) << "Player should receive cdev from NPC";
+}
+
+/*
+ * Feature A: Verify cdev message format is "cdev:<gameType>:<konamiButton>".
+ *
+ * For Signal Echo, game type is 7 and konami button is START (6),
+ * so the message should be "cdev:7:6".
+ */
+void featureA_CdevMessageFormat(ScriptRunnerTestSuite* suite) {
+    ScopedGlobals globals("featureA_fmt_logger", suite->devices[0].clockDriver);
+
+    // Spawn NPC
+    suite->devices.push_back(
+        cli::DeviceFactory::createChallengeDevice(2, GameType::SIGNAL_ECHO));
+
+    // Capture all TX messages from the NPC
+    std::vector<std::string> npcTxMessages;
+    suite->devices[2].serialOutDriver->setWriteCallback(
+        [&npcTxMessages](const std::string& msg) {
+            npcTxMessages.push_back(msg);
+        });
+
+    // Run ticks past broadcast interval
+    for (int i = 0; i < 30; i++) {
+        for (auto& dev : suite->devices) {
+            dev.clockDriver->advance(33);
+        }
+        for (auto& dev : suite->devices) {
+            dev.pdn->loop();
+            dev.game->loop();
+        }
+    }
+
+    // Find the cdev message and verify its exact format
+    bool foundExactFormat = false;
+    for (const auto& msg : npcTxMessages) {
+        if (msg.rfind("cdev:", 0) == 0) {
+            // Parse using the protocol function
+            GameType parsedGame;
+            KonamiButton parsedReward;
+            bool parsed = parseCdevMessage(msg, parsedGame, parsedReward);
+            ASSERT_TRUE(parsed) << "cdev message should be parseable: " << msg;
+            ASSERT_EQ(parsedGame, GameType::SIGNAL_ECHO)
+                << "Game type should be SIGNAL_ECHO (7)";
+            ASSERT_EQ(parsedReward, KonamiButton::START)
+                << "Konami button should be START (6)";
+            ASSERT_EQ(msg, "cdev:7:6")
+                << "Exact message format should be cdev:7:6";
+            foundExactFormat = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(foundExactFormat)
+        << "NPC should have broadcast a cdev message";
+}
+
+/*
+ * Feature B: Play through Signal Echo standalone and win.
+ *
+ * Creates a standalone game device, skips to PlayerInput,
+ * reads the generated sequence, presses the correct buttons,
+ * and verifies the outcome is WON.
+ */
+void featureB_SignalEchoStandaloneWin(ScriptRunnerTestSuite* suite) {
+    // Create a standalone Signal Echo game device at index 2
+    suite->devices.push_back(
+        cli::DeviceFactory::createGameDevice(2, "signal-echo"));
+
+    ScopedGlobals globals("featureB_win_logger", suite->devices[2].clockDriver);
+
+    auto& dev = suite->devices[2];
+    SignalEcho* game = dynamic_cast<SignalEcho*>(dev.game);
+    ASSERT_NE(game, nullptr) << "Game should be a SignalEcho instance";
+
+    // Configure for a quick test: 1 round, short sequence, deterministic seed
+    game->getConfig().numSequences = 1;
+    game->getConfig().sequenceLength = 3;
+    game->getConfig().displaySpeedMs = 10;
+    game->getConfig().rngSeed = 42;
+    game->getConfig().allowedMistakes = 3;
+
+    // Set a known sequence and skip to PlayerInput (state map index 2)
+    game->getSession().currentSequence = {true, false, true};
+    game->getSession().currentRound = 0;
+    game->getSession().inputIndex = 0;
+    game->skipToState(2);  // EchoPlayerInput
+
+    // Run one loop to let the state mount and register button callbacks
+    dev.pdn->loop();
+    dev.game->loop();
+
+    ASSERT_EQ(game->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+
+    // Press correct buttons matching the sequence: UP, DOWN, UP
+    // UP = primary button, DOWN = secondary button
+    dev.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);   // true = UP
+    dev.pdn->loop();
+    dev.game->loop();
+
+    dev.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK); // false = DOWN
+    dev.pdn->loop();
+    dev.game->loop();
+
+    dev.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);   // true = UP
+    dev.pdn->loop();
+    dev.game->loop();
+
+    // Process through Evaluate to Win
+    for (int i = 0; i < 5; i++) {
+        dev.pdn->loop();
+        dev.game->loop();
+    }
+
+    // Verify the outcome is WON
+    const MiniGameOutcome& outcome = game->getOutcome();
+    ASSERT_EQ(outcome.result, MiniGameResult::WON)
+        << "Player should win after entering all correct inputs";
+}
+
+/*
+ * Feature B: Play through Signal Echo standalone and lose.
+ *
+ * Creates a standalone game device, skips to PlayerInput,
+ * presses wrong buttons until mistakes exceed the allowed count,
+ * and verifies the outcome is LOST.
+ */
+void featureB_SignalEchoStandaloneLose(ScriptRunnerTestSuite* suite) {
+    // Create a standalone Signal Echo game device at index 2
+    suite->devices.push_back(
+        cli::DeviceFactory::createGameDevice(2, "signal-echo"));
+
+    ScopedGlobals globals("featureB_lose_logger", suite->devices[2].clockDriver);
+
+    auto& dev = suite->devices[2];
+    SignalEcho* game = dynamic_cast<SignalEcho*>(dev.game);
+    ASSERT_NE(game, nullptr) << "Game should be a SignalEcho instance";
+
+    // Configure: allow 1 mistake, sequence of all UPs
+    game->getConfig().numSequences = 3;
+    game->getConfig().sequenceLength = 4;
+    game->getConfig().displaySpeedMs = 10;
+    game->getConfig().allowedMistakes = 1;
+
+    // Set a sequence of all UPs so pressing DOWN is always wrong
+    game->getSession().currentSequence = {true, true, true, true};
+    game->getSession().currentRound = 0;
+    game->getSession().inputIndex = 0;
+    game->getSession().mistakes = 0;
+    game->skipToState(2);  // EchoPlayerInput
+
+    // Run one loop to mount
+    dev.pdn->loop();
+    dev.game->loop();
+
+    ASSERT_EQ(game->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+
+    // Press wrong button (DOWN when UP expected) twice
+    // First mistake brings us to allowedMistakes (1), second exceeds it
+    dev.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);  // Wrong
+    dev.pdn->loop();
+    dev.game->loop();
+    ASSERT_EQ(game->getSession().mistakes, 1);
+
+    dev.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);  // Wrong again, exceeds
+    // Process through Evaluate to Lose
+    for (int i = 0; i < 5; i++) {
+        dev.pdn->loop();
+        dev.game->loop();
+    }
+
+    // Verify the outcome is LOST
+    const MiniGameOutcome& outcome = game->getOutcome();
+    ASSERT_EQ(outcome.result, MiniGameResult::LOST)
+        << "Player should lose after exceeding allowed mistakes";
+}
+
+/*
+ * Feature E: Konami progress tracking via ProgressManager.
+ *
+ * Creates a player device, unlocks a konami button, saves
+ * progress via ProgressManager, clears the player's progress,
+ * loads it back from NVS, and verifies the unlock persisted.
+ */
+void featureE_KonamiProgressTracking(ScriptRunnerTestSuite* suite) {
+    // Use device 0 (hunter) which already has player + progressManager
+    auto& dev = suite->devices[0];
+    ASSERT_NE(dev.player, nullptr) << "Player should exist on device 0";
+    ASSERT_NE(dev.progressManager, nullptr) << "ProgressManager should exist on device 0";
+
+    // Verify the button is not yet unlocked
+    ASSERT_FALSE(dev.player->hasUnlockedButton(KonamiButton::START))
+        << "START should not be unlocked initially";
+
+    // Unlock the START button (Signal Echo reward)
+    dev.player->unlockKonamiButton(KonamiButton::START);
+    ASSERT_TRUE(dev.player->hasUnlockedButton(KonamiButton::START))
+        << "START should be unlocked after unlockKonamiButton()";
+
+    // Save progress to NVS
+    dev.progressManager->saveProgress();
+
+    // Verify NVS has the data
+    ASSERT_TRUE(dev.progressManager->hasUnsyncedProgress())
+        << "Progress should be marked as unsynced after save";
+
+    // Remember the original progress bitmask
+    uint8_t savedProgress = dev.player->getKonamiProgress();
+    ASSERT_NE(savedProgress, 0u) << "Saved progress should be non-zero";
+
+    // Clear the player's in-memory progress to simulate a fresh load
+    dev.player->setKonamiProgress(0);
+    ASSERT_FALSE(dev.player->hasUnlockedButton(KonamiButton::START))
+        << "START should be cleared after setKonamiProgress(0)";
+
+    // Load progress back from NVS
+    dev.progressManager->loadProgress();
+
+    // Verify the unlock was restored
+    ASSERT_TRUE(dev.player->hasUnlockedButton(KonamiButton::START))
+        << "START should be restored after loadProgress()";
+    ASSERT_EQ(dev.player->getKonamiProgress(), savedProgress)
+        << "Full progress bitmask should match what was saved";
 }

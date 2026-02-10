@@ -178,18 +178,30 @@ public:
         for (const auto& conn : connections_) {
             auto itA = devices_.find(conn.deviceA);
             auto itB = devices_.find(conn.deviceB);
-            
+
             if (itA == devices_.end() || itB == devices_.end()) continue;
-            
-            // Get the appropriate jacks based on connection type
-            NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
-            NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
-            
-            // Transfer A → B: A's jack output goes to B's jack input
-            transferFromTo(jackA, jackB);
-            
-            // Transfer B → A: B's jack output goes to A's jack input
-            transferFromTo(jackB, jackA);
+
+            if (conn.sameRole) {
+                // Same role: each device sends on PRIMARY, receives on AUXILIARY.
+                // jackA = A's PRIMARY, jackB = B's AUXILIARY (stored at connect time)
+                // For the reverse direction, we need B's PRIMARY → A's AUXILIARY.
+                JackType auxA = opposite(conn.jackA);
+                JackType primaryB = opposite(conn.jackB);
+
+                NativeSerialDriver* aPrimary = getJack(itA->second, conn.jackA);
+                NativeSerialDriver* bAux     = getJack(itB->second, conn.jackB);
+                NativeSerialDriver* bPrimary = getJack(itB->second, primaryB);
+                NativeSerialDriver* aAux     = getJack(itA->second, auxA);
+
+                transferFromTo(aPrimary, bAux);    // A sends → B receives
+                transferFromTo(bPrimary, aAux);    // B sends → A receives
+            } else {
+                // Different roles: PRIMARY to PRIMARY (bidirectional)
+                NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
+                NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
+                transferFromTo(jackA, jackB);
+                transferFromTo(jackB, jackA);
+            }
         }
     }
     
@@ -244,6 +256,10 @@ private:
     std::map<int, DeviceSerial> devices_;
     std::vector<CableConnection> connections_;
     
+    static JackType opposite(JackType type) {
+        return (type == JackType::OUTPUT_JACK) ? JackType::INPUT_JACK : JackType::OUTPUT_JACK;
+    }
+
     NativeSerialDriver* getJack(const DeviceSerial& device, JackType type) {
         return (type == JackType::OUTPUT_JACK) ? device.outputJack : device.inputJack;
     }

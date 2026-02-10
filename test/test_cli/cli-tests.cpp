@@ -910,6 +910,30 @@ TEST_F(ScriptRunnerTestSuite, ReportsLineNumber) {
 }
 
 // ============================================
+// FEATURE A/B/E VALIDATION TESTS
+// ============================================
+
+TEST_F(ScriptRunnerTestSuite, FeatureA_NpcBroadcastsCdev) {
+    featureA_NpcBroadcastsCdev(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureA_CdevMessageFormat) {
+    featureA_CdevMessageFormat(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureB_SignalEchoStandaloneWin) {
+    featureB_SignalEchoStandaloneWin(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureB_SignalEchoStandaloneLose) {
+    featureB_SignalEchoStandaloneLose(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureE_KonamiProgressTracking) {
+    featureE_KonamiProgressTracking(this);
+}
+
+// ============================================
 // MAIN
 // ============================================
 
