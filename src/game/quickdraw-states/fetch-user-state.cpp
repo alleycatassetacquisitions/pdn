@@ -2,6 +2,7 @@
 #include "device/device-types.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
+#include "game/player.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/remote-debug-manager.hpp"
 
@@ -66,13 +67,21 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
             PDN->getWirelessManager(),
             player->getUserID(),
             [this](const PlayerResponse& response) {
-                LOG_I(TAG, "Successfully fetched player data: %s (%s)", 
+                LOG_I(TAG, "Successfully fetched player data: %s (%s)",
                         response.name.c_str(), response.id.c_str());
-                
+
                 player->setName(response.name.c_str());
                 player->setIsHunter(response.isHunter);
                 player->setAllegiance(response.allegiance);
                 player->setFaction(response.faction.c_str());
+
+                // Konami progress + color profile from server
+                player->setKonamiProgress(response.konamiProgress);
+                player->setEquippedColorProfile(
+                    static_cast<GameType>(response.equippedColorProfile));
+                for (uint8_t g : response.colorProfileEligibility) {
+                    player->addColorProfileEligibility(static_cast<GameType>(g));
+                }
 
                 userDataFetchTimer.invalidate();
                 transitionToWelcomeMessageState = true;

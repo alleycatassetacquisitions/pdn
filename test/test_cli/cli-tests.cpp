@@ -15,6 +15,7 @@
 #include "cli-challenge-tests.hpp"
 #include "device-mode-switch-tests.hpp"
 #include "konami-progress-tests.hpp"
+#include "profile-sync-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -498,6 +499,34 @@ TEST_F(DeviceModeSwitchTestSuite, PlayerToNpcToPlayer) {
 
 TEST_F(DeviceModeSwitchTestSuite, FetchUserDetectsChallengeCode) {
     fetchUserDetectsChallengeCode(this);
+}
+
+// ============================================
+// PROFILE SYNC TESTS
+// ============================================
+
+TEST_F(ProfileSyncTestSuite, ServerReturnsProgress) {
+    profileSyncServerReturnsProgress(this);
+}
+
+TEST_F(ProfileSyncTestSuite, FetchUserDataParsesProgress) {
+    profileSyncFetchUserDataParsesProgress(this);
+}
+
+TEST_F(ProfileSyncTestSuite, FetchUserDataMissingProgress) {
+    profileSyncFetchUserDataMissingProgress(this);
+}
+
+TEST_F(ProfileSyncTestSuite, ProgressSavedToNVS) {
+    profileSyncProgressSavedToNVS(this);
+}
+
+TEST_F(ProfileSyncTestSuite, ProgressLoadedFromNVS) {
+    profileSyncProgressLoadedFromNVS(this);
+}
+
+TEST_F(ProfileSyncTestSuite, ProgressUploadSendsCorrectJson) {
+    profileSyncProgressUploadSendsCorrectJson(this);
 }
 
 // ============================================
