@@ -10,6 +10,7 @@
 #include "cli-broker-tests.hpp"
 #include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
+#include "sm-manager-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -381,6 +382,42 @@ TEST_F(CliCommandTestSuite, RebootFromLaterState) {
 
 TEST_F(CliCommandTestSuite, RebootClearsHistory) {
     cliCommandRebootClearsHistory(this);
+}
+
+// ============================================
+// STATE MACHINE MANAGER TESTS
+// ============================================
+
+TEST_F(SmManagerTestSuite, DefaultLoop) {
+    smManagerDefaultLoop(this);
+}
+
+TEST_F(SmManagerTestSuite, PauseAndLoad) {
+    smManagerPauseAndLoad(this);
+}
+
+TEST_F(SmManagerTestSuite, AutoResume) {
+    smManagerAutoResume(this);
+}
+
+TEST_F(SmManagerTestSuite, OutcomeStored) {
+    smManagerOutcomeStored(this);
+}
+
+TEST_F(SmManagerTestSuite, ResumeToCorrectState) {
+    smManagerResumeToCorrectState(this);
+}
+
+TEST_F(SmManagerTestSuite, DeletesSwappedGame) {
+    smManagerDeletesSwappedGame(this);
+}
+
+TEST_F(SmManagerTestSuite, PauseAndLoadWon) {
+    smManagerPauseAndLoadWon(this);
+}
+
+TEST_F(SmManagerTestSuite, PauseAndLoadLost) {
+    smManagerPauseAndLoadLost(this);
 }
 
 // ============================================
