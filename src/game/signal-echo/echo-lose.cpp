@@ -46,9 +46,12 @@ void EchoLose::onStateMounted(Device* PDN) {
 void EchoLose::onStateLoop(Device* PDN) {
     if (loseTimer.expired()) {
         PDN->getHaptics()->off();
-        // In standalone mode, restart the game
         if (!game->getConfig().managedMode) {
+            // In standalone mode, restart the game
             transitionToIntroState = true;
+        } else {
+            // In managed mode, signal SM Manager to resume
+            game->setReadyForResume(true);
         }
     }
 }

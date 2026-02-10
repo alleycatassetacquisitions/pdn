@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "state/state-machine.hpp"
 #include "device/device-types.hpp"
 
@@ -52,12 +53,17 @@ public:
         outcome = newOutcome;
     }
 
+    bool isReadyForResume() const { return readyForResume; }
+    void setReadyForResume(bool ready) { readyForResume = ready; }
+
     virtual void resetGame() {
         outcome = MiniGameOutcome{};
+        readyForResume = false;
     }
 
 protected:
     MiniGameOutcome outcome;
+    bool readyForResume = false;
 
 private:
     GameType gameType;

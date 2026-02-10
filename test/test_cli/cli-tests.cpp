@@ -20,6 +20,7 @@
 #include "signal-echo-tests.hpp"
 #include "minigame-base-tests.hpp"
 #include "cli-automation-tests.hpp"
+#include "sm-manager-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -907,6 +908,42 @@ TEST_F(ScriptRunnerTestSuite, StopsOnFirstError) {
 
 TEST_F(ScriptRunnerTestSuite, ReportsLineNumber) {
     scriptRunnerReportsLineNumber(this);
+}
+
+// ============================================
+// SM MANAGER TESTS
+// ============================================
+
+TEST_F(SmManagerTestSuite, smManagerDefaultLoop) {
+    smManagerDefaultLoop(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerPauseAndLoad) {
+    smManagerPauseAndLoad(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerAutoResume) {
+    smManagerAutoResume(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerOutcomeStored) {
+    smManagerOutcomeStored(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerResumeToCorrectState) {
+    smManagerResumeToCorrectState(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerDeletesSwappedGame) {
+    smManagerDeletesSwappedGame(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerPauseAndLoadWon) {
+    smManagerPauseAndLoadWon(this);
+}
+
+TEST_F(SmManagerTestSuite, smManagerPauseAndLoadLost) {
+    smManagerPauseAndLoadLost(this);
 }
 
 // ============================================

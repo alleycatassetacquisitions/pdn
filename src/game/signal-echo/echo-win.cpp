@@ -53,9 +53,12 @@ void EchoWin::onStateMounted(Device* PDN) {
 void EchoWin::onStateLoop(Device* PDN) {
     if (winTimer.expired()) {
         PDN->getHaptics()->off();
-        // In standalone mode, restart the game
         if (!game->getConfig().managedMode) {
+            // In standalone mode, restart the game
             transitionToIntroState = true;
+        } else {
+            // In managed mode, signal SM Manager to resume
+            game->setReadyForResume(true);
         }
     }
 }
