@@ -23,9 +23,13 @@
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
 #include "game/challenge-game.hpp"
+#include "game/minigame.hpp"
+#include "game/signal-echo/signal-echo.hpp"
+#include "game/signal-echo/signal-echo-resources.hpp"
 #include "device/device-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "game/progress-manager.hpp"
 
 // CLI components
 #include "cli/cli-serial-broker.hpp"
@@ -64,6 +68,18 @@ inline const char* getQuickdrawStateName(int stateId) {
     }
 }
 
+inline const char* getSignalEchoStateName(int stateId) {
+    switch (stateId) {
+        case 100: return "EchoIntro";
+        case 101: return "EchoShowSequence";
+        case 102: return "EchoPlayerInput";
+        case 103: return "EchoEvaluate";
+        case 104: return "EchoWin";
+        case 105: return "EchoLose";
+        default: return "Unknown";
+    }
+}
+
 inline const char* getChallengeStateName(int stateId) {
     switch (stateId) {
         case 0: return "NpcIdle";
@@ -77,6 +93,10 @@ inline const char* getChallengeStateName(int stateId) {
 inline const char* getStateName(int stateId, DeviceType deviceType = DeviceType::PLAYER) {
     if (deviceType == DeviceType::CHALLENGE) {
         return getChallengeStateName(stateId);
+    }
+    // Signal Echo states start at 100
+    if (stateId >= 100 && stateId <= 105) {
+        return getSignalEchoStateName(stateId);
     }
     return getQuickdrawStateName(stateId);
 }
@@ -110,7 +130,8 @@ struct DeviceInstance {
     Player* player = nullptr;
     StateMachine* game = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
-    
+    ProgressManager* progressManager = nullptr;
+
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
     int lastStateId = -1;
@@ -210,7 +231,11 @@ public:
         // Create QuickdrawWirelessManager (required by game states even when mocking)
         instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
         instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
-        
+
+        // Create and initialize ProgressManager
+        instance.progressManager = new ProgressManager();
+        instance.progressManager->initialize(instance.player, instance.pdn->getStorage());
+
         // Register ESP-NOW packet handlers (similar to setupEspNow in main.cpp)
         // This is required for devices to actually receive and process ESP-NOW packets
         instance.pdn->getWirelessManager()->setEspNowPacketHandler(
@@ -324,11 +349,80 @@ public:
         // Remove player config from mock HTTP server
         MockHttpServer::getInstance().removePlayer(device.deviceId);
         
+        delete device.progressManager;
         delete device.game;
         delete device.quickdrawWirelessManager;
         delete device.player;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
+    }
+
+    /**
+     * Create a device running a standalone minigame (no Quickdraw, no NPC).
+     * Used by --game CLI flag for development and testing.
+     */
+    static DeviceInstance createGameDevice(int deviceIndex, const std::string& gameName) {
+        DeviceInstance instance;
+        instance.deviceIndex = deviceIndex;
+        instance.isHunter = false;  // Not applicable for minigame devices
+
+        // Generate device ID
+        char idBuffer[5];
+        snprintf(idBuffer, sizeof(idBuffer), "%04d", 10 + deviceIndex);
+        instance.deviceId = idBuffer;
+
+        // Create all drivers (same pattern as createDevice)
+        std::string suffix = "_" + std::to_string(deviceIndex);
+
+        instance.loggerDriver = new NativeLoggerDriver(LOGGER_DRIVER_NAME + suffix);
+        instance.loggerDriver->setSuppressOutput(true);
+        instance.clockDriver = new NativeClockDriver(PLATFORM_CLOCK_DRIVER_NAME + suffix);
+        instance.displayDriver = new NativeDisplayDriver(DISPLAY_DRIVER_NAME + suffix);
+        instance.primaryButtonDriver = new NativeButtonDriver(PRIMARY_BUTTON_DRIVER_NAME + suffix, 0);
+        instance.secondaryButtonDriver = new NativeButtonDriver(SECONDARY_BUTTON_DRIVER_NAME + suffix, 1);
+        instance.lightDriver = new NativeLightStripDriver(LIGHT_DRIVER_NAME + suffix);
+        instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix, 0);
+        instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
+        instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
+        instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
+        instance.httpClientDriver->setMockServerEnabled(true);
+        instance.httpClientDriver->setConnected(true);
+        instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
+        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+
+        // Create driver configuration
+        DriverConfig pdnConfig = {
+            {DISPLAY_DRIVER_NAME, instance.displayDriver},
+            {PRIMARY_BUTTON_DRIVER_NAME, instance.primaryButtonDriver},
+            {SECONDARY_BUTTON_DRIVER_NAME, instance.secondaryButtonDriver},
+            {LIGHT_DRIVER_NAME, instance.lightDriver},
+            {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
+            {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
+            {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
+            {HTTP_CLIENT_DRIVER_NAME, instance.httpClientDriver},
+            {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
+            {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},
+            {LOGGER_DRIVER_NAME, instance.loggerDriver},
+            {STORAGE_DRIVER_NAME, instance.storageDriver},
+        };
+
+        // Create PDN
+        instance.pdn = PDN::createPDN(pdnConfig);
+        instance.pdn->begin();
+
+        // Create the minigame based on name
+        if (gameName == "signal-echo") {
+            SignalEchoConfig gameConfig = SIGNAL_ECHO_EASY;
+            instance.game = new SignalEcho(instance.pdn, gameConfig);
+            instance.game->initialize();
+        }
+        // Future games: else if (gameName == "ghost-runner") { ... }
+
+        // Register with SerialCableBroker
+        SerialCableBroker::getInstance().registerDevice(
+            deviceIndex, instance.serialOutDriver, instance.serialInDriver, false);
+
+        return instance;
     }
 };
 

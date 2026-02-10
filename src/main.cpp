@@ -25,6 +25,7 @@
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
+#include "game/progress-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -66,6 +67,9 @@ Player* player = nullptr;
 
 // Game instance
 StateMachine* game = nullptr;
+
+// Progress management
+ProgressManager* progressManager = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -141,6 +145,10 @@ void setup() {
     player = new Player();
     player->setUserID(idGenerator->generateId());
     pdn->begin();
+
+    // Create and initialize ProgressManager
+    progressManager = new ProgressManager();
+    progressManager->initialize(player, pdn->getStorage());
     
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");

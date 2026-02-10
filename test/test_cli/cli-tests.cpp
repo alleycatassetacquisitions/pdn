@@ -16,6 +16,7 @@
 #include "device-mode-switch-tests.hpp"
 #include "konami-progress-tests.hpp"
 #include "profile-sync-tests.hpp"
+#include "profile-portability-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -567,6 +568,38 @@ TEST_F(KonamiProgressTestSuite, ProgressDeserializesFromJson) {
 
 TEST_F(KonamiProgressTestSuite, ProgressDeserializeMissingField) {
     konamiProgressDeserializeMissingField(this);
+}
+
+// ============================================
+// PROFILE PORTABILITY TESTS
+// ============================================
+
+TEST_F(ProfilePortabilityTestSuite, LoginFetchesProfile) {
+    portabilityLoginFetchesProfile(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, LoginSameDeviceSameProfile) {
+    portabilityLoginSameDeviceSameProfile(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, LoginDifferentDeviceSameProfile) {
+    portabilityLoginDifferentDeviceSameProfile(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, LoginNewProfileOnReassignedDevice) {
+    portabilityLoginNewProfileOnReassignedDevice(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, BoothCheckInOutChain) {
+    portabilityBoothCheckInOutChain(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, OfflineFallbackToLocalProgress) {
+    portabilityOfflineFallbackToLocalProgress(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, ProgressSurvivesRestart) {
+    portabilityProgressSurvivesRestart(this);
 }
 
 // ============================================
