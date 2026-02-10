@@ -299,3 +299,201 @@ void displayDriverTextCallbackMultipleCalls(DriverCallbackTestSuite* suite) {
     ASSERT_EQ(captured[0], "FIRST");
     ASSERT_EQ(captured[1], "SECOND");
 }
+
+// ============================================================
+// ScriptRunner Test Suite
+// ============================================================
+
+#include "cli/cli-script-runner.hpp"
+
+class ScriptRunnerTestSuite : public testing::Test {
+public:
+    cli::EventLogger eventLogger;
+    cli::CommandProcessor commandProcessor;
+    std::vector<cli::DeviceInstance> devices;
+
+    void SetUp() override {
+        // Create 2 player devices
+        devices.push_back(cli::DeviceFactory::createDevice(0, true));   // hunter
+        devices.push_back(cli::DeviceFactory::createDevice(1, false));  // bounty
+
+        // Run a few loops to let FetchUserData complete
+        for (int i = 0; i < 5; i++) {
+            for (auto& d : devices) {
+                d.pdn->loop();
+                d.game->loop();
+            }
+        }
+        // Skip to Idle state (stateMap index 7 — NOT state ID 8)
+        for (auto& d : devices) {
+            d.game->skipToState(7);
+        }
+    }
+
+    void TearDown() override {
+        for (auto& d : devices) {
+            cli::DeviceFactory::destroyDevice(d);
+        }
+    }
+};
+
+// --- ScriptRunner tests ---
+
+void scriptRunnerParseSkipsComments(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    runner.loadFromString(
+        "# This is a comment\n"
+        "\n"
+        "tick       # inline comment\n"
+        "# Another full-line comment\n"
+        "\n"
+        "tick 2\n"
+    );
+
+    // Only 2 actual commands: "tick" and "tick 2"
+    ASSERT_EQ(runner.commandCount(), 2u);
+    ASSERT_TRUE(runner.hasMore());
+}
+
+void scriptRunnerExecutesCableCommand(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    runner.loadFromString("cable 0 1\n");
+
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+
+    // Verify devices are connected through the broker
+    int connected = cli::SerialCableBroker::getInstance().getConnectedDevice(0);
+    ASSERT_EQ(connected, 1);
+}
+
+void scriptRunnerWaitAdvancesClock(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    unsigned long before = suite->devices[0].clockDriver->milliseconds();
+
+    runner.loadFromString("wait 1000\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+
+    unsigned long after = suite->devices[0].clockDriver->milliseconds();
+    // Clock should have advanced by 1000ms
+    ASSERT_GE(after - before, 1000u);
+}
+
+void scriptRunnerTickRunsLoops(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    unsigned long before = suite->devices[0].clockDriver->milliseconds();
+
+    runner.loadFromString("tick 5\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+
+    unsigned long after = suite->devices[0].clockDriver->milliseconds();
+    // 5 ticks * 33ms = 165ms
+    ASSERT_GE(after - before, 165u);
+}
+
+void scriptRunnerPressButton(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    runner.loadFromString("press 0 primary\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+
+    // Verify a BUTTON_PRESS event was logged
+    auto events = suite->eventLogger.getByType(cli::EventType::BUTTON_PRESS);
+    ASSERT_GE(events.size(), 1u);
+    ASSERT_EQ(events[0].deviceIndex, 0);
+    ASSERT_EQ(events[0].button, "primary");
+}
+
+void scriptRunnerAssertStatePass(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    // Devices were skipped to Idle in SetUp
+    runner.loadFromString("assert-state 0 Idle\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+}
+
+void scriptRunnerAssertStateFail(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    runner.loadFromString("assert-state 0 Sleep\n");
+    std::string error = runner.executeAll();
+    ASSERT_FALSE(error.empty());
+    ASSERT_TRUE(error.find("assert-state failed") != std::string::npos);
+    ASSERT_TRUE(error.find("Idle") != std::string::npos);
+    ASSERT_TRUE(error.find("Sleep") != std::string::npos);
+}
+
+void scriptRunnerAssertTextPass(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    // Draw some text on device 0's display
+    suite->devices[0].displayDriver->drawText("READY TO DUEL");
+
+    runner.loadFromString("assert-text 0 \"READY TO DUEL\"\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+}
+
+void scriptRunnerAssertSerialTx(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    // Log a SERIAL_TX event manually
+    cli::Event evt;
+    evt.type = cli::EventType::SERIAL_TX;
+    evt.deviceIndex = 1;
+    evt.message = "cdev:7:6";
+    suite->eventLogger.log(evt);
+
+    runner.loadFromString("assert-serial-tx 1 \"cdev:\"\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+}
+
+void scriptRunnerAssertNoEvent(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    // Event logger is empty at start
+    runner.loadFromString("assert-no-event SERIAL_TX dev=0 \"xyz\"\n");
+    std::string error = runner.executeAll();
+    ASSERT_EQ(error, "");
+}
+
+void scriptRunnerStopsOnFirstError(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    runner.loadFromString(
+        "tick\n"
+        "assert-state 0 Sleep\n"
+        "tick\n"
+    );
+
+    std::string error = runner.executeAll();
+    ASSERT_FALSE(error.empty());
+    ASSERT_TRUE(error.find("assert-state failed") != std::string::npos);
+    // Script should have stopped after the assertion failure, leaving the third command
+    ASSERT_TRUE(runner.hasMore());
+}
+
+void scriptRunnerReportsLineNumber(ScriptRunnerTestSuite* suite) {
+    cli::ScriptRunner runner(suite->devices, suite->commandProcessor, suite->eventLogger);
+
+    runner.loadFromString(
+        "# comment line 1\n"
+        "\n"
+        "tick\n"
+        "assert-state 0 Sleep\n"
+    );
+
+    std::string error = runner.executeAll();
+    ASSERT_FALSE(error.empty());
+    // "assert-state 0 Sleep" is on line 4 of the original text
+    ASSERT_TRUE(error.find("Line 4") != std::string::npos);
+}

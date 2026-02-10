@@ -858,6 +858,58 @@ TEST_F(DriverCallbackTestSuite, DisplayTextCallbackMultipleCalls) {
 }
 
 // ============================================
+// SCRIPT RUNNER TESTS
+// ============================================
+
+TEST_F(ScriptRunnerTestSuite, ParseSkipsComments) {
+    scriptRunnerParseSkipsComments(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, ExecutesCableCommand) {
+    scriptRunnerExecutesCableCommand(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, WaitAdvancesClock) {
+    scriptRunnerWaitAdvancesClock(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, TickRunsLoops) {
+    scriptRunnerTickRunsLoops(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, PressButton) {
+    scriptRunnerPressButton(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertStatePass) {
+    scriptRunnerAssertStatePass(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertStateFail) {
+    scriptRunnerAssertStateFail(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertTextPass) {
+    scriptRunnerAssertTextPass(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertSerialTx) {
+    scriptRunnerAssertSerialTx(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertNoEvent) {
+    scriptRunnerAssertNoEvent(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, StopsOnFirstError) {
+    scriptRunnerStopsOnFirstError(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, ReportsLineNumber) {
+    scriptRunnerReportsLineNumber(this);
+}
+
+// ============================================
 // MAIN
 // ============================================
 
