@@ -22,6 +22,8 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
+#include "game/challenge-game.hpp"
+#include "device/device-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
 
@@ -35,7 +37,7 @@ namespace cli {
  * Get human-readable name for a Quickdraw state ID.
  * TODO: Eventually move this to the State class itself.
  */
-inline const char* getStateName(int stateId) {
+inline const char* getQuickdrawStateName(int stateId) {
     switch (stateId) {
         case 0:  return "PlayerRegistration";
         case 1:  return "FetchUserData";
@@ -62,6 +64,23 @@ inline const char* getStateName(int stateId) {
     }
 }
 
+inline const char* getChallengeStateName(int stateId) {
+    switch (stateId) {
+        case 0: return "NpcIdle";
+        case 1: return "NpcHandshake";
+        case 2: return "NpcGameActive";
+        case 3: return "NpcReceiveResult";
+        default: return "Unknown";
+    }
+}
+
+inline const char* getStateName(int stateId, DeviceType deviceType = DeviceType::PLAYER) {
+    if (deviceType == DeviceType::CHALLENGE) {
+        return getChallengeStateName(stateId);
+    }
+    return getQuickdrawStateName(stateId);
+}
+
 /**
  * Structure to hold all components for a single simulated PDN device.
  */
@@ -69,7 +88,9 @@ struct DeviceInstance {
     int deviceIndex;
     std::string deviceId;  // e.g., "0010", "0011", etc.
     bool isHunter;
-    
+    DeviceType deviceType = DeviceType::PLAYER;
+    GameType gameType = GameType::QUICKDRAW;
+
     // Native drivers
     NativeClockDriver* clockDriver = nullptr;
     NativeLoggerDriver* loggerDriver = nullptr;
@@ -87,7 +108,7 @@ struct DeviceInstance {
     // Game objects
     PDN* pdn = nullptr;
     Player* player = nullptr;
-    Quickdraw* game = nullptr;
+    StateMachine* game = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     
     // State history (circular buffer, most recent at back)
@@ -216,6 +237,83 @@ public:
         return instance;
     }
     
+    /**
+     * Create a new simulated ChallengeDevice NPC.
+     *
+     * @param deviceIndex Index for this device
+     * @param gameType Which game this NPC hosts
+     * @return Fully initialized DeviceInstance running ChallengeGame
+     */
+    static DeviceInstance createChallengeDevice(int deviceIndex, GameType gameType) {
+        DeviceInstance instance;
+        instance.deviceIndex = deviceIndex;
+        instance.isHunter = true;  // NPC uses output jack as primary (same as hunter)
+        instance.deviceType = DeviceType::CHALLENGE;
+        instance.gameType = gameType;
+
+        // Generate device ID: 7010, 7011, etc. (7xxx range for NPCs)
+        char idBuffer[5];
+        snprintf(idBuffer, sizeof(idBuffer), "7%03d", 10 + deviceIndex);
+        instance.deviceId = idBuffer;
+
+        // Create all drivers with device-specific suffix
+        std::string suffix = "_" + std::to_string(deviceIndex);
+
+        instance.loggerDriver = new NativeLoggerDriver(LOGGER_DRIVER_NAME + suffix);
+        instance.loggerDriver->setSuppressOutput(true);
+        instance.clockDriver = new NativeClockDriver(PLATFORM_CLOCK_DRIVER_NAME + suffix);
+        instance.displayDriver = new NativeDisplayDriver(DISPLAY_DRIVER_NAME + suffix);
+        instance.primaryButtonDriver = new NativeButtonDriver(PRIMARY_BUTTON_DRIVER_NAME + suffix, 0);
+        instance.secondaryButtonDriver = new NativeButtonDriver(SECONDARY_BUTTON_DRIVER_NAME + suffix, 1);
+        instance.lightDriver = new NativeLightStripDriver(LIGHT_DRIVER_NAME + suffix);
+        instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix, 0);
+        instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
+        instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
+        instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
+        instance.httpClientDriver->setMockServerEnabled(true);
+        instance.httpClientDriver->setConnected(true);
+        instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
+        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+
+        // Create driver configuration
+        DriverConfig pdnConfig = {
+            {DISPLAY_DRIVER_NAME, instance.displayDriver},
+            {PRIMARY_BUTTON_DRIVER_NAME, instance.primaryButtonDriver},
+            {SECONDARY_BUTTON_DRIVER_NAME, instance.secondaryButtonDriver},
+            {LIGHT_DRIVER_NAME, instance.lightDriver},
+            {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
+            {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
+            {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
+            {HTTP_CLIENT_DRIVER_NAME, instance.httpClientDriver},
+            {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
+            {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},
+            {LOGGER_DRIVER_NAME, instance.loggerDriver},
+            {STORAGE_DRIVER_NAME, instance.storageDriver},
+        };
+
+        // Create PDN
+        instance.pdn = PDN::createPDN(pdnConfig);
+        instance.pdn->begin();
+
+        // NPC uses output jack as primary
+        instance.pdn->setActiveComms(SerialIdentifier::OUTPUT_JACK);
+
+        // No Player object needed for NPC
+        instance.player = nullptr;
+        instance.quickdrawWirelessManager = nullptr;
+
+        // Create ChallengeGame
+        KonamiButton reward = getRewardForGame(gameType);
+        instance.game = new ChallengeGame(instance.pdn, gameType, reward);
+        instance.game->initialize();
+
+        // Register with SerialCableBroker (NPC acts like hunter — output jack is primary)
+        SerialCableBroker::getInstance().registerDevice(
+            deviceIndex, instance.serialOutDriver, instance.serialInDriver, true);
+
+        return instance;
+    }
+
     /**
      * Clean up a device instance and free all resources.
      */

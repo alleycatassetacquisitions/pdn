@@ -20,6 +20,8 @@
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
+#include "game/challenge-game.hpp"
+#include "device/device-types.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
@@ -63,7 +65,7 @@ IdGenerator* idGenerator = nullptr;
 Player* player = nullptr;
 
 // Game instance
-Quickdraw* game = nullptr;
+StateMachine* game = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -153,8 +155,17 @@ void setup() {
     
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
-    
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+
+    // Check NVS for challenge device mode
+    std::string deviceMode = storageDriver->read(DEVICE_MODE_KEY, "");
+    if (isChallengeDeviceCode(deviceMode)) {
+        GameType npcGameType = getGameTypeFromCode(deviceMode);
+        KonamiButton reward = getRewardForGame(npcGameType);
+        LOG_I("SETUP", "NPC mode detected: %s", getGameDisplayName(npcGameType));
+        game = new ChallengeGame(pdn, npcGameType, reward);
+    } else {
+        game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+    }
     
     pdn->getDisplay()->
     invalidateScreen()->

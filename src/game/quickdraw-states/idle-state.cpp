@@ -84,6 +84,8 @@ void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
     sendMacAddress = false;
     waitingForMacAddress = false;
+    challengeDeviceDetected = false;
+    lastCdevMessage.clear();
     heartbeatTimer.invalidate();
     statsIndex = 0;
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
@@ -95,7 +97,14 @@ void Idle::onStateDismounted(Device *PDN) {
 void Idle::serialEventCallbacks(const std::string& message) {
     LOG_I("IDLE", "Serial event received: %s", message.c_str());
     if(message.compare(SERIAL_HEARTBEAT) == 0) {
-        sendMacAddress = true;  
+        sendMacAddress = true;
+    } else if(message.rfind(CHALLENGE_DEVICE_ID, 0) == 0) {
+        // Message starts with "cdev:" - challenge device detected
+        LOG_I("IDLE", "Challenge device detected: %s", message.c_str());
+        challengeDeviceDetected = true;
+        lastCdevMessage = message;
+        // Respond with our MAC address (same as heartbeat response)
+        sendMacAddress = true;
     } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
         // Message starts with "smac" - extract MAC address after prefix
         std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());

@@ -216,6 +216,8 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool transitionToHandshake();
+    bool isChallengeDetected() const { return challengeDeviceDetected; }
+    const std::string& getLastCdevMessage() const { return lastCdevMessage; }
     void cycleStats(Device *PDN);
 
 private:
@@ -233,6 +235,10 @@ private:
 
     void serialEventCallbacks(const std::string& message);
     void ledAnimation(Device *PDN);
+
+    // Challenge device detection (Feature A)
+    bool challengeDeviceDetected = false;
+    std::string lastCdevMessage;
 };
 
 class ConnectionSuccessful : public State {

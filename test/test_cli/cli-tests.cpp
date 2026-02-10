@@ -12,6 +12,8 @@
 #include "native-driver-tests.hpp"
 #include "challenge-protocol-tests.hpp"
 #include "challenge-game-tests.hpp"
+#include "cli-challenge-tests.hpp"
+#include "device-mode-switch-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -451,6 +453,50 @@ TEST_F(ChallengeGameTestSuite, NpcReceiveResultTransitions) {
 
 TEST_F(ChallengeGameTestSuite, NpcLedAnimationPlays) {
     npcLedAnimationPlays(this);
+}
+
+// ============================================
+// CLI CHALLENGE FACTORY TESTS
+// ============================================
+
+TEST_F(CliChallengeTestSuite, CliFactoryCreatesChallenge) {
+    cliFactoryCreatesChallenge(this);
+}
+
+TEST_F(CliChallengeTestSuite, CliFactoryChallengeHasCorrectGame) {
+    cliFactoryChallengeHasCorrectGame(this);
+}
+
+TEST_F(CliChallengeTestSuite, UniqueCodesInTestFixture) {
+    uniqueCodesInTestFixture(this);
+}
+
+// ============================================
+// DEVICE MODE SWITCH TESTS
+// ============================================
+
+TEST_F(DeviceModeSwitchTestSuite, NpcModePersistsAcrossReboot) {
+    npcModePersistsAcrossReboot(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, ClearedModeFallsBackToQuickdraw) {
+    clearedModeFallsBackToQuickdraw(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, SpecialCodesStillWork) {
+    specialCodesStillWork(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, NpcToPlayerToNpc) {
+    npcToPlayerToNpc(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, PlayerToNpcToPlayer) {
+    playerToNpcToPlayer(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, FetchUserDetectsChallengeCode) {
+    fetchUserDetectsChallengeCode(this);
 }
 
 // ============================================

@@ -19,6 +19,7 @@
 #include "cli/cli-device.hpp"
 #include "cli/cli-renderer.hpp"
 #include "cli/cli-commands.hpp"
+#include "device/device-types.hpp"
 
 // Native drivers for global instances
 #include "device/drivers/native/native-logger-driver.hpp"
@@ -36,6 +37,7 @@ std::atomic<bool> g_running{true};
 std::string g_commandBuffer;
 std::string g_commandResult;
 int g_selectedDevice = 0;  // Currently selected device index
+std::string g_npcGameName;  // --npc flag value (empty = no NPC)
 
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
@@ -64,6 +66,13 @@ int parseArgs(int argc, char** argv) {
             return count;
         }
         
+        // NPC flag
+        if (arg == "--npc" && i + 1 < argc) {
+            g_npcGameName = argv[i + 1];
+            i++;  // Skip next arg (it's the game name)
+            continue;
+        }
+
         // Help flag
         if (arg == "-h" || arg == "--help") {
             printf("PDN CLI Simulator\n");
@@ -141,17 +150,47 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
                isHunter ? "Hunter" : "Bounty");
     }
     
+    // Add NPC device if --npc flag was specified
+    if (!g_npcGameName.empty()) {
+        GameType npcGameType = GameType::SIGNAL_ECHO;  // Default
+        std::string name = g_npcGameName;
+        for (char& c : name) {
+            if (c >= 'A' && c <= 'Z') c += 32;
+        }
+        if (name == "signal-echo" || name == "signalecho") {
+            npcGameType = GameType::SIGNAL_ECHO;
+        } else if (name == "ghost-runner") {
+            npcGameType = GameType::GHOST_RUNNER;
+        } else if (name == "spike-vector") {
+            npcGameType = GameType::SPIKE_VECTOR;
+        } else if (name == "firewall-decrypt") {
+            npcGameType = GameType::FIREWALL_DECRYPT;
+        } else if (name == "cipher-path") {
+            npcGameType = GameType::CIPHER_PATH;
+        } else if (name == "exploit-sequencer") {
+            npcGameType = GameType::EXPLOIT_SEQUENCER;
+        } else if (name == "breach-defense") {
+            npcGameType = GameType::BREACH_DEFENSE;
+        }
+
+        int npcIndex = static_cast<int>(devices.size());
+        devices.push_back(cli::DeviceFactory::createChallengeDevice(npcIndex, npcGameType));
+        printf("  Device %s: NPC (%s)\n",
+               devices.back().deviceId.c_str(),
+               getGameDisplayName(npcGameType));
+    }
+
     printf("\n");
     printf("Press any key to start simulation...\n");
     fflush(stdout);
-    
+
     // Wait for keypress (blocking read)
     #ifndef _WIN32
     getchar();
     #else
     _getch();
     #endif
-    
+
     return devices;
 }
 

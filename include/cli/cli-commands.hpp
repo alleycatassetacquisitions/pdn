@@ -104,6 +104,9 @@ public:
         if (command == "reboot" || command == "restart") {
             return cmdReboot(tokens, devices, selectedDevice);
         }
+        if (command == "spawn") {
+            return cmdSpawn(tokens, devices, selectedDevice);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -114,7 +117,7 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, spawn, b/l, b2/l2, cable, peer, display, mirror, captions, reboot";
         return result;
     }
     
@@ -594,6 +597,85 @@ private:
         
         result.message = "Added " + devices.back().deviceId + 
                          " (" + (isHunter ? "Hunter" : "Bounty") + ") - now selected";
+        return result;
+    }
+
+    static CommandResult cmdSpawn(const std::vector<std::string>& tokens,
+                                  std::vector<DeviceInstance>& devices,
+                                  int& selectedDevice) {
+        CommandResult result;
+
+        static constexpr int MAX_DEVICES = 8;
+        if (devices.size() >= MAX_DEVICES) {
+            result.message = "Cannot spawn more devices (max " + std::to_string(MAX_DEVICES) + ")";
+            return result;
+        }
+
+        if (tokens.size() < 2) {
+            result.message = "Usage: spawn challenge <game> | spawn player [hunter|bounty]";
+            return result;
+        }
+
+        std::string subcommand = tokens[1];
+        for (char& c : subcommand) {
+            if (c >= 'A' && c <= 'Z') c += 32;
+        }
+
+        int newIndex = static_cast<int>(devices.size());
+
+        if (subcommand == "challenge" || subcommand == "npc") {
+            if (tokens.size() < 3) {
+                result.message = "Usage: spawn challenge <game-name>  (e.g. signal-echo)";
+                return result;
+            }
+
+            std::string gameName = tokens[2];
+            for (char& c : gameName) {
+                if (c >= 'A' && c <= 'Z') c += 32;
+            }
+
+            GameType gameType;
+            if (gameName == "signal-echo" || gameName == "signalecho" || gameName == "7007") {
+                gameType = GameType::SIGNAL_ECHO;
+            } else if (gameName == "ghost-runner" || gameName == "7001") {
+                gameType = GameType::GHOST_RUNNER;
+            } else if (gameName == "spike-vector" || gameName == "7002") {
+                gameType = GameType::SPIKE_VECTOR;
+            } else if (gameName == "firewall-decrypt" || gameName == "7003") {
+                gameType = GameType::FIREWALL_DECRYPT;
+            } else if (gameName == "cipher-path" || gameName == "7004") {
+                gameType = GameType::CIPHER_PATH;
+            } else if (gameName == "exploit-sequencer" || gameName == "7005") {
+                gameType = GameType::EXPLOIT_SEQUENCER;
+            } else if (gameName == "breach-defense" || gameName == "7006") {
+                gameType = GameType::BREACH_DEFENSE;
+            } else {
+                result.message = "Unknown game: " + tokens[2] + ". Options: signal-echo, ghost-runner, spike-vector, firewall-decrypt, cipher-path, exploit-sequencer, breach-defense";
+                return result;
+            }
+
+            devices.push_back(DeviceFactory::createChallengeDevice(newIndex, gameType));
+            selectedDevice = newIndex;
+            result.message = "Spawned NPC " + devices.back().deviceId + " (" +
+                             getGameDisplayName(gameType) + ") - now selected";
+        } else if (subcommand == "player") {
+            bool isHunter = (devices.size() % 2 == 0);
+            if (tokens.size() >= 3) {
+                std::string role = tokens[2];
+                for (char& c : role) {
+                    if (c >= 'A' && c <= 'Z') c += 32;
+                }
+                if (role == "hunter" || role == "h") isHunter = true;
+                else if (role == "bounty" || role == "b") isHunter = false;
+            }
+            devices.push_back(DeviceFactory::createDevice(newIndex, isHunter));
+            selectedDevice = newIndex;
+            result.message = "Spawned player " + devices.back().deviceId +
+                             " (" + (isHunter ? "Hunter" : "Bounty") + ") - now selected";
+        } else {
+            result.message = "Usage: spawn challenge <game> | spawn player [hunter|bounty]";
+        }
+
         return result;
     }
 
