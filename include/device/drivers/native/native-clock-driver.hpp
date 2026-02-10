@@ -19,6 +19,14 @@ class NativeClockDriver : public PlatformClockDriverInterface {
     }
 
     unsigned long milliseconds() override {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count() + offset_;
     }
+
+    void advance(unsigned long deltaMs) {
+        offset_ += deltaMs;
+    }
+
+private:
+    unsigned long offset_ = 0;
 };

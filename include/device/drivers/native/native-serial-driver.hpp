@@ -4,6 +4,7 @@
 #include <queue>
 #include <deque>
 #include <string>
+#include <functional>
 
 class NativeSerialDriver : public SerialDriverInterface {
 public:
@@ -71,6 +72,7 @@ public:
         trimOutputBuffer();
         // Track sent message
         addToHistory(sentHistory_, std::string(msg));
+        if (writeCallback_) writeCallback_(std::string(msg));
     }
 
     void println(const std::string& msg) override {
@@ -79,6 +81,7 @@ public:
         trimOutputBuffer();
         // Track sent message
         addToHistory(sentHistory_, msg);
+        if (writeCallback_) writeCallback_(msg);
     }
 
     void flush() override {
@@ -91,6 +94,11 @@ public:
     void setStringCallback(const SerialStringCallback& callback) override {
         stringCallback_ = callback;
     }
+
+    // Event callbacks for EventLogger
+    using EventCallback = std::function<void(const std::string&)>;
+    void setWriteCallback(EventCallback cb) { writeCallback_ = cb; }
+    void setReadCallback(EventCallback cb) { readCallback_ = cb; }
 
     // Test helper methods
     void injectInput(const std::string& input) {
@@ -119,6 +127,7 @@ public:
         if (stringCallback_) {
             stringCallback_(cleanMsg);
         }
+        if (readCallback_) readCallback_(cleanMsg);
     }
 
     std::string getOutput() const {
@@ -141,7 +150,9 @@ private:
     std::queue<std::string> inputBuffer_;
     std::string outputBuffer_;
     SerialStringCallback stringCallback_;
-    
+    EventCallback writeCallback_;
+    EventCallback readCallback_;
+
     // Message history (most recent at back)
     std::deque<std::string> sentHistory_;
     std::deque<std::string> receivedHistory_;
