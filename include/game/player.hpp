@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 #include <iostream>
+#include <vector>
+#include "device/device-types.hpp"
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -10,6 +12,9 @@ enum class Allegiance {
     HELIX = 2,
     RESISTANCE = 3
 };
+
+// All 7 Konami buttons unlocked = bits 0-6 set = 0x7F
+static constexpr uint8_t KONAMI_ALL_UNLOCKED = 0x7F;
 
 class Player {
 public:
@@ -90,6 +95,21 @@ public:
 
     void addReactionTime(unsigned long reactionTime);
 
+    // Konami progress API
+    void unlockKonamiButton(KonamiButton button);
+    bool hasUnlockedButton(KonamiButton button) const;
+    uint8_t getKonamiProgress() const;
+    void setKonamiProgress(uint8_t progress);
+    bool hasAllKonamiButtons() const;
+    int getUnlockedButtonCount() const;
+
+    // Color profile API
+    void setEquippedColorProfile(GameType game);
+    GameType getEquippedColorProfile() const;
+    void addColorProfileEligibility(GameType game);
+    bool hasColorProfileEligibility(GameType game) const;
+    const std::vector<GameType>& getColorProfileEligibility() const;
+
 private:
     std::string id = "default";
     std::string name = "";
@@ -115,4 +135,13 @@ private:
     std::string opponentMacAddress;
     
     bool hunter = true;
+
+    // Konami progress bitmask — each bit = one button unlocked (bits 0-6)
+    uint8_t konamiProgress = 0;
+
+    // Color profile — GameType::QUICKDRAW means no custom profile equipped
+    GameType equippedColorProfile = GameType::QUICKDRAW;
+
+    // Color profile eligibility — list of GameType values for which hard mode was beaten
+    std::vector<GameType> colorProfileEligibility;
 };

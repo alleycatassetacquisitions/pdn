@@ -14,6 +14,7 @@
 #include "challenge-game-tests.hpp"
 #include "cli-challenge-tests.hpp"
 #include "device-mode-switch-tests.hpp"
+#include "konami-progress-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -497,6 +498,46 @@ TEST_F(DeviceModeSwitchTestSuite, PlayerToNpcToPlayer) {
 
 TEST_F(DeviceModeSwitchTestSuite, FetchUserDetectsChallengeCode) {
     fetchUserDetectsChallengeCode(this);
+}
+
+// ============================================
+// KONAMI PROGRESS TESTS
+// ============================================
+
+TEST_F(KonamiProgressTestSuite, UnlockSingleButton) {
+    konamiUnlockSingleButton(this);
+}
+
+TEST_F(KonamiProgressTestSuite, UnlockMultipleButtons) {
+    konamiUnlockMultipleButtons(this);
+}
+
+TEST_F(KonamiProgressTestSuite, HasUnlockedButtonTrue) {
+    konamiHasUnlockedButtonTrue(this);
+}
+
+TEST_F(KonamiProgressTestSuite, HasUnlockedButtonFalse) {
+    konamiHasUnlockedButtonFalse(this);
+}
+
+TEST_F(KonamiProgressTestSuite, AllButtonsUnlocked) {
+    konamiAllButtonsUnlocked(this);
+}
+
+TEST_F(KonamiProgressTestSuite, DuplicateUnlockIdempotent) {
+    konamiDuplicateUnlockIdempotent(this);
+}
+
+TEST_F(KonamiProgressTestSuite, ProgressSerializesToJson) {
+    konamiProgressSerializesToJson(this);
+}
+
+TEST_F(KonamiProgressTestSuite, ProgressDeserializesFromJson) {
+    konamiProgressDeserializesFromJson(this);
+}
+
+TEST_F(KonamiProgressTestSuite, ProgressDeserializeMissingField) {
+    konamiProgressDeserializeMissingField(this);
 }
 
 // ============================================
