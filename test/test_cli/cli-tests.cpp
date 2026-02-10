@@ -11,6 +11,7 @@
 #include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
 #include "challenge-protocol-tests.hpp"
+#include "challenge-game-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -414,6 +415,42 @@ TEST_F(ChallengeProtocolTestSuite, MagicCodeRejectsPlayer) {
 
 TEST_F(ChallengeProtocolTestSuite, MagicCodeMapsToGameType) {
     magicCodeMapsToGameType(this);
+}
+
+// ============================================
+// CHALLENGE GAME TESTS
+// ============================================
+
+TEST_F(ChallengeGameTestSuite, NpcIdleBroadcastsCdev) {
+    npcIdleBroadcastsCdev(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcIdleDisplaysGameName) {
+    npcIdleDisplaysGameName(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcIdleTransitionsOnMac) {
+    npcIdleTransitionsOnMac(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcHandshakeSendsCack) {
+    npcHandshakeSendsCack(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcReceiveResultShowsOutcome) {
+    npcReceiveResultShowsOutcome(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcReceiveResultCachesResult) {
+    npcReceiveResultCachesResult(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcReceiveResultTransitions) {
+    npcReceiveResultTransitions(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcLedAnimationPlays) {
+    npcLedAnimationPlays(this);
 }
 
 // ============================================
