@@ -59,6 +59,28 @@ const std::string BROADCAST_WIFI = "1111";
 
 const std::string FORCE_MATCH_UPLOAD = "6969";
 
+// Challenge device magic codes (range 7001-7007)
+const std::string CHALLENGE_GHOST_RUNNER     = "7001";
+const std::string CHALLENGE_SPIKE_VECTOR     = "7002";
+const std::string CHALLENGE_FIREWALL_DECRYPT = "7003";
+const std::string CHALLENGE_CIPHER_PATH      = "7004";
+const std::string CHALLENGE_EXPLOIT_SEQUENCER = "7005";
+const std::string CHALLENGE_BREACH_DEFENSE   = "7006";
+const std::string CHALLENGE_SIGNAL_ECHO      = "7007";
+
+// Challenge device serial protocol messages
+const std::string CHALLENGE_DEVICE_ID = "cdev:";
+const std::string CHALLENGE_ACK = "cack";
+
+// NVS key for device mode persistence
+constexpr const char* DEVICE_MODE_KEY = "device_mode";
+
+// NPC result storage
+constexpr const char* NPC_PREF_NAMESPACE = "npc_results";
+constexpr const char* NPC_RESULT_COUNT_KEY = "npc_count";
+constexpr const char* NPC_RESULT_KEY = "npc_res_";
+constexpr uint8_t MAX_NPC_RESULTS = 64;
+
 //STORAGE
 constexpr const char* PREF_NAMESPACE = "matches";
 constexpr const char* PREF_COUNT_KEY = "count";

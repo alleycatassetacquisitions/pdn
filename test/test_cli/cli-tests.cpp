@@ -10,6 +10,7 @@
 #include "cli-broker-tests.hpp"
 #include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
+#include "challenge-protocol-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -381,6 +382,38 @@ TEST_F(CliCommandTestSuite, RebootFromLaterState) {
 
 TEST_F(CliCommandTestSuite, RebootClearsHistory) {
     cliCommandRebootClearsHistory(this);
+}
+
+// ============================================
+// CHALLENGE PROTOCOL TESTS
+// ============================================
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolParseCdevMessage) {
+    protocolParseCdevMessage(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolParseCdevInvalid) {
+    protocolParseCdevInvalid(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolParseGresMessage) {
+    protocolParseGresMessage(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolGameTypeLookup) {
+    protocolGameTypeLookup(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, MagicCodeDetectsChallenge) {
+    magicCodeDetectsChallenge(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, MagicCodeRejectsPlayer) {
+    magicCodeRejectsPlayer(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, MagicCodeMapsToGameType) {
+    magicCodeMapsToGameType(this);
 }
 
 // ============================================
