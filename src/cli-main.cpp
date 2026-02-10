@@ -38,6 +38,7 @@ std::string g_commandBuffer;
 std::string g_commandResult;
 int g_selectedDevice = 0;  // Currently selected device index
 std::string g_npcGameName;  // --npc flag value (empty = no NPC)
+std::string g_gameModeName;  // --game flag value (empty = normal Quickdraw)
 
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
@@ -73,13 +74,21 @@ int parseArgs(int argc, char** argv) {
             continue;
         }
 
+        // Game mode flag (standalone minigame)
+        if (arg == "--game" && i + 1 < argc) {
+            g_gameModeName = argv[i + 1];
+            i++;  // Skip next arg (it's the game name)
+            continue;
+        }
+
         // Help flag
         if (arg == "-h" || arg == "--help") {
             printf("PDN CLI Simulator\n");
             printf("Usage: %s [options] [device_count]\n\n", argv[0]);
             printf("Options:\n");
-            printf("  -n, --count N   Create N devices (1-%d)\n", MAX_DEVICES);
-            printf("  -h, --help      Show this help message\n");
+            printf("  -n, --count N     Create N devices (1-%d)\n", MAX_DEVICES);
+            printf("  --game <name>     Run a standalone minigame (e.g., signal-echo)\n");
+            printf("  -h, --help        Show this help message\n");
             printf("\nExamples:\n");
             printf("  %s           Interactive prompt for device count\n", argv[0]);
             printf("  %s 3         Create 3 devices\n", argv[0]);
@@ -141,13 +150,20 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
     printf("\033[0m");
     
     for (int i = 0; i < count; i++) {
-        // Alternate roles: even indices are hunters, odd are bounties
-        bool isHunter = (i % 2 == 0);
-        devices.push_back(cli::DeviceFactory::createDevice(i, isHunter));
-        
-        printf("  Device %s: %s\n", 
-               devices.back().deviceId.c_str(),
-               isHunter ? "Hunter" : "Bounty");
+        if (!g_gameModeName.empty()) {
+            // Standalone game mode
+            devices.push_back(cli::DeviceFactory::createGameDevice(i, g_gameModeName));
+            printf("  Device %s: %s (standalone)\n",
+                   devices.back().deviceId.c_str(),
+                   g_gameModeName.c_str());
+        } else {
+            // Alternate roles: even indices are hunters, odd are bounties
+            bool isHunter = (i % 2 == 0);
+            devices.push_back(cli::DeviceFactory::createDevice(i, isHunter));
+            printf("  Device %s: %s\n",
+                   devices.back().deviceId.c_str(),
+                   isHunter ? "Hunter" : "Bounty");
+        }
     }
     
     // Add NPC device if --npc flag was specified
@@ -220,7 +236,12 @@ int main(int argc, char** argv) {
     // Determine device count from args or prompt
     int deviceCount = parseArgs(argc, argv);
     if (deviceCount < 0) {
-        deviceCount = promptDeviceCount();
+        // Default to 1 device for game mode
+        if (!g_gameModeName.empty()) {
+            deviceCount = 1;
+        } else {
+            deviceCount = promptDeviceCount();
+        }
     }
     
     // Create devices

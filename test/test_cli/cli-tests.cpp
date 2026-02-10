@@ -17,6 +17,8 @@
 #include "konami-progress-tests.hpp"
 #include "profile-sync-tests.hpp"
 #include "profile-portability-tests.hpp"
+#include "signal-echo-tests.hpp"
+#include "minigame-base-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -600,6 +602,186 @@ TEST_F(ProfilePortabilityTestSuite, OfflineFallbackToLocalProgress) {
 
 TEST_F(ProfilePortabilityTestSuite, ProgressSurvivesRestart) {
     portabilityProgressSurvivesRestart(this);
+}
+
+// ============================================
+// MINIGAME BASE CLASS TESTS
+// ============================================
+
+TEST_F(MiniGameTestSuite, MiniGameBaseIdentity) {
+    miniGameBaseIdentity(this);
+}
+
+TEST_F(MiniGameTestSuite, MiniGameBaseOutcomeDefault) {
+    miniGameBaseOutcomeDefault(this);
+}
+
+// ============================================
+// SIGNAL ECHO TESTS
+// ============================================
+
+TEST_F(SignalEchoTestSuite, SequenceGenerationLength) {
+    echoSequenceGenerationLength(this);
+}
+
+TEST_F(SignalEchoTestSuite, SequenceGenerationMixed) {
+    echoSequenceGenerationMixed(this);
+}
+
+TEST_F(SignalEchoTestSuite, IntroTransitionsToShow) {
+    echoIntroTransitionsToShow(this);
+}
+
+TEST_F(SignalEchoTestSuite, ShowSequenceTimingPerSignal) {
+    echoShowSequenceTimingPerSignal(this);
+}
+
+TEST_F(SignalEchoTestSuite, ShowTransitionsToInput) {
+    echoShowTransitionsToInput(this);
+}
+
+TEST_F(SignalEchoTestSuite, CorrectInputAdvancesIndex) {
+    echoCorrectInputAdvancesIndex(this);
+}
+
+TEST_F(SignalEchoTestSuite, WrongInputCountsMistake) {
+    echoWrongInputCountsMistake(this);
+}
+
+TEST_F(SignalEchoTestSuite, AllCorrectInputsNextRound) {
+    echoAllCorrectInputsNextRound(this);
+}
+
+TEST_F(SignalEchoTestSuite, MistakesExhaustedLose) {
+    echoMistakesExhaustedLose(this);
+}
+
+TEST_F(SignalEchoTestSuite, AllRoundsCompletedWin) {
+    echoAllRoundsCompletedWin(this);
+}
+
+TEST_F(SignalEchoTestSuite, CumulativeModeAppends) {
+    echoCumulativeModeAppends(this);
+}
+
+TEST_F(SignalEchoTestSuite, FreshModeNewSequence) {
+    echoFreshModeNewSequence(this);
+}
+
+TEST_F(SignalEchoTestSuite, WinSetsOutcome) {
+    echoWinSetsOutcome(this);
+}
+
+TEST_F(SignalEchoTestSuite, LoseSetsOutcome) {
+    echoLoseSetsOutcome(this);
+}
+
+TEST_F(SignalEchoTestSuite, IsGameCompleteAfterWin) {
+    echoIsGameCompleteAfterWin(this);
+}
+
+TEST_F(SignalEchoTestSuite, ResetGameClearsOutcome) {
+    echoResetGameClearsOutcome(this);
+}
+
+TEST_F(SignalEchoTestSuite, StandaloneRestartAfterWin) {
+    echoStandaloneRestartAfterWin(this);
+}
+
+// ============================================
+// SIGNAL ECHO DIFFICULTY TESTS
+// ============================================
+
+TEST_F(SignalEchoDifficultyTestSuite, EasyModeSequenceLength4) {
+    echoDiffEasyModeSequenceLength4(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, EasyMode3MistakesAllowed) {
+    echoDiffEasyMode3MistakesAllowed(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HardModeSequenceLength8) {
+    echoDiffHardModeSequenceLength8(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HardMode1MistakeAllowed) {
+    echoDiffHardMode1MistakeAllowed(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, WrongInputShowsErrorMarker) {
+    echoDiffWrongInputShowsErrorMarker(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, WrongInputAdvancesToNext) {
+    echoDiffWrongInputAdvancesToNext(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LifeIndicatorStartsFull) {
+    echoDiffLifeIndicatorStartsFull(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LifeIndicatorDecrementsOnMistake) {
+    echoDiffLifeIndicatorDecrementsOnMistake(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LifeIndicatorCorrectCount) {
+    echoDiffLifeIndicatorCorrectCount(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, FullResetOnLose) {
+    echoDiffFullResetOnLose(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, EasyModeWinUnlocksKonami) {
+    echoDiffEasyModeWinUnlocksKonami(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HardModeWinUnlocksColorProfile) {
+    echoDiffHardModeWinUnlocksColorProfile(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LedFlashesRedOnMistake) {
+    echoDiffLedFlashesRedOnMistake(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HapticBuzzOnMistake) {
+    echoDiffHapticBuzzOnMistake(this);
+}
+
+// ============================================
+// COLOR PROFILE TESTS
+// ============================================
+
+TEST_F(ColorProfileTestSuite, SignalEchoPaletteValues) {
+    colorProfileSignalEchoPaletteValues(this);
+}
+
+TEST_F(ColorProfileTestSuite, IdlePaletteSize) {
+    colorProfileIdlePaletteSize(this);
+}
+
+TEST_F(ColorProfileTestSuite, DefaultPaletteValues) {
+    colorProfileDefaultPaletteValues(this);
+}
+
+TEST_F(ColorProfileTestSuite, IdleStateHasBrightness) {
+    colorProfileIdleStateHasBrightness(this);
+}
+
+TEST_F(ColorProfileTestSuite, WinStateIsRainbow) {
+    colorProfileWinStateIsRainbow(this);
+}
+
+TEST_F(ColorProfileTestSuite, LoseStateIsRed) {
+    colorProfileLoseStateIsRed(this);
+}
+
+TEST_F(ColorProfileTestSuite, ErrorStateIsRed) {
+    colorProfileErrorStateIsRed(this);
+}
+
+TEST_F(ColorProfileTestSuite, CorrectStateIsGreen) {
+    colorProfileCorrectStateIsGreen(this);
 }
 
 // ============================================
