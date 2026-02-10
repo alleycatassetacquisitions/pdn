@@ -19,6 +19,7 @@
 #include "profile-portability-tests.hpp"
 #include "signal-echo-tests.hpp"
 #include "minigame-base-tests.hpp"
+#include "cli-automation-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -778,6 +779,82 @@ TEST_F(ColorProfileTestSuite, ErrorStateIsRed) {
 
 TEST_F(ColorProfileTestSuite, CorrectStateIsGreen) {
     colorProfileCorrectStateIsGreen(this);
+}
+
+// ============================================
+// EVENT LOGGER TESTS
+// ============================================
+
+TEST_F(EventLoggerTestSuite, LogAndRetrieve) {
+    eventLoggerLogAndRetrieve(this);
+}
+
+TEST_F(EventLoggerTestSuite, FilterByType) {
+    eventLoggerFilterByType(this);
+}
+
+TEST_F(EventLoggerTestSuite, FilterByDevice) {
+    eventLoggerFilterByDevice(this);
+}
+
+TEST_F(EventLoggerTestSuite, FilterByTypeAndDevice) {
+    eventLoggerFilterByTypeAndDevice(this);
+}
+
+TEST_F(EventLoggerTestSuite, GetLast) {
+    eventLoggerGetLast(this);
+}
+
+TEST_F(EventLoggerTestSuite, HasEvent) {
+    eventLoggerHasEvent(this);
+}
+
+TEST_F(EventLoggerTestSuite, Count) {
+    eventLoggerCount(this);
+}
+
+TEST_F(EventLoggerTestSuite, Clear) {
+    eventLoggerClear(this);
+}
+
+TEST_F(EventLoggerTestSuite, FormatEvent) {
+    eventLoggerFormatEvent(this);
+}
+
+TEST_F(EventLoggerTestSuite, WriteToFile) {
+    eventLoggerWriteToFile(this);
+}
+
+// ============================================
+// DRIVER CALLBACK TESTS
+// ============================================
+
+TEST_F(DriverCallbackTestSuite, SerialWriteCallbackFires) {
+    serialDriverWriteCallbackFires(this);
+}
+
+TEST_F(DriverCallbackTestSuite, SerialWriteCallbackCharPtr) {
+    serialDriverWriteCallbackCharPtr(this);
+}
+
+TEST_F(DriverCallbackTestSuite, SerialReadCallbackFires) {
+    serialDriverReadCallbackFires(this);
+}
+
+TEST_F(DriverCallbackTestSuite, CallbacksCoexistWithStringCallback) {
+    serialDriverCallbacksCoexistWithStringCallback(this);
+}
+
+TEST_F(DriverCallbackTestSuite, DisplayTextCallbackFires) {
+    displayDriverTextCallbackFires(this);
+}
+
+TEST_F(DriverCallbackTestSuite, DisplayTextCallbackPositioned) {
+    displayDriverTextCallbackPositioned(this);
+}
+
+TEST_F(DriverCallbackTestSuite, DisplayTextCallbackMultipleCalls) {
+    displayDriverTextCallbackMultipleCalls(this);
 }
 
 // ============================================
