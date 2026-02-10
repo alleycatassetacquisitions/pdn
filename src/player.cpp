@@ -277,6 +277,24 @@ void Player::addReactionTime(unsigned long reactionTime) {
     totalReactionTime += reactionTime;
 }
 
+// --- Pending challenge ---
+
+void Player::setPendingChallenge(const std::string& cdevMessage) {
+    pendingCdevMessage = cdevMessage;
+}
+
+const std::string& Player::getPendingCdevMessage() const {
+    return pendingCdevMessage;
+}
+
+void Player::clearPendingChallenge() {
+    pendingCdevMessage.clear();
+}
+
+bool Player::hasPendingChallenge() const {
+    return !pendingCdevMessage.empty();
+}
+
 // --- Konami progress ---
 
 void Player::unlockKonamiButton(KonamiButton button) {

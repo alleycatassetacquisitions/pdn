@@ -21,6 +21,7 @@
 #include "minigame-base-tests.hpp"
 #include "cli-automation-tests.hpp"
 #include "sm-manager-tests.hpp"
+#include "integration-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -968,6 +969,58 @@ TEST_F(ScriptRunnerTestSuite, FeatureB_SignalEchoStandaloneLose) {
 
 TEST_F(ScriptRunnerTestSuite, FeatureE_KonamiProgressTracking) {
     featureE_KonamiProgressTracking(this);
+}
+
+// ============================================
+// INTEGRATION TESTS
+// ============================================
+
+TEST_F(IntegrationTestSuite, CdevTriggersTransition) {
+    integrationCdevTriggersTransition(this);
+}
+
+TEST_F(IntegrationTestSuite, ChallengeDetectedSendsMac) {
+    integrationChallengeDetectedSendsMac(this);
+}
+
+TEST_F(IntegrationTestSuite, SwapsOnCack) {
+    integrationSwapsOnCack(this);
+}
+
+TEST_F(IntegrationTestSuite, TimeoutToIdle) {
+    integrationTimeoutToIdle(this);
+}
+
+TEST_F(IntegrationTestSuite, InvalidCdevToIdle) {
+    integrationInvalidCdevToIdle(this);
+}
+
+TEST_F(IntegrationTestSuite, ChallengeCompleteWinToIdle) {
+    integrationChallengeCompleteWinToIdle(this);
+}
+
+TEST_F(IntegrationTestSuite, ChallengeCompleteUnlocksKonami) {
+    integrationChallengeCompleteUnlocksKonami(this);
+}
+
+TEST_F(IntegrationTestSuite, NoUnlockOnLoss) {
+    integrationNoUnlockOnLoss(this);
+}
+
+TEST_F(IntegrationTestSuite, SavesProgress) {
+    integrationSavesProgress(this);
+}
+
+TEST_F(IntegrationTestSuite, SmManagerWired) {
+    integrationSmManagerWired(this);
+}
+
+TEST_F(IntegrationTestSuite, PlayerPendingChallenge) {
+    integrationPlayerPendingChallenge(this);
+}
+
+TEST_F(IntegrationTestSuite, NormalHandshakeStillWorks) {
+    integrationNormalHandshakeStillWorks(this);
 }
 
 // ============================================

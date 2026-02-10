@@ -30,6 +30,7 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
+#include "state/state-machine-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -67,6 +68,7 @@ Player* player = nullptr;
 
 // Game instance
 StateMachine* game = nullptr;
+StateMachineManager* smManager = nullptr;
 
 // Progress management
 ProgressManager* progressManager = nullptr;
@@ -173,6 +175,11 @@ void setup() {
         game = new ChallengeGame(pdn, npcGameType, reward);
     } else {
         game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+        smManager = new StateMachineManager(pdn);
+        smManager->setDefaultStateMachine(game);
+        Quickdraw* quickdraw = static_cast<Quickdraw*>(game);
+        quickdraw->setStateMachineManager(smManager);
+        quickdraw->setProgressManager(progressManager);
     }
     
     pdn->getDisplay()->
@@ -186,5 +193,9 @@ void setup() {
 
 void loop() {
     pdn->loop();
-    game->loop();
+    if (smManager) {
+        smManager->loop();
+    } else {
+        game->loop();
+    }
 }

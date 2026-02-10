@@ -33,7 +33,9 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20
+    UPLOAD_MATCHES = 20,
+    CHALLENGE_DETECTED = 21,
+    CHALLENGE_COMPLETE = 22
 };
 
 class PlayerRegistration : public State {
@@ -189,6 +191,9 @@ private:
     static constexpr unsigned long SLEEP_DURATION = 60000UL;
 };
 
+class StateMachineManager;  // Forward declaration
+class ProgressManager;      // Forward declaration
+
 class AwakenSequence : public State {
 public:
     explicit AwakenSequence(Player* player);
@@ -239,6 +244,50 @@ private:
     // Challenge device detection (Feature A)
     bool challengeDeviceDetected = false;
     std::string lastCdevMessage;
+};
+
+class ChallengeDetected : public State {
+public:
+    ChallengeDetected(Player* player, StateMachineManager* smManager);
+    ~ChallengeDetected();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    StateMachineManager* smManager;
+    SimpleTimer timeoutTimer;
+    static constexpr int TIMEOUT_MS = 10000;
+    bool transitionToIdleState = false;
+    bool cackReceived = false;
+    bool macSent = false;
+    std::string cdevMessage;
+    GameType pendingGameType = GameType::QUICKDRAW;
+    KonamiButton pendingReward = KonamiButton::UP;
+};
+
+class ChallengeComplete : public State {
+public:
+    ChallengeComplete(Player* player, StateMachineManager* smManager, ProgressManager* progressManager);
+    ~ChallengeComplete();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    StateMachineManager* smManager;
+    ProgressManager* progressManager;
+    SimpleTimer displayTimer;
+    static constexpr int DISPLAY_DURATION_MS = 3000;
+    bool transitionToIdleState = false;
 };
 
 class ConnectionSuccessful : public State {

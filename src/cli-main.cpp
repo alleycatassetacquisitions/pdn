@@ -22,6 +22,7 @@
 #include "cli/cli-event-logger.hpp"
 #include "cli/cli-script-runner.hpp"
 #include "device/device-types.hpp"
+#include "state/state-machine-manager.hpp"
 
 // Native drivers for global instances
 #include "device/drivers/native/native-logger-driver.hpp"
@@ -403,7 +404,11 @@ int main(int argc, char** argv) {
         // Update all devices
         for (auto& device : devices) {
             device.pdn->loop();
-            device.game->loop();
+            if (device.smManager) {
+                device.smManager->loop();
+            } else {
+                device.game->loop();
+            }
         }
 
         // Render UI

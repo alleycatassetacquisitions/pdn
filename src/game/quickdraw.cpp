@@ -1,4 +1,6 @@
 #include "../../include/game/quickdraw.hpp"
+#include "state/state-machine-manager.hpp"
+#include "game/progress-manager.hpp"
 
 Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(PDN) {
     this->player = player;
@@ -50,6 +52,9 @@ void Quickdraw::populateStateMap() {
     
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+
+    ChallengeDetected* challengeDetected = new ChallengeDetected(player, smManager);
+    ChallengeComplete* challengeComplete = new ChallengeComplete(player, smManager, progressManager);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -108,8 +113,23 @@ void Quickdraw::populateStateMap() {
 
     idle->addTransition(
         new StateTransition(
+            std::bind(&Idle::isChallengeDetected, idle),
+            challengeDetected));
+
+    idle->addTransition(
+        new StateTransition(
             std::bind(&Idle::transitionToHandshake, idle),
             handshakeInitiate));
+
+    challengeDetected->addTransition(
+        new StateTransition(
+            std::bind(&ChallengeDetected::transitionToIdle, challengeDetected),
+            idle));
+
+    challengeComplete->addTransition(
+        new StateTransition(
+            std::bind(&ChallengeComplete::transitionToIdle, challengeComplete),
+            idle));
 
     handshakeInitiate->addTransition(
         new StateTransition(
@@ -237,6 +257,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(lose);
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
+    stateMap.push_back(challengeDetected);
+    stateMap.push_back(challengeComplete);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {

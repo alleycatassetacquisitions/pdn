@@ -103,8 +103,7 @@ void Idle::serialEventCallbacks(const std::string& message) {
         LOG_I("IDLE", "Challenge device detected: %s", message.c_str());
         challengeDeviceDetected = true;
         lastCdevMessage = message;
-        // Respond with our MAC address (same as heartbeat response)
-        sendMacAddress = true;
+        player->setPendingChallenge(message);
     } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
         // Message starts with "smac" - extract MAC address after prefix
         std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());
@@ -115,7 +114,7 @@ void Idle::serialEventCallbacks(const std::string& message) {
 }
 
 bool Idle::transitionToHandshake() {
-    return transitionToHandshakeState;
+    return transitionToHandshakeState && !challengeDeviceDetected;
 }
 
 void Idle::cycleStats(Device *PDN) {

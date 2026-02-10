@@ -30,6 +30,7 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "game/progress-manager.hpp"
+#include "state/state-machine-manager.hpp"
 
 // CLI components
 #include "cli/cli-serial-broker.hpp"
@@ -64,6 +65,8 @@ inline const char* getQuickdrawStateName(int stateId) {
         case 18: return "Win";
         case 19: return "Lose";
         case 20: return "UploadMatches";
+        case 21: return "ChallengeDetected";
+        case 22: return "ChallengeComplete";
         default: return "Unknown";
     }
 }
@@ -131,6 +134,7 @@ struct DeviceInstance {
     StateMachine* game = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     ProgressManager* progressManager = nullptr;
+    StateMachineManager* smManager = nullptr;
 
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
@@ -248,8 +252,18 @@ public:
         
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
+
+        // Create and wire StateMachineManager for player devices
+        instance.smManager = new StateMachineManager(instance.pdn);
+        instance.smManager->setDefaultStateMachine(instance.game);
+
+        // Wire SM Manager and ProgressManager into Quickdraw
+        Quickdraw* quickdraw = static_cast<Quickdraw*>(instance.game);
+        quickdraw->setStateMachineManager(instance.smManager);
+        quickdraw->setProgressManager(instance.progressManager);
+
         instance.game->initialize();
-        
+
         // Skip PlayerRegistration state and go directly to FetchUserDataState
         // This prevents the registration flow from overwriting the player ID
         // State index 1 = FetchUserDataState (based on Quickdraw::populateStateMap order)
@@ -349,6 +363,7 @@ public:
         // Remove player config from mock HTTP server
         MockHttpServer::getInstance().removePlayer(device.deviceId);
         
+        delete device.smManager;
         delete device.progressManager;
         delete device.game;
         delete device.quickdrawWirelessManager;

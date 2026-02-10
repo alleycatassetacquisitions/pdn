@@ -103,6 +103,12 @@ public:
     bool hasAllKonamiButtons() const;
     int getUnlockedButtonCount() const;
 
+    // Pending challenge (set by Idle, read by ChallengeDetected)
+    void setPendingChallenge(const std::string& cdevMessage);
+    const std::string& getPendingCdevMessage() const;
+    void clearPendingChallenge();
+    bool hasPendingChallenge() const;
+
     // Color profile API
     void setEquippedColorProfile(GameType game);
     GameType getEquippedColorProfile() const;
@@ -144,4 +150,7 @@ private:
 
     // Color profile eligibility — list of GameType values for which hard mode was beaten
     std::vector<GameType> colorProfileEligibility;
+
+    // Pending challenge state
+    std::string pendingCdevMessage;
 };
