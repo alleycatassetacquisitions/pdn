@@ -111,6 +111,8 @@ protected:
     State *newState = nullptr;
     State *currentState = nullptr;
 
+    Device* getDevice() { return PDN; }
+
 private:
     Device *PDN;
 };

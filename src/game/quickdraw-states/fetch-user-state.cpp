@@ -1,6 +1,8 @@
 #include "game/quickdraw-states.hpp"
+#include "device/device-types.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
+#include "game/player.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/remote-debug-manager.hpp"
 
@@ -46,9 +48,18 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         transitionToUploadMatchesState = true;
         userDataFetchTimer.invalidate();
         isFetchingUserData = false;
-    } else if(player->getUserID() == BROADCAST_WIFI) { 
+    } else if(player->getUserID() == BROADCAST_WIFI) {
         remoteDebugManager->BroadcastDebugPacket();
         transitionToPlayerRegistrationState = true;
+        userDataFetchTimer.invalidate();
+        isFetchingUserData = false;
+    } else if(isChallengeDeviceCode(player->getUserID())) {
+        LOG_I(TAG, "Challenge device code detected: %s", player->getUserID().c_str());
+        // Save challenge mode to NVS so next boot creates ChallengeGame directly
+        PDN->getStorage()->write(DEVICE_MODE_KEY, player->getUserID());
+        // In a real device, this would trigger ESP.restart()
+        // For CLI/test, the NVS write is sufficient — the test verifies it
+        transitionToPlayerRegistrationState = true;  // Return to registration (reboot simulation)
         userDataFetchTimer.invalidate();
         isFetchingUserData = false;
     } else {
@@ -56,13 +67,21 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
             PDN->getWirelessManager(),
             player->getUserID(),
             [this](const PlayerResponse& response) {
-                LOG_I(TAG, "Successfully fetched player data: %s (%s)", 
+                LOG_I(TAG, "Successfully fetched player data: %s (%s)",
                         response.name.c_str(), response.id.c_str());
-                
+
                 player->setName(response.name.c_str());
                 player->setIsHunter(response.isHunter);
                 player->setAllegiance(response.allegiance);
                 player->setFaction(response.faction.c_str());
+
+                // Konami progress + color profile from server
+                player->setKonamiProgress(response.konamiProgress);
+                player->setEquippedColorProfile(
+                    static_cast<GameType>(response.equippedColorProfile));
+                for (uint8_t g : response.colorProfileEligibility) {
+                    player->addColorProfileEligibility(static_cast<GameType>(g));
+                }
 
                 userDataFetchTimer.invalidate();
                 transitionToWelcomeMessageState = true;

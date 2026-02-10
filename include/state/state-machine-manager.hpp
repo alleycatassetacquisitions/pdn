@@ -13,6 +13,7 @@ struct SwappableOutcome {
 
     int result = IN_PROGRESS;
     int score = 0;
+    bool hardMode = false;
     bool isComplete() const { return result != IN_PROGRESS; }
 };
 

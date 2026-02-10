@@ -48,18 +48,22 @@ public:
             for (size_t i = 0; i < devices.size(); i++) {
                 if (i > 0) selectorBar += "  ";
                 
+                const char* roleLabel;
+                if (devices[i].deviceType == DeviceType::CHALLENGE) {
+                    roleLabel = "NPC";
+                } else {
+                    roleLabel = devices[i].isHunter ? "H" : "B";
+                }
                 if (static_cast<int>(i) == selectedDeviceIndex) {
-                    // Selected device - highlighted
                     selectorBar += format("\033[1;7;33m[%d] %s %s\033[0m",
                                           static_cast<int>(i),
                                           devices[i].deviceId.c_str(),
-                                          devices[i].isHunter ? "H" : "B");
+                                          roleLabel);
                 } else {
-                    // Unselected device - dim
                     selectorBar += format("\033[90m[%d] %s %s\033[0m",
                                           static_cast<int>(i),
                                           devices[i].deviceId.c_str(),
-                                          devices[i].isHunter ? "H" : "B");
+                                          roleLabel);
                 }
             }
             selectorBar += "   \033[90m(LEFT/RIGHT to switch)\033[0m";
@@ -219,7 +223,7 @@ private:
         } else {
             for (size_t i = 0; i < device.stateHistory.size(); i++) {
                 if (i > 0) historyStr += " -> ";
-                historyStr += getStateName(device.stateHistory[i]);
+                historyStr += getStateName(device.stateHistory[i], device.deviceType);
             }
         }
         
@@ -349,21 +353,36 @@ private:
         // Buffer all lines - use brighter color for selected device
         const char* headerColor = isSelected ? "\033[1;33m" : "\033[33m";  // Bold yellow vs dim yellow
         const char* selectedMarker = isSelected ? " *SELECTED*" : "";
+        const char* typeLabel;
+        if (device.deviceType == DeviceType::CHALLENGE) {
+            typeLabel = "NPC";
+        } else {
+            typeLabel = device.isHunter ? "HUNTER" : "BOUNTY";
+        }
         bufferLine(format("%s+-- Device [%s] %-6s%s -------------------------------+\033[0m",
                    headerColor,
                    device.deviceId.c_str(),
-                   device.isHunter ? "HUNTER" : "BOUNTY",
+                   typeLabel,
                    selectedMarker));
         
-        bufferLine(format("| Player: ID=%-4s  Allegiance=%-10s  W=%d L=%d Streak=%d",
-                   device.player->getUserID().c_str(),
-                   device.player->getAllegianceString().c_str(),
-                   device.player->getWins(),
-                   device.player->getLosses(),
-                   device.player->getStreak()));
+        if (device.deviceType == DeviceType::CHALLENGE) {
+            bufferLine(format("| NPC: %s  Reward: %s",
+                       getGameDisplayName(device.gameType),
+                       getKonamiButtonName(getRewardForGame(device.gameType))));
+        } else {
+            bufferLine(format("| Player: ID=%-4s  Allegiance=%-10s  W=%d L=%d Streak=%d",
+                       device.player->getUserID().c_str(),
+                       device.player->getAllegianceString().c_str(),
+                       device.player->getWins(),
+                       device.player->getLosses(),
+                       device.player->getStreak()));
+        }
         
-        bufferLine(format("| State: [%2d] %-20s  Game: Quickdraw",
-                   stateId, getStateName(stateId)));
+        const char* gameName = (device.deviceType == DeviceType::CHALLENGE)
+            ? getGameDisplayName(device.gameType) : "Quickdraw";
+        const char* stateName = getStateName(stateId, device.deviceType);
+        bufferLine(format("| State: [%2d] %-20s  Game: %s",
+                   stateId, stateName, gameName));
         
         bufferLine(format("| History: %s", historyStr.c_str()));
         

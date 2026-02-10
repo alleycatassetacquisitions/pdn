@@ -7,7 +7,8 @@
 #include <functional>
 #include <deque>
 #include <cstdio>
-#include <regex>
+#include <vector>
+#include <ArduinoJson.h>
 
 namespace cli {
 
@@ -32,6 +33,11 @@ struct MockPlayerConfig {
     bool isHunter;
     int allegiance;  // 0 = NONE, 1 = RESISTANCE, 2 = HUNTERS_GUILD
     std::string faction;
+
+    // Game progress fields
+    uint8_t konamiProgress = 0;
+    uint8_t equippedColorProfile = 0;  // GameType enum value
+    std::vector<uint8_t> colorProfileEligibility;
 };
 
 /**
@@ -86,6 +92,9 @@ public:
             statusCode = handleGetPlayer(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
+        } else if (method == "PUT" && path.find("/api/players/") == 0
+                   && path.find("/progress") != std::string::npos) {
+            statusCode = handlePutProgress(path, body, responseBody);
         } else {
             statusCode = 404;
             responseBody = R"({"errors":["Not found"]})";
@@ -196,9 +205,9 @@ private:
             // Player not found - return a default based on ID
             // For CLI, generate sensible defaults
             bool defaultHunter = (std::stoi(playerId) % 2 == 0);  // Even IDs are hunters
-            char buf[512];
+            char buf[1024];
             snprintf(buf, sizeof(buf),
-                R"({"data":{"id":"%s","name":"Player%s","hunter":%s,"allegiance":1,"faction":"Default"}})",
+                R"({"data":{"id":"%s","name":"Player%s","hunter":%s,"allegiance":1,"faction":"Default","konami_progress":0,"equipped_color_profile":0,"color_profile_eligibility":[]}})",
                 playerId.c_str(),
                 playerId.c_str(),
                 defaultHunter ? "true" : "false");
@@ -208,14 +217,26 @@ private:
         
         // Return configured player data
         const MockPlayerConfig& config = it->second;
-        char buf[512];
+
+        // Build eligibility array string
+        std::string eligibilityStr = "[";
+        for (size_t i = 0; i < config.colorProfileEligibility.size(); i++) {
+            if (i > 0) eligibilityStr += ",";
+            eligibilityStr += std::to_string(config.colorProfileEligibility[i]);
+        }
+        eligibilityStr += "]";
+
+        char buf[1024];
         snprintf(buf, sizeof(buf),
-            R"({"data":{"id":"%s","name":"%s","hunter":%s,"allegiance":%d,"faction":"%s"}})",
+            R"({"data":{"id":"%s","name":"%s","hunter":%s,"allegiance":%d,"faction":"%s","konami_progress":%d,"equipped_color_profile":%d,"color_profile_eligibility":%s}})",
             config.id.c_str(),
             config.name.c_str(),
             config.isHunter ? "true" : "false",
             config.allegiance,
-            config.faction.c_str());
+            config.faction.c_str(),
+            config.konamiProgress,
+            config.equippedColorProfile,
+            eligibilityStr.c_str());
         responseBody = buf;
         return 200;
     }
@@ -227,6 +248,44 @@ private:
         // Just acknowledge the match upload
         // In a real server, we'd parse and store the matches
         responseBody = R"({"success":true,"message":"Matches uploaded"})";
+        return 200;
+    }
+
+    /**
+     * Handle PUT /api/players/{id}/progress
+     */
+    int handlePutProgress(const std::string& path,
+                          const std::string& body,
+                          std::string& responseBody) {
+        // Extract player ID from path like "/api/players/0010/progress"
+        const std::string prefix = "/api/players/";
+        const std::string suffix = "/progress";
+        std::string playerId;
+        if (path.find(prefix) == 0 && path.find(suffix) != std::string::npos) {
+            size_t start = prefix.length();
+            size_t end = path.find(suffix);
+            playerId = path.substr(start, end - start);
+        }
+
+        if (playerId.empty()) {
+            responseBody = R"({"errors":["Invalid player ID"]})";
+            return 400;
+        }
+
+        // Update the player config if it exists
+        auto it = playerConfigs_.find(playerId);
+        if (it != playerConfigs_.end()) {
+            // Parse the progress update from body
+            JsonDocument doc;
+            DeserializationError error = deserializeJson(doc, body);
+            if (!error) {
+                if (doc.containsKey("konami_progress")) {
+                    it->second.konamiProgress = doc["konami_progress"].as<uint8_t>();
+                }
+            }
+        }
+
+        responseBody = R"({"success":true,"message":"Progress updated"})";
         return 200;
     }
 };

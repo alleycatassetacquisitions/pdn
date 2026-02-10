@@ -20,13 +20,17 @@
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
+#include "game/challenge-game.hpp"
+#include "device/device-types.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
+#include "game/progress-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
+#include "state/state-machine-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -63,7 +67,11 @@ IdGenerator* idGenerator = nullptr;
 Player* player = nullptr;
 
 // Game instance
-Quickdraw* game = nullptr;
+StateMachine* game = nullptr;
+StateMachineManager* smManager = nullptr;
+
+// Progress management
+ProgressManager* progressManager = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -139,6 +147,10 @@ void setup() {
     player = new Player();
     player->setUserID(idGenerator->generateId());
     pdn->begin();
+
+    // Create and initialize ProgressManager
+    progressManager = new ProgressManager();
+    progressManager->initialize(player, pdn->getStorage());
     
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
@@ -153,8 +165,22 @@ void setup() {
     
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
-    
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+
+    // Check NVS for challenge device mode
+    std::string deviceMode = storageDriver->read(DEVICE_MODE_KEY, "");
+    if (isChallengeDeviceCode(deviceMode)) {
+        GameType npcGameType = getGameTypeFromCode(deviceMode);
+        KonamiButton reward = getRewardForGame(npcGameType);
+        LOG_I("SETUP", "NPC mode detected: %s", getGameDisplayName(npcGameType));
+        game = new ChallengeGame(pdn, npcGameType, reward);
+    } else {
+        game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+        smManager = new StateMachineManager(pdn);
+        smManager->setDefaultStateMachine(game);
+        Quickdraw* quickdraw = static_cast<Quickdraw*>(game);
+        quickdraw->setStateMachineManager(smManager);
+        quickdraw->setProgressManager(progressManager);
+    }
     
     pdn->getDisplay()->
     invalidateScreen()->
@@ -167,5 +193,9 @@ void setup() {
 
 void loop() {
     pdn->loop();
-    game->loop();
+    if (smManager) {
+        smManager->loop();
+    } else {
+        game->loop();
+    }
 }

@@ -19,6 +19,10 @@
 #include "cli/cli-device.hpp"
 #include "cli/cli-renderer.hpp"
 #include "cli/cli-commands.hpp"
+#include "cli/cli-event-logger.hpp"
+#include "cli/cli-script-runner.hpp"
+#include "device/device-types.hpp"
+#include "state/state-machine-manager.hpp"
 
 // Native drivers for global instances
 #include "device/drivers/native/native-logger-driver.hpp"
@@ -36,6 +40,11 @@ std::atomic<bool> g_running{true};
 std::string g_commandBuffer;
 std::string g_commandResult;
 int g_selectedDevice = 0;  // Currently selected device index
+std::string g_npcGameName;  // --npc flag value (empty = no NPC)
+std::string g_gameModeName;  // --game flag value (empty = normal Quickdraw)
+std::string g_scriptPath;   // --script flag value (empty = no script)
+std::string g_logPath;      // --log flag value (empty = no log file)
+bool g_headless = false;    // --headless flag
 
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
@@ -64,13 +73,51 @@ int parseArgs(int argc, char** argv) {
             return count;
         }
         
+        // NPC flag
+        if (arg == "--npc" && i + 1 < argc) {
+            g_npcGameName = argv[i + 1];
+            i++;  // Skip next arg (it's the game name)
+            continue;
+        }
+
+        // Game mode flag (standalone minigame)
+        if (arg == "--game" && i + 1 < argc) {
+            g_gameModeName = argv[i + 1];
+            i++;  // Skip next arg (it's the game name)
+            continue;
+        }
+
+        // Script automation flag
+        if (arg == "--script" && i + 1 < argc) {
+            g_scriptPath = argv[i + 1];
+            i++;
+            continue;
+        }
+
+        // Event log output file
+        if (arg == "--log" && i + 1 < argc) {
+            g_logPath = argv[i + 1];
+            i++;
+            continue;
+        }
+
+        // Headless mode (no UI, no prompts)
+        if (arg == "--headless") {
+            g_headless = true;
+            continue;
+        }
+
         // Help flag
         if (arg == "-h" || arg == "--help") {
             printf("PDN CLI Simulator\n");
             printf("Usage: %s [options] [device_count]\n\n", argv[0]);
             printf("Options:\n");
-            printf("  -n, --count N   Create N devices (1-%d)\n", MAX_DEVICES);
-            printf("  -h, --help      Show this help message\n");
+            printf("  -n, --count N     Create N devices (1-%d)\n", MAX_DEVICES);
+            printf("  --game <name>     Run a standalone minigame (e.g., signal-echo)\n");
+            printf("  --script <file>   Run automation script and exit\n");
+            printf("  --log <file>      Write event log to file on exit\n");
+            printf("  --headless        No UI, no prompts (for scripted use)\n");
+            printf("  -h, --help        Show this help message\n");
             printf("\nExamples:\n");
             printf("  %s           Interactive prompt for device count\n", argv[0]);
             printf("  %s 3         Create 3 devices\n", argv[0]);
@@ -132,26 +179,52 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
     printf("\033[0m");
     
     for (int i = 0; i < count; i++) {
-        // Alternate roles: even indices are hunters, odd are bounties
-        bool isHunter = (i % 2 == 0);
-        devices.push_back(cli::DeviceFactory::createDevice(i, isHunter));
-        
-        printf("  Device %s: %s\n", 
-               devices.back().deviceId.c_str(),
-               isHunter ? "Hunter" : "Bounty");
+        if (!g_gameModeName.empty()) {
+            // Standalone game mode
+            devices.push_back(cli::DeviceFactory::createGameDevice(i, g_gameModeName));
+            printf("  Device %s: %s (standalone)\n",
+                   devices.back().deviceId.c_str(),
+                   g_gameModeName.c_str());
+        } else {
+            // Alternate roles: even indices are hunters, odd are bounties
+            bool isHunter = (i % 2 == 0);
+            devices.push_back(cli::DeviceFactory::createDevice(i, isHunter));
+            printf("  Device %s: %s\n",
+                   devices.back().deviceId.c_str(),
+                   isHunter ? "Hunter" : "Bounty");
+        }
     }
     
+    // Add NPC device if --npc flag was specified
+    if (!g_npcGameName.empty()) {
+        GameType npcGameType = GameType::SIGNAL_ECHO;  // Default
+        std::string name = g_npcGameName;
+        for (char& c : name) {
+            if (c >= 'A' && c <= 'Z') c += 32;
+        }
+        parseGameName(name, npcGameType);
+
+        int npcIndex = static_cast<int>(devices.size());
+        devices.push_back(cli::DeviceFactory::createChallengeDevice(npcIndex, npcGameType));
+        printf("  Device %s: NPC (%s)\n",
+               devices.back().deviceId.c_str(),
+               getGameDisplayName(npcGameType));
+    }
+
     printf("\n");
-    printf("Press any key to start simulation...\n");
-    fflush(stdout);
-    
-    // Wait for keypress (blocking read)
-    #ifndef _WIN32
-    getchar();
-    #else
-    _getch();
-    #endif
-    
+
+    if (!g_headless) {
+        printf("Press any key to start simulation...\n");
+        fflush(stdout);
+
+        // Wait for keypress (blocking read)
+        #ifndef _WIN32
+        getchar();
+        #else
+        _getch();
+        #endif
+    }
+
     return devices;
 }
 
@@ -181,31 +254,93 @@ int main(int argc, char** argv) {
     // Determine device count from args or prompt
     int deviceCount = parseArgs(argc, argv);
     if (deviceCount < 0) {
-        deviceCount = promptDeviceCount();
+        // Default to 1 device for game mode or headless/script mode
+        if (!g_gameModeName.empty() || g_headless) {
+            deviceCount = 1;
+        } else {
+            deviceCount = promptDeviceCount();
+        }
     }
-    
+
     // Create devices
     std::vector<cli::DeviceInstance> devices = createDevices(deviceCount);
-    
-    // Now configure terminal for non-blocking input (Unix only)
+
+    // Create event logger for automation and diagnostics
+    cli::EventLogger eventLogger;
+
+    // Create CLI components
+    cli::Renderer renderer;
+    cli::CommandProcessor commandProcessor;
+
+    // Set up ScriptRunner if --script was provided
+    cli::ScriptRunner* scriptRunner = nullptr;
+    if (!g_scriptPath.empty()) {
+        scriptRunner = new cli::ScriptRunner(devices, commandProcessor, eventLogger);
+        if (!scriptRunner->loadFromFile(g_scriptPath)) {
+            printf("Error: cannot open script file: %s\n", g_scriptPath.c_str());
+            delete scriptRunner;
+            for (auto& device : devices) {
+                cli::DeviceFactory::destroyDevice(device);
+            }
+            delete globalLogger;
+            delete globalClock;
+            return 1;
+        }
+    }
+
+    // Headless mode: run script then exit
+    if (g_headless) {
+        int exitCode = 0;
+        if (scriptRunner) {
+            std::string error = scriptRunner->executeAll();
+            if (!error.empty()) {
+                printf("FAIL: %s\n", error.c_str());
+                exitCode = 1;
+            } else {
+                printf("PASS: script completed successfully\n");
+            }
+        }
+
+        // Write log file if requested
+        if (!g_logPath.empty()) {
+            eventLogger.writeToFile(g_logPath);
+        }
+
+        delete scriptRunner;
+        for (auto& device : devices) {
+            cli::DeviceFactory::destroyDevice(device);
+        }
+        delete globalLogger;
+        delete globalClock;
+        return exitCode;
+    }
+
+    // Interactive mode: configure terminal for non-blocking input (Unix only)
     #ifndef _WIN32
     struct termios oldTermios = cli::Terminal::enableRawMode();
     #endif
-    
+
     // Set up display for simulation
     cli::Terminal::clearScreen();
     cli::Terminal::hideCursor();
     cli::printHeader();
-    
-    // Create CLI components
-    cli::Renderer renderer;
-    cli::CommandProcessor commandProcessor;
-    
+
     // Show initial help hint
     g_commandResult = "Ready! Use LEFT/RIGHT to select device, UP/DOWN for buttons. Type 'help' for commands.";
-    
+
     // Main loop
     while (g_running) {
+        // If script has more commands, execute next one each frame
+        if (scriptRunner && scriptRunner->hasMore()) {
+            std::string error = scriptRunner->executeNext();
+            if (!error.empty()) {
+                g_commandResult = "Script error: " + error;
+                // Stop executing script on error, but don't quit
+                delete scriptRunner;
+                scriptRunner = nullptr;
+            }
+        }
+
         // Handle input (non-blocking)
         int key = cli::Terminal::readKey();
         while (key != static_cast<int>(cli::Key::NONE)) {
@@ -259,39 +394,52 @@ int main(int argc, char** argv) {
             }
             key = cli::Terminal::readKey();
         }
-        
+
         // Deliver pending peer-to-peer messages
         NativePeerBroker::getInstance().deliverPackets();
-        
+
         // Transfer serial data between connected devices
         cli::SerialCableBroker::getInstance().transferData();
-        
+
         // Update all devices
         for (auto& device : devices) {
             device.pdn->loop();
-            device.game->loop();
+            if (device.smManager) {
+                device.smManager->loop();
+            } else {
+                device.game->loop();
+            }
         }
-        
+
         // Render UI
         renderer.renderUI(devices, g_commandResult, g_commandBuffer, g_selectedDevice);
-        
+
         // Sleep to maintain ~30 FPS update rate
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
     }
-    
+
+    // Write log file if requested
+    if (!g_logPath.empty()) {
+        eventLogger.writeToFile(g_logPath);
+    }
+
     // Restore terminal settings and cursor
+    #ifndef _WIN32
+    cli::Terminal::restoreTerminal(oldTermios);
+    #endif
     cli::Terminal::showCursor();
-    
+
     // Move cursor below the UI for clean shutdown message
     printf("\n\nShutting down...\n");
-    
+
+    delete scriptRunner;
     for (auto& device : devices) {
         cli::DeviceFactory::destroyDevice(device);
     }
-    
+
     delete globalLogger;
     delete globalClock;
-    
+
     return 0;
 }
 

@@ -5,6 +5,7 @@
 #include <deque>
 #include <cstring>
 #include <vector>
+#include <functional>
 
 // Simple 5x7 bitmap font for basic ASCII characters (space through ~)
 // Each character is 5 pixels wide, 7 pixels tall
@@ -139,6 +140,7 @@ public:
             lastText_ = text;
             addToTextHistory(text);
             drawTextToBuffer(text, 0, 0);
+            if (textCallback_) textCallback_(text);
         }
         return this;
     }
@@ -175,6 +177,7 @@ public:
             lastText_ = text;
             addToTextHistory(text);
             drawTextToBuffer(text, xStart, yStart);
+            if (textCallback_) textCallback_(text);
         }
         return this;
     }
@@ -195,6 +198,10 @@ public:
         return this;
     }
     
+    // Event callback for EventLogger
+    using TextCallback = std::function<void(const std::string&)>;
+    void setTextCallback(TextCallback cb) { textCallback_ = cb; }
+
     // CLI access methods
     const std::string& getLastText() const { return lastText_; }
     FontMode getCurrentFontMode() const { return currentFontMode_; }
@@ -315,6 +322,7 @@ private:
     std::string lastText_;
     std::deque<std::string> textHistory_;
     static const size_t MAX_TEXT_HISTORY = 4;
+    TextCallback textCallback_;
     
     void addToTextHistory(const std::string& text) {
         // Don't add duplicates of the most recent entry

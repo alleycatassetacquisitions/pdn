@@ -10,7 +10,18 @@
 #include "cli-broker-tests.hpp"
 #include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
+#include "challenge-protocol-tests.hpp"
+#include "challenge-game-tests.hpp"
+#include "cli-challenge-tests.hpp"
+#include "device-mode-switch-tests.hpp"
+#include "konami-progress-tests.hpp"
+#include "profile-sync-tests.hpp"
+#include "profile-portability-tests.hpp"
+#include "signal-echo-tests.hpp"
+#include "minigame-base-tests.hpp"
+#include "cli-automation-tests.hpp"
 #include "sm-manager-tests.hpp"
+#include "integration-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -385,39 +396,631 @@ TEST_F(CliCommandTestSuite, RebootClearsHistory) {
 }
 
 // ============================================
-// STATE MACHINE MANAGER TESTS
+// CHALLENGE PROTOCOL TESTS
 // ============================================
 
-TEST_F(SmManagerTestSuite, DefaultLoop) {
+TEST_F(ChallengeProtocolTestSuite, ProtocolParseCdevMessage) {
+    protocolParseCdevMessage(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolParseCdevInvalid) {
+    protocolParseCdevInvalid(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolParseGresMessage) {
+    protocolParseGresMessage(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, ProtocolGameTypeLookup) {
+    protocolGameTypeLookup(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, MagicCodeDetectsChallenge) {
+    magicCodeDetectsChallenge(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, MagicCodeRejectsPlayer) {
+    magicCodeRejectsPlayer(this);
+}
+
+TEST_F(ChallengeProtocolTestSuite, MagicCodeMapsToGameType) {
+    magicCodeMapsToGameType(this);
+}
+
+// ============================================
+// CHALLENGE GAME TESTS
+// ============================================
+
+TEST_F(ChallengeGameTestSuite, NpcIdleBroadcastsCdev) {
+    npcIdleBroadcastsCdev(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcIdleDisplaysGameName) {
+    npcIdleDisplaysGameName(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcIdleTransitionsOnMac) {
+    npcIdleTransitionsOnMac(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcHandshakeSendsCack) {
+    npcHandshakeSendsCack(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcReceiveResultShowsOutcome) {
+    npcReceiveResultShowsOutcome(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcReceiveResultCachesResult) {
+    npcReceiveResultCachesResult(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcReceiveResultTransitions) {
+    npcReceiveResultTransitions(this);
+}
+
+TEST_F(ChallengeGameTestSuite, NpcLedAnimationPlays) {
+    npcLedAnimationPlays(this);
+}
+
+// ============================================
+// CLI CHALLENGE FACTORY TESTS
+// ============================================
+
+TEST_F(CliChallengeTestSuite, CliFactoryCreatesChallenge) {
+    cliFactoryCreatesChallenge(this);
+}
+
+TEST_F(CliChallengeTestSuite, CliFactoryChallengeHasCorrectGame) {
+    cliFactoryChallengeHasCorrectGame(this);
+}
+
+TEST_F(CliChallengeTestSuite, UniqueCodesInTestFixture) {
+    uniqueCodesInTestFixture(this);
+}
+
+// ============================================
+// DEVICE MODE SWITCH TESTS
+// ============================================
+
+TEST_F(DeviceModeSwitchTestSuite, NpcModePersistsAcrossReboot) {
+    npcModePersistsAcrossReboot(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, ClearedModeFallsBackToQuickdraw) {
+    clearedModeFallsBackToQuickdraw(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, SpecialCodesStillWork) {
+    specialCodesStillWork(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, NpcToPlayerToNpc) {
+    npcToPlayerToNpc(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, PlayerToNpcToPlayer) {
+    playerToNpcToPlayer(this);
+}
+
+TEST_F(DeviceModeSwitchTestSuite, FetchUserDetectsChallengeCode) {
+    fetchUserDetectsChallengeCode(this);
+}
+
+// ============================================
+// PROFILE SYNC TESTS
+// ============================================
+
+TEST_F(ProfileSyncTestSuite, ServerReturnsProgress) {
+    profileSyncServerReturnsProgress(this);
+}
+
+TEST_F(ProfileSyncTestSuite, FetchUserDataParsesProgress) {
+    profileSyncFetchUserDataParsesProgress(this);
+}
+
+TEST_F(ProfileSyncTestSuite, FetchUserDataMissingProgress) {
+    profileSyncFetchUserDataMissingProgress(this);
+}
+
+TEST_F(ProfileSyncTestSuite, ProgressSavedToNVS) {
+    profileSyncProgressSavedToNVS(this);
+}
+
+TEST_F(ProfileSyncTestSuite, ProgressLoadedFromNVS) {
+    profileSyncProgressLoadedFromNVS(this);
+}
+
+TEST_F(ProfileSyncTestSuite, ProgressUploadSendsCorrectJson) {
+    profileSyncProgressUploadSendsCorrectJson(this);
+}
+
+// ============================================
+// KONAMI PROGRESS TESTS
+// ============================================
+
+TEST_F(KonamiProgressTestSuite, UnlockSingleButton) {
+    konamiUnlockSingleButton(this);
+}
+
+TEST_F(KonamiProgressTestSuite, UnlockMultipleButtons) {
+    konamiUnlockMultipleButtons(this);
+}
+
+TEST_F(KonamiProgressTestSuite, HasUnlockedButtonTrue) {
+    konamiHasUnlockedButtonTrue(this);
+}
+
+TEST_F(KonamiProgressTestSuite, HasUnlockedButtonFalse) {
+    konamiHasUnlockedButtonFalse(this);
+}
+
+TEST_F(KonamiProgressTestSuite, AllButtonsUnlocked) {
+    konamiAllButtonsUnlocked(this);
+}
+
+TEST_F(KonamiProgressTestSuite, DuplicateUnlockIdempotent) {
+    konamiDuplicateUnlockIdempotent(this);
+}
+
+TEST_F(KonamiProgressTestSuite, ProgressSerializesToJson) {
+    konamiProgressSerializesToJson(this);
+}
+
+TEST_F(KonamiProgressTestSuite, ProgressDeserializesFromJson) {
+    konamiProgressDeserializesFromJson(this);
+}
+
+TEST_F(KonamiProgressTestSuite, ProgressDeserializeMissingField) {
+    konamiProgressDeserializeMissingField(this);
+}
+
+// ============================================
+// PROFILE PORTABILITY TESTS
+// ============================================
+
+TEST_F(ProfilePortabilityTestSuite, LoginFetchesProfile) {
+    portabilityLoginFetchesProfile(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, LoginSameDeviceSameProfile) {
+    portabilityLoginSameDeviceSameProfile(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, LoginDifferentDeviceSameProfile) {
+    portabilityLoginDifferentDeviceSameProfile(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, LoginNewProfileOnReassignedDevice) {
+    portabilityLoginNewProfileOnReassignedDevice(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, BoothCheckInOutChain) {
+    portabilityBoothCheckInOutChain(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, OfflineFallbackToLocalProgress) {
+    portabilityOfflineFallbackToLocalProgress(this);
+}
+
+TEST_F(ProfilePortabilityTestSuite, ProgressSurvivesRestart) {
+    portabilityProgressSurvivesRestart(this);
+}
+
+// ============================================
+// MINIGAME BASE CLASS TESTS
+// ============================================
+
+TEST_F(MiniGameTestSuite, MiniGameBaseIdentity) {
+    miniGameBaseIdentity(this);
+}
+
+TEST_F(MiniGameTestSuite, MiniGameBaseOutcomeDefault) {
+    miniGameBaseOutcomeDefault(this);
+}
+
+// ============================================
+// SIGNAL ECHO TESTS
+// ============================================
+
+TEST_F(SignalEchoTestSuite, SequenceGenerationLength) {
+    echoSequenceGenerationLength(this);
+}
+
+TEST_F(SignalEchoTestSuite, SequenceGenerationMixed) {
+    echoSequenceGenerationMixed(this);
+}
+
+TEST_F(SignalEchoTestSuite, IntroTransitionsToShow) {
+    echoIntroTransitionsToShow(this);
+}
+
+TEST_F(SignalEchoTestSuite, ShowSequenceTimingPerSignal) {
+    echoShowSequenceTimingPerSignal(this);
+}
+
+TEST_F(SignalEchoTestSuite, ShowTransitionsToInput) {
+    echoShowTransitionsToInput(this);
+}
+
+TEST_F(SignalEchoTestSuite, CorrectInputAdvancesIndex) {
+    echoCorrectInputAdvancesIndex(this);
+}
+
+TEST_F(SignalEchoTestSuite, WrongInputCountsMistake) {
+    echoWrongInputCountsMistake(this);
+}
+
+TEST_F(SignalEchoTestSuite, AllCorrectInputsNextRound) {
+    echoAllCorrectInputsNextRound(this);
+}
+
+TEST_F(SignalEchoTestSuite, MistakesExhaustedLose) {
+    echoMistakesExhaustedLose(this);
+}
+
+TEST_F(SignalEchoTestSuite, AllRoundsCompletedWin) {
+    echoAllRoundsCompletedWin(this);
+}
+
+TEST_F(SignalEchoTestSuite, CumulativeModeAppends) {
+    echoCumulativeModeAppends(this);
+}
+
+TEST_F(SignalEchoTestSuite, FreshModeNewSequence) {
+    echoFreshModeNewSequence(this);
+}
+
+TEST_F(SignalEchoTestSuite, WinSetsOutcome) {
+    echoWinSetsOutcome(this);
+}
+
+TEST_F(SignalEchoTestSuite, LoseSetsOutcome) {
+    echoLoseSetsOutcome(this);
+}
+
+TEST_F(SignalEchoTestSuite, IsGameCompleteAfterWin) {
+    echoIsGameCompleteAfterWin(this);
+}
+
+TEST_F(SignalEchoTestSuite, ResetGameClearsOutcome) {
+    echoResetGameClearsOutcome(this);
+}
+
+TEST_F(SignalEchoTestSuite, StandaloneRestartAfterWin) {
+    echoStandaloneRestartAfterWin(this);
+}
+
+// ============================================
+// SIGNAL ECHO DIFFICULTY TESTS
+// ============================================
+
+TEST_F(SignalEchoDifficultyTestSuite, EasyModeSequenceLength4) {
+    echoDiffEasyModeSequenceLength4(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, EasyMode3MistakesAllowed) {
+    echoDiffEasyMode3MistakesAllowed(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HardModeSequenceLength8) {
+    echoDiffHardModeSequenceLength8(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HardMode1MistakeAllowed) {
+    echoDiffHardMode1MistakeAllowed(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, WrongInputShowsErrorMarker) {
+    echoDiffWrongInputShowsErrorMarker(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, WrongInputAdvancesToNext) {
+    echoDiffWrongInputAdvancesToNext(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LifeIndicatorStartsFull) {
+    echoDiffLifeIndicatorStartsFull(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LifeIndicatorDecrementsOnMistake) {
+    echoDiffLifeIndicatorDecrementsOnMistake(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, LifeIndicatorCorrectCount) {
+    echoDiffLifeIndicatorCorrectCount(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, FullResetOnLose) {
+    echoDiffFullResetOnLose(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, EasyModeWinUnlocksKonami) {
+    echoDiffEasyModeWinUnlocksKonami(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, HardModeWinUnlocksColorProfile) {
+    echoDiffHardModeWinUnlocksColorProfile(this);
+}
+
+TEST_F(SignalEchoDifficultyTestSuite, MistakeIsRegistered) {
+    echoDiffMistakeIsRegistered(this);
+}
+
+// ============================================
+// COLOR PROFILE TESTS
+// ============================================
+
+TEST_F(ColorProfileTestSuite, SignalEchoPaletteValues) {
+    colorProfileSignalEchoPaletteValues(this);
+}
+
+TEST_F(ColorProfileTestSuite, IdlePaletteSize) {
+    colorProfileIdlePaletteSize(this);
+}
+
+TEST_F(ColorProfileTestSuite, DefaultPaletteValues) {
+    colorProfileDefaultPaletteValues(this);
+}
+
+TEST_F(ColorProfileTestSuite, IdleStateHasBrightness) {
+    colorProfileIdleStateHasBrightness(this);
+}
+
+TEST_F(ColorProfileTestSuite, WinStateIsRainbow) {
+    colorProfileWinStateIsRainbow(this);
+}
+
+TEST_F(ColorProfileTestSuite, LoseStateIsRed) {
+    colorProfileLoseStateIsRed(this);
+}
+
+TEST_F(ColorProfileTestSuite, ErrorStateIsRed) {
+    colorProfileErrorStateIsRed(this);
+}
+
+TEST_F(ColorProfileTestSuite, CorrectStateIsGreen) {
+    colorProfileCorrectStateIsGreen(this);
+}
+
+// ============================================
+// EVENT LOGGER TESTS
+// ============================================
+
+TEST_F(EventLoggerTestSuite, LogAndRetrieve) {
+    eventLoggerLogAndRetrieve(this);
+}
+
+TEST_F(EventLoggerTestSuite, FilterByType) {
+    eventLoggerFilterByType(this);
+}
+
+TEST_F(EventLoggerTestSuite, FilterByDevice) {
+    eventLoggerFilterByDevice(this);
+}
+
+TEST_F(EventLoggerTestSuite, FilterByTypeAndDevice) {
+    eventLoggerFilterByTypeAndDevice(this);
+}
+
+TEST_F(EventLoggerTestSuite, GetLast) {
+    eventLoggerGetLast(this);
+}
+
+TEST_F(EventLoggerTestSuite, HasEvent) {
+    eventLoggerHasEvent(this);
+}
+
+TEST_F(EventLoggerTestSuite, Count) {
+    eventLoggerCount(this);
+}
+
+TEST_F(EventLoggerTestSuite, Clear) {
+    eventLoggerClear(this);
+}
+
+TEST_F(EventLoggerTestSuite, FormatEvent) {
+    eventLoggerFormatEvent(this);
+}
+
+TEST_F(EventLoggerTestSuite, WriteToFile) {
+    eventLoggerWriteToFile(this);
+}
+
+// ============================================
+// DRIVER CALLBACK TESTS
+// ============================================
+
+TEST_F(DriverCallbackTestSuite, SerialWriteCallbackFires) {
+    serialDriverWriteCallbackFires(this);
+}
+
+TEST_F(DriverCallbackTestSuite, SerialWriteCallbackCharPtr) {
+    serialDriverWriteCallbackCharPtr(this);
+}
+
+TEST_F(DriverCallbackTestSuite, SerialReadCallbackFires) {
+    serialDriverReadCallbackFires(this);
+}
+
+TEST_F(DriverCallbackTestSuite, CallbacksCoexistWithStringCallback) {
+    serialDriverCallbacksCoexistWithStringCallback(this);
+}
+
+TEST_F(DriverCallbackTestSuite, DisplayTextCallbackFires) {
+    displayDriverTextCallbackFires(this);
+}
+
+TEST_F(DriverCallbackTestSuite, DisplayTextCallbackPositioned) {
+    displayDriverTextCallbackPositioned(this);
+}
+
+TEST_F(DriverCallbackTestSuite, DisplayTextCallbackMultipleCalls) {
+    displayDriverTextCallbackMultipleCalls(this);
+}
+
+// ============================================
+// SCRIPT RUNNER TESTS
+// ============================================
+
+TEST_F(ScriptRunnerTestSuite, ParseSkipsComments) {
+    scriptRunnerParseSkipsComments(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, ExecutesCableCommand) {
+    scriptRunnerExecutesCableCommand(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, WaitAdvancesClock) {
+    scriptRunnerWaitAdvancesClock(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, TickRunsLoops) {
+    scriptRunnerTickRunsLoops(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, PressButton) {
+    scriptRunnerPressButton(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertStatePass) {
+    scriptRunnerAssertStatePass(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertStateFail) {
+    scriptRunnerAssertStateFail(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertTextPass) {
+    scriptRunnerAssertTextPass(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertSerialTx) {
+    scriptRunnerAssertSerialTx(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, AssertNoEvent) {
+    scriptRunnerAssertNoEvent(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, StopsOnFirstError) {
+    scriptRunnerStopsOnFirstError(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, ReportsLineNumber) {
+    scriptRunnerReportsLineNumber(this);
+}
+
+// ============================================
+// SM MANAGER TESTS
+// ============================================
+
+TEST_F(SmManagerTestSuite, smManagerDefaultLoop) {
     smManagerDefaultLoop(this);
 }
 
-TEST_F(SmManagerTestSuite, PauseAndLoad) {
+TEST_F(SmManagerTestSuite, smManagerPauseAndLoad) {
     smManagerPauseAndLoad(this);
 }
 
-TEST_F(SmManagerTestSuite, AutoResume) {
+TEST_F(SmManagerTestSuite, smManagerAutoResume) {
     smManagerAutoResume(this);
 }
 
-TEST_F(SmManagerTestSuite, OutcomeStored) {
+TEST_F(SmManagerTestSuite, smManagerOutcomeStored) {
     smManagerOutcomeStored(this);
 }
 
-TEST_F(SmManagerTestSuite, ResumeToCorrectState) {
+TEST_F(SmManagerTestSuite, smManagerResumeToCorrectState) {
     smManagerResumeToCorrectState(this);
 }
 
-TEST_F(SmManagerTestSuite, DeletesSwappedGame) {
+TEST_F(SmManagerTestSuite, smManagerDeletesSwappedGame) {
     smManagerDeletesSwappedGame(this);
 }
 
-TEST_F(SmManagerTestSuite, PauseAndLoadWon) {
+TEST_F(SmManagerTestSuite, smManagerPauseAndLoadWon) {
     smManagerPauseAndLoadWon(this);
 }
 
-TEST_F(SmManagerTestSuite, PauseAndLoadLost) {
+TEST_F(SmManagerTestSuite, smManagerPauseAndLoadLost) {
     smManagerPauseAndLoadLost(this);
+}
+
+// ============================================
+// FEATURE A/B/E VALIDATION TESTS
+// ============================================
+
+TEST_F(ScriptRunnerTestSuite, FeatureA_NpcBroadcastsCdev) {
+    featureA_NpcBroadcastsCdev(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureA_CdevMessageFormat) {
+    featureA_CdevMessageFormat(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureB_SignalEchoStandaloneWin) {
+    featureB_SignalEchoStandaloneWin(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureB_SignalEchoStandaloneLose) {
+    featureB_SignalEchoStandaloneLose(this);
+}
+
+TEST_F(ScriptRunnerTestSuite, FeatureE_KonamiProgressTracking) {
+    featureE_KonamiProgressTracking(this);
+}
+
+// ============================================
+// INTEGRATION TESTS
+// ============================================
+
+TEST_F(IntegrationTestSuite, CdevTriggersTransition) {
+    integrationCdevTriggersTransition(this);
+}
+
+TEST_F(IntegrationTestSuite, ChallengeDetectedSendsMac) {
+    integrationChallengeDetectedSendsMac(this);
+}
+
+TEST_F(IntegrationTestSuite, SwapsOnCack) {
+    integrationSwapsOnCack(this);
+}
+
+TEST_F(IntegrationTestSuite, TimeoutToIdle) {
+    integrationTimeoutToIdle(this);
+}
+
+TEST_F(IntegrationTestSuite, InvalidCdevToIdle) {
+    integrationInvalidCdevToIdle(this);
+}
+
+TEST_F(IntegrationTestSuite, ChallengeCompleteWinToIdle) {
+    integrationChallengeCompleteWinToIdle(this);
+}
+
+TEST_F(IntegrationTestSuite, ChallengeCompleteUnlocksKonami) {
+    integrationChallengeCompleteUnlocksKonami(this);
+}
+
+TEST_F(IntegrationTestSuite, NoUnlockOnLoss) {
+    integrationNoUnlockOnLoss(this);
+}
+
+TEST_F(IntegrationTestSuite, SavesProgress) {
+    integrationSavesProgress(this);
+}
+
+TEST_F(IntegrationTestSuite, SmManagerWired) {
+    integrationSmManagerWired(this);
+}
+
+TEST_F(IntegrationTestSuite, PlayerPendingChallenge) {
+    integrationPlayerPendingChallenge(this);
+}
+
+TEST_F(IntegrationTestSuite, NormalHandshakeStillWorks) {
+    integrationNormalHandshakeStillWorks(this);
 }
 
 // ============================================

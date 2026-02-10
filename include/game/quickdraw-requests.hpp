@@ -15,10 +15,15 @@ struct PlayerResponse {
     std::string faction;
     std::vector<std::string> errors;
 
+    // Konami progress fields — default to zero/empty for backward compatibility
+    uint8_t konamiProgress = 0;
+    uint8_t equippedColorProfile = 0;
+    std::vector<uint8_t> colorProfileEligibility;
+
     bool parseFromJson(const std::string& json) {
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, json);
-        
+
         if (error) {
             LOG_E("QuickdrawRequests", "Failed to parse player JSON: %s", error.c_str());
             return false;
@@ -46,6 +51,19 @@ struct PlayerResponse {
         isHunter = data["hunter"].as<bool>();
         allegiance = data["allegiance"].as<int>();
         faction = data["faction"].as<std::string>();
+
+        // Optional fields — default to 0/empty if missing (backward compat)
+        if (data.containsKey("konami_progress")) {
+            konamiProgress = data["konami_progress"].as<uint8_t>();
+        }
+        if (data.containsKey("equipped_color_profile")) {
+            equippedColorProfile = data["equipped_color_profile"].as<uint8_t>();
+        }
+        if (data.containsKey("color_profile_eligibility")) {
+            for (JsonVariant v : data["color_profile_eligibility"].as<JsonArray>()) {
+                colorProfileEligibility.push_back(v.as<uint8_t>());
+            }
+        }
 
         return true;
     }
@@ -105,6 +123,30 @@ namespace QuickdrawRequests {
             onError
         );
         
+        wirelessManager->queueHttpRequest(request);
+    }
+
+    /**
+     * Upload player progress (Konami buttons, game results) to the server.
+     * Automatically switches to WiFi mode if needed.
+     */
+    inline void updateProgress(
+        WirelessManager* wirelessManager,
+        const std::string& playerId,
+        const std::string& progressJson,
+        const std::function<void(const std::string&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError
+    ) {
+        std::string path = "/api/players/" + playerId + "/progress";
+
+        HttpRequest request(
+            path,
+            "PUT",
+            progressJson,
+            onSuccess,
+            onError
+        );
+
         wirelessManager->queueHttpRequest(request);
     }
 
