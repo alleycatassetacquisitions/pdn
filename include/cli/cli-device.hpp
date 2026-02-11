@@ -23,6 +23,9 @@
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
 #include "game/fdn-game.hpp"
+#include "game/signal-echo/signal-echo.hpp"
+#include "game/signal-echo/signal-echo-states.hpp"
+#include "game/signal-echo/signal-echo-resources.hpp"
 #include "device/device-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
@@ -60,6 +63,18 @@ inline const char* getQuickdrawStateName(int stateId) {
     }
 }
 
+inline const char* getSignalEchoStateName(int stateId) {
+    switch (stateId) {
+        case ECHO_INTRO:         return "EchoIntro";
+        case ECHO_SHOW_SEQUENCE: return "EchoShowSequence";
+        case ECHO_PLAYER_INPUT:  return "EchoPlayerInput";
+        case ECHO_EVALUATE:      return "EchoEvaluate";
+        case ECHO_WIN:           return "EchoWin";
+        case ECHO_LOSE:          return "EchoLose";
+        default:                 return "Unknown";
+    }
+}
+
 inline const char* getFdnStateName(int stateId) {
     switch (stateId) {
         case 0: return "NpcIdle";
@@ -70,9 +85,13 @@ inline const char* getFdnStateName(int stateId) {
     }
 }
 
-inline const char* getStateName(int stateId, DeviceType deviceType = DeviceType::PLAYER) {
+inline const char* getStateName(int stateId, DeviceType deviceType = DeviceType::PLAYER, GameType gameType = GameType::QUICKDRAW) {
     if (deviceType == DeviceType::FDN) {
         return getFdnStateName(stateId);
+    }
+    // Signal Echo state IDs are in the 100+ range
+    if (stateId >= ECHO_INTRO) {
+        return getSignalEchoStateName(stateId);
     }
     return getQuickdrawStateName(stateId);
 }
@@ -325,6 +344,75 @@ public:
 
         SerialCableBroker::getInstance().registerDevice(
             deviceIndex, instance.serialOutDriver, instance.serialInDriver, true);
+
+        return instance;
+    }
+
+    /**
+     * Create a standalone game device (e.g., Signal Echo in standalone mode).
+     *
+     * @param deviceIndex Index for this device
+     * @param gameName Name of the game to launch ("signal-echo")
+     * @return Fully initialized DeviceInstance running the specified game
+     */
+    static DeviceInstance createGameDevice(int deviceIndex, const std::string& gameName) {
+        DeviceInstance instance;
+        instance.deviceIndex = deviceIndex;
+        instance.isHunter = false;
+        instance.deviceType = DeviceType::PLAYER;
+
+        char idBuffer[5];
+        snprintf(idBuffer, sizeof(idBuffer), "%04d", 10 + deviceIndex);
+        instance.deviceId = idBuffer;
+
+        std::string suffix = "_" + std::to_string(deviceIndex);
+
+        instance.loggerDriver = new NativeLoggerDriver(LOGGER_DRIVER_NAME + suffix);
+        instance.loggerDriver->setSuppressOutput(true);
+        instance.clockDriver = new NativeClockDriver(PLATFORM_CLOCK_DRIVER_NAME + suffix);
+        instance.displayDriver = new NativeDisplayDriver(DISPLAY_DRIVER_NAME + suffix);
+        instance.primaryButtonDriver = new NativeButtonDriver(PRIMARY_BUTTON_DRIVER_NAME + suffix, 0);
+        instance.secondaryButtonDriver = new NativeButtonDriver(SECONDARY_BUTTON_DRIVER_NAME + suffix, 1);
+        instance.lightDriver = new NativeLightStripDriver(LIGHT_DRIVER_NAME + suffix);
+        instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix, 0);
+        instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
+        instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
+        instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
+        instance.httpClientDriver->setMockServerEnabled(true);
+        instance.httpClientDriver->setConnected(true);
+        instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
+        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+
+        DriverConfig pdnConfig = {
+            {DISPLAY_DRIVER_NAME, instance.displayDriver},
+            {PRIMARY_BUTTON_DRIVER_NAME, instance.primaryButtonDriver},
+            {SECONDARY_BUTTON_DRIVER_NAME, instance.secondaryButtonDriver},
+            {LIGHT_DRIVER_NAME, instance.lightDriver},
+            {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
+            {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
+            {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
+            {HTTP_CLIENT_DRIVER_NAME, instance.httpClientDriver},
+            {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
+            {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},
+            {LOGGER_DRIVER_NAME, instance.loggerDriver},
+            {STORAGE_DRIVER_NAME, instance.storageDriver},
+        };
+
+        instance.pdn = PDN::createPDN(pdnConfig);
+        instance.pdn->begin();
+
+        instance.player = nullptr;
+        instance.quickdrawWirelessManager = nullptr;
+
+        if (gameName == "signal-echo") {
+            instance.gameType = GameType::SIGNAL_ECHO;
+            instance.game = new SignalEcho(SIGNAL_ECHO_EASY);
+
+            AppConfig apps = {
+                {StateId(SIGNAL_ECHO_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(SIGNAL_ECHO_APP_ID));
+        }
 
         return instance;
     }
