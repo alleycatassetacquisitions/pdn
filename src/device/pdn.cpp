@@ -50,10 +50,6 @@ void PDN::loop() {
     lightManager->loop();
 }
 
-void PDN::onStateChange() {
-    lightManager->clear();
-    flushSerial();
-}
 
 Display* PDN::getDisplay() {
     return display;

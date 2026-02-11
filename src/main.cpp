@@ -162,10 +162,13 @@ void setup() {
         drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
     delay(3000);
-    game->initialize();
+
+    pdn->loadAppConfig(
+        {{QUICKDRAW_APP_ID, game}},
+        QUICKDRAW_APP_ID
+    );
 }
 
 void loop() {
     pdn->loop();
-    game->loop();
 }

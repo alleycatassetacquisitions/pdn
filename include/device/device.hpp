@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <map>
 #include "device-serial.hpp"
 #include "drivers/display.hpp"
 #include "drivers/button.hpp"
@@ -8,6 +9,11 @@
 #include "light-manager.hpp"
 #include "drivers/driver-manager.hpp"
 #include "wireless-manager.hpp"
+#include "state/state-types.hpp"
+
+class StateMachine;
+
+using AppConfig = std::map<StateId, StateMachine*>;
 
 class Device : public DeviceSerial {
 public:
@@ -23,11 +29,10 @@ public:
 
     virtual int begin() = 0;
 
-    virtual void loop() {
-        driverManager.execDrivers();
-    }
+    virtual void loop();
 
-    virtual void onStateChange() = 0;
+    void loadAppConfig(AppConfig config, StateId launchAppId);
+    void setActiveApp(StateId appId);
 
     virtual void setDeviceId(const std::string& deviceId) = 0;
 
@@ -47,6 +52,9 @@ protected:
     explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {
         driverManager.initialize();
     }
+
+    AppConfig appConfig;
+    StateId currentAppId;
 
 private:
     DriverManager driverManager;

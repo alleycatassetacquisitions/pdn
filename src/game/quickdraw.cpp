@@ -1,6 +1,6 @@
 #include "../../include/game/quickdraw.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(PDN) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(QUICKDRAW_APP_ID.id) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->remoteDebugManager = remoteDebugManager;

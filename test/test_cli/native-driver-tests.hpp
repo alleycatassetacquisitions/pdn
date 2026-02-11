@@ -930,7 +930,6 @@ void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
     // Run a few loop cycles — mock HTTP responds immediately
     for (int i = 0; i < 10; i++) {
         suite->device_.pdn->loop();
-        suite->device_.game->loop();
     }
 
     // Should have transitioned to WelcomeMessage
@@ -944,7 +943,6 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     // Advance past FetchUserData
     for (int i = 0; i < 10; i++) {
         suite->device_.pdn->loop();
-        suite->device_.game->loop();
     }
     State* state = suite->device_.game->getCurrentState();
     ASSERT_NE(state->getStateId(), FETCH_USER_DATA);
@@ -954,7 +952,7 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     suite->device_.httpClientDriver->setConnected(true);
     suite->device_.stateHistory.clear();
     suite->device_.lastStateId = -1;
-    suite->device_.game->skipToState(1);
+    suite->device_.game->skipToState(suite->device_.pdn, 1);
 
     // Should be back at FetchUserData
     state = suite->device_.game->getCurrentState();
@@ -967,7 +965,6 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     // Advance device further (past FetchUserData into WelcomeMessage or beyond)
     for (int i = 0; i < 10; i++) {
         suite->device_.pdn->loop();
-        suite->device_.game->loop();
     }
     ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), WELCOME_MESSAGE);
 
@@ -976,14 +973,13 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     suite->device_.httpClientDriver->setConnected(true);
     suite->device_.stateHistory.clear();
     suite->device_.lastStateId = -1;
-    suite->device_.game->skipToState(1);
+    suite->device_.game->skipToState(suite->device_.pdn, 1);
 
     ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), FETCH_USER_DATA);
 
     // Run loops again — should transition to WelcomeMessage again
     for (int i = 0; i < 10; i++) {
         suite->device_.pdn->loop();
-        suite->device_.game->loop();
     }
     ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), WELCOME_MESSAGE);
 }
@@ -1004,7 +1000,7 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     suite->device_.httpClientDriver->setConnected(true);
     suite->device_.stateHistory.clear();
     suite->device_.lastStateId = -1;
-    suite->device_.game->skipToState(1);
+    suite->device_.game->skipToState(suite->device_.pdn, 1);
 
     // History should be cleared
     ASSERT_TRUE(suite->device_.stateHistory.empty());

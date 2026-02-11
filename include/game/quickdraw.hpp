@@ -12,6 +12,8 @@
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
+const StateId QUICKDRAW_APP_ID(1);
+
 class Quickdraw : public StateMachine {
 public:
     Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager);

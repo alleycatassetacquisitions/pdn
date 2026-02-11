@@ -202,12 +202,17 @@ public:
         
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
-        instance.game->initialize();
-        
+
+        // Load app config and launch Quickdraw
+        instance.pdn->loadAppConfig(
+            {{QUICKDRAW_APP_ID, instance.game}},
+            QUICKDRAW_APP_ID
+        );
+
         // Skip PlayerRegistration state and go directly to FetchUserDataState
         // This prevents the registration flow from overwriting the player ID
         // State index 1 = FetchUserDataState (based on Quickdraw::populateStateMap order)
-        instance.game->skipToState(1);
+        instance.game->skipToState(instance.pdn, 1);
         
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(

@@ -110,8 +110,12 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     
     // Create game
     instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr);
-    instance.game->initialize();
-    
+
+    instance.pdn->loadAppConfig(
+        {{QUICKDRAW_APP_ID, instance.game}},
+        QUICKDRAW_APP_ID
+    );
+
     return instance;
 }
 
@@ -220,7 +224,6 @@ int main(int argc, char** argv) {
         // Update all devices
         for (auto& device : devices) {
             device.pdn->loop();
-            device.game->loop();
         }
         
         // Render dashboard
