@@ -189,7 +189,7 @@ public:
 class TestStateMachine : public StateMachine {
 public:
 
-    TestStateMachine(MockDevice *PDN) : StateMachine(PDN) {
+    TestStateMachine() : StateMachine(0) {
     }
 
     ~TestStateMachine() {
@@ -269,7 +269,7 @@ protected:
     }
 
     void SetUp() override {
-        stateMachine = new TestStateMachine(&stateMachineDevice);
+        stateMachine = new TestStateMachine();
     }
 
     void advanceStateMachineToState(int stateId) {
@@ -305,7 +305,7 @@ protected:
         }
 
         while(loopCount--) {
-            stateMachine->loop();
+            stateMachine->onStateLoop(&stateMachineDevice);
         }
     }
 

@@ -215,7 +215,6 @@ public:
 
     // Device Methods
     MOCK_METHOD(int, begin, (), (override));
-    MOCK_METHOD(void, onStateChange, (), (override));
     MOCK_METHOD(void, setDeviceId, (const std::string&), (override));
     MOCK_METHOD(std::string, getDeviceId, (), (override));
 

@@ -7,7 +7,14 @@
 #include "drivers/light-interface.hpp"
 #include "light-manager.hpp"
 #include "drivers/driver-manager.hpp"
+#include "drivers/logger.hpp"
 #include "wireless-manager.hpp"
+#include "state/state-types.hpp"
+#include <map>
+
+class StateMachine;
+
+using AppConfig = std::map<StateId, StateMachine*>;
 
 class Device : public DeviceSerial {
 public:
@@ -19,15 +26,16 @@ public:
 
     ~Device() override {
         driverManager.dismountDrivers();
+        appConfig.clear();
     }
+
+    void loadAppConfig(AppConfig config, StateId launchAppId);
 
     virtual int begin() = 0;
 
-    virtual void loop() {
-        driverManager.execDrivers();
-    }
+    void setActiveApp(StateId appId);
 
-    virtual void onStateChange() = 0;
+    virtual void loop();
 
     virtual void setDeviceId(const std::string& deviceId) = 0;
 
@@ -50,4 +58,6 @@ protected:
 
 private:
     DriverManager driverManager;
+    AppConfig appConfig;
+    StateId currentAppId;
 };

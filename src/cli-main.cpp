@@ -269,7 +269,6 @@ int main(int argc, char** argv) {
         // Update all devices
         for (auto& device : devices) {
             device.pdn->loop();
-            device.game->loop();
         }
         
         // Render UI

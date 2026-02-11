@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "device/device.hpp"
 
 ChooseRoleState::ChooseRoleState(Player* player) : State(QuickdrawStateId::CHOOSE_ROLE) {
     this->player = player;

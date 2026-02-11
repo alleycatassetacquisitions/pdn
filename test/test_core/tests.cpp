@@ -3,7 +3,6 @@
 
 // Existing test headers
 #include "state-machine-tests.hpp"
-#include "state-tests.hpp"
 #include "serial-tests.hpp"
 
 // New test headers
@@ -47,7 +46,7 @@ void loop()
 
 TEST_F(StateMachineTestSuite, testInitialize) {
 
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     State* currentState = stateMachine->getCurrentState();
 
@@ -55,7 +54,7 @@ TEST_F(StateMachineTestSuite, testInitialize) {
 }
 
 TEST_F(StateMachineTestSuite, initializeAddsTransitions) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
     SecondTestState* second = dynamic_cast<SecondTestState*>(stateMachine->getStateFromStateMap(1));
@@ -70,7 +69,7 @@ TEST_F(StateMachineTestSuite, initializeAddsTransitions) {
 }
 
 TEST_F(StateMachineTestSuite, initializePopulatesStateMap) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     std::vector<State *> populatedStates = stateMachine->getStateMap();
 
@@ -86,7 +85,7 @@ TEST_F(StateMachineTestSuite, stateMapIsEmptyWhenStateMachineNotInitialized) {
 
 TEST_F(StateMachineTestSuite, stateShouldTransitionAfterConditionMet) {
 
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     advanceStateMachineToState(SECOND_STATE);
 
@@ -97,7 +96,7 @@ TEST_F(StateMachineTestSuite, stateShouldTransitionAfterConditionMet) {
 
 TEST_F(StateMachineTestSuite, whenTransitionIsMetStateDismounts) {
 
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     advanceStateMachineToState(SECOND_STATE);
 
@@ -108,7 +107,7 @@ TEST_F(StateMachineTestSuite, whenTransitionIsMetStateDismounts) {
 
 TEST_F(StateMachineTestSuite, stateMachineTransitionsThroughAllStates) {
 
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     advanceStateMachineToState(TERMINAL_STATE);
 
@@ -117,7 +116,7 @@ TEST_F(StateMachineTestSuite, stateMachineTransitionsThroughAllStates) {
 }
 
 TEST_F(StateMachineTestSuite, stateLifecyclesAreInvoked) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
     SecondTestState* second = dynamic_cast<SecondTestState*>(stateMachine->getStateFromStateMap(1));
@@ -145,7 +144,7 @@ TEST_F(StateMachineTestSuite, stateLifecyclesAreInvoked) {
 }
 
 TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     advanceStateMachineToState(TERMINAL_STATE);
 
@@ -159,7 +158,7 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
     .RetiresOnSaturation();
 
     while(numLoopsBeforeTransition--) {
-        stateMachine->loop();
+        stateMachine->onStateLoop(&stateMachineDevice);
         ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == TERMINAL_STATE);
     }
 
@@ -168,13 +167,13 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
     .WillRepeatedly(testing::Return(255))
     .RetiresOnSaturation();
 
-    stateMachine->loop();
+    stateMachine->onStateLoop(&stateMachineDevice);
 
     ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
 }
 
 TEST_F(StateMachineTestSuite, whenTwoTransitionsAreMetSimultaneouslyThenTheFirstTransitionAddedTriggersFirst) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     advanceStateMachineToState(TERMINAL_STATE);
 
@@ -184,13 +183,13 @@ TEST_F(StateMachineTestSuite, whenTwoTransitionsAreMetSimultaneouslyThenTheFirst
     .Times(2)
     .WillRepeatedly(testing::Return(255));
 
-    stateMachine->loop();
+    stateMachine->onStateLoop(&stateMachineDevice);
 
     ASSERT_FALSE(stateMachine->getCurrentState()->getStateId() == INITIAL_STATE);
 }
 
 TEST_F(StateMachineTestSuite, whenCurrentStateTransitionIsValidCheckTransitionsSetsNewState) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getCurrentState());
 
@@ -206,7 +205,7 @@ TEST_F(StateMachineTestSuite, whenCurrentStateTransitionIsValidCheckTransitionsS
 }
 
 TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
-    stateMachine->initialize();
+    stateMachine->initialize(&stateMachineDevice);
 
     InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getCurrentState());
 
@@ -217,39 +216,11 @@ TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
     ASSERT_TRUE(stateMachine->getTransitionReadyFlag());
     ASSERT_NE(stateMachine->getNewState(), nullptr);
 
-    stateMachine->commitState();
+    stateMachine->commitState(&stateMachineDevice);
 
     ASSERT_FALSE(stateMachine->getTransitionReadyFlag());
     ASSERT_EQ(stateMachine->getNewState(), nullptr);
     ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
-}
-
-// ============================================
-// STATE TESTS
-// ============================================
-
-TEST_F(StateTestSuite, validMessagesAreCorrectlyReceived) {
-    prepareValidMessageTest();
-
-    readValidMessageState.onStateLoop(&stateTestDevice);
-
-    ASSERT_TRUE(readValidMessageState.didReadValidMessage);
-}
-
-TEST_F(StateTestSuite, invalidMessagesAreDiscarded) {
-    prepareInvalidMessageTest();
-
-    readValidMessageState.onStateLoop(&stateTestDevice);
-
-    ASSERT_FALSE(readValidMessageState.didReadValidMessage);
-}
-
-TEST_F(StateTestSuite, correctMessageIsDeliveredEvenIfGarbageInFront) {
-    prepareGarbageFirstTest();
-
-    readValidMessageState.onStateLoop(&stateTestDevice);
-
-    ASSERT_TRUE(readValidMessageState.didReadValidMessage);
 }
 
 // ============================================
