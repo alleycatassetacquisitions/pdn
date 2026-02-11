@@ -10,6 +10,10 @@
 #include "cli-broker-tests.hpp"
 #include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
+#include "fdn-protocol-tests.hpp"
+#include "fdn-game-tests.hpp"
+#include "cli-fdn-tests.hpp"
+#include "device-extension-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -381,6 +385,106 @@ TEST_F(CliCommandTestSuite, RebootFromLaterState) {
 
 TEST_F(CliCommandTestSuite, RebootClearsHistory) {
     cliCommandRebootClearsHistory(this);
+}
+
+// ============================================
+// FDN PROTOCOL TESTS
+// ============================================
+
+TEST_F(FdnProtocolTestSuite, ParseValidMessage) {
+    fdnProtocolParseValidMessage(this);
+}
+
+TEST_F(FdnProtocolTestSuite, ParseGhostRunner) {
+    fdnProtocolParseGhostRunner(this);
+}
+
+TEST_F(FdnProtocolTestSuite, RejectInvalidPrefix) {
+    fdnProtocolRejectInvalidPrefix(this);
+}
+
+TEST_F(FdnProtocolTestSuite, RejectShortMessage) {
+    fdnProtocolRejectShortMessage(this);
+}
+
+TEST_F(FdnProtocolTestSuite, RejectOutOfRange) {
+    fdnProtocolRejectOutOfRange(this);
+}
+
+TEST_F(FdnProtocolTestSuite, ParseGresMessage) {
+    fdnProtocolParseGresMessage(this);
+}
+
+TEST_F(FdnProtocolTestSuite, ParseGresInvalid) {
+    fdnProtocolParseGresInvalid(this);
+}
+
+// ============================================
+// FDN GAME TESTS
+// ============================================
+
+TEST_F(FdnGameTestSuite, DeviceType) {
+    fdnGameDeviceType(this);
+}
+
+TEST_F(FdnGameTestSuite, StartsInNpcIdle) {
+    fdnGameStartsInNpcIdle(this);
+}
+
+TEST_F(FdnGameTestSuite, NpcIdleBroadcasts) {
+    fdnGameNpcIdleBroadcasts(this);
+}
+
+TEST_F(FdnGameTestSuite, NpcIdleTransitionsOnMac) {
+    fdnGameNpcIdleTransitionsOnMac(this);
+}
+
+TEST_F(FdnGameTestSuite, HandshakeSendsFack) {
+    fdnGameHandshakeSendsFack(this);
+}
+
+TEST_F(FdnGameTestSuite, HandshakeTimeout) {
+    fdnGameHandshakeTimeout(this);
+}
+
+TEST_F(FdnGameTestSuite, TracksTypeAndReward) {
+    fdnGameTracksTypeAndReward(this);
+}
+
+TEST_F(FdnGameTestSuite, LastResultTracking) {
+    fdnGameLastResultTracking(this);
+}
+
+// ============================================
+// CLI FDN DEVICE TESTS
+// ============================================
+
+TEST_F(CliFdnTestSuite, CreateDeviceType) {
+    cliFdnCreateDeviceType(this);
+}
+
+TEST_F(CliFdnTestSuite, DeviceIdRange) {
+    cliFdnDeviceIdRange(this);
+}
+
+TEST_F(CliFdnTestSuite, RegistersWithBroker) {
+    cliFdnRegistersWithBroker(this);
+}
+
+// ============================================
+// DEVICE EXTENSION TESTS
+// ============================================
+
+TEST_F(DeviceExtensionTestSuite, GetAppReturnsApp) {
+    deviceExtensionGetAppReturnsApp(this);
+}
+
+TEST_F(DeviceExtensionTestSuite, GetAppReturnsNull) {
+    deviceExtensionGetAppReturnsNull(this);
+}
+
+TEST_F(DeviceExtensionTestSuite, ReturnToPrevious) {
+    deviceExtensionReturnToPrevious(this);
 }
 
 // ============================================

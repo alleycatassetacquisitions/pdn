@@ -34,6 +34,8 @@ public:
     virtual int begin() = 0;
 
     void setActiveApp(StateId appId);
+    void returnToPreviousApp();
+    StateMachine* getApp(StateId appId);
 
     virtual void loop();
 
@@ -60,4 +62,5 @@ private:
     DriverManager driverManager;
     AppConfig appConfig;
     StateId currentAppId;
+    StateId previousAppId;
 };
