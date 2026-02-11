@@ -613,7 +613,7 @@ private:
             }
             std::string out;
             for (size_t i = 0; i < devices.size(); i++) {
-                if (i > 0) out += "\n";
+                if (i > 0) out += " | ";
                 out += "Device " + devices[i].deviceId +
                        " [" + std::to_string(i) + "]: " +
                        (devices[i].isHunter ? "Hunter" : "Bounty");

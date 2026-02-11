@@ -1068,7 +1068,7 @@ void cliRoleCommandShowsAllDevices(CliRoleCommandTestSuite* suite) {
                                              suite->selectedDevice_, *suite->renderer_);
 
     ASSERT_FALSE(result.shouldQuit);
-    ASSERT_EQ(result.message, "Device 0010 [0]: Hunter\nDevice 0011 [1]: Bounty");
+    ASSERT_EQ(result.message, "Device 0010 [0]: Hunter | Device 0011 [1]: Bounty");
 }
 
 // Test: roles alias works
