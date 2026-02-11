@@ -21,7 +21,8 @@ void Device::setActiveApp(StateId appId) {
         LOG_E(TAG, "App %d not found", appId.id);
         return;
     }
-    
+
+    previousAppId = currentAppId;
     appConfig[currentAppId]->onStatePaused(this);
     this->currentAppId = appId;
     if(appConfig[appId]->isPaused()) {
@@ -29,6 +30,15 @@ void Device::setActiveApp(StateId appId) {
     } else {
         appConfig[appId]->onStateMounted(this);
     }
+}
+
+void Device::returnToPreviousApp() {
+    setActiveApp(previousAppId);
+}
+
+StateMachine* Device::getApp(StateId appId) {
+    auto it = appConfig.find(appId);
+    return (it != appConfig.end()) ? it->second : nullptr;
 }
 
 void Device::loop() {

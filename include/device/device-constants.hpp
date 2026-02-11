@@ -59,6 +59,18 @@ const std::string BROADCAST_WIFI = "1111";
 
 const std::string FORCE_MATCH_UPLOAD = "6969";
 
+// FDN serial protocol messages
+const std::string FDN_DEVICE_ID = "fdn:";
+const std::string FDN_ACK = "fack";
+
+// NVS key for device mode persistence
+constexpr const char* DEVICE_MODE_KEY = "device_mode";
+
+// NPC result storage
+constexpr const char* NPC_RESULT_COUNT_KEY = "npc_count";
+constexpr const char* NPC_RESULT_KEY = "npc_res_";
+constexpr uint8_t MAX_NPC_RESULTS = 64;
+
 //STORAGE
 constexpr const char* PREF_NAMESPACE = "matches";
 constexpr const char* PREF_COUNT_KEY = "count";
