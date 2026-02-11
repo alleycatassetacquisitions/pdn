@@ -33,8 +33,6 @@ public:
 
     void loop() override;
 
-    void onStateChange() override;
-
     void setDeviceId(const std::string& deviceId) override;
 
     std::string getDeviceId() override;

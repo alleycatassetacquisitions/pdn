@@ -5,20 +5,12 @@
 #include <utility>
 #include <vector>
 #include <string>
+#include <memory>
 
-#include "device/device.hpp"
+#include "state-types.hpp"
 
 class State;
-
-//StateId is a simple wrapper in case we eventually need to add more data to identify a state.
-struct StateId {
-    explicit StateId(int stateid) {
-        id = stateid;
-    }
-
-    int id;
-};
-
+class Device;
 /*
  * A State transition is a tuple that holds a condition as well as
  * the state which the condition, when valid, will be transitioned to.
@@ -75,8 +67,6 @@ public:
 class State {
 public:
     virtual ~State() {
-        validStringMessages.clear();
-        responseStringMessages.clear();
         transitions.clear();
     }
 
@@ -102,6 +92,13 @@ public:
         // Override in derived classes
     }
 
+    virtual std::unique_ptr<Snapshot> onStatePaused(Device *PDN) {
+        return nullptr;
+    }
+
+    virtual void onStateResumed(Device *PDN, Snapshot* snapshot) {
+    }
+
     virtual void onStateLoop(Device *PDN) {
         // Override in derived classes
     }
@@ -114,50 +111,7 @@ public:
         return false;
     }
 
-    /*
-     * Creates a set of valid String messages for this state.
-     * Any message that is received that is *not* in this set
-     * will be discarded.
-     */
-    virtual void registerValidMessages(const std::vector<const std::string *>& msgs) {
-        for (const auto* msg: msgs) {
-            validStringMessages.insert(*msg);
-        }
-    }
-
-    /*
-     * This method registers valid messages that can be *sent* during this state's lifecycle.
-     */
-    virtual void registerResponseMessage(const std::vector<const std::string *>& msgs) {
-        for (size_t i = 0; i < msgs.size(); i++) {
-            responseStringMessages.push_back(*msgs.at(i));
-        }
-    }
-
-    //Checks if the currently received String message is a part of the set of valid messages.
-    bool isMessageValidForState(const std::string& msg) {
-        bool isValid = validStringMessages.find(msg) != validStringMessages.end();
-        return isValid;
-    }
-
-    /*
-     * This message will consume the incoming Serial stream until a valid
-     * message is found, at which point, that message will be returned.
-     */
-    std::string *waitForValidMessage(Device *PDN) {
-        while (PDN->commsAvailable()) {
-            if (!isMessageValidForState(*PDN->peekComms())) {
-                PDN->readString();
-            } else {
-                return new std::string(PDN->readString());
-            }
-        }
-        return nullptr;
-    }
-
 protected:
-    std::set<std::string> validStringMessages;
-    std::vector<std::string> responseStringMessages;
     std::vector<StateTransition *> transitions;
 
 private:

@@ -546,7 +546,7 @@ private:
 
         // skipToState(1) calls onStateDismounted on current state,
         // then onStateMounted on FetchUserData — same as initial boot
-        dev.game->skipToState(1);
+        dev.game->skipToState(dev.pdn, 1);
 
         result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
         return result;
