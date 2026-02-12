@@ -1,4 +1,5 @@
 #include "game/quickdraw-states.hpp"
+#include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"

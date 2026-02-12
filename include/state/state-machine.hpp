@@ -35,22 +35,21 @@
  * our loop function and continue with the new state's onStateLoop function.
 */
 
-class StateMachine {
+class StateMachine : public State {
 public:
-    explicit StateMachine(Device *PDN) {
-        this->PDN = PDN;
-    }
+    explicit StateMachine(int stateId) : State(stateId) {}
 
-    virtual ~StateMachine() {
+    ~StateMachine() override {
         for (auto state: stateMap) {
             delete state;
         }
     };
 
-    void initialize() {
+    void initialize(Device *PDN) {
         populateStateMap();
         currentState = stateMap[0];
         currentState->onStateMounted(PDN);
+        launched = true;
     }
     
     /**
@@ -59,7 +58,7 @@ public:
      * @param stateIndex The index in stateMap to skip to
      * @return true if successful, false if index out of range
      */
-    bool skipToState(int stateIndex) {
+    bool skipToState(Device *PDN, int stateIndex) {
         if (stateIndex < 0 || stateIndex >= static_cast<int>(stateMap.size())) {
             return false;
         }
@@ -78,28 +77,64 @@ public:
         stateChangeReady = (newState != nullptr);
     };
 
-    void commitState() {
+    void commitState(Device *PDN) {
         currentState->onStateDismounted(PDN);
 
         currentState = newState;
         stateChangeReady = false;
         newState = nullptr;
 
-        PDN->onStateChange();
-
         currentState->onStateMounted(PDN);
     };
 
-    void loop() {
+    State *getCurrentState() {
+        return currentState;
+    }
+
+    void onStateMounted(Device *PDN) override {
+        initialize(PDN);
+    }
+
+    /*
+     * onStatePaused and onStateResume should be overridden in derived classes if the
+     * state machine itself needs to hold onto any data beyond the current state's snapshot.
+     */
+    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
+        currentSnapshot = currentState->onStatePaused(PDN);
+        currentState->onStateDismounted(PDN);
+        paused = true;
+        return nullptr;
+    }
+
+    void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
+        currentState->onStateMounted(PDN);
+        currentState->onStateResumed(PDN, currentSnapshot.get());
+        currentSnapshot = nullptr;
+        paused = false;
+    }
+
+    void onStateLoop(Device *PDN) override {
         currentState->onStateLoop(PDN);
         checkStateTransitions();
         if (stateChangeReady) {
-            commitState();
+            commitState(PDN);
         }
     }
 
-    State *getCurrentState() {
-        return currentState;
+    void onStateDismounted(Device *PDN) override {
+        currentState->onStateDismounted(PDN);
+        currentSnapshot = nullptr;
+        currentState = nullptr;
+        stateChangeReady = false;
+        newState = nullptr;
+    }
+
+    bool hasLaunched() const {
+        return launched;
+    }
+
+    bool isPaused() const {
+        return paused;
     }
 
 protected:
@@ -112,5 +147,8 @@ protected:
     State *currentState = nullptr;
 
 private:
-    Device *PDN;
+    std::unique_ptr<Snapshot> currentSnapshot;
+
+    bool launched = false;
+    bool paused = false;
 };

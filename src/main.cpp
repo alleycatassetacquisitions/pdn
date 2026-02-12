@@ -162,10 +162,14 @@ void setup() {
         drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
     delay(3000);
-    game->initialize();
+
+    // Register state machines with the device and launch Quickdraw
+    AppConfig apps = {
+        {StateId(QUICKDRAW_APP_ID), game}
+    };
+    pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
 }
 
 void loop() {
     pdn->loop();
-    game->loop();
 }
