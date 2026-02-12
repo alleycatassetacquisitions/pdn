@@ -9,7 +9,7 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     this->appConfig = std::move(config);
     this->currentAppId = launchAppId;
     if(appConfig.find(currentAppId) == appConfig.end()) {
-        LOG_E(TAG, "App %d not found", currentAppId);
+        LOG_E(TAG, "App %d not found", currentAppId.id);
         return;
     }
     
@@ -18,7 +18,7 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
 
 void Device::setActiveApp(StateId appId) {
     if(appConfig.find(appId) == appConfig.end()) {
-        LOG_E(TAG, "App %d not found", appId);
+        LOG_E(TAG, "App %d not found", appId.id);
         return;
     }
     
@@ -33,7 +33,8 @@ void Device::setActiveApp(StateId appId) {
 
 void Device::loop() {
     driverManager.execDrivers();
-    if(!appConfig.empty() && appConfig.find(currentAppId) != appConfig.end()) {
-        appConfig[currentAppId]->onStateLoop(this);
+    auto app = appConfig.find(currentAppId);
+    if(app != appConfig.end()) {
+        app->second->onStateLoop(this);
     }
 }

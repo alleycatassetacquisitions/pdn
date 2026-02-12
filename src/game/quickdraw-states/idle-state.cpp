@@ -89,6 +89,7 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
+    PDN->flushSerial();
     PDN->clearCallbacks();  // Clear serial callbacks
 }
 
