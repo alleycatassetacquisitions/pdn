@@ -75,23 +75,43 @@ void FdnDetected::onStateMounted(Device* PDN) {
 
 void FdnDetected::onStateLoop(Device* PDN) {
     if (fackReceived && !handshakeComplete) {
-        LOG_I(TAG, "fack received, launching Signal Echo");
         handshakeComplete = true;
 
-        // Configure Signal Echo with hard mode and managed mode
-        auto* echo = dynamic_cast<SignalEcho*>(PDN->getApp(StateId(SIGNAL_ECHO_APP_ID)));
-        if (echo) {
-            SignalEchoConfig config = SIGNAL_ECHO_HARD;
-            config.managedMode = true;
-            echo->getConfig() = config;
-            echo->resetGame();
+        // Track which game type we're launching
+        player->setLastFdnGameType(static_cast<int>(pendingGameType));
 
-            // Switch to Signal Echo — Quickdraw pauses at this state
-            PDN->setActiveApp(StateId(SIGNAL_ECHO_APP_ID));
-        } else {
-            LOG_W(TAG, "Signal Echo not registered in AppConfig");
+        // Look up the app ID for this game type
+        int appId = getAppIdForGame(pendingGameType);
+        if (appId < 0) {
+            LOG_W(TAG, "No app registered for game type %d", static_cast<int>(pendingGameType));
             transitionToIdleState = true;
+            return;
         }
+
+        auto* game = dynamic_cast<MiniGame*>(PDN->getApp(StateId(appId)));
+        if (!game) {
+            LOG_W(TAG, "App %d not found in AppConfig", appId);
+            transitionToIdleState = true;
+            return;
+        }
+
+        // Configure the minigame based on game type
+        if (pendingGameType == GameType::SIGNAL_ECHO) {
+            auto* echo = dynamic_cast<SignalEcho*>(game);
+            if (echo) {
+                // Difficulty gating: EASY if no boon, HARD if boon
+                SignalEchoConfig config = player->hasKonamiBoon() ? SIGNAL_ECHO_HARD : SIGNAL_ECHO_EASY;
+                config.managedMode = true;
+                echo->getConfig() = config;
+            }
+        }
+
+        LOG_I(TAG, "Launching %s (%s mode)",
+               getGameDisplayName(pendingGameType),
+               player->hasKonamiBoon() ? "HARD" : "EASY");
+
+        game->resetGame();
+        PDN->setActiveApp(StateId(appId));
         return;
     }
 

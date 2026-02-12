@@ -212,8 +212,9 @@ void fdnCompleteShowsVictoryOnWin(FdnCompleteTestSuite* suite) {
     outcome.hardMode = true;
     echo->setOutcome(outcome);
 
-    // Set pending challenge on player
+    // Set pending challenge and last game type on player
     suite->device_.player->setPendingChallenge("fdn:7:6");
+    suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
     // Skip Quickdraw to the FdnComplete state
     // stateMap order: playerReg(0), fetchUser(1), confirmOffline(2), chooseRole(3),
@@ -249,6 +250,7 @@ void fdnCompleteUnlocksKonamiOnWin(FdnCompleteTestSuite* suite) {
     echo->setOutcome(outcome);
 
     suite->device_.player->setPendingChallenge("fdn:7:6");
+    suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
     // Verify button not unlocked before
     ASSERT_FALSE(suite->device_.player->hasUnlockedButton(
@@ -275,6 +277,7 @@ void fdnCompleteUnlocksColorProfileOnHardWin(FdnCompleteTestSuite* suite) {
     echo->setOutcome(outcome);
 
     suite->device_.player->setPendingChallenge("fdn:7:6");
+    suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
     ASSERT_FALSE(suite->device_.player->hasColorProfileEligibility(
         static_cast<int>(GameType::SIGNAL_ECHO)));
@@ -298,6 +301,7 @@ void fdnCompleteShowsDefeatedOnLoss(FdnCompleteTestSuite* suite) {
     echo->setOutcome(outcome);
 
     suite->device_.player->setPendingChallenge("fdn:7:6");
+    suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
     suite->device_.game->skipToState(suite->device_.pdn, 22);
     suite->tick(1);
@@ -329,6 +333,7 @@ void fdnCompleteTransitionsToIdleAfterTimer(FdnCompleteTestSuite* suite) {
     echo->setOutcome(outcome);
 
     suite->device_.player->setPendingChallenge("fdn:7:6");
+    suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
     suite->device_.game->skipToState(suite->device_.pdn, 22);
     suite->tick(1);
@@ -357,6 +362,7 @@ void fdnCompleteClearsPendingChallenge(FdnCompleteTestSuite* suite) {
     echo->setOutcome(outcome);
 
     suite->device_.player->setPendingChallenge("fdn:7:6");
+    suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
     ASSERT_TRUE(suite->device_.player->hasPendingChallenge());
 
     suite->device_.game->skipToState(suite->device_.pdn, 22);

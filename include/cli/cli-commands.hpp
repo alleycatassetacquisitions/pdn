@@ -104,6 +104,9 @@ public:
         if (command == "reboot" || command == "restart") {
             return cmdReboot(tokens, devices, selectedDevice);
         }
+        if (command == "konami") {
+            return cmdKonami(tokens, devices, selectedDevice);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -549,6 +552,54 @@ private:
         dev.game->skipToState(dev.pdn, 1);
 
         result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
+        return result;
+    }
+
+    static CommandResult cmdKonami(const std::vector<std::string>& tokens,
+                                   std::vector<DeviceInstance>& devices,
+                                   int selectedDevice) {
+        CommandResult result;
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 3) {
+            targetDevice = findDevice(tokens[1], devices, selectedDevice);
+        }
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+        auto& dev = devices[targetDevice];
+        if (!dev.player) {
+            result.message = "Device has no player (FDN devices don't have players)";
+            return result;
+        }
+        if (tokens.size() < 2) {
+            // Show current progress
+            uint8_t progress = dev.player->getKonamiProgress();
+            bool boon = dev.player->hasKonamiBoon();
+            char buf[64];
+            snprintf(buf, sizeof(buf), "Konami: 0x%02X (%d/7) boon=%s",
+                     progress, __builtin_popcount(progress & 0x7F),
+                     boon ? "yes" : "no");
+            result.message = buf;
+            return result;
+        }
+        // Set progress: konami <device> <value> OR konami <value>
+        std::string valueStr = (tokens.size() >= 3) ? tokens[2] : tokens[1];
+        int value = std::atoi(valueStr.c_str());
+        dev.player->setKonamiProgress(static_cast<uint8_t>(value & 0xFF));
+
+        // Auto-boon if all 7 set
+        if (dev.player->isKonamiComplete()) {
+            dev.player->setKonamiBoon(true);
+        }
+
+        uint8_t progress = dev.player->getKonamiProgress();
+        bool boon = dev.player->hasKonamiBoon();
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Konami set: 0x%02X (%d/7) boon=%s",
+                 progress, __builtin_popcount(progress & 0x7F),
+                 boon ? "yes" : "no");
+        result.message = buf;
         return result;
     }
 

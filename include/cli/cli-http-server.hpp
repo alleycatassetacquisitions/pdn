@@ -86,6 +86,8 @@ public:
             statusCode = handleGetPlayer(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
+        } else if (method == "PUT" && path == "/api/progress") {
+            statusCode = handlePutProgress(body, responseBody);
         } else {
             statusCode = 404;
             responseBody = R"({"errors":["Not found"]})";
@@ -229,6 +231,27 @@ private:
         responseBody = R"({"success":true,"message":"Matches uploaded"})";
         return 200;
     }
+
+    /**
+     * Handle PUT /api/progress
+     */
+    int handlePutProgress(const std::string& body, std::string& responseBody) {
+        // Acknowledge the progress upload
+        lastProgressBody_ = body;
+        responseBody = R"({"success":true,"message":"Progress synced"})";
+        return 200;
+    }
+
+public:
+    /**
+     * Get the last progress body received (for test verification).
+     */
+    const std::string& getLastProgressBody() const {
+        return lastProgressBody_;
+    }
+
+private:
+    std::string lastProgressBody_;
 };
 
 } // namespace cli

@@ -16,6 +16,7 @@
 #include "device-extension-tests.hpp"
 #include "signal-echo-tests.hpp"
 #include "fdn-integration-tests.hpp"
+#include "progression-core-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -699,6 +700,118 @@ TEST_F(AppSwitchingTestSuite, QuickdrawActiveAtStart) {
 
 TEST_F(AppSwitchingTestSuite, ReturnToPrevious) {
     appSwitchingReturnToPrevious(this);
+}
+
+// ============================================
+// DIFFICULTY GATING TESTS
+// ============================================
+
+TEST_F(DifficultyGatingTestSuite, EasyWithoutBoon) {
+    difficultyGatingEasyWithoutBoon(this);
+}
+
+TEST_F(DifficultyGatingTestSuite, HardWithBoon) {
+    difficultyGatingHardWithBoon(this);
+}
+
+TEST_F(DifficultyGatingTestSuite, SetsLastGameType) {
+    difficultyGatingSetsLastGameType(this);
+}
+
+TEST_F(DifficultyGatingTestSuite, UnknownGameIdle) {
+    difficultyGatingUnknownGameIdle(this);
+}
+
+// ============================================
+// AUTO-BOON TESTS
+// ============================================
+
+TEST_F(AutoBoonTestSuite, TriggersOnSeventhButton) {
+    autoBoonTriggersOnSeventhButton(this);
+}
+
+TEST_F(AutoBoonTestSuite, DoesNotRetrigger) {
+    autoBoonDoesNotRetrigger(this);
+}
+
+TEST_F(AutoBoonTestSuite, ShowsDisplay) {
+    autoBoonShowsDisplay(this);
+}
+
+TEST_F(AutoBoonTestSuite, HardWinSetsPending) {
+    autoBoonHardWinSetsPending(this);
+}
+
+TEST_F(AutoBoonTestSuite, EasyWinNoPending) {
+    autoBoonEasyWinNoPending(this);
+}
+
+// ============================================
+// PLAYER FIELD ACCESSOR TESTS (extended)
+// ============================================
+
+TEST_F(PlayerChallengeTestSuite, IsKonamiComplete) {
+    playerIsKonamiComplete(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, KonamiBoonSetGet) {
+    playerKonamiBoonSetGet(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, LastFdnGameTypeSetGet) {
+    playerLastFdnGameTypeSetGet(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, PendingProfileGameSetGet) {
+    playerPendingProfileGameSetGet(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, ColorProfileEligibilitySet) {
+    playerColorProfileEligibilitySet(this);
+}
+
+// ============================================
+// PROGRESS MANAGER EXTENDED TESTS
+// ============================================
+
+TEST_F(ProgressManagerTestSuite, SaveLoadBoon) {
+    progressManagerSaveLoadBoon(this);
+}
+
+TEST_F(ProgressManagerTestSuite, SaveLoadProfile) {
+    progressManagerSaveLoadProfile(this);
+}
+
+TEST_F(ProgressManagerTestSuite, SaveLoadEligibility) {
+    progressManagerSaveLoadEligibility(this);
+}
+
+TEST_F(ProgressManagerTestSuite, ClearAll) {
+    progressManagerClearAll(this);
+}
+
+TEST_F(ProgressManagerTestSuite, SyncCallsServer) {
+    progressManagerSyncCallsServer(this);
+}
+
+// ============================================
+// GAME ROUTING TESTS
+// ============================================
+
+TEST_F(GameRoutingTestSuite, AppIdForGame) {
+    gameRoutingSignalEcho(this);
+}
+
+// ============================================
+// KONAMI COMMAND TESTS
+// ============================================
+
+TEST_F(KonamiCommandTestSuite, ShowsProgress) {
+    konamiCommandShowsProgress(this);
+}
+
+TEST_F(KonamiCommandTestSuite, SetsProgress) {
+    konamiCommandSetsProgress(this);
 }
 
 // ============================================

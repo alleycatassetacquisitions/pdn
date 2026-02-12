@@ -1,6 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
-#include "game/signal-echo/signal-echo.hpp"
+#include "game/minigame.hpp"
 #include "game/progress-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device-types.hpp"
@@ -25,15 +25,21 @@ void FdnComplete::onStateMounted(Device* PDN) {
     LOG_I(TAG, "FDN complete mounted");
     transitionToIdleState = false;
 
-    // Read the outcome from Signal Echo
-    auto* echo = dynamic_cast<MiniGame*>(PDN->getApp(StateId(SIGNAL_ECHO_APP_ID)));
-    if (!echo) {
-        LOG_W(TAG, "Signal Echo not found in AppConfig");
+    // Look up the minigame using the game type tracked by FdnDetected
+    int lastGameType = player->getLastFdnGameType();
+    int appId = (lastGameType >= 0) ? getAppIdForGame(static_cast<GameType>(lastGameType)) : -1;
+
+    MiniGame* game = nullptr;
+    if (appId >= 0) {
+        game = dynamic_cast<MiniGame*>(PDN->getApp(StateId(appId)));
+    }
+    if (!game) {
+        LOG_W(TAG, "Minigame app not found for game type %d", lastGameType);
         transitionToIdleState = true;
         return;
     }
 
-    const MiniGameOutcome& outcome = echo->getOutcome();
+    const MiniGameOutcome& outcome = game->getOutcome();
 
     LOG_I(TAG, "Result: %s, Score: %d",
            outcome.result == MiniGameResult::WON ? "WON" : "LOST",
@@ -44,7 +50,7 @@ void FdnComplete::onStateMounted(Device* PDN) {
 
     if (outcome.result == MiniGameResult::WON) {
         // Unlock the Konami button reward
-        GameType gameType = echo->getGameType();
+        GameType gameType = game->getGameType();
         KonamiButton reward = getRewardForGame(gameType);
         player->unlockKonamiButton(static_cast<uint8_t>(reward));
         LOG_I(TAG, "Unlocked Konami button: %s", getKonamiButtonName(reward));
@@ -52,12 +58,22 @@ void FdnComplete::onStateMounted(Device* PDN) {
         // Check if hard mode was beaten — unlock color profile
         if (outcome.hardMode) {
             player->addColorProfileEligibility(static_cast<int>(gameType));
+            player->setPendingProfileGame(static_cast<int>(gameType));
             LOG_I(TAG, "Unlocked color profile for: %s", getGameDisplayName(gameType));
+        }
+
+        // Auto-boon: when all 7 Konami buttons are collected
+        if (player->isKonamiComplete() && !player->hasKonamiBoon()) {
+            player->setKonamiBoon(true);
+            LOG_I(TAG, "All 7 Konami buttons collected — BOON granted!");
+            PDN->getDisplay()->drawText("KONAMI COMPLETE!", 5, 45);
         }
 
         // Save progress
         if (progressManager) {
             progressManager->saveProgress();
+            // Attempt server sync
+            progressManager->syncProgress(PDN->getHttpClient());
         }
 
         // Display victory
