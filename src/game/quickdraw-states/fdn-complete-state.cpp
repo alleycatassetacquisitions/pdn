@@ -32,7 +32,7 @@ void FdnComplete::onStateMounted(Device* PDN) {
 
     MiniGame* game = nullptr;
     if (appId >= 0) {
-        game = dynamic_cast<MiniGame*>(PDN->getApp(StateId(appId)));
+        game = static_cast<MiniGame*>(PDN->getApp(StateId(appId)));
     }
     if (!game) {
         LOG_W(TAG, "Minigame app not found for game type %d", lastGameType);

@@ -103,7 +103,7 @@ void FdnDetected::onStateLoop(Device* PDN) {
             return;
         }
 
-        auto* game = dynamic_cast<MiniGame*>(PDN->getApp(StateId(appId)));
+        auto* game = static_cast<MiniGame*>(PDN->getApp(StateId(appId)));
         if (!game) {
             LOG_W(TAG, "App %d not found in AppConfig", appId);
             transitionToIdleState = true;
@@ -112,14 +112,14 @@ void FdnDetected::onStateLoop(Device* PDN) {
 
         // First encounter is always EASY
         if (pendingGameType == GameType::SIGNAL_ECHO) {
-            auto* echo = dynamic_cast<SignalEcho*>(game);
+            auto* echo = static_cast<SignalEcho*>(game);
             if (echo) {
                 SignalEchoConfig config = SIGNAL_ECHO_EASY;
                 config.managedMode = true;
                 echo->getConfig() = config;
             }
         } else if (pendingGameType == GameType::FIREWALL_DECRYPT) {
-            auto* fw = dynamic_cast<FirewallDecrypt*>(game);
+            auto* fw = static_cast<FirewallDecrypt*>(game);
             if (fw) {
                 FirewallDecryptConfig config = FIREWALL_DECRYPT_EASY;
                 config.managedMode = true;
