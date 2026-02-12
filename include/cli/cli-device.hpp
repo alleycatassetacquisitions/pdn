@@ -61,6 +61,8 @@ inline const char* getQuickdrawStateName(int stateId) {
         case 20: return "UploadMatches";
         case 21: return "FdnDetected";
         case 22: return "FdnComplete";
+        case 23: return "ColorProfilePrompt";
+        case 24: return "ColorProfilePicker";
         default: return "Unknown";
     }
 }

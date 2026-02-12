@@ -55,6 +55,8 @@ void Quickdraw::populateStateMap() {
 
     FdnDetected* fdnDetected = new FdnDetected(player);
     FdnComplete* fdnComplete = new FdnComplete(player, progressManager);
+    ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
+    ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -113,6 +115,11 @@ void Quickdraw::populateStateMap() {
 
     idle->addTransition(
         new StateTransition(
+            std::bind(&Idle::transitionToColorPicker, idle),
+            colorProfilePicker));
+
+    idle->addTransition(
+        new StateTransition(
             std::bind(&Idle::isFdnDetected, idle),
             fdnDetected));
 
@@ -133,7 +140,22 @@ void Quickdraw::populateStateMap() {
 
     fdnComplete->addTransition(
         new StateTransition(
+            std::bind(&FdnComplete::transitionToColorPrompt, fdnComplete),
+            colorProfilePrompt));
+
+    fdnComplete->addTransition(
+        new StateTransition(
             std::bind(&FdnComplete::transitionToIdle, fdnComplete),
+            idle));
+
+    colorProfilePrompt->addTransition(
+        new StateTransition(
+            std::bind(&ColorProfilePrompt::transitionToIdle, colorProfilePrompt),
+            idle));
+
+    colorProfilePicker->addTransition(
+        new StateTransition(
+            std::bind(&ColorProfilePicker::transitionToIdle, colorProfilePicker),
             idle));
 
     handshakeInitiate->addTransition(
@@ -264,6 +286,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(sleep);
     stateMap.push_back(fdnDetected);
     stateMap.push_back(fdnComplete);
+    stateMap.push_back(colorProfilePrompt);
+    stateMap.push_back(colorProfilePicker);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {

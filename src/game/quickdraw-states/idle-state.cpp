@@ -1,6 +1,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "game/color-profiles.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device-constants.hpp"
@@ -21,6 +22,7 @@ Idle::~Idle() {
 void Idle::onStateMounted(Device *PDN) {
     fdnDetected = false;
     lastFdnMessage.clear();
+    colorPickerRequested = false;
 
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
@@ -29,8 +31,17 @@ void Idle::onStateMounted(Device *PDN) {
     matchManager->clearCurrentMatch();
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
     AnimationConfig config;
-    
-    if(player->isHunter()) {
+
+    // Check for equipped color profile
+    int equipped = player->getEquippedColorProfile();
+    if (equipped >= 0) {
+        config.type = AnimationType::IDLE;
+        config.speed = 16;
+        config.curve = EaseCurve::LINEAR;
+        config.initialState = getColorProfileState(equipped);
+        config.loopDelayMs = 0;
+        config.loop = true;
+    } else if(player->isHunter()) {
         config.type = AnimationType::IDLE;
         config.speed = 16;
         config.curve = EaseCurve::LINEAR;
@@ -56,6 +67,15 @@ void Idle::onStateMounted(Device *PDN) {
 
     PDN->getPrimaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
     PDN->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
+
+    // Long press secondary → color profile picker (only if player has eligible profiles)
+    if (!player->getColorProfileEligibility().empty()) {
+        parameterizedCallbackFunction longPressCb = [](void *ctx) {
+            Idle* idle = (Idle*)ctx;
+            idle->colorPickerRequested = true;
+        };
+        PDN->getSecondaryButton()->setButtonPress(longPressCb, this, ButtonInteraction::LONG_PRESS);
+    }
 
     displayIsDirty = true;
 }

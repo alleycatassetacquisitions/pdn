@@ -17,6 +17,7 @@
 #include "signal-echo-tests.hpp"
 #include "fdn-integration-tests.hpp"
 #include "progression-core-tests.hpp"
+#include "color-profile-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -812,6 +813,114 @@ TEST_F(KonamiCommandTestSuite, ShowsProgress) {
 
 TEST_F(KonamiCommandTestSuite, SetsProgress) {
     konamiCommandSetsProgress(this);
+}
+
+// ============================================
+// COLOR PROFILE LOOKUP TESTS
+// ============================================
+
+TEST_F(ColorProfileLookupTestSuite, SignalEcho) {
+    colorProfileLookupSignalEcho(this);
+}
+
+TEST_F(ColorProfileLookupTestSuite, FirewallDecrypt) {
+    colorProfileLookupFirewallDecrypt(this);
+}
+
+TEST_F(ColorProfileLookupTestSuite, Default) {
+    colorProfileLookupDefault(this);
+}
+
+TEST_F(ColorProfileLookupTestSuite, Names) {
+    colorProfileLookupNames(this);
+}
+
+// ============================================
+// COLOR PROFILE PROMPT TESTS
+// ============================================
+
+TEST_F(ColorProfilePromptTestSuite, YesEquips) {
+    colorProfilePromptYesEquips(this);
+}
+
+TEST_F(ColorProfilePromptTestSuite, NoDoesNotEquip) {
+    colorProfilePromptNoDoesNotEquip(this);
+}
+
+TEST_F(ColorProfilePromptTestSuite, AutoDismiss) {
+    colorProfilePromptAutoDismiss(this);
+}
+
+TEST_F(ColorProfilePromptTestSuite, ShowsDisplay) {
+    colorProfilePromptShowsDisplay(this);
+}
+
+TEST_F(ColorProfilePromptTestSuite, ClearsPending) {
+    colorProfilePromptClearsPending(this);
+}
+
+// ============================================
+// COLOR PROFILE PICKER TESTS
+// ============================================
+
+TEST_F(ColorProfilePickerTestSuite, ShowsHeader) {
+    colorProfilePickerShowsHeader(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, ScrollWraps) {
+    colorProfilePickerScrollWraps(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, SelectDefault) {
+    colorProfilePickerSelectDefault(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, TransitionsToIdle) {
+    colorProfilePickerTransitionsToIdle(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, PreselectsEquipped) {
+    colorProfilePickerPreselectsEquipped(this);
+}
+
+// ============================================
+// FDN COMPLETE ROUTING TESTS
+// ============================================
+
+TEST_F(FdnCompleteRoutingTestSuite, RoutesToPromptOnHardWin) {
+    fdnCompleteRoutesToPromptOnHardWin(this);
+}
+
+TEST_F(FdnCompleteRoutingTestSuite, RoutesToIdleOnEasyWin) {
+    fdnCompleteRoutesToIdleOnEasyWin(this);
+}
+
+TEST_F(FdnCompleteRoutingTestSuite, RoutesToIdleOnLoss) {
+    fdnCompleteRoutesToIdleOnLoss(this);
+}
+
+// ============================================
+// IDLE COLOR PICKER ENTRY TESTS
+// ============================================
+
+TEST_F(IdleColorPickerTestSuite, LongPressEntersPicker) {
+    idleLongPressEntersPicker(this);
+}
+
+TEST_F(IdleColorPickerTestSuite, LongPressNoPickerWithoutEligibility) {
+    idleLongPressNoPickerWithoutEligibility(this);
+}
+
+// ============================================
+// STATE NAME TESTS
+// ============================================
+
+TEST_F(StateNameTestSuite, ColorProfilePrompt) {
+    stateNameColorProfilePrompt(this);
+}
+
+TEST_F(StateNameTestSuite, ColorProfilePicker) {
+    stateNameColorProfilePicker(this);
 }
 
 // ============================================
