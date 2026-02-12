@@ -1,9 +1,9 @@
 name: PR Checks
 
-# Triggers on pull requests to main branch
 on:
   pull_request:
     branches: main
+  workflow_dispatch:  # Manual trigger for debugging CI
 
 jobs:
   # Native tests (runs on all platforms for maximum compatibility)
