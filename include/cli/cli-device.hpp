@@ -26,6 +26,9 @@
 #include "game/signal-echo/signal-echo.hpp"
 #include "game/signal-echo/signal-echo-states.hpp"
 #include "game/signal-echo/signal-echo-resources.hpp"
+#include "game/firewall-decrypt/firewall-decrypt.hpp"
+#include "game/firewall-decrypt/firewall-decrypt-states.hpp"
+#include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
 #include "device/device-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
@@ -79,6 +82,17 @@ inline const char* getSignalEchoStateName(int stateId) {
     }
 }
 
+inline const char* getFirewallDecryptStateName(int stateId) {
+    switch (stateId) {
+        case DECRYPT_INTRO:    return "DecryptIntro";
+        case DECRYPT_SCAN:     return "DecryptScan";
+        case DECRYPT_EVALUATE: return "DecryptEvaluate";
+        case DECRYPT_WIN:      return "DecryptWin";
+        case DECRYPT_LOSE:     return "DecryptLose";
+        default:               return "Unknown";
+    }
+}
+
 inline const char* getFdnStateName(int stateId) {
     switch (stateId) {
         case 0: return "NpcIdle";
@@ -92,6 +106,10 @@ inline const char* getFdnStateName(int stateId) {
 inline const char* getStateName(int stateId, DeviceType deviceType = DeviceType::PLAYER, GameType gameType = GameType::QUICKDRAW) {
     if (deviceType == DeviceType::FDN) {
         return getFdnStateName(stateId);
+    }
+    // Firewall Decrypt state IDs are in the 200+ range
+    if (stateId >= DECRYPT_INTRO) {
+        return getFirewallDecryptStateName(stateId);
     }
     // Signal Echo state IDs are in the 100+ range
     if (stateId >= ECHO_INTRO) {
@@ -243,13 +261,15 @@ public:
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
 
-        // Create Signal Echo (pre-registered, configured lazily per encounter)
+        // Create minigames (pre-registered, configured lazily per encounter)
         auto* signalEcho = new SignalEcho(SIGNAL_ECHO_EASY);
+        auto* firewallDecrypt = new FirewallDecrypt(FIREWALL_DECRYPT_EASY);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
             {StateId(QUICKDRAW_APP_ID), instance.game},
-            {StateId(SIGNAL_ECHO_APP_ID), signalEcho}
+            {StateId(SIGNAL_ECHO_APP_ID), signalEcho},
+            {StateId(FIREWALL_DECRYPT_APP_ID), firewallDecrypt}
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
         
@@ -420,6 +440,14 @@ public:
                 {StateId(SIGNAL_ECHO_APP_ID), instance.game}
             };
             instance.pdn->loadAppConfig(apps, StateId(SIGNAL_ECHO_APP_ID));
+        } else if (gameName == "firewall-decrypt") {
+            instance.gameType = GameType::FIREWALL_DECRYPT;
+            instance.game = new FirewallDecrypt(FIREWALL_DECRYPT_EASY);
+
+            AppConfig apps = {
+                {StateId(FIREWALL_DECRYPT_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(FIREWALL_DECRYPT_APP_ID));
         }
 
         return instance;
