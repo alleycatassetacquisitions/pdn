@@ -122,8 +122,11 @@ private:
     std::string pendingCdevMessage;
     bool pendingChallenge = false;
     uint8_t konamiProgress = 0;  // Bitmask of unlocked Konami buttons
+    bool konamiBoon = false;  // True when Konami puzzle "complete" (auto-set when all 7 collected)
     int equippedColorProfile = -1;  // -1 = none, otherwise GameType value
     std::set<int> colorProfileEligibility;  // GameTypes with hard mode beaten
+    int lastFdnGameType = -1;  // GameType of last FDN encounter (set by FdnDetected)
+    int pendingProfileGame = -1;  // Set by FdnComplete for ColorProfilePrompt
 
 public:
     // Pending FDN challenge (set by Idle, read by FdnDetected)
@@ -147,6 +150,19 @@ public:
     }
     uint8_t getKonamiProgress() const { return konamiProgress; }
     void setKonamiProgress(uint8_t progress) { konamiProgress = progress; }
+    bool isKonamiComplete() const { return (konamiProgress & 0x7F) == 0x7F; }
+
+    // Konami boon (auto-set when all 7 buttons collected)
+    bool hasKonamiBoon() const { return konamiBoon; }
+    void setKonamiBoon(bool boon) { konamiBoon = boon; }
+
+    // Last FDN game type (set by FdnDetected, read by FdnComplete)
+    int getLastFdnGameType() const { return lastFdnGameType; }
+    void setLastFdnGameType(int gameType) { lastFdnGameType = gameType; }
+
+    // Pending profile game (set by FdnComplete for ColorProfilePrompt)
+    int getPendingProfileGame() const { return pendingProfileGame; }
+    void setPendingProfileGame(int gameType) { pendingProfileGame = gameType; }
 
     // Color profile eligibility
     void addColorProfileEligibility(int gameTypeValue) {
@@ -155,6 +171,7 @@ public:
     bool hasColorProfileEligibility(int gameTypeValue) const {
         return colorProfileEligibility.count(gameTypeValue) > 0;
     }
+    const std::set<int>& getColorProfileEligibility() const { return colorProfileEligibility; }
     int getEquippedColorProfile() const { return equippedColorProfile; }
     void setEquippedColorProfile(int gameTypeValue) { equippedColorProfile = gameTypeValue; }
 };

@@ -80,6 +80,19 @@ inline const char* getKonamiButtonName(KonamiButton button) {
 }
 
 /*
+ * Lookup: GameType -> AppConfig StateId for that game.
+ * Returns the StateId used in AppConfig registration.
+ * Returns -1 if no app is registered for this game type.
+ */
+inline int getAppIdForGame(GameType type) {
+    switch (type) {
+        case GameType::SIGNAL_ECHO:       return 2;  // SIGNAL_ECHO_APP_ID
+        case GameType::FIREWALL_DECRYPT:  return 3;  // FIREWALL_DECRYPT_APP_ID (future)
+        default:                          return -1;
+    }
+}
+
+/*
  * Check if a pairing code is a reserved FDN device code (7001-7007).
  */
 inline bool isFdnDeviceCode(const std::string& code) {
