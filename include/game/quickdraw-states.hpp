@@ -39,7 +39,8 @@ enum QuickdrawStateId {
     FDN_DETECTED = 21,
     FDN_COMPLETE = 22,
     COLOR_PROFILE_PROMPT = 23,
-    COLOR_PROFILE_PICKER = 24
+    COLOR_PROFILE_PICKER = 24,
+    FDN_REENCOUNTER = 25
 };
 
 class PlayerRegistration : public State {
@@ -271,6 +272,7 @@ public:
 
     bool transitionToIdle();
     bool transitionToFdnComplete();
+    bool transitionToReencounter();
 
 private:
     Player* player;
@@ -278,6 +280,7 @@ private:
     static constexpr int TIMEOUT_MS = 10000;
     bool transitionToIdleState = false;
     bool transitionToFdnCompleteState = false;
+    bool transitionToReencounterState = false;
     bool fackReceived = false;
     bool macSent = false;
     bool handshakeComplete = false;
@@ -290,6 +293,49 @@ struct FdnDetectedSnapshot : public Snapshot {
     GameType gameType = GameType::QUICKDRAW;
     KonamiButton reward = KonamiButton::UP;
     bool handshakeComplete = false;
+};
+
+/*
+ * FdnReencounter -- Prompt shown when player re-encounters an FDN
+ * they have already beaten. Offers HARD / EASY / SKIP options.
+ * On confirm, configures and launches the minigame with the chosen
+ * difficulty. On SKIP or timeout, returns to Idle.
+ * After minigame completes, transitions to FdnComplete.
+ */
+class FdnReencounter : public State {
+public:
+    explicit FdnReencounter(Player* player);
+    ~FdnReencounter();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    std::unique_ptr<Snapshot> onStatePaused(Device* PDN) override;
+    void onStateResumed(Device* PDN, Snapshot* snapshot) override;
+
+    bool transitionToIdle();
+    bool transitionToFdnComplete();
+
+private:
+    Player* player;
+    SimpleTimer timeoutTimer;
+    static constexpr int TIMEOUT_MS = 15000;
+    bool transitionToIdleState = false;
+    bool transitionToFdnCompleteState = false;
+    bool pendingLaunch = false;
+    bool gameLaunched = false;
+
+    // Prompt state
+    int cursorIndex = 0;  // 0=HARD, 1=EASY, 2=SKIP
+    static constexpr int OPTION_COUNT = 3;
+    bool fullyCompleted = false;
+
+    // Game data (read from Player on mount)
+    GameType pendingGameType = GameType::QUICKDRAW;
+    KonamiButton pendingReward = KonamiButton::UP;
+
+    void renderUi(Device* PDN);
+    void launchGame(Device* PDN);
 };
 
 /*

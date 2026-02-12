@@ -54,6 +54,7 @@ void Quickdraw::populateStateMap() {
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
     FdnDetected* fdnDetected = new FdnDetected(player);
+    FdnReencounter* fdnReencounter = new FdnReencounter(player);
     FdnComplete* fdnComplete = new FdnComplete(player, progressManager);
     ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
     ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
@@ -130,12 +131,27 @@ void Quickdraw::populateStateMap() {
 
     fdnDetected->addTransition(
         new StateTransition(
+            std::bind(&FdnDetected::transitionToReencounter, fdnDetected),
+            fdnReencounter));
+
+    fdnDetected->addTransition(
+        new StateTransition(
             std::bind(&FdnDetected::transitionToFdnComplete, fdnDetected),
             fdnComplete));
 
     fdnDetected->addTransition(
         new StateTransition(
             std::bind(&FdnDetected::transitionToIdle, fdnDetected),
+            idle));
+
+    fdnReencounter->addTransition(
+        new StateTransition(
+            std::bind(&FdnReencounter::transitionToFdnComplete, fdnReencounter),
+            fdnComplete));
+
+    fdnReencounter->addTransition(
+        new StateTransition(
+            std::bind(&FdnReencounter::transitionToIdle, fdnReencounter),
             idle));
 
     fdnComplete->addTransition(
@@ -285,6 +301,7 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
     stateMap.push_back(fdnDetected);
+    stateMap.push_back(fdnReencounter);
     stateMap.push_back(fdnComplete);
     stateMap.push_back(colorProfilePrompt);
     stateMap.push_back(colorProfilePicker);

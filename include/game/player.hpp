@@ -127,6 +127,8 @@ private:
     std::set<int> colorProfileEligibility;  // GameTypes with hard mode beaten
     int lastFdnGameType = -1;  // GameType of last FDN encounter (set by FdnDetected)
     int pendingProfileGame = -1;  // Set by FdnComplete for ColorProfilePrompt
+    uint8_t lastFdnReward = 0;  // KonamiButton value of last FDN reward (set by FdnDetected)
+    bool recreationalMode = false;  // True when replaying already-beaten content
 
 public:
     // Pending FDN challenge (set by Idle, read by FdnDetected)
@@ -163,6 +165,14 @@ public:
     // Pending profile game (set by FdnComplete for ColorProfilePrompt)
     int getPendingProfileGame() const { return pendingProfileGame; }
     void setPendingProfileGame(int gameType) { pendingProfileGame = gameType; }
+
+    // Last FDN reward (set by FdnDetected, read by FdnReencounter)
+    uint8_t getLastFdnReward() const { return lastFdnReward; }
+    void setLastFdnReward(uint8_t reward) { lastFdnReward = reward; }
+
+    // Recreational mode (set by FdnReencounter, read by FdnComplete)
+    bool isRecreationalMode() const { return recreationalMode; }
+    void setRecreationalMode(bool mode) { recreationalMode = mode; }
 
     // Color profile eligibility
     void addColorProfileEligibility(int gameTypeValue) {

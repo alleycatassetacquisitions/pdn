@@ -25,6 +25,7 @@ FdnDetected::~FdnDetected() {
 void FdnDetected::onStateMounted(Device* PDN) {
     transitionToIdleState = false;
     transitionToFdnCompleteState = false;
+    transitionToReencounterState = false;
     fackReceived = false;
     macSent = false;
     handshakeComplete = false;
@@ -79,10 +80,22 @@ void FdnDetected::onStateLoop(Device* PDN) {
     if (fackReceived && !handshakeComplete) {
         handshakeComplete = true;
 
-        // Track which game type we're launching
+        // Store game info on Player for FdnReencounter / FdnComplete to read
         player->setLastFdnGameType(static_cast<int>(pendingGameType));
+        player->setLastFdnReward(static_cast<uint8_t>(pendingReward));
 
-        // Look up the app ID for this game type
+        // Check per-game progression to decide routing
+        bool hasButton = player->hasUnlockedButton(static_cast<uint8_t>(pendingReward));
+        bool hasProfile = player->hasColorProfileEligibility(static_cast<int>(pendingGameType));
+
+        if (hasButton) {
+            // Re-encounter -- route to FdnReencounter for difficulty choice
+            LOG_I(TAG, "Re-encounter: hasButton=%d hasProfile=%d", hasButton, hasProfile);
+            transitionToReencounterState = true;
+            return;
+        }
+
+        // First encounter -- launch EASY directly
         int appId = getAppIdForGame(pendingGameType);
         if (appId < 0) {
             LOG_W(TAG, "No app registered for game type %d", static_cast<int>(pendingGameType));
@@ -97,28 +110,26 @@ void FdnDetected::onStateLoop(Device* PDN) {
             return;
         }
 
-        // Configure the minigame based on game type
+        // First encounter is always EASY
         if (pendingGameType == GameType::SIGNAL_ECHO) {
             auto* echo = dynamic_cast<SignalEcho*>(game);
             if (echo) {
-                // Difficulty gating: EASY if no boon, HARD if boon
-                SignalEchoConfig config = player->hasKonamiBoon() ? SIGNAL_ECHO_HARD : SIGNAL_ECHO_EASY;
+                SignalEchoConfig config = SIGNAL_ECHO_EASY;
                 config.managedMode = true;
                 echo->getConfig() = config;
             }
         } else if (pendingGameType == GameType::FIREWALL_DECRYPT) {
             auto* fw = dynamic_cast<FirewallDecrypt*>(game);
             if (fw) {
-                FirewallDecryptConfig config = player->hasKonamiBoon() ? FIREWALL_DECRYPT_HARD : FIREWALL_DECRYPT_EASY;
+                FirewallDecryptConfig config = FIREWALL_DECRYPT_EASY;
                 config.managedMode = true;
                 fw->getConfig() = config;
             }
         }
 
-        LOG_I(TAG, "Launching %s (%s mode)",
-               getGameDisplayName(pendingGameType),
-               player->hasKonamiBoon() ? "HARD" : "EASY");
+        LOG_I(TAG, "First encounter: launching %s (EASY)", getGameDisplayName(pendingGameType));
 
+        player->setRecreationalMode(false);
         game->resetGame();
         PDN->setActiveApp(StateId(appId));
         return;
@@ -167,4 +178,8 @@ bool FdnDetected::transitionToIdle() {
 
 bool FdnDetected::transitionToFdnComplete() {
     return transitionToFdnCompleteState;
+}
+
+bool FdnDetected::transitionToReencounter() {
+    return transitionToReencounterState;
 }
