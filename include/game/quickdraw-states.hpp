@@ -8,6 +8,7 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/device-types.hpp"
 #include <cstdlib>
 #include <queue>
 #include <string>
@@ -33,7 +34,9 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20
+    UPLOAD_MATCHES = 20,
+    FDN_DETECTED = 21,
+    FDN_COMPLETE = 22
 };
 
 class PlayerRegistration : public State {
@@ -216,6 +219,7 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool transitionToHandshake();
+    bool isFdnDetected() const { return fdnDetected; }
     void cycleStats(Device *PDN);
 
 private:
@@ -231,8 +235,78 @@ private:
     int statsIndex = 0;
     int statsCount = 5;
 
+    // FDN detection
+    bool fdnDetected = false;
+    std::string lastFdnMessage;
+
     void serialEventCallbacks(const std::string& message);
     void ledAnimation(Device *PDN);
+};
+
+class ProgressManager;
+
+/*
+ * FdnDetected — Player detected an FDN broadcast on serial.
+ * Performs handshake (sends smac, waits for fack), then configures
+ * and launches Signal Echo via setActiveApp(). Quickdraw pauses at
+ * this state; on resume, transitions to FdnComplete.
+ */
+class FdnDetected : public State {
+public:
+    explicit FdnDetected(Player* player);
+    ~FdnDetected();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    std::unique_ptr<Snapshot> onStatePaused(Device* PDN) override;
+    void onStateResumed(Device* PDN, Snapshot* snapshot) override;
+
+    bool transitionToIdle();
+    bool transitionToFdnComplete();
+
+private:
+    Player* player;
+    SimpleTimer timeoutTimer;
+    static constexpr int TIMEOUT_MS = 10000;
+    bool transitionToIdleState = false;
+    bool transitionToFdnCompleteState = false;
+    bool fackReceived = false;
+    bool macSent = false;
+    bool handshakeComplete = false;
+    std::string fdnMessage;
+    GameType pendingGameType = GameType::QUICKDRAW;
+    KonamiButton pendingReward = KonamiButton::UP;
+};
+
+struct FdnDetectedSnapshot : public Snapshot {
+    GameType gameType = GameType::QUICKDRAW;
+    KonamiButton reward = KonamiButton::UP;
+    bool handshakeComplete = false;
+};
+
+/*
+ * FdnComplete — Displays the outcome of the minigame.
+ * Reads the outcome from Signal Echo via getApp(). On win, unlocks
+ * the Konami button reward and saves progress. Transitions to Idle.
+ */
+class FdnComplete : public State {
+public:
+    FdnComplete(Player* player, ProgressManager* progressManager);
+    ~FdnComplete();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    ProgressManager* progressManager;
+    SimpleTimer displayTimer;
+    static constexpr int DISPLAY_DURATION_MS = 3000;
+    bool transitionToIdleState = false;
 };
 
 class ConnectionSuccessful : public State {

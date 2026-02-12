@@ -3,6 +3,8 @@
 #include <memory>
 #include <string>
 #include <iostream>
+#include <cstdint>
+#include <set>
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -115,4 +117,44 @@ private:
     std::string opponentMacAddress;
     
     bool hunter = true;
+
+    // Challenge/FDN system
+    std::string pendingCdevMessage;
+    bool pendingChallenge = false;
+    uint8_t konamiProgress = 0;  // Bitmask of unlocked Konami buttons
+    int equippedColorProfile = -1;  // -1 = none, otherwise GameType value
+    std::set<int> colorProfileEligibility;  // GameTypes with hard mode beaten
+
+public:
+    // Pending FDN challenge (set by Idle, read by FdnDetected)
+    void setPendingChallenge(const std::string& cdevMessage) {
+        pendingCdevMessage = cdevMessage;
+        pendingChallenge = true;
+    }
+    bool hasPendingChallenge() const { return pendingChallenge; }
+    const std::string& getPendingCdevMessage() const { return pendingCdevMessage; }
+    void clearPendingChallenge() {
+        pendingCdevMessage.clear();
+        pendingChallenge = false;
+    }
+
+    // Konami progress
+    void unlockKonamiButton(uint8_t buttonIndex) {
+        konamiProgress |= (1 << buttonIndex);
+    }
+    bool hasUnlockedButton(uint8_t buttonIndex) const {
+        return (konamiProgress & (1 << buttonIndex)) != 0;
+    }
+    uint8_t getKonamiProgress() const { return konamiProgress; }
+    void setKonamiProgress(uint8_t progress) { konamiProgress = progress; }
+
+    // Color profile eligibility
+    void addColorProfileEligibility(int gameTypeValue) {
+        colorProfileEligibility.insert(gameTypeValue);
+    }
+    bool hasColorProfileEligibility(int gameTypeValue) const {
+        return colorProfileEligibility.count(gameTypeValue) > 0;
+    }
+    int getEquippedColorProfile() const { return equippedColorProfile; }
+    void setEquippedColorProfile(int gameTypeValue) { equippedColorProfile = gameTypeValue; }
 };

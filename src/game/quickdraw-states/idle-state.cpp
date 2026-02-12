@@ -3,6 +3,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/device-constants.hpp"
 #include "wireless/mac-functions.hpp"
 
 Idle::Idle(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(IDLE) {
@@ -18,6 +19,8 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
+    fdnDetected = false;
+    lastFdnMessage.clear();
 
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
@@ -84,6 +87,7 @@ void Idle::onStateDismounted(Device *PDN) {
     transitionToHandshakeState = false;
     sendMacAddress = false;
     waitingForMacAddress = false;
+    fdnDetected = false;
     heartbeatTimer.invalidate();
     statsIndex = 0;
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
@@ -95,8 +99,14 @@ void Idle::onStateDismounted(Device *PDN) {
 
 void Idle::serialEventCallbacks(const std::string& message) {
     LOG_I("IDLE", "Serial event received: %s", message.c_str());
-    if(message.compare(SERIAL_HEARTBEAT) == 0) {
-        sendMacAddress = true;  
+    if (message.rfind(FDN_DEVICE_ID, 0) == 0) {
+        // Message starts with "fdn:" — FDN challenge device detected
+        LOG_I("IDLE", "FDN detected: %s", message.c_str());
+        lastFdnMessage = message;
+        player->setPendingChallenge(message);
+        fdnDetected = true;
+    } else if(message.compare(SERIAL_HEARTBEAT) == 0) {
+        sendMacAddress = true;
     } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
         // Message starts with "smac" - extract MAC address after prefix
         std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());

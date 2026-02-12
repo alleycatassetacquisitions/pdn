@@ -8,6 +8,8 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
+    this->progressManager = new ProgressManager();
+    this->progressManager->initialize(player, storageManager);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -50,6 +52,9 @@ void Quickdraw::populateStateMap() {
     
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+
+    FdnDetected* fdnDetected = new FdnDetected(player);
+    FdnComplete* fdnComplete = new FdnComplete(player, progressManager);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -108,8 +113,28 @@ void Quickdraw::populateStateMap() {
 
     idle->addTransition(
         new StateTransition(
+            std::bind(&Idle::isFdnDetected, idle),
+            fdnDetected));
+
+    idle->addTransition(
+        new StateTransition(
             std::bind(&Idle::transitionToHandshake, idle),
             handshakeInitiate));
+
+    fdnDetected->addTransition(
+        new StateTransition(
+            std::bind(&FdnDetected::transitionToFdnComplete, fdnDetected),
+            fdnComplete));
+
+    fdnDetected->addTransition(
+        new StateTransition(
+            std::bind(&FdnDetected::transitionToIdle, fdnDetected),
+            idle));
+
+    fdnComplete->addTransition(
+        new StateTransition(
+            std::bind(&FdnComplete::transitionToIdle, fdnComplete),
+            idle));
 
     handshakeInitiate->addTransition(
         new StateTransition(
@@ -237,6 +262,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(lose);
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
+    stateMap.push_back(fdnDetected);
+    stateMap.push_back(fdnComplete);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
