@@ -50,34 +50,39 @@ void FdnComplete::onStateMounted(Device* PDN) {
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
 
     if (outcome.result == MiniGameResult::WON) {
-        // Unlock the Konami button reward
         GameType gameType = game->getGameType();
-        KonamiButton reward = getRewardForGame(gameType);
-        player->unlockKonamiButton(static_cast<uint8_t>(reward));
-        LOG_I(TAG, "Unlocked Konami button: %s", getKonamiButtonName(reward));
+        bool recreational = player->isRecreationalMode();
 
-        // Check if hard mode was beaten — unlock color profile
-        if (outcome.hardMode) {
-            player->addColorProfileEligibility(static_cast<int>(gameType));
-            player->setPendingProfileGame(static_cast<int>(gameType));
-            LOG_I(TAG, "Unlocked color profile for: %s", getGameDisplayName(gameType));
+        if (!recreational) {
+            // Unlock the Konami button reward
+            KonamiButton reward = getRewardForGame(gameType);
+            player->unlockKonamiButton(static_cast<uint8_t>(reward));
+            LOG_I(TAG, "Unlocked Konami button: %s", getKonamiButtonName(reward));
+
+            // Check if hard mode was beaten — unlock color profile
+            if (outcome.hardMode) {
+                player->addColorProfileEligibility(static_cast<int>(gameType));
+                player->setPendingProfileGame(static_cast<int>(gameType));
+                LOG_I(TAG, "Unlocked color profile for: %s", getGameDisplayName(gameType));
+            }
+
+            // Auto-boon: when all 7 Konami buttons are collected
+            if (player->isKonamiComplete() && !player->hasKonamiBoon()) {
+                player->setKonamiBoon(true);
+                LOG_I(TAG, "All 7 Konami buttons collected — BOON granted!");
+                PDN->getDisplay()->drawText("KONAMI COMPLETE!", 5, 45);
+            }
+
+            // Save progress
+            if (progressManager) {
+                progressManager->saveProgress();
+                progressManager->syncProgress(PDN->getHttpClient());
+            }
+        } else {
+            LOG_I(TAG, "Recreational win -- no rewards");
         }
 
-        // Auto-boon: when all 7 Konami buttons are collected
-        if (player->isKonamiComplete() && !player->hasKonamiBoon()) {
-            player->setKonamiBoon(true);
-            LOG_I(TAG, "All 7 Konami buttons collected — BOON granted!");
-            PDN->getDisplay()->drawText("KONAMI COMPLETE!", 5, 45);
-        }
-
-        // Save progress
-        if (progressManager) {
-            progressManager->saveProgress();
-            // Attempt server sync
-            progressManager->syncProgress(PDN->getHttpClient());
-        }
-
-        // Display victory
+        // Display victory (always shown, even in recreational)
         PDN->getDisplay()->drawText("VICTORY!", 20, 15);
         PDN->getDisplay()->drawText(getGameDisplayName(gameType), 10, 35);
         char scoreStr[16];
@@ -101,7 +106,7 @@ void FdnComplete::onStateLoop(Device* PDN) {
     displayTimer.updateTime();
     if (displayTimer.expired()) {
         // Route to color prompt if hard mode was won and profile is pending
-        if (player->getPendingProfileGame() >= 0) {
+        if (!player->isRecreationalMode() && player->getPendingProfileGame() >= 0) {
             transitionToColorPromptState = true;
         } else {
             transitionToIdleState = true;
@@ -112,6 +117,7 @@ void FdnComplete::onStateLoop(Device* PDN) {
 void FdnComplete::onStateDismounted(Device* PDN) {
     displayTimer.invalidate();
     player->clearPendingChallenge();
+    player->setRecreationalMode(false);
 }
 
 bool FdnComplete::transitionToColorPrompt() {
