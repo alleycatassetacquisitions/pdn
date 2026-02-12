@@ -452,7 +452,11 @@ void gameRoutingSignalEcho(GameRoutingTestSuite* /*suite*/) {
     ASSERT_EQ(getAppIdForGame(GameType::SIGNAL_ECHO), 2);
     ASSERT_EQ(getAppIdForGame(GameType::FIREWALL_DECRYPT), 3);
     ASSERT_EQ(getAppIdForGame(GameType::QUICKDRAW), -1);
-    ASSERT_EQ(getAppIdForGame(GameType::GHOST_RUNNER), -1);
+    ASSERT_EQ(getAppIdForGame(GameType::GHOST_RUNNER), 4);
+    ASSERT_EQ(getAppIdForGame(GameType::SPIKE_VECTOR), 5);
+    ASSERT_EQ(getAppIdForGame(GameType::CIPHER_PATH), 6);
+    ASSERT_EQ(getAppIdForGame(GameType::EXPLOIT_SEQUENCER), 7);
+    ASSERT_EQ(getAppIdForGame(GameType::BREACH_DEFENSE), 8);
 }
 
 // ============================================

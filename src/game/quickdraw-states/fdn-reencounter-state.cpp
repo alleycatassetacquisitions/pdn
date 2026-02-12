@@ -4,6 +4,11 @@
 #include "game/signal-echo/signal-echo-resources.hpp"
 #include "game/firewall-decrypt/firewall-decrypt.hpp"
 #include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
+#include "game/ghost-runner/ghost-runner.hpp"
+#include "game/spike-vector/spike-vector.hpp"
+#include "game/cipher-path/cipher-path.hpp"
+#include "game/exploit-sequencer/exploit-sequencer.hpp"
+#include "game/breach-defense/breach-defense.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device-types.hpp"
 #include <cstdint>
@@ -194,6 +199,41 @@ void FdnReencounter::launchGame(Device* PDN) {
             FirewallDecryptConfig config = hardMode ? FIREWALL_DECRYPT_HARD : FIREWALL_DECRYPT_EASY;
             config.managedMode = true;
             fw->getConfig() = config;
+        }
+    } else if (pendingGameType == GameType::GHOST_RUNNER) {
+        auto* gr = static_cast<GhostRunner*>(game);
+        if (gr) {
+            GhostRunnerConfig config = hardMode ? GHOST_RUNNER_HARD : GHOST_RUNNER_EASY;
+            config.managedMode = true;
+            gr->getConfig() = config;
+        }
+    } else if (pendingGameType == GameType::SPIKE_VECTOR) {
+        auto* sv = static_cast<SpikeVector*>(game);
+        if (sv) {
+            SpikeVectorConfig config = hardMode ? SPIKE_VECTOR_HARD : SPIKE_VECTOR_EASY;
+            config.managedMode = true;
+            sv->getConfig() = config;
+        }
+    } else if (pendingGameType == GameType::CIPHER_PATH) {
+        auto* cp = static_cast<CipherPath*>(game);
+        if (cp) {
+            CipherPathConfig config = hardMode ? CIPHER_PATH_HARD : CIPHER_PATH_EASY;
+            config.managedMode = true;
+            cp->getConfig() = config;
+        }
+    } else if (pendingGameType == GameType::EXPLOIT_SEQUENCER) {
+        auto* es = static_cast<ExploitSequencer*>(game);
+        if (es) {
+            ExploitSequencerConfig config = hardMode ? EXPLOIT_SEQUENCER_HARD : EXPLOIT_SEQUENCER_EASY;
+            config.managedMode = true;
+            es->getConfig() = config;
+        }
+    } else if (pendingGameType == GameType::BREACH_DEFENSE) {
+        auto* bd = static_cast<BreachDefense*>(game);
+        if (bd) {
+            BreachDefenseConfig config = hardMode ? BREACH_DEFENSE_HARD : BREACH_DEFENSE_EASY;
+            config.managedMode = true;
+            bd->getConfig() = config;
         }
     }
 
