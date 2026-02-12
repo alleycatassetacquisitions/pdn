@@ -89,11 +89,16 @@ void FdnReencounter::onStateDismounted(Device* PDN) {
 }
 
 std::unique_ptr<Snapshot> FdnReencounter::onStatePaused(Device* PDN) {
-    // No extra snapshot needed -- game data is on Player
-    return nullptr;
+    auto snap = std::make_unique<FdnReencounterSnapshot>();
+    snap->gameLaunched = gameLaunched;
+    return snap;
 }
 
 void FdnReencounter::onStateResumed(Device* PDN, Snapshot* snapshot) {
+    if (snapshot) {
+        auto* reencounterSnap = static_cast<FdnReencounterSnapshot*>(snapshot);
+        gameLaunched = reencounterSnap->gameLaunched;
+    }
     // Minigame is done -- transition to FdnComplete
     if (gameLaunched) {
         transitionToFdnCompleteState = true;
@@ -193,6 +198,6 @@ void FdnReencounter::launchGame(Device* PDN) {
     }
 
     game->resetGame();
-    PDN->setActiveApp(StateId(appId));
     gameLaunched = true;
+    PDN->setActiveApp(StateId(appId));
 }

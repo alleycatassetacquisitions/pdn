@@ -47,10 +47,9 @@ void colorProfileLookupDefault(ColorProfileLookupTestSuite* /*suite*/) {
 
 // Test: getColorProfileName returns correct names
 void colorProfileLookupNames(ColorProfileLookupTestSuite* /*suite*/) {
-    ASSERT_STREQ(getColorProfileName(-1), "DEFAULT");
-    const char* echoName = getColorProfileName(static_cast<int>(GameType::SIGNAL_ECHO));
-    ASSERT_NE(echoName, nullptr);
-    ASSERT_STRNE(echoName, "DEFAULT");
+    ASSERT_STREQ(getColorProfileName(-1, true), "HUNTER DEFAULT");
+    ASSERT_STREQ(getColorProfileName(-1, false), "BOUNTY DEFAULT");
+    ASSERT_STREQ(getColorProfileName(static_cast<int>(GameType::SIGNAL_ECHO), true), "SIGNAL ECHO");
 }
 
 // ============================================
@@ -85,7 +84,7 @@ public:
     void skipToPrompt() {
         // Set up player state: pending profile game set
         device_.player->setPendingProfileGame(static_cast<int>(GameType::SIGNAL_ECHO));
-        device_.game->skipToState(device_.pdn, 23);  // ColorProfilePrompt
+        device_.game->skipToState(device_.pdn, 24);  // ColorProfilePrompt
         tick(1);
     }
 
@@ -189,7 +188,7 @@ public:
     void skipToPicker() {
         // Add some eligible profiles
         device_.player->addColorProfileEligibility(static_cast<int>(GameType::SIGNAL_ECHO));
-        device_.game->skipToState(device_.pdn, 24);  // ColorProfilePicker
+        device_.game->skipToState(device_.pdn, 25);  // ColorProfilePicker
         tick(1);
     }
 
@@ -219,20 +218,20 @@ void colorProfilePickerScrollWraps(ColorProfilePickerTestSuite* suite) {
 
     // profileList = [SIGNAL_ECHO(7), DEFAULT(-1)]
     // Pre-select: equipped=-1 → cursorIndex=1 (DEFAULT)
-    // Scroll once → wraps to index 0 (SIGNAL_ECHO)
-    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-
-    // Scroll again → back to index 1 (DEFAULT)
-    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-
-    // Scroll third time → wraps to index 0 (SIGNAL_ECHO)
-    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-
-    // Confirm — should equip SIGNAL_ECHO
+    // Cycle once → wraps to index 0 (SIGNAL_ECHO)
     suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+
+    // Cycle again → back to index 1 (DEFAULT)
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+
+    // Cycle third time → wraps to index 0 (SIGNAL_ECHO)
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+
+    // Equip with PRIMARY — should equip SIGNAL_ECHO
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(2);
 
     ASSERT_EQ(suite->device_.player->getEquippedColorProfile(),
@@ -245,8 +244,8 @@ void colorProfilePickerSelectDefault(ColorProfilePickerTestSuite* suite) {
 
     // profileList = [SIGNAL_ECHO(7), DEFAULT(-1)]
     // Pre-select: equipped=-1 → cursorIndex=1 (DEFAULT)
-    // Already on DEFAULT, just confirm
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Already on DEFAULT, just equip with PRIMARY
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(2);
 
     ASSERT_EQ(suite->device_.player->getEquippedColorProfile(), -1);
@@ -257,7 +256,7 @@ void colorProfilePickerSelectDefault(ColorProfilePickerTestSuite* suite) {
 void colorProfilePickerTransitionsToIdle(ColorProfilePickerTestSuite* suite) {
     suite->skipToPicker();
 
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(2);
 
     ASSERT_EQ(suite->getStateId(), IDLE);
@@ -269,8 +268,8 @@ void colorProfilePickerPreselectsEquipped(ColorProfilePickerTestSuite* suite) {
     suite->device_.player->setEquippedColorProfile(static_cast<int>(GameType::SIGNAL_ECHO));
     suite->skipToPicker();
 
-    // Confirm immediately (should keep SIGNAL_ECHO since it was pre-selected)
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Equip immediately with PRIMARY (should keep SIGNAL_ECHO since it was pre-selected)
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(2);
 
     ASSERT_EQ(suite->device_.player->getEquippedColorProfile(),
@@ -329,7 +328,7 @@ void fdnCompleteRoutesToPromptOnHardWin(FdnCompleteRoutingTestSuite* suite) {
     suite->setupWinOutcome(true);  // hard mode
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);  // FdnComplete
+    suite->device_.game->skipToState(suite->device_.pdn, 23);  // FdnComplete
     suite->tick(1);
 
     // pendingProfileGame should be set
@@ -347,7 +346,7 @@ void fdnCompleteRoutesToIdleOnEasyWin(FdnCompleteRoutingTestSuite* suite) {
     suite->setupWinOutcome(false);  // easy mode
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);  // FdnComplete
+    suite->device_.game->skipToState(suite->device_.pdn, 23);  // FdnComplete
     suite->tick(1);
 
     // pendingProfileGame should NOT be set
@@ -373,7 +372,7 @@ void fdnCompleteRoutesToIdleOnLoss(FdnCompleteRoutingTestSuite* suite) {
 
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);  // FdnComplete
+    suite->device_.game->skipToState(suite->device_.pdn, 23);  // FdnComplete
     suite->tick(1);
 
     suite->tickWithTime(10, 400);

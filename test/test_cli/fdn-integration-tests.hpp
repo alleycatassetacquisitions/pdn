@@ -222,7 +222,7 @@ void fdnCompleteShowsVictoryOnWin(FdnCompleteTestSuite* suite) {
     // bountySendCC(9), hunterSendId(10), connSuccessful(11), duelCountdown(12),
     // duel(13), duelPushed(14), duelReceivedResult(15), duelResult(16),
     // win(17), lose(18), uploadMatches(19), sleep(20), fdnDetected(21), fdnComplete(22)
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     // Check display shows VICTORY
@@ -256,7 +256,7 @@ void fdnCompleteUnlocksKonamiOnWin(FdnCompleteTestSuite* suite) {
     ASSERT_FALSE(suite->device_.player->hasUnlockedButton(
         static_cast<uint8_t>(KonamiButton::START)));
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     // Signal Echo = GameType 7, reward = START(6)
@@ -282,7 +282,7 @@ void fdnCompleteUnlocksColorProfileOnHardWin(FdnCompleteTestSuite* suite) {
     ASSERT_FALSE(suite->device_.player->hasColorProfileEligibility(
         static_cast<int>(GameType::SIGNAL_ECHO)));
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     ASSERT_TRUE(suite->device_.player->hasColorProfileEligibility(
@@ -303,7 +303,7 @@ void fdnCompleteShowsDefeatedOnLoss(FdnCompleteTestSuite* suite) {
     suite->device_.player->setPendingChallenge("fdn:7:6");
     suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     auto& textHistory = suite->device_.displayDriver->getTextHistory();
@@ -335,7 +335,7 @@ void fdnCompleteTransitionsToIdleAfterTimer(FdnCompleteTestSuite* suite) {
     suite->device_.player->setPendingChallenge("fdn:7:6");
     suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     // Should be at FdnComplete
@@ -365,7 +365,7 @@ void fdnCompleteClearsPendingChallenge(FdnCompleteTestSuite* suite) {
     suite->device_.player->setLastFdnGameType(static_cast<int>(GameType::SIGNAL_ECHO));
     ASSERT_TRUE(suite->device_.player->hasPendingChallenge());
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     // Wait for transition to Idle (clears pending challenge on dismount)

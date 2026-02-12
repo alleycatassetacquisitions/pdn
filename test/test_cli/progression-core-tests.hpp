@@ -90,10 +90,10 @@ void difficultyGatingEasyWithoutBoon(DifficultyGatingTestSuite* suite) {
     ASSERT_TRUE(echo->getConfig().managedMode);
 }
 
-// Test: After boon → HARD mode
+// Test: After beating EASY (has button) → re-encounter → choose HARD
 void difficultyGatingHardWithBoon(DifficultyGatingTestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     suite->player_.serialOutDriver->injectInput("*fdn:7:6\r");
     suite->tick(3);
@@ -101,6 +101,13 @@ void difficultyGatingHardWithBoon(DifficultyGatingTestSuite* suite) {
 
     suite->player_.serialOutDriver->injectInput("*fack\r");
     suite->tickPlayerWithTime(5, 100);
+
+    // Should be in FdnReencounter, not directly in game
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+
+    // Choose HARD (index 0, confirm with PRIMARY)
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
 
     auto* echo = suite->getSignalEcho();
     ASSERT_NE(echo, nullptr);
@@ -193,7 +200,7 @@ void autoBoonTriggersOnSeventhButton(AutoBoonTestSuite* suite) {
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
     // Skip to FdnComplete (stateMap index 22)
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     // The win unlocks START (bit 6), completing all 7
@@ -210,7 +217,7 @@ void autoBoonDoesNotRetrigger(AutoBoonTestSuite* suite) {
     suite->setupWinOutcome();
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     // Still has boon, but no KONAMI COMPLETE message on display
@@ -233,7 +240,7 @@ void autoBoonShowsDisplay(AutoBoonTestSuite* suite) {
     suite->setupWinOutcome();
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     auto& textHistory = suite->device_.displayDriver->getTextHistory();
@@ -253,7 +260,7 @@ void autoBoonHardWinSetsPending(AutoBoonTestSuite* suite) {
     suite->setupWinOutcome(true);  // hardMode = true
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     ASSERT_EQ(suite->device_.player->getPendingProfileGame(),
@@ -267,7 +274,7 @@ void autoBoonEasyWinNoPending(AutoBoonTestSuite* suite) {
     suite->setupWinOutcome(false);  // hardMode = false
     suite->device_.player->setPendingChallenge("fdn:7:6");
 
-    suite->device_.game->skipToState(suite->device_.pdn, 22);
+    suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
     ASSERT_EQ(suite->device_.player->getPendingProfileGame(), -1);

@@ -40,7 +40,7 @@ void ColorProfilePrompt::onStateMounted(Device* PDN) {
         if (self->selectYes && gameType >= 0) {
             self->player->setEquippedColorProfile(gameType);
             LOG_I(TAG, "Equipped color profile: %s",
-                   getColorProfileName(gameType));
+                   getColorProfileName(gameType, self->player->isHunter()));
             if (self->progressManager) {
                 self->progressManager->saveProgress();
             }
@@ -83,17 +83,31 @@ void ColorProfilePrompt::renderUi(Device* PDN) {
 
     int gameType = player->getPendingProfileGame();
     const char* gameName = (gameType >= 0) ? getGameDisplayName(static_cast<GameType>(gameType)) : "UNKNOWN";
+    int current = player->getEquippedColorProfile();
+    bool isHunter = player->isHunter();
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getDisplay()->drawText("NEW PALETTE!", 15, 12);
     PDN->getDisplay()->drawText(gameName, 15, 28);
-    PDN->getDisplay()->drawText("EQUIP?", 10, 44);
 
-    if (selectYes) {
-        PDN->getDisplay()->drawText("[YES] NO", 60, 44);
+    if (current < 0) {
+        // First profile -- simple equip prompt
+        PDN->getDisplay()->drawText("EQUIP?", 10, 44);
     } else {
-        PDN->getDisplay()->drawText("YES [NO]", 60, 44);
+        // Has existing -- show current and ask to swap
+        char currentStr[32];
+        snprintf(currentStr, sizeof(currentStr), "NOW:%s",
+                 getColorProfileName(current, isHunter));
+        PDN->getDisplay()->drawText(currentStr, 5, 38);
+        PDN->getDisplay()->drawText("SWAP?", 10, 48);
+    }
+
+    int yesNoY = (current < 0) ? 44 : 48;
+    if (selectYes) {
+        PDN->getDisplay()->drawText("[YES] NO", 60, yesNoY);
+    } else {
+        PDN->getDisplay()->drawText("YES [NO]", 60, yesNoY);
     }
 
     PDN->getDisplay()->drawText("UP:toggle DOWN:ok", 5, 60);

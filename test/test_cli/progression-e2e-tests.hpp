@@ -262,10 +262,16 @@ void e2eServerSyncOnWin(ProgressionE2ETestSuite* suite) {
 // ============================================
 void e2eHardModeColorEquip(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    // Pre-set: beat EASY before (has START button)
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    // Step 6: Reconnect to FDN
+    // Step 6: Reconnect to FDN -> goes to FdnReencounter
     suite->triggerFdnHandshake("7", "6");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+
+    // Choose HARD (index 0, confirm with PRIMARY)
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
 
     // Step 7: Verify HARD config
     auto* echo = suite->getSignalEcho();
@@ -275,7 +281,8 @@ void e2eHardModeColorEquip(ProgressionE2ETestSuite* suite) {
 
     // Play to win
     suite->playSignalEchoToWin();
-    suite->tickPlayerWithTime(10, 400);  // → FdnComplete
+    suite->tickPlayerWithTime(10, 400);  // Win timer → returnToPreviousApp
+    suite->tickPlayerWithTime(5, 10);    // FdnReencounter → FdnComplete transition
 
     // FdnComplete should set pendingProfileGame
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
@@ -300,12 +307,16 @@ void e2eHardModeColorEquip(ProgressionE2ETestSuite* suite) {
 // ============================================
 void e2eColorPromptDecline(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     suite->triggerFdnHandshake("7", "6");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
     suite->playSignalEchoToWin();
-    suite->tickPlayerWithTime(10, 400);  // → FdnComplete
-    suite->tickPlayerWithTime(10, 400);  // → ColorProfilePrompt
+    suite->tickPlayerWithTime(10, 400);  // Win timer → returnToPreviousApp
+    suite->tickPlayerWithTime(5, 10);    // FdnReencounter → FdnComplete transition
+    suite->tickPlayerWithTime(10, 400);  // FdnComplete → ColorProfilePrompt
     ASSERT_EQ(suite->getPlayerStateId(), COLOR_PROFILE_PROMPT);
 
     // Toggle to NO, then confirm
@@ -342,12 +353,12 @@ void e2eColorPickerFromIdle(ProgressionE2ETestSuite* suite) {
 
     // Profile list: [SIGNAL_ECHO, DEFAULT]
     // Pre-selected: SIGNAL_ECHO (index 0, since it's equipped)
-    // Scroll to DEFAULT (index 1)
-    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Cycle to DEFAULT (index 1) using SECONDARY (new cycle button)
+    suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(1, 10);
 
-    // Confirm → equip DEFAULT (-1)
-    suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Equip DEFAULT (-1) using PRIMARY (new equip button)
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(3, 10);
 
     ASSERT_EQ(suite->getPlayerStateId(), IDLE);
@@ -383,11 +394,15 @@ void e2eEasyModeLoss(ProgressionE2ETestSuite* suite) {
 // ============================================
 void e2eHardModeLoss(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     suite->triggerFdnHandshake("7", "6");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
     suite->playSignalEchoToLose();
-    suite->tickPlayerWithTime(10, 400);  // → FdnComplete
+    suite->tickPlayerWithTime(10, 400);  // Lose timer → returnToPreviousApp
+    suite->tickPlayerWithTime(5, 10);    // FdnReencounter → FdnComplete transition
 
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
 
@@ -430,9 +445,12 @@ void e2eFirewallDecryptProgression(ProgressionE2ETestSuite* suite) {
 // ============================================
 void e2eFirewallDecryptHard(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::LEFT));
 
     suite->triggerFdnHandshake("3", "2");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
 
     auto* fw = suite->getFirewallDecrypt();
     ASSERT_NE(fw, nullptr);
@@ -479,12 +497,16 @@ void e2eNvsRoundTrip(ProgressionE2ETestSuite* suite) {
 // ============================================
 void e2ePromptAutoDismiss(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     suite->triggerFdnHandshake("7", "6");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
     suite->playSignalEchoToWin();
-    suite->tickPlayerWithTime(10, 400);  // → FdnComplete
-    suite->tickPlayerWithTime(10, 400);  // → ColorProfilePrompt
+    suite->tickPlayerWithTime(10, 400);  // Win timer → returnToPreviousApp
+    suite->tickPlayerWithTime(5, 10);    // FdnReencounter → FdnComplete transition
+    suite->tickPlayerWithTime(10, 400);  // FdnComplete → ColorProfilePrompt
     ASSERT_EQ(suite->getPlayerStateId(), COLOR_PROFILE_PROMPT);
 
     // Wait for auto-dismiss (10s)
@@ -513,11 +535,14 @@ void e2eDifficultyGatingDynamic(ProgressionE2ETestSuite* suite) {
     suite->tickPlayerWithTime(10, 400);  // FdnComplete → Idle
     ASSERT_EQ(suite->getPlayerStateId(), IDLE);
 
-    // Grant boon
-    suite->player_.player->setKonamiBoon(true);
-
-    // Second encounter — should be HARD now
+    // Second encounter -- button is unlocked from first win, goes to FdnReencounter
     suite->triggerFdnHandshake("7", "6");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+
+    // Choose HARD
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
+
     auto* echo2 = suite->getSignalEcho();
     ASSERT_EQ(echo2->getConfig().sequenceLength, SIGNAL_ECHO_HARD.sequenceLength);
 }
@@ -527,13 +552,17 @@ void e2eDifficultyGatingDynamic(ProgressionE2ETestSuite* suite) {
 // ============================================
 void e2eEquipLaterViaPicker(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
-    suite->player_.player->setKonamiBoon(true);
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    // Win hard mode, decline at prompt
+    // Re-encounter, choose HARD, win, decline at prompt
     suite->triggerFdnHandshake("7", "6");
+    ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickPlayerWithTime(3, 10);
     suite->playSignalEchoToWin();
-    suite->tickPlayerWithTime(10, 400);  // → FdnComplete
-    suite->tickPlayerWithTime(10, 400);  // → ColorProfilePrompt
+    suite->tickPlayerWithTime(10, 400);  // Win timer → returnToPreviousApp
+    suite->tickPlayerWithTime(5, 10);    // FdnReencounter → FdnComplete transition
+    suite->tickPlayerWithTime(10, 400);  // FdnComplete → ColorProfilePrompt
 
     // Toggle to NO, confirm
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
@@ -550,12 +579,12 @@ void e2eEquipLaterViaPicker(ProgressionE2ETestSuite* suite) {
 
     // Picker list: [SIGNAL_ECHO, DEFAULT]
     // Pre-selected: DEFAULT (index 1, since equippedColorProfile=-1)
-    // Scroll to SIGNAL_ECHO (index 0)
-    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Cycle to SIGNAL_ECHO (index 0) using SECONDARY
+    suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(1, 10);
 
-    // Confirm → equip Signal Echo
-    suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Equip Signal Echo using PRIMARY
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(3, 10);
 
     ASSERT_EQ(suite->getPlayerStateId(), IDLE);

@@ -66,6 +66,7 @@ inline const char* getQuickdrawStateName(int stateId) {
         case 22: return "FdnComplete";
         case 23: return "ColorProfilePrompt";
         case 24: return "ColorProfilePicker";
+        case 25: return "FdnReencounter";
         default: return "Unknown";
     }
 }

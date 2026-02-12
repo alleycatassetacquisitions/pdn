@@ -47,26 +47,27 @@ void ColorProfilePicker::onStateMounted(Device* PDN) {
 
     LOG_I(TAG, "Color picker opened, %zu profiles available", profileList.size());
 
-    // Primary = scroll, Secondary = confirm
-    parameterizedCallbackFunction scrollCb = [](void* ctx) {
-        auto* self = static_cast<ColorProfilePicker*>(ctx);
-        self->cursorIndex = (self->cursorIndex + 1) % static_cast<int>(self->profileList.size());
-        self->displayIsDirty = true;
-    };
-
-    parameterizedCallbackFunction confirmCb = [](void* ctx) {
+    // Primary (UP) = equip, Secondary (DOWN) = cycle
+    parameterizedCallbackFunction equipCb = [](void* ctx) {
         auto* self = static_cast<ColorProfilePicker*>(ctx);
         int selected = self->profileList[self->cursorIndex];
         self->player->setEquippedColorProfile(selected);
-        LOG_I(TAG, "Equipped profile: %s", getColorProfileName(selected));
+        LOG_I(TAG, "Equipped profile: %s",
+               getColorProfileName(selected, self->player->isHunter()));
         if (self->progressManager) {
             self->progressManager->saveProgress();
         }
         self->transitionToIdleState = true;
     };
 
-    PDN->getPrimaryButton()->setButtonPress(scrollCb, this, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
+    parameterizedCallbackFunction cycleCb = [](void* ctx) {
+        auto* self = static_cast<ColorProfilePicker*>(ctx);
+        self->cursorIndex = (self->cursorIndex + 1) % static_cast<int>(self->profileList.size());
+        self->displayIsDirty = true;
+    };
+
+    PDN->getPrimaryButton()->setButtonPress(equipCb, this, ButtonInteraction::CLICK);
+    PDN->getSecondaryButton()->setButtonPress(cycleCb, this, ButtonInteraction::CLICK);
 
     renderUi(PDN);
 }
@@ -103,7 +104,7 @@ void ColorProfilePicker::renderUi(Device* PDN) {
     for (int i = 0; i < visibleCount; i++) {
         int idx = (startIdx + i) % listSize;
         int y = 28 + (i * 12);
-        const char* name = getColorProfileName(profileList[idx]);
+        const char* name = getColorProfileName(profileList[idx], player->isHunter());
 
         if (idx == cursorIndex) {
             char line[32];
@@ -116,6 +117,6 @@ void ColorProfilePicker::renderUi(Device* PDN) {
         }
     }
 
-    PDN->getDisplay()->drawText("UP:scroll DOWN:ok", 5, 60);
+    PDN->getDisplay()->drawText("UP:equip DOWN:next", 5, 60);
     PDN->getDisplay()->render();
 }

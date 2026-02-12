@@ -71,7 +71,7 @@ inline const LEDState& getColorProfileState(int gameType) {
 /*
  * Get display name for a color profile.
  */
-inline const char* getColorProfileName(int gameType) {
-    if (gameType < 0) return "DEFAULT";
+inline const char* getColorProfileName(int gameType, bool isHunter) {
+    if (gameType < 0) return isHunter ? "HUNTER DEFAULT" : "BOUNTY DEFAULT";
     return getGameDisplayName(static_cast<GameType>(gameType));
 }

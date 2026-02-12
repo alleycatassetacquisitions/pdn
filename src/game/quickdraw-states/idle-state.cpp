@@ -144,6 +144,12 @@ void Idle::cycleStats(Device *PDN) {
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
+    // Palette indicator (shown on every stats page)
+    const char* paletteName = getColorProfileName(player->getEquippedColorProfile(), player->isHunter());
+    char paletteStr[32];
+    snprintf(paletteStr, sizeof(paletteStr), "Palette:%s", paletteName);
+    PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText(paletteStr, 0, 0);
+
     if(statsIndex == 0) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);

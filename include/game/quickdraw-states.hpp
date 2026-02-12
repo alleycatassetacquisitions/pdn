@@ -338,6 +338,10 @@ private:
     void launchGame(Device* PDN);
 };
 
+struct FdnReencounterSnapshot : public Snapshot {
+    bool gameLaunched = false;
+};
+
 /*
  * FdnComplete — Displays the outcome of the minigame.
  * Reads the outcome from Signal Echo via getApp(). On win, unlocks
