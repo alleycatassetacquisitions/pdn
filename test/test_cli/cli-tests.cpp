@@ -364,6 +364,34 @@ TEST_F(CliDisplayCommandTestSuite, DisplayAlias) {
 }
 
 // ============================================
+// CLI ROLE COMMAND TESTS
+// ============================================
+
+TEST_F(CliRoleCommandTestSuite, ShowsSelectedDevice) {
+    cliRoleCommandShowsSelectedDevice(this);
+}
+
+TEST_F(CliRoleCommandTestSuite, ShowsSpecificDevice) {
+    cliRoleCommandShowsSpecificDevice(this);
+}
+
+TEST_F(CliRoleCommandTestSuite, ShowsAllDevices) {
+    cliRoleCommandShowsAllDevices(this);
+}
+
+TEST_F(CliRoleCommandTestSuite, AliasWorks) {
+    cliRoleCommandAliasWorks(this);
+}
+
+TEST_F(CliRoleCommandTestSuite, InvalidDevice) {
+    cliRoleCommandInvalidDevice(this);
+}
+
+TEST_F(CliRoleCommandTestSuite, NoDevices) {
+    cliRoleCommandNoDevices(this);
+}
+
+// ============================================
 // CLI COMMAND / REBOOT TESTS
 // ============================================
 

@@ -984,6 +984,123 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), WELCOME_MESSAGE);
 }
 
+// ============================================
+// CLI ROLE COMMAND TEST SUITE
+// ============================================
+
+class CliRoleCommandTestSuite : public testing::Test {
+public:
+    void SetUp() override {
+        globalClock_ = new NativeClockDriver("test_role_clock");
+        globalLogger_ = new NativeLoggerDriver("test_role_logger");
+        globalLogger_->setSuppressOutput(true);
+        g_logger = globalLogger_;
+        SimpleTimer::setPlatformClock(globalClock_);
+
+        // Create two devices - hunter and bounty
+        devices_.push_back(cli::DeviceFactory::createDevice(0, true));   // Hunter
+        devices_.push_back(cli::DeviceFactory::createDevice(1, false));  // Bounty
+
+        selectedDevice_ = 0;
+        processor_ = new cli::CommandProcessor();
+        renderer_ = new cli::Renderer();
+    }
+
+    void TearDown() override {
+        delete renderer_;
+        delete processor_;
+
+        for (auto& dev : devices_) {
+            cli::DeviceFactory::destroyDevice(dev);
+        }
+        devices_.clear();
+
+        SimpleTimer::setPlatformClock(nullptr);
+        g_logger = nullptr;
+        delete globalLogger_;
+        delete globalClock_;
+    }
+
+    std::vector<cli::DeviceInstance> devices_;
+    int selectedDevice_;
+    cli::CommandProcessor* processor_;
+    cli::Renderer* renderer_;
+    NativeClockDriver* globalClock_;
+    NativeLoggerDriver* globalLogger_;
+};
+
+// Test: role command shows selected device's role
+void cliRoleCommandShowsSelectedDevice(CliRoleCommandTestSuite* suite) {
+    // Selected device is 0 (hunter)
+    suite->selectedDevice_ = 0;
+    auto result = suite->processor_->execute("role", suite->devices_,
+                                             suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "Device 0010: Hunter");
+}
+
+// Test: role <device> shows specific device's role
+void cliRoleCommandShowsSpecificDevice(CliRoleCommandTestSuite* suite) {
+    // Request bounty device by index
+    suite->selectedDevice_ = 0;  // Hunter selected, but we ask for device 1
+    auto result = suite->processor_->execute("role 1", suite->devices_,
+                                             suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "Device 0011: Bounty");
+
+    // Request bounty device by ID
+    result = suite->processor_->execute("role 0011", suite->devices_,
+                                        suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "Device 0011: Bounty");
+}
+
+// Test: role all shows all devices
+void cliRoleCommandShowsAllDevices(CliRoleCommandTestSuite* suite) {
+    auto result = suite->processor_->execute("role all", suite->devices_,
+                                             suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "Device 0010 [0]: Hunter | Device 0011 [1]: Bounty");
+}
+
+// Test: roles alias works
+void cliRoleCommandAliasWorks(CliRoleCommandTestSuite* suite) {
+    suite->selectedDevice_ = 1;  // Bounty selected
+    auto result = suite->processor_->execute("roles", suite->devices_,
+                                             suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "Device 0011: Bounty");
+}
+
+// Test: role with invalid device shows error
+void cliRoleCommandInvalidDevice(CliRoleCommandTestSuite* suite) {
+    auto result = suite->processor_->execute("role 99", suite->devices_,
+                                             suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "Invalid device");
+}
+
+// Test: role all with no devices shows "No devices"
+void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
+    // Clear devices
+    for (auto& dev : suite->devices_) {
+        cli::DeviceFactory::destroyDevice(dev);
+    }
+    suite->devices_.clear();
+
+    auto result = suite->processor_->execute("role all", suite->devices_,
+                                             suite->selectedDevice_, *suite->renderer_);
+
+    ASSERT_FALSE(result.shouldQuit);
+    ASSERT_EQ(result.message, "No devices");
+}
+
 // Test: Reboot clears state history and resets lastStateId
 void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     // Add some fake state history

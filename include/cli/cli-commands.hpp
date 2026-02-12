@@ -104,6 +104,9 @@ public:
         if (command == "reboot" || command == "restart") {
             return cmdReboot(tokens, devices, selectedDevice);
         }
+        if (command == "role" || command == "roles") {
+            return cmdRole(tokens, devices, selectedDevice);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -114,7 +117,7 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role";
         return result;
     }
     
@@ -594,6 +597,46 @@ private:
         
         result.message = "Added " + devices.back().deviceId + 
                          " (" + (isHunter ? "Hunter" : "Bounty") + ") - now selected";
+        return result;
+    }
+
+    static CommandResult cmdRole(const std::vector<std::string>& tokens,
+                                 const std::vector<DeviceInstance>& devices,
+                                 int selectedDevice) {
+        CommandResult result;
+
+        // Handle "role all" - show all devices
+        if (tokens.size() >= 2 && tokens[1] == "all") {
+            if (devices.empty()) {
+                result.message = "No devices";
+                return result;
+            }
+            std::string out;
+            for (size_t i = 0; i < devices.size(); i++) {
+                if (i > 0) out += " | ";
+                out += "Device " + devices[i].deviceId +
+                       " [" + std::to_string(i) + "]: " +
+                       (devices[i].isHunter ? "Hunter" : "Bounty");
+            }
+            result.message = out;
+            return result;
+        }
+
+        // Determine target device
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 2) {
+            targetDevice = findDevice(tokens[1], devices, -1);
+        }
+
+        // Validate target device
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+
+        // Show single device role
+        result.message = "Device " + devices[targetDevice].deviceId + ": " +
+                         (devices[targetDevice].isHunter ? "Hunter" : "Bounty");
         return result;
     }
 
