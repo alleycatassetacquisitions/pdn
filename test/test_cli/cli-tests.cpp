@@ -15,6 +15,7 @@
 #include "cli-fdn-tests.hpp"
 #include "device-extension-tests.hpp"
 #include "signal-echo-tests.hpp"
+#include "fdn-integration-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -594,6 +595,110 @@ TEST_F(SignalEchoDifficultyTestSuite, LifeIndicator) {
 
 TEST_F(SignalEchoDifficultyTestSuite, WrongInputAdvances) {
     echoDiffWrongInputAdvances(this);
+}
+
+// ============================================
+// FDN INTEGRATION TESTS
+// ============================================
+
+TEST_F(FdnIntegrationTestSuite, DetectsFdnBroadcast) {
+    fdnIntegrationDetectsFdnBroadcast(this);
+}
+
+TEST_F(FdnIntegrationTestSuite, HandshakeSendsMAC) {
+    fdnIntegrationHandshakeSendsMAC(this);
+}
+
+TEST_F(FdnIntegrationTestSuite, TransitionsToSignalEcho) {
+    fdnIntegrationTransitionsToSignalEcho(this);
+}
+
+TEST_F(FdnIntegrationTestSuite, HandshakeTimeout) {
+    fdnIntegrationHandshakeTimeout(this);
+}
+
+// ============================================
+// FDN COMPLETE TESTS
+// ============================================
+
+TEST_F(FdnCompleteTestSuite, ShowsVictoryOnWin) {
+    fdnCompleteShowsVictoryOnWin(this);
+}
+
+TEST_F(FdnCompleteTestSuite, UnlocksKonamiOnWin) {
+    fdnCompleteUnlocksKonamiOnWin(this);
+}
+
+TEST_F(FdnCompleteTestSuite, UnlocksColorProfileOnHardWin) {
+    fdnCompleteUnlocksColorProfileOnHardWin(this);
+}
+
+TEST_F(FdnCompleteTestSuite, ShowsDefeatedOnLoss) {
+    fdnCompleteShowsDefeatedOnLoss(this);
+}
+
+TEST_F(FdnCompleteTestSuite, TransitionsToIdleAfterTimer) {
+    fdnCompleteTransitionsToIdleAfterTimer(this);
+}
+
+TEST_F(FdnCompleteTestSuite, ClearsPendingChallenge) {
+    fdnCompleteClearsPendingChallenge(this);
+}
+
+// ============================================
+// PROGRESS MANAGER TESTS
+// ============================================
+
+TEST_F(ProgressManagerTestSuite, SavesOnWin) {
+    progressManagerSavesOnWin(this);
+}
+
+TEST_F(ProgressManagerTestSuite, LoadsProgress) {
+    progressManagerLoadsProgress(this);
+}
+
+TEST_F(ProgressManagerTestSuite, ClearsProgress) {
+    progressManagerClearsProgress(this);
+}
+
+// ============================================
+// PLAYER CHALLENGE TESTS
+// ============================================
+
+TEST_F(PlayerChallengeTestSuite, KonamiUnlockAndQuery) {
+    playerKonamiUnlockAndQuery(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, PendingChallengeSetClear) {
+    playerPendingChallengeSetClear(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, ColorProfileEligibility) {
+    playerColorProfileEligibility(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, EquippedColorProfile) {
+    playerEquippedColorProfile(this);
+}
+
+TEST_F(PlayerChallengeTestSuite, KonamiProgressSetGet) {
+    playerKonamiProgressSetGet(this);
+}
+
+// ============================================
+// APP SWITCHING TESTS
+// ============================================
+
+TEST_F(AppSwitchingTestSuite, SignalEchoRegistered) {
+    appSwitchingSignalEchoRegistered(this);
+}
+
+TEST_F(AppSwitchingTestSuite, QuickdrawActiveAtStart) {
+    appSwitchingQuickdrawActiveAtStart(this);
+}
+
+TEST_F(AppSwitchingTestSuite, ReturnToPrevious) {
+    appSwitchingReturnToPrevious(this);
 }
 
 // ============================================

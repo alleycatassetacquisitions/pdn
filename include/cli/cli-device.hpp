@@ -59,6 +59,8 @@ inline const char* getQuickdrawStateName(int stateId) {
         case 18: return "Win";
         case 19: return "Lose";
         case 20: return "UploadMatches";
+        case 21: return "FdnDetected";
+        case 22: return "FdnComplete";
         default: return "Unknown";
     }
 }
@@ -239,9 +241,13 @@ public:
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
 
+        // Create Signal Echo (pre-registered, configured lazily per encounter)
+        auto* signalEcho = new SignalEcho(SIGNAL_ECHO_EASY);
+
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
-            {StateId(QUICKDRAW_APP_ID), instance.game}
+            {StateId(QUICKDRAW_APP_ID), instance.game},
+            {StateId(SIGNAL_ECHO_APP_ID), signalEcho}
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
         

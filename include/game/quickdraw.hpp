@@ -6,6 +6,7 @@
 #include "state/state-machine.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "game/progress-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -32,4 +33,5 @@ private:
     PeerCommsInterface* peerComms;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     RemoteDebugManager* remoteDebugManager;
+    ProgressManager* progressManager = nullptr;
 };
