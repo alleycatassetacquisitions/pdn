@@ -19,6 +19,7 @@
 #include "progression-core-tests.hpp"
 #include "firewall-decrypt-tests.hpp"
 #include "color-profile-tests.hpp"
+#include "progression-e2e-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -1042,6 +1043,66 @@ TEST_F(StateNameTestSuite, ColorProfilePrompt) {
 
 TEST_F(StateNameTestSuite, ColorProfilePicker) {
     stateNameColorProfilePicker(this);
+}
+
+// ============================================
+// E2E PROGRESSION TESTS
+// ============================================
+
+TEST_F(ProgressionE2ETestSuite, SignalEchoEasyWin) {
+    e2eSignalEchoEasyWin(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, AutoBoonOnSeventhButton) {
+    e2eAutoBoonOnSeventhButton(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, ServerSyncOnWin) {
+    e2eServerSyncOnWin(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, HardModeColorEquip) {
+    e2eHardModeColorEquip(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, ColorPromptDecline) {
+    e2eColorPromptDecline(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, ColorPickerFromIdle) {
+    e2eColorPickerFromIdle(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, EasyModeLoss) {
+    e2eEasyModeLoss(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, HardModeLoss) {
+    e2eHardModeLoss(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, FirewallDecryptProgression) {
+    e2eFirewallDecryptProgression(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, FirewallDecryptHard) {
+    e2eFirewallDecryptHard(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, NvsRoundTrip) {
+    e2eNvsRoundTrip(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, PromptAutoDismiss) {
+    e2ePromptAutoDismiss(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, DifficultyGatingDynamic) {
+    e2eDifficultyGatingDynamic(this);
+}
+
+TEST_F(ProgressionE2ETestSuite, EquipLaterViaPicker) {
+    e2eEquipLaterViaPicker(this);
 }
 
 // ============================================
