@@ -2,6 +2,8 @@
 #include "game/quickdraw.hpp"
 #include "game/signal-echo/signal-echo.hpp"
 #include "game/signal-echo/signal-echo-resources.hpp"
+#include "game/firewall-decrypt/firewall-decrypt.hpp"
+#include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/device-constants.hpp"
@@ -103,6 +105,13 @@ void FdnDetected::onStateLoop(Device* PDN) {
                 SignalEchoConfig config = player->hasKonamiBoon() ? SIGNAL_ECHO_HARD : SIGNAL_ECHO_EASY;
                 config.managedMode = true;
                 echo->getConfig() = config;
+            }
+        } else if (pendingGameType == GameType::FIREWALL_DECRYPT) {
+            auto* fw = dynamic_cast<FirewallDecrypt*>(game);
+            if (fw) {
+                FirewallDecryptConfig config = player->hasKonamiBoon() ? FIREWALL_DECRYPT_HARD : FIREWALL_DECRYPT_EASY;
+                config.managedMode = true;
+                fw->getConfig() = config;
             }
         }
 
