@@ -4,6 +4,7 @@
 // Existing test headers
 #include "state-machine-tests.hpp"
 #include "serial-tests.hpp"
+#include "device-tests.hpp"
 
 // New test headers
 #include "player-tests.hpp"
@@ -221,6 +222,246 @@ TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
     ASSERT_FALSE(stateMachine->getTransitionReadyFlag());
     ASSERT_EQ(stateMachine->getNewState(), nullptr);
     ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
+}
+
+// ============================================
+// DEVICE TESTS - APP PATTERN
+// ============================================
+
+TEST_F(DeviceTestSuite, loadAppConfigMountsLaunchApp) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    ASSERT_EQ(appOne->mountedCount, 1);
+    ASSERT_EQ(appOne->loopCount, 0);
+}
+
+TEST_F(DeviceTestSuite, loadAppConfigWithMultipleAppsOnlyMountsLaunchApp) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    config[APP_THREE] = appThree;
+    
+    device->loadAppConfig(std::move(config), APP_TWO);
+    
+    ASSERT_EQ(appOne->mountedCount, 0);
+    ASSERT_EQ(appTwo->mountedCount, 1);
+    ASSERT_EQ(appThree->mountedCount, 0);
+}
+
+TEST_F(DeviceTestSuite, loopCallsCurrentAppStateLoop) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    device->loop();
+    device->loop();
+    device->loop();
+    
+    ASSERT_EQ(appOne->loopCount, 3);
+}
+
+TEST_F(DeviceTestSuite, loopHandlesEmptyAppConfig) {
+    // Should not crash with empty config
+    device->loop();
+    device->loop();
+    
+    // No assertions needed - just checking it doesn't crash
+    SUCCEED();
+}
+
+TEST_F(DeviceTestSuite, setActiveAppSwitchesToNewApp) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    // Switch to app two
+    device->setActiveApp(APP_TWO);
+    
+    ASSERT_EQ(appOne->pausedCount, 1);
+    ASSERT_EQ(appTwo->mountedCount, 1);
+}
+
+TEST_F(DeviceTestSuite, setActiveAppPausesCurrentApp) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    ASSERT_EQ(appOne->pausedCount, 0);
+    
+    device->setActiveApp(APP_TWO);
+    
+    ASSERT_EQ(appOne->pausedCount, 1);
+    ASSERT_TRUE(appOne->wasPaused);
+}
+
+TEST_F(DeviceTestSuite, setActiveAppMountsNewAppIfNotPreviouslyLaunched) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    device->setActiveApp(APP_TWO);
+    
+    ASSERT_EQ(appTwo->mountedCount, 1);
+    ASSERT_EQ(appTwo->resumedCount, 0);
+}
+
+TEST_F(DeviceTestSuite, setActiveAppResumesIfPreviouslyPaused) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    // Switch to app two
+    device->setActiveApp(APP_TWO);
+    
+    // Switch back to app one
+    device->setActiveApp(APP_ONE);
+    
+    // App one should be resumed, not mounted again
+    ASSERT_EQ(appOne->mountedCount, 1); // Only initial mount
+    ASSERT_EQ(appOne->resumedCount, 1);  // Resume on switch back
+}
+
+TEST_F(DeviceTestSuite, setActiveAppLoopCallsNewApp) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    device->loop();
+    device->loop();
+    
+    ASSERT_EQ(appOne->loopCount, 2);
+    ASSERT_EQ(appTwo->loopCount, 0);
+    
+    device->setActiveApp(APP_TWO);
+    
+    device->loop();
+    device->loop();
+    device->loop();
+    
+    ASSERT_EQ(appOne->loopCount, 2); // No more loops on app one
+    ASSERT_EQ(appTwo->loopCount, 3); // App two now getting loops
+}
+
+TEST_F(DeviceTestSuite, appLifecycleSequenceCorrect) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    // Load and launch app one
+    device->loadAppConfig(std::move(config), APP_ONE);
+    ASSERT_EQ(appOne->mountedCount, 1);
+    
+    // Run some loops
+    device->loop();
+    device->loop();
+    ASSERT_EQ(appOne->loopCount, 2);
+    
+    // Switch to app two
+    device->setActiveApp(APP_TWO);
+    ASSERT_EQ(appOne->pausedCount, 1);
+    ASSERT_EQ(appTwo->mountedCount, 1);
+    
+    // Run some loops on app two
+    device->loop();
+    ASSERT_EQ(appTwo->loopCount, 1);
+    
+    // Switch back to app one
+    device->setActiveApp(APP_ONE);
+    ASSERT_EQ(appTwo->pausedCount, 1);
+    ASSERT_EQ(appOne->resumedCount, 1);
+    
+    // Continue loops on app one
+    device->loop();
+    ASSERT_EQ(appOne->loopCount, 3);
+}
+
+TEST_F(DeviceTestSuite, multipleAppSwitchesWorkCorrectly) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    config[APP_THREE] = appThree;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    // APP_ONE -> APP_TWO
+    device->setActiveApp(APP_TWO);
+    ASSERT_EQ(appTwo->mountedCount, 1);
+    
+    // APP_TWO -> APP_THREE
+    device->setActiveApp(APP_THREE);
+    ASSERT_EQ(appThree->mountedCount, 1);
+    
+    // APP_THREE -> APP_ONE (resume)
+    device->setActiveApp(APP_ONE);
+    ASSERT_EQ(appOne->resumedCount, 1);
+    
+    // APP_ONE -> APP_TWO (resume)
+    device->setActiveApp(APP_TWO);
+    ASSERT_EQ(appTwo->resumedCount, 1);
+}
+
+TEST_F(DeviceTestSuite, pausedAppPreservesState) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    config[APP_TWO] = appTwo;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    // Run some loops to build state
+    device->loop();
+    device->loop();
+    device->loop();
+    int loopsBeforePause = appOne->loopCount;
+    
+    // Switch away
+    device->setActiveApp(APP_TWO);
+    
+    // Run loops on app two
+    device->loop();
+    device->loop();
+    
+    // App one's loop count should not have changed
+    ASSERT_EQ(appOne->loopCount, loopsBeforePause);
+    
+    // Switch back
+    device->setActiveApp(APP_ONE);
+    
+    // Continue loops
+    device->loop();
+    
+    // Loop count should continue from where it left off
+    ASSERT_EQ(appOne->loopCount, loopsBeforePause + 1);
+}
+
+TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {
+    // This test verifies that Device::loop() calls both
+    // driverManager.execDrivers() and the app's onStateLoop
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    
+    device->loadAppConfig(std::move(config), APP_ONE);
+    
+    // Device loop should execute drivers and then app loop
+    device->loop();
+    
+    // App loop was called
+    ASSERT_EQ(appOne->loopCount, 1);
+    
+    // Note: We can't directly test execDrivers() was called since
+    // it's not mockable, but this documents the expected behavior
 }
 
 // ============================================

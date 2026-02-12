@@ -106,7 +106,7 @@ public:
         return nullptr;
     }
 
-    void onStateResumed(Device *PDN, Snapshot* stateMahineSnapshot) override {
+    void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
         currentState->onStateMounted(PDN);
         currentState->onStateResumed(PDN, currentSnapshot.get());
         currentSnapshot = nullptr;
