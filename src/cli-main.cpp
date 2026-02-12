@@ -9,6 +9,7 @@
 #include <csignal>
 #include <iostream>
 #include <string>
+#include <fstream>
 
 // Platform abstraction
 #include "utils/simple-timer.hpp"
@@ -36,6 +37,7 @@ std::atomic<bool> g_running{true};
 std::string g_commandBuffer;
 std::string g_commandResult;
 int g_selectedDevice = 0;  // Currently selected device index
+std::string g_scriptFile;  // Script file path (empty = interactive mode)
 
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
@@ -43,42 +45,53 @@ void signalHandler(int signal) {
 }
 
 /**
- * Parse command line arguments for device count.
+ * Parse command line arguments for device count and script file.
+ * Sets g_scriptFile if --script flag is present.
  * Returns -1 if no valid count specified (prompt needed).
  */
 int parseArgs(int argc, char** argv) {
+    int deviceCount = -1;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        
+
+        // Script flag
+        if (arg == "--script" && i + 1 < argc) {
+            g_scriptFile = argv[++i];
+            continue;
+        }
+
         // Check for -n or --count flag
         if ((arg == "-n" || arg == "--count") && i + 1 < argc) {
             int count = std::atoi(argv[i + 1]);
             if (count >= MIN_DEVICES && count <= MAX_DEVICES) {
-                return count;
+                deviceCount = count;
+                i++;
             }
+            continue;
         }
-        
-        // Check for bare number argument
-        int count = std::atoi(arg.c_str());
-        if (count >= MIN_DEVICES && count <= MAX_DEVICES) {
-            return count;
-        }
-        
+
         // Help flag
         if (arg == "-h" || arg == "--help") {
             printf("PDN CLI Simulator\n");
             printf("Usage: %s [options] [device_count]\n\n", argv[0]);
             printf("Options:\n");
-            printf("  -n, --count N   Create N devices (1-%d)\n", MAX_DEVICES);
-            printf("  -h, --help      Show this help message\n");
+            printf("  -n, --count N       Create N devices (1-%d)\n", MAX_DEVICES);
+            printf("  --script <file>     Run demo script (non-interactive)\n");
+            printf("  -h, --help          Show this help message\n");
             printf("\nExamples:\n");
             printf("  %s           Interactive prompt for device count\n", argv[0]);
             printf("  %s 3         Create 3 devices\n", argv[0]);
-            printf("  %s -n 4      Create 4 devices\n", argv[0]);
+            printf("  %s 2 --script demos/fdn-quickstart.demo\n", argv[0]);
             exit(0);
         }
+
+        // Check for bare number argument
+        int count = std::atoi(arg.c_str());
+        if (count >= MIN_DEVICES && count <= MAX_DEVICES) {
+            deviceCount = count;
+        }
     }
-    return -1;  // No valid count found, need to prompt
+    return deviceCount;
 }
 
 /**
@@ -141,18 +154,92 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
                isHunter ? "Hunter" : "Bounty");
     }
     
-    printf("\n");
-    printf("Press any key to start simulation...\n");
-    fflush(stdout);
-    
-    // Wait for keypress (blocking read)
-    #ifndef _WIN32
-    getchar();
-    #else
-    _getch();
-    #endif
-    
+    if (g_scriptFile.empty()) {
+        printf("\n");
+        printf("Press any key to start simulation...\n");
+        fflush(stdout);
+        #ifndef _WIN32
+        getchar();
+        #else
+        _getch();
+        #endif
+    } else {
+        printf("\n");
+    }
+
     return devices;
+}
+
+/**
+ * Run a demo script file in non-interactive mode.
+ * Reads commands line-by-line, executes them, and prints state after each.
+ * Supports: commands, "wait <seconds>", and "# comment" lines.
+ */
+void runScript(const std::string& path,
+               std::vector<cli::DeviceInstance>& devices,
+               cli::CommandProcessor& proc,
+               cli::Renderer& renderer) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Error: Cannot open script file: " << path << std::endl;
+        return;
+    }
+
+    std::cout << "--- Running script: " << path << " ---" << std::endl;
+
+    std::string line;
+    while (std::getline(file, line) && g_running) {
+        // Trim whitespace (including \r from Windows line endings)
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) continue;
+        size_t end = line.find_last_not_of(" \t\r\n");
+        line = line.substr(start, end - start + 1);
+
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == '#') continue;
+
+        // Handle "wait <seconds>"
+        if (line.size() > 5 && line.substr(0, 5) == "wait ") {
+            float secs = std::stof(line.substr(5));
+            std::cout << "> wait " << secs << "s" << std::endl;
+            auto end = std::chrono::steady_clock::now() +
+                       std::chrono::milliseconds(static_cast<int>(secs * 1000));
+            while (std::chrono::steady_clock::now() < end && g_running) {
+                NativePeerBroker::getInstance().deliverPackets();
+                cli::SerialCableBroker::getInstance().transferData();
+                for (auto& d : devices) d.pdn->loop();
+                std::this_thread::sleep_for(std::chrono::milliseconds(33));
+            }
+            continue;
+        }
+
+        // Execute command
+        std::cout << "> " << line << std::endl;
+        auto result = proc.execute(line, devices, g_selectedDevice, renderer);
+        if (!result.message.empty()) {
+            std::cout << result.message << std::endl;
+        }
+
+        // Print state after each command
+        for (size_t i = 0; i < devices.size(); i++) {
+            auto* sm = devices[i].game;
+            if (sm && sm->getCurrentState()) {
+                std::cout << "  [" << devices[i].deviceId << "] "
+                          << cli::getStateName(sm->getCurrentState()->getStateId(),
+                                               devices[i].deviceType)
+                          << std::endl;
+            }
+        }
+
+        if (result.shouldQuit) break;
+
+        // One frame tick between commands
+        NativePeerBroker::getInstance().deliverPackets();
+        cli::SerialCableBroker::getInstance().transferData();
+        for (auto& d : devices) d.pdn->loop();
+    }
+
+    std::cout << "--- Script complete ---" << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -174,123 +261,114 @@ int main(int argc, char** argv) {
     // Seed the ID generator
     IdGenerator(globalClock->milliseconds()).seed(globalClock->milliseconds());
     
-    // Show header (before raw mode)
-    cli::Terminal::clearScreen();
-    cli::printHeader();
-    
-    // Determine device count from args or prompt
+    // Parse arguments first (sets g_scriptFile and device count)
     int deviceCount = parseArgs(argc, argv);
-    if (deviceCount < 0) {
-        deviceCount = promptDeviceCount();
+
+    // Show header (skip in script mode)
+    if (g_scriptFile.empty()) {
+        cli::Terminal::clearScreen();
+        cli::printHeader();
     }
-    
+
+    // Determine device count
+    if (deviceCount < 0) {
+        if (!g_scriptFile.empty()) {
+            deviceCount = 2;  // Default for script mode
+        } else {
+            deviceCount = promptDeviceCount();
+        }
+    }
+
     // Create devices
     std::vector<cli::DeviceInstance> devices = createDevices(deviceCount);
-    
-    // Now configure terminal for non-blocking input (Unix only)
-    #ifndef _WIN32
-    struct termios oldTermios = cli::Terminal::enableRawMode();
-    #endif
-    
-    // Set up display for simulation
-    cli::Terminal::clearScreen();
-    cli::Terminal::hideCursor();
-    cli::printHeader();
-    
+
     // Create CLI components
     cli::Renderer renderer;
     cli::CommandProcessor commandProcessor;
-    
-    // Show initial help hint
-    g_commandResult = "Ready! Use LEFT/RIGHT to select device, UP/DOWN for buttons. Type 'help' for commands.";
-    
-    // Main loop
-    while (g_running) {
-        // Handle input (non-blocking)
-        int key = cli::Terminal::readKey();
-        while (key != static_cast<int>(cli::Key::NONE)) {
-            if (key == static_cast<int>(cli::Key::ARROW_UP)) {
-                // Up arrow = primary button click on selected device
-                if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
-                    devices[g_selectedDevice].primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-                    g_commandResult = "Button1 click on " + devices[g_selectedDevice].deviceId;
-                }
-            } else if (key == static_cast<int>(cli::Key::ARROW_DOWN)) {
-                // Down arrow = secondary button click on selected device
-                if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
-                    devices[g_selectedDevice].secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-                    g_commandResult = "Button2 click on " + devices[g_selectedDevice].deviceId;
-                }
-            } else if (key == static_cast<int>(cli::Key::ARROW_LEFT)) {
-                // Left arrow = select previous device
-                if (g_selectedDevice > 0) {
-                    g_selectedDevice--;
-                    g_commandResult = "Selected device " + devices[g_selectedDevice].deviceId;
-                }
-            } else if (key == static_cast<int>(cli::Key::ARROW_RIGHT)) {
-                // Right arrow = select next device
-                if (g_selectedDevice < static_cast<int>(devices.size()) - 1) {
-                    g_selectedDevice++;
-                    g_commandResult = "Selected device " + devices[g_selectedDevice].deviceId;
-                }
-            } else if (key == '\n' || key == '\r') {
-                // Execute command on Enter
-                auto result = commandProcessor.execute(g_commandBuffer, devices, g_selectedDevice, renderer);
-                g_commandResult = result.message;
-                if (result.shouldQuit) {
+
+    if (!g_scriptFile.empty()) {
+        // Script mode — no raw terminal, no TUI
+        runScript(g_scriptFile, devices, commandProcessor, renderer);
+    } else {
+        // Interactive mode
+        #ifndef _WIN32
+        struct termios oldTermios = cli::Terminal::enableRawMode();
+        #endif
+
+        cli::Terminal::clearScreen();
+        cli::Terminal::hideCursor();
+        cli::printHeader();
+
+        g_commandResult = "Ready! Use LEFT/RIGHT to select device, UP/DOWN for buttons. Type 'help' for commands.";
+
+        // Main loop
+        while (g_running) {
+            // Handle input (non-blocking)
+            int key = cli::Terminal::readKey();
+            while (key != static_cast<int>(cli::Key::NONE)) {
+                if (key == static_cast<int>(cli::Key::ARROW_UP)) {
+                    if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                        devices[g_selectedDevice].primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+                        g_commandResult = "Button1 click on " + devices[g_selectedDevice].deviceId;
+                    }
+                } else if (key == static_cast<int>(cli::Key::ARROW_DOWN)) {
+                    if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                        devices[g_selectedDevice].secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+                        g_commandResult = "Button2 click on " + devices[g_selectedDevice].deviceId;
+                    }
+                } else if (key == static_cast<int>(cli::Key::ARROW_LEFT)) {
+                    if (g_selectedDevice > 0) {
+                        g_selectedDevice--;
+                        g_commandResult = "Selected device " + devices[g_selectedDevice].deviceId;
+                    }
+                } else if (key == static_cast<int>(cli::Key::ARROW_RIGHT)) {
+                    if (g_selectedDevice < static_cast<int>(devices.size()) - 1) {
+                        g_selectedDevice++;
+                        g_commandResult = "Selected device " + devices[g_selectedDevice].deviceId;
+                    }
+                } else if (key == '\n' || key == '\r') {
+                    auto result = commandProcessor.execute(g_commandBuffer, devices, g_selectedDevice, renderer);
+                    g_commandResult = result.message;
+                    if (result.shouldQuit) {
+                        g_running = false;
+                    }
+                    g_commandBuffer.clear();
+                } else if (key == 127 || key == '\b') {
+                    if (!g_commandBuffer.empty()) {
+                        g_commandBuffer.pop_back();
+                    }
+                } else if (key == 27) {
+                    g_commandBuffer.clear();
+                    g_commandResult.clear();
+                } else if (key == 3) {
                     g_running = false;
+                } else if (key >= 32 && key < 127) {
+                    g_commandBuffer += static_cast<char>(key);
                 }
-                g_commandBuffer.clear();
-            } else if (key == 127 || key == '\b') {
-                // Backspace - remove last character
-                if (!g_commandBuffer.empty()) {
-                    g_commandBuffer.pop_back();
-                }
-            } else if (key == 27) {
-                // Escape - clear command buffer
-                g_commandBuffer.clear();
-                g_commandResult.clear();
-            } else if (key == 3) {
-                // Ctrl+C - quit
-                g_running = false;
-            } else if (key >= 32 && key < 127) {
-                // Printable character - add to buffer
-                g_commandBuffer += static_cast<char>(key);
+                key = cli::Terminal::readKey();
             }
-            key = cli::Terminal::readKey();
+
+            NativePeerBroker::getInstance().deliverPackets();
+            cli::SerialCableBroker::getInstance().transferData();
+            for (auto& device : devices) {
+                device.pdn->loop();
+            }
+
+            renderer.renderUI(devices, g_commandResult, g_commandBuffer, g_selectedDevice);
+            std::this_thread::sleep_for(std::chrono::milliseconds(33));
         }
-        
-        // Deliver pending peer-to-peer messages
-        NativePeerBroker::getInstance().deliverPackets();
-        
-        // Transfer serial data between connected devices
-        cli::SerialCableBroker::getInstance().transferData();
-        
-        // Update all devices
-        for (auto& device : devices) {
-            device.pdn->loop();
-        }
-        
-        // Render UI
-        renderer.renderUI(devices, g_commandResult, g_commandBuffer, g_selectedDevice);
-        
-        // Sleep to maintain ~30 FPS update rate
-        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+
+        cli::Terminal::showCursor();
+        printf("\n\nShutting down...\n");
     }
-    
-    // Restore terminal settings and cursor
-    cli::Terminal::showCursor();
-    
-    // Move cursor below the UI for clean shutdown message
-    printf("\n\nShutting down...\n");
-    
+
     for (auto& device : devices) {
         cli::DeviceFactory::destroyDevice(device);
     }
-    
+
     delete globalLogger;
     delete globalClock;
-    
+
     return 0;
 }
 

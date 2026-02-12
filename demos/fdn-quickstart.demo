@@ -1,0 +1,29 @@
+# FDN Quickstart Demo
+# Demonstrates a full FDN encounter between hunter and FDN NPC
+# Usage: .pio/build/native_cli/program 2 --script demos/fdn-quickstart.demo
+
+# Setup: 2 devices (device 0 = hunter, device 1 = bounty)
+# Connect them via serial cable
+cable 0 1
+wait 1
+
+# Check initial states
+state
+
+# Let devices settle into Idle
+wait 3
+state
+
+# Inject FDN detection signal (simulates NPC broadcast)
+# Format: *fdn:<gameType>:<reward>\r
+inject 0 *fdn:7:6\r
+wait 2
+
+# Check state after FDN signal
+state
+
+# Let the encounter play out
+wait 5
+
+# Final state check
+state
