@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <queue>
 #include <string>
+#include <vector>
 
 enum QuickdrawStateId {
     PLAYER_REGISTRATION = 0,
@@ -36,7 +37,9 @@ enum QuickdrawStateId {
     LOSE = 19,
     UPLOAD_MATCHES = 20,
     FDN_DETECTED = 21,
-    FDN_COMPLETE = 22
+    FDN_COMPLETE = 22,
+    COLOR_PROFILE_PROMPT = 23,
+    COLOR_PROFILE_PICKER = 24
 };
 
 class PlayerRegistration : public State {
@@ -220,6 +223,7 @@ public:
     void onStateDismounted(Device *PDN) override;
     bool transitionToHandshake();
     bool isFdnDetected() const { return fdnDetected; }
+    bool transitionToColorPicker() const { return colorPickerRequested; }
     void cycleStats(Device *PDN);
 
 private:
@@ -238,6 +242,9 @@ private:
     // FDN detection
     bool fdnDetected = false;
     std::string lastFdnMessage;
+
+    // Color profile picker
+    bool colorPickerRequested = false;
 
     void serialEventCallbacks(const std::string& message);
     void ledAnimation(Device *PDN);
@@ -299,6 +306,7 @@ public:
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
 
+    bool transitionToColorPrompt();
     bool transitionToIdle();
 
 private:
@@ -307,6 +315,62 @@ private:
     SimpleTimer displayTimer;
     static constexpr int DISPLAY_DURATION_MS = 3000;
     bool transitionToIdleState = false;
+    bool transitionToColorPromptState = false;
+};
+
+/*
+ * ColorProfilePrompt — YES/NO prompt after winning hard mode.
+ * Asks whether to equip the newly unlocked color palette.
+ * YES: equips palette, saves progress, transitions to Idle.
+ * NO: transitions to Idle, eligibility preserved for later.
+ * Auto-dismiss after 10 seconds defaults to NO.
+ */
+class ColorProfilePrompt : public State {
+public:
+    explicit ColorProfilePrompt(Player* player, ProgressManager* progressManager);
+    ~ColorProfilePrompt();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    ProgressManager* progressManager;
+    SimpleTimer dismissTimer;
+    static constexpr int AUTO_DISMISS_MS = 10000;
+    bool transitionToIdleState = false;
+    bool selectYes = true;
+    void renderUi(Device* PDN);
+};
+
+/*
+ * ColorProfilePicker — Browse and equip unlocked color palettes.
+ * Entered from Idle via long press on secondary button.
+ * Lists all eligible profiles + DEFAULT. Primary scrolls, secondary confirms.
+ */
+class ColorProfilePicker : public State {
+public:
+    explicit ColorProfilePicker(Player* player, ProgressManager* progressManager);
+    ~ColorProfilePicker();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    ProgressManager* progressManager;
+    bool transitionToIdleState = false;
+    bool displayIsDirty = false;
+    int cursorIndex = 0;
+    std::vector<int> profileList;  // game type values (-1 = DEFAULT)
+    void buildProfileList();
+    void renderUi(Device* PDN);
 };
 
 class ConnectionSuccessful : public State {
