@@ -20,6 +20,7 @@
 #include "color-profile-tests.hpp"
 #include "firewall-decrypt-tests.hpp"
 #include "progression-e2e-tests.hpp"
+#include "negative-flow-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -1131,6 +1132,98 @@ TEST_F(ProgressionE2ETestSuite, DifficultyGatingDynamic) {
 
 TEST_F(ProgressionE2ETestSuite, EquipLaterViaPicker) {
     e2eEquipLaterViaPicker(this);
+}
+
+// ============================================
+// RE-ENCOUNTER TESTS
+// ============================================
+
+TEST_F(NegativeFlowTestSuite, FirstEncounterLaunchesEasy) {
+    firstEncounterLaunchesEasy(this);
+}
+
+TEST_F(NegativeFlowTestSuite, ReencounterWithButtonShowsPrompt) {
+    reencounterWithButtonShowsPrompt(this);
+}
+
+TEST_F(NegativeFlowTestSuite, ReencounterChooseHardLaunchesHard) {
+    reencounterChooseHardLaunchesHard(this);
+}
+
+TEST_F(NegativeFlowTestSuite, ReencounterChooseEasyLaunchesRecreational) {
+    reencounterChooseEasyLaunchesRecreational(this);
+}
+
+TEST_F(NegativeFlowTestSuite, ReencounterChooseSkipReturnsToIdle) {
+    reencounterChooseSkipReturnsToIdle(this);
+}
+
+TEST_F(NegativeFlowTestSuite, FullyCompletedReencounterAllRecreational) {
+    fullyCompletedReencounterAllRecreational(this);
+}
+
+TEST_F(NegativeFlowTestSuite, ReencounterTimeoutDefaultsToSkip) {
+    reencounterTimeoutDefaultsToSkip(this);
+}
+
+TEST_F(NegativeFlowTestSuite, RecreationalWinSkipsRewards) {
+    recreationalWinSkipsRewards(this);
+}
+
+// ============================================
+// COLOR PROMPT CONTEXT TESTS
+// ============================================
+
+TEST_F(NegativeFlowTestSuite, ColorPromptFirstProfileShowsEquip) {
+    colorPromptFirstProfileShowsEquip(this);
+}
+
+TEST_F(NegativeFlowTestSuite, ColorPromptWithExistingShowsSwap) {
+    colorPromptWithExistingShowsSwap(this);
+}
+
+// ============================================
+// COLOR PICKER BUTTON SWAP TESTS
+// ============================================
+
+TEST_F(NegativeFlowTestSuite, PickerUpButtonEquipsProfile) {
+    pickerUpButtonEquipsProfile(this);
+}
+
+TEST_F(NegativeFlowTestSuite, PickerDownButtonCyclesProfile) {
+    pickerDownButtonCyclesProfile(this);
+}
+
+TEST_F(NegativeFlowTestSuite, PickerShowsRoleAwareDefaultName) {
+    pickerShowsRoleAwareDefaultName(this);
+}
+
+// ============================================
+// IDLE PALETTE INDICATOR TESTS
+// ============================================
+
+TEST_F(NegativeFlowTestSuite, IdleShowsPaletteIndicator) {
+    idleShowsPaletteIndicator(this);
+}
+
+TEST_F(NegativeFlowTestSuite, IdleShowsEquippedPaletteName) {
+    idleShowsEquippedPaletteName(this);
+}
+
+// ============================================
+// BOUNTY ROLE TESTS
+// ============================================
+
+TEST_F(BountyFlowTestSuite, BountyFdnEasyWin) {
+    bountyFdnEasyWin(this);
+}
+
+TEST_F(BountyFlowTestSuite, BountyFdnHardWinColorPrompt) {
+    bountyFdnHardWinColorPrompt(this);
+}
+
+TEST_F(BountyFlowTestSuite, BountyReencounterPrompt) {
+    bountyReencounterPrompt(this);
 }
 
 // ============================================
