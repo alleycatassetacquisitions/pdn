@@ -1,5 +1,6 @@
 #include "game/spike-vector/spike-vector-states.hpp"
 #include "game/spike-vector/spike-vector.hpp"
+#include "game/spike-vector/spike-vector-resources.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "SpikeVectorIntro";
@@ -13,13 +14,14 @@ SpikeVectorIntro::~SpikeVectorIntro() {
 }
 
 void SpikeVectorIntro::onStateMounted(Device* PDN) {
-    transitionToWinState = false;
+    transitionToShowState = false;
 
     LOG_I(TAG, "Spike Vector intro");
 
     // Reset session for a fresh game
     game->getSession().reset();
     game->resetGame();
+    game->seedRng();
 
     // Display title screen
     PDN->getDisplay()->invalidateScreen();
@@ -28,21 +30,31 @@ void SpikeVectorIntro::onStateMounted(Device* PDN) {
         ->drawText("Dodge the grid.", 10, 45);
     PDN->getDisplay()->render();
 
-    // Start intro timer — stub auto-wins after this
+    // Start idle LED animation
+    AnimationConfig config;
+    config.type = AnimationType::IDLE;
+    config.speed = 16;
+    config.curve = EaseCurve::LINEAR;
+    config.initialState = SPIKE_VECTOR_IDLE_STATE;
+    config.loopDelayMs = 0;
+    config.loop = true;
+    PDN->getLightManager()->startAnimation(config);
+
+    // Start intro timer
     introTimer.setTimer(INTRO_DURATION_MS);
 }
 
 void SpikeVectorIntro::onStateLoop(Device* PDN) {
     if (introTimer.expired()) {
-        transitionToWinState = true;
+        transitionToShowState = true;
     }
 }
 
 void SpikeVectorIntro::onStateDismounted(Device* PDN) {
     introTimer.invalidate();
-    transitionToWinState = false;
+    transitionToShowState = false;
 }
 
-bool SpikeVectorIntro::transitionToWin() {
-    return transitionToWinState;
+bool SpikeVectorIntro::transitionToShow() {
+    return transitionToShowState;
 }

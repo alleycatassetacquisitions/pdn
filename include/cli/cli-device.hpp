@@ -115,10 +115,13 @@ inline const char* getGhostRunnerStateName(int stateId) {
 
 inline const char* getSpikeVectorStateName(int stateId) {
     switch (stateId) {
-        case SPIKE_INTRO: return "SpikeVectorIntro";
-        case SPIKE_WIN:   return "SpikeVectorWin";
-        case SPIKE_LOSE:  return "SpikeVectorLose";
-        default:          return "Unknown";
+        case SPIKE_INTRO:    return "SpikeVectorIntro";
+        case SPIKE_WIN:      return "SpikeVectorWin";
+        case SPIKE_LOSE:     return "SpikeVectorLose";
+        case SPIKE_SHOW:     return "SpikeVectorShow";
+        case SPIKE_GAMEPLAY: return "SpikeVectorGameplay";
+        case SPIKE_EVALUATE: return "SpikeVectorEvaluate";
+        default:             return "Unknown";
     }
 }
 
