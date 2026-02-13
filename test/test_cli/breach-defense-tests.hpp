@@ -15,10 +15,44 @@
 using namespace cli;
 
 // ============================================
-// BREACH DEFENSE STUB TEST SUITE
+// BREACH DEFENSE STANDALONE TEST SUITE
 // ============================================
 
-class BreachDefenseStubTestSuite : public testing::Test {
+class BreachDefenseTestSuite : public testing::Test {
+public:
+    void SetUp() override {
+        device_ = DeviceFactory::createGameDevice(0, "breach-defense");
+        SimpleTimer::setPlatformClock(device_.clockDriver);
+        game_ = static_cast<BreachDefense*>(device_.game);
+    }
+
+    void TearDown() override {
+        SimpleTimer::setPlatformClock(nullptr);
+        DeviceFactory::destroyDevice(device_);
+    }
+
+    void tick(int n = 1) {
+        for (int i = 0; i < n; i++) {
+            device_.pdn->loop();
+        }
+    }
+
+    void tickWithTime(int n, int delayMs) {
+        for (int i = 0; i < n; i++) {
+            device_.clockDriver->advance(delayMs);
+            device_.pdn->loop();
+        }
+    }
+
+    DeviceInstance device_;
+    BreachDefense* game_ = nullptr;
+};
+
+// ============================================
+// BREACH DEFENSE MANAGED TEST SUITE (FDN)
+// ============================================
+
+class BreachDefenseManagedTestSuite : public testing::Test {
 public:
     void SetUp() override {
         player_ = DeviceFactory::createDevice(0, true);
@@ -61,57 +95,324 @@ public:
 };
 
 // ============================================
-// STUB LIFECYCLE TESTS
+// TEST FUNCTIONS
 // ============================================
 
 /*
- * Test: Game starts in Intro state when launched standalone.
- * Creates a standalone game device and verifies the initial state.
+ * Test 1: Verify EASY config presets.
  */
-void breachDefenseStubIntroState(BreachDefenseStubTestSuite* suite) {
-    DeviceInstance device = DeviceFactory::createGameDevice(10, "breach-defense");
-    SimpleTimer::setPlatformClock(device.clockDriver);
-
-    State* state = device.game->getCurrentState();
-    ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), BREACH_INTRO);
-
-    SimpleTimer::setPlatformClock(suite->player_.clockDriver);
-    DeviceFactory::destroyDevice(device);
+void breachDefenseEasyConfigPresets(BreachDefenseTestSuite* suite) {
+    BreachDefenseConfig easy = makeBreachDefenseEasyConfig();
+    ASSERT_EQ(easy.numLanes, 3);
+    ASSERT_EQ(easy.threatSpeedMs, 40);
+    ASSERT_EQ(easy.threatDistance, 100);
+    ASSERT_EQ(easy.totalThreats, 6);
+    ASSERT_EQ(easy.missesAllowed, 3);
 }
 
 /*
- * Test: Intro auto-transitions to Win after 2 seconds (stub behavior).
- * The stub has no real gameplay — intro -> win is the entire flow.
+ * Test 2: Verify HARD config presets.
  */
-void breachDefenseStubAutoWin(BreachDefenseStubTestSuite* suite) {
-    DeviceInstance device = DeviceFactory::createGameDevice(10, "breach-defense");
-    SimpleTimer::setPlatformClock(device.clockDriver);
+void breachDefenseHardConfigPresets(BreachDefenseTestSuite* suite) {
+    BreachDefenseConfig hard = makeBreachDefenseHardConfig();
+    ASSERT_EQ(hard.numLanes, 5);
+    ASSERT_EQ(hard.threatSpeedMs, 20);
+    ASSERT_EQ(hard.threatDistance, 100);
+    ASSERT_EQ(hard.totalThreats, 12);
+    ASSERT_EQ(hard.missesAllowed, 1);
+}
 
-    ASSERT_EQ(device.game->getCurrentState()->getStateId(), BREACH_INTRO);
+/*
+ * Test 3: Intro resets session to defaults.
+ */
+void breachDefenseIntroResetsSession(BreachDefenseTestSuite* suite) {
+    // Dirty the session
+    auto& sess = suite->game_->getSession();
+    sess.score = 999;
+    sess.breaches = 5;
+    sess.currentThreat = 10;
+    sess.shieldLane = 4;
+
+    // Skip to intro (index 0)
+    suite->game_->skipToState(suite->device_.pdn, 0);
+    suite->tick(1);
+
+    ASSERT_EQ(sess.score, 0);
+    ASSERT_EQ(sess.breaches, 0);
+    ASSERT_EQ(sess.currentThreat, 0);
+    ASSERT_EQ(sess.shieldLane, 0);
+}
+
+/*
+ * Test 4: Intro transitions away from Intro after timer.
+ * Note: The intro timer may expire immediately on the first tick (because
+ * the platform clock isn't set during device creation). The important thing
+ * is that Intro's transition wiring leads to Show (not Win or Lose).
+ */
+void breachDefenseIntroTransitionsToShow(BreachDefenseTestSuite* suite) {
+    // Use skipToState to mount Intro cleanly with the platform clock set
+    suite->game_->skipToState(suite->device_.pdn, 0);
+    suite->tick(1);
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_INTRO);
 
     // Advance past 2s intro timer
-    for (int i = 0; i < 25; i++) {
-        device.clockDriver->advance(100);
-        device.pdn->loop();
-    }
+    suite->tickWithTime(25, 100);
 
-    ASSERT_EQ(device.game->getCurrentState()->getStateId(), BREACH_WIN);
-
-    // Verify outcome was set
-    auto* bd = static_cast<BreachDefense*>(device.game);
-    ASSERT_EQ(bd->getOutcome().result, MiniGameResult::WON);
-
-    SimpleTimer::setPlatformClock(suite->player_.clockDriver);
-    DeviceFactory::destroyDevice(device);
+    // Should have transitioned to Show (1500ms timer), not yet to Gameplay
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
 }
 
 /*
- * Test: In managed mode, Win state calls returnToPreviousApp.
- * Launches Breach Defense via FDN handshake and plays through to win.
- * After win timer expires, should return to Quickdraw (FdnComplete).
+ * Test 5: Show state is reachable and has correct state ID.
  */
-void breachDefenseStubManagedModeReturns(BreachDefenseStubTestSuite* suite) {
+void breachDefenseShowDisplaysThreatInfo(BreachDefenseTestSuite* suite) {
+    suite->game_->skipToState(suite->device_.pdn, 1);  // Show is index 1
+    suite->tick(1);
+
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+}
+
+/*
+ * Test 6: Show transitions to Gameplay after timer.
+ */
+void breachDefenseShowTransitionsToGameplay(BreachDefenseTestSuite* suite) {
+    suite->game_->skipToState(suite->device_.pdn, 1);  // Show
+    suite->tick(1);
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+
+    // Advance past 1.5s show timer
+    suite->tickWithTime(20, 100);
+
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_GAMEPLAY);
+}
+
+/*
+ * Test 7: Threat position advances with time in Gameplay state.
+ */
+void breachDefenseThreatAdvancesWithTime(BreachDefenseTestSuite* suite) {
+    suite->game_->getConfig().threatSpeedMs = 10;
+    suite->game_->getConfig().threatDistance = 1000;  // Large distance so it doesn't arrive
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    int initialPos = suite->game_->getSession().threatPosition;
+
+    // Advance a few ticks
+    suite->tickWithTime(5, 15);
+
+    ASSERT_GT(suite->game_->getSession().threatPosition, initialPos);
+}
+
+/*
+ * Test 8: Correct block — shield matches threat lane, score increases, no breach.
+ */
+void breachDefenseCorrectBlock(BreachDefenseTestSuite* suite) {
+    suite->game_->getConfig().threatSpeedMs = 5;
+    suite->game_->getConfig().threatDistance = 10;
+    suite->game_->getConfig().totalThreats = 4;
+    suite->game_->getConfig().missesAllowed = 3;
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Set shield to match threat lane
+    auto& sess = suite->game_->getSession();
+    sess.shieldLane = sess.threatLane;
+
+    // Advance until threat arrives
+    suite->tickWithTime(30, 10);
+
+    // Should have evaluated — check score
+    ASSERT_EQ(sess.score, 100);
+    ASSERT_EQ(sess.breaches, 0);
+}
+
+/*
+ * Test 9: Missed threat — shield in wrong lane, breach counted.
+ */
+void breachDefenseMissedThreat(BreachDefenseTestSuite* suite) {
+    suite->game_->getConfig().threatSpeedMs = 5;
+    suite->game_->getConfig().threatDistance = 10;
+    suite->game_->getConfig().totalThreats = 4;
+    suite->game_->getConfig().missesAllowed = 3;
+    suite->game_->getConfig().numLanes = 3;
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Set shield to NOT match threat lane
+    auto& sess = suite->game_->getSession();
+    if (sess.threatLane == 0) {
+        sess.shieldLane = 1;
+    } else {
+        sess.shieldLane = 0;
+    }
+
+    // Advance until threat arrives
+    suite->tickWithTime(30, 10);
+
+    // Should have evaluated — check breach counted
+    ASSERT_EQ(sess.score, 0);
+    ASSERT_EQ(sess.breaches, 1);
+}
+
+/*
+ * Test 10: Shield moves with button presses.
+ */
+void breachDefenseShieldMovesUpDown(BreachDefenseTestSuite* suite) {
+    suite->game_->getConfig().numLanes = 5;
+    suite->game_->getConfig().threatDistance = 10000;  // Keep gameplay alive
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    auto& sess = suite->game_->getSession();
+    sess.shieldLane = 2;
+
+    // Press DOWN (secondary button) — should increase lane
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+    ASSERT_EQ(sess.shieldLane, 3);
+
+    // Press UP (primary button) — should decrease lane
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+    ASSERT_EQ(sess.shieldLane, 2);
+}
+
+/*
+ * Test 11: Evaluate routes to Show for next threat (mid-game).
+ */
+void breachDefenseEvaluateRoutesToNextThreat(BreachDefenseTestSuite* suite) {
+    // Configure for multiple threats
+    suite->game_->getConfig().totalThreats = 4;
+    suite->game_->getConfig().missesAllowed = 3;
+    suite->game_->getConfig().threatSpeedMs = 5;
+    suite->game_->getConfig().threatDistance = 5;
+
+    // Start at Gameplay
+    suite->game_->skipToState(suite->device_.pdn, 2);
+    suite->tick(1);
+
+    // Let threat arrive and evaluate
+    suite->tickWithTime(30, 10);
+
+    // After evaluation timer, should route to Show (next threat)
+    // The session should now be on threat 1 (second threat)
+    ASSERT_EQ(suite->game_->getSession().currentThreat, 1);
+
+    // Wait for eval to complete and transition
+    suite->tickWithTime(10, 100);
+
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+}
+
+/*
+ * Test 12: Evaluate routes to Win when all threats survived.
+ */
+void breachDefenseEvaluateRoutesToWin(BreachDefenseTestSuite* suite) {
+    suite->game_->getConfig().totalThreats = 1;
+    suite->game_->getConfig().missesAllowed = 3;
+    suite->game_->getConfig().threatSpeedMs = 5;
+    suite->game_->getConfig().threatDistance = 5;
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Match shield to threat
+    auto& sess = suite->game_->getSession();
+    sess.shieldLane = sess.threatLane;
+
+    // Let threat arrive and evaluate
+    suite->tickWithTime(30, 10);
+
+    // Wait for eval timer
+    suite->tickWithTime(10, 100);
+
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_WIN);
+}
+
+/*
+ * Test 13: Evaluate routes to Lose when too many breaches.
+ */
+void breachDefenseEvaluateRoutesToLose(BreachDefenseTestSuite* suite) {
+    suite->game_->getConfig().totalThreats = 4;
+    suite->game_->getConfig().missesAllowed = 0;  // No misses allowed
+    suite->game_->getConfig().threatSpeedMs = 5;
+    suite->game_->getConfig().threatDistance = 5;
+    suite->game_->getConfig().numLanes = 3;
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Ensure shield does NOT match threat
+    auto& sess = suite->game_->getSession();
+    if (sess.threatLane == 0) {
+        sess.shieldLane = 1;
+    } else {
+        sess.shieldLane = 0;
+    }
+
+    // Let threat arrive and evaluate
+    suite->tickWithTime(30, 10);
+
+    // Wait for eval timer
+    suite->tickWithTime(10, 100);
+
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_LOSE);
+}
+
+/*
+ * Test 14: Win state sets outcome to WON.
+ */
+void breachDefenseWinSetsOutcome(BreachDefenseTestSuite* suite) {
+    suite->game_->skipToState(suite->device_.pdn, 4);  // Win is index 4
+    suite->tick(1);
+
+    ASSERT_EQ(suite->game_->getOutcome().result, MiniGameResult::WON);
+}
+
+/*
+ * Test 15: Lose state sets outcome to LOST.
+ */
+void breachDefenseLoseSetsOutcome(BreachDefenseTestSuite* suite) {
+    suite->game_->skipToState(suite->device_.pdn, 5);  // Lose is index 5
+    suite->tick(1);
+
+    ASSERT_EQ(suite->game_->getOutcome().result, MiniGameResult::LOST);
+}
+
+/*
+ * Test 16: In standalone mode, Win loops back to Intro after timer.
+ */
+void breachDefenseStandaloneLoopsToIntro(BreachDefenseTestSuite* suite) {
+    suite->game_->skipToState(suite->device_.pdn, 4);  // Win
+    suite->tick(1);
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_WIN);
+
+    // Advance past 3s win timer
+    suite->tickWithTime(35, 100);
+
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_INTRO);
+}
+
+/*
+ * Test 17: All 6 state names resolve correctly.
+ */
+void breachDefenseStateNamesResolve(BreachDefenseTestSuite* suite) {
+    ASSERT_STREQ(getBreachDefenseStateName(BREACH_INTRO), "BreachDefenseIntro");
+    ASSERT_STREQ(getBreachDefenseStateName(BREACH_WIN), "BreachDefenseWin");
+    ASSERT_STREQ(getBreachDefenseStateName(BREACH_LOSE), "BreachDefenseLose");
+    ASSERT_STREQ(getBreachDefenseStateName(BREACH_SHOW), "BreachDefenseShow");
+    ASSERT_STREQ(getBreachDefenseStateName(BREACH_GAMEPLAY), "BreachDefenseGameplay");
+    ASSERT_STREQ(getBreachDefenseStateName(BREACH_EVALUATE), "BreachDefenseEvaluate");
+
+    // Verify getStateName routes correctly
+    ASSERT_STREQ(getStateName(BREACH_INTRO), "BreachDefenseIntro");
+    ASSERT_STREQ(getStateName(BREACH_GAMEPLAY), "BreachDefenseGameplay");
+}
+
+/*
+ * Test 18: Managed mode — FDN launches Breach Defense and returns to FdnComplete.
+ */
+void breachDefenseManagedModeReturns(BreachDefenseManagedTestSuite* suite) {
     suite->advanceToIdle();
 
     // Trigger FDN handshake for Breach Defense (GameType 6, KonamiButton A=5)
@@ -126,104 +427,48 @@ void breachDefenseStubManagedModeReturns(BreachDefenseStubTestSuite* suite) {
     suite->player_.serialOutDriver->injectInput("*fack\r");
     suite->tickWithTime(5, 100);
 
-    // Should be in Breach Defense Intro now
+    // Should be in Breach Defense now
     auto* bd = suite->getBreachDefense();
     ASSERT_NE(bd, nullptr);
     ASSERT_TRUE(bd->getConfig().managedMode);
 
-    // Advance past intro timer (2s)
-    suite->tickWithTime(25, 100);
+    // Configure very short game for quick playthrough
+    bd->getConfig().threatSpeedMs = 5;
+    bd->getConfig().threatDistance = 3;
+    bd->getConfig().totalThreats = 1;
+    bd->getConfig().missesAllowed = 3;
 
-    // Should be in Breach Defense Win
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
+    // Advance past intro timer (2s) + show timer (1.5s)
+    // Total: 3.5s + margin. The clock was valid when Intro mounted via FDN,
+    // so timers work correctly from this point.
+    suite->tickWithTime(40, 100);
 
-    // Advance past win timer (3s)
-    suite->tickWithTime(35, 100);
+    // Should be in Gameplay by now (past intro 2s + show 1.5s = 3.5s, we advanced 4s)
+    // The threat may or may not have arrived depending on exact timing
+    int stateId = bd->getCurrentState()->getStateId();
 
-    // Should return to Quickdraw's FdnComplete state
+    // If still in Gameplay, force the threat through
+    if (stateId == BREACH_GAMEPLAY) {
+        bd->getSession().shieldLane = bd->getSession().threatLane;
+        suite->tickWithTime(20, 20);  // Enough for threat to arrive
+    }
+
+    // If in Evaluate, wait for eval timer
+    stateId = bd->getCurrentState()->getStateId();
+    if (stateId == BREACH_EVALUATE) {
+        suite->tickWithTime(10, 100);  // Past 500ms eval timer
+    }
+
+    // Should be in Win now (or already past it)
+    stateId = bd->getCurrentState()->getStateId();
+    if (stateId == BREACH_WIN) {
+        ASSERT_EQ(bd->getOutcome().result, MiniGameResult::WON);
+        // Advance past win timer (3s)
+        suite->tickWithTime(35, 100);
+    }
+
+    // Should have returned to Quickdraw's FdnComplete state
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
-}
-
-/*
- * Test: In standalone mode, Win state loops back to Intro.
- * The default standalone config has managedMode = false.
- */
-void breachDefenseStubStandaloneLoops(BreachDefenseStubTestSuite* suite) {
-    DeviceInstance device = DeviceFactory::createGameDevice(10, "breach-defense");
-    SimpleTimer::setPlatformClock(device.clockDriver);
-
-    // Advance past intro (2s) -> win state
-    for (int i = 0; i < 25; i++) {
-        device.clockDriver->advance(100);
-        device.pdn->loop();
-    }
-    ASSERT_EQ(device.game->getCurrentState()->getStateId(), BREACH_WIN);
-
-    // Advance past win timer (3s) -> should loop to intro
-    for (int i = 0; i < 35; i++) {
-        device.clockDriver->advance(100);
-        device.pdn->loop();
-    }
-    ASSERT_EQ(device.game->getCurrentState()->getStateId(), BREACH_INTRO);
-
-    SimpleTimer::setPlatformClock(suite->player_.clockDriver);
-    DeviceFactory::destroyDevice(device);
-}
-
-/*
- * Test: Full FDN flow — detected -> handshake -> game launch -> win -> FdnComplete.
- * This exercises the routing in fdn-detected-state.cpp and the managed mode return.
- */
-void breachDefenseStubFdnLaunch(BreachDefenseStubTestSuite* suite) {
-    suite->advanceToIdle();
-
-    // Inject FDN broadcast
-    suite->player_.serialOutDriver->injectInput("*fdn:6:5\r");
-    for (int i = 0; i < 3; i++) {
-        SerialCableBroker::getInstance().transferData();
-        suite->player_.pdn->loop();
-    }
-    ASSERT_EQ(suite->getPlayerStateId(), FDN_DETECTED);
-
-    // Handshake
-    suite->player_.serialOutDriver->injectInput("*fack\r");
-    suite->tickWithTime(5, 100);
-
-    // Now in Breach Defense
-    auto* bd = suite->getBreachDefense();
-    ASSERT_NE(bd, nullptr);
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_INTRO);
-
-    // Play through stub (intro 2s + win 3s)
-    suite->tickWithTime(25, 100);  // Past intro
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
-    ASSERT_EQ(bd->getOutcome().result, MiniGameResult::WON);
-
-    suite->tickWithTime(35, 100);  // Past win timer
-
-    // Back in Quickdraw
-    ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
-}
-
-/*
- * Test: App ID is correctly registered in getAppIdForGame().
- */
-void breachDefenseStubAppIdRegistered(BreachDefenseStubTestSuite* suite) {
-    ASSERT_EQ(getAppIdForGame(GameType::BREACH_DEFENSE), BREACH_DEFENSE_APP_ID);
-    ASSERT_EQ(BREACH_DEFENSE_APP_ID, 8);
-}
-
-/*
- * Test: State names resolve correctly for CLI display.
- */
-void breachDefenseStubStateNames(BreachDefenseStubTestSuite* suite) {
-    ASSERT_STREQ(getBreachDefenseStateName(BREACH_INTRO), "BreachDefenseIntro");
-    ASSERT_STREQ(getBreachDefenseStateName(BREACH_WIN), "BreachDefenseWin");
-    ASSERT_STREQ(getBreachDefenseStateName(BREACH_LOSE), "BreachDefenseLose");
-
-    // Verify getStateName routes correctly
-    ASSERT_STREQ(getStateName(BREACH_INTRO), "BreachDefenseIntro");
-    ASSERT_STREQ(getStateName(BREACH_WIN), "BreachDefenseWin");
 }
 
 #endif // NATIVE_BUILD

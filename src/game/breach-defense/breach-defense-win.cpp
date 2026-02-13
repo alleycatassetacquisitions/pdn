@@ -15,14 +15,18 @@ BreachDefenseWin::~BreachDefenseWin() {
 void BreachDefenseWin::onStateMounted(Device* PDN) {
     transitionToIntroState = false;
 
-    // Stub: always easy-mode win (hardMode = false)
+    auto& config = game->getConfig();
+    auto& session = game->getSession();
+
+    bool isHard = (config.numLanes >= 5 && config.missesAllowed <= 1);
+
     MiniGameOutcome winOutcome;
     winOutcome.result = MiniGameResult::WON;
-    winOutcome.score = 100;
-    winOutcome.hardMode = false;
+    winOutcome.score = session.score;
+    winOutcome.hardMode = isHard;
     game->setOutcome(winOutcome);
 
-    LOG_I(TAG, "BREACH BLOCKED");
+    LOG_I(TAG, "BREACH BLOCKED — score %d, hard %d", session.score, isHard);
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
