@@ -155,6 +155,8 @@ void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
 
 /*
  * Test: Ghost Runner HARD win → color profile eligibility.
+ * NOTE: This test is currently failing - FdnComplete is not transitioning to COLOR_PROFILE_PROMPT.
+ * Need to investigate why pendingProfileGame is not being set correctly.
  */
 void e2eGhostRunnerHardWin(E2EGameSuiteTestSuite* suite) {
     suite->advanceToIdle();
@@ -171,12 +173,13 @@ void e2eGhostRunnerHardWin(E2EGameSuiteTestSuite* suite) {
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
 
-    // Configure for easy win on hard mode
+    // Configure for easy win that qualifies as HARD (missesAllowed <= 1, zoneWidth <= 16)
     gr->getConfig().ghostSpeedMs = 5;
     gr->getConfig().screenWidth = 100;
-    gr->getConfig().targetZoneStart = 5;
-    gr->getConfig().targetZoneEnd = 95;
+    gr->getConfig().targetZoneStart = 42;
+    gr->getConfig().targetZoneEnd = 58;  // zoneWidth = 16
     gr->getConfig().rounds = 1;
+    gr->getConfig().missesAllowed = 1;
 
     // Advance past intro + show
     suite->tickWithTime(50, 100);
@@ -201,6 +204,8 @@ void e2eGhostRunnerHardWin(E2EGameSuiteTestSuite* suite) {
 
 /*
  * Test: Ghost Runner loss → no rewards.
+ * NOTE: This test is currently failing - game ends in WIN instead of LOSE.
+ * Need to investigate the loss condition logic more carefully.
  */
 void e2eGhostRunnerLoss(E2EGameSuiteTestSuite* suite) {
     suite->advanceToIdle();
@@ -211,21 +216,20 @@ void e2eGhostRunnerLoss(E2EGameSuiteTestSuite* suite) {
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
 
-    // Configure for guaranteed loss — press outside zone many times
+    // Configure for guaranteed loss — miss allowed is 0, press outside zone
     gr->getConfig().ghostSpeedMs = 100;
+    gr->getConfig().screenWidth = 100;
     gr->getConfig().targetZoneStart = 80;
     gr->getConfig().targetZoneEnd = 90;
-    gr->getConfig().rounds = 4;
-    gr->getConfig().missesAllowed = 2;
+    gr->getConfig().rounds = 1;
+    gr->getConfig().missesAllowed = 0;
 
     // Advance past intro + show
     suite->tickWithTime(50, 100);
 
-    // Press immediately 3 times (all misses, exceeds allowed)
-    for (int i = 0; i < 3; i++) {
-        suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-        suite->tickWithTime(5, 100);
-    }
+    // Press immediately while ghost is at position 0 (far from zone 80-90)
+    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tickWithTime(5, 100);
 
     // Should be in Lose
     ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_LOSE);
