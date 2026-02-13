@@ -142,10 +142,13 @@ inline const char* getExploitSequencerStateName(int stateId) {
 
 inline const char* getBreachDefenseStateName(int stateId) {
     switch (stateId) {
-        case BREACH_INTRO: return "BreachDefenseIntro";
-        case BREACH_WIN:   return "BreachDefenseWin";
-        case BREACH_LOSE:  return "BreachDefenseLose";
-        default:           return "Unknown";
+        case BREACH_INTRO:    return "BreachDefenseIntro";
+        case BREACH_WIN:      return "BreachDefenseWin";
+        case BREACH_LOSE:     return "BreachDefenseLose";
+        case BREACH_SHOW:     return "BreachDefenseShow";
+        case BREACH_GAMEPLAY: return "BreachDefenseGameplay";
+        case BREACH_EVALUATE: return "BreachDefenseEvaluate";
+        default:              return "Unknown";
     }
 }
 
