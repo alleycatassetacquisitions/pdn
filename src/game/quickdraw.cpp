@@ -58,6 +58,7 @@ void Quickdraw::populateStateMap() {
     FdnComplete* fdnComplete = new FdnComplete(player, progressManager);
     ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
     ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
+    KonamiPuzzle* konamiPuzzle = new KonamiPuzzle(player);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -131,6 +132,11 @@ void Quickdraw::populateStateMap() {
 
     fdnDetected->addTransition(
         new StateTransition(
+            std::bind(&FdnDetected::transitionToKonamiPuzzle, fdnDetected),
+            konamiPuzzle));
+
+    fdnDetected->addTransition(
+        new StateTransition(
             std::bind(&FdnDetected::transitionToReencounter, fdnDetected),
             fdnReencounter));
 
@@ -172,6 +178,11 @@ void Quickdraw::populateStateMap() {
     colorProfilePicker->addTransition(
         new StateTransition(
             std::bind(&ColorProfilePicker::transitionToIdle, colorProfilePicker),
+            idle));
+
+    konamiPuzzle->addTransition(
+        new StateTransition(
+            std::bind(&KonamiPuzzle::transitionToIdle, konamiPuzzle),
             idle));
 
     handshakeInitiate->addTransition(
@@ -305,6 +316,7 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(fdnComplete);
     stateMap.push_back(colorProfilePrompt);
     stateMap.push_back(colorProfilePicker);
+    stateMap.push_back(konamiPuzzle);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {

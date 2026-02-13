@@ -153,6 +153,13 @@ public:
     uint8_t getKonamiProgress() const { return konamiProgress; }
     void setKonamiProgress(uint8_t progress) { konamiProgress = progress; }
     bool isKonamiComplete() const { return (konamiProgress & 0x7F) == 0x7F; }
+    bool hasAllKonamiButtons() const {
+        // Check all 7 buttons (0-6)
+        for (uint8_t i = 0; i < 7; i++) {
+            if (!hasUnlockedButton(i)) return false;
+        }
+        return true;
+    }
 
     // Konami boon (auto-set when all 7 buttons collected)
     bool hasKonamiBoon() const { return konamiBoon; }
