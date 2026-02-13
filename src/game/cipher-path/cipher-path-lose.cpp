@@ -1,5 +1,6 @@
 #include "game/cipher-path/cipher-path-states.hpp"
 #include "game/cipher-path/cipher-path.hpp"
+#include "game/cipher-path/cipher-path-resources.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "CipherPathLose";
@@ -15,18 +16,30 @@ CipherPathLose::~CipherPathLose() {
 void CipherPathLose::onStateMounted(Device* PDN) {
     transitionToIntroState = false;
 
+    auto& session = game->getSession();
+
     MiniGameOutcome loseOutcome;
     loseOutcome.result = MiniGameResult::LOST;
-    loseOutcome.score = 0;
+    loseOutcome.score = session.score;
     loseOutcome.hardMode = false;
     game->setOutcome(loseOutcome);
 
-    LOG_I(TAG, "PATH LOST");
+    LOG_I(TAG, "PATH LOST (score=%d)", session.score);
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
         ->drawText("PATH LOST", 10, 30);
     PDN->getDisplay()->render();
+
+    // Lose LED animation
+    AnimationConfig animConfig;
+    animConfig.type = AnimationType::IDLE;
+    animConfig.speed = 12;
+    animConfig.curve = EaseCurve::LINEAR;
+    animConfig.initialState = CIPHER_PATH_LOSE_STATE;
+    animConfig.loopDelayMs = 0;
+    animConfig.loop = true;
+    PDN->getLightManager()->startAnimation(animConfig);
 
     PDN->getHaptics()->setIntensity(255);
 

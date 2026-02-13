@@ -106,46 +106,61 @@ inline const char* getFirewallDecryptStateName(int stateId) {
 
 inline const char* getGhostRunnerStateName(int stateId) {
     switch (stateId) {
-        case GHOST_INTRO: return "GhostRunnerIntro";
-        case GHOST_WIN:   return "GhostRunnerWin";
-        case GHOST_LOSE:  return "GhostRunnerLose";
-        default:          return "Unknown";
+        case GHOST_INTRO:    return "GhostRunnerIntro";
+        case GHOST_WIN:      return "GhostRunnerWin";
+        case GHOST_LOSE:     return "GhostRunnerLose";
+        case GHOST_SHOW:     return "GhostRunnerShow";
+        case GHOST_GAMEPLAY: return "GhostRunnerGameplay";
+        case GHOST_EVALUATE: return "GhostRunnerEvaluate";
+        default:             return "Unknown";
     }
 }
 
 inline const char* getSpikeVectorStateName(int stateId) {
     switch (stateId) {
-        case SPIKE_INTRO: return "SpikeVectorIntro";
-        case SPIKE_WIN:   return "SpikeVectorWin";
-        case SPIKE_LOSE:  return "SpikeVectorLose";
-        default:          return "Unknown";
+        case SPIKE_INTRO:    return "SpikeVectorIntro";
+        case SPIKE_WIN:      return "SpikeVectorWin";
+        case SPIKE_LOSE:     return "SpikeVectorLose";
+        case SPIKE_SHOW:     return "SpikeVectorShow";
+        case SPIKE_GAMEPLAY: return "SpikeVectorGameplay";
+        case SPIKE_EVALUATE: return "SpikeVectorEvaluate";
+        default:             return "Unknown";
     }
 }
 
 inline const char* getCipherPathStateName(int stateId) {
     switch (stateId) {
-        case CIPHER_INTRO: return "CipherPathIntro";
-        case CIPHER_WIN:   return "CipherPathWin";
-        case CIPHER_LOSE:  return "CipherPathLose";
-        default:           return "Unknown";
+        case CIPHER_INTRO:    return "CipherPathIntro";
+        case CIPHER_WIN:      return "CipherPathWin";
+        case CIPHER_LOSE:     return "CipherPathLose";
+        case CIPHER_SHOW:     return "CipherPathShow";
+        case CIPHER_GAMEPLAY: return "CipherPathGameplay";
+        case CIPHER_EVALUATE: return "CipherPathEvaluate";
+        default:              return "Unknown";
     }
 }
 
 inline const char* getExploitSequencerStateName(int stateId) {
     switch (stateId) {
-        case EXPLOIT_INTRO: return "ExploitSeqIntro";
-        case EXPLOIT_WIN:   return "ExploitSeqWin";
-        case EXPLOIT_LOSE:  return "ExploitSeqLose";
-        default:            return "Unknown";
+        case EXPLOIT_INTRO:    return "ExploitSeqIntro";
+        case EXPLOIT_WIN:      return "ExploitSeqWin";
+        case EXPLOIT_LOSE:     return "ExploitSeqLose";
+        case EXPLOIT_SHOW:     return "ExploitSeqShow";
+        case EXPLOIT_GAMEPLAY: return "ExploitSeqGameplay";
+        case EXPLOIT_EVALUATE: return "ExploitSeqEvaluate";
+        default:               return "Unknown";
     }
 }
 
 inline const char* getBreachDefenseStateName(int stateId) {
     switch (stateId) {
-        case BREACH_INTRO: return "BreachDefenseIntro";
-        case BREACH_WIN:   return "BreachDefenseWin";
-        case BREACH_LOSE:  return "BreachDefenseLose";
-        default:           return "Unknown";
+        case BREACH_INTRO:    return "BreachDefenseIntro";
+        case BREACH_WIN:      return "BreachDefenseWin";
+        case BREACH_LOSE:     return "BreachDefenseLose";
+        case BREACH_SHOW:     return "BreachDefenseShow";
+        case BREACH_GAMEPLAY: return "BreachDefenseGameplay";
+        case BREACH_EVALUATE: return "BreachDefenseEvaluate";
+        default:              return "Unknown";
     }
 }
 

@@ -15,13 +15,15 @@ BreachDefenseLose::~BreachDefenseLose() {
 void BreachDefenseLose::onStateMounted(Device* PDN) {
     transitionToIntroState = false;
 
+    auto& session = game->getSession();
+
     MiniGameOutcome loseOutcome;
     loseOutcome.result = MiniGameResult::LOST;
-    loseOutcome.score = 0;
+    loseOutcome.score = session.score;
     loseOutcome.hardMode = false;
     game->setOutcome(loseOutcome);
 
-    LOG_I(TAG, "BREACH OPEN");
+    LOG_I(TAG, "BREACH OPEN — score %d", session.score);
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)

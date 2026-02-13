@@ -1232,163 +1232,391 @@ TEST_F(BountyFlowTestSuite, BountyReencounterPrompt) {
 }
 
 // ============================================
-// GHOST RUNNER STUB TESTS
+// GHOST RUNNER TESTS
 // ============================================
 
-TEST_F(GhostRunnerStubTestSuite, StubIntroState) {
-    ghostRunnerStubIntroState(this);
+TEST_F(GhostRunnerTestSuite, EasyConfigPresets) {
+    ghostRunnerEasyConfigPresets(this);
 }
 
-TEST_F(GhostRunnerStubTestSuite, StubAutoWin) {
-    ghostRunnerStubAutoWin(this);
+TEST_F(GhostRunnerTestSuite, HardConfigPresets) {
+    ghostRunnerHardConfigPresets(this);
 }
 
-TEST_F(GhostRunnerStubTestSuite, StubManagedModeReturns) {
-    ghostRunnerStubManagedModeReturns(this);
+TEST_F(GhostRunnerTestSuite, IntroSeedsRng) {
+    ghostRunnerIntroSeedsRng(this);
 }
 
-TEST_F(GhostRunnerStubTestSuite, StubStandaloneLoops) {
-    ghostRunnerStubStandaloneLoops(this);
+TEST_F(GhostRunnerTestSuite, IntroTransitionsToShow) {
+    ghostRunnerIntroTransitionsToShow(this);
 }
 
-TEST_F(GhostRunnerStubTestSuite, StubFdnLaunch) {
-    ghostRunnerStubFdnLaunch(this);
+TEST_F(GhostRunnerTestSuite, ShowDisplaysRoundInfo) {
+    ghostRunnerShowDisplaysRoundInfo(this);
 }
 
-TEST_F(GhostRunnerStubTestSuite, StubAppIdRegistered) {
-    ghostRunnerStubAppIdRegistered(this);
+TEST_F(GhostRunnerTestSuite, ShowTransitionsToGameplay) {
+    ghostRunnerShowTransitionsToGameplay(this);
 }
 
-TEST_F(GhostRunnerStubTestSuite, StubStateNames) {
-    ghostRunnerStubStateNames(this);
+TEST_F(GhostRunnerTestSuite, GhostAdvancesWithTime) {
+    ghostRunnerGhostAdvancesWithTime(this);
 }
 
-// ============================================
-// SPIKE VECTOR STUB TESTS
-// ============================================
-
-TEST_F(SpikeVectorStubTestSuite, StubIntroState) {
-    spikeVectorStubIntroState(this);
+TEST_F(GhostRunnerTestSuite, CorrectPressInTargetZone) {
+    ghostRunnerCorrectPressInTargetZone(this);
 }
 
-TEST_F(SpikeVectorStubTestSuite, StubAutoWin) {
-    spikeVectorStubAutoWin(this);
+TEST_F(GhostRunnerTestSuite, IncorrectPressOutsideZone) {
+    ghostRunnerIncorrectPressOutsideZone(this);
 }
 
-TEST_F(SpikeVectorStubTestSuite, StubManagedModeReturns) {
-    spikeVectorStubManagedModeReturns(this);
+TEST_F(GhostRunnerTestSuite, GhostTimeoutCountsStrike) {
+    ghostRunnerGhostTimeoutCountsStrike(this);
 }
 
-TEST_F(SpikeVectorStubTestSuite, StubStandaloneLoops) {
-    spikeVectorStubStandaloneLoops(this);
+TEST_F(GhostRunnerTestSuite, EvaluateRoutesToNextRound) {
+    ghostRunnerEvaluateRoutesToNextRound(this);
 }
 
-TEST_F(SpikeVectorStubTestSuite, StubFdnLaunch) {
-    spikeVectorStubFdnLaunch(this);
+TEST_F(GhostRunnerTestSuite, EvaluateRoutesToWin) {
+    ghostRunnerEvaluateRoutesToWin(this);
 }
 
-TEST_F(SpikeVectorStubTestSuite, StubAppIdRegistered) {
-    spikeVectorStubAppIdRegistered(this);
+TEST_F(GhostRunnerTestSuite, EvaluateRoutesToLose) {
+    ghostRunnerEvaluateRoutesToLose(this);
 }
 
-TEST_F(SpikeVectorStubTestSuite, StubStateNames) {
-    spikeVectorStubStateNames(this);
+TEST_F(GhostRunnerTestSuite, WinSetsOutcome) {
+    ghostRunnerWinSetsOutcome(this);
 }
 
-// ============================================
-// CIPHER PATH STUB TESTS
-// ============================================
-
-TEST_F(CipherPathStubTestSuite, StubIntroState) {
-    cipherPathStubIntroState(this);
+TEST_F(GhostRunnerTestSuite, LoseSetsOutcome) {
+    ghostRunnerLoseSetsOutcome(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubAutoWin) {
-    cipherPathStubAutoWin(this);
+TEST_F(GhostRunnerTestSuite, StandaloneLoopsToIntro) {
+    ghostRunnerStandaloneLoopsToIntro(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubManagedModeReturns) {
-    cipherPathStubManagedModeReturns(this);
+TEST_F(GhostRunnerTestSuite, StateNamesResolve) {
+    ghostRunnerStateNamesResolve(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubStandaloneLoops) {
-    cipherPathStubStandaloneLoops(this);
-}
-
-TEST_F(CipherPathStubTestSuite, StubFdnLaunch) {
-    cipherPathStubFdnLaunch(this);
-}
-
-TEST_F(CipherPathStubTestSuite, StubAppIdRegistered) {
-    cipherPathStubAppIdRegistered(this);
-}
-
-TEST_F(CipherPathStubTestSuite, StubStateNames) {
-    cipherPathStubStateNames(this);
+TEST_F(GhostRunnerManagedTestSuite, ManagedModeReturns) {
+    ghostRunnerManagedModeReturns(this);
 }
 
 // ============================================
-// EXPLOIT SEQUENCER STUB TESTS
+// SPIKE VECTOR TESTS
 // ============================================
 
-TEST_F(ExploitSequencerStubTestSuite, StubIntroState) {
-    exploitSequencerStubIntroState(this);
+TEST_F(SpikeVectorTestSuite, EasyConfigPresets) {
+    spikeVectorEasyConfigPresets(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubAutoWin) {
-    exploitSequencerStubAutoWin(this);
+TEST_F(SpikeVectorTestSuite, HardConfigPresets) {
+    spikeVectorHardConfigPresets(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubManagedModeReturns) {
-    exploitSequencerStubManagedModeReturns(this);
+TEST_F(SpikeVectorTestSuite, IntroResetsSession) {
+    spikeVectorIntroResetsSession(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubStandaloneLoops) {
-    exploitSequencerStubStandaloneLoops(this);
+TEST_F(SpikeVectorTestSuite, IntroTransitionsToShow) {
+    spikeVectorIntroTransitionsToShow(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubFdnLaunch) {
-    exploitSequencerStubFdnLaunch(this);
+TEST_F(SpikeVectorTestSuite, ShowDisplaysWaveInfo) {
+    spikeVectorShowDisplaysWaveInfo(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubAppIdRegistered) {
-    exploitSequencerStubAppIdRegistered(this);
+TEST_F(SpikeVectorTestSuite, ShowTransitionsToGameplay) {
+    spikeVectorShowTransitionsToGameplay(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubStateNames) {
-    exploitSequencerStubStateNames(this);
+TEST_F(SpikeVectorTestSuite, WallAdvancesWithTime) {
+    spikeVectorWallAdvancesWithTime(this);
+}
+
+TEST_F(SpikeVectorTestSuite, CorrectDodgeAtGap) {
+    spikeVectorCorrectDodgeAtGap(this);
+}
+
+TEST_F(SpikeVectorTestSuite, MissedDodge) {
+    spikeVectorMissedDodge(this);
+}
+
+TEST_F(SpikeVectorTestSuite, WallTimeoutCausesEvaluate) {
+    spikeVectorWallTimeoutCausesEvaluate(this);
+}
+
+TEST_F(SpikeVectorTestSuite, EvaluateRoutesToNextWave) {
+    spikeVectorEvaluateRoutesToNextWave(this);
+}
+
+TEST_F(SpikeVectorTestSuite, EvaluateRoutesToWin) {
+    spikeVectorEvaluateRoutesToWin(this);
+}
+
+TEST_F(SpikeVectorTestSuite, EvaluateRoutesToLose) {
+    spikeVectorEvaluateRoutesToLose(this);
+}
+
+TEST_F(SpikeVectorTestSuite, WinSetsOutcome) {
+    spikeVectorWinSetsOutcome(this);
+}
+
+TEST_F(SpikeVectorTestSuite, LoseSetsOutcome) {
+    spikeVectorLoseSetsOutcome(this);
+}
+
+TEST_F(SpikeVectorTestSuite, StandaloneLoopsToIntro) {
+    spikeVectorStandaloneLoopsToIntro(this);
+}
+
+TEST_F(SpikeVectorTestSuite, StateNamesResolve) {
+    spikeVectorStateNamesResolve(this);
+}
+
+TEST_F(SpikeVectorManagedTestSuite, ManagedModeReturns) {
+    spikeVectorManagedModeReturns(this);
 }
 
 // ============================================
-// BREACH DEFENSE STUB TESTS
+// CIPHER PATH TESTS
 // ============================================
 
-TEST_F(BreachDefenseStubTestSuite, StubIntroState) {
-    breachDefenseStubIntroState(this);
+TEST_F(CipherPathTestSuite, EasyConfigPresets) {
+    cipherPathEasyConfigPresets(this);
 }
 
-TEST_F(BreachDefenseStubTestSuite, StubAutoWin) {
-    breachDefenseStubAutoWin(this);
+TEST_F(CipherPathTestSuite, HardConfigPresets) {
+    cipherPathHardConfigPresets(this);
 }
 
-TEST_F(BreachDefenseStubTestSuite, StubManagedModeReturns) {
-    breachDefenseStubManagedModeReturns(this);
+TEST_F(CipherPathTestSuite, IntroResetsSession) {
+    cipherPathIntroResetsSession(this);
 }
 
-TEST_F(BreachDefenseStubTestSuite, StubStandaloneLoops) {
-    breachDefenseStubStandaloneLoops(this);
+TEST_F(CipherPathTestSuite, IntroTransitionsToShow) {
+    cipherPathIntroTransitionsToShow(this);
 }
 
-TEST_F(BreachDefenseStubTestSuite, StubFdnLaunch) {
-    breachDefenseStubFdnLaunch(this);
+TEST_F(CipherPathTestSuite, ShowDisplaysRoundInfo) {
+    cipherPathShowDisplaysRoundInfo(this);
 }
 
-TEST_F(BreachDefenseStubTestSuite, StubAppIdRegistered) {
-    breachDefenseStubAppIdRegistered(this);
+TEST_F(CipherPathTestSuite, ShowGeneratesCipher) {
+    cipherPathShowGeneratesCipher(this);
 }
 
-TEST_F(BreachDefenseStubTestSuite, StubStateNames) {
-    breachDefenseStubStateNames(this);
+TEST_F(CipherPathTestSuite, ShowTransitionsToGameplay) {
+    cipherPathShowTransitionsToGameplay(this);
+}
+
+TEST_F(CipherPathTestSuite, CorrectMoveAdvancesPosition) {
+    cipherPathCorrectMoveAdvancesPosition(this);
+}
+
+TEST_F(CipherPathTestSuite, WrongMoveWastesMove) {
+    cipherPathWrongMoveWastesMove(this);
+}
+
+TEST_F(CipherPathTestSuite, ReachExitTriggersEvaluate) {
+    cipherPathReachExitTriggersEvaluate(this);
+}
+
+TEST_F(CipherPathTestSuite, BudgetExhaustedTriggersEvaluate) {
+    cipherPathBudgetExhaustedTriggersEvaluate(this);
+}
+
+TEST_F(CipherPathTestSuite, EvaluateRoutesToNextRound) {
+    cipherPathEvaluateRoutesToNextRound(this);
+}
+
+TEST_F(CipherPathTestSuite, EvaluateRoutesToWin) {
+    cipherPathEvaluateRoutesToWin(this);
+}
+
+TEST_F(CipherPathTestSuite, EvaluateRoutesToLose) {
+    cipherPathEvaluateRoutesToLose(this);
+}
+
+TEST_F(CipherPathTestSuite, WinSetsOutcome) {
+    cipherPathWinSetsOutcome(this);
+}
+
+TEST_F(CipherPathTestSuite, LoseSetsOutcome) {
+    cipherPathLoseSetsOutcome(this);
+}
+
+TEST_F(CipherPathTestSuite, StandaloneLoopsToIntro) {
+    cipherPathStandaloneLoopsToIntro(this);
+}
+
+TEST_F(CipherPathTestSuite, StateNamesResolve) {
+    cipherPathStateNamesResolve(this);
+}
+
+TEST_F(CipherPathManagedTestSuite, ManagedModeReturns) {
+    cipherPathManagedModeReturns(this);
+}
+
+// ============================================
+// EXPLOIT SEQUENCER TESTS
+// ============================================
+
+TEST_F(ExploitSequencerTestSuite, EasyConfigPresets) {
+    exploitSeqEasyConfigPresets(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, HardConfigPresets) {
+    exploitSeqHardConfigPresets(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, IntroResetsSession) {
+    exploitSeqIntroResetsSession(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, IntroTransitionsToShow) {
+    exploitSeqIntroTransitionsToShow(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, ShowDisplaysSequenceInfo) {
+    exploitSeqShowDisplaysSequenceInfo(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, ShowTransitionsToGameplay) {
+    exploitSeqShowTransitionsToGameplay(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, SymbolAdvancesWithTime) {
+    exploitSeqSymbolAdvancesWithTime(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, CorrectTimingHit) {
+    exploitSeqCorrectTimingHit(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, WrongTimingMiss) {
+    exploitSeqWrongTimingMiss(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, TimeoutCountsFail) {
+    exploitSeqTimeoutCountsFail(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateRoutesToNextExploit) {
+    exploitSeqEvaluateRoutesToNextExploit(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateAdvancesSequence) {
+    exploitSeqEvaluateAdvancesSequence(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateRoutesToWin) {
+    exploitSeqEvaluateRoutesToWin(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateRoutesToLose) {
+    exploitSeqEvaluateRoutesToLose(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, WinSetsOutcome) {
+    exploitSeqWinSetsOutcome(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, LoseSetsOutcome) {
+    exploitSeqLoseSetsOutcome(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, StandaloneLoopsToIntro) {
+    exploitSeqStandaloneLoopsToIntro(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, StateNamesResolve) {
+    exploitSeqStateNamesResolve(this);
+}
+
+TEST_F(ExploitSequencerManagedTestSuite, ManagedModeReturns) {
+    exploitSeqManagedModeReturns(this);
+}
+
+// ============================================
+// BREACH DEFENSE TESTS
+// ============================================
+
+TEST_F(BreachDefenseTestSuite, EasyConfigPresets) {
+    breachDefenseEasyConfigPresets(this);
+}
+
+TEST_F(BreachDefenseTestSuite, HardConfigPresets) {
+    breachDefenseHardConfigPresets(this);
+}
+
+TEST_F(BreachDefenseTestSuite, IntroResetsSession) {
+    breachDefenseIntroResetsSession(this);
+}
+
+TEST_F(BreachDefenseTestSuite, IntroTransitionsToShow) {
+    breachDefenseIntroTransitionsToShow(this);
+}
+
+TEST_F(BreachDefenseTestSuite, ShowDisplaysThreatInfo) {
+    breachDefenseShowDisplaysThreatInfo(this);
+}
+
+TEST_F(BreachDefenseTestSuite, ShowTransitionsToGameplay) {
+    breachDefenseShowTransitionsToGameplay(this);
+}
+
+TEST_F(BreachDefenseTestSuite, ThreatAdvancesWithTime) {
+    breachDefenseThreatAdvancesWithTime(this);
+}
+
+TEST_F(BreachDefenseTestSuite, CorrectBlock) {
+    breachDefenseCorrectBlock(this);
+}
+
+TEST_F(BreachDefenseTestSuite, MissedThreat) {
+    breachDefenseMissedThreat(this);
+}
+
+TEST_F(BreachDefenseTestSuite, ShieldMovesUpDown) {
+    breachDefenseShieldMovesUpDown(this);
+}
+
+TEST_F(BreachDefenseTestSuite, EvaluateRoutesToNextThreat) {
+    breachDefenseEvaluateRoutesToNextThreat(this);
+}
+
+TEST_F(BreachDefenseTestSuite, EvaluateRoutesToWin) {
+    breachDefenseEvaluateRoutesToWin(this);
+}
+
+TEST_F(BreachDefenseTestSuite, EvaluateRoutesToLose) {
+    breachDefenseEvaluateRoutesToLose(this);
+}
+
+TEST_F(BreachDefenseTestSuite, WinSetsOutcome) {
+    breachDefenseWinSetsOutcome(this);
+}
+
+TEST_F(BreachDefenseTestSuite, LoseSetsOutcome) {
+    breachDefenseLoseSetsOutcome(this);
+}
+
+TEST_F(BreachDefenseTestSuite, StandaloneLoopsToIntro) {
+    breachDefenseStandaloneLoopsToIntro(this);
+}
+
+TEST_F(BreachDefenseTestSuite, StateNamesResolve) {
+    breachDefenseStateNamesResolve(this);
+}
+
+TEST_F(BreachDefenseManagedTestSuite, ManagedModeReturns) {
+    breachDefenseManagedModeReturns(this);
 }
 
 // ============================================

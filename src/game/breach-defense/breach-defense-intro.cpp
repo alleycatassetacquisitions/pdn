@@ -13,13 +13,14 @@ BreachDefenseIntro::~BreachDefenseIntro() {
 }
 
 void BreachDefenseIntro::onStateMounted(Device* PDN) {
-    transitionToWinState = false;
+    transitionToShowState = false;
 
     LOG_I(TAG, "Breach Defense intro");
 
     // Reset session for a fresh game
     game->getSession().reset();
     game->resetGame();
+    game->seedRng();
 
     // Display title screen
     PDN->getDisplay()->invalidateScreen();
@@ -28,21 +29,27 @@ void BreachDefenseIntro::onStateMounted(Device* PDN) {
         ->drawText("Hold the line.", 10, 45);
     PDN->getDisplay()->render();
 
-    // Start intro timer — stub auto-wins after this
+    // LED idle animation
+    PDN->getLightManager()->startAnimation({
+        AnimationType::IDLE, true, 2, EaseCurve::EASE_IN_OUT,
+        LEDState(), 0
+    });
+
+    // Start intro timer
     introTimer.setTimer(INTRO_DURATION_MS);
 }
 
 void BreachDefenseIntro::onStateLoop(Device* PDN) {
     if (introTimer.expired()) {
-        transitionToWinState = true;
+        transitionToShowState = true;
     }
 }
 
 void BreachDefenseIntro::onStateDismounted(Device* PDN) {
     introTimer.invalidate();
-    transitionToWinState = false;
+    transitionToShowState = false;
 }
 
-bool BreachDefenseIntro::transitionToWin() {
-    return transitionToWinState;
+bool BreachDefenseIntro::transitionToShow() {
+    return transitionToShowState;
 }

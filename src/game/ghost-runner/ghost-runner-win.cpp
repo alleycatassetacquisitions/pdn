@@ -1,6 +1,8 @@
 #include "game/ghost-runner/ghost-runner-states.hpp"
 #include "game/ghost-runner/ghost-runner.hpp"
+#include "game/ghost-runner/ghost-runner-resources.hpp"
 #include "device/drivers/logger.hpp"
+#include <string>
 
 static const char* TAG = "GhostRunnerWin";
 
@@ -15,20 +17,42 @@ GhostRunnerWin::~GhostRunnerWin() {
 void GhostRunnerWin::onStateMounted(Device* PDN) {
     transitionToIntroState = false;
 
-    // Stub: always easy-mode win (hardMode = false)
+    auto& session = game->getSession();
+    auto& config = game->getConfig();
+
+    // Determine if this was a hard mode win
+    int zoneWidth = config.targetZoneEnd - config.targetZoneStart;
+    bool isHard = (config.missesAllowed <= 1 && zoneWidth <= 16);
+
     MiniGameOutcome winOutcome;
     winOutcome.result = MiniGameResult::WON;
-    winOutcome.score = 100;
-    winOutcome.hardMode = false;
+    winOutcome.score = session.score;
+    winOutcome.hardMode = isHard;
     game->setOutcome(winOutcome);
 
-    LOG_I(TAG, "RUN COMPLETE");
+    LOG_I(TAG, "RUN COMPLETE — score=%d, hardMode=%s",
+          session.score, isHard ? "true" : "false");
 
+    // Display victory screen
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("RUN COMPLETE", 10, 30);
+        ->drawText("RUN COMPLETE", 10, 25);
+
+    std::string scoreStr = "Score: " + std::to_string(session.score);
+    PDN->getDisplay()->drawText(scoreStr.c_str(), 30, 50);
     PDN->getDisplay()->render();
 
+    // Win LED animation
+    AnimationConfig ledConfig;
+    ledConfig.type = AnimationType::VERTICAL_CHASE;
+    ledConfig.speed = 5;
+    ledConfig.curve = EaseCurve::EASE_IN_OUT;
+    ledConfig.initialState = GHOST_RUNNER_WIN_STATE;
+    ledConfig.loopDelayMs = 500;
+    ledConfig.loop = true;
+    PDN->getLightManager()->startAnimation(ledConfig);
+
+    // Celebration haptic
     PDN->getHaptics()->setIntensity(200);
 
     winTimer.setTimer(WIN_DISPLAY_MS);
