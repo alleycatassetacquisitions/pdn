@@ -1,5 +1,6 @@
 #include "game/cipher-path/cipher-path-states.hpp"
 #include "game/cipher-path/cipher-path.hpp"
+#include "game/cipher-path/cipher-path-resources.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "CipherPathWin";
@@ -15,19 +16,34 @@ CipherPathWin::~CipherPathWin() {
 void CipherPathWin::onStateMounted(Device* PDN) {
     transitionToIntroState = false;
 
-    // Stub: always easy-mode win (hardMode = false)
+    auto& config = game->getConfig();
+    auto& session = game->getSession();
+
+    // Determine hard mode: tight budget on long grid
+    bool isHard = (config.gridSize >= 10 && config.moveBudget <= 14);
+
     MiniGameOutcome winOutcome;
     winOutcome.result = MiniGameResult::WON;
-    winOutcome.score = 100;
-    winOutcome.hardMode = false;
+    winOutcome.score = session.score;
+    winOutcome.hardMode = isHard;
     game->setOutcome(winOutcome);
 
-    LOG_I(TAG, "PATH DECODED");
+    LOG_I(TAG, "PATH DECODED (score=%d, hard=%d)", session.score, isHard);
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
         ->drawText("PATH DECODED", 10, 30);
     PDN->getDisplay()->render();
+
+    // Win LED animation
+    AnimationConfig animConfig;
+    animConfig.type = AnimationType::IDLE;
+    animConfig.speed = 20;
+    animConfig.curve = EaseCurve::LINEAR;
+    animConfig.initialState = CIPHER_PATH_WIN_STATE;
+    animConfig.loopDelayMs = 0;
+    animConfig.loop = true;
+    PDN->getLightManager()->startAnimation(animConfig);
 
     PDN->getHaptics()->setIntensity(200);
 

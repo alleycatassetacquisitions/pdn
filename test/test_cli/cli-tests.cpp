@@ -1296,35 +1296,83 @@ TEST_F(SpikeVectorStubTestSuite, StubStateNames) {
 }
 
 // ============================================
-// CIPHER PATH STUB TESTS
+// CIPHER PATH TESTS
 // ============================================
 
-TEST_F(CipherPathStubTestSuite, StubIntroState) {
-    cipherPathStubIntroState(this);
+TEST_F(CipherPathTestSuite, EasyConfigPresets) {
+    cipherPathEasyConfigPresets(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubAutoWin) {
-    cipherPathStubAutoWin(this);
+TEST_F(CipherPathTestSuite, HardConfigPresets) {
+    cipherPathHardConfigPresets(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubManagedModeReturns) {
-    cipherPathStubManagedModeReturns(this);
+TEST_F(CipherPathTestSuite, IntroResetsSession) {
+    cipherPathIntroResetsSession(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubStandaloneLoops) {
-    cipherPathStubStandaloneLoops(this);
+TEST_F(CipherPathTestSuite, IntroTransitionsToShow) {
+    cipherPathIntroTransitionsToShow(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubFdnLaunch) {
-    cipherPathStubFdnLaunch(this);
+TEST_F(CipherPathTestSuite, ShowDisplaysRoundInfo) {
+    cipherPathShowDisplaysRoundInfo(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubAppIdRegistered) {
-    cipherPathStubAppIdRegistered(this);
+TEST_F(CipherPathTestSuite, ShowGeneratesCipher) {
+    cipherPathShowGeneratesCipher(this);
 }
 
-TEST_F(CipherPathStubTestSuite, StubStateNames) {
-    cipherPathStubStateNames(this);
+TEST_F(CipherPathTestSuite, ShowTransitionsToGameplay) {
+    cipherPathShowTransitionsToGameplay(this);
+}
+
+TEST_F(CipherPathTestSuite, CorrectMoveAdvancesPosition) {
+    cipherPathCorrectMoveAdvancesPosition(this);
+}
+
+TEST_F(CipherPathTestSuite, WrongMoveWastesMove) {
+    cipherPathWrongMoveWastesMove(this);
+}
+
+TEST_F(CipherPathTestSuite, ReachExitTriggersEvaluate) {
+    cipherPathReachExitTriggersEvaluate(this);
+}
+
+TEST_F(CipherPathTestSuite, BudgetExhaustedTriggersEvaluate) {
+    cipherPathBudgetExhaustedTriggersEvaluate(this);
+}
+
+TEST_F(CipherPathTestSuite, EvaluateRoutesToNextRound) {
+    cipherPathEvaluateRoutesToNextRound(this);
+}
+
+TEST_F(CipherPathTestSuite, EvaluateRoutesToWin) {
+    cipherPathEvaluateRoutesToWin(this);
+}
+
+TEST_F(CipherPathTestSuite, EvaluateRoutesToLose) {
+    cipherPathEvaluateRoutesToLose(this);
+}
+
+TEST_F(CipherPathTestSuite, WinSetsOutcome) {
+    cipherPathWinSetsOutcome(this);
+}
+
+TEST_F(CipherPathTestSuite, LoseSetsOutcome) {
+    cipherPathLoseSetsOutcome(this);
+}
+
+TEST_F(CipherPathTestSuite, StandaloneLoopsToIntro) {
+    cipherPathStandaloneLoopsToIntro(this);
+}
+
+TEST_F(CipherPathTestSuite, StateNamesResolve) {
+    cipherPathStateNamesResolve(this);
+}
+
+TEST_F(CipherPathManagedTestSuite, ManagedModeReturns) {
+    cipherPathManagedModeReturns(this);
 }
 
 // ============================================

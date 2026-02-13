@@ -124,10 +124,13 @@ inline const char* getSpikeVectorStateName(int stateId) {
 
 inline const char* getCipherPathStateName(int stateId) {
     switch (stateId) {
-        case CIPHER_INTRO: return "CipherPathIntro";
-        case CIPHER_WIN:   return "CipherPathWin";
-        case CIPHER_LOSE:  return "CipherPathLose";
-        default:           return "Unknown";
+        case CIPHER_INTRO:    return "CipherPathIntro";
+        case CIPHER_WIN:      return "CipherPathWin";
+        case CIPHER_LOSE:     return "CipherPathLose";
+        case CIPHER_SHOW:     return "CipherPathShow";
+        case CIPHER_GAMEPLAY: return "CipherPathGameplay";
+        case CIPHER_EVALUATE: return "CipherPathEvaluate";
+        default:              return "Unknown";
     }
 }
 
