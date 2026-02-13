@@ -29,6 +29,16 @@
 #include "game/firewall-decrypt/firewall-decrypt.hpp"
 #include "game/firewall-decrypt/firewall-decrypt-states.hpp"
 #include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
+#include "game/ghost-runner/ghost-runner.hpp"
+#include "game/ghost-runner/ghost-runner-states.hpp"
+#include "game/spike-vector/spike-vector.hpp"
+#include "game/spike-vector/spike-vector-states.hpp"
+#include "game/cipher-path/cipher-path.hpp"
+#include "game/cipher-path/cipher-path-states.hpp"
+#include "game/exploit-sequencer/exploit-sequencer.hpp"
+#include "game/exploit-sequencer/exploit-sequencer-states.hpp"
+#include "game/breach-defense/breach-defense.hpp"
+#include "game/breach-defense/breach-defense-states.hpp"
 #include "device/device-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
@@ -94,6 +104,51 @@ inline const char* getFirewallDecryptStateName(int stateId) {
     }
 }
 
+inline const char* getGhostRunnerStateName(int stateId) {
+    switch (stateId) {
+        case GHOST_INTRO: return "GhostRunnerIntro";
+        case GHOST_WIN:   return "GhostRunnerWin";
+        case GHOST_LOSE:  return "GhostRunnerLose";
+        default:          return "Unknown";
+    }
+}
+
+inline const char* getSpikeVectorStateName(int stateId) {
+    switch (stateId) {
+        case SPIKE_INTRO: return "SpikeVectorIntro";
+        case SPIKE_WIN:   return "SpikeVectorWin";
+        case SPIKE_LOSE:  return "SpikeVectorLose";
+        default:          return "Unknown";
+    }
+}
+
+inline const char* getCipherPathStateName(int stateId) {
+    switch (stateId) {
+        case CIPHER_INTRO: return "CipherPathIntro";
+        case CIPHER_WIN:   return "CipherPathWin";
+        case CIPHER_LOSE:  return "CipherPathLose";
+        default:           return "Unknown";
+    }
+}
+
+inline const char* getExploitSequencerStateName(int stateId) {
+    switch (stateId) {
+        case EXPLOIT_INTRO: return "ExploitSeqIntro";
+        case EXPLOIT_WIN:   return "ExploitSeqWin";
+        case EXPLOIT_LOSE:  return "ExploitSeqLose";
+        default:            return "Unknown";
+    }
+}
+
+inline const char* getBreachDefenseStateName(int stateId) {
+    switch (stateId) {
+        case BREACH_INTRO: return "BreachDefenseIntro";
+        case BREACH_WIN:   return "BreachDefenseWin";
+        case BREACH_LOSE:  return "BreachDefenseLose";
+        default:           return "Unknown";
+    }
+}
+
 inline const char* getFdnStateName(int stateId) {
     switch (stateId) {
         case 0: return "NpcIdle";
@@ -107,6 +162,26 @@ inline const char* getFdnStateName(int stateId) {
 inline const char* getStateName(int stateId, DeviceType deviceType = DeviceType::PLAYER, GameType gameType = GameType::QUICKDRAW) {
     if (deviceType == DeviceType::FDN) {
         return getFdnStateName(stateId);
+    }
+    // Breach Defense state IDs are in the 700+ range
+    if (stateId >= BREACH_INTRO) {
+        return getBreachDefenseStateName(stateId);
+    }
+    // Exploit Sequencer state IDs are in the 600+ range
+    if (stateId >= EXPLOIT_INTRO) {
+        return getExploitSequencerStateName(stateId);
+    }
+    // Cipher Path state IDs are in the 500+ range
+    if (stateId >= CIPHER_INTRO) {
+        return getCipherPathStateName(stateId);
+    }
+    // Spike Vector state IDs are in the 400+ range
+    if (stateId >= SPIKE_INTRO) {
+        return getSpikeVectorStateName(stateId);
+    }
+    // Ghost Runner state IDs are in the 300+ range
+    if (stateId >= GHOST_INTRO) {
+        return getGhostRunnerStateName(stateId);
     }
     // Firewall Decrypt state IDs are in the 200+ range
     if (stateId >= DECRYPT_INTRO) {
@@ -265,12 +340,22 @@ public:
         // Create minigames (pre-registered, configured lazily per encounter)
         auto* signalEcho = new SignalEcho(SIGNAL_ECHO_EASY);
         auto* firewallDecrypt = new FirewallDecrypt(FIREWALL_DECRYPT_EASY);
+        auto* ghostRunner = new GhostRunner(GHOST_RUNNER_EASY);
+        auto* spikeVector = new SpikeVector(SPIKE_VECTOR_EASY);
+        auto* cipherPath = new CipherPath(CIPHER_PATH_EASY);
+        auto* exploitSequencer = new ExploitSequencer(EXPLOIT_SEQUENCER_EASY);
+        auto* breachDefense = new BreachDefense(BREACH_DEFENSE_EASY);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
             {StateId(QUICKDRAW_APP_ID), instance.game},
             {StateId(SIGNAL_ECHO_APP_ID), signalEcho},
-            {StateId(FIREWALL_DECRYPT_APP_ID), firewallDecrypt}
+            {StateId(FIREWALL_DECRYPT_APP_ID), firewallDecrypt},
+            {StateId(GHOST_RUNNER_APP_ID), ghostRunner},
+            {StateId(SPIKE_VECTOR_APP_ID), spikeVector},
+            {StateId(CIPHER_PATH_APP_ID), cipherPath},
+            {StateId(EXPLOIT_SEQUENCER_APP_ID), exploitSequencer},
+            {StateId(BREACH_DEFENSE_APP_ID), breachDefense}
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
         
@@ -449,6 +534,46 @@ public:
                 {StateId(FIREWALL_DECRYPT_APP_ID), instance.game}
             };
             instance.pdn->loadAppConfig(apps, StateId(FIREWALL_DECRYPT_APP_ID));
+        } else if (gameName == "ghost-runner") {
+            instance.gameType = GameType::GHOST_RUNNER;
+            instance.game = new GhostRunner(GHOST_RUNNER_EASY);
+
+            AppConfig apps = {
+                {StateId(GHOST_RUNNER_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(GHOST_RUNNER_APP_ID));
+        } else if (gameName == "spike-vector") {
+            instance.gameType = GameType::SPIKE_VECTOR;
+            instance.game = new SpikeVector(SPIKE_VECTOR_EASY);
+
+            AppConfig apps = {
+                {StateId(SPIKE_VECTOR_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(SPIKE_VECTOR_APP_ID));
+        } else if (gameName == "cipher-path") {
+            instance.gameType = GameType::CIPHER_PATH;
+            instance.game = new CipherPath(CIPHER_PATH_EASY);
+
+            AppConfig apps = {
+                {StateId(CIPHER_PATH_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(CIPHER_PATH_APP_ID));
+        } else if (gameName == "exploit-sequencer") {
+            instance.gameType = GameType::EXPLOIT_SEQUENCER;
+            instance.game = new ExploitSequencer(EXPLOIT_SEQUENCER_EASY);
+
+            AppConfig apps = {
+                {StateId(EXPLOIT_SEQUENCER_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(EXPLOIT_SEQUENCER_APP_ID));
+        } else if (gameName == "breach-defense") {
+            instance.gameType = GameType::BREACH_DEFENSE;
+            instance.game = new BreachDefense(BREACH_DEFENSE_EASY);
+
+            AppConfig apps = {
+                {StateId(BREACH_DEFENSE_APP_ID), instance.game}
+            };
+            instance.pdn->loadAppConfig(apps, StateId(BREACH_DEFENSE_APP_ID));
         }
 
         return instance;

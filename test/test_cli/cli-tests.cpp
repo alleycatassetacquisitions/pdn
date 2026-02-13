@@ -21,6 +21,11 @@
 #include "firewall-decrypt-tests.hpp"
 #include "progression-e2e-tests.hpp"
 #include "negative-flow-tests.hpp"
+#include "ghost-runner-tests.hpp"
+#include "spike-vector-tests.hpp"
+#include "cipher-path-tests.hpp"
+#include "exploit-sequencer-tests.hpp"
+#include "breach-defense-tests.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TESTS
@@ -1224,6 +1229,166 @@ TEST_F(BountyFlowTestSuite, BountyFdnHardWinColorPrompt) {
 
 TEST_F(BountyFlowTestSuite, BountyReencounterPrompt) {
     bountyReencounterPrompt(this);
+}
+
+// ============================================
+// GHOST RUNNER STUB TESTS
+// ============================================
+
+TEST_F(GhostRunnerStubTestSuite, StubIntroState) {
+    ghostRunnerStubIntroState(this);
+}
+
+TEST_F(GhostRunnerStubTestSuite, StubAutoWin) {
+    ghostRunnerStubAutoWin(this);
+}
+
+TEST_F(GhostRunnerStubTestSuite, StubManagedModeReturns) {
+    ghostRunnerStubManagedModeReturns(this);
+}
+
+TEST_F(GhostRunnerStubTestSuite, StubStandaloneLoops) {
+    ghostRunnerStubStandaloneLoops(this);
+}
+
+TEST_F(GhostRunnerStubTestSuite, StubFdnLaunch) {
+    ghostRunnerStubFdnLaunch(this);
+}
+
+TEST_F(GhostRunnerStubTestSuite, StubAppIdRegistered) {
+    ghostRunnerStubAppIdRegistered(this);
+}
+
+TEST_F(GhostRunnerStubTestSuite, StubStateNames) {
+    ghostRunnerStubStateNames(this);
+}
+
+// ============================================
+// SPIKE VECTOR STUB TESTS
+// ============================================
+
+TEST_F(SpikeVectorStubTestSuite, StubIntroState) {
+    spikeVectorStubIntroState(this);
+}
+
+TEST_F(SpikeVectorStubTestSuite, StubAutoWin) {
+    spikeVectorStubAutoWin(this);
+}
+
+TEST_F(SpikeVectorStubTestSuite, StubManagedModeReturns) {
+    spikeVectorStubManagedModeReturns(this);
+}
+
+TEST_F(SpikeVectorStubTestSuite, StubStandaloneLoops) {
+    spikeVectorStubStandaloneLoops(this);
+}
+
+TEST_F(SpikeVectorStubTestSuite, StubFdnLaunch) {
+    spikeVectorStubFdnLaunch(this);
+}
+
+TEST_F(SpikeVectorStubTestSuite, StubAppIdRegistered) {
+    spikeVectorStubAppIdRegistered(this);
+}
+
+TEST_F(SpikeVectorStubTestSuite, StubStateNames) {
+    spikeVectorStubStateNames(this);
+}
+
+// ============================================
+// CIPHER PATH STUB TESTS
+// ============================================
+
+TEST_F(CipherPathStubTestSuite, StubIntroState) {
+    cipherPathStubIntroState(this);
+}
+
+TEST_F(CipherPathStubTestSuite, StubAutoWin) {
+    cipherPathStubAutoWin(this);
+}
+
+TEST_F(CipherPathStubTestSuite, StubManagedModeReturns) {
+    cipherPathStubManagedModeReturns(this);
+}
+
+TEST_F(CipherPathStubTestSuite, StubStandaloneLoops) {
+    cipherPathStubStandaloneLoops(this);
+}
+
+TEST_F(CipherPathStubTestSuite, StubFdnLaunch) {
+    cipherPathStubFdnLaunch(this);
+}
+
+TEST_F(CipherPathStubTestSuite, StubAppIdRegistered) {
+    cipherPathStubAppIdRegistered(this);
+}
+
+TEST_F(CipherPathStubTestSuite, StubStateNames) {
+    cipherPathStubStateNames(this);
+}
+
+// ============================================
+// EXPLOIT SEQUENCER STUB TESTS
+// ============================================
+
+TEST_F(ExploitSequencerStubTestSuite, StubIntroState) {
+    exploitSequencerStubIntroState(this);
+}
+
+TEST_F(ExploitSequencerStubTestSuite, StubAutoWin) {
+    exploitSequencerStubAutoWin(this);
+}
+
+TEST_F(ExploitSequencerStubTestSuite, StubManagedModeReturns) {
+    exploitSequencerStubManagedModeReturns(this);
+}
+
+TEST_F(ExploitSequencerStubTestSuite, StubStandaloneLoops) {
+    exploitSequencerStubStandaloneLoops(this);
+}
+
+TEST_F(ExploitSequencerStubTestSuite, StubFdnLaunch) {
+    exploitSequencerStubFdnLaunch(this);
+}
+
+TEST_F(ExploitSequencerStubTestSuite, StubAppIdRegistered) {
+    exploitSequencerStubAppIdRegistered(this);
+}
+
+TEST_F(ExploitSequencerStubTestSuite, StubStateNames) {
+    exploitSequencerStubStateNames(this);
+}
+
+// ============================================
+// BREACH DEFENSE STUB TESTS
+// ============================================
+
+TEST_F(BreachDefenseStubTestSuite, StubIntroState) {
+    breachDefenseStubIntroState(this);
+}
+
+TEST_F(BreachDefenseStubTestSuite, StubAutoWin) {
+    breachDefenseStubAutoWin(this);
+}
+
+TEST_F(BreachDefenseStubTestSuite, StubManagedModeReturns) {
+    breachDefenseStubManagedModeReturns(this);
+}
+
+TEST_F(BreachDefenseStubTestSuite, StubStandaloneLoops) {
+    breachDefenseStubStandaloneLoops(this);
+}
+
+TEST_F(BreachDefenseStubTestSuite, StubFdnLaunch) {
+    breachDefenseStubFdnLaunch(this);
+}
+
+TEST_F(BreachDefenseStubTestSuite, StubAppIdRegistered) {
+    breachDefenseStubAppIdRegistered(this);
+}
+
+TEST_F(BreachDefenseStubTestSuite, StubStateNames) {
+    breachDefenseStubStateNames(this);
 }
 
 // ============================================

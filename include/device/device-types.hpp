@@ -87,7 +87,12 @@ inline const char* getKonamiButtonName(KonamiButton button) {
 inline int getAppIdForGame(GameType type) {
     switch (type) {
         case GameType::SIGNAL_ECHO:       return 2;  // SIGNAL_ECHO_APP_ID
-        case GameType::FIREWALL_DECRYPT:  return 3;  // FIREWALL_DECRYPT_APP_ID (future)
+        case GameType::FIREWALL_DECRYPT:  return 3;  // FIREWALL_DECRYPT_APP_ID
+        case GameType::GHOST_RUNNER:      return 4;  // GHOST_RUNNER_APP_ID
+        case GameType::SPIKE_VECTOR:      return 5;  // SPIKE_VECTOR_APP_ID
+        case GameType::CIPHER_PATH:       return 6;  // CIPHER_PATH_APP_ID
+        case GameType::EXPLOIT_SEQUENCER: return 7;  // EXPLOIT_SEQUENCER_APP_ID
+        case GameType::BREACH_DEFENSE:    return 8;  // BREACH_DEFENSE_APP_ID
         default:                          return -1;
     }
 }
