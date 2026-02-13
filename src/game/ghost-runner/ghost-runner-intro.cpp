@@ -1,5 +1,6 @@
 #include "game/ghost-runner/ghost-runner-states.hpp"
 #include "game/ghost-runner/ghost-runner.hpp"
+#include "game/ghost-runner/ghost-runner-resources.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "GhostRunnerIntro";
@@ -13,13 +14,16 @@ GhostRunnerIntro::~GhostRunnerIntro() {
 }
 
 void GhostRunnerIntro::onStateMounted(Device* PDN) {
-    transitionToWinState = false;
+    transitionToShowState = false;
 
     LOG_I(TAG, "Ghost Runner intro");
 
     // Reset session for a fresh game
     game->getSession().reset();
     game->resetGame();
+
+    // Seed RNG for this run
+    game->seedRng();
 
     // Display title screen
     PDN->getDisplay()->invalidateScreen();
@@ -28,21 +32,31 @@ void GhostRunnerIntro::onStateMounted(Device* PDN) {
         ->drawText("Phase through.", 10, 45);
     PDN->getDisplay()->render();
 
-    // Start intro timer — stub auto-wins after this
+    // Start idle LED animation
+    AnimationConfig config;
+    config.type = AnimationType::IDLE;
+    config.speed = 16;
+    config.curve = EaseCurve::LINEAR;
+    config.initialState = GHOST_RUNNER_IDLE_STATE;
+    config.loopDelayMs = 0;
+    config.loop = true;
+    PDN->getLightManager()->startAnimation(config);
+
+    // Start intro timer
     introTimer.setTimer(INTRO_DURATION_MS);
 }
 
 void GhostRunnerIntro::onStateLoop(Device* PDN) {
     if (introTimer.expired()) {
-        transitionToWinState = true;
+        transitionToShowState = true;
     }
 }
 
 void GhostRunnerIntro::onStateDismounted(Device* PDN) {
     introTimer.invalidate();
-    transitionToWinState = false;
+    transitionToShowState = false;
 }
 
-bool GhostRunnerIntro::transitionToWin() {
-    return transitionToWinState;
+bool GhostRunnerIntro::transitionToShow() {
+    return transitionToShowState;
 }

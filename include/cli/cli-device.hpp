@@ -106,10 +106,13 @@ inline const char* getFirewallDecryptStateName(int stateId) {
 
 inline const char* getGhostRunnerStateName(int stateId) {
     switch (stateId) {
-        case GHOST_INTRO: return "GhostRunnerIntro";
-        case GHOST_WIN:   return "GhostRunnerWin";
-        case GHOST_LOSE:  return "GhostRunnerLose";
-        default:          return "Unknown";
+        case GHOST_INTRO:    return "GhostRunnerIntro";
+        case GHOST_WIN:      return "GhostRunnerWin";
+        case GHOST_LOSE:     return "GhostRunnerLose";
+        case GHOST_SHOW:     return "GhostRunnerShow";
+        case GHOST_GAMEPLAY: return "GhostRunnerGameplay";
+        case GHOST_EVALUATE: return "GhostRunnerEvaluate";
+        default:             return "Unknown";
     }
 }
 
