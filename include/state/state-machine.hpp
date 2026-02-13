@@ -3,6 +3,7 @@
 #include <vector>
 #include "device/device.hpp"
 #include "state.hpp"
+#include "state-types.hpp"
 
 /*
  * StateMachine can be thought of as the base class for "apps" on the PDN.
@@ -35,14 +36,21 @@
  * our loop function and continue with the new state's onStateLoop function.
 */
 
-class StateMachine : public State {
+class StateMachine : public Stateful, public NavigationInterface {
 public:
-    explicit StateMachine(int stateId) : State(stateId) {}
+
+    friend class Device;
+
+    explicit StateMachine(int stateId) {
+        name = StateId(stateId);
+    }
 
     ~StateMachine() override {
+        clearTransitions();
         for (auto state: stateMap) {
             delete state;
         }
+        stateMap.clear();
     };
 
     void initialize(Device *PDN) {
@@ -73,9 +81,24 @@ public:
     virtual void populateStateMap() = 0;
 
     void checkStateTransitions() {
-        newState = currentState->checkTransitions();
-        stateChangeReady = (newState != nullptr);
+        StateId newStateId = currentState->checkTransitions();
+
+        stateChangeReady = (newStateId != NO_TRANSITION && 
+            getStateById(newStateId) != nullptr);
+
+        if (stateChangeReady) {
+            newState = getStateById(newStateId);
+        }
     };
+
+    State *getStateById(StateId stateId) {
+        for (auto state: stateMap) {
+            if (state->getName() == stateId) {
+                return state;
+            }
+        }
+        return nullptr;
+    }
 
     void commitState(Device *PDN) {
         currentState->onStateDismounted(PDN);
@@ -91,7 +114,9 @@ public:
         return currentState;
     }
 
-    void onStateMounted(Device *PDN) override {
+protected:
+
+    void onStateMounted(Device *PDN) override final {
         initialize(PDN);
     }
 
@@ -99,21 +124,20 @@ public:
      * onStatePaused and onStateResume should be overridden in derived classes if the
      * state machine itself needs to hold onto any data beyond the current state's snapshot.
      */
-    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
+    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override final {
         currentSnapshot = currentState->onStatePaused(PDN);
         currentState->onStateDismounted(PDN);
         paused = true;
-        return nullptr;
     }
 
-    void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
+    void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override final {
         currentState->onStateMounted(PDN);
         currentState->onStateResumed(PDN, currentSnapshot.get());
         currentSnapshot = nullptr;
         paused = false;
     }
 
-    void onStateLoop(Device *PDN) override {
+    void onStateLoop(Device *PDN) override final {
         currentState->onStateLoop(PDN);
         checkStateTransitions();
         if (stateChangeReady) {
@@ -121,7 +145,7 @@ public:
         }
     }
 
-    void onStateDismounted(Device *PDN) override {
+    void onStateDismounted(Device *PDN) override final {
         currentState->onStateDismounted(PDN);
         currentSnapshot = nullptr;
         currentState = nullptr;
