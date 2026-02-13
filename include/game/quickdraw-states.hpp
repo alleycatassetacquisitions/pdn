@@ -40,7 +40,8 @@ enum QuickdrawStateId {
     FDN_COMPLETE = 22,
     COLOR_PROFILE_PROMPT = 23,
     COLOR_PROFILE_PICKER = 24,
-    FDN_REENCOUNTER = 25
+    FDN_REENCOUNTER = 25,
+    KONAMI_PUZZLE = 26
 };
 
 class PlayerRegistration : public State {
@@ -273,6 +274,7 @@ public:
     bool transitionToIdle();
     bool transitionToFdnComplete();
     bool transitionToReencounter();
+    bool transitionToKonamiPuzzle();
 
 private:
     Player* player;
@@ -281,6 +283,7 @@ private:
     bool transitionToIdleState = false;
     bool transitionToFdnCompleteState = false;
     bool transitionToReencounterState = false;
+    bool transitionToKonamiPuzzleState = false;
     bool fackReceived = false;
     bool macSent = false;
     bool handshakeComplete = false;
@@ -732,4 +735,45 @@ private:
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
     bool shouldRetryUpload = false;
+};
+
+/*
+ * KonamiPuzzle — Meta-game activated when all 7 Konami buttons collected.
+ * Player enters the Konami Code: UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A START
+ * Controls: DOWN cycles inputs, UP stamps selected input into sequence.
+ * Correct sequence → Konami Boon awarded. Wrong input → retry prompt.
+ */
+class KonamiPuzzle : public State {
+public:
+    explicit KonamiPuzzle(Player* player);
+    ~KonamiPuzzle();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    SimpleTimer displayTimer;
+    bool transitionToIdleState = false;
+    bool displayIsDirty = true;
+    bool puzzleCompleted = false;
+    bool errorShown = false;
+    int currentPosition = 0;
+    int selectedInputIndex = 0;
+
+    // Helper methods
+    void buildTargetSequence();
+    void buildUnlockedButtons();
+    void renderCodeEntry(Device* PDN);
+    void renderSuccess(Device* PDN);
+    void renderError(Device* PDN);
+    bool checkInput();
+    void awardKonamiBoon();
+
+    // Data
+    std::vector<KonamiButton> targetSequence;
+    std::vector<KonamiButton> enteredSequence;
+    std::vector<KonamiButton> unlockedButtons;
 };

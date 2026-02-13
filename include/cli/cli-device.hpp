@@ -77,6 +77,7 @@ inline const char* getQuickdrawStateName(int stateId) {
         case 23: return "ColorProfilePrompt";
         case 24: return "ColorProfilePicker";
         case 25: return "FdnReencounter";
+        case 26: return "KonamiPuzzle";
         default: return "Unknown";
     }
 }

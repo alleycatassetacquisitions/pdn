@@ -31,6 +31,7 @@ void FdnDetected::onStateMounted(Device* PDN) {
     transitionToIdleState = false;
     transitionToFdnCompleteState = false;
     transitionToReencounterState = false;
+    transitionToKonamiPuzzleState = false;
     fackReceived = false;
     macSent = false;
     handshakeComplete = false;
@@ -88,6 +89,13 @@ void FdnDetected::onStateLoop(Device* PDN) {
         // Store game info on Player for FdnReencounter / FdnComplete to read
         player->setLastFdnGameType(static_cast<int>(pendingGameType));
         player->setLastFdnReward(static_cast<uint8_t>(pendingReward));
+
+        // Check if player has all 7 Konami buttons -- route to Konami Puzzle
+        if (player->hasAllKonamiButtons()) {
+            LOG_I(TAG, "All 7 buttons collected - routing to Konami Puzzle!");
+            transitionToKonamiPuzzleState = true;
+            return;
+        }
 
         // Check per-game progression to decide routing
         bool hasButton = player->hasUnlockedButton(static_cast<uint8_t>(pendingReward));
@@ -222,4 +230,8 @@ bool FdnDetected::transitionToFdnComplete() {
 
 bool FdnDetected::transitionToReencounter() {
     return transitionToReencounterState;
+}
+
+bool FdnDetected::transitionToKonamiPuzzle() {
+    return transitionToKonamiPuzzleState;
 }
