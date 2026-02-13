@@ -244,7 +244,6 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool resetGame();
-    bool isTerminalState() override;
 
 private:
     SimpleTimer winTimer = SimpleTimer();
@@ -261,7 +260,6 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool resetGame();
-    bool isTerminalState() override;
 
 private:
     SimpleTimer loseTimer = SimpleTimer();

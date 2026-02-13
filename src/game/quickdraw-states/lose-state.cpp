@@ -42,7 +42,3 @@ void Lose::onStateDismounted(Device *PDN) {
 bool Lose::resetGame() {
     return reset;
 }
-
-bool Lose::isTerminalState() {
-    return true;
-}

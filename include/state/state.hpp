@@ -9,38 +9,6 @@
 
 #include "state-types.hpp"
 
-class State;
-class Device;
-/*
- * A State transition is a tuple that holds a condition as well as
- * the state which the condition, when valid, will be transitioned to.
- *
- *  condition: A function that returns a boolean signifying the state machine
- *  should transition to the new state.
- *
- *  nextState: A pointer to the next valid state.
- */
-class StateTransition {
-public:
-    // Constructor
-    StateTransition(std::function<bool()> condition, State *nextState)
-        : condition(std::move(condition)), nextState(nextState) {
-    }
-
-    // Method to check if the transition condition is met
-    bool isConditionMet() const {
-        return condition();
-    };
-
-    // Getter for the next state
-    State *getNextState() const {
-        return nextState;
-    };
-
-    std::function<bool()> condition; // Function pointer that returns true based on the global state
-    State *nextState; // Pointer to the next state
-};
-
 /*
  * A state is meant to encapsulate a specific set of functionality within the context
  * of an application, ie quickdraw. States are broken up into a set of lifecycle methods.
@@ -64,8 +32,10 @@ public:
  * the conditions for state transitions - ie invalidating timers and resetting hardware
  * peripherals on the PDN.
  */
-class State {
+class State : public Stateful, public NavigationInterface {
 public:
+
+    friend class StateMachine;
     virtual ~State() {
         for (auto* t : transitions) {
             delete t;
@@ -73,50 +43,36 @@ public:
         transitions.clear();
     }
 
-    explicit State(int stateId): name(stateId) {
+    explicit State(int stateId) {
+        name = StateId(stateId);
     }
 
-    void addTransition(StateTransition *transition) {
-        transitions.push_back(transition);
-    }
+    virtual void onMount(Device *PDN) {}
+    virtual std::unique_ptr<Snapshot> onPause(Device *PDN) { return nullptr; }
+    virtual void onResume(Device *PDN, Snapshot* snapshot) {}
+    virtual void onLoop(Device *PDN) {}
+    virtual void onDismount(Device *PDN) {}
 
-    State *checkTransitions() {
-        for (StateTransition *transition: transitions) {
-            if (transition->isConditionMet()) {
-                return transition->nextState;
-            }
-        }
-        return nullptr;
-    }
-
-    int getStateId() const { return name.id; }
-
-    virtual void onStateMounted(Device *PDN) {
-        // Override in derived classes
-    }
-
-    virtual std::unique_ptr<Snapshot> onStatePaused(Device *PDN) {
-        return nullptr;
-    }
-
-    virtual void onStateResumed(Device *PDN, Snapshot* snapshot) {
-    }
-
-    virtual void onStateLoop(Device *PDN) {
-        // Override in derived classes
-    }
-
-    virtual void onStateDismounted(Device *PDN) {
-        // Override in derived classes
-    }
-
-    virtual bool isTerminalState() {
-        return false;
-    }
 
 protected:
-    std::vector<StateTransition *> transitions;
 
-private:
-    StateId name;
+    void onStateMounted(Device *PDN) override final {
+        onMount(PDN);
+    }
+
+    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override final {
+        return onPause(PDN);
+    }
+
+    void onStateResumed(Device *PDN, Snapshot* snapshot) override final {
+        onResume(PDN, snapshot);
+    }
+
+    void onStateLoop(Device *PDN) override final {
+        onLoop(PDN);
+    }
+
+    void onStateDismounted(Device *PDN) override final {
+        onDismount(PDN);
+    }
 };
