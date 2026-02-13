@@ -1464,35 +1464,83 @@ TEST_F(CipherPathManagedTestSuite, ManagedModeReturns) {
 }
 
 // ============================================
-// EXPLOIT SEQUENCER STUB TESTS
+// EXPLOIT SEQUENCER TESTS
 // ============================================
 
-TEST_F(ExploitSequencerStubTestSuite, StubIntroState) {
-    exploitSequencerStubIntroState(this);
+TEST_F(ExploitSequencerTestSuite, EasyConfigPresets) {
+    exploitSeqEasyConfigPresets(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubAutoWin) {
-    exploitSequencerStubAutoWin(this);
+TEST_F(ExploitSequencerTestSuite, HardConfigPresets) {
+    exploitSeqHardConfigPresets(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubManagedModeReturns) {
-    exploitSequencerStubManagedModeReturns(this);
+TEST_F(ExploitSequencerTestSuite, IntroResetsSession) {
+    exploitSeqIntroResetsSession(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubStandaloneLoops) {
-    exploitSequencerStubStandaloneLoops(this);
+TEST_F(ExploitSequencerTestSuite, IntroTransitionsToShow) {
+    exploitSeqIntroTransitionsToShow(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubFdnLaunch) {
-    exploitSequencerStubFdnLaunch(this);
+TEST_F(ExploitSequencerTestSuite, ShowDisplaysSequenceInfo) {
+    exploitSeqShowDisplaysSequenceInfo(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubAppIdRegistered) {
-    exploitSequencerStubAppIdRegistered(this);
+TEST_F(ExploitSequencerTestSuite, ShowTransitionsToGameplay) {
+    exploitSeqShowTransitionsToGameplay(this);
 }
 
-TEST_F(ExploitSequencerStubTestSuite, StubStateNames) {
-    exploitSequencerStubStateNames(this);
+TEST_F(ExploitSequencerTestSuite, SymbolAdvancesWithTime) {
+    exploitSeqSymbolAdvancesWithTime(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, CorrectTimingHit) {
+    exploitSeqCorrectTimingHit(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, WrongTimingMiss) {
+    exploitSeqWrongTimingMiss(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, TimeoutCountsFail) {
+    exploitSeqTimeoutCountsFail(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateRoutesToNextExploit) {
+    exploitSeqEvaluateRoutesToNextExploit(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateAdvancesSequence) {
+    exploitSeqEvaluateAdvancesSequence(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateRoutesToWin) {
+    exploitSeqEvaluateRoutesToWin(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, EvaluateRoutesToLose) {
+    exploitSeqEvaluateRoutesToLose(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, WinSetsOutcome) {
+    exploitSeqWinSetsOutcome(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, LoseSetsOutcome) {
+    exploitSeqLoseSetsOutcome(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, StandaloneLoopsToIntro) {
+    exploitSeqStandaloneLoopsToIntro(this);
+}
+
+TEST_F(ExploitSequencerTestSuite, StateNamesResolve) {
+    exploitSeqStateNamesResolve(this);
+}
+
+TEST_F(ExploitSequencerManagedTestSuite, ManagedModeReturns) {
+    exploitSeqManagedModeReturns(this);
 }
 
 // ============================================

@@ -142,10 +142,13 @@ inline const char* getCipherPathStateName(int stateId) {
 
 inline const char* getExploitSequencerStateName(int stateId) {
     switch (stateId) {
-        case EXPLOIT_INTRO: return "ExploitSeqIntro";
-        case EXPLOIT_WIN:   return "ExploitSeqWin";
-        case EXPLOIT_LOSE:  return "ExploitSeqLose";
-        default:            return "Unknown";
+        case EXPLOIT_INTRO:    return "ExploitSeqIntro";
+        case EXPLOIT_WIN:      return "ExploitSeqWin";
+        case EXPLOIT_LOSE:     return "ExploitSeqLose";
+        case EXPLOIT_SHOW:     return "ExploitSeqShow";
+        case EXPLOIT_GAMEPLAY: return "ExploitSeqGameplay";
+        case EXPLOIT_EVALUATE: return "ExploitSeqEvaluate";
+        default:               return "Unknown";
     }
 }
 
