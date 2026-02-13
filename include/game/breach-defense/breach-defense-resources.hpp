@@ -1,7 +1,6 @@
 #pragma once
 
 #include "device/drivers/light-interface.hpp"
-#include "game/breach-defense/breach-defense.hpp"
 #include <cstdint>
 
 /*

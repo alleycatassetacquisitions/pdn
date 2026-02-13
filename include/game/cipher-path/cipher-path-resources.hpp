@@ -1,7 +1,6 @@
 #pragma once
 
 #include "device/drivers/light-interface.hpp"
-#include "game/cipher-path/cipher-path.hpp"
 #include <cstdint>
 
 /*

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "device/drivers/light-interface.hpp"
-#include "game/ghost-runner/ghost-runner.hpp"
 #include <cstdint>
 
 /*

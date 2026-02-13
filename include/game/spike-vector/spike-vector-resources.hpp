@@ -1,7 +1,6 @@
 #pragma once
 
 #include "device/drivers/light-interface.hpp"
-#include "game/spike-vector/spike-vector.hpp"
 #include <cstdint>
 
 /*

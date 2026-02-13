@@ -7,7 +7,6 @@
 #include "cli/cli-serial-broker.hpp"
 #include "game/ghost-runner/ghost-runner.hpp"
 #include "game/ghost-runner/ghost-runner-states.hpp"
-#include "game/ghost-runner/ghost-runner-resources.hpp"
 #include "game/minigame.hpp"
 #include "device/device-types.hpp"
 #include "utils/simple-timer.hpp"

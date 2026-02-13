@@ -72,6 +72,6 @@ void BreachDefense::seedRng() {
     if (config.rngSeed != 0) {
         srand(static_cast<unsigned int>(config.rngSeed));
     } else {
-        srand(static_cast<unsigned int>(42));
+        srand(static_cast<unsigned int>(0));
     }
 }
