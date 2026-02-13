@@ -1,5 +1,8 @@
 # Portable Data Node (PDN) by Alleycat Asset Acquisitions
 
+![CI](https://github.com/FinallyEve/pdn/actions/workflows/pr-checks.yml/badge.svg)
+![Tests](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/FinallyEve/5b8fff0b3af6332b80904301c8f159cf/raw/pdn-tests.json)
+
 Welcome to the official repository for Alleycat Asset Acquisitions' **Portable Data Node (PDN)** project. The PDN is a cutting-edge, interactive device used in live-action role-playing (LARP) environments like [Neotropolis](https://www.neotropolis.com). It leverages real-time technology and augmented reality to create immersive gameplay experiences. The PDN serves as a versatile tool for communication, mission tracking, and player interaction.
 
 Fusion Files for the case can be found [here](https://a360.co/4a2WvzV).
