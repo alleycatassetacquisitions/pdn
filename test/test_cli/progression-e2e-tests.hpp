@@ -188,8 +188,8 @@ void e2eSignalEchoEasyWin(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
     ASSERT_FALSE(suite->player_.player->hasKonamiBoon());
 
-    // Step 1: Trigger FDN (Signal Echo, reward START)
-    suite->triggerFdnHandshake("7", "6");
+    // Step 1: Trigger FDN (Signal Echo, reward UP)
+    suite->triggerFdnHandshake("7", "0");
 
     // Verify EASY config (no boon → easy)
     auto* echo = suite->getSignalEcho();
@@ -224,8 +224,8 @@ void e2eAutoBoonOnSeventhButton(ProgressionE2ETestSuite* suite) {
     suite->player_.player->setKonamiProgress(0x3F);
     ASSERT_FALSE(suite->player_.player->isKonamiComplete());
 
-    // Trigger Signal Echo, win → unlocks START (7th button)
-    suite->triggerFdnHandshake("7", "6");
+    // Trigger Signal Echo, win → unlocks UP (1st button)
+    suite->triggerFdnHandshake("7", "0");
     suite->playSignalEchoToWin();
     suite->tickPlayerWithTime(10, 400);  // Win timer → FdnComplete
 
@@ -241,7 +241,7 @@ void e2eAutoBoonOnSeventhButton(ProgressionE2ETestSuite* suite) {
 void e2eServerSyncOnWin(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     suite->playSignalEchoToWin();
     suite->tickPlayerWithTime(10, 400);  // → FdnComplete
 
@@ -266,7 +266,7 @@ void e2eHardModeColorEquip(ProgressionE2ETestSuite* suite) {
     suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     // Step 6: Reconnect to FDN -> goes to FdnReencounter
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Choose HARD (index 0, confirm with PRIMARY)
@@ -309,7 +309,7 @@ void e2eColorPromptDecline(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
     suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(3, 10);
@@ -373,7 +373,7 @@ void e2eEasyModeLoss(ProgressionE2ETestSuite* suite) {
 
     uint8_t progressBefore = suite->player_.player->getKonamiProgress();
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     suite->playSignalEchoToLose();
 
     // Wait for lose timer → FdnComplete
@@ -396,7 +396,7 @@ void e2eHardModeLoss(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
     suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(3, 10);
@@ -499,7 +499,7 @@ void e2ePromptAutoDismiss(ProgressionE2ETestSuite* suite) {
     suite->advanceToIdle();
     suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(3, 10);
@@ -525,7 +525,7 @@ void e2eDifficultyGatingDynamic(ProgressionE2ETestSuite* suite) {
 
     // First encounter — EASY
     ASSERT_FALSE(suite->player_.player->hasKonamiBoon());
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     auto* echo1 = suite->getSignalEcho();
     ASSERT_EQ(echo1->getConfig().sequenceLength, SIGNAL_ECHO_EASY.sequenceLength);
 
@@ -536,7 +536,7 @@ void e2eDifficultyGatingDynamic(ProgressionE2ETestSuite* suite) {
     ASSERT_EQ(suite->getPlayerStateId(), IDLE);
 
     // Second encounter -- button is unlocked from first win, goes to FdnReencounter
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Choose HARD
@@ -555,7 +555,7 @@ void e2eEquipLaterViaPicker(ProgressionE2ETestSuite* suite) {
     suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     // Re-encounter, choose HARD, win, decline at prompt
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickPlayerWithTime(3, 10);

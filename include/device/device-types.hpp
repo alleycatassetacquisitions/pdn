@@ -35,13 +35,13 @@ enum class KonamiButton : uint8_t {
  */
 inline KonamiButton getRewardForGame(GameType type) {
     switch (type) {
-        case GameType::GHOST_RUNNER:      return KonamiButton::UP;
+        case GameType::GHOST_RUNNER:      return KonamiButton::START;
         case GameType::SPIKE_VECTOR:      return KonamiButton::DOWN;
         case GameType::FIREWALL_DECRYPT:  return KonamiButton::LEFT;
         case GameType::CIPHER_PATH:       return KonamiButton::RIGHT;
         case GameType::EXPLOIT_SEQUENCER: return KonamiButton::B;
         case GameType::BREACH_DEFENSE:    return KonamiButton::A;
-        case GameType::SIGNAL_ECHO:       return KonamiButton::START;
+        case GameType::SIGNAL_ECHO:       return KonamiButton::UP;
         default:                          return KonamiButton::START;
     }
 }

@@ -56,16 +56,19 @@ void KonamiPuzzle::onStateMounted(Device* PDN) {
 
             if (state->currentPosition >= static_cast<int>(state->targetSequence.size())) {
                 // Puzzle complete!
-                LOG_I(TAG, "KONAMI CODE COMPLETE!");
+                state->player->incrementKonamiAttempts();
+                LOG_I(TAG, "KONAMI CODE COMPLETE! Attempts: %d", state->player->getKonamiAttempts());
                 state->puzzleCompleted = true;
                 state->awardKonamiBoon();
                 state->displayTimer.setTimer(SUCCESS_DISPLAY_MS);
             }
         } else {
-            // Wrong input
-            LOG_W(TAG, "Wrong input! Expected %s, got %s",
+            // Wrong input - increment attempts and reset
+            state->player->incrementKonamiAttempts();
+            LOG_W(TAG, "Wrong input! Expected %s, got %s (Attempt %d)",
                   getKonamiButtonName(state->targetSequence[state->currentPosition]),
-                  getKonamiButtonName(selectedButton));
+                  getKonamiButtonName(selectedButton),
+                  state->player->getKonamiAttempts());
             state->errorShown = true;
             state->displayTimer.setTimer(ERROR_DISPLAY_MS);
         }
@@ -187,7 +190,29 @@ void KonamiPuzzle::renderSuccess(Device* PDN) {
 
     PDN->getDisplay()->drawText("SYSTEM", 30, 15);
     PDN->getDisplay()->drawText("CRACKED", 25, 35);
-    PDN->getDisplay()->drawText("KONAMI BOON", 10, 55);
+
+    // Display shame message based on attempt count
+    uint16_t attempts = player->getKonamiAttempts();
+    char shameBuf[64];
+    if (attempts == 1) {
+        snprintf(shameBuf, sizeof(shameBuf), "First try!");
+        PDN->getDisplay()->drawText(shameBuf, 20, 50);
+        PDN->getDisplay()->drawText("Impressive.", 15, 60);
+    } else if (attempts <= 3) {
+        snprintf(shameBuf, sizeof(shameBuf), "Not bad.");
+        PDN->getDisplay()->drawText(shameBuf, 25, 50);
+        snprintf(shameBuf, sizeof(shameBuf), "%d attempts.", attempts);
+        PDN->getDisplay()->drawText(shameBuf, 20, 60);
+    } else if (attempts <= 6) {
+        snprintf(shameBuf, sizeof(shameBuf), "Took %d tries?", attempts);
+        PDN->getDisplay()->drawText(shameBuf, 10, 50);
+        PDN->getDisplay()->drawText("Really?", 30, 60);
+    } else {
+        snprintf(shameBuf, sizeof(shameBuf), "After %d tries", attempts);
+        PDN->getDisplay()->drawText(shameBuf, 10, 45);
+        PDN->getDisplay()->drawText("...finally.", 20, 55);
+        PDN->getDisplay()->drawText("Embarrassing", 5, 63);
+    }
 
     PDN->getDisplay()->render();
 

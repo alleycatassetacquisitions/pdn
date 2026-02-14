@@ -259,9 +259,9 @@ void fdnCompleteUnlocksKonamiOnWin(FdnCompleteTestSuite* suite) {
     suite->device_.game->skipToState(suite->device_.pdn, 23);
     suite->tick(1);
 
-    // Signal Echo = GameType 7, reward = START(6)
+    // Signal Echo = GameType 7, reward = UP(0)
     ASSERT_TRUE(suite->device_.player->hasUnlockedButton(
-        static_cast<uint8_t>(KonamiButton::START)));
+        static_cast<uint8_t>(KonamiButton::UP)));
 }
 
 // Test: FdnComplete unlocks color profile on hard mode win

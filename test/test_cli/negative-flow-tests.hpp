@@ -217,8 +217,8 @@ void firstEncounterLaunchesEasy(NegativeFlowTestSuite* suite) {
     ASSERT_FALSE(suite->hunter_.player->hasUnlockedButton(
         static_cast<uint8_t>(KonamiButton::START)));
 
-    // Trigger FDN (Signal Echo, reward START)
-    suite->triggerFdnHandshake("7", "6");
+    // Trigger FDN (Signal Echo, reward UP)
+    suite->triggerFdnHandshake("7", "0");
 
     // Should go straight to Signal Echo (EASY), NOT FdnReencounter
     auto* echo = suite->getSignalEcho();
@@ -241,7 +241,7 @@ void reencounterWithButtonShowsPrompt(NegativeFlowTestSuite* suite) {
     suite->hunter_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
     // Trigger FDN
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
 
     // Should be in FdnReencounter state
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
@@ -270,7 +270,7 @@ void reencounterChooseHardLaunchesHard(NegativeFlowTestSuite* suite) {
     suite->advanceToIdle();
     suite->hunter_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Cursor starts at HARD (index 0). Press PRIMARY to confirm.
@@ -296,7 +296,7 @@ void reencounterChooseEasyLaunchesRecreational(NegativeFlowTestSuite* suite) {
     suite->advanceToIdle();
     suite->hunter_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Cycle to EASY (index 1): press SECONDARY once
@@ -324,7 +324,7 @@ void reencounterChooseSkipReturnsToIdle(NegativeFlowTestSuite* suite) {
     suite->advanceToIdle();
     suite->hunter_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Cycle to SKIP (index 2): press SECONDARY twice
@@ -350,7 +350,7 @@ void fullyCompletedReencounterAllRecreational(NegativeFlowTestSuite* suite) {
     suite->hunter_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
     suite->hunter_.player->addColorProfileEligibility(static_cast<int>(GameType::SIGNAL_ECHO));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Verify fullyCompleted state: both button + profile means
@@ -373,7 +373,7 @@ void reencounterTimeoutDefaultsToSkip(NegativeFlowTestSuite* suite) {
     suite->advanceToIdle();
     suite->hunter_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Wait 15+ seconds (30 ticks * 600ms = 18s)
@@ -395,7 +395,7 @@ void recreationalWinSkipsRewards(NegativeFlowTestSuite* suite) {
     uint8_t progressBefore = suite->hunter_.player->getKonamiProgress();
 
     // Trigger re-encounter
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Choose EASY (recreational): cycle to index 1, confirm
@@ -621,7 +621,7 @@ void bountyFdnEasyWin(BountyFlowTestSuite* suite) {
     ASSERT_FALSE(suite->bounty_.player->hasUnlockedButton(
         static_cast<uint8_t>(KonamiButton::START)));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
 
     auto* echo = suite->getSignalEcho();
     ASSERT_NE(echo, nullptr);
@@ -648,7 +648,7 @@ void bountyFdnHardWinColorPrompt(BountyFlowTestSuite* suite) {
     // Pre-set: has START button (beat EASY before)
     suite->bounty_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Choose HARD (index 0), confirm
@@ -682,7 +682,7 @@ void bountyReencounterPrompt(BountyFlowTestSuite* suite) {
     suite->advanceToIdle();
     suite->bounty_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("7", "6");
+    suite->triggerFdnHandshake("7", "0");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Choose SKIP (cycle twice, then confirm)

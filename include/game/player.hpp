@@ -129,6 +129,7 @@ private:
     int pendingProfileGame = -1;  // Set by FdnComplete for ColorProfilePrompt
     uint8_t lastFdnReward = 0;  // KonamiButton value of last FDN reward (set by FdnDetected)
     bool recreationalMode = false;  // True when replaying already-beaten content
+    uint16_t konamiAttempts = 0;  // Number of attempts to solve Konami puzzle
 
 public:
     // Pending FDN challenge (set by Idle, read by FdnDetected)
@@ -191,4 +192,8 @@ public:
     const std::set<int>& getColorProfileEligibility() const { return colorProfileEligibility; }
     int getEquippedColorProfile() const { return equippedColorProfile; }
     void setEquippedColorProfile(int gameTypeValue) { equippedColorProfile = gameTypeValue; }
+
+    // Konami attempts tracking
+    void incrementKonamiAttempts() { konamiAttempts++; }
+    uint16_t getKonamiAttempts() const { return konamiAttempts; }
 };

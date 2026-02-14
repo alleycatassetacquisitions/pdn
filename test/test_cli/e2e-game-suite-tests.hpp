@@ -109,14 +109,14 @@ public:
 // ============================================
 
 /*
- * Test: Ghost Runner EASY win → unlocks UP button.
+ * Test: Ghost Runner EASY win → unlocks START button.
  */
 void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
     suite->advanceToIdle();
     ASSERT_FALSE(suite->player_.player->hasKonamiBoon());
 
-    // Trigger FDN for Ghost Runner (GameType 1, KonamiButton UP=0)
-    suite->triggerFdnHandshake("1", "0");
+    // Trigger FDN for Ghost Runner (GameType 1, KonamiButton START=6)
+    suite->triggerFdnHandshake("1", "6");
 
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
@@ -148,9 +148,9 @@ void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
     suite->tickWithTime(35, 100);
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
 
-    // UP button (bit 0) should be unlocked
+    // START button (bit 6) should be unlocked
     uint8_t progress = suite->player_.player->getKonamiProgress();
-    ASSERT_TRUE(progress & (1 << 0));
+    ASSERT_TRUE(progress & (1 << 6));
 }
 
 /*
@@ -160,10 +160,10 @@ void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
  */
 void e2eGhostRunnerHardWin(E2EGameSuiteTestSuite* suite) {
     suite->advanceToIdle();
-    // Pre-unlock UP button to enable re-encounter
-    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::UP));
+    // Pre-unlock START button to enable re-encounter
+    suite->player_.player->unlockKonamiButton(static_cast<uint8_t>(KonamiButton::START));
 
-    suite->triggerFdnHandshake("1", "0");
+    suite->triggerFdnHandshake("1", "6");
     ASSERT_EQ(suite->getPlayerStateId(), FDN_REENCOUNTER);
 
     // Choose HARD (PRIMARY button)
@@ -211,7 +211,7 @@ void e2eGhostRunnerLoss(E2EGameSuiteTestSuite* suite) {
     suite->advanceToIdle();
     uint8_t progressBefore = suite->player_.player->getKonamiProgress();
 
-    suite->triggerFdnHandshake("1", "0");
+    suite->triggerFdnHandshake("1", "6");
 
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
