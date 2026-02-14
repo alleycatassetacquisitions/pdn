@@ -1,0 +1,363 @@
+Script started on 2026-02-14 20:44:11+00:00 [<not executed on terminal>]
+
+[1;32mCreating 1 device...
+[0m  Device 0010: Hunter
+
+--- Running script: demos/all-games-showcase.demo ---
+> add challenge ghost-runner
+Added challenge device 0011 running ghost-runner - now selected
+  [0010] FetchUserData
+  [0011] GhostRunnerIntro
+> state
+0011: GhostRunnerIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerIntro
+> wait 2.5s
+> wait 2s
+> b 0
+Button1 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+> wait 4s
+> reboot 0
+Rebooted 0010 -> FetchUserData
+  [0010] FetchUserData
+  [0011] GhostRunnerGameplay
+> wait 2s
+> add challenge spike-vector
+Added challenge device 0012 running spike-vector - now selected
+  [0010] WelcomeMessage
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorIntro
+> state
+0012: SpikeVectorIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorIntro
+> wait 2.5s
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorShow
+> wait 0.5s
+> b2 0
+Button2 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+> wait 0.5s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+> wait 4s
+> reboot 0
+Rebooted 0010 -> FetchUserData
+  [0010] FetchUserData
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorGameplay
+> wait 2s
+> add challenge firewall-decrypt
+Added challenge device 0013 running firewall-decrypt - now selected
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorShow
+  [0013] DecryptIntro
+> state
+0013: DecryptIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorShow
+  [0013] DecryptIntro
+> wait 2.5s
+> b 0
+Button1 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+> wait 0.2s
+> b 0
+Button1 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+> wait 0.2s
+> b2 0
+Button2 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+> wait 0.2s
+> b2 0
+Button2 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+> wait 4s
+> reboot 0
+Rebooted 0010 -> FetchUserData
+  [0010] FetchUserData
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorShow
+  [0013] DecryptScan
+> wait 2s
+> add challenge cipher-path
+Added challenge device 0014 running cipher-path - now selected
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathIntro
+> state
+0014: CipherPathIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathIntro
+> wait 2.5s
+> b 0
+Button1 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathShow
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathShow
+> wait 0.3s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathShow
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerLose
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathShow
+> wait 4s
+> reboot 0
+Rebooted 0010 -> FetchUserData
+  [0010] FetchUserData
+  [0011] GhostRunnerIntro
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+> wait 2s
+> add challenge exploit-sequencer
+Added challenge device 0015 running exploit-sequencer - now selected
+  [0010] WelcomeMessage
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqIntro
+> state
+0015: ExploitSeqIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqIntro
+> wait 2.5s
+> b 0
+Button1 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqShow
+> wait 0.4s
+> b 0
+Button1 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqShow
+> wait 0.4s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqShow
+> wait 4s
+> reboot 0
+Rebooted 0010 -> FetchUserData
+  [0010] FetchUserData
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+> wait 2s
+> add challenge breach-defense
+Added challenge device 0016 running breach-defense - now selected
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseIntro
+> state
+0016: BreachDefenseIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseIntro
+> wait 2.5s
+> b2 0
+Button2 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseShow
+> wait 0.4s
+> b2 0
+Button2 click on 0010
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseShow
+> wait 0.4s
+> b2 0
+Button2 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorLose
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseShow
+> wait 4s
+> reboot 0
+Rebooted 0010 -> FetchUserData
+  [0010] FetchUserData
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorIntro
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseGameplay
+> wait 2s
+> add challenge signal-echo
+Added challenge device 0017 running signal-echo - now selected
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorShow
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqShow
+  [0016] BreachDefenseGameplay
+  [0017] EchoIntro
+> state
+0017: EchoIntro
+  [0010] WelcomeMessage
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorShow
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqShow
+  [0016] BreachDefenseGameplay
+  [0017] EchoIntro
+> wait 2.5s
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseGameplay
+  [0017] EchoShowSequence
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseGameplay
+  [0017] EchoShowSequence
+> wait 0.3s
+> b 0
+Button1 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseGameplay
+  [0017] EchoShowSequence
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] AwakenSequence
+  [0011] GhostRunnerShow
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqGameplay
+  [0016] BreachDefenseGameplay
+  [0017] EchoShowSequence
+> wait 4s
+> state
+0017: EchoPlayerInput
+  [0010] Idle
+  [0011] GhostRunnerGameplay
+  [0012] SpikeVectorGameplay
+  [0013] DecryptScan
+  [0014] CipherPathGameplay
+  [0015] ExploitSeqShow
+  [0016] BreachDefenseGameplay
+  [0017] EchoPlayerInput
+--- Script complete ---
+
+Script done on 2026-02-14 20:45:20+00:00 [COMMAND_EXIT_CODE="0"]

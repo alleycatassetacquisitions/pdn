@@ -1,0 +1,48 @@
+Script started on 2026-02-14 20:45:31+00:00 [<not executed on terminal>]
+
+[1;32mCreating 2 devices...
+[0m  Device 0010: Hunter
+  Device 0011: Bounty
+
+--- Running script: demos/duel.demo ---
+> wait 3s
+> state
+0010: WelcomeMessage
+  [0010] WelcomeMessage
+  [0011] WelcomeMessage
+> l 0
+Button1 long press on 0010
+  [0010] WelcomeMessage
+  [0011] WelcomeMessage
+> wait 1s
+> l 1
+Button1 long press on 0011
+  [0010] WelcomeMessage
+  [0011] WelcomeMessage
+> wait 1s
+> state
+0010: AwakenSequence
+  [0010] AwakenSequence
+  [0011] AwakenSequence
+> wait 2.5s
+> b 1
+Button1 click on 0011
+  [0010] AwakenSequence
+  [0011] AwakenSequence
+> wait 1s
+> state
+0010: Idle
+  [0010] Idle
+  [0011] Idle
+> wait 3.5s
+> state
+0010: Idle
+  [0010] Idle
+  [0011] Idle
+> role all
+Device 0010 [0]: Hunter | Device 0011 [1]: Bounty
+  [0010] Idle
+  [0011] Idle
+--- Script complete ---
+
+Script done on 2026-02-14 20:45:43+00:00 [COMMAND_EXIT_CODE="0"]

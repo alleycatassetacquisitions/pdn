@@ -1,0 +1,451 @@
+Script started on 2026-02-14 20:42:22+00:00 [<not executed on terminal>]
+
+[1;32mCreating 1 device...
+[0m  Device 0010: Hunter
+
+--- Running script: demos/full-progression.demo ---
+> wait 2s
+> state
+0010: WelcomeMessage
+  [0010] WelcomeMessage
+> add npc ghost-runner
+Added NPC device 7011 running GHOST RUNNER - now selected
+  [0010] WelcomeMessage
+  [7011] NpcIdle
+> cable 0 1
+Connected 0010 <-> 7011 (Primary-to-Auxiliary)
+  [0010] WelcomeMessage
+  [7011] NpcIdle
+> wait 4s
+> wait 2.5s
+> wait 2s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcHandshake
+> wait 0.2s
+> wait 4s
+> cable -d 0 1
+Disconnected 0010 from 7011
+  [0010] FdnDetected
+  [7011] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] FdnDetected
+  [7011] NpcHandshake
+> add npc spike-vector
+Added NPC device 7012 running SPIKE VECTOR - now selected
+  [0010] FdnDetected
+  [7011] NpcHandshake
+  [7012] NpcIdle
+> cable 0 2
+Connected 0010 <-> 7012 (Primary-to-Auxiliary)
+  [0010] FdnDetected
+  [7011] NpcHandshake
+  [7012] NpcIdle
+> wait 4s
+> wait 2.5s
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+> wait 0.5s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+> wait 0.5s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+> wait 0.5s
+> wait 4s
+> cable -d 0 2
+Disconnected 0010 from 7012
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+> add npc firewall-decrypt
+Added NPC device 7013 running FIREWALL DECRYPT - now selected
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+  [7013] NpcIdle
+> cable 0 3
+Connected 0010 <-> 7013 (Primary-to-Auxiliary)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcHandshake
+  [7013] NpcIdle
+> wait 4s
+> wait 2.5s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> wait 0.2s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> wait 0.2s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> wait 0.2s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> wait 1s
+> wait 4s
+> cable -d 0 3
+Disconnected 0010 from 7013
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] Unknown
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcHandshake
+> add npc cipher-path
+Added NPC device 7014 running CIPHER PATH - now selected
+  [0010] Unknown
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+> cable 0 4
+Connected 0010 <-> 7014 (Primary-to-Auxiliary)
+  [0010] Unknown
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+> wait 4s
+> wait 2.5s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+> wait 0.3s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+> wait 0.3s
+> wait 4s
+> cable -d 0 4
+Disconnected 0010 from 7014
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+> add npc exploit-sequencer
+Added NPC device 7015 running EXPLOIT SEQUENCER - now selected
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+  [7015] NpcIdle
+> cable 0 5
+Connected 0010 <-> 7015 (Primary-to-Auxiliary)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcHandshake
+  [7015] NpcIdle
+> wait 4s
+> wait 2.5s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+> wait 0.4s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+> wait 0.4s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+> wait 0.4s
+> wait 4s
+> cable -d 0 5
+Disconnected 0010 from 7015
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+> add npc breach-defense
+Added NPC device 7016 running BREACH DEFENSE - now selected
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+  [7016] NpcIdle
+> cable 0 6
+Connected 0010 <-> 7016 (Primary-to-Auxiliary)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcHandshake
+  [7016] NpcIdle
+> wait 4s
+> wait 2.5s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+> wait 0.4s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+> wait 0.4s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+> wait 0.4s
+> wait 4s
+> cable -d 0 6
+Disconnected 0010 from 7016
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+> add npc signal-echo
+Added NPC device 7017 running SIGNAL ECHO - now selected
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+  [7017] NpcIdle
+> cable 0 7
+Connected 0010 <-> 7017 (Primary-to-Auxiliary)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcHandshake
+  [7017] NpcIdle
+> wait 4s
+> wait 2.5s
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> wait 0.3s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> wait 0.3s
+> wait 4s
+> cable -d 0 7
+Disconnected 0010 from 7017
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> wait 1s
+> konami 0
+Device has no player (FDN devices don't have players)
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> state
+7017: FetchUserData
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+> role 0
+Device 0010: Hunter
+  [0010] FdnDetected
+  [7011] NpcIdle
+  [7012] NpcIdle
+  [7013] NpcIdle
+  [7014] NpcIdle
+  [7015] NpcIdle
+  [7016] NpcIdle
+  [7017] NpcHandshake
+--- Script complete ---
+
+Script done on 2026-02-14 20:43:58+00:00 [COMMAND_EXIT_CODE="0"]

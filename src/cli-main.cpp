@@ -33,6 +33,9 @@ static constexpr int MAX_DEVICES = 8;
 // Global running flag for signal handling
 std::atomic<bool> g_running{true};
 
+// Terminal resize flag for SIGWINCH handling
+static volatile sig_atomic_t g_terminalResized = 0;
+
 // Command input state
 std::string g_commandBuffer;
 std::string g_commandResult;
@@ -45,6 +48,10 @@ bool g_autoCable = false;  // Auto-cable first player to first NPC (--auto-cable
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
     g_running = false;
+}
+
+void sigwinchHandler(int) {
+    g_terminalResized = 1;
 }
 
 /**
@@ -324,6 +331,15 @@ int main(int argc, char** argv) {
     // Set up signal handler for graceful shutdown
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
+
+    // Set up SIGWINCH handler for terminal resize (POSIX only)
+    #ifndef _WIN32
+    struct sigaction sa;
+    sa.sa_handler = sigwinchHandler;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGWINCH, &sa, nullptr);
+    #endif
     
     // Create global clock and logger
     NativeClockDriver* globalClock = new NativeClockDriver("global_clock");
@@ -381,6 +397,12 @@ int main(int argc, char** argv) {
 
         // Main loop
         while (g_running) {
+            // Handle terminal resize
+            if (g_terminalResized) {
+                g_terminalResized = 0;
+                renderer.handleResize();
+            }
+
             // Handle input (non-blocking)
             int key = cli::Terminal::readKey();
             while (key != static_cast<int>(cli::Key::NONE)) {

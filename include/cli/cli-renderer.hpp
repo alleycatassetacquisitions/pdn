@@ -34,6 +34,17 @@ public:
     bool isCaptionsEnabled() const { return captionsEnabled_; }
 
     /**
+     * Handle terminal resize event (SIGWINCH).
+     * Refreshes terminal dimensions and triggers a full redraw.
+     */
+    void handleResize() {
+        getTerminalSize();
+        // Clear screen and force full redraw
+        Terminal::clearScreen();
+        previousFrame_.clear();
+    }
+
+    /**
      * Render the full UI for all devices, command result, and prompt.
      */
     void renderUI(std::vector<DeviceInstance>& devices,
@@ -101,6 +112,8 @@ private:
     bool captionsEnabled_ = true;
     std::vector<std::string> previousFrame_;
     std::vector<std::string> currentFrame_;
+    int termWidth_ = 0;
+    int termHeight_ = 0;
     
     /**
      * Add a line to the current frame buffer.
@@ -120,6 +133,23 @@ private:
             return static_cast<int>(ws.ws_row);
         }
         return 50;
+    }
+
+    /**
+     * Query and update terminal dimensions.
+     * Called on startup and when terminal is resized (SIGWINCH).
+     */
+    void getTerminalSize() {
+        #ifndef _WIN32
+        struct winsize ws;
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+            if (ws.ws_col > 0) termWidth_ = static_cast<int>(ws.ws_col);
+            if (ws.ws_row > 0) termHeight_ = static_cast<int>(ws.ws_row);
+        }
+        #endif
+        // Set defaults if ioctl failed or on Windows
+        if (termWidth_ == 0) termWidth_ = 120;
+        if (termHeight_ == 0) termHeight_ = 50;
     }
 
     /**

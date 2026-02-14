@@ -1,0 +1,70 @@
+Script started on 2026-02-14 20:41:53+00:00 [<not executed on terminal>]
+
+[1;32mCreating 3 devices...
+[0m  Device 0010: Hunter
+  Device 0011: Bounty
+  Device 7012: NPC (SIGNAL ECHO)
+
+[1;33mAuto-cabled device 0010 <-> device 7012
+[0m
+--- Running script: demos/fdn-quickstart.demo ---
+> wait 3s
+> state
+0010: WelcomeMessage
+  [0010] WelcomeMessage
+  [0011] WelcomeMessage
+  [7012] NpcIdle
+> wait 2s
+> wait 3s
+> wait 2.5s
+> wait 1s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [0011] Idle
+  [7012] NpcHandshake
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [0011] Idle
+  [7012] NpcHandshake
+> wait 0.3s
+> b 0
+Button1 click on 0010
+  [0010] FdnDetected
+  [0011] Idle
+  [7012] NpcHandshake
+> wait 0.3s
+> b2 0
+Button2 click on 0010
+  [0010] FdnDetected
+  [0011] Idle
+  [7012] NpcHandshake
+> wait 0.3s
+> wait 3s
+> wait 3.5s
+> state
+0010: Unknown
+  [0010] Unknown
+  [0011] Idle
+  [7012] NpcIdle
+> konami 0
+Konami set: 0x00 (0/7) boon=no
+  [0010] Unknown
+  [0011] Idle
+  [7012] NpcIdle
+> cable -d 0 1
+Not connected
+  [0010] Unknown
+  [0011] Idle
+  [7012] NpcIdle
+> wait 1s
+> state
+0010: Unknown
+  [0010] Unknown
+  [0011] Idle
+  [7012] NpcIdle
+--- Script complete ---
+
+Script done on 2026-02-14 20:42:13+00:00 [COMMAND_EXIT_CODE="0"]
