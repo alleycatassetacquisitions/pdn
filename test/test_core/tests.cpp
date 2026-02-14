@@ -15,6 +15,7 @@
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
 #include "konami-metagame-tests.hpp"
+#include "konami-handshake-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1079,6 +1080,7 @@ TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
 }
 
 // ============================================
+<<<<<<< HEAD
 // KONAMI METAGAME TESTS
 // ============================================
 
@@ -1124,6 +1126,70 @@ TEST_F(KonamiMetaGameTestSuite, konamiMetaGamePopulatesThirtyFiveStates) {
 
 TEST_F(KonamiMetaGameTestSuite, placeholderStateHasCorrectId) {
     placeholderStateHasCorrectId(player);
+}
+
+// ============================================
+// KONAMI HANDSHAKE TESTS
+// ============================================
+
+TEST_F(KonamiHandshakeTestSuite, konamiCodeWithAllButtonsRoutesToCodeEntry) {
+    konamiCodeWithAllButtonsRoutesToCodeEntry(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, konamiCodeWithoutAllButtonsRoutesToCodeRejected) {
+    konamiCodeWithoutAllButtonsRoutesToCodeRejected(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, firstEncounterRoutesToEasyLaunch) {
+    firstEncounterRoutesToEasyLaunch(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, replayEncounterRoutesToReplayEasy) {
+    replayEncounterRoutesToReplayEasy(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, hardModeUnlockedRoutesToHardLaunch) {
+    hardModeUnlockedRoutesToHardLaunch(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, hasBoonRoutesToMasteryReplay) {
+    hasBoonRoutesToMasteryReplay(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, boonTakesPriorityOverHardMode) {
+    boonTakesPriorityOverHardMode(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, hardModeTakesPriorityOverEasyReplay) {
+    hardModeTakesPriorityOverEasyReplay(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, allGameTypesRouteCorrectlyForFirstEncounter) {
+    allGameTypesRouteCorrectlyForFirstEncounter(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, validMessageFormatIsParsed) {
+    validMessageFormatIsParsed(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, invalidMessageFormatIsIgnored) {
+    invalidMessageFormatIsIgnored(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, outOfRangeGameTypeIsIgnored) {
+    outOfRangeGameTypeIsIgnored(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, stateInitializesOnMount) {
+    stateInitializesOnMount(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, stateClearsCallbacksOnDismount) {
+    stateClearsCallbacksOnDismount(this);
+}
+
+TEST_F(KonamiHandshakeTestSuite, multipleLoopsDontChangeTransition) {
+    multipleLoopsDontChangeTransition(this);
 }
 
 // ============================================

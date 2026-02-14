@@ -247,6 +247,20 @@ public:
         return primaryHead;
     }
 
+    // Helper method to simulate serial receive for testing
+    void simulateSerialReceive(const std::string& message) {
+        if (outputJackSerial.stringCallback) {
+            outputJackSerial.stringCallback(message);
+        }
+    }
+
+    // Track callback clears for testing
+    int serialCallbackClearCount = 0;
+
+    void trackClearCallbacks() {
+        serialCallbackClearCount++;
+    }
+
     // Mock interface instances
     MockDisplay* mockDisplay;
     MockButton* mockPrimaryButton;
