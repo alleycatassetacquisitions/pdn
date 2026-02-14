@@ -129,4 +129,24 @@ namespace QuickdrawRequests {
         wirelessManager->queueHttpRequest(request);
     }
 
+    /**
+     * Fetch progress data from the server.
+     * Automatically switches to WiFi mode if needed.
+     */
+    inline void getProgress(
+        WirelessManager* wirelessManager,
+        const std::function<void(const std::string&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError
+    ) {
+        HttpRequest request(
+            "/api/progress",
+            "GET",
+            "",
+            onSuccess,
+            onError
+        );
+
+        wirelessManager->queueHttpRequest(request);
+    }
+
 }

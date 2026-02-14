@@ -225,4 +225,21 @@ public:
     }
     const uint8_t* getEasyAttemptsArray() const { return easyAttempts_; }
     const uint8_t* getHardAttemptsArray() const { return hardAttempts_; }
+
+    // Setters for restoring from server (conflict resolution)
+    void setEasyAttempts(GameType gameType, uint8_t count) {
+        int idx = static_cast<int>(gameType);
+        if (idx >= 0 && idx < 7) {
+            easyAttempts_[idx] = count;
+        }
+    }
+    void setHardAttempts(GameType gameType, uint8_t count) {
+        int idx = static_cast<int>(gameType);
+        if (idx >= 0 && idx < 7) {
+            hardAttempts_[idx] = count;
+        }
+    }
+    void setColorProfileEligibility(const std::set<int>& eligibility) {
+        colorProfileEligibility = eligibility;
+    }
 };

@@ -32,7 +32,7 @@ void Quickdraw::populateStateMap() {
     matchManager->initialize(player, storageManager, peerComms, quickdrawWirelessManager);
 
     PlayerRegistration* playerRegistration = new PlayerRegistration(player, matchManager);
-    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager, remoteDebugManager);
+    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager, remoteDebugManager, progressManager);
     WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);

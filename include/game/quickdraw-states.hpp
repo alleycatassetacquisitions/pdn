@@ -14,6 +14,9 @@
 #include <string>
 #include <vector>
 
+// Forward declarations
+class ProgressManager;
+
 enum QuickdrawStateId {
     PLAYER_REGISTRATION = 0,
     FETCH_USER_DATA = 1,
@@ -67,7 +70,7 @@ private:
 
 class FetchUserDataState : public State {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, ProgressManager* progressManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -78,9 +81,10 @@ public:
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-    
+
 private:
     RemoteDebugManager* remoteDebugManager;
+    ProgressManager* progressManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;

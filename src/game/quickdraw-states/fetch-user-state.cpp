@@ -4,21 +4,24 @@
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/remote-debug-manager.hpp"
+#include "game/progress-manager.hpp"
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager) : State(QuickdrawStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, ProgressManager* progressManager) : State(QuickdrawStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-}   
+    this->progressManager = progressManager;
+}
 
 FetchUserDataState::~FetchUserDataState() {
     LOG_I(TAG, "Destroying FetchUserDataState");
     remoteDebugManager = nullptr;
     wirelessManager = nullptr;
     player = nullptr;
+    progressManager = nullptr;
 }   
 
 void FetchUserDataState::onStateMounted(Device *PDN) {
@@ -56,20 +59,41 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         QuickdrawRequests::getPlayer(
             PDN->getWirelessManager(),
             player->getUserID(),
-            [this](const PlayerResponse& response) {
-                LOG_I(TAG, "Successfully fetched player data: %s (%s)", 
+            [this, PDN](const PlayerResponse& response) {
+                LOG_I(TAG, "Successfully fetched player data: %s (%s)",
                         response.name.c_str(), response.id.c_str());
-                
+
                 player->setName(response.name.c_str());
                 player->setIsHunter(response.isHunter);
                 player->setAllegiance(response.allegiance);
                 player->setFaction(response.faction.c_str());
 
-                userDataFetchTimer.invalidate();
-                transitionToWelcomeMessageState = true;
+                // After fetching player data, download and merge progress from server
+                if (progressManager) {
+                    LOG_I(TAG, "Downloading progress data from server");
+                    QuickdrawRequests::getProgress(
+                        PDN->getWirelessManager(),
+                        [this](const std::string& progressResponse) {
+                            LOG_I(TAG, "Successfully downloaded progress data");
+                            // Merge server progress with local progress using conflict resolution
+                            progressManager->downloadAndMergeProgress(progressResponse);
+                            userDataFetchTimer.invalidate();
+                            transitionToWelcomeMessageState = true;
+                        },
+                        [this](const WirelessErrorInfo& error) {
+                            LOG_W(TAG, "Failed to download progress: %s - continuing with local data", error.message.c_str());
+                            // Progress download failed, but continue anyway with local data
+                            userDataFetchTimer.invalidate();
+                            transitionToWelcomeMessageState = true;
+                        }
+                    );
+                } else {
+                    userDataFetchTimer.invalidate();
+                    transitionToWelcomeMessageState = true;
+                }
             },
             [this](const WirelessErrorInfo& error) {
-                LOG_E(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
+                LOG_E(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d",
                     error.message.c_str(), static_cast<int>(error.code), error.willRetry);
                 if(!error.willRetry) {
                     isFetchingUserData = false;

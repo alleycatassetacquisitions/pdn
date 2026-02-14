@@ -84,6 +84,8 @@ public:
         // Route the request
         if (method == "GET" && path.find("/api/players/") == 0) {
             statusCode = handleGetPlayer(path, responseBody);
+        } else if (method == "GET" && path.find("/api/progress") == 0) {
+            statusCode = handleGetProgress(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
         } else if (method == "PUT" && path == "/api/progress") {
@@ -233,10 +235,25 @@ private:
     }
 
     /**
+     * Handle GET /api/progress
+     */
+    int handleGetProgress(const std::string& path, std::string& responseBody) {
+        // Return the last synced progress data
+        if (lastProgressBody_.empty()) {
+            // No progress data yet - return defaults
+            responseBody = R"({"data":{"konami":0,"boon":false,"profile":-1,"colorEligibility":0,"easyAttempts":[0,0,0,0,0,0,0],"hardAttempts":[0,0,0,0,0,0,0]}})";
+        } else {
+            // Return the last uploaded progress wrapped in data object
+            responseBody = "{\"data\":" + lastProgressBody_ + "}";
+        }
+        return 200;
+    }
+
+    /**
      * Handle PUT /api/progress
      */
     int handlePutProgress(const std::string& body, std::string& responseBody) {
-        // Acknowledge the progress upload
+        // Store the progress upload for later GET requests
         lastProgressBody_ = body;
         responseBody = R"({"success":true,"message":"Progress synced"})";
         return 200;
