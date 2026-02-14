@@ -24,7 +24,8 @@ void NpcReceiveResult::onStateMounted(Device* PDN) {
     displayTimer.setTimer(DISPLAY_DURATION_MS);
 
     if (resultManager) {
-        resultManager->cacheResult(game->getGameType(), game->getLastResult(), game->getLastScore());
+        // Note: NPC doesn't receive difficulty info from player, so we default to false (easy)
+        resultManager->cacheResult(game->getGameType(), game->getLastResult(), game->getLastScore(), false);
     }
 
     PDN->getDisplay()->invalidateScreen();

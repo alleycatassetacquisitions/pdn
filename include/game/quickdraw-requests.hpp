@@ -104,7 +104,28 @@ namespace QuickdrawRequests {
             onSuccess,
             onError
         );
-        
+
+        wirelessManager->queueHttpRequest(request);
+    }
+
+    /**
+     * Upload FDN results to the server.
+     * Automatically switches to WiFi mode if needed.
+     */
+    inline void uploadFdnResults(
+        WirelessManager* wirelessManager,
+        const std::string& resultsJson,
+        const std::function<void(const std::string&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError
+    ) {
+        HttpRequest request(
+            "/api/fdn-results",
+            "POST",
+            resultsJson,
+            onSuccess,
+            onError
+        );
+
         wirelessManager->queueHttpRequest(request);
     }
 

@@ -257,6 +257,9 @@ private:
     void ledAnimation(Device *PDN);
 };
 
+class ProgressManager;
+class FdnResultManager;
+
 /*
  * FdnDetected — Player detected an FDN broadcast on serial.
  * Performs handshake (sends smac, waits for fack), then configures
@@ -355,7 +358,7 @@ struct FdnReencounterSnapshot : public Snapshot {
  */
 class FdnComplete : public State {
 public:
-    FdnComplete(Player* player, ProgressManager* progressManager);
+    FdnComplete(Player* player, ProgressManager* progressManager, FdnResultManager* fdnResultManager);
     ~FdnComplete();
 
     void onStateMounted(Device* PDN) override;
@@ -368,6 +371,7 @@ public:
 private:
     Player* player;
     ProgressManager* progressManager;
+    FdnResultManager* fdnResultManager;
     SimpleTimer displayTimer;
     static constexpr int DISPLAY_DURATION_MS = 3000;
     bool transitionToIdleState = false;
@@ -715,9 +719,9 @@ private:
 
 class UploadMatchesState : public State {
 public:
-    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, FdnResultManager* fdnResultManager);
     ~UploadMatchesState();
-    
+
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
@@ -726,18 +730,24 @@ public:
     bool transitionToPlayerRegistration();
     void routeToNextState();
     void attemptUpload();
+    void attemptFdnUpload();
 
 private:
     Player* player;
     WirelessManager* wirelessManager;
     MatchManager* matchManager;
+    FdnResultManager* fdnResultManager;
     SimpleTimer uploadMatchesTimer;
     int matchUploadRetryCount = 0;
+    int fdnUploadRetryCount = 0;
     const int UPLOAD_MATCHES_TIMEOUT = 10000;
     std::string matchesJson;
     bool transitionToSleepState = false;
     bool transitionToPlayerRegistrationState = false;
     bool shouldRetryUpload = false;
+    bool shouldRetryFdnUpload = false;
+    bool matchesUploaded = false;
+    bool fdnResultsUploaded = false;
 };
 
 /*

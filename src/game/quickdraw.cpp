@@ -10,6 +10,8 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->peerComms = PDN->getPeerComms();
     this->progressManager = new ProgressManager();
     this->progressManager->initialize(player, storageManager);
+    this->fdnResultManager = new FdnResultManager();
+    this->fdnResultManager->initialize(storageManager);
     PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
@@ -19,6 +21,10 @@ Quickdraw::~Quickdraw() {
     matchManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
+    delete progressManager;
+    progressManager = nullptr;
+    delete fdnResultManager;
+    fdnResultManager = nullptr;
     matches.clear();
 }
 
@@ -51,11 +57,11 @@ void Quickdraw::populateStateMap() {
     Lose* lose = new Lose(player);
     
     Sleep* sleep = new Sleep(player);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager, fdnResultManager);
 
     FdnDetected* fdnDetected = new FdnDetected(player);
     FdnReencounter* fdnReencounter = new FdnReencounter(player);
-    FdnComplete* fdnComplete = new FdnComplete(player, progressManager);
+    FdnComplete* fdnComplete = new FdnComplete(player, progressManager, fdnResultManager);
     ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
     ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
     KonamiPuzzle* konamiPuzzle = new KonamiPuzzle(player);

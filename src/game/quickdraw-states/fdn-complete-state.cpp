@@ -9,16 +9,18 @@
 
 static const char* TAG = "FdnComplete";
 
-FdnComplete::FdnComplete(Player* player, ProgressManager* progressManager) :
+FdnComplete::FdnComplete(Player* player, ProgressManager* progressManager, FdnResultManager* fdnResultManager) :
     State(FDN_COMPLETE),
     player(player),
-    progressManager(progressManager)
+    progressManager(progressManager),
+    fdnResultManager(fdnResultManager)
 {
 }
 
 FdnComplete::~FdnComplete() {
     player = nullptr;
     progressManager = nullptr;
+    fdnResultManager = nullptr;
 }
 
 void FdnComplete::onStateMounted(Device* PDN) {
@@ -45,6 +47,15 @@ void FdnComplete::onStateMounted(Device* PDN) {
     LOG_I(TAG, "Result: %s, Score: %d",
            outcome.result == MiniGameResult::WON ? "WON" : "LOST",
            outcome.score);
+
+    // Cache the result for upload
+    if (fdnResultManager) {
+        GameType gameType = static_cast<GameType>(lastGameType);
+        bool won = (outcome.result == MiniGameResult::WON);
+        fdnResultManager->cacheResult(gameType, won, outcome.score, outcome.hardMode);
+        LOG_I(TAG, "Cached FDN result: game=%d won=%d score=%d hardMode=%d",
+              lastGameType, won, outcome.score, outcome.hardMode);
+    }
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
