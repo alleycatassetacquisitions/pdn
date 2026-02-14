@@ -68,6 +68,11 @@ void Quickdraw::populateStateMap() {
     KonamiPuzzle* konamiPuzzle = new KonamiPuzzle(player);
     ConnectionLost* connectionLost = new ConnectionLost(player);
 
+    KonamiCodeEntry* konamiCodeEntry = new KonamiCodeEntry(player);
+    KonamiCodeAccepted* konamiCodeAccepted = new KonamiCodeAccepted(player, progressManager);
+    KonamiCodeRejected* konamiCodeRejected = new KonamiCodeRejected(player);
+    GameOverReturnIdle* gameOverReturnIdle = new GameOverReturnIdle(player);
+
     playerRegistration->addTransition(
         new StateTransition(
             std::bind(&PlayerRegistration::transitionToUserFetch, playerRegistration),
@@ -213,6 +218,31 @@ void Quickdraw::populateStateMap() {
             std::bind(&KonamiPuzzle::transitionToIdle, konamiPuzzle),
             idle));
 
+    konamiCodeEntry->addTransition(
+        new StateTransition(
+            std::bind(&KonamiCodeEntry::transitionToAccepted, konamiCodeEntry),
+            konamiCodeAccepted));
+
+    konamiCodeEntry->addTransition(
+        new StateTransition(
+            std::bind(&KonamiCodeEntry::transitionToGameOver, konamiCodeEntry),
+            gameOverReturnIdle));
+
+    konamiCodeAccepted->addTransition(
+        new StateTransition(
+            std::bind(&KonamiCodeAccepted::transitionToReturnQuickdraw, konamiCodeAccepted),
+            idle));
+
+    konamiCodeRejected->addTransition(
+        new StateTransition(
+            std::bind(&KonamiCodeRejected::transitionToReturnQuickdraw, konamiCodeRejected),
+            idle));
+
+    gameOverReturnIdle->addTransition(
+        new StateTransition(
+            std::bind(&GameOverReturnIdle::transitionToReturnQuickdraw, gameOverReturnIdle),
+            idle));
+
     handshakeInitiate->addTransition(
         new StateTransition(
             std::bind(&HandshakeInitiateState::transitionToBountySendCC, handshakeInitiate),
@@ -347,6 +377,10 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(boonAwarded);
     stateMap.push_back(konamiPuzzle);
     stateMap.push_back(connectionLost);
+    stateMap.push_back(konamiCodeEntry);
+    stateMap.push_back(konamiCodeAccepted);
+    stateMap.push_back(konamiCodeRejected);
+    stateMap.push_back(gameOverReturnIdle);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {

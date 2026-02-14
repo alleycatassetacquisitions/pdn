@@ -46,7 +46,11 @@ enum QuickdrawStateId {
     FDN_REENCOUNTER = 25,
     KONAMI_PUZZLE = 26,
     CONNECTION_LOST = 27,
-    BOON_AWARDED = 28
+    BOON_AWARDED = 28,
+    KONAMI_CODE_ENTRY = 29,
+    KONAMI_CODE_ACCEPTED = 30,
+    KONAMI_CODE_REJECTED = 31,
+    GAME_OVER_RETURN_IDLE = 32
 };
 
 class PlayerRegistration : public State {
@@ -860,3 +864,7 @@ private:
     bool transitionToColorPromptState = false;
     GameType unlockedGameType;
 };
+
+// Include Konami code states
+#include "game/konami-states/konami-code-entry.hpp"
+#include "game/konami-states/konami-code-result.hpp"
