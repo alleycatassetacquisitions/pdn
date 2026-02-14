@@ -110,6 +110,9 @@ public:
         if (command == "konami") {
             return cmdKonami(tokens, devices, selectedDevice);
         }
+        if (command == "games") {
+            return cmdGames(tokens);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -120,13 +123,13 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games";
         return result;
     }
     
     static CommandResult cmdHelp2(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "add [hunter|bounty] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device";
+        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games";
         return result;
     }
     
@@ -610,17 +613,17 @@ private:
                                 std::vector<DeviceInstance>& devices,
                                 int& selectedDevice) {
         CommandResult result;
-        
+
         // Check max device limit
         static constexpr int MAX_DEVICES = 8;
         if (devices.size() >= MAX_DEVICES) {
             result.message = "Cannot add more devices (max " + std::to_string(MAX_DEVICES) + ")";
             return result;
         }
-        
+
         // Determine role - default to alternating based on current count
         bool isHunter = (devices.size() % 2 == 0);  // Even indices = hunter
-        
+
         // Check for explicit role argument
         if (tokens.size() >= 2) {
             std::string role = tokens[1];
@@ -628,25 +631,70 @@ private:
             for (char& c : role) {
                 if (c >= 'A' && c <= 'Z') c += 32;
             }
-            
+
             if (role == "hunter" || role == "h") {
                 isHunter = true;
             } else if (role == "bounty" || role == "b") {
                 isHunter = false;
+            } else if (role == "npc") {
+                // add npc <game_name>
+                if (tokens.size() < 3) {
+                    result.message = "Usage: add npc <game> - try 'games' for valid game names";
+                    return result;
+                }
+
+                std::string gameName = tokens[2];
+                for (char& c : gameName) {
+                    if (c >= 'A' && c <= 'Z') c += 32;
+                }
+
+                GameType gameType;
+                if (!parseGameName(gameName, gameType)) {
+                    result.message = "Invalid game: " + tokens[2] + " - try 'games' for valid game names";
+                    return result;
+                }
+
+                int newIndex = static_cast<int>(devices.size());
+                devices.push_back(DeviceFactory::createFdnDevice(newIndex, gameType));
+                selectedDevice = newIndex;
+
+                result.message = "Added NPC device " + devices.back().deviceId +
+                                 " running " + getGameDisplayName(gameType) + " - now selected";
+                return result;
+            } else if (role == "challenge") {
+                // add challenge <game_name>
+                if (tokens.size() < 3) {
+                    result.message = "Usage: add challenge <game> - try 'games' for valid game names";
+                    return result;
+                }
+
+                std::string gameName = tokens[2];
+                for (char& c : gameName) {
+                    if (c >= 'A' && c <= 'Z') c += 32;
+                }
+
+                // Parse game name - use createGameDevice format (with hyphens)
+                int newIndex = static_cast<int>(devices.size());
+                devices.push_back(DeviceFactory::createGameDevice(newIndex, gameName));
+                selectedDevice = newIndex;
+
+                result.message = "Added challenge device " + devices.back().deviceId +
+                                 " running " + gameName + " - now selected";
+                return result;
             } else {
-                result.message = "Usage: add [hunter|bounty] - role defaults to alternating";
+                result.message = "Usage: add [hunter|bounty|npc <game>|challenge <game>] - role defaults to alternating";
                 return result;
             }
         }
-        
+
         // Create the new device
         int newIndex = static_cast<int>(devices.size());
         devices.push_back(DeviceFactory::createDevice(newIndex, isHunter));
-        
+
         // Select the new device
         selectedDevice = newIndex;
-        
-        result.message = "Added " + devices.back().deviceId + 
+
+        result.message = "Added " + devices.back().deviceId +
                          " (" + (isHunter ? "Hunter" : "Bounty") + ") - now selected";
         return result;
     }
@@ -688,6 +736,20 @@ private:
         // Show single device role
         result.message = "Device " + devices[targetDevice].deviceId + ": " +
                          (devices[targetDevice].isHunter ? "Hunter" : "Bounty");
+        return result;
+    }
+
+    static CommandResult cmdGames(const std::vector<std::string>& /*tokens*/) {
+        CommandResult result;
+        result.message = "Available games:\n"
+                         "  quickdraw         - Quickdraw Duel\n"
+                         "  ghost-runner      - Ghost Runner\n"
+                         "  spike-vector      - Spike Vector\n"
+                         "  firewall-decrypt  - Firewall Decrypt\n"
+                         "  cipher-path       - Cipher Path\n"
+                         "  exploit-sequencer - Exploit Sequencer\n"
+                         "  breach-defense    - Breach Defense\n"
+                         "  signal-echo       - Signal Echo";
         return result;
     }
 
