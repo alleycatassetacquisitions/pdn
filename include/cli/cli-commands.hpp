@@ -10,6 +10,8 @@
 #include "cli/cli-renderer.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
+#include "game/quickdraw.hpp"
+#include "game/progress-manager.hpp"
 
 namespace cli {
 
@@ -818,17 +820,29 @@ private:
             profileName = getGameDisplayName(static_cast<GameType>(equippedProfile));
         }
 
+        // Sync status (if Quickdraw game)
+        std::string syncStatus = "N/A";
+        if (dev.game && dev.game->getStateId() == 1) {  // QUICKDRAW_APP_ID = 1
+            Quickdraw* quickdraw = static_cast<Quickdraw*>(dev.game);
+            ProgressManager* progMgr = quickdraw->getProgressManager();
+            if (progMgr) {
+                syncStatus = progMgr->isSynced() ? "OK" : "PENDING";
+            }
+        }
+
         snprintf(buf, sizeof(buf),
                  "%s [%s] Stats:\n"
                  "  Matches: %d (W:%d L:%d) Streak:%d\n"
                  "  Reaction: Last=%lums Avg=%lums\n"
                  "  Konami: %d/7 unlocked (0x%02X) Boon:%s\n"
-                 "  Color Profile: %s",
+                 "  Color Profile: %s\n"
+                 "  Sync: %s",
                  dev.deviceId.c_str(), roleStr.c_str(),
                  matches, wins, losses, streak,
                  lastRT, avgRT,
                  konamiCount, konamiProg, boon ? "Yes" : "No",
-                 profileName.c_str());
+                 profileName.c_str(),
+                 syncStatus.c_str());
 
         result.message = buf;
         return result;

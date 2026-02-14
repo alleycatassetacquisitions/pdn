@@ -33,7 +33,7 @@ void Quickdraw::populateStateMap() {
     AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
     
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, quickdrawWirelessManager);
+    Idle* idle = new Idle(player, matchManager, quickdrawWirelessManager, progressManager);
     
     HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
     BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player, matchManager, quickdrawWirelessManager);

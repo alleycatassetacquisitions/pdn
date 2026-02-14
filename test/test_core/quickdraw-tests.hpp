@@ -42,8 +42,12 @@ public:
         wirelessManager = new MockQuickdrawWirelessManager();
         matchManager->initialize(player, &storage, &peerComms, wirelessManager);
 
+        // Create progress manager
+        progressManager = new ProgressManager();
+        progressManager->initialize(player, &storage);
+
         // Create idle state
-        idleState = new Idle(player, matchManager, wirelessManager);
+        idleState = new Idle(player, matchManager, wirelessManager, progressManager);
 
         // Set up default mock expectations for display
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -54,6 +58,7 @@ public:
 
     void TearDown() override {
         delete idleState;
+        delete progressManager;
         delete matchManager;
         delete wirelessManager;
         delete player;
@@ -75,6 +80,7 @@ public:
     MockQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
+    ProgressManager* progressManager;
     Idle* idleState;
     FakePlatformClock* fakeClock;
 };
@@ -1176,7 +1182,9 @@ public:
 
 // Test: Idle state clears button callbacks on dismount
 inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
-    Idle idleState(suite->player, suite->matchManager, suite->wirelessManager);
+    ProgressManager progressManager;
+    progressManager.initialize(suite->player, &suite->storage);
+    Idle idleState(suite->player, suite->matchManager, suite->wirelessManager, &progressManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);

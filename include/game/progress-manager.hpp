@@ -76,6 +76,23 @@ public:
 
     bool hasUnsyncedProgress() const { return !synced; }
 
+    /*
+     * Check if progress has been synced to the server.
+     * Returns true if synced, false if pending upload.
+     */
+    bool isSynced() const { return synced; }
+
+    /*
+     * Mark progress as unsynced (needs upload).
+     * Called whenever progress changes locally.
+     */
+    void markUnsynced() {
+        synced = false;
+        if (storage) {
+            storage->writeUChar("synced", 0);
+        }
+    }
+
     void clearProgress() {
         if (!storage) return;
         storage->writeUChar("konami", 0);

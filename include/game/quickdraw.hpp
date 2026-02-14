@@ -22,6 +22,7 @@ public:
 
     void populateStateMap() override;
     static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
+    ProgressManager* getProgressManager() const { return progressManager; }
 
 private:
     std::vector<Match> matches;

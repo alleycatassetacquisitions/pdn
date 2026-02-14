@@ -215,9 +215,11 @@ private:
     Player* player;
 };
 
+class ProgressManager;
+
 class Idle : public State {
 public:
-    Idle(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
+    Idle(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ProgressManager* progressManager);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
@@ -232,8 +234,11 @@ private:
     Player *player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* quickdrawWirelessManager;
+    ProgressManager* progressManager;
     SimpleTimer heartbeatTimer;
+    SimpleTimer unsyncedIndicatorTimer;
     const int HEARTBEAT_INTERVAL_MS = 250;
+    const int UNSYNCED_INDICATOR_INTERVAL_MS = 10000;
     bool transitionToHandshakeState = false;
     bool sendMacAddress = false;
     bool waitingForMacAddress = false;
@@ -251,8 +256,6 @@ private:
     void serialEventCallbacks(const std::string& message);
     void ledAnimation(Device *PDN);
 };
-
-class ProgressManager;
 
 /*
  * FdnDetected — Player detected an FDN broadcast on serial.

@@ -7,16 +7,18 @@
 #include "device/device-constants.hpp"
 #include "wireless/mac-functions.hpp"
 
-Idle::Idle(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ProgressManager* progressManager) : State(IDLE) {
     this->matchManager = matchManager;
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->progressManager = progressManager;
 }
 
 Idle::~Idle() {
     player = nullptr;
     matchManager = nullptr;
     quickdrawWirelessManager = nullptr;
+    progressManager = nullptr;
 }
 
 void Idle::onStateMounted(Device *PDN) {
@@ -30,6 +32,10 @@ void Idle::onStateMounted(Device *PDN) {
     quickdrawWirelessManager->clearCallbacks();
     matchManager->clearCurrentMatch();
     PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
+
+    // Initialize unsynced indicator timer
+    unsyncedIndicatorTimer.setTimer(UNSYNCED_INDICATOR_INTERVAL_MS);
+
     AnimationConfig config;
 
     // Check for equipped color profile
@@ -86,11 +92,17 @@ void Idle::onStateLoop(Device *PDN) {
         heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
     }
 
+    // Attempt sync if progress is unsynced and timer expired
+    if(progressManager && !progressManager->isSynced() && unsyncedIndicatorTimer.expired()) {
+        progressManager->syncProgress(PDN->getHttpClient());
+        unsyncedIndicatorTimer.setTimer(UNSYNCED_INDICATOR_INTERVAL_MS);
+    }
+
     if(sendMacAddress) {
         uint8_t* macAddr = PDN->getWirelessManager()->getMacAddress();
         const char* macStr = MacToString(macAddr);
         LOG_I("IDLE", "Preparing to Send Mac Address: %s", macStr);
-        
+
         // Send as single concatenated message to avoid fragmentation
         std::string message = SEND_MAC_ADDRESS + std::string(macStr);
         PDN->writeString(message.c_str());
@@ -149,6 +161,11 @@ void Idle::cycleStats(Device *PDN) {
     char paletteStr[32];
     snprintf(paletteStr, sizeof(paletteStr), "Palette:%s", paletteName);
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText(paletteStr, 0, 0);
+
+    // Sync status indicator (small indicator on all pages)
+    if (progressManager && !progressManager->isSynced()) {
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("*", 122, 0);
+    }
 
     if(statsIndex == 0) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
