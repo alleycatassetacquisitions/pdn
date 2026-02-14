@@ -9,6 +9,10 @@ wait 3
 # Check initial states
 state
 
+# Connect devices via cable
+cable 0 1
+cable -l
+
 # NPC broadcasts FDN signal automatically - wait for detection
 wait 2
 

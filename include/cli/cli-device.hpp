@@ -304,7 +304,7 @@ public:
         playerConfig.id = instance.deviceId;
         playerConfig.name = (isHunter ? "Hunter" : "Bounty") + instance.deviceId;
         playerConfig.isHunter = isHunter;
-        playerConfig.allegiance = 1;  // RESISTANCE
+        playerConfig.allegiance = static_cast<int>(Allegiance::RESISTANCE);  // RESISTANCE
         playerConfig.faction = isHunter ? "Guild" : "Rebels";
         MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
         
