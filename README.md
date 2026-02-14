@@ -3,171 +3,506 @@
 ![CI](https://github.com/FinallyEve/pdn/actions/workflows/pr-checks.yml/badge.svg)
 ![Tests](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/FinallyEve/5b8fff0b3af6332b80904301c8f159cf/raw/pdn-tests.json)
 
-Welcome to the official repository for Alleycat Asset Acquisitions' **Portable Data Node (PDN)** project. The PDN is a cutting-edge, interactive device used in live-action role-playing (LARP) environments like [Neotropolis](https://www.neotropolis.com). It leverages real-time technology and augmented reality to create immersive gameplay experiences. The PDN serves as a versatile tool for communication, mission tracking, and player interaction.
+**An ESP32-S3 embedded game device designed for immersive face-to-face LARP gameplay.**
 
-Fusion Files for the case can be found [here](https://a360.co/4a2WvzV).
-PCB's were designed in KiCad 8 and will be uploaded to a separate repository soon.
+The PDN (Portable Data Node) is an interactive handheld device created for live-action role-playing events like [Neotropolis](https://www.neotropolis.com). Players connect devices via serial cables or wireless (ESP-NOW) to engage in real-time minigames, unlock progression systems, and participate in quickdraw duels. The PDN combines hardware (OLED display, LEDs, haptics, buttons) with sophisticated state machine architecture to deliver rich multiplayer experiences.
+
+Watch Elli Furedy's [Hackaday Supercon 2025 talk](https://youtu.be/ndodsA254HA) for the design philosophy behind Alleycat Asset Acquisitions.
+
+**[Developer Wiki](https://deepwiki.com/alleycatassetacquisitions/pdn)** | **[Discord Community](https://discord.gg/6XGTCbKkUy)** | **[Hardware Designs](https://a360.co/4a2WvzV)**
+
+---
 
 ## Table of Contents
 
-- [About the Project](#about-the-project)
-- [Project Goals](#project-goals)
 - [Features](#features)
+- [Quick Start](#quick-start)
+- [Demo Scripts (No Hardware Required)](#demo-scripts-no-hardware-required)
+- [CLI Simulator](#cli-simulator)
 - [Installation](#installation)
-- [Usage](#usage)
-- [Development](#development)
+- [Architecture](#architecture)
+- [Development Workflow](#development-workflow)
+- [Testing](#testing)
 - [Contributing](#contributing)
 - [License](#license)
-- [Contact](#contact)
 
-## About the Project
-
-The Alleycat Asset Acquisitions Portable Data Node is the premiere device for facilitating immersive experiences and in person, interactive play. You can find Elli Furedy's talk from Hackaday Supercon 2025 on the PDN and Alleycat's philosophies [here](https://youtu.be/ndodsA254HA).
-
-You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisitions/pdn).
-
-## Project Goals
-
-- **Immersive Icebreaker**: At it's core, the PDN is designed to facilitate face to face experiences.
-- **Open Source Collaboration**: Foster collaboration by making the PDN's software and hardware designs available to the community for further improvement. Check out the PDN CLI tool for development tools without needing a physical device.
+---
 
 ## Features
 
-- **Extensible Platform**: The PDN currently supports a single experience - the Neotropolis Quickdraw game, however, it is trivial to create new State Machines to support new game experiences.
-- **Peripheral Rich**: The base PDN design supports a 128x64 OLED, 19 LEDs, vibration haptics, 2 buttons, ESP-NOW, HTTP and Serial communication.
-- **Real-Time Tracking**: The PDN supports connecting to a server to update player data in real time.
-- **Modular Design**: The PDN framework works off of a "Driver" framework that allows for customizing the hardware, whether to support new hardware platforms or new peripherals.
+### 🎮 Seven Minigames
+- **Ghost Runner** - Timing and reaction game (awards Konami START button)
+- **Spike Vector** - Pattern recognition (awards Konami DOWN button)
+- **Firewall Decrypt** - Multi-section decryption puzzle (awards Konami LEFT button)
+- **Cipher Path** - Navigation challenge (awards Konami RIGHT button)
+- **Exploit Sequencer** - Sequence memorization (awards Konami B button)
+- **Breach Defense** - Defense game (awards Konami A button)
+- **Signal Echo** - Audio-visual pattern matching (awards Konami UP button)
+
+Each game supports **Easy** and **Hard** difficulty modes.
+
+### 🏆 Konami Progression System
+- Beat all 7 minigames on **hard mode** to collect Konami controller buttons (↑↓←→BA START)
+- Visual progress tracking via on-device UI
+- Complete the set to unlock the **Konami Boon** special reward
+- Re-encounter mechanics: face beaten NPCs again to choose higher difficulty
+
+### 🎨 Color Profile System
+- Unlock custom LED color themes by beating games on hard mode
+- 7 unique profiles (one per minigame)
+- Visual feedback during idle and gameplay states
+- Persistent across sessions
+
+### ⚔️ Multiplayer PvP
+- **Quickdraw Duels**: Hunter vs Hunter wireless battles via ESP-NOW
+- Reaction time measurement to the millisecond
+- Win/loss tracking, streak counters, and matchmaking
+- Broadcast discovery for automatic peer detection
+
+### 🔧 Developer-Friendly CLI Simulator
+- **Run without hardware** - native C++ simulator for Linux/macOS
+- Simulate up to 8 devices simultaneously
+- Serial cable connections, ESP-NOW peer communication, mock HTTP server
+- Real-time state visualization with braille-rendered OLED display
+- Interactive commands for gameplay testing
+
+### 📊 Server Synchronization
+- Real-time player stats (wins, losses, streaks, reaction times)
+- Server-side progress tracking for Konami buttons and color profiles
+- Conflict resolution for offline/online sync
+- Graceful fallback to offline mode
+
+### 🎭 Demo Mode
+- **Five automated demo scripts** showcasing full gameplay loop
+- Speed control for presentations (0.5x to 4x)
+- Scriptable for conference demos and hackathons
+
+---
+
+## Quick Start
+
+### Prerequisites
+- **Linux or macOS** (Windows users: use WSL)
+- **Python 3.7+**
+- **PlatformIO Core**
+
+### 60-Second Demo (No Hardware Required)
+
+```bash
+# Clone and build
+git clone https://github.com/alleycatassetacquisitions/pdn.git
+cd pdn
+pip install platformio
+pio run -e native_cli
+
+# Run quick demo
+./scripts/demo-quick.sh
+```
+
+This launches a **60-second automated demo** showing device pairing, minigame gameplay, and Konami button unlock.
+
+---
+
+## Demo Scripts (No Hardware Required)
+
+All demos use the **CLI simulator** - no physical device needed!
+
+| Script | Duration | What It Shows |
+|--------|----------|---------------|
+| `demo-quick.sh` | 60s | Device pairing, one minigame, Konami unlock |
+| `demo-full-journey.sh` | 3-4 min | Complete player experience with stats and progression |
+| `demo-all-games.sh` | 5-7 min | All 7 minigames with button mapping |
+| `demo-konami-unlock.sh` | 8-10 min | Full hard-mode progression to unlock all 7 buttons |
+| `demo-pvp-battle.sh` | 3-4 min | Wireless quickdraw duels and win tracking |
+
+### Speed Control
+
+```bash
+# Run at 2x speed
+DEMO_SPEED=2 ./scripts/demo-quick.sh
+
+# Run at half speed (more readable)
+DEMO_SPEED=0.5 ./scripts/demo-full-journey.sh
+```
+
+See **[HOWTO.md](HOWTO.md)** for complete hackathon presentation guide.
+
+---
+
+## CLI Simulator
+
+The native CLI tool simulates PDN devices without hardware:
+
+```bash
+# Build simulator
+pio run -e native_cli
+
+# Launch interactive mode with 2 devices
+.pio/build/native_cli/program 2
+```
+
+### Common Commands
+
+```bash
+# Device connections
+cable 0 1              # Connect devices 0 and 1 via serial
+cable -l               # List connections
+
+# Gameplay
+b 0                    # Primary button click on device 0
+l 0                    # Primary button long-press
+b2 0                   # Secondary button click
+
+# Visualization
+display on             # Enable display mirror + captions
+mirror on              # Show braille-rendered OLED screens
+captions on            # Show display text captions
+
+# Information
+state 0                # View device state
+stats 0                # Show player statistics
+progress 0             # View Konami button grid
+colors 0               # Show unlocked color profiles
+games                  # List all available minigames
+
+# Device management
+add hunter             # Add a new hunter device
+add npc ghost-runner   # Add NPC for specific game
+role all               # Show all device roles
+reboot 0               # Restart device
+
+# Advanced
+peer 0 1 1             # Send ESP-NOW packet (device 0 -> device 1)
+konami 0 0x7F          # Set Konami progress directly (testing)
+help                   # Show all commands
+help2                  # Show detailed command help
+```
+
+### Example Session
+
+```bash
+$ .pio/build/native_cli/program 2
+> display on           # Enable visual feedback
+> cable 0 1            # Connect Hunter to Bounty NPC
+> b 0                  # Hunter clicks button to start game
+> state 0              # View Hunter's current state
+> progress 0           # Check Konami progress
+> stats 0              # View player statistics
+```
+
+The simulator provides real-time visualization of:
+- OLED display content (rendered as braille characters)
+- LED strip colors and animations
+- Haptic feedback intensity
+- Serial/ESP-NOW communication packets
+- State machine transitions
+- Player statistics
+
+---
 
 ## Installation
 
-### Prerequisites
-
-- **PlatformIO Core**: Ensure you have PlatformIO installed as it is used for development and flashing the firmware.
-- **pioarduino Platform**: This project uses [pioarduino](https://github.com/pioarduino/platform-espressif32), a community fork of the Espressif32 platform with support for newer ESP-IDF and Arduino framework versions.
-- **Unix Style Terminal**: Required for the CLI simulator tool. Windows users should use WSL (Windows Subsystem for Linux).
-
-### Steps
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/AlleycatAssetAcquisitions/pdn
-   ```
-
-2. Navigate to the project directory:
-   ```bash
-   cd pdn/
-   ```
-
-3. Install PlatformIO Core:
-   ```bash
-   pip install platformio
-   # or
-   platformio upgrade
-   ```
-
-4. Configure WiFi credentials (for ESP32-S3 builds):
-   ```bash
-   cp wifi_credentials.ini.example wifi_credentials.ini
-   ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL. This file is excluded from version control for security.
-
-5. Build the project using PlatformIO:
-   ```bash
-   pio run -e <build-target>
-   ```
-   Depending on your use case, there are a number of build targets:
-   - `esp32-s3_release` - Release build (NO LOGS)
-   - `esp32-s3_debug` - Standard Development build
-   - `native_cli` - Build the native CLI tool for simulated development (Unix/WSL only)
-
-6. Flash the PDN firmware to your device:
-   ```bash
-   platformio run --target upload
-   ```
-
-### Migration from Standard PlatformIO Espressif32
-
-This project recently migrated from the standard PlatformIO Espressif32 platform to **pioarduino** for access to newer ESP-IDF versions and improved Arduino framework support.
-
-Uninstall PlatformIO from your IDE.
-Install pioarduino.
-Restart your IDE.
-
-If you're experiencing build issues after pulling recent changes, perform a clean install:
+### Step 1: Install PlatformIO
 
 ```bash
-# Remove old platform packages
-rm -rf ~/.platformio/platforms/espressif32*
-rm -rf ~/.platformio/packages/framework-arduinoespressif32*
-
-# Clean the project build cache
-rm -rf .pio/
-
-# Rebuild
-pio run -e esp32-s3_release
+pip install platformio
+# or upgrade existing installation
+platformio upgrade
 ```
 
-## Usage
+### Step 2: Clone Repository
 
-1. **Power on the PDN**: Once powered, the PDN will ask for your player registration code. This is a 4 digit code that is transmitted to the server to fetch player details. The **top button** cycles through digits, 0 through 9, while the **bottom button** functions as a confirm operation.
+```bash
+git clone https://github.com/alleycatassetacquisitions/pdn.git
+cd pdn
+```
 
-2. **Log in to Device**: After entering the code, the device will attempt to fetch data from the server. If there is no server running, it will default to offline mode. You will need to **confirm the player code**, **select a role - Hunter/Bounty** and then confirm. The device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
+### Step 3: Configure WiFi (For ESP32-S3 Hardware)
 
-3. **For Simulated Development**: See CLI_README.md for development without a hardware device.
+```bash
+cp wifi_credentials.ini.example wifi_credentials.ini
+```
 
-## Development
+Edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL. This file is excluded from version control.
 
-### Local Development
+### Step 4: Build
 
-If you want to contribute to the PDN Project, follow these steps to set up your local development environment:
+```bash
+# CLI Simulator (Linux/macOS)
+pio run -e native_cli
 
-1. **Fork the repository** and create your development branch:
-   ```bash
-   git checkout -b feature/NewFeature
-   ```
+# ESP32-S3 Hardware
+pio run -e esp32-s3_debug      # Development build (verbose logs)
+pio run -e esp32-s3_release    # Production build (no logs)
+```
 
-2. **Develop your feature**
-3. **Test on Device/CLI** - CLI tests are sufficient if the hardware layer is unchanged, if any changes are made to drivers our core device logic, features need to be tested on device as well.
-3. **Add any new tests** - these should be located in `test/test_core` or `test/test_cli`
-4. **Run the test suite** - ensure your changes haven't broken any unit tests.
-   ```bash
-   pio test -e native          # Core unit tests
-   pio test -e native_cli_test # CLI-specific tests
-   ```
-5. **Commit and push your changes**:
-   ```bash
-   git commit -m "Add New Feature"
-   git push origin feature/NewFeature
-   ```
-6. **Create a pull request** for review. Ensure your PR is passing all checks before merging.
+### Step 5: Flash to Device (Hardware Only)
 
-### Code Structure
+```bash
+pio run -e esp32-s3_debug --target upload
+pio device monitor                        # View serial output
+```
 
-- `include/device/`: This is the hardware abstraction layer that hides all the hardware implementation.
-- `include/device/drivers/`: Provides the concrete implementation of hardware peripherals. The native drivers are used for running the CLI tool. 
-- `include/game/`: Contains code for game experiences.
-- `include/state/`: The core plumbing of the State Machine, the core class that powers games.
-- `test/`: Unit testing files for ensuring code stability.
-- `platformio.ini`: Project configuration file for PlatformIO, defining build environments and dependencies.
+---
+
+## Architecture
+
+### State Machine Pattern
+
+All game logic uses the **State Machine** pattern with three lifecycle methods:
+
+```cpp
+class GameState : public State {
+    void onStateMounted() override;    // Setup (called once on entry)
+    void onStateLoop() override;       // Main logic (called every loop)
+    void onStateDismounted() override; // Cleanup (called once on exit)
+};
+```
+
+**State Transitions**: Conditions define when to move between states (e.g., button press, timer expiry, message received).
+
+### Driver Abstraction
+
+Hardware access goes through **driver interfaces**, enabling:
+- **ESP32-S3 drivers** for real hardware
+- **Native drivers** for CLI simulator
+- Easy porting to new platforms
+
+```
+Device (abstract)
+  ├── PDN (concrete implementation)
+  └── Drivers (platform-specific)
+      ├── ESP32-S3 (U8g2, FastLED, OneButton, WiFi, ESP-NOW)
+      └── Native (mock implementations for CLI)
+```
+
+### Directory Structure
+
+```
+include/
+  device/           # Hardware abstraction layer
+    drivers/        # Platform-specific drivers
+      esp32-s3/     # Real hardware (OLED, LEDs, buttons, WiFi)
+      native/       # CLI simulator mocks
+  game/             # Minigame logic (7 games + Quickdraw PvP)
+    ghost-runner/
+    spike-vector/
+    firewall-decrypt/
+    cipher-path/
+    exploit-sequencer/
+    breach-defense/
+    signal-echo/
+  state/            # State machine core
+  cli/              # CLI-specific extensions
+  utils/            # Timers, logging, UUID generation
+
+src/                # Implementation files (.cpp)
+test/
+  test_core/        # Core unit tests (GoogleTest)
+  test_cli/         # CLI simulator tests
+scripts/            # Demo scripts for presentations
+docs/               # Architecture, game mechanics, testing reports
+```
+
+---
+
+## Development Workflow
+
+### Build Environments
+
+```bash
+# CLI Simulator (fastest iteration)
+pio run -e native_cli
+.pio/build/native_cli/program 2
+
+# Unit Tests (run before every commit)
+pio test -e native               # Core tests (test_core/)
+pio test -e native_cli_test      # CLI tests (test_cli/)
+
+# Hardware Builds
+pio run -e esp32-s3_debug        # Development (verbose logs)
+pio run -e esp32-s3_release      # Production (optimized, no logs)
+```
+
+### Helper Script
+
+Use `./dev.sh` for common tasks:
+
+```bash
+./dev.sh test         # Run all tests
+./dev.sh build        # Build release firmware
+./dev.sh sim 2        # Run simulator with 2 devices
+./dev.sh full-check   # Complete verification before commit
+./dev.sh help         # See all commands
+```
+
+### Development Flow
+
+1. **Develop** using CLI simulator (fastest iteration, no hardware required)
+2. **Write tests** in `test/test_core/` or `test/test_cli/`
+3. **Run test suite** - must pass before commit
+4. **Test on hardware** if driver changes were made
+5. **Commit** with descriptive message (pre-commit hook runs tests)
+
+---
+
+## Testing
+
+### Running Tests
+
+```bash
+# Core unit tests (GoogleTest framework)
+pio test -e native
+
+# CLI simulator tests
+pio test -e native_cli_test
+
+# Run all tests
+./dev.sh test
+```
+
+**IMPORTANT**: The pre-commit hook automatically runs tests before every commit. Use `git commit --no-verify` only if the hook fails due to known issues, but always run tests manually first.
+
+### Test Structure
+
+```cpp
+// GoogleTest + GMock
+TEST_F(TestSuiteName, testDescription) {
+    // Arrange
+    // Act
+    // Assert
+}
+```
+
+Tests are located in:
+- `test/test_core/` - Core functionality (state machine, drivers, game logic)
+- `test/test_cli/` - CLI-specific (commands, device spawning, E2E gameplay)
+
+**Coverage**: 126+ test cases covering state transitions, game mechanics, network protocols, difficulty tuning, and edge cases.
+
+---
 
 ## Contributing
 
-Alleycat wants YOUR HELP! Whether you have feature suggestions, bug reports, or improvements, please follow our [contributing guidelines](CONTRIBUTING.md).
+We welcome contributions! Whether you have feature suggestions, bug reports, or improvements, please follow these steps:
 
 ### How to Contribute
 
-1. **Fork the repository**.
-2. **Create a new branch** for your feature or bug fix.
-3. **Commit your changes** with a descriptive message.
-4. **Submit a pull request** for review.
+1. **Fork the repository**
+2. **Create a branch** for your feature or fix:
+   ```bash
+   git checkout -b feature/new-feature
+   ```
+3. **Develop your feature** (preferably using CLI simulator for rapid iteration)
+4. **Add tests** in `test/test_core/` or `test/test_cli/`
+5. **Run test suite** - all tests must pass:
+   ```bash
+   pio test -e native && pio test -e native_cli_test
+   ```
+6. **Commit your changes**:
+   ```bash
+   git commit -m "Add new feature (#issue-number)"
+   ```
+7. **Push and create a pull request**:
+   ```bash
+   git push origin feature/new-feature
+   gh pr create --title "Add new feature" --body "Fixes #issue"
+   ```
+
+### Contribution Guidelines
+
+- **Test coverage required** - new features must include tests
+- **Follow code style** - see `.clang-format` for C++ formatting rules
+- **Hardware changes need device testing** - don't rely solely on CLI
+- **One feature per PR** - keep changes focused and atomic
+- **Descriptive commit messages** - explain what and why
+
+See **[CLAUDE.md](CLAUDE.md)** for complete developer guide (architecture patterns, code conventions, Git workflow).
+
+---
+
+## Code Style
+
+- **Classes**: `PascalCase` (e.g., `StateMachine`, `Player`)
+- **Methods**: `camelCase` (e.g., `onStateMounted()`, `getUserID()`)
+- **Constants**: `SCREAMING_SNAKE_CASE`
+- **Indentation**: 4 spaces (no tabs)
+- **Header guards**: `#pragma once`
+
+Format files with:
+```bash
+clang-format -i <file>
+```
+
+---
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
 
-## Contact
+---
 
-For any questions, collaboration opportunities, or technical issues, please reach out to us:
+## Contact & Community
 
 - **Email**: [alleycatassetacquisitions@gmail.com](mailto:alleycatassetacquisitions@gmail.com)
+- **Discord**: [https://discord.gg/6XGTCbKkUy](https://discord.gg/6XGTCbKkUy)
 - **Website**: [alleycat.agency](https://alleycat.agency)
+- **GitHub**: [https://github.com/alleycatassetacquisitions/pdn](https://github.com/alleycatassetacquisitions/pdn)
+
+---
+
+## Hardware Specifications
+
+The PDN is built on the **ESP32-S3** platform with:
+
+- **ESP32-S3 SoC** - Dual-core Xtensa LX7, 240MHz
+- **128x64 OLED Display** - SSD1306 controller
+- **19 RGB LEDs** - Addressable via FastLED (WS2812B compatible)
+- **Haptic Feedback Motor** - PWM-controlled vibration
+- **2 Programmable Buttons** - OneButton library for click/long-press detection
+- **ESP-NOW** - Peer-to-peer wireless communication (~30m range)
+- **WiFi** - HTTP API for server synchronization
+- **Serial UART** - Cable connections for primary-auxiliary communication
+
+**Fusion 360 CAD files**: [https://a360.co/4a2WvzV](https://a360.co/4a2WvzV)
+
+**PCB designs**: KiCad 8 (to be released in separate repository)
+
+---
+
+## Platform Notes
+
+### PioArduino Migration
+
+This project uses **[pioarduino](https://github.com/pioarduino/platform-espressif32)**, a community fork of the Espressif32 platform with support for newer ESP-IDF and Arduino framework versions.
+
+If you're experiencing build issues after pulling recent changes:
+
+```bash
+# Clean install
+rm -rf ~/.platformio/platforms/espressif32*
+rm -rf ~/.platformio/packages/framework-arduinoespressif32*
+rm -rf .pio/
+pio run -e esp32-s3_release
+```
+
+---
+
+## Recent Development Activity
+
+- **Demo scripts** for hackathon presentations (PR #37)
+- **Comprehensive test suite** with 126+ test cases (PRs #45, #53, #66)
+- **Display mirror with braille rendering** for CLI visualization (PR #67, #70)
+- **Server sync** with conflict resolution (PR #50, #69)
+- **Konami progression system** with 7-button meta-game (PR #14, #35, #38)
+- **FDN minigames** (Ghost Runner, Spike Vector, Cipher Path, Exploit Sequencer, Breach Defense) (PR #32)
+- **CLI simulator tool** for hardware-less development (PR #62)
+- **PioArduino platform** migration for modern ESP-IDF (PR #65)
+
+See commit history for detailed changelog.
+
+---
+
+**Last Updated**: 2026-02-14
+**Maintained by**: Alleycat Asset Acquisitions
+**Built for**: Neotropolis LARP and immersive gameplay events
