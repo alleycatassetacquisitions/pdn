@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <set>
 #include "game/game-stats.hpp"
+#include "game/fdn-game-type.hpp"
 
 // Forward declaration
 enum class GameType : uint8_t;
@@ -248,4 +249,12 @@ public:
     // Game statistics tracking
     GameStatsTracker& getGameStatsTracker() { return gameStatsTracker; }
     const GameStatsTracker& getGameStatsTracker() const { return gameStatsTracker; }
+
+    // KonamiMetaGame methods using FdnGameType
+    bool allButtonsCollected() const { return (konamiProgress & 0x7F) == 0x7F; }
+    bool hasKonamiButton(FdnGameType game) const { return konamiProgress & (1 << static_cast<uint8_t>(game)); }
+    void unlockKonamiButton(FdnGameType game) { konamiProgress |= (1 << static_cast<uint8_t>(game)); }
+    bool isHardModeUnlocked() const { return konamiProgress & 0x80; }
+    void unlockHardMode() { konamiProgress |= 0x80; }
+    bool hasColorProfile(FdnGameType game) const { return colorProfileEligibility.count(static_cast<uint8_t>(game)) > 0; }
 };

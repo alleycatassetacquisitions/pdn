@@ -14,6 +14,7 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
+#include "konami-metagame-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1075,6 +1076,54 @@ TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
 
 TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
+}
+
+// ============================================
+// KONAMI METAGAME TESTS
+// ============================================
+
+TEST_F(KonamiMetaGameTestSuite, fdnGameTypeEnumValuesAreCorrect) {
+    fdnGameTypeEnumValuesAreCorrect(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerHasNoButtonsInitially) {
+    playerHasNoButtonsInitially(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerCanUnlockSingleButton) {
+    playerCanUnlockSingleButton(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerCanUnlockMultipleButtons) {
+    playerCanUnlockMultipleButtons(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerAllButtonsCollectedWhenSevenUnlocked) {
+    playerAllButtonsCollectedWhenSevenUnlocked(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerHardModeUnlocksIndependently) {
+    playerHardModeUnlocksIndependently(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerHardModeDoesNotAffectButtons) {
+    playerHardModeDoesNotAffectButtons(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, playerColorProfileCheckWorks) {
+    playerColorProfileCheckWorks(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, konamiMetaGameConstructsSuccessfully) {
+    konamiMetaGameConstructsSuccessfully(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, konamiMetaGamePopulatesThirtyFiveStates) {
+    konamiMetaGamePopulatesThirtyFiveStates(player);
+}
+
+TEST_F(KonamiMetaGameTestSuite, placeholderStateHasCorrectId) {
+    placeholderStateHasCorrectId(player);
 }
 
 // ============================================
