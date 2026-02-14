@@ -143,7 +143,7 @@ private:
     
     static CommandResult cmdHelp2(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] - player stats | progress [dev] - Konami grid | colors [dev] - color profiles | demo <game|all> [easy|hard] - play game in demo mode";
+        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] - player stats | progress [dev] - Konami grid | colors [dev] - color profiles | demo [game] [easy|hard] - play demo mode";
         return result;
     }
     
@@ -1036,19 +1036,45 @@ private:
                                  int& selectedDevice) {
         CommandResult result;
 
+        // Show help if no arguments
         if (tokens.size() < 2) {
-            result.message = "Usage: demo <game|all> [easy|hard] - play games in demo mode\n"
-                             "Games: signal-echo, ghost-runner, spike-vector, firewall-decrypt,\n"
-                             "       cipher-path, exploit-sequencer, breach-defense, all";
+            result.message = "Demo Mode - Play FDN Minigames\n\n"
+                           "Usage: demo <game> [easy|hard]\n"
+                           "       demo list - show all games\n"
+                           "       demo all [easy|hard] - play all 7 games\n\n"
+                           "Available games:\n"
+                           "  signal-echo       - Memory sequence game\n"
+                           "  ghost-runner      - Timing/reaction game\n"
+                           "  spike-vector      - Targeting game\n"
+                           "  firewall-decrypt  - Pattern matching puzzle\n"
+                           "  cipher-path       - Pathfinding puzzle\n"
+                           "  exploit-sequencer - Quick-time events\n"
+                           "  breach-defense    - Defense strategy\n\n"
+                           "Difficulty: easy (default), hard\n"
+                           "Example: demo signal-echo hard";
             return result;
         }
 
-        std::string gameArg = tokens[1];
-        for (char& c : gameArg) {
+        std::string subcommand = tokens[1];
+        for (char& c : subcommand) {
             if (c >= 'A' && c <= 'Z') c += 32;
         }
 
-        // Parse difficulty (default to easy)
+        // List games
+        if (subcommand == "list") {
+            result.message = "Available FDN Demo Games:\n\n"
+                           "1. Signal Echo       - Repeat the light sequence from memory\n"
+                           "2. Ghost Runner      - Hit the ghost when it enters the target zone\n"
+                           "3. Spike Vector      - Target the moving spike walls\n"
+                           "4. Firewall Decrypt  - Match the decryption pattern\n"
+                           "5. Cipher Path       - Navigate the cipher maze\n"
+                           "6. Exploit Sequencer - Execute the exploit chain\n"
+                           "7. Breach Defense    - Defend against incoming threats\n\n"
+                           "Use 'demo <game> [easy|hard]' to play";
+            return result;
+        }
+
+        // Determine difficulty
         std::string difficulty = "easy";
         if (tokens.size() >= 3) {
             difficulty = tokens[2];
@@ -1061,32 +1087,52 @@ private:
             }
         }
 
-        // Handle "all" - play all games in sequence
-        if (gameArg == "all") {
-            result.message = "Demo mode: Playing all 7 FDN games (" + difficulty + " difficulty)\n";
-            result.message += "Add 'challenge <game>' devices to play, or use the simulator.\n";
-            result.message += "Games in order: signal-echo, ghost-runner, spike-vector, firewall-decrypt,\n";
-            result.message += "                cipher-path, exploit-sequencer, breach-defense";
+        // Play all games
+        if (subcommand == "all") {
+            result.message = "Demo Mode: Playing all 7 games at " + difficulty + " difficulty\n"
+                           "Use 'add challenge <game>' to create a device for each game";
             return result;
         }
 
-        // Parse single game
+        // Parse game name
         GameType gameType;
-        if (!parseGameName(gameArg, gameType)) {
-            result.message = "Invalid game: " + tokens[1] + "\n"
-                             "Valid games: signal-echo, ghost-runner, spike-vector, firewall-decrypt,\n"
-                             "             cipher-path, exploit-sequencer, breach-defense";
+        if (!parseGameName(subcommand, gameType)) {
+            result.message = "Invalid game: " + tokens[1] + " - try 'demo list'";
             return result;
         }
 
-        // Create a challenge device for this game
-        int newIndex = static_cast<int>(devices.size());
-        devices.push_back(DeviceFactory::createGameDevice(newIndex, gameArg));
-        selectedDevice = newIndex;
+        // Check if a demo device already exists
+        int demoDeviceIndex = -1;
+        for (size_t i = 0; i < devices.size(); i++) {
+            if (devices[i].deviceId.find("DEMO-") == 0) {
+                demoDeviceIndex = static_cast<int>(i);
+                break;
+            }
+        }
 
-        result.message = "Demo: Created " + gameArg + " device (" + difficulty + " mode)\n";
-        result.message += "Device " + devices.back().deviceId + " now selected.\n";
-        result.message += "Controls: UP=primary button, DOWN=secondary button";
+        // Create or reuse demo device
+        if (demoDeviceIndex < 0) {
+            // Check max device limit
+            static constexpr int MAX_DEVICES = 8;
+            if (devices.size() >= MAX_DEVICES) {
+                result.message = "Cannot create demo device (max " + std::to_string(MAX_DEVICES) + " devices)";
+                return result;
+            }
+
+            // Create new challenge device
+            int newIndex = static_cast<int>(devices.size());
+            devices.push_back(DeviceFactory::createGameDevice(newIndex, subcommand));
+            demoDeviceIndex = newIndex;
+            selectedDevice = newIndex;
+
+            // Rename to indicate demo mode
+            devices[demoDeviceIndex].deviceId = "DEMO-" + std::to_string(newIndex);
+        }
+
+        result.message = std::string("Demo: ") + getGameDisplayName(gameType) + " (" + difficulty + ")\n" +
+                       "Device " + devices[demoDeviceIndex].deviceId + " ready\n" +
+                       "Press PRIMARY button to start the game\n" +
+                       "Use 'b' or 'b2' commands to simulate button presses";
 
         return result;
     }
