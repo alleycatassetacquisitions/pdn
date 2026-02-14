@@ -39,6 +39,7 @@
 #include "game/exploit-sequencer/exploit-sequencer-states.hpp"
 #include "game/breach-defense/breach-defense.hpp"
 #include "game/breach-defense/breach-defense-states.hpp"
+#include "game/konami-metagame/konami-metagame.hpp"
 #include "device/device-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
@@ -369,6 +370,9 @@ public:
         auto* exploitSequencer = new ExploitSequencer(EXPLOIT_SEQUENCER_EASY);
         auto* breachDefense = new BreachDefense(BREACH_DEFENSE_EASY);
 
+        // Create Konami metagame (manages FDN progression and rewards)
+        auto* konamiMetaGame = new KonamiMetaGame(instance.player);
+
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
             {StateId(QUICKDRAW_APP_ID), instance.game},
@@ -378,7 +382,8 @@ public:
             {StateId(SPIKE_VECTOR_APP_ID), spikeVector},
             {StateId(CIPHER_PATH_APP_ID), cipherPath},
             {StateId(EXPLOIT_SEQUENCER_APP_ID), exploitSequencer},
-            {StateId(BREACH_DEFENSE_APP_ID), breachDefense}
+            {StateId(BREACH_DEFENSE_APP_ID), breachDefense},
+            {StateId(KONAMI_METAGAME_APP_ID), konamiMetaGame}
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
         

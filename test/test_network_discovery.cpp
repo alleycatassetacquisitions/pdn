@@ -50,6 +50,7 @@ void printPairingState(PairingState state) {
     }
 }
 
+#ifndef NATIVE_BUILD
 int main() {
     std::cout << "=== Network Discovery System Demo ===\n\n";
 
@@ -137,3 +138,4 @@ int main() {
 
     return 0;
 }
+#endif // NATIVE_BUILD
