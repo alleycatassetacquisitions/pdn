@@ -1,0 +1,45 @@
+# Quickdraw Duel Demo
+# Demonstrates two players engaging in a face-to-face duel
+# Runtime: ~20 seconds
+# Usage: .pio/build/native_cli/program 2 --script demos/duel.demo
+
+# Wait for devices to settle into Idle
+wait 3
+
+# Check initial states
+state
+
+# Device 0 (Hunter) initiates duel by long-pressing primary button
+l 0
+
+# Wait for duel to be broadcast and received
+wait 1
+
+# Device 1 (Bounty) accepts duel by long-pressing primary button
+l 1
+
+# Wait for countdown (3 seconds)
+wait 1
+state
+
+# Countdown in progress
+wait 2.5
+
+# Draw phase begins - first to press wins
+# Device 1 (Bounty) draws first
+b 1
+
+# Wait for result determination
+wait 1
+
+# Display result for both players
+state
+
+# Result displays for 3 seconds
+wait 3.5
+
+# Back to Idle
+state
+
+# Final device states
+role all

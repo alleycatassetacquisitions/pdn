@@ -1,29 +1,62 @@
 # FDN Quickstart Demo
-# Demonstrates a full FDN encounter between hunter and FDN NPC
-# Usage: .pio/build/native_cli/program 2 --script demos/fdn-quickstart.demo
+# Demonstrates player encountering NPC, playing Signal Echo, winning, and unlocking Konami button
+# Runtime: ~30 seconds
+# Usage: .pio/build/native_cli/program --npc signal-echo --auto-cable --script demos/fdn-quickstart.demo
 
-# Setup: 2 devices (device 0 = hunter, device 1 = bounty)
-# Connect them via serial cable
-cable 0 1
-wait 1
+# Wait for devices to settle into Idle
+wait 3
 
 # Check initial states
 state
 
-# Let devices settle into Idle
-wait 3
-state
-
-# Inject FDN detection signal (simulates NPC broadcast)
-# Format: *fdn:<gameType>:<reward>\r
-inject 0 *fdn:7:6\r
+# NPC broadcasts FDN signal automatically - wait for detection
 wait 2
 
-# Check state after FDN signal
+# Player receives FDN signal, enters FdnDetected, then FdnPrompt
+# Wait for handshake completion
+wait 3
+
+# Now in Signal Echo game - wait for intro (2s)
+wait 2.5
+
+# Game shows sequence (Signal Echo EASY: 4 elements, ~800ms)
+wait 1
+
+# Player input phase - enter correct sequence
+# For demo purposes, we'll use a known sequence from tests
+# Signal Echo EASY allows 3 mistakes, so let's play perfectly
+
+# Press UP (button 1)
+b 0
+wait 0.3
+
+# Press DOWN (button 2)
+b2 0
+wait 0.3
+
+# Press UP (button 1)
+b 0
+wait 0.3
+
+# Press DOWN (button 2)
+b2 0
+wait 0.3
+
+# Wait for evaluation and win state
+wait 3
+
+# Win state displays for 3s, then returns to FdnComplete
+wait 3.5
+
+# Back in FdnComplete - Konami button unlocked!
 state
 
-# Let the encounter play out
-wait 5
+# Check Konami progress
+konami 0
 
-# Final state check
+# Disconnect devices
+cable -d 0 1
+
+# Final state
+wait 1
 state

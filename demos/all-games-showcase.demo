@@ -1,0 +1,151 @@
+# All Games Showcase Demo
+# Demonstrates each of the 7 minigames played in standalone mode
+# Runtime: ~2 minutes
+# Usage: .pio/build/native_cli/program 1 --script demos/all-games-showcase.demo
+
+# ========================================
+# GAME 1: Ghost Runner
+# ========================================
+add challenge ghost-runner
+state
+wait 2.5
+
+# Show timer
+wait 2
+
+# Press to catch ghost
+b 0
+wait 4
+
+# Reboot to Idle for next game
+reboot 0
+wait 2
+
+# ========================================
+# GAME 2: Spike Vector
+# ========================================
+add challenge spike-vector
+state
+wait 2.5
+
+# Dodge spikes
+wait 1
+b 0
+wait 0.5
+b2 0
+wait 0.5
+b 0
+wait 4
+
+# Reboot
+reboot 0
+wait 2
+
+# ========================================
+# GAME 3: Firewall Decrypt
+# ========================================
+add challenge firewall-decrypt
+state
+wait 2.5
+
+# Round 1
+b 0
+wait 0.2
+b 0
+wait 0.2
+b2 0
+wait 1
+
+# Round 2
+b 0
+wait 0.2
+b2 0
+wait 4
+
+# Reboot
+reboot 0
+wait 2
+
+# ========================================
+# GAME 4: Cipher Path
+# ========================================
+add challenge cipher-path
+state
+wait 2.5
+
+# Navigate path
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 4
+
+# Reboot
+reboot 0
+wait 2
+
+# ========================================
+# GAME 5: Exploit Sequencer
+# ========================================
+add challenge exploit-sequencer
+state
+wait 2.5
+
+# Sequence timing
+b 0
+wait 0.4
+b 0
+wait 0.4
+b 0
+wait 4
+
+# Reboot
+reboot 0
+wait 2
+
+# ========================================
+# GAME 6: Breach Defense
+# ========================================
+add challenge breach-defense
+state
+wait 2.5
+
+# Defensive presses
+b2 0
+wait 0.4
+b2 0
+wait 0.4
+b2 0
+wait 4
+
+# Reboot
+reboot 0
+wait 2
+
+# ========================================
+# GAME 7: Signal Echo
+# ========================================
+add challenge signal-echo
+state
+wait 2.5
+
+# Show sequence
+wait 1
+
+# Player input
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 4
+
+# Final state
+state
+
+# End of showcase

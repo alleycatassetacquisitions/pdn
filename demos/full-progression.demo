@@ -1,0 +1,214 @@
+# Full Progression Demo
+# Demonstrates completing all 7 FDN minigames, collecting all Konami buttons, and unlocking the boon
+# Runtime: ~3 minutes
+# Usage: .pio/build/native_cli/program 1 --script demos/full-progression.demo
+
+# Wait for player device to settle
+wait 2
+state
+
+# ========================================
+# GAME 1: Ghost Runner (Konami Button: UP)
+# ========================================
+add npc ghost-runner
+cable 0 1
+wait 4
+
+# Ghost Runner intro (2s)
+wait 2.5
+
+# Show timer (1.5s)
+wait 2
+
+# Gameplay - press when ghost is in zone
+b 0
+wait 0.2
+
+# Wait for win state (3s)
+wait 4
+
+# Disconnect
+cable -d 0 1
+wait 1
+konami 0
+
+# ========================================
+# GAME 2: Spike Vector (Konami Button: DOWN)
+# ========================================
+add npc spike-vector
+cable 0 2
+wait 4
+
+# Spike Vector intro (2s)
+wait 2.5
+
+# Gameplay - dodge spikes (timing-based button presses)
+wait 1
+b 0
+wait 0.5
+b2 0
+wait 0.5
+b 0
+wait 0.5
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 2
+wait 1
+konami 0
+
+# ========================================
+# GAME 3: Firewall Decrypt (Konami Button: LEFT)
+# ========================================
+add npc firewall-decrypt
+cable 0 3
+wait 4
+
+# Firewall Decrypt intro (2s)
+wait 2.5
+
+# Round 1 - scroll to target and confirm
+b 0
+wait 0.2
+b 0
+wait 0.2
+b2 0
+wait 1
+
+# Round 2
+b 0
+wait 0.2
+b2 0
+wait 1
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 3
+wait 1
+konami 0
+
+# ========================================
+# GAME 4: Cipher Path (Konami Button: RIGHT)
+# ========================================
+add npc cipher-path
+cable 0 4
+wait 4
+
+# Cipher Path intro (2s)
+wait 2.5
+
+# Gameplay - navigate path with directional inputs
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 4
+wait 1
+konami 0
+
+# ========================================
+# GAME 5: Exploit Sequencer (Konami Button: B)
+# ========================================
+add npc exploit-sequencer
+cable 0 5
+wait 4
+
+# Exploit Sequencer intro (2s)
+wait 2.5
+
+# Gameplay - sequence timing
+b 0
+wait 0.4
+b 0
+wait 0.4
+b 0
+wait 0.4
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 5
+wait 1
+konami 0
+
+# ========================================
+# GAME 6: Breach Defense (Konami Button: A)
+# ========================================
+add npc breach-defense
+cable 0 6
+wait 4
+
+# Breach Defense intro (2s)
+wait 2.5
+
+# Gameplay - defensive button presses
+b2 0
+wait 0.4
+b2 0
+wait 0.4
+b2 0
+wait 0.4
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 6
+wait 1
+konami 0
+
+# ========================================
+# GAME 7: Signal Echo (Konami Button: START)
+# ========================================
+add npc signal-echo
+cable 0 7
+wait 4
+
+# Signal Echo intro (2s)
+wait 2.5
+
+# Show sequence
+wait 1
+
+# Player input - 4 button sequence
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 7
+wait 1
+
+# ========================================
+# ALL 7 KONAMI BUTTONS UNLOCKED!
+# ========================================
+konami 0
+
+# Player now has all 7 buttons - Konami Puzzle unlocked
+# The boon is automatically granted when all 7 buttons are collected
+state
+
+# Final status
+role 0
