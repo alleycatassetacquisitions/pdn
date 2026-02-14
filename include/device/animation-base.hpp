@@ -105,4 +105,4 @@ protected:
     SimpleTimer frameTimer_;
     AnimationConfig config_;
     LEDState currentState_;
-}; 
+};

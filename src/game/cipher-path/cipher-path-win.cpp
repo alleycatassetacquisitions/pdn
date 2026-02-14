@@ -73,6 +73,6 @@ bool CipherPathWin::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool CipherPathWin::isTerminalState() {
+bool CipherPathWin::isTerminalState() const {
     return game->getConfig().managedMode;
 }

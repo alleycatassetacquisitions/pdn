@@ -71,17 +71,17 @@ public:
     std::string& getOpponentMacAddress();
     const std::string& getOpponentMacAddress() const;
 
-    unsigned long getLastReactionTime();
+    unsigned long getLastReactionTime() const;
 
-    unsigned long getAverageReactionTime();
+    unsigned long getAverageReactionTime() const;
 
-    int getStreak();
+    int getStreak() const;
 
-    int getMatchesPlayed();
+    int getMatchesPlayed() const;
 
-    int getWins();
+    int getWins() const;
 
-    int getLosses();
+    int getLosses() const;
 
     void incrementStreak();
 

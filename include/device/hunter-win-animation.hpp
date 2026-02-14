@@ -84,4 +84,4 @@ private:
         hunterIdleLEDColors[4],
         hunterIdleLEDColors[5]
     };
-}; 
+};

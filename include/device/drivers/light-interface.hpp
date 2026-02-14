@@ -138,4 +138,4 @@ protected:
     
     // Helper method to interpolate between two colors
     virtual LEDColor interpolateColor(const LEDColor& start, const LEDColor& end, uint8_t t) const = 0;
-}; 
+};

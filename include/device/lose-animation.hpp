@@ -226,4 +226,4 @@ private:
     uint32_t stateStartTime_;
     uint32_t flickerTimer_;
     int fadeProgress_;
-}; 
+};

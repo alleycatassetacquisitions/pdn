@@ -92,4 +92,4 @@ private:
     SimpleTimer pauseTimer_;
     uint8_t brightness = 87;
     float brightnessRatio = .2;
-}; 
+};

@@ -42,6 +42,6 @@ bool Lose::resetGame() {
     return reset;
 }
 
-bool Lose::isTerminalState() {
+bool Lose::isTerminalState() const {
     return true;
 }

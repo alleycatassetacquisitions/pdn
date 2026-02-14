@@ -79,6 +79,6 @@ bool SpikeVectorWin::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool SpikeVectorWin::isTerminalState() {
+bool SpikeVectorWin::isTerminalState() const {
     return game->getConfig().managedMode;
 }

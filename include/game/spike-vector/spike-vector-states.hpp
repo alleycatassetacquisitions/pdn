@@ -122,7 +122,7 @@ public:
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
     bool transitionToIntro();
-    bool isTerminalState() override;
+    bool isTerminalState() const override;
 
 private:
     SpikeVector* game;
@@ -145,7 +145,7 @@ public:
     void onStateLoop(Device* PDN) override;
     void onStateDismounted(Device* PDN) override;
     bool transitionToIntro();
-    bool isTerminalState() override;
+    bool isTerminalState() const override;
 
 private:
     SpikeVector* game;

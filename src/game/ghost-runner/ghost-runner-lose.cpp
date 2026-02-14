@@ -68,6 +68,6 @@ bool GhostRunnerLose::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool GhostRunnerLose::isTerminalState() {
+bool GhostRunnerLose::isTerminalState() const {
     return game->getConfig().managedMode;
 }

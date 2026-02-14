@@ -198,30 +198,30 @@ const std::string& Player::getOpponentMacAddress() const {
     return opponentMacAddress;
 }
 
-unsigned long Player::getLastReactionTime() {
+unsigned long Player::getLastReactionTime() const {
     return lastReactionTime;
 }
 
-unsigned long Player::getAverageReactionTime() {
+unsigned long Player::getAverageReactionTime() const {
     if(matchesPlayed == 0) {
         return 0;
     }
     return totalReactionTime / matchesPlayed;
 }
 
-int Player::getStreak() {
+int Player::getStreak() const {
     return winStreak;
 }
 
-int Player::getMatchesPlayed() {
+int Player::getMatchesPlayed() const {
     return matchesPlayed;
 }
 
-int Player::getWins() {
+int Player::getWins() const {
     return wins;
 }
 
-int Player::getLosses() {
+int Player::getLosses() const {
     return losses;
 }
 

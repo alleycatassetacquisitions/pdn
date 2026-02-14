@@ -45,6 +45,6 @@ bool Win::resetGame() {
     return reset;
 }
 
-bool Win::isTerminalState() {
+bool Win::isTerminalState() const {
     return true;
 }

@@ -83,4 +83,4 @@ private:
         bountyIdleLEDColors[4],
         bountyIdleLEDColors[5]
     };
-}; 
+};

@@ -107,7 +107,7 @@ public:
         // Override in derived classes
     }
 
-    virtual bool isTerminalState() {
+    virtual bool isTerminalState() const {
         return false;
     }
 

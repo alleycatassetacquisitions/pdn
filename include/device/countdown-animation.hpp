@@ -98,4 +98,4 @@ private:
     uint8_t fadeProgress_;         // Progress of current LED's fade (0-255)
     bool isWaitingBetweenLeds_;    // Whether we're in the delay period between LEDs
     SimpleTimer ledDelayTimer_;    // Timer for delay between LEDs
-}; 
+};

@@ -130,7 +130,7 @@ class ChooseRoleState : public State {
 public:
     explicit ChooseRoleState(Player* player);
     ~ChooseRoleState();
-    
+
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
@@ -148,7 +148,7 @@ class AllegiancePickerState : public State {
 public:
     explicit AllegiancePickerState(Player* player);
     ~AllegiancePickerState();
-    
+
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
@@ -566,9 +566,9 @@ public:
     DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelReceivedResult();
 
-    void onStateMounted(Device *PDN) override;  
+    void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;   
+    void onStateDismounted(Device *PDN) override;
     bool transitionToDuelResult();
 
 private:
@@ -585,12 +585,12 @@ public:
     DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelResult();
 
-    void onStateMounted(Device *PDN) override;  
+    void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;   
+    void onStateDismounted(Device *PDN) override;
     bool transitionToWin();
-    bool transitionToLose();    
-    
+    bool transitionToLose();
+
 private:
     Player* player;
     MatchManager* matchManager;
@@ -608,7 +608,7 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool resetGame();
-    bool isTerminalState() override;
+    bool isTerminalState() const override;
 
 private:
     SimpleTimer winTimer = SimpleTimer();
@@ -625,7 +625,7 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool resetGame();
-    bool isTerminalState() override;
+    bool isTerminalState() const override;
 
 private:
     SimpleTimer loseTimer = SimpleTimer();
@@ -644,22 +644,22 @@ protected:
     static SimpleTimer* handshakeTimeout;
     static bool timeoutInitialized;
     static const int timeout = 20000;
-    
+
     explicit BaseHandshakeState(QuickdrawStateId stateId) : State(stateId) {}
     ~BaseHandshakeState() override = default;
-    
+
     static void initTimeout() {
         if (!handshakeTimeout) handshakeTimeout = new SimpleTimer();
         handshakeTimeout->setTimer(timeout);
         timeoutInitialized = true;
     }
-    
+
     static bool isTimedOut() {
         if (!timeoutInitialized || !handshakeTimeout) return false;
         handshakeTimeout->updateTime();
         return handshakeTimeout->expired();
     }
-    
+
     static void resetTimeout() {
         timeoutInitialized = false;
         handshakeTimeout->invalidate();

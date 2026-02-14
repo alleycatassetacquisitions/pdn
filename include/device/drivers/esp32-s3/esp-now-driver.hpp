@@ -51,20 +51,20 @@ public:
     void connect() override {
         // Set WiFi to station mode
         WiFi.mode(WIFI_STA);
-        
+
         // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
         // ESP-NOW requires the WiFi radio to be active!
         WiFi.disconnect(false);
-        
+
         // Small delay to let WiFi stabilize after mode change
         delay(100);
-        
+
         // Set the channel using ESP-IDF API for reliability
         esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
         if (err != ESP_OK) {
             LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
         }
-        
+
         // Verify the channel was set correctly
         uint8_t primary_channel;
         wifi_second_chan_t secondary_channel;
@@ -103,16 +103,16 @@ public:
         if(length > (255 * MAX_PKT_DATA_SIZE))
         {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
-                length, 
+                length,
                 255 * MAX_PKT_DATA_SIZE);
             return -1;
         }
 
-        //Calculate the total number of ESP_NOW_MAX_DATA_LEN (250) byte packets we'll 
+        //Calculate the total number of ESP_NOW_MAX_DATA_LEN (250) byte packets we'll
         //need to send the whole buffer
-        uint8_t numInCluster = length / MAX_PKT_DATA_SIZE + 
+        uint8_t numInCluster = length / MAX_PKT_DATA_SIZE +
                                (length % MAX_PKT_DATA_SIZE == 0 ? 0 : 1);
-        
+
         //Allocate entire send buffer up front so we don't fail an allocation part way through
         //the cluster
         //We'll use alloca for tracking the buffers while we set them up since this should
@@ -214,7 +214,7 @@ public:
     }
 #endif
 
-    // Public methods for ESP-NOW callback handling 
+    // Public methods for ESP-NOW callback handling
     // (used when re-initializing ESP-NOW in EspNowState)
     void HandleReceivedData(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         // This simply forwards to the static callback method
@@ -270,14 +270,14 @@ private:
             LOG_E("ENC", "ESPNOW failed to init: 0x%X\n", err);
             return -1;
         }
-        
+
         // Register callbacks
         err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
             return -1;
         }
-        
+
         err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
@@ -288,7 +288,7 @@ private:
         esp_now_peer_info_t broadcastPeer = {};
         memcpy(broadcastPeer.peer_addr, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN);
         err = esp_now_add_peer(&broadcastPeer);
-        
+
         if(err != ESP_OK && err != ESP_ERR_ESPNOW_EXIST) {
             LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
             return err;
@@ -305,11 +305,11 @@ private:
         const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
 
         //TODO: Filter to make sure it's an Action frame
-        
+
         //ESP-NOW uses category type 127 in vendor specific action frames (a type of mgmt frame)
         if(pkt->payload[24] != 127)
             return;
-        
+
         int rssi = pkt->rx_ctrl.rssi;
         //2 bytes for frame control
         //2 bytes for duration id
@@ -333,7 +333,7 @@ private:
 #endif
 
         if(data_len < sizeof(DataPktHdr)) {
-            LOG_E("ENC", "Recieved buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
+            LOG_E("ENC", "Received buffer (%i bytes) was smaller than header (%u)\n", data_len, sizeof(DataPktHdr));
             return;
         }
 
@@ -357,11 +357,11 @@ private:
 
     void handleMultiPacketCluster(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
         uint64_t macAddr64 = MacToUInt64(mac_addr);
-        
+
         if(pktHdr->idxInCluster == 0) {
             handleFirstPacketInCluster(macAddr64, pktHdr);
         }
-        
+
         handleSubsequentPacket(mac_addr, data, pktHdr, macAddr64);
     }
 
@@ -382,7 +382,7 @@ private:
 
     void handleSubsequentPacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr, uint64_t macAddr64) {
         auto existingBuffer = m_recvBuffers.find(macAddr64);
-        
+
         // If no buffer exists, we missed the start packet
         if(existingBuffer == m_recvBuffers.end()) {
             LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
@@ -390,20 +390,20 @@ private:
         }
 
         DataRecvBuffer& recvBuffer = existingBuffer->second;
-        
+
         if(!validatePacketSequence(pktHdr, recvBuffer, existingBuffer)) {
             return;
         }
 
         copyPacketData(data, pktHdr, recvBuffer);
         ++existingBuffer->second.expectedNextIdx;
-        
+
         if(isClusterComplete(existingBuffer->second, pktHdr)) {
             finalizeCluster(mac_addr, pktHdr, recvBuffer, existingBuffer);
         }
     }
 
-    bool validatePacketSequence(const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer, 
+    bool validatePacketSequence(const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer,
                                 std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
         if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx) {
             LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
@@ -428,9 +428,9 @@ private:
                          std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
         size_t totalClusterSize = (pktHdr->numPktsInCluster - 1) * MAX_PKT_DATA_SIZE;
         totalClusterSize += pktHdr->pktLen - sizeof(DataPktHdr);
-        
+
         HandlePktCallback(pktHdr->packetType, mac_addr, recvBuffer.data, totalClusterSize);
-        
+
         free(recvBuffer.data);
         m_recvBuffers.erase(existingBuffer);
     }
@@ -473,7 +473,7 @@ private:
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
         auto buffer = m_sendQueue.front();
-        
+
         //If this is the first packet in cluster, make sure the peer is registered
         auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
         if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
@@ -498,7 +498,7 @@ private:
                 }
             }
         } while (err != ESP_OK);
-        
+
         return 0;
     }
 
@@ -533,13 +533,13 @@ private:
         new_peer.channel = 0;  // 0 = current channel
         new_peer.ifidx = WIFI_IF_STA;  // Use STA interface
         new_peer.encrypt = false;
-        
+
         esp_err_t err = esp_now_add_peer(&new_peer);
         if (err != ESP_OK) {
             LOG_E("ENC", "Failed to add peer: 0x%X", err);
             return -1;
         }
-        
+
         LOG_I("ENC", "Added peer: %02X:%02X:%02X:%02X:%02X:%02X",
               mac_addr[0], mac_addr[1], mac_addr[2],
               mac_addr[3], mac_addr[4], mac_addr[5]);

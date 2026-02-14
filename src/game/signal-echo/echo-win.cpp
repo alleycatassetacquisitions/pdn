@@ -73,6 +73,6 @@ bool EchoWin::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool EchoWin::isTerminalState() {
+bool EchoWin::isTerminalState() const {
     return game->getConfig().managedMode;
 }

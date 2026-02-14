@@ -78,6 +78,6 @@ bool DecryptWin::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool DecryptWin::isTerminalState() {
+bool DecryptWin::isTerminalState() const {
     return game->getConfig().managedMode;
 }

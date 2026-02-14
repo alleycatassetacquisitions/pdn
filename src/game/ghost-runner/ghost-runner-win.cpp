@@ -81,6 +81,6 @@ bool GhostRunnerWin::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool GhostRunnerWin::isTerminalState() {
+bool GhostRunnerWin::isTerminalState() const {
     return game->getConfig().managedMode;
 }

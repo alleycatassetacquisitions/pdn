@@ -73,6 +73,6 @@ bool SpikeVectorLose::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool SpikeVectorLose::isTerminalState() {
+bool SpikeVectorLose::isTerminalState() const {
     return game->getConfig().managedMode;
 }

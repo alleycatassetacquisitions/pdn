@@ -44,11 +44,11 @@ public:
         static MockHttpServer instance;
         return instance;
     }
-    
+
     // Prevent copying
     MockHttpServer(const MockHttpServer&) = delete;
     MockHttpServer& operator=(const MockHttpServer&) = delete;
-    
+
     /**
      * Configure a player's data for mock responses.
      * Call this when creating a device to set up its player data.
@@ -56,31 +56,31 @@ public:
     void configurePlayer(const std::string& playerId, const MockPlayerConfig& config) {
         playerConfigs_[playerId] = config;
     }
-    
+
     /**
      * Remove a player's configuration.
      */
     void removePlayer(const std::string& playerId) {
         playerConfigs_.erase(playerId);
     }
-    
+
     /**
      * Process an HTTP request and return response.
-     * 
+     *
      * @param method HTTP method (GET, POST, PUT, DELETE)
      * @param path Request path (e.g., "/api/players/0010")
      * @param body Request body (for POST/PUT)
      * @param responseBody Output: response body
      * @return HTTP status code (200, 404, 500, etc.)
      */
-    int handleRequest(const std::string& method, 
-                      const std::string& path, 
+    int handleRequest(const std::string& method,
+                      const std::string& path,
                       const std::string& body,
                       std::string& responseBody) {
-        
+
         int statusCode = 500;
         responseBody = R"({"errors":["Internal server error"]})";
-        
+
         // Route the request
         if (method == "GET" && path.find("/api/players/") == 0) {
             statusCode = handleGetPlayer(path, responseBody);
@@ -94,7 +94,7 @@ public:
             statusCode = 404;
             responseBody = R"({"errors":["Not found"]})";
         }
-        
+
         // Track in history
         HttpHistoryEntry entry;
         entry.method = method;
@@ -104,62 +104,62 @@ public:
         entry.responseBody = responseBody;
         entry.success = (statusCode >= 200 && statusCode < 300);
         addToHistory(entry);
-        
+
         return statusCode;
     }
-    
+
     /**
      * Get recent request history for CLI display.
      */
     const std::deque<HttpHistoryEntry>& getHistory() const {
         return history_;
     }
-    
+
     /**
      * Clear request history.
      */
     void clearHistory() {
         history_.clear();
     }
-    
+
     /**
      * Set whether the server should simulate being offline.
      */
     void setOffline(bool offline) {
         isOffline_ = offline;
     }
-    
+
     bool isOffline() const {
         return isOffline_;
     }
-    
+
     /**
      * Set simulated response delay in milliseconds.
      */
     void setResponseDelay(unsigned long delayMs) {
         responseDelayMs_ = delayMs;
     }
-    
+
     unsigned long getResponseDelay() const {
         return responseDelayMs_;
     }
 
 private:
     MockHttpServer() = default;
-    
+
     std::map<std::string, MockPlayerConfig> playerConfigs_;
     std::deque<HttpHistoryEntry> history_;
     static constexpr size_t MAX_HISTORY = 10;
     bool isOffline_ = false;
     unsigned long responseDelayMs_ = 0;
-    
+
     void addToHistory(const HttpHistoryEntry& entry) {
         history_.push_back(entry);
         while (history_.size() > MAX_HISTORY) {
             history_.pop_front();
         }
     }
-    
+
     /**
      * Extract player ID from path like "/api/players/0010"
      */
@@ -170,18 +170,18 @@ private:
         }
         return "";
     }
-    
+
     /**
      * Handle GET /api/players/{id}
      */
     int handleGetPlayer(const std::string& path, std::string& responseBody) {
         std::string playerId = extractPlayerId(path);
-        
+
         if (playerId.empty()) {
             responseBody = R"({"errors":["Invalid player ID"]})";
             return 400;
         }
-        
+
         // Check for special test IDs
         if (playerId == "9999") {
             // Test bounty
@@ -193,7 +193,7 @@ private:
             responseBody = R"({"data":{"id":"8888","name":"TestHunter","hunter":true,"allegiance":2,"faction":"Guild"}})";
             return 200;
         }
-        
+
         // Look up configured player
         auto it = playerConfigs_.find(playerId);
         if (it == playerConfigs_.end()) {
@@ -209,7 +209,7 @@ private:
             responseBody = buf;
             return 200;
         }
-        
+
         // Return configured player data
         const MockPlayerConfig& config = it->second;
         char buf[512];
@@ -223,7 +223,7 @@ private:
         responseBody = buf;
         return 200;
     }
-    
+
     /**
      * Handle PUT /api/matches
      */

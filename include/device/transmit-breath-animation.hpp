@@ -97,4 +97,4 @@ private:
     uint8_t breathProgress_;    // Progress of breathing animation (0-255)
     bool breathingUp_;          // Whether we're breathing up (true) or down (false)
     LEDColor ledColor_;         // Color of the transmit LED
-}; 
+};

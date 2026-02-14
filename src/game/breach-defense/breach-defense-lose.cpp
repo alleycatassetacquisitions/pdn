@@ -56,6 +56,6 @@ bool BreachDefenseLose::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool BreachDefenseLose::isTerminalState() {
+bool BreachDefenseLose::isTerminalState() const {
     return game->getConfig().managedMode;
 }

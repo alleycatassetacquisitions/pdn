@@ -66,6 +66,6 @@ bool EchoLose::transitionToIntro() {
     return transitionToIntroState;
 }
 
-bool EchoLose::isTerminalState() {
+bool EchoLose::isTerminalState() const {
     return game->getConfig().managedMode;
 }
