@@ -84,10 +84,19 @@ void FdnComplete::onStateMounted(Device* PDN) {
 
         // Display victory (always shown, even in recreational)
         PDN->getDisplay()->drawText("VICTORY!", 20, 15);
-        PDN->getDisplay()->drawText(getGameDisplayName(gameType), 10, 35);
+        PDN->getDisplay()->drawText(getGameDisplayName(gameType), 10, 27);
+
+        // Show attempt count
+        uint8_t attempts = outcome.hardMode ?
+            player->getHardAttempts(gameType) :
+            player->getEasyAttempts(gameType);
+        char attemptStr[24];
+        snprintf(attemptStr, sizeof(attemptStr), "Attempt #%d", attempts);
+        PDN->getDisplay()->drawText(attemptStr, 15, 39);
+
         char scoreStr[16];
         snprintf(scoreStr, sizeof(scoreStr), "Score: %d", outcome.score);
-        PDN->getDisplay()->drawText(scoreStr, 20, 55);
+        PDN->getDisplay()->drawText(scoreStr, 20, 51);
     } else {
         // Display loss
         PDN->getDisplay()->drawText("DEFEATED", 20, 15);

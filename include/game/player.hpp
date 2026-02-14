@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <set>
 
+// Forward declaration
+enum class GameType : uint8_t;
+
 enum class Allegiance {
     ALLEYCAT = 0,
     ENDLINE = 1,
@@ -130,6 +133,8 @@ private:
     uint8_t lastFdnReward = 0;  // KonamiButton value of last FDN reward (set by FdnDetected)
     bool recreationalMode = false;  // True when replaying already-beaten content
     uint16_t konamiAttempts = 0;  // Number of attempts to solve Konami puzzle
+    uint8_t easyAttempts_[7] = {0};  // Per-game easy mode attempt counters (indexed by GameType)
+    uint8_t hardAttempts_[7] = {0};  // Per-game hard mode attempt counters (indexed by GameType)
 
 public:
     // Pending FDN challenge (set by Idle, read by FdnDetected)
@@ -196,4 +201,28 @@ public:
     // Konami attempts tracking
     void incrementKonamiAttempts() { konamiAttempts++; }
     uint16_t getKonamiAttempts() const { return konamiAttempts; }
+
+    // Per-game per-difficulty attempt tracking
+    void incrementEasyAttempts(GameType gameType) {
+        int idx = static_cast<int>(gameType);
+        if (idx >= 0 && idx < 7) {
+            easyAttempts_[idx]++;
+        }
+    }
+    void incrementHardAttempts(GameType gameType) {
+        int idx = static_cast<int>(gameType);
+        if (idx >= 0 && idx < 7) {
+            hardAttempts_[idx]++;
+        }
+    }
+    uint8_t getEasyAttempts(GameType gameType) const {
+        int idx = static_cast<int>(gameType);
+        return (idx >= 0 && idx < 7) ? easyAttempts_[idx] : 0;
+    }
+    uint8_t getHardAttempts(GameType gameType) const {
+        int idx = static_cast<int>(gameType);
+        return (idx >= 0 && idx < 7) ? hardAttempts_[idx] : 0;
+    }
+    const uint8_t* getEasyAttemptsArray() const { return easyAttempts_; }
+    const uint8_t* getHardAttemptsArray() const { return hardAttempts_; }
 };

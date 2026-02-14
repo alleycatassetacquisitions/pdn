@@ -830,19 +830,35 @@ private:
             }
         }
 
+        // Build per-game attempt breakdown
+        std::string attemptBreakdown = "\n  FDN Attempts:";
+        const char* gameNames[] = {"QD", "GR", "SV", "FD", "CP", "ES", "BD"};
+        for (int i = 0; i < 7; i++) {
+            GameType gt = static_cast<GameType>(i);
+            uint8_t easy = p->getEasyAttempts(gt);
+            uint8_t hard = p->getHardAttempts(gt);
+            if (easy > 0 || hard > 0) {
+                char gameBuf[64];
+                snprintf(gameBuf, sizeof(gameBuf), "\n    %s: E=%d H=%d",
+                         gameNames[i], easy, hard);
+                attemptBreakdown += gameBuf;
+            }
+        }
+
         snprintf(buf, sizeof(buf),
                  "%s [%s] Stats:\n"
                  "  Matches: %d (W:%d L:%d) Streak:%d\n"
                  "  Reaction: Last=%lums Avg=%lums\n"
                  "  Konami: %d/7 unlocked (0x%02X) Boon:%s\n"
                  "  Color Profile: %s\n"
-                 "  Sync: %s",
+                 "  Sync: %s%s",
                  dev.deviceId.c_str(), roleStr.c_str(),
                  matches, wins, losses, streak,
                  lastRT, avgRT,
                  konamiCount, konamiProg, boon ? "Yes" : "No",
                  profileName.c_str(),
-                 syncStatus.c_str());
+                 syncStatus.c_str(),
+                 attemptBreakdown.c_str());
 
         result.message = buf;
         return result;

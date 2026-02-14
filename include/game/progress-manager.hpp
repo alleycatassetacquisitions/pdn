@@ -14,6 +14,8 @@
  *   "konami_boon"   — uint8_t (0/1), Konami puzzle complete
  *   "color_profile" — uint8_t (equipped + 1, 0 = none)
  *   "color_elig"    — uint8_t bitmask of eligible color profiles (7 games = 7 bits)
+ *   "easy_att"      — uint8_t[7] array of easy mode attempt counts
+ *   "hard_att"      — uint8_t[7] array of hard mode attempt counts
  *   "synced"        — uint8_t (0 or 1), whether progress has been uploaded
  */
 class ProgressManager {
@@ -44,6 +46,17 @@ public:
         }
         storage->writeUChar("color_elig", eligMask);
 
+        // Save attempt arrays (7 bytes each)
+        const uint8_t* easyAttempts = player->getEasyAttemptsArray();
+        const uint8_t* hardAttempts = player->getHardAttemptsArray();
+        for (int i = 0; i < 7; i++) {
+            char easyKey[16], hardKey[16];
+            snprintf(easyKey, sizeof(easyKey), "easy_att_%d", i);
+            snprintf(hardKey, sizeof(hardKey), "hard_att_%d", i);
+            storage->writeUChar(easyKey, easyAttempts[i]);
+            storage->writeUChar(hardKey, hardAttempts[i]);
+        }
+
         storage->writeUChar("synced", 0);
         synced = false;
     }
@@ -67,6 +80,22 @@ public:
         for (int i = 0; i < 8; i++) {
             if (eligMask & (1 << i)) {
                 player->addColorProfileEligibility(i);
+            }
+        }
+
+        // Load attempt arrays (7 bytes each)
+        for (int i = 0; i < 7; i++) {
+            char easyKey[16], hardKey[16];
+            snprintf(easyKey, sizeof(easyKey), "easy_att_%d", i);
+            snprintf(hardKey, sizeof(hardKey), "hard_att_%d", i);
+            uint8_t easyCount = storage->readUChar(easyKey, 0);
+            uint8_t hardCount = storage->readUChar(hardKey, 0);
+            // Directly set the loaded values
+            for (uint8_t j = 0; j < easyCount; j++) {
+                player->incrementEasyAttempts(static_cast<GameType>(i));
+            }
+            for (uint8_t j = 0; j < hardCount; j++) {
+                player->incrementHardAttempts(static_cast<GameType>(i));
             }
         }
 
@@ -99,6 +128,14 @@ public:
         storage->writeUChar("konami_boon", 0);
         storage->writeUChar("color_profile", 0);
         storage->writeUChar("color_elig", 0);
+        // Clear attempt arrays
+        for (int i = 0; i < 7; i++) {
+            char easyKey[16], hardKey[16];
+            snprintf(easyKey, sizeof(easyKey), "easy_att_%d", i);
+            snprintf(hardKey, sizeof(hardKey), "hard_att_%d", i);
+            storage->writeUChar(easyKey, 0);
+            storage->writeUChar(hardKey, 0);
+        }
         storage->writeUChar("synced", 1);
         synced = true;
     }
@@ -111,13 +148,33 @@ public:
         if (!httpClient || synced) return;
         if (!httpClient->isConnected()) return;
 
-        // Build progress JSON
-        char body[128];
+        // Build progress JSON with attempt arrays
+        char body[512];
+        std::string easyAttemptsJson = "[";
+        std::string hardAttemptsJson = "[";
+        if (player) {
+            for (int i = 0; i < 7; i++) {
+                if (i > 0) {
+                    easyAttemptsJson += ",";
+                    hardAttemptsJson += ",";
+                }
+                easyAttemptsJson += std::to_string(player->getEasyAttempts(static_cast<GameType>(i)));
+                hardAttemptsJson += std::to_string(player->getHardAttempts(static_cast<GameType>(i)));
+            }
+        } else {
+            easyAttemptsJson += "0,0,0,0,0,0,0";
+            hardAttemptsJson += "0,0,0,0,0,0,0";
+        }
+        easyAttemptsJson += "]";
+        hardAttemptsJson += "]";
+
         snprintf(body, sizeof(body),
-            R"({"konami":%d,"boon":%s,"profile":%d})",
+            R"({"konami":%d,"boon":%s,"profile":%d,"easyAttempts":%s,"hardAttempts":%s})",
             player ? player->getKonamiProgress() : 0,
             (player && player->hasKonamiBoon()) ? "true" : "false",
-            player ? player->getEquippedColorProfile() : -1);
+            player ? player->getEquippedColorProfile() : -1,
+            easyAttemptsJson.c_str(),
+            hardAttemptsJson.c_str());
 
         HttpRequest request(
             "/api/progress",

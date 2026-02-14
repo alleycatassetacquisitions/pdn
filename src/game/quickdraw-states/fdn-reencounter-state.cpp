@@ -170,6 +170,13 @@ void FdnReencounter::launchGame(Device* PDN) {
            hardMode ? "HARD" : "EASY",
            recreational ? "recreational" : "progression");
 
+    // Increment attempt counter based on difficulty
+    if (hardMode) {
+        player->incrementHardAttempts(pendingGameType);
+    } else {
+        player->incrementEasyAttempts(pendingGameType);
+    }
+
     // Look up the app
     int appId = getAppIdForGame(pendingGameType);
     if (appId < 0) {

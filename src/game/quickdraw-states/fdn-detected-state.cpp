@@ -177,6 +177,9 @@ void FdnDetected::onStateLoop(Device* PDN) {
 
         LOG_I(TAG, "First encounter: launching %s (EASY)", getGameDisplayName(pendingGameType));
 
+        // Increment easy attempt counter
+        player->incrementEasyAttempts(pendingGameType);
+
         player->setRecreationalMode(false);
         game->resetGame();
         PDN->setActiveApp(StateId(appId));
