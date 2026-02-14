@@ -20,6 +20,7 @@ void BreachDefenseIntro::onStateMounted(Device* PDN) {
     // Reset session for a fresh game
     game->getSession().reset();
     game->resetGame();
+    game->setStartTime(SimpleTimer::getPlatformClock()->milliseconds());
     game->seedRng();
 
     // Display title screen

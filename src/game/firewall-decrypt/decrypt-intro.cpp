@@ -20,6 +20,7 @@ void DecryptIntro::onStateMounted(Device* PDN) {
 
     // Reset game state for fresh play
     game->resetGame();
+    game->setStartTime(SimpleTimer::getPlatformClock()->milliseconds());
     game->seedRng();
     game->setupRound();
 

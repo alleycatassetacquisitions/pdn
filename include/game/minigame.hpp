@@ -27,6 +27,7 @@ struct MiniGameOutcome {
     MiniGameResult result = MiniGameResult::IN_PROGRESS;
     int score = 0;
     bool hardMode = false;
+    uint32_t startTimeMs = 0;  // Game start time (from millis())
     bool isComplete() const { return result != MiniGameResult::IN_PROGRESS; }
 };
 
@@ -53,6 +54,11 @@ public:
 
     virtual void resetGame() {
         outcome = MiniGameOutcome{};
+        // Note: startTimeMs will be set by intro states via setStartTime()
+    }
+
+    void setStartTime(uint32_t timeMs) {
+        outcome.startTimeMs = timeMs;
     }
 
 protected:

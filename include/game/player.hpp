@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cstdint>
 #include <set>
+#include "game/game-stats.hpp"
 
 // Forward declaration
 enum class GameType : uint8_t;
@@ -135,6 +136,7 @@ private:
     uint16_t konamiAttempts = 0;  // Number of attempts to solve Konami puzzle
     uint8_t easyAttempts_[7] = {0};  // Per-game easy mode attempt counters (indexed by GameType)
     uint8_t hardAttempts_[7] = {0};  // Per-game hard mode attempt counters (indexed by GameType)
+    GameStatsTracker gameStatsTracker;  // Game statistics tracking
 
 public:
     // Pending FDN challenge (set by Idle, read by FdnDetected)
@@ -242,4 +244,8 @@ public:
     void setColorProfileEligibility(const std::set<int>& eligibility) {
         colorProfileEligibility = eligibility;
     }
+
+    // Game statistics tracking
+    GameStatsTracker& getGameStatsTracker() { return gameStatsTracker; }
+    const GameStatsTracker& getGameStatsTracker() const { return gameStatsTracker; }
 };

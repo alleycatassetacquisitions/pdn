@@ -16,6 +16,7 @@ void EchoIntro::onStateMounted(Device* PDN) {
     // Reset session for a fresh game
     game->getSession().reset();
     game->resetGame();
+    game->setStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
     // Seed RNG and generate the first sequence
     game->seedRng();

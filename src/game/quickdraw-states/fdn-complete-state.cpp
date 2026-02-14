@@ -61,6 +61,19 @@ void FdnComplete::onStateMounted(Device* PDN) {
     GameType gameType = static_cast<GameType>(lastGameType);
     bool recreational = player->isRecreationalMode();
 
+    // Record game statistics
+    uint32_t currentTime = SimpleTimer::getPlatformClock()->milliseconds();
+    uint32_t elapsedMs = (currentTime >= outcome.startTimeMs) ?
+                         (currentTime - outcome.startTimeMs) : 0;
+
+    if (outcome.result == MiniGameResult::WON) {
+        player->getGameStatsTracker().recordWin(gameType, outcome.hardMode, elapsedMs);
+        LOG_I(TAG, "Recorded win: time=%ums hardMode=%d", elapsedMs, outcome.hardMode);
+    } else {
+        player->getGameStatsTracker().recordLoss(gameType, outcome.hardMode, elapsedMs);
+        LOG_I(TAG, "Recorded loss: time=%ums hardMode=%d", elapsedMs, outcome.hardMode);
+    }
+
     if (outcome.result == MiniGameResult::WON) {
         if (!recreational) {
             // Unlock the Konami button reward
