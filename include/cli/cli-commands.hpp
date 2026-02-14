@@ -124,6 +124,9 @@ public:
         if (command == "colors" || command == "profiles") {
             return cmdColors(tokens, devices, selectedDevice);
         }
+        if (command == "demo") {
+            return cmdDemo(tokens, devices, selectedDevice);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -134,13 +137,13 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games, stats, progress, colors";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games, stats, progress, colors, demo";
         return result;
     }
     
     static CommandResult cmdHelp2(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] - player stats | progress [dev] - Konami grid | colors [dev] - color profiles";
+        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] - player stats | progress [dev] - Konami grid | colors [dev] - color profiles | demo <game|all> [easy|hard] - play game in demo mode";
         return result;
     }
     
@@ -1025,6 +1028,66 @@ private:
         }
 
         result.message = output;
+        return result;
+    }
+
+    static CommandResult cmdDemo(const std::vector<std::string>& tokens,
+                                 std::vector<DeviceInstance>& devices,
+                                 int& selectedDevice) {
+        CommandResult result;
+
+        if (tokens.size() < 2) {
+            result.message = "Usage: demo <game|all> [easy|hard] - play games in demo mode\n"
+                             "Games: signal-echo, ghost-runner, spike-vector, firewall-decrypt,\n"
+                             "       cipher-path, exploit-sequencer, breach-defense, all";
+            return result;
+        }
+
+        std::string gameArg = tokens[1];
+        for (char& c : gameArg) {
+            if (c >= 'A' && c <= 'Z') c += 32;
+        }
+
+        // Parse difficulty (default to easy)
+        std::string difficulty = "easy";
+        if (tokens.size() >= 3) {
+            difficulty = tokens[2];
+            for (char& c : difficulty) {
+                if (c >= 'A' && c <= 'Z') c += 32;
+            }
+            if (difficulty != "easy" && difficulty != "hard") {
+                result.message = "Invalid difficulty: " + tokens[2] + " (use 'easy' or 'hard')";
+                return result;
+            }
+        }
+
+        // Handle "all" - play all games in sequence
+        if (gameArg == "all") {
+            result.message = "Demo mode: Playing all 7 FDN games (" + difficulty + " difficulty)\n";
+            result.message += "Add 'challenge <game>' devices to play, or use the simulator.\n";
+            result.message += "Games in order: signal-echo, ghost-runner, spike-vector, firewall-decrypt,\n";
+            result.message += "                cipher-path, exploit-sequencer, breach-defense";
+            return result;
+        }
+
+        // Parse single game
+        GameType gameType;
+        if (!parseGameName(gameArg, gameType)) {
+            result.message = "Invalid game: " + tokens[1] + "\n"
+                             "Valid games: signal-echo, ghost-runner, spike-vector, firewall-decrypt,\n"
+                             "             cipher-path, exploit-sequencer, breach-defense";
+            return result;
+        }
+
+        // Create a challenge device for this game
+        int newIndex = static_cast<int>(devices.size());
+        devices.push_back(DeviceFactory::createGameDevice(newIndex, gameArg));
+        selectedDevice = newIndex;
+
+        result.message = "Demo: Created " + gameArg + " device (" + difficulty + " mode)\n";
+        result.message += "Device " + devices.back().deviceId + " now selected.\n";
+        result.message += "Controls: UP=primary button, DOWN=secondary button";
+
         return result;
     }
 
