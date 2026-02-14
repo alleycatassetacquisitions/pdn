@@ -1393,17 +1393,16 @@ private:
             PerformanceMetrics metrics = scaler->getMetrics(gameType);
 
             // Create visual bar (10 blocks)
-            char bar[12];
+            std::string bar;
             int filled = static_cast<int>(scale * 10);
             for (int j = 0; j < 10; j++) {
-                bar[j] = (j < filled) ? '\u2588' : '\u2591';  // ████░░░░░░
+                bar += (j < filled) ? "\u2588" : "\u2591";
             }
-            bar[10] = '\0';
 
             // Format: "Ghost Runner:     ████░░░░░░  0.42 (Easy+) | 5 played"
             char line[128];
             snprintf(line, sizeof(line), "%-17s %s  %.2f (%s) | %d played\n",
-                     gameNames[i], bar, scale, label.c_str(), metrics.totalPlayed);
+                     gameNames[i], bar.c_str(), scale, label.c_str(), metrics.totalPlayed);
             output += line;
         }
 

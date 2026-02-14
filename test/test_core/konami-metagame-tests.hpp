@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 #include "game/player.hpp"
 #include "game/fdn-game-type.hpp"
-#include "game/konami-metagame.hpp"
+#include "game/konami-metagame/konami-metagame.hpp"
 #include "device/device-types.hpp"
 
 class KonamiMetaGameTestSuite : public testing::Test {
@@ -136,12 +136,3 @@ inline void konamiMetaGamePopulatesThirtyFiveStates(Player* player) {
     delete metaGame;
 }
 
-// ============================================
-// Placeholder State Tests
-// ============================================
-
-inline void placeholderStateHasCorrectId(Player* player) {
-    PlaceholderState* placeholder = new PlaceholderState(42);
-    EXPECT_EQ(placeholder->getStateId(), 42);
-    delete placeholder;
-}

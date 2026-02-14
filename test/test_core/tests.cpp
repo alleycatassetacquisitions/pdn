@@ -1080,7 +1080,6 @@ TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
 }
 
 // ============================================
-<<<<<<< HEAD
 // KONAMI METAGAME TESTS
 // ============================================
 
@@ -1122,10 +1121,6 @@ TEST_F(KonamiMetaGameTestSuite, konamiMetaGameConstructsSuccessfully) {
 
 TEST_F(KonamiMetaGameTestSuite, konamiMetaGamePopulatesThirtyFiveStates) {
     konamiMetaGamePopulatesThirtyFiveStates(player);
-}
-
-TEST_F(KonamiMetaGameTestSuite, placeholderStateHasCorrectId) {
-    placeholderStateHasCorrectId(player);
 }
 
 // ============================================
