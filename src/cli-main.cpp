@@ -256,6 +256,92 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
 }
 
 /**
+ * Check if a duel just completed and record it in duel history.
+ * Called from main loop to detect Win/Lose state entry.
+ */
+void checkAndRecordDuel(std::vector<cli::DeviceInstance>& devices) {
+    for (auto& dev : devices) {
+        // Only track for player devices
+        if (!dev.player || dev.deviceType != DeviceType::PLAYER) continue;
+
+        State* currentState = dev.game->getCurrentState();
+        if (!currentState) continue;
+
+        int stateId = currentState->getStateId();
+
+        // Update state history to track transitions
+        dev.updateStateHistory(stateId);
+
+        // Check if we just entered Win or Lose state (transition from any other state)
+        bool isInWinLose = (stateId == QuickdrawStateId::WIN || stateId == QuickdrawStateId::LOSE);
+        bool wasInWinLose = (dev.stateHistory.size() >= 2 &&
+                            (dev.stateHistory[dev.stateHistory.size() - 2] == QuickdrawStateId::WIN ||
+                             dev.stateHistory[dev.stateHistory.size() - 2] == QuickdrawStateId::LOSE));
+
+        // Reset the recording flag when leaving Win/Lose state
+        if (!isInWinLose && dev.duelRecordedThisSession) {
+            dev.duelRecordedThisSession = false;
+        }
+
+        // Only record if we transitioned TO win/lose AND haven't recorded this duel yet
+        if (isInWinLose && !wasInWinLose && !dev.duelRecordedThisSession) {
+            dev.duelRecordedThisSession = true;
+
+            // Find the opponent (connected device)
+            int connectedDeviceIdx = cli::SerialCableBroker::getInstance().getConnectedDevice(dev.deviceIndex);
+            if (connectedDeviceIdx < 0 || connectedDeviceIdx >= static_cast<int>(devices.size())) {
+                continue;  // No connected opponent
+            }
+
+            auto& opponent = devices[connectedDeviceIdx];
+
+            // Don't record duels with FDN devices
+            if (opponent.deviceType != DeviceType::PLAYER) continue;
+
+            // Determine outcome
+            bool won = (stateId == QuickdrawStateId::WIN);
+
+            // Get reaction times from players
+            unsigned long playerRT = dev.player->getLastReactionTime();
+            unsigned long opponentRT = opponent.player ? opponent.player->getLastReactionTime() : 0;
+
+            // Get current time from global clock
+            unsigned long currentTime = 0;
+            PlatformClock* clock = SimpleTimer::getPlatformClock();
+            if (clock) {
+                currentTime = clock->milliseconds() / 1000;
+            }
+
+            // Create duel record
+            cli::DuelRecord record(
+                opponent.deviceId,
+                "Quickdraw Duel",
+                won,
+                0,  // durationMs (could calculate from match timestamps if needed)
+                static_cast<uint32_t>(currentTime),
+                static_cast<uint32_t>(playerRT),
+                static_cast<uint32_t>(opponentRT)
+            );
+
+            // Record in duel history
+            dev.duelHistory.recordDuel(record);
+
+            // If in a series, record game
+            if (dev.seriesState.active) {
+                dev.seriesState.recordGame(record);
+
+                // Check if series is complete
+                if (dev.seriesState.isComplete()) {
+                    // Series ended, reset state after a delay
+                    // (In a real implementation, might want to show series summary)
+                    dev.seriesState.reset();
+                }
+            }
+        }
+    }
+}
+
+/**
  * Run a demo script file in non-interactive mode.
  * Reads commands line-by-line, executes them, and prints state after each.
  * Supports: commands, "wait <seconds>", and "# comment" lines.
@@ -293,6 +379,7 @@ void runScript(const std::string& path,
                 NativePeerBroker::getInstance().deliverPackets();
                 cli::SerialCableBroker::getInstance().transferData();
                 for (auto& d : devices) d.pdn->loop();
+                checkAndRecordDuel(devices);
                 std::this_thread::sleep_for(std::chrono::milliseconds(33));
             }
             continue;
@@ -322,6 +409,7 @@ void runScript(const std::string& path,
         NativePeerBroker::getInstance().deliverPackets();
         cli::SerialCableBroker::getInstance().transferData();
         for (auto& d : devices) d.pdn->loop();
+        checkAndRecordDuel(devices);
     }
 
     std::cout << "--- Script complete ---" << std::endl;
@@ -453,6 +541,9 @@ int main(int argc, char** argv) {
             for (auto& device : devices) {
                 device.pdn->loop();
             }
+
+            // Check for completed duels and record them
+            checkAndRecordDuel(devices);
 
             renderer.renderUI(devices, g_commandResult, g_commandBuffer, g_selectedDevice);
             std::this_thread::sleep_for(std::chrono::milliseconds(33));

@@ -46,6 +46,7 @@
 // CLI components
 #include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"
+#include "cli/cli-duel.hpp"
 
 namespace cli {
 
@@ -243,7 +244,13 @@ struct DeviceInstance {
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
     int lastStateId = -1;
-    
+
+    // Duel tracking
+    DuelHistory duelHistory;
+    SeriesState seriesState;
+    bool rematchPending = false;
+    bool duelRecordedThisSession = false;  // Prevents duplicate recording
+
     /**
      * Track state transitions for display in the UI.
      */
