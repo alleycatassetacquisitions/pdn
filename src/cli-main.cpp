@@ -38,6 +38,9 @@ std::string g_commandBuffer;
 std::string g_commandResult;
 int g_selectedDevice = 0;  // Currently selected device index
 std::string g_scriptFile;  // Script file path (empty = interactive mode)
+std::vector<std::string> g_npcGames;  // NPC games to spawn (--npc flag)
+std::string g_launchGame;  // Game to launch directly (--game flag)
+bool g_autoCable = false;  // Auto-cable first player to first NPC (--auto-cable flag)
 
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
@@ -47,6 +50,9 @@ void signalHandler(int signal) {
 /**
  * Parse command line arguments for device count and script file.
  * Sets g_scriptFile if --script flag is present.
+ * Sets g_npcGames if --npc flags are present.
+ * Sets g_launchGame if --game flag is present.
+ * Sets g_autoCable if --auto-cable flag is present.
  * Returns -1 if no valid count specified (prompt needed).
  */
 int parseArgs(int argc, char** argv) {
@@ -57,6 +63,24 @@ int parseArgs(int argc, char** argv) {
         // Script flag
         if (arg == "--script" && i + 1 < argc) {
             g_scriptFile = argv[++i];
+            continue;
+        }
+
+        // NPC flag (can be repeated)
+        if (arg == "--npc" && i + 1 < argc) {
+            g_npcGames.push_back(argv[++i]);
+            continue;
+        }
+
+        // Game flag (direct launch)
+        if (arg == "--game" && i + 1 < argc) {
+            g_launchGame = argv[++i];
+            continue;
+        }
+
+        // Auto-cable flag
+        if (arg == "--auto-cable") {
+            g_autoCable = true;
             continue;
         }
 
@@ -77,11 +101,19 @@ int parseArgs(int argc, char** argv) {
             printf("Options:\n");
             printf("  -n, --count N       Create N devices (1-%d)\n", MAX_DEVICES);
             printf("  --script <file>     Run demo script (non-interactive)\n");
+            printf("  --npc <game>        Spawn an NPC/FDN device (can be repeated)\n");
+            printf("  --game <game>       Launch directly into a specific minigame\n");
+            printf("  --auto-cable        Auto-cable first player to first NPC\n");
             printf("  -h, --help          Show this help message\n");
+            printf("\nValid game names:\n");
+            printf("  ghost-runner, spike-vector, firewall-decrypt, cipher-path,\n");
+            printf("  exploit-sequencer, breach-defense, signal-echo\n");
             printf("\nExamples:\n");
-            printf("  %s           Interactive prompt for device count\n", argv[0]);
-            printf("  %s 3         Create 3 devices\n", argv[0]);
+            printf("  %s                     Interactive prompt for device count\n", argv[0]);
+            printf("  %s 3                   Create 3 devices\n", argv[0]);
             printf("  %s 2 --script demos/fdn-quickstart.demo\n", argv[0]);
+            printf("  %s --npc ghost-runner --auto-cable\n", argv[0]);
+            printf("  %s --game signal-echo  Launch Signal Echo directly\n", argv[0]);
             exit(0);
         }
 
@@ -135,25 +167,71 @@ int promptDeviceCount() {
 
 /**
  * Create devices with alternating hunter/bounty roles.
+ * Also creates NPC devices if --npc flags were specified.
+ * Also creates game devices if --game flag was specified.
  */
 std::vector<cli::DeviceInstance> createDevices(int count) {
     std::vector<cli::DeviceInstance> devices;
-    devices.reserve(count);
-    
+    int nextDeviceIndex = 0;
+
+    // Calculate total device count for display
+    int playerCount = count;
+    int npcCount = g_npcGames.size();
+    int totalCount = playerCount + npcCount;
+
+    devices.reserve(totalCount);
+
     printf("\n\033[1;32m");  // Bold green
-    printf("Creating %d device%s...\n", count, count == 1 ? "" : "s");
+    printf("Creating %d device%s...\n", totalCount, totalCount == 1 ? "" : "s");
     printf("\033[0m");
-    
+
+    // Create player devices (or game devices if --game is set)
     for (int i = 0; i < count; i++) {
-        // Alternate roles: even indices are hunters, odd are bounties
-        bool isHunter = (i % 2 == 0);
-        devices.push_back(cli::DeviceFactory::createDevice(i, isHunter));
-        
-        printf("  Device %s: %s\n", 
-               devices.back().deviceId.c_str(),
-               isHunter ? "Hunter" : "Bounty");
+        if (!g_launchGame.empty()) {
+            // Create game device (standalone minigame)
+            devices.push_back(cli::DeviceFactory::createGameDevice(nextDeviceIndex++, g_launchGame));
+            printf("  Device %s: %s (standalone)\n",
+                   devices.back().deviceId.c_str(),
+                   g_launchGame.c_str());
+        } else {
+            // Create normal player device
+            bool isHunter = (i % 2 == 0);
+            devices.push_back(cli::DeviceFactory::createDevice(nextDeviceIndex++, isHunter));
+            printf("  Device %s: %s\n",
+                   devices.back().deviceId.c_str(),
+                   isHunter ? "Hunter" : "Bounty");
+        }
     }
-    
+
+    // Create NPC devices if --npc flags were specified
+    for (const auto& npcGame : g_npcGames) {
+        GameType gameType;
+        if (!parseGameName(npcGame, gameType)) {
+            printf("\033[1;31m");  // Bold red
+            printf("  Warning: Unknown game '%s', skipping NPC\n", npcGame.c_str());
+            printf("\033[0m");
+            continue;
+        }
+        auto npcDevice = cli::DeviceFactory::createFdnDevice(nextDeviceIndex++, gameType);
+        devices.push_back(npcDevice);
+        printf("  Device %s: NPC (%s)\n",
+               devices.back().deviceId.c_str(),
+               getGameDisplayName(gameType));
+    }
+
+    // Auto-cable if requested
+    if (g_autoCable && playerCount > 0 && npcCount > 0) {
+        int playerIdx = 0;  // First player device
+        int npcIdx = playerCount;  // First NPC device (after all players)
+        if (cli::SerialCableBroker::getInstance().connect(playerIdx, npcIdx)) {
+            printf("\n\033[1;33m");  // Bold yellow
+            printf("Auto-cabled device %s <-> device %s\n",
+                   devices[playerIdx].deviceId.c_str(),
+                   devices[npcIdx].deviceId.c_str());
+            printf("\033[0m");
+        }
+    }
+
     if (g_scriptFile.empty()) {
         printf("\n");
         printf("Press any key to start simulation...\n");
