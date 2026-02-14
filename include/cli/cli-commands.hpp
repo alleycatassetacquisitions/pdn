@@ -127,6 +127,9 @@ public:
         if (command == "demo") {
             return cmdDemo(tokens, devices, selectedDevice);
         }
+        if (command == "debug") {
+            return cmdDebug(tokens, devices, selectedDevice, renderer);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -1134,6 +1137,164 @@ private:
                        "Press PRIMARY button to start the game\n" +
                        "Use 'b' or 'b2' commands to simulate button presses";
 
+        return result;
+    }
+
+    static CommandResult cmdDebug(const std::vector<std::string>& tokens,
+                                  std::vector<DeviceInstance>& devices,
+                                  int& selectedDevice,
+                                  Renderer& renderer) {
+        CommandResult result;
+
+        if (tokens.size() < 2) {
+            result.message = "Usage: debug <subcommand> [args] - try 'debug help'";
+            return result;
+        }
+
+        std::string subcommand = tokens[1];
+        for (char& c : subcommand) {
+            if (c >= 'A' && c <= 'Z') c += 32;
+        }
+
+        if (subcommand == "help") {
+            result.message = "Debug commands:\n"
+                             "  debug set-npc-state <device_idx> <state>    - Force NPC state (NpcIdle, NpcHandshake, NpcGameActive, NpcReceiveResult)\n"
+                             "  debug set-allegiance <device_idx> <value>    - Force allegiance (0=ALLEYCAT, 1=ENDLINE, 2=HELIX, 3=RESISTANCE)\n"
+                             "  debug set-led <device_idx> <r> <g> <b>       - Force LED RGB values (0-255)\n"
+                             "  debug help                                    - Show this help";
+            return result;
+        }
+
+        if (subcommand == "set-npc-state") {
+            if (tokens.size() < 4) {
+                result.message = "Usage: debug set-npc-state <device_idx> <state>";
+                return result;
+            }
+
+            int deviceIdx = findDevice(tokens[2], devices, -1);
+            if (deviceIdx < 0 || deviceIdx >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device index: " + tokens[2];
+                return result;
+            }
+
+            auto& dev = devices[deviceIdx];
+            if (dev.deviceType != DeviceType::FDN) {
+                result.message = "Device " + dev.deviceId + " is not an FDN/NPC device";
+                return result;
+            }
+
+            std::string stateName = tokens[3];
+            int targetStateId = -1;
+
+            if (stateName == "NpcIdle" || stateName == "0") {
+                targetStateId = 0;
+            } else if (stateName == "NpcHandshake" || stateName == "1") {
+                targetStateId = 1;
+            } else if (stateName == "NpcGameActive" || stateName == "2") {
+                targetStateId = 2;
+            } else if (stateName == "NpcReceiveResult" || stateName == "3") {
+                targetStateId = 3;
+            } else {
+                result.message = "Invalid NPC state: " + stateName + " (use NpcIdle, NpcHandshake, NpcGameActive, or NpcReceiveResult)";
+                return result;
+            }
+
+            dev.game->skipToState(dev.pdn, targetStateId);
+            result.message = "Device " + std::to_string(deviceIdx) + " NPC state set to " + stateName;
+            return result;
+        }
+
+        if (subcommand == "set-allegiance") {
+            if (tokens.size() < 4) {
+                result.message = "Usage: debug set-allegiance <device_idx> <value>";
+                return result;
+            }
+
+            int deviceIdx = findDevice(tokens[2], devices, -1);
+            if (deviceIdx < 0 || deviceIdx >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device index: " + tokens[2];
+                return result;
+            }
+
+            auto& dev = devices[deviceIdx];
+            if (dev.deviceType != DeviceType::PLAYER) {
+                result.message = "Device " + dev.deviceId + " is not a player device";
+                return result;
+            }
+
+            if (!dev.player) {
+                result.message = "Device " + dev.deviceId + " has no player object";
+                return result;
+            }
+
+            std::string allegianceStr = tokens[3];
+            Allegiance targetAllegiance;
+            int allegianceNum = -1;
+
+            if (allegianceStr == "ALLEYCAT" || allegianceStr == "0") {
+                targetAllegiance = Allegiance::ALLEYCAT;
+                allegianceNum = 0;
+            } else if (allegianceStr == "ENDLINE" || allegianceStr == "1") {
+                targetAllegiance = Allegiance::ENDLINE;
+                allegianceNum = 1;
+            } else if (allegianceStr == "HELIX" || allegianceStr == "2") {
+                targetAllegiance = Allegiance::HELIX;
+                allegianceNum = 2;
+            } else if (allegianceStr == "RESISTANCE" || allegianceStr == "3") {
+                targetAllegiance = Allegiance::RESISTANCE;
+                allegianceNum = 3;
+            } else {
+                result.message = "Invalid allegiance: " + allegianceStr + " (use ALLEYCAT/0, ENDLINE/1, HELIX/2, or RESISTANCE/3)";
+                return result;
+            }
+
+            dev.player->setAllegiance(targetAllegiance);
+
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Device %d allegiance set to %s (%d)",
+                     deviceIdx, allegianceStr.c_str(), allegianceNum);
+            result.message = buf;
+            return result;
+        }
+
+        if (subcommand == "set-led") {
+            if (tokens.size() < 6) {
+                result.message = "Usage: debug set-led <device_idx> <r> <g> <b>";
+                return result;
+            }
+
+            int deviceIdx = findDevice(tokens[2], devices, -1);
+            if (deviceIdx < 0 || deviceIdx >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device index: " + tokens[2];
+                return result;
+            }
+
+            int r = std::atoi(tokens[3].c_str());
+            int g = std::atoi(tokens[4].c_str());
+            int b = std::atoi(tokens[5].c_str());
+
+            if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+                result.message = "RGB values must be 0-255";
+                return result;
+            }
+
+            auto& dev = devices[deviceIdx];
+            LEDState::SingleLEDState ledState;
+            ledState.color.red = static_cast<uint8_t>(r);
+            ledState.color.green = static_cast<uint8_t>(g);
+            ledState.color.blue = static_cast<uint8_t>(b);
+            ledState.brightness = 255;
+
+            dev.lightDriver->setLight(LightIdentifier::GLOBAL, 0, ledState);
+
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Device %d LED set to (%d, %d, %d)",
+                     deviceIdx, r, g, b);
+            result.message = buf;
+            return result;
+        }
+
+        result.message = "Unknown debug subcommand: " + subcommand + " (try 'debug help')";
         return result;
     }
 
