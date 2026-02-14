@@ -971,7 +971,14 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     suite->device_.httpClientDriver->setConnected(true);
     suite->device_.stateHistory.clear();
     suite->device_.lastStateId = -1;
-    suite->device_.game->skipToState(suite->device_.pdn, 1);
+    
+    // Skip to PlayerRegistrationApp (index 0) and then to its internal FetchUserDataState (index 1)
+    suite->device_.game->skipToState(suite->device_.pdn, 0);
+    state = suite->device_.game->getCurrentState();
+    if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
+        PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
+        prApp->skipToState(suite->device_.pdn, 1);
+    }
 
     // Should be back at FetchUserData within PlayerRegistrationApp
     state = suite->device_.game->getCurrentState();
@@ -1001,7 +1008,14 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     suite->device_.httpClientDriver->setConnected(true);
     suite->device_.stateHistory.clear();
     suite->device_.lastStateId = -1;
-    suite->device_.game->skipToState(suite->device_.pdn, 1);
+    
+    // Skip to PlayerRegistrationApp (index 0) and then to its internal FetchUserDataState (index 1)
+    suite->device_.game->skipToState(suite->device_.pdn, 0);
+    state = suite->device_.game->getCurrentState();
+    if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
+        PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
+        prApp->skipToState(suite->device_.pdn, 1);
+    }
 
     state = suite->device_.game->getCurrentState();
     ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
@@ -1152,14 +1166,21 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     suite->device_.httpClientDriver->setConnected(true);
     suite->device_.stateHistory.clear();
     suite->device_.lastStateId = -1;
-    suite->device_.game->skipToState(suite->device_.pdn, 1);
+    
+    // Skip to PlayerRegistrationApp (index 0) and then to its internal FetchUserDataState (index 1)
+    suite->device_.game->skipToState(suite->device_.pdn, 0);
+    State* state = suite->device_.game->getCurrentState();
+    if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
+        PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
+        prApp->skipToState(suite->device_.pdn, 1);
+    }
 
     // History should be cleared
     ASSERT_TRUE(suite->device_.stateHistory.empty());
     ASSERT_EQ(suite->device_.lastStateId, -1);
 
     // Device should be at FetchUserData within PlayerRegistrationApp
-    State* state = suite->device_.game->getCurrentState();
+    state = suite->device_.game->getCurrentState();
     ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
     PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
     ASSERT_EQ(prApp->getCurrentState()->getStateId(), FETCH_USER_DATA);

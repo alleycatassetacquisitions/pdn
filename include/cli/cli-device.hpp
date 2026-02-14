@@ -24,6 +24,7 @@
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "apps/player-registration/player-registration.hpp"
 
 // CLI components
 #include "cli/cli-serial-broker.hpp"
@@ -211,8 +212,13 @@ public:
         
         // Skip PlayerRegistration state and go directly to FetchUserDataState
         // This prevents the registration flow from overwriting the player ID
-        // State index 1 = FetchUserDataState (based on Quickdraw::populateStateMap order)
-        instance.game->skipToState(instance.pdn, 1);
+        // After refactoring: PlayerRegistrationApp is at index 0, we need to skip its internal state
+        // Get the PlayerRegistrationApp (index 0) and skip to its FetchUserDataState (internal index 1)
+        State* prAppState = instance.game->getCurrentState();
+        if (prAppState && prAppState->getStateId() == PLAYER_REGISTRATION_APP_ID) {
+            PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(prAppState);
+            prApp->skipToState(instance.pdn, 1);  // Skip to FetchUserDataState within the app
+        }
         
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
