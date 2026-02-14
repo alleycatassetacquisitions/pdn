@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstdlib>
+#include <chrono>
 
 #include "cli/cli-device.hpp"
 #include "cli/cli-renderer.hpp"
@@ -12,6 +13,17 @@
 #include "device/drivers/native/native-peer-broker.hpp"
 #include "game/quickdraw.hpp"
 #include "game/progress-manager.hpp"
+
+// External cycling state (defined in cli-main.cpp)
+extern bool g_panelCycling;
+extern int g_panelCycleInterval;
+extern std::chrono::steady_clock::time_point g_panelCycleLastSwitch;
+
+extern bool g_stateCycling;
+extern int g_stateCycleDevice;
+extern int g_stateCycleInterval;
+extern int g_stateCycleStep;
+extern std::chrono::steady_clock::time_point g_stateCycleLastSwitch;
 
 namespace cli {
 
@@ -1404,6 +1416,9 @@ private:
                              "  debug set-npc-state <device_idx> <state>    - Force NPC state (NpcIdle, NpcHandshake, NpcGameActive, NpcReceiveResult)\n"
                              "  debug set-allegiance <device_idx> <value>    - Force allegiance (0=ALLEYCAT, 1=ENDLINE, 2=HELIX, 3=RESISTANCE)\n"
                              "  debug set-led <device_idx> <r> <g> <b>       - Force LED RGB values (0-255)\n"
+                             "  debug cycle-panels [interval_ms]             - Toggle auto-cycling through device panels (default: 2000ms)\n"
+                             "  debug cycle-states <device_idx> [interval_ms] - Toggle cycling device through game states (default: 3000ms)\n"
+                             "  debug show-state [device_idx]                - Show device state summary (type, state, allegiance, LED)\n"
                              "  debug help                                    - Show this help";
             return result;
         }
@@ -1533,6 +1548,114 @@ private:
             char buf[128];
             snprintf(buf, sizeof(buf), "Device %d LED set to (%d, %d, %d)",
                      deviceIdx, r, g, b);
+            result.message = buf;
+            return result;
+        }
+
+        if (subcommand == "cycle-panels") {
+            // Parse optional interval
+            if (tokens.size() >= 3) {
+                int interval = std::atoi(tokens[2].c_str());
+                if (interval < 100) {
+                    result.message = "Interval must be >= 100ms";
+                    return result;
+                }
+                g_panelCycleInterval = interval;
+            }
+
+            // Toggle cycling
+            g_panelCycling = !g_panelCycling;
+
+            if (g_panelCycling) {
+                g_panelCycleLastSwitch = std::chrono::steady_clock::now();
+                result.message = "Panel cycling ENABLED (interval: " +
+                                std::to_string(g_panelCycleInterval) + "ms)";
+            } else {
+                result.message = "Panel cycling DISABLED";
+            }
+            return result;
+        }
+
+        if (subcommand == "cycle-states") {
+            if (tokens.size() < 3) {
+                result.message = "Usage: debug cycle-states <device_idx> [interval_ms]";
+                return result;
+            }
+
+            int deviceIdx = findDevice(tokens[2], devices, -1);
+            if (deviceIdx < 0 || deviceIdx >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device index: " + tokens[2];
+                return result;
+            }
+
+            // Parse optional interval
+            if (tokens.size() >= 4) {
+                int interval = std::atoi(tokens[3].c_str());
+                if (interval < 100) {
+                    result.message = "Interval must be >= 100ms";
+                    return result;
+                }
+                g_stateCycleInterval = interval;
+            }
+
+            // Toggle cycling for this device
+            if (g_stateCycling && g_stateCycleDevice == deviceIdx) {
+                // Stop cycling
+                g_stateCycling = false;
+                g_stateCycleDevice = -1;
+                g_stateCycleStep = 0;
+                result.message = "State cycling DISABLED for device " + std::to_string(deviceIdx);
+            } else {
+                // Start cycling
+                g_stateCycling = true;
+                g_stateCycleDevice = deviceIdx;
+                g_stateCycleStep = 0;
+                g_stateCycleLastSwitch = std::chrono::steady_clock::now();
+                result.message = "State cycling ENABLED for device " + std::to_string(deviceIdx) +
+                                " (interval: " + std::to_string(g_stateCycleInterval) + "ms)";
+            }
+            return result;
+        }
+
+        if (subcommand == "show-state") {
+            int targetDevice = selectedDevice;
+            if (tokens.size() >= 3) {
+                targetDevice = findDevice(tokens[2], devices, -1);
+            }
+
+            if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device index";
+                return result;
+            }
+
+            auto& dev = devices[targetDevice];
+            State* currentState = dev.game->getCurrentState();
+            int stateId = currentState ? currentState->getStateId() : -1;
+            std::string stateName = getStateName(stateId, dev.deviceType);
+
+            // Get device type string
+            std::string typeStr = (dev.deviceType == DeviceType::PLAYER) ? "PLAYER" : "FDN";
+
+            // Get LED color (read from light driver)
+            auto ledState = dev.lightDriver->getLight(LightIdentifier::GLOBAL, 0);
+            int r = ledState.color.red;
+            int g = ledState.color.green;
+            int b = ledState.color.blue;
+
+            char buf[256];
+            if (dev.deviceType == DeviceType::PLAYER && dev.player) {
+                // Show allegiance for player devices
+                std::string allegianceStr = dev.player->getAllegianceString();
+                snprintf(buf, sizeof(buf), "Device %d (%s): Type=%s State=%s Allegiance=%s LED=(%d,%d,%d)",
+                         targetDevice, dev.deviceId.c_str(), typeStr.c_str(),
+                         stateName.c_str(), allegianceStr.c_str(), r, g, b);
+            } else {
+                // FDN devices don't have allegiance
+                snprintf(buf, sizeof(buf), "Device %d (%s): Type=%s State=%s LED=(%d,%d,%d)",
+                         targetDevice, dev.deviceId.c_str(), typeStr.c_str(),
+                         stateName.c_str(), r, g, b);
+            }
+
             result.message = buf;
             return result;
         }

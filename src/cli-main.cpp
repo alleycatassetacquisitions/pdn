@@ -45,6 +45,17 @@ std::vector<std::string> g_npcGames;  // NPC games to spawn (--npc flag)
 std::string g_launchGame;  // Game to launch directly (--game flag)
 bool g_autoCable = false;  // Auto-cable first player to first NPC (--auto-cable flag)
 
+// Debug cycling state (defined in cli-globals.cpp)
+extern bool g_panelCycling;
+extern int g_panelCycleInterval;
+extern std::chrono::steady_clock::time_point g_panelCycleLastSwitch;
+
+extern bool g_stateCycling;
+extern int g_stateCycleDevice;
+extern int g_stateCycleInterval;
+extern int g_stateCycleStep;
+extern std::chrono::steady_clock::time_point g_stateCycleLastSwitch;
+
 void signalHandler(int signal) {
     (void)signal;  // Suppress unused parameter warning
     g_running = false;
@@ -540,6 +551,52 @@ int main(int argc, char** argv) {
             cli::SerialCableBroker::getInstance().transferData();
             for (auto& device : devices) {
                 device.pdn->loop();
+            }
+
+            // Handle panel cycling
+            if (g_panelCycling) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - g_panelCycleLastSwitch).count();
+
+                if (elapsed >= g_panelCycleInterval) {
+                    g_selectedDevice = (g_selectedDevice + 1) % devices.size();
+                    g_panelCycleLastSwitch = now;
+                    g_commandResult = "Auto-cycled to device " + devices[g_selectedDevice].deviceId;
+                }
+            }
+
+            // Handle state cycling
+            if (g_stateCycling && g_stateCycleDevice >= 0 &&
+                g_stateCycleDevice < static_cast<int>(devices.size())) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - g_stateCycleLastSwitch).count();
+
+                if (elapsed >= g_stateCycleInterval) {
+                    auto& dev = devices[g_stateCycleDevice];
+
+                    int nextStateId = -1;
+
+                    if (dev.deviceType == DeviceType::FDN) {
+                        // NPC devices: cycle through NPC states
+                        // 0 = NPC_IDLE, 1 = NPC_HANDSHAKE, 2 = NPC_GAME_ACTIVE, 3 = NPC_RECEIVE_RESULT
+                        const int npcSequence[] = {0, 1, 2, 3};
+                        nextStateId = npcSequence[g_stateCycleStep % 4];
+                    } else {
+                        // Player devices: cycle through Quickdraw gameplay states
+                        // 8 = IDLE, 21 = FDN_DETECTED, 22 = FDN_COMPLETE
+                        const int playerSequence[] = {8, 21, 22};
+                        nextStateId = playerSequence[g_stateCycleStep % 3];
+                    }
+
+                    dev.game->skipToState(dev.pdn, nextStateId);
+                    g_stateCycleStep++;
+                    g_stateCycleLastSwitch = now;
+
+                    g_commandResult = "Auto-cycled device " + std::to_string(g_stateCycleDevice) +
+                                     " to state " + cli::getStateName(nextStateId, dev.deviceType);
+                }
             }
 
             // Check for completed duels and record them
