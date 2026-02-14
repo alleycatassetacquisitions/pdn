@@ -24,10 +24,7 @@ public:
     Device(Device&&) = delete;
     Device& operator=(Device&&) = delete;
 
-    ~Device() override {
-        driverManager.dismountDrivers();
-        appConfig.clear();
-    }
+    ~Device() override;
 
     void loadAppConfig(AppConfig config, StateId launchAppId);
 

@@ -5,6 +5,19 @@
 
 const char* TAG = "Device";
 
+Device::~Device() {
+    // Delete all registered apps
+    // Note: Apps should be properly dismounted before Device destruction via normal lifecycle
+    for (auto& pair : appConfig) {
+        if (pair.second != nullptr) {
+            delete pair.second;
+            pair.second = nullptr;
+        }
+    }
+    appConfig.clear();
+    driverManager.dismountDrivers();
+}
+
 void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     this->appConfig = std::move(config);
     this->currentAppId = launchAppId;

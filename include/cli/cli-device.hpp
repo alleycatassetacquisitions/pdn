@@ -397,7 +397,7 @@ public:
         // Remove player config from mock HTTP server
         MockHttpServer::getInstance().removePlayer(device.deviceId);
 
-        delete device.game;
+        // Note: device.game and minigames are now deleted by PDN destructor (Device::~Device)
         delete device.quickdrawWirelessManager;
         delete device.player;
         delete device.pdn;

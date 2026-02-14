@@ -96,9 +96,8 @@ public:
     }
     
     void TearDown() override {
-        delete appOne;
-        delete appTwo;
-        delete appThree;
+        // Note: appOne, appTwo, appThree are deleted by device destructor
+        // since ownership was transferred via loadAppConfig()
         delete device;
     }
 };

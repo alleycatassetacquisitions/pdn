@@ -68,7 +68,7 @@ public:
     }
 
     void advanceToIdle() {
-        player_.game->skipToState(player_.pdn, 8);
+        player_.game->skipToState(player_.pdn, 7);
         player_.pdn->loop();
     }
 
