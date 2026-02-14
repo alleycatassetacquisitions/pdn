@@ -50,16 +50,18 @@ public:
                 
                 if (static_cast<int>(i) == selectedDeviceIndex) {
                     // Selected device - highlighted
+                    const char* typeLabel = devices[i].deviceType == DeviceType::FDN ? "NPC" : (devices[i].isHunter ? "H" : "B");
                     selectorBar += format("\033[1;7;33m[%d] %s %s\033[0m",
                                           static_cast<int>(i),
                                           devices[i].deviceId.c_str(),
-                                          devices[i].isHunter ? "H" : "B");
+                                          typeLabel);
                 } else {
                     // Unselected device - dim
+                    const char* typeLabel = devices[i].deviceType == DeviceType::FDN ? "NPC" : (devices[i].isHunter ? "H" : "B");
                     selectorBar += format("\033[90m[%d] %s %s\033[0m",
                                           static_cast<int>(i),
                                           devices[i].deviceId.c_str(),
-                                          devices[i].isHunter ? "H" : "B");
+                                          typeLabel);
                 }
             }
             selectorBar += "   \033[90m(LEFT/RIGHT to switch)\033[0m";
@@ -202,10 +204,160 @@ private:
     }
     
     /**
+     * Render FDN device panel (NPC devices hosting minigames).
+     * Shows game type, reward button, NPC state, serial/LED/haptics info.
+     */
+    void renderFdnPanel(DeviceInstance& device, bool isSelected = false) {
+        State* currentState = device.game->getCurrentState();
+        int stateId = currentState ? currentState->getStateId() : -1;
+
+        // Update state history
+        device.updateStateHistory(stateId);
+
+        // Build state history string
+        std::string historyStr;
+        if (device.stateHistory.empty()) {
+            historyStr = "(none)";
+        } else {
+            for (size_t i = 0; i < device.stateHistory.size(); i++) {
+                if (i > 0) historyStr += " -> ";
+                historyStr += getStateName(device.stateHistory[i], DeviceType::FDN);
+            }
+        }
+
+        // Build serial history strings for OUT jack (FDN devices use OUTPUT_JACK as PRIMARY)
+        std::string outSentStr = "(none)";
+        const auto& outSent = device.serialOutDriver->getSentHistory();
+        if (!outSent.empty()) {
+            outSentStr = "";
+            for (size_t i = 0; i < outSent.size() && i < 3; i++) {
+                if (i > 0) outSentStr += ", ";
+                outSentStr += truncate(outSent[outSent.size() - 1 - i], 15);
+            }
+        }
+
+        std::string outRecvStr = "(none)";
+        const auto& outRecv = device.serialOutDriver->getReceivedHistory();
+        if (!outRecv.empty()) {
+            outRecvStr = "";
+            for (size_t i = 0; i < outRecv.size() && i < 3; i++) {
+                if (i > 0) outRecvStr += ", ";
+                outRecvStr += truncate(outRecv[outRecv.size() - 1 - i], 15);
+            }
+        }
+
+        // Build serial history strings for IN jack
+        std::string inSentStr = "(none)";
+        const auto& inSent = device.serialInDriver->getSentHistory();
+        if (!inSent.empty()) {
+            inSentStr = "";
+            for (size_t i = 0; i < inSent.size() && i < 3; i++) {
+                if (i > 0) inSentStr += ", ";
+                inSentStr += truncate(inSent[inSent.size() - 1 - i], 15);
+            }
+        }
+
+        std::string inRecvStr = "(none)";
+        const auto& inRecv = device.serialInDriver->getReceivedHistory();
+        if (!inRecv.empty()) {
+            inRecvStr = "";
+            for (size_t i = 0; i < inRecv.size() && i < 3; i++) {
+                if (i > 0) inRecvStr += ", ";
+                inRecvStr += truncate(inRecv[inRecv.size() - 1 - i], 15);
+            }
+        }
+
+        // Build LED string with colored blocks
+        std::string ledStr = "| LEDs: L[";
+        for (int i = 8; i >= 0; i--) {
+            ledStr += renderLEDStr(device.lightDriver->getLeftLights()[i]);
+        }
+        ledStr += "] T[";
+        ledStr += renderLEDStr(device.lightDriver->getTransmitLight());
+        ledStr += "] R[";
+        for (int i = 8; i >= 0; i--) {
+            ledStr += renderLEDStr(device.lightDriver->getRightLights()[i]);
+        }
+        char brightBuf[32];
+        snprintf(brightBuf, sizeof(brightBuf), "]  Bright=%3d", device.lightDriver->getGlobalBrightness());
+        ledStr += brightBuf;
+
+        // Get FDN game info
+        FdnGame* fdnGame = dynamic_cast<FdnGame*>(device.game);
+        const char* gameName = fdnGame ? getGameDisplayName(fdnGame->getGameType()) : "UNKNOWN";
+        const char* rewardName = fdnGame ? getKonamiButtonName(fdnGame->getReward()) : "?";
+
+        // Get serial connection info from broker
+        std::string outConnLabel = "";
+        std::string inConnLabel = "";
+        const auto& connections = SerialCableBroker::getInstance().getConnections();
+        for (const auto& conn : connections) {
+            if (conn.deviceA == device.deviceIndex || conn.deviceB == device.deviceIndex) {
+                // This device is part of this connection
+                bool isDeviceA = (conn.deviceA == device.deviceIndex);
+                int otherDevice = isDeviceA ? conn.deviceB : conn.deviceA;
+                JackType myJack = isDeviceA ? conn.jackA : conn.jackB;
+
+                if (myJack == JackType::OUTPUT_JACK) {
+                    outConnLabel = format(" \033[32m<->[Dev%d]\033[0m", otherDevice);
+                } else {
+                    inConnLabel = format(" \033[32m<->[Dev%d]\033[0m", otherDevice);
+                }
+            }
+        }
+
+        // Buffer all lines - use brighter color for selected device
+        const char* headerColor = isSelected ? "\033[1;33m" : "\033[33m";
+        const char* selectedMarker = isSelected ? " *SELECTED*" : "";
+        bufferLine(format("%s+-- Device [%s] NPC%s ----------------------------------+\033[0m",
+                   headerColor,
+                   device.deviceId.c_str(),
+                   selectedMarker));
+
+        bufferLine(format("| NPC Device: Game=%-20s  Reward=%s",
+                   gameName,
+                   rewardName));
+
+        bufferLine(format("| State: [%2d] %-20s",
+                   stateId, getStateName(stateId, DeviceType::FDN)));
+
+        bufferLine(format("| History: %s", historyStr.c_str()));
+
+        bufferLine(ledStr);
+
+        bufferLine(format("| Haptics: %-3s  Intensity=%3d",
+                   device.hapticsDriver->isOn() ? "ON" : "OFF",
+                   device.hapticsDriver->getIntensity()));
+
+        // FDN devices use OUTPUT_JACK as PRIMARY (same as hunters)
+        bufferLine(format("| Serial OUT (PRIMARY): in=%zu out=%zu%s",
+                   device.serialOutDriver->getInputQueueSize(),
+                   device.serialOutDriver->getOutputBufferSize(),
+                   outConnLabel.c_str()));
+        bufferLine(format("|   TX: %s", outSentStr.c_str()));
+        bufferLine(format("|   RX: %s", outRecvStr.c_str()));
+
+        bufferLine(format("| Serial IN:  in=%zu out=%zu%s",
+                   device.serialInDriver->getInputQueueSize(),
+                   device.serialInDriver->getOutputBufferSize(),
+                   inConnLabel.c_str()));
+        bufferLine(format("|   TX: %s", inSentStr.c_str()));
+        bufferLine(format("|   RX: %s", inRecvStr.c_str()));
+
+        bufferLine(format("%s+--------------------------------------------------------------+\033[0m", headerColor));
+    }
+
+    /**
      * Render a single device panel into the frame buffer.
      * @param isSelected Whether this device is currently selected (affects header color)
      */
     void renderDevicePanel(DeviceInstance& device, bool isSelected = false) {
+        // FDN devices have a different panel structure (no player stats, different sections)
+        if (device.deviceType == DeviceType::FDN) {
+            renderFdnPanel(device, isSelected);
+            return;
+        }
+
         State* currentState = device.game->getCurrentState();
         int stateId = currentState ? currentState->getStateId() : -1;
         

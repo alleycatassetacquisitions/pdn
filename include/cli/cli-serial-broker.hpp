@@ -20,17 +20,19 @@ enum class JackType {
 
 /**
  * Connection between two devices via serial cable.
- * 
+ *
  * Connection rules based on device roles (from DeviceSerial):
  * - Hunters use OUTPUT_JACK as their PRIMARY comms jack
  * - Bounties use INPUT_JACK as their PRIMARY comms jack
- * 
+ * - FDN devices use OUTPUT_JACK as their PRIMARY comms jack (same as hunters)
+ *
  * For Hunter ↔ Bounty (different roles): PRIMARY to PRIMARY means:
  *   → Hunter.outputJack ↔ Bounty.inputJack
- * 
- * For same roles (Hunter ↔ Hunter or Bounty ↔ Bounty): PRIMARY to AUXILIARY
- *   → Hunter A.outputJack ↔ Hunter B.inputJack
- *   → Bounty A.inputJack ↔ Bounty B.outputJack
+ *
+ * For same roles (Hunter ↔ Hunter or Bounty ↔ Bounty): PRIMARY to PRIMARY
+ *   → Hunter A.outputJack ↔ Hunter B.outputJack (both use active comms jack)
+ *   → Bounty A.inputJack ↔ Bounty B.inputJack (both use active comms jack)
+ *   → FDN.outputJack ↔ Hunter.outputJack (both use active comms jack)
  */
 struct CableConnection {
     int deviceA;
@@ -85,9 +87,9 @@ public:
     /**
      * Connect two devices with a serial cable.
      * Automatically determines jack routing based on device roles:
-     * - Different roles (Hunter ↔ Bounty): output ↔ output (PRIMARY to PRIMARY)
-     * - Same roles: output ↔ input (PRIMARY to AUXILIARY)
-     * 
+     * - Different roles (Hunter ↔ Bounty): PRIMARY to PRIMARY (output ↔ input)
+     * - Same roles: PRIMARY to PRIMARY (output ↔ output OR input ↔ input)
+     *
      * @return true if connection was made, false if invalid devices
      */
     bool connect(int deviceA, int deviceB) {
@@ -120,16 +122,16 @@ public:
         // - Bounties use INPUT_JACK as PRIMARY
         
         if (sameRole) {
-            // Same role: PRIMARY to AUXILIARY
-            // Device A uses its PRIMARY, Device B uses its AUXILIARY (opposite of PRIMARY)
+            // Same role: PRIMARY to PRIMARY (both devices use their active comms jack)
+            // This ensures FDN (uses OUTPUT_JACK) can communicate with Player devices of same role
             if (aIsHunter) {
-                // Hunter-Hunter: A.output(primary) ↔ B.input(auxiliary)
+                // Hunter-Hunter or FDN-Hunter: A.output(primary) ↔ B.output(primary)
                 conn.jackA = JackType::OUTPUT_JACK;
-                conn.jackB = JackType::INPUT_JACK;
-            } else {
-                // Bounty-Bounty: A.input(primary) ↔ B.output(auxiliary)
-                conn.jackA = JackType::INPUT_JACK;
                 conn.jackB = JackType::OUTPUT_JACK;
+            } else {
+                // Bounty-Bounty: A.input(primary) ↔ B.input(primary)
+                conn.jackA = JackType::INPUT_JACK;
+                conn.jackB = JackType::INPUT_JACK;
             }
         } else {
             // Different roles: PRIMARY to PRIMARY
