@@ -1,10 +1,10 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/handshake/handshake-states.hpp"
 #include "id-generator.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 
 
-BountySendConnectionConfirmedState::BountySendConnectionConfirmedState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : BaseHandshakeState(BOUNTY_SEND_CC_STATE) {
+BountySendConnectionConfirmedState::BountySendConnectionConfirmedState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(HandshakeStateId::BOUNTY_SEND_CC_STATE) {
     this->matchManager = matchManager;
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -127,7 +127,6 @@ void BountySendConnectionConfirmedState::onStateLoop(Device *PDN) {
 void BountySendConnectionConfirmedState::onStateDismounted(Device *PDN) {
     transitionToConnectionSuccessfulState = false;
     LOG_I("BOUNTY_SEND_CC", "State dismounted");
-    BaseHandshakeState::resetTimeout();
     quickdrawWirelessManager->clearCallbacks();
 }
 

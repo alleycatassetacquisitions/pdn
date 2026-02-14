@@ -318,6 +318,10 @@ static const ImageCollection* getCollectionForAllegiance(Allegiance allegiance) 
     }
 }
 
+static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
+    return getCollectionForAllegiance(allegiance)->at(whichImage);
+}
+
 static const char* digitGlyphs[] = {
     "\u0030",
     "\u0031",

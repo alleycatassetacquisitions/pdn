@@ -1,23 +1,23 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
 
-static const char* TAG = "PlayerRegistration";
+static const char* TAG = "PlayerRegistrationState";
 
-PlayerRegistration::PlayerRegistration(Player* player, MatchManager* matchManager) : State(QuickdrawStateId::PLAYER_REGISTRATION) {
-    LOG_I(TAG, "Initializing PlayerRegistration state");
+PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : State(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
+    LOG_I(TAG, "Initializing PlayerRegistrationState");
     this->player = player;
     this->matchManager = matchManager;
 }
 
-PlayerRegistration::~PlayerRegistration() {
+PlayerRegistrationState::~PlayerRegistrationState() {
     player = nullptr;
-    LOG_I(TAG, "Destroying PlayerRegistration state");
+    LOG_I(TAG, "Destroying PlayerRegistrationState");
 }
 
-void PlayerRegistration::onStateMounted(Device *PDN) {
+void PlayerRegistrationState::onStateMounted(Device *PDN) {
     LOG_I(TAG, "State mounted - Starting player registration");
 
     PDN->getDisplay()->invalidateScreen()->
@@ -29,7 +29,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
 
     PDN->getPrimaryButton()->setButtonPress( 
     [](void *ctx) {
-        PlayerRegistration* playerRegistration = (PlayerRegistration*)ctx;
+        PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
         playerRegistration->currentDigit++;
         if(playerRegistration->currentDigit > 9) {
             playerRegistration->currentDigit = 0;
@@ -39,7 +39,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
 
     PDN->getSecondaryButton()->setButtonPress( 
     [](void *ctx) {
-        PlayerRegistration* playerRegistration = (PlayerRegistration*)ctx;
+        PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
 
         playerRegistration->currentDigitIndex++;
@@ -72,7 +72,7 @@ void PlayerRegistration::onStateMounted(Device *PDN) {
     }
 }
 
-void PlayerRegistration::onStateLoop(Device *PDN) {
+void PlayerRegistrationState::onStateLoop(Device *PDN) {
     if(shouldRender) {
         if(currentDigitIndex == 0) {
             PDN->getDisplay()->invalidateScreen()->
@@ -113,7 +113,7 @@ void PlayerRegistration::onStateLoop(Device *PDN) {
     }
 }
 
-void PlayerRegistration::onStateDismounted(Device *PDN) {
+void PlayerRegistrationState::onStateDismounted(Device *PDN) {
     LOG_I(TAG, "State dismounted - Cleaning up");
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
@@ -124,6 +124,6 @@ void PlayerRegistration::onStateDismounted(Device *PDN) {
     PDN->getLightManager()->stopAnimation();
 }
 
-bool PlayerRegistration::transitionToUserFetch() {
+bool PlayerRegistrationState::transitionToUserFetch() {
     return transitionToUserFetchState;
 }
