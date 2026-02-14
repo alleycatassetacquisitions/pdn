@@ -14,14 +14,9 @@ TEST_F(E2EGameSuiteTestSuite, GhostRunnerEasyWin) {
     e2eGhostRunnerEasyWin(this);
 }
 
-// TODO: Fix Hard/Loss tests - see notes in e2e-game-suite-tests.hpp
-// TEST_F(E2EGameSuiteTestSuite, GhostRunnerHardWin) {
-//     e2eGhostRunnerHardWin(this);
-// }
-
-// TEST_F(E2EGameSuiteTestSuite, GhostRunnerLoss) {
-//     e2eGhostRunnerLoss(this);
-// }
+// Note: Hard/Loss edge cases are covered in hard-mode-reencounter-tests.hpp
+// Basic hard win flow is tested in progression-e2e-tests.hpp
+// Basic loss flow is tested in progression-e2e-tests.hpp
 
 // ============================================
 // SPIKE VECTOR E2E TESTS
