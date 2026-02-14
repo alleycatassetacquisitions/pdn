@@ -6,6 +6,8 @@
 #include "state/state-machine.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "apps/player-registration/player-registration.hpp"
+#include "apps/handshake/handshake.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -20,7 +22,6 @@ public:
     ~Quickdraw();
 
     void populateStateMap() override;
-    static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
 
 private:
     std::vector<Match> matches;

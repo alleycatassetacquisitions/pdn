@@ -1,7 +1,7 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/handshake/handshake-states.hpp"
 #include "device/wireless-manager.hpp"
 
-HandshakeInitiateState::HandshakeInitiateState(Player *player) : BaseHandshakeState(HANDSHAKE_INITIATE_STATE) {
+HandshakeInitiateState::HandshakeInitiateState(Player *player) : State(HandshakeStateId::HANDSHAKE_INITIATE_STATE) {
     this->player = player;
 }
 
@@ -14,7 +14,6 @@ void HandshakeInitiateState::onStateMounted(Device *PDN) {
 }
 
 void HandshakeInitiateState::onStateLoop(Device *PDN) {
-    BaseHandshakeState::initTimeout();
     if(player->isHunter()) {
         LOG_I("INITIATE_STATE", "Player is Hunter, transitioning to HunterSendIdState");
         transitionToHunterSendIdState = true;

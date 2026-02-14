@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
+#include "game/quickdraw-resources.hpp"
+#include "device/device.hpp"
 
 Win::Win(Player *player) : State(WIN) {
     this->player = player;
@@ -13,7 +14,7 @@ void Win::onStateMounted(Device *PDN) {
     PDN->getHaptics()->setIntensity(VIBRATION_OFF);
 
     PDN->getDisplay()->invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::WIN))->
+    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::WIN))->
     render();
 
     winTimer.setTimer(8000);

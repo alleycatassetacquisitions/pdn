@@ -1,5 +1,6 @@
-#include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
+#include "apps/handshake/handshake-states.hpp"
+#include "game/quickdraw-resources.hpp"
+#include "device/device.hpp"
 //
 // Created by Elli Furedy on 9/30/2024.
 //
@@ -41,7 +42,7 @@ void ConnectionSuccessful::onStateMounted(Device *PDN) {
 
     PDN->getDisplay()->
     invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::CONNECT))->
+    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::CONNECT))->
     render();
     
     // Start the flash timer

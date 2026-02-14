@@ -27,7 +27,7 @@ void UploadMatchesState::attemptUpload() {
         [this](const std::string& jsonResponse) {
             LOG_I(TAG, "Successfully updated matches: %s", jsonResponse.c_str());
             matchManager->clearStorage();
-            routeToNextState();
+            transitionToSleepState = true;
         },
         [this](const WirelessErrorInfo& error) {
             LOG_E(TAG, "Failed to update matches: %s (code: %d)", 
@@ -41,7 +41,7 @@ void UploadMatchesState::attemptUpload() {
                 shouldRetryUpload = true;
             } else {
                 LOG_W(TAG, "Max upload retries reached. Proceeding without upload.");
-                routeToNextState();
+                transitionToSleepState = true;
             }
         }
     );
@@ -83,7 +83,7 @@ void UploadMatchesState::onStateLoop(Device *PDN) {
     
     if(uploadMatchesTimer.expired()) {
         LOG_W(TAG, "Upload timeout expired");
-        routeToNextState();
+        transitionToSleepState = true;
     }
 
     showLoadingGlyphs(PDN);
@@ -93,7 +93,6 @@ void UploadMatchesState::onStateDismounted(Device *PDN) {
     LOG_I(TAG, "State dismounted");
     uploadMatchesTimer.invalidate();
     transitionToSleepState = false;
-    transitionToPlayerRegistrationState = false;
     shouldRetryUpload = false;
     matchUploadRetryCount = 0;
     PDN->getLightManager()->stopAnimation();
@@ -128,15 +127,3 @@ void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
 bool UploadMatchesState::transitionToSleep() {
     return transitionToSleepState;
 }   
-
-bool UploadMatchesState::transitionToPlayerRegistration() {
-    return transitionToPlayerRegistrationState;
-}
-
-void UploadMatchesState::routeToNextState() {
-    if(player->getUserID() == FORCE_MATCH_UPLOAD) {
-        transitionToPlayerRegistrationState = true;
-    } else {
-        transitionToSleepState = true;
-    }
-}

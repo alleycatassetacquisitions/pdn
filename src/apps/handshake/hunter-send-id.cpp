@@ -1,11 +1,11 @@
 #include "id-generator.hpp"
-#include "game/quickdraw-states.hpp"
+#include "apps/handshake/handshake-states.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 // Opening Handshake State for a Hunter. we have sent our mac address over serial and are waiting
 // for the opponent to send the match id and their user id.
 
-HunterSendIdState::HunterSendIdState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : BaseHandshakeState(HUNTER_SEND_ID_STATE) {
+HunterSendIdState::HunterSendIdState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(HandshakeStateId::HUNTER_SEND_ID_STATE) {
     this->matchManager = matchManager;
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -93,7 +93,6 @@ void HunterSendIdState::onStateLoop(Device *PDN) {}
 void HunterSendIdState::onStateDismounted(Device *PDN) {
     LOG_I("HUNTER_SEND_ID", "State dismounted");
     transitionToConnectionSuccessfulState = false;
-    BaseHandshakeState::resetTimeout();
     quickdrawWirelessManager->clearCallbacks();
 }
 

@@ -1,8 +1,9 @@
 #include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
+#include "game/quickdraw-resources.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/device.hpp"
 
 #define DUEL_TAG "DUEL_STATE"
 //
@@ -70,8 +71,8 @@ void Duel::onStateMounted(Device *PDN) {
              DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
              
     PDN->getDisplay()->invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
+    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
+    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
     render();
     
     LOG_I(DUEL_TAG, "Draw image displayed for allegiance: %d", player->getAllegiance());

@@ -9,6 +9,7 @@
 #include "id-generator.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
+#include "apps/handshake/handshake.hpp"
 #include "utility-tests.hpp"
 #include "device/device-constants.hpp"
 
@@ -179,13 +180,6 @@ public:
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
-    
-    // Helper to reset the static handshake timeout between tests
-    void resetHandshakeTimeout() {
-        // Create a temporary state to access the static reset method
-        HandshakeInitiateState tempState(player);
-        tempState.onStateDismounted(&device);
-    }
 
     MockDevice device;
     MockPeerComms peerComms;
@@ -231,29 +225,28 @@ inline void handshakeTimeoutReturnsToIdle(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
     
-    // First, go through HandshakeInitiateState to initialize the timeout
-    HandshakeInitiateState initiateState(suite->player);
-    initiateState.onStateMounted(&suite->device);
+    // Create HandshakeApp state machine
+    HandshakeApp handshakeApp(suite->player, suite->matchManager, suite->wirelessManager);
     
-    // Call onStateLoop to initialize the timeout (initTimeout is called here)
-    initiateState.onStateLoop(&suite->device);
+    // Mount the state machine (this initializes the state map and starts the timeout)
+    handshakeApp.onStateMounted(&suite->device);
     
-    // Now create hunter state (timeout should be initialized from initiate state)
-    HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
-    hunterState.onStateMounted(&suite->device);
+    // Transition to hunter state (this happens automatically when the player is a hunter)
+    suite->fakeClock->advance(600); // Wait for settling time
+    handshakeApp.onStateLoop(&suite->device);
     
-    // Initially should not timeout (0ms has passed since timeout init)
-    EXPECT_FALSE(hunterState.transitionToIdle());
+    // Initially should not timeout (only 600ms has passed since timeout init)
+    EXPECT_FALSE(handshakeApp.transitionToIdle());
     
     // Advance time past timeout (20 seconds + 1ms to trigger expiration)
     // Timer expires when elapsed > duration (strictly greater than)
     suite->fakeClock->advance(20001);
     
     // Should now timeout
-    EXPECT_TRUE(hunterState.transitionToIdle());
+    EXPECT_TRUE(handshakeApp.transitionToIdle());
     
     // Cleanup
-    hunterState.onStateDismounted(&suite->device);
+    handshakeApp.onStateDismounted(&suite->device);
 }
 
 // Test: Bounty handshake flow succeeds

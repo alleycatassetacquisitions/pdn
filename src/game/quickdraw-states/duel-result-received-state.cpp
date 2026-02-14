@@ -1,9 +1,9 @@
 
 #include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/device.hpp"
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
