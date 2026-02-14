@@ -2,6 +2,7 @@
 #include "game/quickdraw.hpp"
 #include "game/minigame.hpp"
 #include "game/progress-manager.hpp"
+#include "game/ui-clean-minimal.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device-types.hpp"
 #include <cstdint>
@@ -57,13 +58,10 @@ void FdnComplete::onStateMounted(Device* PDN) {
               lastGameType, won, outcome.score, outcome.hardMode);
     }
 
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+    GameType gameType = static_cast<GameType>(lastGameType);
+    bool recreational = player->isRecreationalMode();
 
     if (outcome.result == MiniGameResult::WON) {
-        GameType gameType = game->getGameType();
-        bool recreational = player->isRecreationalMode();
-
         if (!recreational) {
             // Unlock the Konami button reward
             KonamiButton reward = getRewardForGame(gameType);
@@ -81,7 +79,6 @@ void FdnComplete::onStateMounted(Device* PDN) {
             if (player->isKonamiComplete() && !player->hasKonamiBoon()) {
                 player->setKonamiBoon(true);
                 LOG_I(TAG, "All 7 Konami buttons collected — BOON granted!");
-                PDN->getDisplay()->drawText("KONAMI COMPLETE!", 5, 45);
             }
 
             // Save progress
@@ -93,30 +90,15 @@ void FdnComplete::onStateMounted(Device* PDN) {
             LOG_I(TAG, "Recreational win -- no rewards");
         }
 
-        // Display victory (always shown, even in recreational)
-        PDN->getDisplay()->drawText("VICTORY!", 20, 15);
-        PDN->getDisplay()->drawText(getGameDisplayName(gameType), 10, 27);
-
-        // Show attempt count
+        // Display victory using clean minimal UI
         uint8_t attempts = outcome.hardMode ?
             player->getHardAttempts(gameType) :
             player->getEasyAttempts(gameType);
-        char attemptStr[24];
-        snprintf(attemptStr, sizeof(attemptStr), "Attempt #%d", attempts);
-        PDN->getDisplay()->drawText(attemptStr, 15, 39);
-
-        char scoreStr[16];
-        snprintf(scoreStr, sizeof(scoreStr), "Score: %d", outcome.score);
-        PDN->getDisplay()->drawText(scoreStr, 20, 51);
+        UICleanMinimal::drawWinScreen(PDN->getDisplay(), outcome.score, attempts);
     } else {
-        // Display loss
-        PDN->getDisplay()->drawText("DEFEATED", 20, 15);
-        char scoreStr[16];
-        snprintf(scoreStr, sizeof(scoreStr), "Score: %d", outcome.score);
-        PDN->getDisplay()->drawText(scoreStr, 20, 35);
+        // Display loss using clean minimal UI
+        UICleanMinimal::drawLoseScreen(PDN->getDisplay(), outcome.score, 0);
     }
-
-    PDN->getDisplay()->render();
 
     // Start display timer
     displayTimer.setTimer(DISPLAY_DURATION_MS);
