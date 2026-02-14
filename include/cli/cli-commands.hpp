@@ -113,6 +113,15 @@ public:
         if (command == "games") {
             return cmdGames(tokens);
         }
+        if (command == "stats" || command == "info") {
+            return cmdStats(tokens, devices, selectedDevice);
+        }
+        if (command == "progress" || command == "prog") {
+            return cmdProgress(tokens, devices, selectedDevice);
+        }
+        if (command == "colors" || command == "profiles") {
+            return cmdColors(tokens, devices, selectedDevice);
+        }
 
         result.message = "Unknown command: " + command + " (try 'help')";
         return result;
@@ -123,13 +132,13 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games, stats, progress, colors";
         return result;
     }
     
     static CommandResult cmdHelp2(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games";
+        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] - player stats | progress [dev] - Konami grid | colors [dev] - color profiles";
         return result;
     }
     
@@ -750,6 +759,242 @@ private:
                          "  exploit-sequencer - Exploit Sequencer\n"
                          "  breach-defense    - Breach Defense\n"
                          "  signal-echo       - Signal Echo";
+        return result;
+    }
+
+    static CommandResult cmdStats(const std::vector<std::string>& tokens,
+                                  const std::vector<DeviceInstance>& devices,
+                                  int selectedDevice) {
+        CommandResult result;
+
+        // Determine target device
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 2) {
+            targetDevice = findDevice(tokens[1], devices, -1);
+        }
+
+        // Validate target device
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+
+        auto& dev = devices[targetDevice];
+
+        // Check if device has a player (NPC/FDN devices don't)
+        if (!dev.player) {
+            result.message = "NPC device - no player stats";
+            return result;
+        }
+
+        // Build stats summary
+        Player* p = dev.player;
+        char buf[512];
+
+        // Basic info
+        std::string roleStr = dev.isHunter ? "Hunter" : "Bounty";
+
+        // Match stats
+        int matches = p->getMatchesPlayed();
+        int wins = p->getWins();
+        int losses = p->getLosses();
+        int streak = p->getStreak();
+
+        // Reaction times
+        unsigned long lastRT = p->getLastReactionTime();
+        unsigned long avgRT = p->getAverageReactionTime();
+
+        // Konami progress
+        uint8_t konamiProg = p->getKonamiProgress();
+        int konamiCount = __builtin_popcount(konamiProg & 0x7F);
+        bool boon = p->hasKonamiBoon();
+
+        // Color profile
+        int equippedProfile = p->getEquippedColorProfile();
+        std::string profileName;
+        if (equippedProfile < 0) {
+            profileName = dev.isHunter ? "HUNTER DEFAULT" : "BOUNTY DEFAULT";
+        } else {
+            profileName = getGameDisplayName(static_cast<GameType>(equippedProfile));
+        }
+
+        snprintf(buf, sizeof(buf),
+                 "%s [%s] Stats:\n"
+                 "  Matches: %d (W:%d L:%d) Streak:%d\n"
+                 "  Reaction: Last=%lums Avg=%lums\n"
+                 "  Konami: %d/7 unlocked (0x%02X) Boon:%s\n"
+                 "  Color Profile: %s",
+                 dev.deviceId.c_str(), roleStr.c_str(),
+                 matches, wins, losses, streak,
+                 lastRT, avgRT,
+                 konamiCount, konamiProg, boon ? "Yes" : "No",
+                 profileName.c_str());
+
+        result.message = buf;
+        return result;
+    }
+
+    static CommandResult cmdProgress(const std::vector<std::string>& tokens,
+                                     const std::vector<DeviceInstance>& devices,
+                                     int selectedDevice) {
+        CommandResult result;
+
+        // Determine target device
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 2) {
+            targetDevice = findDevice(tokens[1], devices, -1);
+        }
+
+        // Validate target device
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+
+        auto& dev = devices[targetDevice];
+
+        // Check if device has a player
+        if (!dev.player) {
+            result.message = "NPC device - no player stats";
+            return result;
+        }
+
+        Player* p = dev.player;
+        uint8_t progress = p->getKonamiProgress();
+        bool boon = p->hasKonamiBoon();
+
+        // Build visual grid
+        std::string grid = dev.deviceId + " Konami Progress:\n\n";
+
+        // Order: UP, DOWN, LEFT, RIGHT, B, A, START
+        // Visual layout:
+        //     [UP]
+        // [L] [D] [R]
+        //  [B] [A]
+        //   [START]
+
+        const char* buttonNames[7] = {"UP", "DOWN", "LEFT", "RIGHT", "B", "A", "START"};
+        const char* gameNames[7] = {
+            "Signal Echo",      // UP
+            "Spike Vector",     // DOWN
+            "Firewall Decrypt", // LEFT
+            "Cipher Path",      // RIGHT
+            "Exploit Seq",      // B
+            "Breach Defense",   // A
+            "Ghost Runner"      // START
+        };
+
+        // Build grid line by line
+        //     [UP]
+        bool hasUp = (progress & (1 << 0)) != 0;
+        grid += "      [" + std::string(hasUp ? "X" : " ") + "] UP - " + gameNames[0] + "\n";
+
+        // [L] [D] [R]
+        bool hasLeft = (progress & (1 << 2)) != 0;
+        bool hasDown = (progress & (1 << 1)) != 0;
+        bool hasRight = (progress & (1 << 3)) != 0;
+        grid += "  [" + std::string(hasLeft ? "X" : " ") + "] L   ";
+        grid += "[" + std::string(hasDown ? "X" : " ") + "] D   ";
+        grid += "[" + std::string(hasRight ? "X" : " ") + "] R\n";
+        grid += "  " + std::string(gameNames[2]) + "  " + std::string(gameNames[1]) + "  " + std::string(gameNames[3]) + "\n";
+
+        //  [B] [A]
+        bool hasB = (progress & (1 << 4)) != 0;
+        bool hasA = (progress & (1 << 5)) != 0;
+        grid += "    [" + std::string(hasB ? "X" : " ") + "] B   ";
+        grid += "[" + std::string(hasA ? "X" : " ") + "] A\n";
+        grid += "    " + std::string(gameNames[4]) + "  " + std::string(gameNames[5]) + "\n";
+
+        //   [START]
+        bool hasStart = (progress & (1 << 6)) != 0;
+        grid += "       [" + std::string(hasStart ? "X" : " ") + "] START\n";
+        grid += "       " + std::string(gameNames[6]) + "\n";
+
+        // Summary
+        int count = __builtin_popcount(progress & 0x7F);
+        grid += "\n" + std::to_string(count) + "/7 unlocked";
+        if (boon) {
+            grid += " | BOON ACTIVE";
+        }
+
+        result.message = grid;
+        return result;
+    }
+
+    static CommandResult cmdColors(const std::vector<std::string>& tokens,
+                                   const std::vector<DeviceInstance>& devices,
+                                   int selectedDevice) {
+        CommandResult result;
+
+        // Determine target device
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 2) {
+            targetDevice = findDevice(tokens[1], devices, -1);
+        }
+
+        // Validate target device
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+
+        auto& dev = devices[targetDevice];
+
+        // Check if device has a player
+        if (!dev.player) {
+            result.message = "NPC device - no player stats";
+            return result;
+        }
+
+        Player* p = dev.player;
+        int equipped = p->getEquippedColorProfile();
+        const std::set<int>& eligible = p->getColorProfileEligibility();
+
+        // Build color profile status
+        std::string output = dev.deviceId + " Color Profiles:\n\n";
+
+        // Default profile (always available)
+        std::string defaultName = dev.isHunter ? "HUNTER DEFAULT" : "BOUNTY DEFAULT";
+        output += "[" + std::string(equipped == -1 ? "*" : " ") + "] " + defaultName;
+        output += " (default)\n";
+
+        // Game profiles
+        const GameType games[7] = {
+            GameType::GHOST_RUNNER,
+            GameType::SPIKE_VECTOR,
+            GameType::FIREWALL_DECRYPT,
+            GameType::CIPHER_PATH,
+            GameType::EXPLOIT_SEQUENCER,
+            GameType::BREACH_DEFENSE,
+            GameType::SIGNAL_ECHO
+        };
+
+        for (int i = 0; i < 7; i++) {
+            GameType game = games[i];
+            int gameValue = static_cast<int>(game);
+            bool isEligible = eligible.count(gameValue) > 0;
+            bool isEquipped = (equipped == gameValue);
+
+            std::string status;
+            if (isEquipped) {
+                status = "[*] ";
+            } else if (isEligible) {
+                status = "[ ] ";
+            } else {
+                status = "[X] ";
+            }
+
+            output += status + getGameDisplayName(game);
+
+            if (!isEligible) {
+                output += " (locked - beat hard mode to unlock)";
+            } else if (isEquipped) {
+                output += " (equipped)";
+            }
+            output += "\n";
+        }
+
+        result.message = output;
         return result;
     }
 
