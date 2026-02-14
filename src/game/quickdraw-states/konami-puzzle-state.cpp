@@ -88,8 +88,8 @@ void KonamiPuzzle::onStateMounted(Device* PDN) {
               getKonamiButtonName(state->unlockedButtons[state->selectedInputIndex]));
     };
 
-    PDN->getPrimaryButton()->setButtonPress(primaryCallback, this, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(secondaryCallback, this, ButtonInteraction::CLICK);
+    PDN->getPrimaryButton()->setButtonPress(secondaryCallback, this, ButtonInteraction::CLICK);
+    PDN->getSecondaryButton()->setButtonPress(primaryCallback, this, ButtonInteraction::CLICK);
 
     // Initial render
     renderCodeEntry(PDN);
@@ -178,8 +178,8 @@ void KonamiPuzzle::renderCodeEntry(Device* PDN) {
     PDN->getDisplay()->drawText(buttonName, 35, 35);
 
     // Instructions
-    PDN->getDisplay()->drawText("UP:   Stamp", 5, 50);
-    PDN->getDisplay()->drawText("DOWN: Cycle", 5, 60);
+    PDN->getDisplay()->drawText("UP:   Cycle", 5, 50);
+    PDN->getDisplay()->drawText("DOWN: Stamp", 5, 60);
 
     PDN->getDisplay()->render();
 }

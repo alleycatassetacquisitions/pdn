@@ -47,7 +47,7 @@ void ColorProfilePicker::onStateMounted(Device* PDN) {
 
     LOG_I(TAG, "Color picker opened, %zu profiles available", profileList.size());
 
-    // Primary (UP) = equip, Secondary (DOWN) = cycle
+    // Primary (UP) = cycle, Secondary (DOWN) = equip
     parameterizedCallbackFunction equipCb = [](void* ctx) {
         auto* self = static_cast<ColorProfilePicker*>(ctx);
         int selected = self->profileList[self->cursorIndex];
@@ -66,8 +66,8 @@ void ColorProfilePicker::onStateMounted(Device* PDN) {
         self->displayIsDirty = true;
     };
 
-    PDN->getPrimaryButton()->setButtonPress(equipCb, this, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(cycleCb, this, ButtonInteraction::CLICK);
+    PDN->getPrimaryButton()->setButtonPress(cycleCb, this, ButtonInteraction::CLICK);
+    PDN->getSecondaryButton()->setButtonPress(equipCb, this, ButtonInteraction::CLICK);
 
     renderUi(PDN);
 }
@@ -117,6 +117,6 @@ void ColorProfilePicker::renderUi(Device* PDN) {
         }
     }
 
-    PDN->getDisplay()->drawText("UP:equip DOWN:next", 5, 60);
+    PDN->getDisplay()->drawText("UP:next DOWN:equip", 5, 60);
     PDN->getDisplay()->render();
 }
