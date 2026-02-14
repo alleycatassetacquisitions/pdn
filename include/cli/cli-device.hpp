@@ -335,7 +335,10 @@ public:
         // Create PDN
         instance.pdn = PDN::createPDN(pdnConfig);
         instance.pdn->begin();
-        
+
+        // Set platform clock BEFORE loadAppConfig — game states use it during onStateMounted()
+        SimpleTimer::setPlatformClock(instance.clockDriver);
+
         // Create and configure player
         instance.player = new Player();
         char* idPtr = new char[5];
@@ -414,6 +417,9 @@ public:
         delete device.player;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
+
+        // Clear platform clock AFTER device destruction — state dismount callbacks may use the clock
+        SimpleTimer::setPlatformClock(nullptr);
     }
 
     /**
@@ -472,6 +478,9 @@ public:
         instance.pdn = PDN::createPDN(pdnConfig);
         instance.pdn->begin();
         instance.pdn->setActiveComms(SerialIdentifier::OUTPUT_JACK);
+
+        // Set platform clock BEFORE loadAppConfig — game states use it during onStateMounted()
+        SimpleTimer::setPlatformClock(instance.clockDriver);
 
         instance.player = nullptr;
         instance.quickdrawWirelessManager = nullptr;
@@ -542,6 +551,9 @@ public:
 
         instance.pdn = PDN::createPDN(pdnConfig);
         instance.pdn->begin();
+
+        // Set platform clock BEFORE loadAppConfig — game states use it during onStateMounted()
+        SimpleTimer::setPlatformClock(instance.clockDriver);
 
         instance.player = nullptr;
         instance.quickdrawWirelessManager = nullptr;

@@ -133,9 +133,9 @@ void FdnComplete::onStateMounted(Device* PDN) {
 void FdnComplete::onStateLoop(Device* PDN) {
     displayTimer.updateTime();
     if (displayTimer.expired()) {
-        // Route to BoonAwarded if hard mode was won and profile is pending
+        // Route to ColorProfilePrompt if hard mode was won and profile is pending
         if (!player->isRecreationalMode() && player->getPendingProfileGame() >= 0) {
-            transitionToBoonAwardedState = true;
+            transitionToColorPromptState = true;
         } else {
             transitionToIdleState = true;
         }
