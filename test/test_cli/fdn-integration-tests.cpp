@@ -9,6 +9,7 @@
 #include "fdn-integration-tests.hpp"
 #include "progression-core-tests.hpp"
 #include "color-profile-tests.hpp"
+#include "boon-awarded-tests.hpp"
 
 // ============================================
 // FDN INTEGRATION TESTS
@@ -332,4 +333,40 @@ TEST_F(StateNameTestSuite, ColorProfilePrompt) {
 
 TEST_F(StateNameTestSuite, ColorProfilePicker) {
     stateNameColorProfilePicker(this);
+}
+
+// ============================================
+// BOON AWARDED TESTS
+// ============================================
+
+TEST_F(BoonAwardedTestSuite, UpdatesEligibility) {
+    boonAwardedUpdatesEligibility(this);
+}
+
+TEST_F(BoonAwardedTestSuite, PersistsProgress) {
+    boonAwardedPersistsProgress(this);
+}
+
+TEST_F(BoonAwardedTestSuite, DisplaysPaletteName) {
+    boonAwardedDisplaysPaletteName(this);
+}
+
+TEST_F(BoonAwardedTestSuite, LedAnimation) {
+    boonAwardedLedAnimation(this);
+}
+
+TEST_F(BoonAwardedTestSuite, TransitionsToColorPrompt) {
+    boonAwardedTransitionsToColorPrompt(this);
+}
+
+TEST_F(BoonAwardedTestSuite, MultipleGameTypes) {
+    boonAwardedMultipleGameTypes(this);
+}
+
+TEST_F(BoonAwardedTestSuite, ClearsLeds) {
+    boonAwardedClearsLeds(this);
+}
+
+TEST_F(BoonAwardedTestSuite, HandlesMissingProfile) {
+    boonAwardedHandlesMissingProfile(this);
 }

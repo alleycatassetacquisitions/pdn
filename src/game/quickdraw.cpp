@@ -64,6 +64,7 @@ void Quickdraw::populateStateMap() {
     FdnComplete* fdnComplete = new FdnComplete(player, progressManager, fdnResultManager, &difficultyScaler);
     ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
     ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
+    BoonAwarded* boonAwarded = new BoonAwarded(player, progressManager);
     KonamiPuzzle* konamiPuzzle = new KonamiPuzzle(player);
     ConnectionLost* connectionLost = new ConnectionLost(player);
 
@@ -179,6 +180,11 @@ void Quickdraw::populateStateMap() {
 
     fdnComplete->addTransition(
         new StateTransition(
+            std::bind(&FdnComplete::transitionToBoonAwarded, fdnComplete),
+            boonAwarded));
+
+    fdnComplete->addTransition(
+        new StateTransition(
             std::bind(&FdnComplete::transitionToColorPrompt, fdnComplete),
             colorProfilePrompt));
 
@@ -196,6 +202,11 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&ColorProfilePicker::transitionToIdle, colorProfilePicker),
             idle));
+
+    boonAwarded->addTransition(
+        new StateTransition(
+            std::bind(&BoonAwarded::transitionToColorPrompt, boonAwarded),
+            colorProfilePrompt));
 
     konamiPuzzle->addTransition(
         new StateTransition(
@@ -333,6 +344,7 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(fdnComplete);
     stateMap.push_back(colorProfilePrompt);
     stateMap.push_back(colorProfilePicker);
+    stateMap.push_back(boonAwarded);
     stateMap.push_back(konamiPuzzle);
     stateMap.push_back(connectionLost);
 }

@@ -31,6 +31,7 @@ void FdnComplete::onStateMounted(Device* PDN) {
     LOG_I(TAG, "FDN complete mounted");
     transitionToIdleState = false;
     transitionToColorPromptState = false;
+    transitionToBoonAwardedState = false;
 
     // Look up the minigame using the game type tracked by FdnDetected
     int lastGameType = player->getLastFdnGameType();
@@ -132,9 +133,9 @@ void FdnComplete::onStateMounted(Device* PDN) {
 void FdnComplete::onStateLoop(Device* PDN) {
     displayTimer.updateTime();
     if (displayTimer.expired()) {
-        // Route to color prompt if hard mode was won and profile is pending
+        // Route to BoonAwarded if hard mode was won and profile is pending
         if (!player->isRecreationalMode() && player->getPendingProfileGame() >= 0) {
-            transitionToColorPromptState = true;
+            transitionToBoonAwardedState = true;
         } else {
             transitionToIdleState = true;
         }
@@ -149,6 +150,10 @@ void FdnComplete::onStateDismounted(Device* PDN) {
 
 bool FdnComplete::transitionToColorPrompt() {
     return transitionToColorPromptState;
+}
+
+bool FdnComplete::transitionToBoonAwarded() {
+    return transitionToBoonAwardedState;
 }
 
 bool FdnComplete::transitionToIdle() {
