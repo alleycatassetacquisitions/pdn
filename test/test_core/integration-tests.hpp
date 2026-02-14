@@ -27,13 +27,13 @@ public:
         
         // Create two players (simulating two different devices)
         hunter = new Player();
-        char hunterId[] = "hunter-uuid-1234-5678-9abc-def012345678";
+        char hunterId[] = "a0b1c2d3-1234-5678-9abc-def012345678";
         hunter->setUserID(hunterId);
         hunter->setName("HunterPlayer");
         hunter->setIsHunter(true);
 
         bounty = new Player();
-        char bountyId[] = "bounty-uuid-1234-5678-9abc-def012345678";
+        char bountyId[] = "b0a1b2c3-1234-5678-9abc-def012345678";
         bounty->setUserID(bountyId);
         bounty->setName("BountyPlayer");
         bounty->setIsHunter(false);

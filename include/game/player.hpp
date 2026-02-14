@@ -174,13 +174,7 @@ public:
     bool hasKonamiBoon() const { return konamiBoon; }
     void setKonamiBoon(bool boon) { konamiBoon = boon; }
 
-    // Hard mode unlock (bit 7 of konamiProgress)
-    void unlockHardMode() {
-        konamiProgress |= (1 << 7);
-    }
-    bool hasHardModeUnlocked() const {
-        return (konamiProgress & (1 << 7)) != 0;
-    }
+    // Hard mode — see unified methods at end of class
 
     // Last FDN game type (set by FdnDetected, read by FdnComplete)
     int getLastFdnGameType() const { return lastFdnGameType; }
@@ -263,6 +257,7 @@ public:
     bool hasKonamiButton(FdnGameType game) const { return konamiProgress & (1 << static_cast<uint8_t>(game)); }
     void unlockKonamiButton(FdnGameType game) { konamiProgress |= (1 << static_cast<uint8_t>(game)); }
     bool isHardModeUnlocked() const { return konamiProgress & 0x80; }
+    bool hasHardModeUnlocked() const { return isHardModeUnlocked(); }
     void unlockHardMode() { konamiProgress |= 0x80; }
     bool hasColorProfile(FdnGameType game) const { return colorProfileEligibility.count(static_cast<uint8_t>(game)) > 0; }
 };

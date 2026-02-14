@@ -7,7 +7,7 @@
 #include "game/player.hpp"
 #include "game/progress-manager.hpp"
 #include "game/quickdraw-states/konami-button-awarded.hpp"
-#include "game/quickdraw-states/game-over-return-idle.hpp"
+#include "game/konami-states/konami-code-result.hpp"
 #include "device/device-types.hpp"
 #include "utils/simple-timer.hpp"
 
@@ -141,7 +141,7 @@ void konamiProgressAfterMultipleButtons(KonamiButtonAwardedTestSuite* suite) {
  * Test: GameOverReturnIdle cleanup and app switch.
  */
 void gameOverReturnIdleCleanup(KonamiButtonAwardedTestSuite* suite) {
-    GameOverReturnIdle* state = new GameOverReturnIdle();
+    GameOverReturnIdle* state = new GameOverReturnIdle(suite->player_.player);
 
     // Mount the state
     state->onStateMounted(suite->player_.pdn);
