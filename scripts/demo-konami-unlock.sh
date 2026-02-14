@@ -38,7 +38,8 @@ fi
 
 PIPE=$(mktemp -u)
 mkfifo "$PIPE"
-"$CLI_BIN" 1 < "$PIPE" &
+# Start with 1 hunter and all 7 NPC devices
+"$CLI_BIN" 1 --npc signal-echo --npc spike-vector --npc firewall-decrypt --npc cipher-path --npc exploit-sequencer --npc breach-defense --npc ghost-runner < "$PIPE" &
 CLI_PID=$!
 exec 3>"$PIPE"
 
@@ -53,7 +54,7 @@ trap cleanup EXIT INT TERM
 
 demo_sleep 1
 
-echo "Starting hunter device..."
+echo "Starting hunter device with 7 NPCs..."
 echo "display on" >&3
 demo_sleep 1
 
@@ -85,12 +86,8 @@ for GAME_INFO in "${GAMES[@]}"; do
     echo "==================================================================="
     echo ""
 
-    # Calculate NPC device ID
+    # NPC device ID (0 is hunter, 1-7 are NPCs in order)
     NPC_ID=$((BUTTON_ID + 1))
-
-    echo "Adding NPC for $GAME_NAME..."
-    echo "add npc $GAME_NAME" >&3
-    demo_sleep 1
 
     echo ""
     echo "Connecting to hunter..."

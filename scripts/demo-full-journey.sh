@@ -29,12 +29,12 @@ if [ ! -x "$CLI_BIN" ]; then
     }
 fi
 
-echo "Starting CLI simulator with 1 hunter device..."
+echo "Starting CLI simulator with 1 hunter and 1 Ghost Runner NPC..."
 echo ""
 
 PIPE=$(mktemp -u)
 mkfifo "$PIPE"
-"$CLI_BIN" 1 < "$PIPE" &
+"$CLI_BIN" 1 --npc ghost-runner < "$PIPE" &
 CLI_PID=$!
 exec 3>"$PIPE"
 
@@ -50,7 +50,7 @@ trap cleanup EXIT INT TERM
 demo_sleep 1
 
 echo "=== STEP 1: Device Setup ==="
-echo "Created hunter device (role: Hunter)"
+echo "Created hunter device (role: Hunter) and Ghost Runner NPC"
 echo ""
 echo "list" >&3
 demo_sleep 1
@@ -66,12 +66,8 @@ echo "stats 0" >&3
 demo_sleep 2
 
 echo ""
-echo "=== STEP 2: Adding NPC Device ==="
-echo "Creating Ghost Runner NPC for the hunter to play against"
-echo ""
-echo "add npc ghost-runner" >&3
-demo_sleep 1
-
+echo "=== STEP 2: Checking NPC Device ==="
+echo "Ghost Runner NPC is ready"
 echo ""
 echo "Listing all devices:"
 echo "list" >&3

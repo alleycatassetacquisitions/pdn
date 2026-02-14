@@ -115,31 +115,25 @@ echo "cable -d 0 1" >&3
 demo_sleep 2
 
 echo ""
-echo "[42s] Adding a third device (Hunter) for PvP demo"
+echo "[42s] ESP-NOW peer discovery capability (hunter to hunter)"
+echo "    Note: PvP requires two hunter devices at startup"
 echo "---"
-echo "add hunter" >&3
-demo_sleep 1
-
-echo ""
-echo "[45s] Enabling ESP-NOW peer discovery between hunters"
-echo "---"
-echo "peer 0 2 1" >&3  # Send discovery packet
 demo_sleep 2
 
 echo ""
-echo "[50s] Viewing all device roles"
+echo "[45s] Viewing all device roles"
 echo "---"
 echo "role all" >&3
 demo_sleep 2
 
 echo ""
-echo "[55s] Final stats summary"
+echo "[50s] Final stats summary"
 echo "---"
 echo "stats 0" >&3
 demo_sleep 3
 
 echo ""
-echo "[60s] Demo complete!"
+echo "[55s] Demo complete!"
 echo ""
 echo "=== Key Features Demonstrated ==="
 echo "✓ Multi-device simulation"
