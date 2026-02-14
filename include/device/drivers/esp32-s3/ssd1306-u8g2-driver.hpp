@@ -120,6 +120,31 @@ public:
         return this;
     }
 
+    Display* drawBox(int x, int y, int w, int h) override {
+        screen.drawBox(x, y, w, h);
+        return this;
+    }
+
+    Display* drawFrame(int x, int y, int w, int h) override {
+        screen.drawFrame(x, y, w, h);
+        return this;
+    }
+
+    Display* drawGlyph(int x, int y, uint16_t glyph) override {
+        screen.drawGlyph(x, y, glyph);
+        return this;
+    }
+
+    Display* setDrawColor(int color) override {
+        screen.setDrawColor(color);
+        return this;
+    }
+
+    Display* setFont(const uint8_t *font) override {
+        screen.setFont(font);
+        return this;
+    }
+
 private:
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI screen;
 };

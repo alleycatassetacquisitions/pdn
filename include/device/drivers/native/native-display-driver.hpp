@@ -194,7 +194,43 @@ public:
         decodeXBMToBuffer(image.rawImage, image.width, image.height, x, y);
         return this;
     }
-    
+
+    Display* drawBox(int x, int y, int w, int h) override {
+        for (int dy = 0; dy < h; dy++) {
+            for (int dx = 0; dx < w; dx++) {
+                setPixel(x + dx, y + dy, currentDrawColor_ == 1);
+            }
+        }
+        return this;
+    }
+
+    Display* drawFrame(int x, int y, int w, int h) override {
+        for (int dx = 0; dx < w; dx++) {
+            setPixel(x + dx, y, currentDrawColor_ == 1);
+            setPixel(x + dx, y + h - 1, currentDrawColor_ == 1);
+        }
+        for (int dy = 0; dy < h; dy++) {
+            setPixel(x, y + dy, currentDrawColor_ == 1);
+            setPixel(x + w - 1, y + dy, currentDrawColor_ == 1);
+        }
+        return this;
+    }
+
+    Display* drawGlyph(int x, int y, uint16_t glyph) override {
+        std::string glyphText = "[G:" + std::to_string(glyph) + "]";
+        drawTextToBuffer(glyphText.c_str(), x, y);
+        return this;
+    }
+
+    Display* setDrawColor(int color) override {
+        currentDrawColor_ = color;
+        return this;
+    }
+
+    Display* setFont(const uint8_t *font) override {
+        return this;
+    }
+
     // CLI access methods
     const std::string& getLastText() const { return lastText_; }
     FontMode getCurrentFontMode() const { return currentFontMode_; }
@@ -315,7 +351,8 @@ private:
     std::string lastText_;
     std::deque<std::string> textHistory_;
     static const size_t MAX_TEXT_HISTORY = 4;
-    
+    int currentDrawColor_ = 1;
+
     void addToTextHistory(const std::string& text) {
         // Don't add duplicates of the most recent entry
         if (!textHistory_.empty() && textHistory_.front() == text) {

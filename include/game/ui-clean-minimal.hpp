@@ -251,3 +251,47 @@ inline void drawGameHUD(Display* display,
 }
 
 } // namespace UICleanMinimal
+
+/*
+ * Bold Retro UI Helper Functions
+ *
+ * Cherry-picked from Design B (PR #78) for high-contrast, geometric rendering.
+ * These leverage the extended Display interface (drawBox, drawFrame, setDrawColor)
+ * for better readability on 128x64 OLED displays.
+ */
+namespace BoldRetroUI {
+
+/*
+ * Draw a full-width inverted header bar
+ * Creates high-contrast section headers
+ */
+inline void drawHeaderBar(Display* display, const char* text) {
+    display->drawBox(0, 0, 128, 10)
+           ->setDrawColor(0)
+           ->drawText(text, 2, 9)
+           ->setDrawColor(1);
+}
+
+/*
+ * Draw a double-bordered frame around content
+ * Provides strong visual emphasis for scores and status
+ */
+inline void drawBorderedFrame(Display* display, int x, int y, int w, int h) {
+    display->drawFrame(x, y, w, h)
+           ->drawFrame(x+1, y+1, w-2, h-2);
+}
+
+/*
+ * Draw horizontally centered text
+ * Assumes 6px average character width
+ */
+inline void drawCenteredText(Display* display, const char* text, int y) {
+    int textWidth = 0;
+    const char* p = text;
+    while (*p++) textWidth++;
+    textWidth *= 6;
+    int x = (128 - textWidth) / 2;
+    display->drawText(text, x, y);
+}
+
+} // namespace BoldRetroUI

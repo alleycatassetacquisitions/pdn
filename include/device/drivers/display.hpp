@@ -1,6 +1,7 @@
 #pragma once
 
 #include "image.hpp"
+#include <cstdint>
 
 struct Cursor {
     int x = 0;
@@ -36,6 +37,16 @@ public:
     virtual Display* drawImage(Image image) = 0;
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
+
+    virtual Display* drawBox(int x, int y, int w, int h) = 0;
+
+    virtual Display* drawFrame(int x, int y, int w, int h) = 0;
+
+    virtual Display* drawGlyph(int x, int y, uint16_t glyph) = 0;
+
+    virtual Display* setDrawColor(int color) = 0;
+
+    virtual Display* setFont(const uint8_t *font) = 0;
 
 private:
     Cursor cursor_;
