@@ -44,7 +44,8 @@ enum QuickdrawStateId {
     COLOR_PROFILE_PROMPT = 23,
     COLOR_PROFILE_PICKER = 24,
     FDN_REENCOUNTER = 25,
-    KONAMI_PUZZLE = 26
+    KONAMI_PUZZLE = 26,
+    CONNECTION_LOST = 27
 };
 
 class PlayerRegistration : public State {
@@ -285,6 +286,7 @@ public:
     bool transitionToFdnComplete();
     bool transitionToReencounter();
     bool transitionToKonamiPuzzle();
+    bool transitionToConnectionLost();
 
 private:
     Player* player;
@@ -294,6 +296,7 @@ private:
     bool transitionToFdnCompleteState = false;
     bool transitionToReencounterState = false;
     bool transitionToKonamiPuzzleState = false;
+    bool transitionToConnectionLostState = false;
     bool fackReceived = false;
     bool macSent = false;
     bool handshakeComplete = false;
@@ -793,4 +796,32 @@ private:
     std::vector<KonamiButton> targetSequence;
     std::vector<KonamiButton> enteredSequence;
     std::vector<KonamiButton> unlockedButtons;
+};
+
+/*
+ * ConnectionLost — Displayed when serial connection is lost during FDN interaction.
+ * Shows "SIGNAL LOST" message with fast red LED pulse (3 blinks).
+ * After 3 seconds, transitions back to Idle state.
+ * Future enhancement: add retry prompt with cached FDN context.
+ */
+class ConnectionLost : public State {
+public:
+    explicit ConnectionLost(Player* player);
+    ~ConnectionLost();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    SimpleTimer displayTimer;
+    SimpleTimer ledTimer;
+    static constexpr int DISPLAY_DURATION_MS = 3000;
+    static constexpr int LED_BLINK_INTERVAL_MS = 150;
+    static constexpr int BLINK_COUNT = 3;
+    bool transitionToIdleState = false;
+    int blinkCount = 0;
 };

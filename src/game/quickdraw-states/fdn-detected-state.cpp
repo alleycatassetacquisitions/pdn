@@ -32,6 +32,7 @@ void FdnDetected::onStateMounted(Device* PDN) {
     transitionToFdnCompleteState = false;
     transitionToReencounterState = false;
     transitionToKonamiPuzzleState = false;
+    transitionToConnectionLostState = false;
     fackReceived = false;
     macSent = false;
     handshakeComplete = false;
@@ -187,8 +188,8 @@ void FdnDetected::onStateLoop(Device* PDN) {
     }
 
     if (timeoutTimer.expired()) {
-        LOG_W(TAG, "FDN handshake timed out");
-        transitionToIdleState = true;
+        LOG_W(TAG, "FDN handshake timed out - connection lost");
+        transitionToConnectionLostState = true;
     }
 }
 
@@ -237,4 +238,8 @@ bool FdnDetected::transitionToReencounter() {
 
 bool FdnDetected::transitionToKonamiPuzzle() {
     return transitionToKonamiPuzzleState;
+}
+
+bool FdnDetected::transitionToConnectionLost() {
+    return transitionToConnectionLostState;
 }

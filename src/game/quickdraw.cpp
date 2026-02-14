@@ -65,6 +65,7 @@ void Quickdraw::populateStateMap() {
     ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
     ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
     KonamiPuzzle* konamiPuzzle = new KonamiPuzzle(player);
+    ConnectionLost* connectionLost = new ConnectionLost(player);
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -153,7 +154,17 @@ void Quickdraw::populateStateMap() {
 
     fdnDetected->addTransition(
         new StateTransition(
+            std::bind(&FdnDetected::transitionToConnectionLost, fdnDetected),
+            connectionLost));
+
+    fdnDetected->addTransition(
+        new StateTransition(
             std::bind(&FdnDetected::transitionToIdle, fdnDetected),
+            idle));
+
+    connectionLost->addTransition(
+        new StateTransition(
+            std::bind(&ConnectionLost::transitionToIdle, connectionLost),
             idle));
 
     fdnReencounter->addTransition(
@@ -323,6 +334,7 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(colorProfilePrompt);
     stateMap.push_back(colorProfilePicker);
     stateMap.push_back(konamiPuzzle);
+    stateMap.push_back(connectionLost);
 }
 
 Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
