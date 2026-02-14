@@ -13,6 +13,7 @@
 #include "device/drivers/native/native-peer-broker.hpp"
 #include "game/quickdraw.hpp"
 #include "game/progress-manager.hpp"
+#include "game/difficulty-scaler.hpp"
 
 // External cycling state (defined in cli-main.cpp)
 extern bool g_panelCycling;
@@ -136,6 +137,9 @@ public:
         if (command == "colors" || command == "profiles") {
             return cmdColors(tokens, devices, selectedDevice);
         }
+        if (command == "difficulty" || command == "diff") {
+            return cmdDifficulty(tokens, devices, selectedDevice);
+        }
         if (command == "demo") {
             return cmdDemo(tokens, devices, selectedDevice);
         }
@@ -158,13 +162,13 @@ private:
     
     static CommandResult cmdHelp(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games, stats, progress, colors, demo, duel, rematch";
+        result.message = "Keys: LEFT/RIGHT=select, UP/DOWN=buttons | Cmds: help, quit, list, select, add, b/l, b2/l2, cable, peer, display, mirror, captions, reboot, role, games, stats, progress, colors, difficulty, demo, duel, rematch";
         return result;
     }
     
     static CommandResult cmdHelp2(const std::vector<std::string>& /*tokens*/) {
         CommandResult result;
-        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] [summary|detailed|streaks|reset] - FDN game statistics | progress [dev] - Konami grid | colors [dev] - color profiles | demo [game] [easy|hard] - play demo mode | duel [history|record|series] - duel tracking | rematch - rematch last opponent";
+        result.message = "add [hunter|bounty|npc <game>|challenge <game>] - add device | cable <a> <b> - connect | peer <src> <dst> <type> - send packet | reboot [dev] - restart device | games - list games | stats [dev] [summary|detailed|streaks|reset] - FDN game statistics | progress [dev] - Konami grid | colors [dev] - color profiles | difficulty [dev|reset] - show/reset auto-scaling | demo [game] [easy|hard] - play demo mode | duel [history|record|series] - duel tracking | rematch - rematch last opponent";
         return result;
     }
     
@@ -1284,6 +1288,126 @@ private:
             }
             output += "\n";
         }
+
+        result.message = output;
+        return result;
+    }
+
+    static CommandResult cmdDifficulty(const std::vector<std::string>& tokens,
+                                        const std::vector<DeviceInstance>& devices,
+                                        int selectedDevice) {
+        CommandResult result;
+
+        // Handle "difficulty reset" sub-command
+        if (tokens.size() >= 2 && tokens[1] == "reset") {
+            // Determine target device (3rd token or selected)
+            int targetDevice = selectedDevice;
+            if (tokens.size() >= 3) {
+                targetDevice = findDevice(tokens[2], devices, -1);
+            }
+
+            // Validate target device
+            if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device";
+                return result;
+            }
+
+            auto& dev = devices[targetDevice];
+
+            // Check if device has Quickdraw game
+            if (dev.deviceType != DeviceType::PLAYER || !dev.game) {
+                result.message = "Device does not have difficulty scaling";
+                return result;
+            }
+
+            // Cast to Quickdraw and get the scaler
+            auto* quickdraw = dynamic_cast<Quickdraw*>(dev.game);
+            if (!quickdraw) {
+                result.message = "Device does not have Quickdraw game";
+                return result;
+            }
+
+            DifficultyScaler* scaler = quickdraw->getDifficultyScaler();
+            if (!scaler) {
+                result.message = "Difficulty scaler not available";
+                return result;
+            }
+
+            scaler->resetAll();
+            result.message = "Difficulty scaling reset for device " + dev.deviceId;
+            return result;
+        }
+
+        // Default: show difficulty status for selected or specified device
+        int targetDevice = selectedDevice;
+        if (tokens.size() >= 2) {
+            targetDevice = findDevice(tokens[1], devices, -1);
+        }
+
+        // Validate target device
+        if (targetDevice < 0 || targetDevice >= static_cast<int>(devices.size())) {
+            result.message = "Invalid device";
+            return result;
+        }
+
+        auto& dev = devices[targetDevice];
+
+        // Check if device has Quickdraw game
+        if (dev.deviceType != DeviceType::PLAYER || !dev.game) {
+            result.message = "Device does not have difficulty scaling";
+            return result;
+        }
+
+        // Cast to Quickdraw and get the scaler
+        auto* quickdraw = dynamic_cast<Quickdraw*>(dev.game);
+        if (!quickdraw) {
+            result.message = "Device does not have Quickdraw game";
+            return result;
+        }
+
+        DifficultyScaler* scaler = quickdraw->getDifficultyScaler();
+        if (!scaler) {
+            result.message = "Difficulty scaler not available";
+            return result;
+        }
+
+        // Build difficulty status display
+        std::string output = dev.deviceId + " Difficulty Auto-Scaling:\n\n";
+
+        const char* gameNames[] = {
+            "QUICKDRAW",
+            "GHOST RUNNER",
+            "SPIKE VECTOR",
+            "FIREWALL DECRYPT",
+            "CIPHER PATH",
+            "EXPLOIT SEQUENCER",
+            "BREACH DEFENSE",
+            "SIGNAL ECHO"
+        };
+
+        // Display scaling for each minigame (skip QUICKDRAW at index 0)
+        for (int i = 1; i < 8; i++) {
+            GameType gameType = static_cast<GameType>(i);
+            float scale = scaler->getScaledDifficulty(gameType);
+            std::string label = scaler->getDifficultyLabel(gameType);
+            PerformanceMetrics metrics = scaler->getMetrics(gameType);
+
+            // Create visual bar (10 blocks)
+            char bar[12];
+            int filled = static_cast<int>(scale * 10);
+            for (int j = 0; j < 10; j++) {
+                bar[j] = (j < filled) ? '\u2588' : '\u2591';  // ████░░░░░░
+            }
+            bar[10] = '\0';
+
+            // Format: "Ghost Runner:     ████░░░░░░  0.42 (Easy+) | 5 played"
+            char line[128];
+            snprintf(line, sizeof(line), "%-17s %s  %.2f (%s) | %d played\n",
+                     gameNames[i], bar, scale, label.c_str(), metrics.totalPlayed);
+            output += line;
+        }
+
+        output += "\nUse 'difficulty reset' to reset all scaling to 0.0";
 
         result.message = output;
         return result;

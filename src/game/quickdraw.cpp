@@ -59,9 +59,9 @@ void Quickdraw::populateStateMap() {
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager, fdnResultManager);
 
-    FdnDetected* fdnDetected = new FdnDetected(player);
-    FdnReencounter* fdnReencounter = new FdnReencounter(player);
-    FdnComplete* fdnComplete = new FdnComplete(player, progressManager, fdnResultManager);
+    FdnDetected* fdnDetected = new FdnDetected(player, &difficultyScaler);
+    FdnReencounter* fdnReencounter = new FdnReencounter(player, &difficultyScaler);
+    FdnComplete* fdnComplete = new FdnComplete(player, progressManager, fdnResultManager, &difficultyScaler);
     ColorProfilePrompt* colorProfilePrompt = new ColorProfilePrompt(player, progressManager);
     ColorProfilePicker* colorProfilePicker = new ColorProfilePicker(player, progressManager);
     KonamiPuzzle* konamiPuzzle = new KonamiPuzzle(player);

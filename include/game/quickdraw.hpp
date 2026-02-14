@@ -8,6 +8,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/progress-manager.hpp"
 #include "game/fdn-result-manager.hpp"
+#include "game/difficulty-scaler.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -24,6 +25,7 @@ public:
     void populateStateMap() override;
     static Image getImageForAllegiance(Allegiance allegiance, ImageType whichImage);
     ProgressManager* getProgressManager() const { return progressManager; }
+    DifficultyScaler* getDifficultyScaler() { return &difficultyScaler; }
 
 private:
     std::vector<Match> matches;
@@ -37,4 +39,5 @@ private:
     RemoteDebugManager* remoteDebugManager;
     ProgressManager* progressManager = nullptr;
     FdnResultManager* fdnResultManager = nullptr;
+    DifficultyScaler difficultyScaler;
 };

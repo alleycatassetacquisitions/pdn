@@ -271,9 +271,11 @@ class FdnResultManager;
  * and launches Signal Echo via setActiveApp(). Quickdraw pauses at
  * this state; on resume, transitions to FdnComplete.
  */
+class DifficultyScaler;
+
 class FdnDetected : public State {
 public:
-    explicit FdnDetected(Player* player);
+    FdnDetected(Player* player, DifficultyScaler* scaler);
     ~FdnDetected();
 
     void onStateMounted(Device* PDN) override;
@@ -290,6 +292,7 @@ public:
 
 private:
     Player* player;
+    DifficultyScaler* scaler;
     SimpleTimer timeoutTimer;
     static constexpr int TIMEOUT_MS = 10000;
     bool transitionToIdleState = false;
@@ -320,7 +323,7 @@ struct FdnDetectedSnapshot : public Snapshot {
  */
 class FdnReencounter : public State {
 public:
-    explicit FdnReencounter(Player* player);
+    FdnReencounter(Player* player, DifficultyScaler* scaler);
     ~FdnReencounter();
 
     void onStateMounted(Device* PDN) override;
@@ -334,6 +337,7 @@ public:
 
 private:
     Player* player;
+    DifficultyScaler* scaler;
     SimpleTimer timeoutTimer;
     static constexpr int TIMEOUT_MS = 15000;
     bool transitionToIdleState = false;
@@ -365,7 +369,7 @@ struct FdnReencounterSnapshot : public Snapshot {
  */
 class FdnComplete : public State {
 public:
-    FdnComplete(Player* player, ProgressManager* progressManager, FdnResultManager* fdnResultManager);
+    FdnComplete(Player* player, ProgressManager* progressManager, FdnResultManager* fdnResultManager, DifficultyScaler* scaler);
     ~FdnComplete();
 
     void onStateMounted(Device* PDN) override;
@@ -378,6 +382,7 @@ public:
 private:
     Player* player;
     ProgressManager* progressManager;
+    DifficultyScaler* scaler;
     FdnResultManager* fdnResultManager;
     SimpleTimer displayTimer;
     static constexpr int DISPLAY_DURATION_MS = 3000;

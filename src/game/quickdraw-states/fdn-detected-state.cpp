@@ -9,6 +9,8 @@
 #include "game/cipher-path/cipher-path.hpp"
 #include "game/exploit-sequencer/exploit-sequencer.hpp"
 #include "game/breach-defense/breach-defense.hpp"
+#include "game/difficulty-scaler.hpp"
+#include "game/difficulty-helpers.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/device-constants.hpp"
@@ -17,14 +19,16 @@
 
 static const char* TAG = "FdnDetected";
 
-FdnDetected::FdnDetected(Player* player) :
+FdnDetected::FdnDetected(Player* player, DifficultyScaler* scaler) :
     State(FDN_DETECTED),
-    player(player)
+    player(player),
+    scaler(scaler)
 {
 }
 
 FdnDetected::~FdnDetected() {
     player = nullptr;
+    scaler = nullptr;
 }
 
 void FdnDetected::onStateMounted(Device* PDN) {
@@ -124,59 +128,14 @@ void FdnDetected::onStateLoop(Device* PDN) {
             return;
         }
 
-        // First encounter is always EASY
-        if (pendingGameType == GameType::SIGNAL_ECHO) {
-            auto* echo = static_cast<SignalEcho*>(game);
-            if (echo) {
-                SignalEchoConfig config = SIGNAL_ECHO_EASY;
-                config.managedMode = true;
-                echo->getConfig() = config;
-            }
-        } else if (pendingGameType == GameType::FIREWALL_DECRYPT) {
-            auto* fw = static_cast<FirewallDecrypt*>(game);
-            if (fw) {
-                FirewallDecryptConfig config = FIREWALL_DECRYPT_EASY;
-                config.managedMode = true;
-                fw->getConfig() = config;
-            }
-        } else if (pendingGameType == GameType::GHOST_RUNNER) {
-            auto* gr = static_cast<GhostRunner*>(game);
-            if (gr) {
-                GhostRunnerConfig config = GHOST_RUNNER_EASY;
-                config.managedMode = true;
-                gr->getConfig() = config;
-            }
-        } else if (pendingGameType == GameType::SPIKE_VECTOR) {
-            auto* sv = static_cast<SpikeVector*>(game);
-            if (sv) {
-                SpikeVectorConfig config = SPIKE_VECTOR_EASY;
-                config.managedMode = true;
-                sv->getConfig() = config;
-            }
-        } else if (pendingGameType == GameType::CIPHER_PATH) {
-            auto* cp = static_cast<CipherPath*>(game);
-            if (cp) {
-                CipherPathConfig config = CIPHER_PATH_EASY;
-                config.managedMode = true;
-                cp->getConfig() = config;
-            }
-        } else if (pendingGameType == GameType::EXPLOIT_SEQUENCER) {
-            auto* es = static_cast<ExploitSequencer*>(game);
-            if (es) {
-                ExploitSequencerConfig config = EXPLOIT_SEQUENCER_EASY;
-                config.managedMode = true;
-                es->getConfig() = config;
-            }
-        } else if (pendingGameType == GameType::BREACH_DEFENSE) {
-            auto* bd = static_cast<BreachDefense*>(game);
-            if (bd) {
-                BreachDefenseConfig config = BREACH_DEFENSE_EASY;
-                config.managedMode = true;
-                bd->getConfig() = config;
-            }
+        // First encounter is always EASY (with auto-scaling within easy range)
+        if (scaler) {
+            applyScaledDifficulty(pendingGameType, game, *scaler, false, true);
         }
 
-        LOG_I(TAG, "First encounter: launching %s (EASY)", getGameDisplayName(pendingGameType));
+        float currentScale = scaler ? scaler->getScaledDifficulty(pendingGameType) : 0.0f;
+        LOG_I(TAG, "First encounter: launching %s (EASY, scale=%.2f)",
+               getGameDisplayName(pendingGameType), currentScale);
 
         // Increment easy attempt counter
         player->incrementEasyAttempts(pendingGameType);
