@@ -127,7 +127,14 @@ bool Duel::transitionToDuelReceivedResult() {
 
 void Duel::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
-    
+
+    // Remove button callbacks
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
+
+    // Clear wireless callback
+    quickdrawWirelessManager->clearCallbacks();
+
     duelTimer.invalidate();
     LOG_I(DUEL_TAG, "Duel timer invalidated");
 
