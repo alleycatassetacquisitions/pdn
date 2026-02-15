@@ -20,33 +20,15 @@ void GhostRunnerEvaluate::onStateMounted(Device* PDN) {
 
     auto& session = game->getSession();
     auto& config = game->getConfig();
+    auto& outcome = game->getOutcome();
 
-    // Determine if the press was a hit or miss
-    bool hit = false;
-    if (session.playerPressed) {
-        // Player pressed — check if ghost was in target zone
-        if (session.ghostPosition >= config.targetZoneStart &&
-            session.ghostPosition <= config.targetZoneEnd) {
-            hit = true;
-            session.score += 100;
-            LOG_I(TAG, "HIT at position %d (zone %d-%d), score=%d",
-                  session.ghostPosition, config.targetZoneStart,
-                  config.targetZoneEnd, session.score);
-        } else {
-            // Press outside target zone = strike
-            session.strikes++;
-            LOG_I(TAG, "MISS at position %d (zone %d-%d), strikes=%d",
-                  session.ghostPosition, config.targetZoneStart,
-                  config.targetZoneEnd, session.strikes);
-        }
-    } else {
-        // Ghost reached end without press = strike (timeout)
-        session.strikes++;
-        LOG_I(TAG, "TIMEOUT — ghost reached end, strikes=%d", session.strikes);
-    }
+    LOG_I(TAG, "Round %d complete: P=%d G=%d M=%d Lives=%d Score=%d",
+          session.currentRound, session.perfectCount, session.goodCount,
+          session.missCount, session.livesRemaining, session.score);
 
-    // Check if player has exceeded allowed strikes
-    if (session.strikes > config.missesAllowed) {
+    // Check for immediate loss (no lives remaining)
+    if (session.livesRemaining <= 0) {
+        LOG_I(TAG, "LOSE: no lives remaining");
         transitionToLoseState = true;
         return;
     }
@@ -56,13 +38,48 @@ void GhostRunnerEvaluate::onStateMounted(Device* PDN) {
 
     // Check if all rounds completed
     if (session.currentRound >= config.rounds) {
-        transitionToWinState = true;
+        // Evaluate win conditions based on difficulty
+        bool won = false;
+
+        int totalNotes = session.perfectCount + session.goodCount + session.missCount;
+        float perfectPercent = (totalNotes > 0) ?
+            (static_cast<float>(session.perfectCount) / totalNotes) : 0.0f;
+        float missPercent = (totalNotes > 0) ?
+            (static_cast<float>(session.missCount) / totalNotes) : 0.0f;
+
+        if (config.dualLaneChance == 0.0f) {
+            // EASY mode: every hit must be GOOD or better, PERFECTs cancel MISSes
+            int effectiveGood = session.goodCount + session.perfectCount;
+            int netMisses = session.missCount - session.perfectCount;
+            if (netMisses < 0) netMisses = 0;
+
+            won = (netMisses == 0 && effectiveGood >= session.goodCount);
+            LOG_I(TAG, "EASY eval: effectiveGood=%d netMisses=%d won=%d",
+                  effectiveGood, netMisses, won);
+        } else {
+            // HARD mode: 60%+ PERFECT, <=10% MISS
+            won = (perfectPercent >= 0.60f && missPercent <= 0.10f);
+            LOG_I(TAG, "HARD eval: P=%.2f%% M=%.2f%% won=%d",
+                  perfectPercent * 100, missPercent * 100, won);
+        }
+
+        if (won) {
+            transitionToWinState = true;
+        } else {
+            transitionToLoseState = true;
+        }
         return;
     }
 
     // Reset for next round
-    session.ghostPosition = 0;
-    session.playerPressed = false;
+    session.currentPattern.clear();
+    session.currentNoteIndex = 0;
+    session.upPressed = false;
+    session.downPressed = false;
+    session.upHoldActive = false;
+    session.downHoldActive = false;
+    session.upHoldNoteIndex = -1;
+    session.downHoldNoteIndex = -1;
 
     transitionToShowState = true;
 }
