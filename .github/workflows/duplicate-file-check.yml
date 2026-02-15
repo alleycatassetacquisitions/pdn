@@ -6,7 +6,7 @@ on:
 
 jobs:
   check-duplicate-files:
-    runs-on: [self-hosted, pdn-ci]
+    runs-on: [self-hosted, linux, x64]
     permissions:
       pull-requests: write
       contents: read
@@ -20,17 +20,25 @@ jobs:
       - name: Get added files in this PR
         id: get-added-files
         run: |
+          # Get the base and head refs
           BASE_REF="${{ github.event.pull_request.base.sha }}"
           HEAD_REF="${{ github.event.pull_request.head.sha }}"
+
           echo "Comparing $BASE_REF...$HEAD_REF"
+
+          # Get list of added files (not modified)
           ADDED_FILES=$(git diff --name-only --diff-filter=A "$BASE_REF...$HEAD_REF")
+
           if [ -z "$ADDED_FILES" ]; then
             echo "No new files added in this PR"
             echo "has_added_files=false" >> $GITHUB_OUTPUT
             exit 0
           fi
+
           echo "Files added in this PR:"
           echo "$ADDED_FILES"
+
+          # Save to output (escape newlines for GitHub Actions)
           echo "has_added_files=true" >> $GITHUB_OUTPUT
           echo "added_files<<EOF" >> $GITHUB_OUTPUT
           echo "$ADDED_FILES" >> $GITHUB_OUTPUT
@@ -43,19 +51,30 @@ jobs:
           CURRENT_PR: ${{ github.event.pull_request.number }}
         run: |
           ADDED_FILES="${{ steps.get-added-files.outputs.added_files }}"
+
+          # Get list of all open PRs except this one
           OTHER_PRS=$(gh pr list --repo ${{ github.repository }} --state open --json number,headRefName --jq ".[] | select(.number != $CURRENT_PR) | .number")
+
           if [ -z "$OTHER_PRS" ]; then
             echo "No other open PRs to check"
             exit 0
           fi
+
           CONFLICTS_FOUND=false
           CONFLICT_REPORT=""
+
+          # Check each other PR for conflicting added files
           for PR_NUM in $OTHER_PRS; do
             echo "Checking PR #$PR_NUM..."
+
+            # Get added files in the other PR
             OTHER_ADDED=$(gh pr diff $PR_NUM --name-only | xargs -I {} sh -c 'git diff --name-only --diff-filter=A origin/${{ github.event.pull_request.base.ref }}...$(gh pr view '"$PR_NUM"' --json headRefName -q .headRefName) | grep -Fx "{}" || true')
+
             if [ -z "$OTHER_ADDED" ]; then
               continue
             fi
+
+            # Find intersection of added files
             DUPLICATES=""
             while IFS= read -r file; do
               if echo "$OTHER_ADDED" | grep -Fxq "$file"; then
@@ -63,6 +82,7 @@ jobs:
                 CONFLICTS_FOUND=true
               fi
             done <<< "$ADDED_FILES"
+
             if [ -n "$DUPLICATES" ]; then
               CONFLICT_REPORT="$CONFLICT_REPORT"$'\n'"### Conflict with PR #$PR_NUM"$'\n'
               CONFLICT_REPORT="$CONFLICT_REPORT"$'\n'"The following files are added in both PRs:"$'\n'
@@ -73,6 +93,8 @@ jobs:
               done <<< "$DUPLICATES"
             fi
           done
+
+          # Save result
           if [ "$CONFLICTS_FOUND" = true ]; then
             echo "conflicts_found=true" >> $GITHUB_ENV
             echo "CONFLICT_REPORT<<EOF" >> $GITHUB_ENV
