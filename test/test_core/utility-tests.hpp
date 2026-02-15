@@ -15,19 +15,23 @@ public:
     FakePlatformClock() : currentTime(0) {}
 
     unsigned long milliseconds() override {
-        return currentTime;
+        // Return as unsigned long to match interface
+        return static_cast<unsigned long>(currentTime);
     }
 
     void setTime(unsigned long time) {
-        currentTime = time;
+        // Store as uint32_t to simulate ESP32's 32-bit millis() overflow behavior
+        currentTime = static_cast<uint32_t>(time);
     }
 
     void advance(unsigned long delta) {
-        currentTime += delta;
+        // Addition will wrap around at 32-bit boundary
+        currentTime += static_cast<uint32_t>(delta);
     }
 
 private:
-    unsigned long currentTime;
+    // Use uint32_t to simulate ESP32's 32-bit millis() which wraps at UINT32_MAX
+    uint32_t currentTime;
 };
 
 // ============================================
@@ -272,4 +276,94 @@ inline void timerWithNullClockHandlesGracefully() {
     timer.setTimer(1000);
     EXPECT_EQ(timer.now, 0);
     EXPECT_EQ(timer.getElapsedTime(), 0);
+}
+
+inline void timerHandlesOverflowBoundaryCorrectly(FakePlatformClock* fakeClock) {
+    /*
+     * Test that SimpleTimer correctly handles uint32_t overflow.
+     * On ESP32, millis() wraps to 0 after ~49.7 days (UINT32_MAX ms).
+     * This test simulates a timer starting near the overflow boundary
+     * and advancing past it.
+     */
+    SimpleTimer timer;
+
+    // Start timer near UINT32_MAX
+    unsigned long nearMax = UINT32_MAX - 100;  // 100ms before overflow
+    fakeClock->setTime(nearMax);
+    timer.setTimer(500);  // Timer should expire 500ms later
+
+    EXPECT_TRUE(timer.isRunning());
+    EXPECT_FALSE(timer.expired());
+
+    // Advance to just before overflow
+    fakeClock->setTime(UINT32_MAX - 50);
+    EXPECT_EQ(timer.getElapsedTime(), 50UL);
+    EXPECT_FALSE(timer.expired());
+
+    // Advance past overflow boundary (wraps to 0)
+    // We're now at: start=UINT32_MAX-100, current=200 (wrapped)
+    // Time progression: UINT32_MAX-100 → ... → UINT32_MAX → 0 → ... → 200
+    // That's 100 steps to reach UINT32_MAX, +1 step to wrap to 0, +200 steps to reach 200 = 301 total
+    fakeClock->setTime(200);
+    EXPECT_EQ(timer.getElapsedTime(), 301UL);
+    EXPECT_FALSE(timer.expired());  // Still not expired (need 500ms total)
+
+    // Advance to expiration point (timer expires when elapsed > duration, so need 501ms)
+    fakeClock->setTime(400);
+    EXPECT_EQ(timer.getElapsedTime(), 501UL);
+    EXPECT_TRUE(timer.expired());
+
+    // Verify continued correct behavior past expiration
+    fakeClock->setTime(600);
+    EXPECT_EQ(timer.getElapsedTime(), 701UL);
+    EXPECT_TRUE(timer.expired());
+}
+
+inline void timerHandlesOverflowAtExactBoundary(FakePlatformClock* fakeClock) {
+    /*
+     * Test overflow exactly at UINT32_MAX → 0 boundary
+     */
+    SimpleTimer timer;
+
+    // Start timer exactly at UINT32_MAX
+    fakeClock->setTime(UINT32_MAX);
+    timer.setTimer(100);
+
+    EXPECT_FALSE(timer.expired());
+
+    // Wrap to 0
+    fakeClock->setTime(0);
+    EXPECT_EQ(timer.getElapsedTime(), 1UL);
+    EXPECT_FALSE(timer.expired());
+
+    // Advance to expiration
+    fakeClock->setTime(100);
+    EXPECT_EQ(timer.getElapsedTime(), 101UL);
+    EXPECT_TRUE(timer.expired());
+}
+
+inline void timerHandlesLargeElapsedTimeAcrossOverflow(FakePlatformClock* fakeClock) {
+    /*
+     * Test a timer with a long duration that spans the overflow
+     */
+    SimpleTimer timer;
+
+    // Start 1 second before overflow
+    fakeClock->setTime(UINT32_MAX - 1000);
+    timer.setTimer(5000);  // 5 second timer
+
+    EXPECT_FALSE(timer.expired());
+
+    // Jump to 3 seconds after overflow
+    // Start was UINT32_MAX-1000, current is 3000
+    // Elapsed: 1000 (to reach UINT32_MAX) + 1 (wrap to 0) + 3000 = 4001
+    fakeClock->setTime(3000);
+    EXPECT_EQ(timer.getElapsedTime(), 4001UL);
+    EXPECT_FALSE(timer.expired());
+
+    // Jump to 5 seconds after overflow
+    // Elapsed: 1000 + 1 + 5000 = 6001
+    fakeClock->setTime(5000);
+    EXPECT_EQ(timer.getElapsedTime(), 6001UL);
+    EXPECT_TRUE(timer.expired());
 }

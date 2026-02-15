@@ -687,6 +687,18 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
     timerWithNullClockHandlesGracefully();
 }
 
+TEST_F(TimerTestSuite, handlesOverflowBoundaryCorrectly) {
+    timerHandlesOverflowBoundaryCorrectly(fakeClock);
+}
+
+TEST_F(TimerTestSuite, handlesOverflowAtExactBoundary) {
+    timerHandlesOverflowAtExactBoundary(fakeClock);
+}
+
+TEST_F(TimerTestSuite, handlesLargeElapsedTimeAcrossOverflow) {
+    timerHandlesLargeElapsedTimeAcrossOverflow(fakeClock);
+}
+
 // ============================================
 // MATCH MANAGER TESTS
 // ============================================
