@@ -1420,6 +1420,54 @@ TEST_F(StateMachineLifecycleTests, multipleAppsAllDismountedOnDestruction) {
 }
 
 // ============================================
+// STATE TRANSITION EDGE CASE TESTS
+// ============================================
+
+TEST_F(StateTransitionEdgeCaseTests, rapidIdleHandshakeTransition) {
+    edgeCaseRapidIdleHandshakeTransition(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, connectionSuccessfulRapidCycle) {
+    edgeCaseConnectionSuccessfulRapidCycle(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, duelTimeoutClearsMatch) {
+    edgeCaseDuelTimeoutClearsMatch(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, winStateClearsMatchOnTransition) {
+    edgeCaseWinStateClearsMatchOnTransition(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, loseStateClearsMatchOnTransition) {
+    edgeCaseLoseStateClearsMatchOnTransition(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, countdownPenaltyPersistsAcrossCycles) {
+    edgeCaseCountdownPenaltyPersistsAcrossCycles(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, handshakeWithNullOpponentMac) {
+    edgeCaseHandshakeWithNullOpponentMac(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, multipleConsecutiveTransitions) {
+    edgeCaseMultipleConsecutiveTransitions(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, duelReceivedResultGracePeriodExpiry) {
+    edgeCaseDuelReceivedResultGracePeriodExpiry(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, duelPushedGracePeriodExpiry) {
+    edgeCaseDuelPushedGracePeriodExpiry(this);
+}
+
+TEST_F(StateTransitionEdgeCaseTests, handshakeWithMalformedMac) {
+    edgeCaseHandshakeWithMalformedMac(this);
+}
+
+// ============================================
 // MAIN
 // ============================================
 
