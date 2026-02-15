@@ -1998,3 +1998,424 @@ inline void quickdrawDestructorCleansUpMatchManager(QuickdrawDestructorTests* su
     // Test passes if we reach here without crashes or memory errors
     // The actual memory leak detection would be handled by tools like Valgrind or ASan in CI
 }
+
+// ============================================
+// State Transition Edge Case Tests
+// ============================================
+
+class StateTransitionEdgeCaseTests : public testing::Test {
+public:
+    void SetUp() override {
+        fakeClock = new FakePlatformClock();
+        SimpleTimer::setPlatformClock(fakeClock);
+        fakeClock->setTime(1000);
+
+        player = new Player();
+        { char pid[] = "1234"; player->setUserID(pid); }
+        player->setIsHunter(true);
+        player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+
+        matchManager = new MatchManager();
+        wirelessManager = new MockQuickdrawWirelessManager();
+        wirelessManager->initialize(player, device.wirelessManager, 100);
+        matchManager->initialize(player, &storage, &peerComms, wirelessManager);
+
+        progressManager = new ProgressManager();
+        progressManager->initialize(player, &storage);
+
+        ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(storage, write(_, _)).WillByDefault(Return(100));
+        ON_CALL(storage, writeUChar(_, _)).WillByDefault(Return(1));
+        ON_CALL(storage, readUChar(_, _)).WillByDefault(Return(0));
+    }
+
+    void TearDown() override {
+        matchManager->clearCurrentMatch();
+        delete progressManager;
+        delete matchManager;
+        delete wirelessManager;
+        delete player;
+        SimpleTimer::setPlatformClock(nullptr);
+        delete fakeClock;
+    }
+
+    MockDevice device;
+    MockPeerComms peerComms;
+    MockStorage storage;
+    MockQuickdrawWirelessManager* wirelessManager;
+    Player* player;
+    MatchManager* matchManager;
+    ProgressManager* progressManager;
+    FakePlatformClock* fakeClock;
+};
+
+// Test: Rapid transition from Idle to Handshake and back on timeout
+inline void edgeCaseRapidIdleHandshakeTransition(StateTransitionEdgeCaseTests* suite) {
+    Idle idleState(suite->player, suite->matchManager, suite->wirelessManager, suite->progressManager);
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+
+    idleState.onStateMounted(&suite->device);
+
+    // Verify initial state - should not transition
+    EXPECT_FALSE(idleState.transitionToHandshake());
+
+    // Clean up idle
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    idleState.onStateDismounted(&suite->device);
+
+    // Start handshake
+    HandshakeInitiateState handshakeState(suite->player);
+    handshakeState.onStateMounted(&suite->device);
+
+    // Initialize timeout
+    handshakeState.onStateLoop(&suite->device);
+
+    // Advance to timeout immediately
+    suite->fakeClock->advance(20001);
+
+    // Should timeout back to idle
+    EXPECT_TRUE(handshakeState.transitionToIdle());
+
+    handshakeState.onStateDismounted(&suite->device);
+}
+
+// Test: ConnectionSuccessful state handles rapid mounting/dismounting
+inline void edgeCaseConnectionSuccessfulRapidCycle(StateTransitionEdgeCaseTests* suite) {
+    ConnectionSuccessful connState1(suite->player);
+
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    // Mount and immediately dismount
+    connState1.onStateMounted(&suite->device);
+    EXPECT_FALSE(connState1.transitionToCountdown());
+    connState1.onStateDismounted(&suite->device);
+
+    // Create new state - should work fine
+    ConnectionSuccessful connState2(suite->player);
+    connState2.onStateMounted(&suite->device);
+
+    // Advance through flash cycles
+    for (int i = 0; i < 13; i++) {
+        suite->fakeClock->advance(401);
+        connState2.onStateLoop(&suite->device);
+    }
+
+    EXPECT_TRUE(connState2.transitionToCountdown());
+    connState2.onStateDismounted(&suite->device);
+}
+
+// Test: Duel timeout with match still active
+inline void edgeCaseDuelTimeoutClearsMatch(StateTransitionEdgeCaseTests* suite) {
+    suite->matchManager->createMatch("test-match-id", suite->player->getUserID(), "5678");
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    Duel duelState(suite->player, suite->matchManager, suite->wirelessManager);
+    duelState.onStateMounted(&suite->device);
+
+    // Verify match exists
+    EXPECT_NE(suite->matchManager->getCurrentMatch(), nullptr);
+
+    // Advance past timeout
+    suite->fakeClock->advance(4100);
+    duelState.onStateLoop(&suite->device);
+
+    // Should timeout to idle
+    EXPECT_TRUE(duelState.transitionToIdle());
+
+    // Cleanup
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    duelState.onStateDismounted(&suite->device);
+}
+
+// Test: Win state transition clears match properly
+inline void edgeCaseWinStateClearsMatchOnTransition(StateTransitionEdgeCaseTests* suite) {
+    suite->matchManager->createMatch("test-match", suite->player->getUserID(), "5678");
+    suite->matchManager->setHunterDrawTime(200);
+    suite->matchManager->setBountyDrawTime(300);
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setReceivedDrawResult();
+
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    resultState.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(resultState.transitionToWin());
+    resultState.onStateDismounted(&suite->device);
+
+    // Now enter Win state
+    Win winState(suite->player);
+    winState.onStateMounted(&suite->device);
+
+    // Should not reset immediately
+    EXPECT_FALSE(winState.resetGame());
+
+    // Advance time (Win state has an 8 second timer)
+    suite->fakeClock->advance(8100);
+    // Call onStateLoop to update timer
+    winState.onStateLoop(&suite->device);
+
+    // Should now reset
+    EXPECT_TRUE(winState.resetGame());
+
+    winState.onStateDismounted(&suite->device);
+}
+
+// Test: Lose state transition clears match properly
+inline void edgeCaseLoseStateClearsMatchOnTransition(StateTransitionEdgeCaseTests* suite) {
+    suite->matchManager->createMatch("test-match", suite->player->getUserID(), "5678");
+    suite->matchManager->setHunterDrawTime(400);
+    suite->matchManager->setBountyDrawTime(200);
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setReceivedDrawResult();
+
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    resultState.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(resultState.transitionToLose());
+    resultState.onStateDismounted(&suite->device);
+
+    // Now enter Lose state
+    Lose loseState(suite->player);
+    loseState.onStateMounted(&suite->device);
+
+    // Should not reset immediately
+    EXPECT_FALSE(loseState.resetGame());
+
+    // Advance time (Lose state has an 8 second timer)
+    suite->fakeClock->advance(8100);
+    // Call onStateLoop to update timer
+    loseState.onStateLoop(&suite->device);
+
+    // Should now reset
+    EXPECT_TRUE(loseState.resetGame());
+
+    loseState.onStateDismounted(&suite->device);
+}
+
+// Test: Countdown button masher penalty persists across state mount/dismount
+inline void edgeCaseCountdownPenaltyPersistsAcrossCycles(StateTransitionEdgeCaseTests* suite) {
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    // First countdown cycle - accumulate penalty
+    DuelCountdown countdown1(suite->player, suite->matchManager);
+
+    parameterizedCallbackFunction masherCallback = nullptr;
+    void* masherCtx = nullptr;
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+        .WillOnce(DoAll(SaveArg<0>(&masherCallback), SaveArg<1>(&masherCtx)));
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+
+    countdown1.onStateMounted(&suite->device);
+
+    // Mash button 5 times
+    ASSERT_NE(masherCallback, nullptr);
+    for (int i = 0; i < 5; i++) {
+        masherCallback(masherCtx);
+    }
+
+    // Dismount
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    countdown1.onStateDismounted(&suite->device);
+
+    // Second countdown cycle - penalty should persist
+    DuelCountdown countdown2(suite->player, suite->matchManager);
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    countdown2.onStateMounted(&suite->device);
+
+    // Advance through countdown (THREE -> TWO -> ONE -> BATTLE)
+    // Each stage is 2000ms, need to call onStateLoop for each stage
+    suite->fakeClock->advance(2100);
+    countdown2.onStateLoop(&suite->device);
+    suite->fakeClock->advance(2100);
+    countdown2.onStateLoop(&suite->device);
+    suite->fakeClock->advance(2100);
+    countdown2.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(countdown2.shallWeBattle());
+
+    // Cleanup
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    countdown2.onStateDismounted(&suite->device);
+}
+
+// Test: Handshake states handle NULL opponent MAC gracefully
+inline void edgeCaseHandshakeWithNullOpponentMac(StateTransitionEdgeCaseTests* suite) {
+    // Clear opponent MAC
+    suite->player->setOpponentMacAddress("");
+
+    // Hunter state should handle this gracefully
+    HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
+
+    // Should not crash on mount
+    hunterState.onStateMounted(&suite->device);
+    hunterState.onStateLoop(&suite->device);
+
+    // Should not transition (no valid opponent)
+    EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
+
+    hunterState.onStateDismounted(&suite->device);
+}
+
+// Test: Multiple consecutive state transitions without crashes
+inline void edgeCaseMultipleConsecutiveTransitions(StateTransitionEdgeCaseTests* suite) {
+    // Idle -> Handshake -> ConnectionSuccessful -> Countdown -> Duel
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    // 1. Idle
+    Idle idleState(suite->player, suite->matchManager, suite->wirelessManager, suite->progressManager);
+    idleState.onStateMounted(&suite->device);
+    idleState.onStateDismounted(&suite->device);
+
+    // 2. HandshakeInitiate
+    HandshakeInitiateState handshakeInitiate(suite->player);
+    handshakeInitiate.onStateMounted(&suite->device);
+    suite->fakeClock->advance(600);
+    handshakeInitiate.onStateLoop(&suite->device);
+    EXPECT_TRUE(handshakeInitiate.transitionToHunterSendId());
+    handshakeInitiate.onStateDismounted(&suite->device);
+
+    // 3. HunterSendId
+    HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
+    hunterState.onStateMounted(&suite->device);
+
+    Match receivedMatch("test-match-id", "", "5678");
+    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    hunterState.onQuickdrawCommandReceived(connectionConfirmed);
+
+    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    hunterState.onQuickdrawCommandReceived(finalAck);
+
+    EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
+    hunterState.onStateDismounted(&suite->device);
+
+    // 4. ConnectionSuccessful
+    ConnectionSuccessful connState(suite->player);
+    connState.onStateMounted(&suite->device);
+    for (int i = 0; i < 13; i++) {
+        suite->fakeClock->advance(401);
+        connState.onStateLoop(&suite->device);
+    }
+    EXPECT_TRUE(connState.transitionToCountdown());
+    connState.onStateDismounted(&suite->device);
+
+    // 5. Countdown
+    DuelCountdown countdown(suite->player, suite->matchManager);
+    countdown.onStateMounted(&suite->device);
+    // Advance through each countdown stage
+    suite->fakeClock->advance(2100);
+    countdown.onStateLoop(&suite->device);
+    suite->fakeClock->advance(2100);
+    countdown.onStateLoop(&suite->device);
+    suite->fakeClock->advance(2100);
+    countdown.onStateLoop(&suite->device);
+    EXPECT_TRUE(countdown.shallWeBattle());
+    countdown.onStateDismounted(&suite->device);
+
+    // 6. Duel
+    Duel duelState(suite->player, suite->matchManager, suite->wirelessManager);
+    duelState.onStateMounted(&suite->device);
+
+    // Advance and press button
+    suite->fakeClock->advance(200);
+    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    duelState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(duelState.transitionToDuelPushed());
+    duelState.onStateDismounted(&suite->device);
+}
+
+// Test: DuelReceivedResult handles grace period expiry correctly
+inline void edgeCaseDuelReceivedResultGracePeriodExpiry(StateTransitionEdgeCaseTests* suite) {
+    suite->matchManager->createMatch("test-match", suite->player->getUserID(), "5678");
+    suite->matchManager->setBountyDrawTime(150);
+    suite->matchManager->setReceivedDrawResult();
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillRepeatedly(Return(1));
+
+    DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
+    receivedState.onStateMounted(&suite->device);
+
+    // Should not transition immediately
+    EXPECT_FALSE(receivedState.transitionToDuelResult());
+
+    // Advance to just before grace period expires (749ms)
+    suite->fakeClock->advance(749);
+    receivedState.onStateLoop(&suite->device);
+    EXPECT_FALSE(receivedState.transitionToDuelResult());
+
+    // Advance 2ms more (total 751ms) - should expire
+    suite->fakeClock->advance(2);
+    receivedState.onStateLoop(&suite->device);
+
+    // Should now transition
+    EXPECT_TRUE(receivedState.transitionToDuelResult());
+
+    // Verify pity time was set
+    Match* match = suite->matchManager->getCurrentMatch();
+    ASSERT_NE(match, nullptr);
+    EXPECT_GT(match->getHunterDrawTime(), 0);
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    receivedState.onStateDismounted(&suite->device);
+}
+
+// Test: DuelPushed handles grace period expiry correctly
+inline void edgeCaseDuelPushedGracePeriodExpiry(StateTransitionEdgeCaseTests* suite) {
+    suite->matchManager->createMatch("test-match", suite->player->getUserID(), "5678");
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setHunterDrawTime(200);
+
+    DuelPushed pushedState(suite->player, suite->matchManager);
+    pushedState.onStateMounted(&suite->device);
+
+    // Should not transition immediately
+    EXPECT_FALSE(pushedState.transitionToDuelResult());
+
+    // Advance to just before grace period expires (899ms)
+    suite->fakeClock->advance(899);
+    pushedState.onStateLoop(&suite->device);
+    EXPECT_FALSE(pushedState.transitionToDuelResult());
+
+    // Advance 2ms more (total 901ms) - should expire
+    suite->fakeClock->advance(2);
+    pushedState.onStateLoop(&suite->device);
+
+    // Should now transition
+    EXPECT_TRUE(pushedState.transitionToDuelResult());
+
+    pushedState.onStateDismounted(&suite->device);
+}
+
+// Test: Handshake state transition with malformed opponent MAC
+inline void edgeCaseHandshakeWithMalformedMac(StateTransitionEdgeCaseTests* suite) {
+    // Set malformed MAC address
+    suite->player->setOpponentMacAddress("INVALID:MAC");
+
+    BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
+
+    // Should not crash
+    bountyState.onStateMounted(&suite->device);
+    bountyState.onStateLoop(&suite->device);
+
+    bountyState.onStateDismounted(&suite->device);
+}
