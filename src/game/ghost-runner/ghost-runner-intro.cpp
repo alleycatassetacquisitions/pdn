@@ -21,7 +21,9 @@ void GhostRunnerIntro::onStateMounted(Device* PDN) {
     // Reset session for a fresh game
     game->getSession().reset();
     game->resetGame();
-    game->setStartTime(SimpleTimer::getPlatformClock()->milliseconds());
+
+    PlatformClock* clock = SimpleTimer::getPlatformClock();
+    game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
 
     // Seed RNG for this run
     game->seedRng();

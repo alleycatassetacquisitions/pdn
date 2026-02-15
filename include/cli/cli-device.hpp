@@ -412,14 +412,15 @@ public:
         // Remove player config from mock HTTP server
         MockHttpServer::getInstance().removePlayer(device.deviceId);
 
+        // Clear platform clock BEFORE device destruction to prevent pure virtual call
+        // State dismount callbacks may call SimpleTimer::updateTime() which needs valid clock or nullptr
+        SimpleTimer::setPlatformClock(nullptr);
+
         // Note: device.game and minigames are now deleted by PDN destructor (Device::~Device)
         delete device.quickdrawWirelessManager;
         delete device.player;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
-
-        // Clear platform clock AFTER device destruction — state dismount callbacks may use the clock
-        SimpleTimer::setPlatformClock(nullptr);
     }
 
     /**
