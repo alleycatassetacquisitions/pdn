@@ -1,0 +1,61 @@
+name: Build Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-native:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PlatformIO
+      run: pip install platformio
+
+    - name: Create WiFi credentials
+      run: |
+        cp wifi_credentials.ini.example wifi_credentials.ini
+        sed -i 's/YourWiFiSSID/CI_SSID/' wifi_credentials.ini
+        sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
+        sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
+
+    - name: Run native tests
+      run: pio test -e native
+
+  test-native-cli:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: 'true'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PlatformIO
+      run: pip install platformio
+
+    - name: Create WiFi credentials
+      run: |
+        cp wifi_credentials.ini.example wifi_credentials.ini
+        sed -i 's/YourWiFiSSID/CI_SSID/' wifi_credentials.ini
+        sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
+        sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
+
+    - name: Run native_cli_test tests
+      run: pio test -e native_cli_test
