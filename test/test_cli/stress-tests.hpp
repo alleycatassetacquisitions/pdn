@@ -46,7 +46,7 @@ public:
     }
 
     void advanceToIdle() {
-        device_.game->skipToState(device_.pdn, 7);
+        device_.game->skipToState(device_.pdn, 6);
         device_.pdn->loop();
     }
 

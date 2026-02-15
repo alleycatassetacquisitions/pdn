@@ -47,7 +47,7 @@ public:
     }
 
     void advanceToIdle() {
-        quickdraw_->skipToState(device_.pdn, 7);
+        quickdraw_->skipToState(device_.pdn, 6);
         device_.pdn->loop();
     }
 
