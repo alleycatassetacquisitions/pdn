@@ -78,6 +78,22 @@ TEST_F(SpikeVectorTestSuite, StateNamesResolve) {
     spikeVectorStateNamesResolve(this);
 }
 
+TEST_F(SpikeVectorTestSuite, DodgeAtBottomBoundary) {
+    spikeVectorDodgeAtBottomBoundary(this);
+}
+
+TEST_F(SpikeVectorTestSuite, DodgeAtTopBoundary) {
+    spikeVectorDodgeAtTopBoundary(this);
+}
+
+TEST_F(SpikeVectorTestSuite, ExactHitsEqualAllowed) {
+    spikeVectorExactHitsEqualAllowed(this);
+}
+
+TEST_F(SpikeVectorTestSuite, WallArrivedFlagSet) {
+    spikeVectorWallArrivedFlagSet(this);
+}
+
 TEST_F(SpikeVectorManagedTestSuite, ManagedModeReturns) {
     spikeVectorManagedModeReturns(this);
 }

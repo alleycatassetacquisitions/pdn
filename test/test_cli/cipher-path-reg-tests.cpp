@@ -82,6 +82,22 @@ TEST_F(CipherPathTestSuite, StateNamesResolve) {
     cipherPathStateNamesResolve(this);
 }
 
+TEST_F(CipherPathTestSuite, BudgetExhaustedAtStart) {
+    cipherPathBudgetExhaustedAtStart(this);
+}
+
+TEST_F(CipherPathTestSuite, ReachExitExactPosition) {
+    cipherPathReachExitExactPosition(this);
+}
+
+TEST_F(CipherPathTestSuite, BudgetExhaustedNearExit) {
+    cipherPathBudgetExhaustedNearExit(this);
+}
+
+TEST_F(CipherPathTestSuite, MoveFromStartBoundary) {
+    cipherPathMoveFromStartBoundary(this);
+}
+
 TEST_F(CipherPathManagedTestSuite, ManagedModeReturns) {
     cipherPathManagedModeReturns(this);
 }

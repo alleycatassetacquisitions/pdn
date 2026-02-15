@@ -78,6 +78,22 @@ TEST_F(GhostRunnerTestSuite, StateNamesResolve) {
     ghostRunnerStateNamesResolve(this);
 }
 
+TEST_F(GhostRunnerTestSuite, PressAtZoneStartBoundary) {
+    ghostRunnerPressAtZoneStartBoundary(this);
+}
+
+TEST_F(GhostRunnerTestSuite, PressAtZoneEndBoundary) {
+    ghostRunnerPressAtZoneEndBoundary(this);
+}
+
+TEST_F(GhostRunnerTestSuite, ExactStrikesEqualAllowed) {
+    ghostRunnerExactStrikesEqualAllowed(this);
+}
+
+TEST_F(GhostRunnerTestSuite, TimeoutAtExactMissesAllowed) {
+    ghostRunnerTimeoutAtExactMissesAllowed(this);
+}
+
 TEST_F(GhostRunnerManagedTestSuite, ManagedModeReturns) {
     ghostRunnerManagedModeReturns(this);
 }

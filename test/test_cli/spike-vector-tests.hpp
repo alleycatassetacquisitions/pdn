@@ -533,4 +533,86 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
 }
 
+// ============================================
+// EDGE CASE TESTS
+// ============================================
+
+/*
+ * Test: Cursor at position 0 (bottom boundary) can dodge if gap is at 0.
+ */
+void spikeVectorDodgeAtBottomBoundary(SpikeVectorTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    session.cursorPosition = 0;  // Bottom boundary
+    session.gapPosition = 0;     // Gap at bottom
+    session.hits = 0;
+    int initialScore = session.score;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    EXPECT_EQ(session.score, initialScore + 100) << "Dodge at position 0 should award score";
+    EXPECT_EQ(session.hits, 0) << "No hit should be counted for successful dodge";
+}
+
+/*
+ * Test: Cursor at max position (top boundary) can dodge if gap is at max.
+ */
+void spikeVectorDodgeAtTopBoundary(SpikeVectorTestSuite* suite) {
+    auto& config = suite->game_->getConfig();
+    auto& session = suite->game_->getSession();
+    int maxPos = config.numPositions - 1;
+
+    session.cursorPosition = maxPos;  // Top boundary
+    session.gapPosition = maxPos;     // Gap at top
+    session.hits = 0;
+    int initialScore = session.score;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    EXPECT_EQ(session.score, initialScore + 100) << "Dodge at max position should award score";
+    EXPECT_EQ(session.hits, 0) << "No hit should be counted for successful dodge";
+}
+
+/*
+ * Test: Exact hits equal to hitsAllowed doesn't lose (only > causes loss).
+ */
+void spikeVectorExactHitsEqualAllowed(SpikeVectorTestSuite* suite) {
+    suite->game_->getConfig().hitsAllowed = 2;
+    suite->game_->getConfig().waves = 5;
+
+    auto& session = suite->game_->getSession();
+    session.cursorPosition = 0;
+    session.gapPosition = 1;  // Cursor not at gap = hit
+    session.hits = 1;         // Already 1 hit
+    session.currentWave = 0;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    // 1 + 1 = 2 hits, hitsAllowed = 2, so 2 > 2 is false -> continue
+    State* state = suite->game_->getCurrentState();
+    EXPECT_NE(state->getStateId(), SPIKE_LOSE) << "Should not lose when hits == hitsAllowed";
+    EXPECT_EQ(session.hits, 2);
+}
+
+/*
+ * Test: Wall timeout with wallArrived flag set.
+ */
+void spikeVectorWallArrivedFlagSet(SpikeVectorTestSuite* suite) {
+    suite->game_->getConfig().approachSpeedMs = 5;
+    suite->game_->getConfig().trackLength = 5;
+
+    auto& session = suite->game_->getSession();
+    session.wallArrived = false;
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Advance enough for wall to reach end
+    suite->tickWithTime(10, 10);
+
+    EXPECT_TRUE(session.wallArrived) << "wallArrived should be set when wall reaches trackLength";
+}
+
 #endif // NATIVE_BUILD
