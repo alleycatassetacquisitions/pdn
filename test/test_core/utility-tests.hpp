@@ -5,6 +5,7 @@
 #include "wireless/mac-functions.hpp"
 #include "utils/simple-timer.hpp"
 #include "device/drivers/platform-clock.hpp"
+#include "../test-constants.hpp"
 
 // ============================================
 // Fake Platform Clock for Timer Tests
@@ -47,7 +48,7 @@ protected:
 
 inline void uuidStringToBytesProducesCorrectOutput() {
     // Standard UUID format: 8-4-4-4-12 hex chars
-    std::string uuid = "12345678-abcd-ef01-2345-6789abcdef01";
+    std::string uuid = TestConstants::TEST_UUID_PLAYER_1;
     uint8_t bytes[16];
 
     IdGenerator::uuidStringToBytes(uuid, bytes);
@@ -57,19 +58,19 @@ inline void uuidStringToBytesProducesCorrectOutput() {
     EXPECT_EQ(bytes[1], 0x34);
     EXPECT_EQ(bytes[2], 0x56);
     EXPECT_EQ(bytes[3], 0x78);
-    EXPECT_EQ(bytes[4], 0xab);
-    EXPECT_EQ(bytes[5], 0xcd);
-    EXPECT_EQ(bytes[6], 0xef);
-    EXPECT_EQ(bytes[7], 0x01);
+    EXPECT_EQ(bytes[4], 0x12);
+    EXPECT_EQ(bytes[5], 0x34);
+    EXPECT_EQ(bytes[6], 0x56);
+    EXPECT_EQ(bytes[7], 0x78);
 }
 
 inline void uuidBytesToStringProducesValidFormat() {
     uint8_t bytes[16] = {
         0x12, 0x34, 0x56, 0x78,
-        0xab, 0xcd,
-        0xef, 0x01,
-        0x23, 0x45,
-        0x67, 0x89, 0xab, 0xcd, 0xef, 0x01
+        0x12, 0x34,
+        0x56, 0x78,
+        0x9a, 0xbc,
+        0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc
     };
 
     std::string uuid = IdGenerator::uuidBytesToString(bytes);
@@ -82,12 +83,12 @@ inline void uuidBytesToStringProducesValidFormat() {
     EXPECT_EQ(uuid[23], '-');
 
     // Verify content
-    EXPECT_EQ(uuid, "12345678-abcd-ef01-2345-6789abcdef01");
+    EXPECT_EQ(uuid, TestConstants::TEST_UUID_PLAYER_1);
 }
 
 inline void uuidRoundTripPreservesData() {
     // Original UUID string
-    std::string original = "deadbeef-cafe-babe-1234-567890abcdef";
+    std::string original = TestConstants::TEST_UUID_PLAYER_4;
     uint8_t bytes[16];
 
     // Convert to bytes
@@ -118,7 +119,7 @@ inline void uuidGeneratorProducesValidFormat() {
 
 inline void uuidStringToBytesRejectsTooLongString() {
     // String longer than 36 characters
-    std::string tooLong = "12345678-abcd-ef01-2345-6789abcdef01-extra";
+    std::string tooLong = TestConstants::TEST_UUID_TOO_LONG;
     uint8_t bytes[16];
 
     IdGenerator::uuidStringToBytes(tooLong, bytes);
@@ -131,7 +132,7 @@ inline void uuidStringToBytesRejectsTooLongString() {
 
 inline void uuidStringToBytesRejectsTooShortString() {
     // String shorter than 36 characters
-    std::string tooShort = "12345678-abcd-ef01-2345";
+    std::string tooShort = TestConstants::TEST_UUID_TOO_SHORT;
     uint8_t bytes[16];
 
     IdGenerator::uuidStringToBytes(tooShort, bytes);
@@ -144,7 +145,7 @@ inline void uuidStringToBytesRejectsTooShortString() {
 
 inline void uuidStringToBytesRejectsNonHexCharacters() {
     // UUID with invalid hex characters
-    std::string invalidHex = "12345678-ZZZZ-ef01-2345-6789abcdef01";
+    std::string invalidHex = TestConstants::TEST_UUID_INVALID_HEX;
     uint8_t bytes[16];
 
     IdGenerator::uuidStringToBytes(invalidHex, bytes);
@@ -182,7 +183,7 @@ inline void uuidStringToBytesRejectsEmptyString() {
 }
 
 inline void uuidStringToBytesHandlesAllZeros() {
-    std::string zeroUuid = "00000000-0000-0000-0000-000000000000";
+    std::string zeroUuid = TestConstants::TEST_UUID_ZERO;
     uint8_t bytes[16];
 
     IdGenerator::uuidStringToBytes(zeroUuid, bytes);
@@ -194,7 +195,7 @@ inline void uuidStringToBytesHandlesAllZeros() {
 }
 
 inline void uuidStringToBytesHandlesAllFs() {
-    std::string maxUuid = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    std::string maxUuid = TestConstants::TEST_UUID_MAX;
     uint8_t bytes[16];
 
     IdGenerator::uuidStringToBytes(maxUuid, bytes);
@@ -208,7 +209,7 @@ inline void uuidStringToBytesHandlesAllFs() {
 inline void uuidStringToBytesPreventsBufferOverflow() {
     // Test that malformed long input doesn't overflow buffer
     // This is the core security issue from #139
-    std::string malicious = "12345678-abcd-ef01-2345-6789abcdef01aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    std::string malicious = TestConstants::TEST_UUID_MALICIOUS;
     uint8_t bytes[16];
 
     // Initialize with sentinel values to detect overflow
@@ -239,7 +240,7 @@ inline void macToStringProducesCorrectFormat() {
 
     const char* macStr = MacToString(mac);
 
-    EXPECT_STREQ(macStr, "AA:BB:CC:DD:EE:FF");
+    EXPECT_STREQ(macStr, TestConstants::TEST_MAC_DEFAULT);
 }
 
 inline void macToStringHandlesZeros() {
@@ -253,7 +254,7 @@ inline void macToStringHandlesZeros() {
 inline void stringToMacParsesValidFormat() {
     uint8_t mac[6];
 
-    bool result = StringToMac("AA:BB:CC:DD:EE:FF", mac);
+    bool result = StringToMac(TestConstants::TEST_MAC_DEFAULT, mac);
 
     EXPECT_TRUE(result);
     EXPECT_EQ(mac[0], 0xAA);

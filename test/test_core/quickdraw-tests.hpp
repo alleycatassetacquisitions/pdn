@@ -11,6 +11,7 @@
 #include "game/quickdraw-states.hpp"
 #include "utility-tests.hpp"
 #include "device/device-constants.hpp"
+#include "../test-constants.hpp"
 
 using ::testing::_;
 using ::testing::Return;
@@ -235,7 +236,7 @@ inline void handshakeBountyRoutesToBountySendCCState(HandshakeStateTests* suite)
 // Test: Handshake timeout returns to idle
 inline void handshakeTimeoutReturnsToIdle(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
     
     // First, go through HandshakeInitiateState to initialize the timeout
     HandshakeInitiateState initiateState(suite->player);
@@ -265,7 +266,7 @@ inline void handshakeTimeoutReturnsToIdle(HandshakeStateTests* suite) {
 // Test: Bounty handshake flow succeeds
 inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     // Expect packet to be sent when state mounts
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
@@ -279,14 +280,14 @@ inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
 
     // Simulate receiving HUNTER_RECEIVE_MATCH command
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
     // Still not done - need HUNTER_READY
     EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
 
     // Simulate receiving HUNTER_READY command
-    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    QuickdrawCommand hunterReady(TestConstants::TEST_MAC_DEFAULT, HUNTER_READY, receivedMatch);
     bountyState.onQuickdrawCommandReceived(hunterReady);
 
     // Should now transition to connection successful
@@ -296,7 +297,7 @@ inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
 // Test: Hunter handshake flow succeeds
 inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -309,14 +310,14 @@ inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
 
     // Simulate receiving CONNECTION_CONFIRMED command
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Still not done - need BOUNTY_FINAL_ACK
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
 
     // Simulate receiving BOUNTY_FINAL_ACK (Hunter sends HUNTER_READY and transitions)
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
 
     // Should now transition (after sending HUNTER_READY)
@@ -326,7 +327,7 @@ inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
 // Test: Handshake sends direct messages (not broadcast)
 inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
     
     // Capture the MAC address used in sendData
     uint8_t capturedMac[6];
@@ -351,7 +352,7 @@ inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite)
 // Test: Handshake states clear on dismount
 inline void handshakeStatesClearOnDismount(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
     
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -361,10 +362,10 @@ inline void handshakeStatesClearOnDismount(HandshakeStateTests* suite) {
     
     // Receive commands to set transition flag
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
     
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
     
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
@@ -383,7 +384,7 @@ inline void handshakeStatesClearOnDismount(HandshakeStateTests* suite) {
 // Test: Duplicate CONNECTION_CONFIRMED handling
 inline void handshakeDuplicateConnectionConfirmedHandled(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -393,7 +394,7 @@ inline void handshakeDuplicateConnectionConfirmedHandled(HandshakeStateTests* su
 
     // Send CONNECTION_CONFIRMED first time
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Verify match was created
@@ -403,7 +404,7 @@ inline void handshakeDuplicateConnectionConfirmedHandled(HandshakeStateTests* su
 
     // Send duplicate CONNECTION_CONFIRMED
     Match duplicateMatch("duplicate-match-id", "", "9999");
-    QuickdrawCommand duplicateConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, duplicateMatch);
+    QuickdrawCommand duplicateConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, duplicateMatch);
     hunterState.onQuickdrawCommandReceived(duplicateConfirmed);
 
     // Match should still be the original one (no duplicate creation or crash)
@@ -418,7 +419,7 @@ inline void handshakeDuplicateConnectionConfirmedHandled(HandshakeStateTests* su
 // Test: Duplicate HUNTER_RECEIVE_MATCH handling
 inline void handshakeDuplicateHunterReceiveMatchHandled(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -428,21 +429,21 @@ inline void handshakeDuplicateHunterReceiveMatchHandled(HandshakeStateTests* sui
 
     // Send HUNTER_RECEIVE_MATCH first time
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
     // With 4-way handshake, bounty waits for HUNTER_READY after HUNTER_RECEIVE_MATCH
     EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
 
     // Send HUNTER_READY to complete handshake
-    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    QuickdrawCommand hunterReady(TestConstants::TEST_MAC_DEFAULT, HUNTER_READY, receivedMatch);
     bountyState.onQuickdrawCommandReceived(hunterReady);
 
     EXPECT_TRUE(bountyState.transitionToConnectionSuccessful());
 
     // Send duplicate HUNTER_RECEIVE_MATCH
     Match duplicateMatch("duplicate-match-id", "9999", "1234");
-    QuickdrawCommand duplicateCommand("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, duplicateMatch);
+    QuickdrawCommand duplicateCommand(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, duplicateMatch);
     bountyState.onQuickdrawCommandReceived(duplicateCommand);
 
     // Should still be in transition state (no crash from duplicate)
@@ -454,7 +455,7 @@ inline void handshakeDuplicateHunterReceiveMatchHandled(HandshakeStateTests* sui
 // Test: Out-of-order BOUNTY_FINAL_ACK accepted (current implementation is permissive)
 inline void handshakeOutOfOrderBountyFinalAckAccepted(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -465,14 +466,14 @@ inline void handshakeOutOfOrderBountyFinalAckAccepted(HandshakeStateTests* suite
     // Send BOUNTY_FINAL_ACK BEFORE CONNECTION_CONFIRMED
     // With 4-way handshake, hunter needs a match to send HUNTER_READY — rejects out-of-order
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
 
     // Out-of-order BOUNTY_FINAL_ACK rejected (no match to send HUNTER_READY for)
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
 
     // Now send CONNECTION_CONFIRMED (creates match and sends HUNTER_RECEIVE_MATCH)
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Match gets created, HUNTER_RECEIVE_MATCH sent
@@ -493,7 +494,7 @@ inline void handshakeOutOfOrderBountyFinalAckAccepted(HandshakeStateTests* suite
 // Test: Out-of-order HUNTER_RECEIVE_MATCH ignored
 inline void handshakeOutOfOrderHunterReceiveMatchIgnored(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     // Don't mount bounty state yet - simulate receiving packet before handshake starts
 
@@ -507,7 +508,7 @@ inline void handshakeOutOfOrderHunterReceiveMatchIgnored(HandshakeStateTests* su
 
     // Send command BEFORE mounting (simulates packet arriving before handshake)
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
 
     // This should be handled gracefully (callback not yet registered)
     // No crash expected
@@ -522,7 +523,7 @@ inline void handshakeOutOfOrderHunterReceiveMatchIgnored(HandshakeStateTests* su
     EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
 
     // Send HUNTER_READY to complete handshake
-    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    QuickdrawCommand hunterReady(TestConstants::TEST_MAC_DEFAULT, HUNTER_READY, receivedMatch);
     bountyState.onQuickdrawCommandReceived(hunterReady);
 
     // Should transition successfully
@@ -534,7 +535,7 @@ inline void handshakeOutOfOrderHunterReceiveMatchIgnored(HandshakeStateTests* su
 // Test: Empty match ID rejected
 inline void handshakeEmptyMatchIdRejected(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .Times(0);  // Should not send anything if match ID is invalid
@@ -544,7 +545,7 @@ inline void handshakeEmptyMatchIdRejected(HandshakeStateTests* suite) {
 
     // Send CONNECTION_CONFIRMED with empty match ID
     Match invalidMatch("", "", "5678");  // Empty match ID
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, invalidMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, invalidMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Should not transition (invalid data rejected)
@@ -559,7 +560,7 @@ inline void handshakeEmptyMatchIdRejected(HandshakeStateTests* suite) {
 // Test: Empty player IDs rejected
 inline void handshakeEmptyPlayerIdsRejected(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .Times(0);  // Should not send anything if player IDs are invalid
@@ -569,7 +570,7 @@ inline void handshakeEmptyPlayerIdsRejected(HandshakeStateTests* suite) {
 
     // Send CONNECTION_CONFIRMED with empty bounty ID
     Match invalidMatch("test-match-id", "", "");  // Empty bounty ID
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, invalidMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, invalidMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Should not transition
@@ -584,7 +585,7 @@ inline void handshakeEmptyPlayerIdsRejected(HandshakeStateTests* suite) {
 // Test: Invalid command type ignored
 inline void handshakeInvalidCommandTypeIgnored(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .Times(0);  // Should not send anything for invalid command
@@ -594,7 +595,7 @@ inline void handshakeInvalidCommandTypeIgnored(HandshakeStateTests* suite) {
 
     // Send command with invalid type (DRAW_RESULT is not a handshake command)
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand invalidCommand("AA:BB:CC:DD:EE:FF", DRAW_RESULT, receivedMatch);
+    QuickdrawCommand invalidCommand(TestConstants::TEST_MAC_DEFAULT, DRAW_RESULT, receivedMatch);
     hunterState.onQuickdrawCommandReceived(invalidCommand);
 
     // Should not transition (invalid command ignored)
@@ -606,7 +607,7 @@ inline void handshakeInvalidCommandTypeIgnored(HandshakeStateTests* suite) {
 // Test: Hunter timeout after CONNECTION_CONFIRMED but no BOUNTY_FINAL_ACK
 inline void handshakeHunterTimeoutAfterConnectionConfirmed(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -622,7 +623,7 @@ inline void handshakeHunterTimeoutAfterConnectionConfirmed(HandshakeStateTests* 
 
     // Receive CONNECTION_CONFIRMED
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Still waiting for BOUNTY_FINAL_ACK
@@ -646,7 +647,7 @@ inline void handshakeHunterTimeoutAfterConnectionConfirmed(HandshakeStateTests* 
 // Test: Bounty timeout if no HUNTER_RECEIVE_MATCH
 inline void handshakeBountyTimeoutNoHunterReceiveMatch(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -680,7 +681,7 @@ inline void handshakeBountyTimeoutNoHunterReceiveMatch(HandshakeStateTests* suit
 // Test: Global timeout fires correctly
 inline void handshakeGlobalTimeoutFires(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -717,7 +718,7 @@ inline void handshakeGlobalTimeoutFires(HandshakeStateTests* suite) {
 // Test: Simultaneous connection attempt (no crash or state corruption)
 inline void handshakeSimultaneousConnectionAttempt(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -733,7 +734,7 @@ inline void handshakeSimultaneousConnectionAttempt(HandshakeStateTests* suite) {
 
     // Receive first CONNECTION_CONFIRMED
     Match receivedMatch1("match-id-1", "", "5678");
-    QuickdrawCommand connectionConfirmed1("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch1);
+    QuickdrawCommand connectionConfirmed1(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch1);
     hunterState1.onQuickdrawCommandReceived(connectionConfirmed1);
 
     // Start second handshake before first completes (simulates rapid button press)
@@ -742,11 +743,11 @@ inline void handshakeSimultaneousConnectionAttempt(HandshakeStateTests* suite) {
 
     // Receive second CONNECTION_CONFIRMED
     Match receivedMatch2("match-id-2", "", "9999");
-    QuickdrawCommand connectionConfirmed2("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch2);
+    QuickdrawCommand connectionConfirmed2(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch2);
     hunterState2.onQuickdrawCommandReceived(connectionConfirmed2);
 
     // Complete first handshake
-    QuickdrawCommand finalAck1("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch1);
+    QuickdrawCommand finalAck1(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch1);
     hunterState1.onQuickdrawCommandReceived(finalAck1);
 
     // First should be ready to transition
@@ -756,7 +757,7 @@ inline void handshakeSimultaneousConnectionAttempt(HandshakeStateTests* suite) {
     EXPECT_FALSE(hunterState2.transitionToConnectionSuccessful());
 
     // Complete second handshake
-    QuickdrawCommand finalAck2("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch2);
+    QuickdrawCommand finalAck2(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch2);
     hunterState2.onQuickdrawCommandReceived(finalAck2);
 
     // Second should now be ready
@@ -969,7 +970,7 @@ public:
         player = new Player();
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
-        player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+        player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
@@ -1337,7 +1338,7 @@ public:
         player = new Player();
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
-        player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+        player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
@@ -1543,7 +1544,7 @@ public:
         player = new Player();
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
-        player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+        player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
@@ -1716,7 +1717,7 @@ inline void cleanupHandshakeClearsWirelessCallbacks(StateCleanupTests* suite) {
 // Test: Hunter sends HUNTER_READY after receiving BOUNTY_FINAL_ACK
 inline void handshakeHunterSendsHunterReady(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -1726,11 +1727,11 @@ inline void handshakeHunterSendsHunterReady(HandshakeStateTests* suite) {
 
     // Simulate receiving CONNECTION_CONFIRMED and sending HUNTER_RECEIVE_MATCH
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
     // Now receive BOUNTY_FINAL_ACK - should send HUNTER_READY and transition
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
 
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
@@ -1739,7 +1740,7 @@ inline void handshakeHunterSendsHunterReady(HandshakeStateTests* suite) {
 // Test: Bounty waits for HUNTER_READY before transitioning
 inline void handshakeBountyWaitsForHunterReady(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -1749,7 +1750,7 @@ inline void handshakeBountyWaitsForHunterReady(HandshakeStateTests* suite) {
 
     // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
     // Should not transition yet - waiting for HUNTER_READY
@@ -1759,7 +1760,7 @@ inline void handshakeBountyWaitsForHunterReady(HandshakeStateTests* suite) {
 // Test: Bounty retries BOUNTY_FINAL_ACK if HUNTER_READY not received
 inline void handshakeBountyRetriesBountyFinalAck(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -1769,7 +1770,7 @@ inline void handshakeBountyRetriesBountyFinalAck(HandshakeStateTests* suite) {
 
     // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
     // Still not done
@@ -1793,7 +1794,7 @@ inline void handshakeBountyRetriesBountyFinalAck(HandshakeStateTests* suite) {
 // Test: Bounty exhausts retries and falls back to global timeout
 inline void handshakeBountyExhaustsRetries(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -1803,7 +1804,7 @@ inline void handshakeBountyExhaustsRetries(HandshakeStateTests* suite) {
 
     // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
     // Exhaust all 3 retries (3 timeouts at 3000ms each)
@@ -1822,7 +1823,7 @@ inline void handshakeBountyExhaustsRetries(HandshakeStateTests* suite) {
 // Test: Bounty transitions immediately when HUNTER_READY received
 inline void handshakeBountyTransitionsOnHunterReady(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
-    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+    suite->player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
@@ -1832,11 +1833,11 @@ inline void handshakeBountyTransitionsOnHunterReady(HandshakeStateTests* suite) 
 
     // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(TestConstants::TEST_MAC_DEFAULT, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
     // Receive HUNTER_READY before any timeout
-    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    QuickdrawCommand hunterReady(TestConstants::TEST_MAC_DEFAULT, HUNTER_READY, receivedMatch);
     bountyState.onQuickdrawCommandReceived(hunterReady);
 
     // Should immediately transition
@@ -2013,7 +2014,7 @@ public:
         player = new Player();
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
-        player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+        player->setOpponentMacAddress(TestConstants::TEST_MAC_DEFAULT);
 
         matchManager = new MatchManager();
         wirelessManager = new MockQuickdrawWirelessManager();
@@ -2297,10 +2298,10 @@ inline void edgeCaseMultipleConsecutiveTransitions(StateTransitionEdgeCaseTests*
     hunterState.onStateMounted(&suite->device);
 
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(TestConstants::TEST_MAC_DEFAULT, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(TestConstants::TEST_MAC_DEFAULT, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
 
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());

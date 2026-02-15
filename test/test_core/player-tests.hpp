@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include "game/player.hpp"
+#include "../test-constants.hpp"
 
 class PlayerTestSuite : public testing::Test {
 protected:
@@ -22,8 +23,7 @@ protected:
 
 inline void playerJsonRoundTripPreservesAllFields(Player* player) {
     // Set up player with all fields populated
-    char testId[] = "test-uuid-1234";
-    player->setUserID(testId);
+    player->setUserID(const_cast<char*>(TestConstants::TEST_UUID_PLAYER_1));
     player->setName("TestPlayer");
     player->setAllegiance(Allegiance::HELIX);
     player->setFaction("TestFaction");
@@ -37,15 +37,14 @@ inline void playerJsonRoundTripPreservesAllFields(Player* player) {
     restored.fromJson(json);
 
     // Verify all fields preserved
-    EXPECT_EQ(restored.getUserID(), "test-uuid-1234");
+    EXPECT_EQ(restored.getUserID(), TestConstants::TEST_UUID_PLAYER_1);
     EXPECT_EQ(restored.getName(), "TestPlayer");
     EXPECT_EQ(restored.getFaction(), "TestFaction");
     EXPECT_TRUE(restored.isHunter());
 }
 
 inline void playerJsonRoundTripWithBountyRole(Player* player) {
-    char testId[] = "bounty-player-id";
-    player->setUserID(testId);
+    player->setUserID(const_cast<char*>(TestConstants::TEST_UUID_BOUNTY_1));
     player->setIsHunter(false);
 
     std::string json = player->toJson();
@@ -53,7 +52,7 @@ inline void playerJsonRoundTripWithBountyRole(Player* player) {
     Player restored;
     restored.fromJson(json);
 
-    EXPECT_EQ(restored.getUserID(), "bounty-player-id");
+    EXPECT_EQ(restored.getUserID(), TestConstants::TEST_UUID_BOUNTY_1);
     EXPECT_FALSE(restored.isHunter());
 }
 

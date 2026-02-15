@@ -6,6 +6,7 @@
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"
+#include "../test-constants.hpp"
 
 using namespace cli;
 
@@ -35,8 +36,8 @@ void cliFdnCreateDeviceType(CliFdnTestSuite* suite) {
 void cliFdnDeviceIdRange(CliFdnTestSuite* suite) {
     auto fdn0 = DeviceFactory::createFdnDevice(0, GameType::SIGNAL_ECHO);
     auto fdn1 = DeviceFactory::createFdnDevice(1, GameType::GHOST_RUNNER);
-    ASSERT_EQ(fdn0.deviceId, "7010");
-    ASSERT_EQ(fdn1.deviceId, "7011");
+    ASSERT_EQ(fdn0.deviceId, TestConstants::TEST_FDN_DEVICE_ID_0);
+    ASSERT_EQ(fdn1.deviceId, TestConstants::TEST_FDN_DEVICE_ID_1);
     DeviceFactory::destroyDevice(fdn1);
     DeviceFactory::destroyDevice(fdn0);
 }

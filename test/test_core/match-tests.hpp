@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "game/match.hpp"
 #include "id-generator.hpp"
+#include "../test-constants.hpp"
 
 class MatchTestSuite : public testing::Test {
 protected:
@@ -16,9 +17,9 @@ protected:
 
 inline void matchJsonRoundTripPreservesAllFields() {
     // Create a match with all fields
-    Match original("match-id-12345678-1234-1234-1234-123456789abc", 
-                   "hunter-id-12345678-1234-1234-1234-123456789abc", 
-                   "bounty-id-12345678-1234-1234-1234-123456789abc");
+    Match original(TestConstants::TEST_UUID_MATCH_1,
+                   TestConstants::TEST_UUID_HUNTER_1,
+                   TestConstants::TEST_UUID_BOUNTY_1);
     original.setHunterDrawTime(250);
     original.setBountyDrawTime(300);
 
@@ -39,7 +40,7 @@ inline void matchJsonRoundTripPreservesAllFields() {
 
 inline void matchJsonContainsWinnerFlag() {
     // Hunter wins (faster draw time)
-    Match hunterWins("match-1", "hunter-1", "bounty-1");
+    Match hunterWins(TestConstants::TEST_MATCH_ID_1, TestConstants::TEST_ID_HUNTER, TestConstants::TEST_ID_BOUNTY);
     hunterWins.setHunterDrawTime(200);
     hunterWins.setBountyDrawTime(300);
 
@@ -49,7 +50,7 @@ inline void matchJsonContainsWinnerFlag() {
     EXPECT_NE(json.find("\"winner_is_hunter\":true"), std::string::npos);
 
     // Bounty wins (faster draw time)
-    Match bountyWins("match-2", "hunter-2", "bounty-2");
+    Match bountyWins(TestConstants::TEST_MATCH_ID_2, TestConstants::TEST_UUID_HUNTER_2, TestConstants::TEST_UUID_BOUNTY_2);
     bountyWins.setHunterDrawTime(350);
     bountyWins.setBountyDrawTime(200);
 
@@ -65,9 +66,9 @@ inline void matchJsonContainsWinnerFlag() {
 
 inline void matchBinaryRoundTripPreservesAllFields() {
     // Create a match with valid UUID format strings
-    Match original("12345678-1234-1234-1234-123456789abc", 
-                   "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", 
-                   "11111111-2222-3333-4444-555555555555");
+    Match original(TestConstants::TEST_UUID_PLAYER_1,
+                   TestConstants::TEST_UUID_BOUNTY_2,
+                   TestConstants::TEST_UUID_HUNTER_2);
     original.setHunterDrawTime(150);
     original.setBountyDrawTime(275);
 

@@ -5,6 +5,7 @@
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
 #include "device-mock.hpp"
+#include "../test-constants.hpp"
 
 // ============================================
 // MatchManager Test Fixture
@@ -18,8 +19,7 @@ protected:
         
         // Create a test player
         player = new Player();
-        char playerId[] = "test-player-uuid";
-        player->setUserID(playerId);
+        player->setUserID(const_cast<char*>(TestConstants::TEST_ID_PLAYER));
         
         // Initialize match manager with mocks (4 parameters now)
         matchManager->initialize(player, &mockStorage, &mockPeerComms, &mockWirelessManager);
@@ -57,15 +57,15 @@ inline void matchManagerCreatesMatchCorrectly(MatchManager* mm, Player* player) 
 }
 
 inline void matchManagerPreventsMultipleActiveMatches(MatchManager* mm) {
-    Match* first = mm->createMatch("match-1", "hunter-1", "bounty-1");
+    Match* first = mm->createMatch(TestConstants::TEST_MATCH_ID_1, TestConstants::TEST_UUID_HUNTER_1, TestConstants::TEST_UUID_BOUNTY_1);
     ASSERT_NE(first, nullptr);
 
     // Second create should fail
-    Match* second = mm->createMatch("match-2", "hunter-2", "bounty-2");
+    Match* second = mm->createMatch(TestConstants::TEST_MATCH_ID_2, TestConstants::TEST_UUID_HUNTER_2, TestConstants::TEST_UUID_BOUNTY_2);
     EXPECT_EQ(second, nullptr);
 
     // Current match should still be the first one
-    EXPECT_EQ(mm->getCurrentMatch()->getMatchId(), "match-1");
+    EXPECT_EQ(mm->getCurrentMatch()->getMatchId(), TestConstants::TEST_MATCH_ID_1);
 }
 
 inline void matchManagerReceiveMatchWorks(MatchManager* mm) {
