@@ -16,6 +16,7 @@
 #include "quickdraw-integration-tests.hpp"
 #include "konami-metagame-tests.hpp"
 #include "konami-handshake-tests.hpp"
+#include "lifecycle-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1193,6 +1194,87 @@ TEST_F(KonamiHandshakeTestSuite, stateClearsCallbacksOnDismount) {
 
 TEST_F(KonamiHandshakeTestSuite, multipleLoopsDontChangeTransition) {
     multipleLoopsDontChangeTransition(this);
+}
+
+// ============================================
+// LIFECYCLE SAFETY TESTS
+// ============================================
+
+// Basic Lifecycle
+TEST_F(StateMachineLifecycleTests, onStateMountedCalledOnStart) {
+    testOnStateMountedCalledOnStart(this);
+}
+
+TEST_F(StateMachineLifecycleTests, onStateDismountedCalledOnTransition) {
+    testOnStateDismountedCalledOnTransition(this);
+}
+
+TEST_F(StateMachineLifecycleTests, onStateLoopCalledEachIteration) {
+    testOnStateLoopCalledEachIteration(this);
+}
+
+TEST_F(StateMachineLifecycleTests, mountDismountOrderCorrectDuringTransition) {
+    testMountDismountOrderCorrectDuringTransition(this);
+}
+
+// Transition Safety
+TEST_F(StateMachineLifecycleTests, transitionDismountsOldBeforeMountingNew) {
+    testTransitionDismountsOldBeforeMountingNew(this);
+}
+
+TEST_F(StateMachineLifecycleTests, currentStatePointerUpdatedAfterTransition) {
+    testCurrentStatePointerUpdatedAfterTransition(this);
+}
+
+TEST_F(StateMachineLifecycleTests, transitionConditionsCheckedEachLoop) {
+    testTransitionConditionsCheckedEachLoop(this);
+}
+
+// Destruction Safety
+TEST_F(StateMachineLifecycleTests, destroyingActiveMachineDoesNotCrash) {
+    testDestroyingActiveMachineDoesNotCrash(this);
+}
+
+TEST_F(StateMachineLifecycleTests, destructorCleansUpAllStatesInMap) {
+    testDestructorCleansUpAllStatesInMap(this);
+}
+
+TEST_F(StateMachineLifecycleTests, stateMachineDismountsCurrentStateOnDestruction) {
+    testStateMachineDismountsCurrentStateOnDestruction(this);
+}
+
+// Edge Cases
+TEST_F(StateMachineLifecycleTests, singleStateNoTransitions) {
+    testSingleStateNoTransitions(this);
+}
+
+TEST_F(StateMachineLifecycleTests, selfTransitionDismountsAndRemounts) {
+    testSelfTransitionDismountsAndRemounts(this);
+}
+
+TEST_F(StateMachineLifecycleTests, rapidTransitionsABCInSuccession) {
+    testRapidTransitionsABCInSuccession(this);
+}
+
+TEST_F(StateMachineLifecycleTests, emptyStateMachineHandlesGracefully) {
+    testEmptyStateMachineHandlesGracefully(this);
+}
+
+// App Lifecycle (Sub-app Pattern)
+TEST_F(StateMachineLifecycleTests, hasLaunchedGuardWorks) {
+    testHasLaunchedGuardWorks(this);
+}
+
+TEST_F(StateMachineLifecycleTests, deviceDestructorDismountsLaunchedApps) {
+    testDeviceDestructorDismountsLaunchedApps(this);
+}
+
+TEST_F(StateMachineLifecycleTests, deviceDestructorOnlyDismountsLaunchedApps) {
+    testDeviceDestructorOnlyDismountsLaunchedApps(this);
+}
+
+TEST_F(StateMachineLifecycleTests, multipleAppsAllDismountedOnDestruction) {
+    testMultipleAppsAllDismountedOnDestruction(this);
 }
 
 // ============================================
