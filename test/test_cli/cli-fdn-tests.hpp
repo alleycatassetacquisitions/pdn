@@ -4,12 +4,19 @@
 
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 
 using namespace cli;
 
 class CliFdnTestSuite : public testing::Test {
 protected:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         // Fresh test setup
     }
 };

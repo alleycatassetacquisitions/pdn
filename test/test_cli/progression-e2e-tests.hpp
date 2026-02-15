@@ -32,6 +32,11 @@ using namespace cli;
 class ProgressionE2ETestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         player_ = DeviceFactory::createDevice(0, true);
         fdn_ = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
         SimpleTimer::setPlatformClock(player_.clockDriver);
@@ -40,6 +45,11 @@ public:
     void TearDown() override {
         DeviceFactory::destroyDevice(fdn_);
         DeviceFactory::destroyDevice(player_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {

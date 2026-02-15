@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/player.hpp"
@@ -26,6 +27,11 @@ using namespace cli;
 class EdgeCaseTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         device_ = DeviceFactory::createDevice(0, true);
         SimpleTimer::setPlatformClock(device_.clockDriver);
         player_ = device_.player;
@@ -34,6 +40,11 @@ public:
 
     void TearDown() override {
         DeviceFactory::destroyDevice(device_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {

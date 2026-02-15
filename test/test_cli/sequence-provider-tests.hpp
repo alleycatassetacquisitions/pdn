@@ -6,6 +6,7 @@
 #include "cli/cli-device.hpp"
 #include "game/sequence-provider.hpp"
 #include "device/drivers/native/native-http-client-driver.hpp"
+#include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"
 
 using namespace cli;
@@ -17,6 +18,11 @@ using namespace cli;
 class SequenceProviderTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         // Create a minimal device for HTTP client access
         device_ = DeviceFactory::createDevice(0, true);
         httpClient_ = dynamic_cast<NativeHttpClientDriver*>(device_.httpClientDriver);
@@ -29,6 +35,11 @@ public:
 
     void TearDown() override {
         DeviceFactory::destroyDevice(device_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     DeviceInstance device_;

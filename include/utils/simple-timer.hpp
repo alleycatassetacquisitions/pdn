@@ -16,6 +16,14 @@ public:
         return clock;
     }
 
+    /**
+     * Reset the static clock to nullptr.
+     * Must be called between tests to prevent state pollution.
+     */
+    static void resetClock() {
+        clock = nullptr;
+    }
+
     void updateTime(){
         if (clock == nullptr) {
             now = 0;

@@ -12,7 +12,11 @@
 #include "device/drivers/native/native-light-strip-driver.hpp"
 #include "cli/cli-device.hpp"
 #include "cli/cli-commands.hpp"
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/quickdraw-states.hpp"
+
+using namespace cli;
 
 // ============================================
 // NATIVE SERIAL DRIVER TEST SUITE
@@ -21,11 +25,21 @@
 class NativeSerialDriverTestSuite : public testing::Test {
 public:  // Public for test function access
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         driver_ = new NativeSerialDriver("TestSerial");
     }
     
     void TearDown() override {
         delete driver_;
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
     
     NativeSerialDriver* driver_;

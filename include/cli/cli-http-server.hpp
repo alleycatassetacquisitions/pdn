@@ -267,6 +267,19 @@ public:
         return lastProgressBody_;
     }
 
+    /**
+     * Reset the singleton instance to a clean state.
+     * Must be called between tests to prevent state pollution.
+     */
+    static void resetInstance() {
+        auto& instance = getInstance();
+        instance.playerConfigs_.clear();
+        instance.history_.clear();
+        instance.isOffline_ = false;
+        instance.responseDelayMs_ = 0;
+        instance.lastProgressBody_.clear();
+    }
+
 private:
     std::string lastProgressBody_;
 };

@@ -220,7 +220,7 @@ public:
     size_t getConnectionCount() const {
         return connections_.size();
     }
-    
+
     /**
      * Get a string describing a connection for display.
      */
@@ -228,10 +228,20 @@ public:
         std::string jackAStr = (conn.jackA == JackType::OUTPUT_JACK) ? "out" : "in";
         std::string jackBStr = (conn.jackB == JackType::OUTPUT_JACK) ? "out" : "in";
         std::string typeStr = conn.sameRole ? "P-to-A" : "P-to-P";
-        return std::to_string(conn.deviceA) + "." + jackAStr + 
-               " <-> " + 
+        return std::to_string(conn.deviceA) + "." + jackAStr +
+               " <-> " +
                std::to_string(conn.deviceB) + "." + jackBStr +
                " (" + typeStr + ")";
+    }
+
+    /**
+     * Reset the singleton instance to a clean state.
+     * Must be called between tests to prevent state pollution.
+     */
+    static void resetInstance() {
+        auto& instance = getInstance();
+        instance.devices_.clear();
+        instance.connections_.clear();
     }
 
 private:

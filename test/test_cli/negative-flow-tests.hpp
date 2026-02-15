@@ -33,6 +33,11 @@ using namespace cli;
 class NegativeFlowTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         hunter_ = DeviceFactory::createDevice(0, true);
         fdn_ = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
         SimpleTimer::setPlatformClock(hunter_.clockDriver);
@@ -41,6 +46,11 @@ public:
     void TearDown() override {
         DeviceFactory::destroyDevice(fdn_);
         DeviceFactory::destroyDevice(hunter_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {

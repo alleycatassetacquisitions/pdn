@@ -34,6 +34,11 @@ using namespace cli;
 class HardModeReencounterTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         player_ = DeviceFactory::createDevice(0, true);
         fdnSignalEcho_ = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
         fdnFirewall_ = DeviceFactory::createFdnDevice(2, GameType::FIREWALL_DECRYPT);
@@ -44,6 +49,11 @@ public:
         DeviceFactory::destroyDevice(fdnFirewall_);
         DeviceFactory::destroyDevice(fdnSignalEcho_);
         DeviceFactory::destroyDevice(player_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {

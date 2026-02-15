@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/player.hpp"
 #include "game/progress-manager.hpp"
 #include "game/quickdraw-states/konami-button-awarded.hpp"
@@ -27,6 +29,11 @@ using namespace cli;
 class KonamiButtonAwardedTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         player_ = DeviceFactory::createDevice(0, true);
         SimpleTimer::setPlatformClock(player_.clockDriver);
 
@@ -42,6 +49,11 @@ public:
     void TearDown() override {
         delete progressManager;
         DeviceFactory::destroyDevice(player_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     DeviceInstance player_;

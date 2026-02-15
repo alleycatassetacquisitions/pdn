@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/player.hpp"
 #include "game/konami-metagame/konami-metagame.hpp"
 #include "device/device-types.hpp"
@@ -25,6 +27,11 @@ using namespace cli;
 class KonamiMetaGameE2ETestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         player_ = DeviceFactory::createDevice(0, true);
         fdn_ = DeviceFactory::createFdnDevice(1, GameType::GHOST_RUNNER);
 
@@ -38,6 +45,11 @@ public:
         SerialCableBroker::getInstance().disconnect(0, 1);
         DeviceFactory::destroyDevice(player_);
         DeviceFactory::destroyDevice(fdn_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {

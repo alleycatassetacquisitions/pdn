@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/color-profiles.hpp"
 #include "game/progress-manager.hpp"
 #include "device/device-types.hpp"
@@ -18,12 +20,22 @@ using namespace cli;
 class BoonAwardedTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         device_ = DeviceFactory::createDevice(0, true);
         SimpleTimer::setPlatformClock(device_.clockDriver);
     }
 
     void TearDown() override {
         DeviceFactory::destroyDevice(device_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {

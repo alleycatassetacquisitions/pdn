@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/spike-vector/spike-vector.hpp"
 #include "game/spike-vector/spike-vector-states.hpp"
 #include "game/minigame.hpp"
@@ -21,6 +22,11 @@ using namespace cli;
 class SpikeVectorTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         device_ = DeviceFactory::createGameDevice(0, "spike-vector");
         SimpleTimer::setPlatformClock(device_.clockDriver);
         game_ = static_cast<SpikeVector*>(device_.game);
@@ -33,6 +39,11 @@ public:
 
     void TearDown() override {
         DeviceFactory::destroyDevice(device_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {
@@ -264,7 +275,7 @@ void spikeVectorMissedDodge(SpikeVectorTestSuite* suite) {
     // Use deterministic seed and short track
     config.rngSeed = 42;
     config.trackLength = 5;
-    suite->game_->seedRng(suite->game_->getConfig().rngSeed);
+    suite->game_->seedRng(config.rngSeed);
 
     // Skip to Show (index 1)
     suite->game_->skipToState(suite->device_.pdn, 1);

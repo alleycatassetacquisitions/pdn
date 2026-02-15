@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
+#include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/player.hpp"
 #include "device/device-types.hpp"
 #include "utils/simple-timer.hpp"
@@ -25,12 +27,22 @@ using namespace cli;
 class KonamiProgressionE2ETestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         player_ = DeviceFactory::createDevice(0, true);
         SimpleTimer::setPlatformClock(player_.clockDriver);
     }
 
     void TearDown() override {
         DeviceFactory::destroyDevice(player_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     DeviceInstance player_;

@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
+#include "cli/cli-http-server.hpp"
 #include "game/signal-echo/signal-echo.hpp"
 #include "game/signal-echo/signal-echo-states.hpp"
 #include "game/signal-echo/signal-echo-resources.hpp"
@@ -23,6 +24,11 @@ using namespace cli;
 class FdnIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        // Reset all singleton state before each test to prevent pollution
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
+
         // Device 0 = player (hunter), Device 1 = FDN NPC
         player_ = DeviceFactory::createDevice(0, true);
         fdn_ = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
@@ -32,6 +38,11 @@ public:
     void TearDown() override {
         DeviceFactory::destroyDevice(fdn_);
         DeviceFactory::destroyDevice(player_);
+
+        // Clean up singleton state after each test
+        SerialCableBroker::resetInstance();
+        MockHttpServer::resetInstance();
+        SimpleTimer::resetClock();
     }
 
     void tick(int n = 1) {
