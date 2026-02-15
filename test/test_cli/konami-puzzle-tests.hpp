@@ -44,7 +44,7 @@ public:
     // Helper: Advance player to Idle state
     void advanceToIdle() {
         // stateMap index 7 = Idle (in populateStateMap order)
-        quickdraw_->skipToState(device_.pdn, 7);
+        quickdraw_->skipToState(device_.pdn, 6);
         device_.pdn->loop();
     }
 

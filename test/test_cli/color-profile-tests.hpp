@@ -399,7 +399,7 @@ public:
     }
 
     void skipToIdle() {
-        device_.game->skipToState(device_.pdn, 7);  // Idle
+        device_.game->skipToState(device_.pdn, 6);  // Idle
         tick(1);
     }
 

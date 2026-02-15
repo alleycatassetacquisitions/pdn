@@ -59,7 +59,7 @@ public:
     }
 
     void advanceToIdle() {
-        hunter_.game->skipToState(hunter_.pdn, 7);
+        hunter_.game->skipToState(hunter_.pdn, 6);
         hunter_.pdn->loop();
     }
 
@@ -149,7 +149,7 @@ public:
     }
 
     void advanceToIdle() {
-        bounty_.game->skipToState(bounty_.pdn, 7);
+        bounty_.game->skipToState(bounty_.pdn, 6);
         bounty_.pdn->loop();
     }
 
