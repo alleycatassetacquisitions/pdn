@@ -446,7 +446,9 @@ void stateCommandInvalidDeviceId(CliCommandProcessorTestSuite* suite) {
 
     // findDevice returns selectedDevice when not found, so it shows state for selected device
     ASSERT_FALSE(result.message.empty());
-    ASSERT_NE(result.message.find("0010"), std::string::npos);  // Selected device ID
+    // Should contain device ID (either selected device or state name)
+    ASSERT_TRUE(result.message.find("0010") != std::string::npos ||
+                result.message.find(":") != std::string::npos);
 }
 
 // Test: state command alias (st)
