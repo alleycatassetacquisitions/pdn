@@ -433,6 +433,77 @@ Examples: `vm-03/feature/26/reencounter-prompt`, `vm-07/fix/42/timing`
 Each game has its own test `.cpp` file. Add TEST_F macros to YOUR game's
 file only, not anyone else's.
 
+## Context Resilience — MANDATORY
+
+You WILL hit context limits. When Claude Code compacts your context, you lose detailed memory of earlier work. This section prevents you from going off the rails after compaction.
+
+### On Every Session Start
+```bash
+# FIRST thing you do — check for existing checkpoint
+if [ -f ~/pdn/.agent-checkpoint.json ]; then
+    cat ~/pdn/.agent-checkpoint.json
+fi
+# THEN re-read your plan
+cat ~/plan.md
+```
+
+If `.agent-checkpoint.json` exists, you are **resuming mid-task**. Read the checkpoint's `progress` field and `step_log` array to understand where you left off. Do NOT restart from scratch.
+
+### Checkpoint After Every Major Step
+
+Call this after completing each significant action:
+
+```bash
+~/agent-checkpoint.sh "Completed: <what you just did>. Next: <what's next>"
+```
+
+**When to checkpoint** (non-negotiable):
+- After reading and understanding your plan
+- After each file you create or modify
+- Before running the test suite
+- After tests pass or fail (include pass/fail in message)
+- After committing code
+- After pushing to remote
+- After creating a PR
+
+**Example checkpoint flow:**
+```bash
+~/agent-checkpoint.sh "Read plan. Task: add FDN intro tests. Files to create: 2 test headers, 1 reg file"
+~/agent-checkpoint.sh --phase "implementing"
+# ... write code ...
+~/agent-checkpoint.sh "Created test/test_cli/fdn-intro-tests.hpp with 5 test functions"
+~/agent-checkpoint.sh "Created test/test_cli/fdn-intro-reg-tests.cpp with TEST_F registrations"
+# ... before testing ...
+~/agent-checkpoint.sh "Implementation complete. Running tests next"
+~/agent-checkpoint.sh --phase "testing"
+# ... run tests ...
+~/agent-checkpoint.sh "Tests: 265/265 passed. Ready to commit"
+~/agent-checkpoint.sh --phase "committing"
+# ... commit, push, PR ...
+~/agent-checkpoint.sh --done "PR created: #215"
+```
+
+### Recovery Protocol
+
+If you find yourself confused about what you're working on, or if you just recovered from context compaction:
+
+1. **STOP.** Do not continue blindly.
+2. Read `~/pdn/.agent-checkpoint.json` — it has your last known state
+3. Read `~/plan.md` — it has your full task specification
+4. Check `git log --oneline -5` and `git status` — see what's already done
+5. Resume from where the checkpoint says you left off
+
+### What NOT To Do After Compaction
+- Do NOT start the task over from scratch
+- Do NOT re-read files you've already modified (check git diff instead)
+- Do NOT create duplicate test files or implementations
+- Do NOT commit work that's already been committed (check git log)
+
+### Process Hygiene
+- Kill test processes after they complete: `pkill -f 'pio\|program' 2>/dev/null || true`
+- If tests hang for >5 minutes, kill them and note the failure in your checkpoint
+- Do not leave background processes running when your task is done
+
 ## Tips for Claude
 
 - **Pre-commit hook active** - Tests run automatically before commits
