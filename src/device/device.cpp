@@ -63,6 +63,11 @@ StateMachine* Device::getApp(StateId appId) {
     return (it != appConfig.end()) ? it->second : nullptr;
 }
 
+StateMachine* Device::getActiveApp() {
+    auto it = appConfig.find(currentAppId);
+    return (it != appConfig.end()) ? it->second : nullptr;
+}
+
 void Device::loop() {
     driverManager.execDrivers();
     auto app = appConfig.find(currentAppId);

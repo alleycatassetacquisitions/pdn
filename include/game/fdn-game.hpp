@@ -21,9 +21,13 @@ public:
     int getLastScore() const { return lastScore; }
     void setLastScore(int score) { lastScore = score; }
 
+    void setPendingPlayerMac(const std::string& mac) { pendingPlayerMac = mac; }
+    const std::string& getPendingPlayerMac() const { return pendingPlayerMac; }
+
 private:
     GameType gameType;
     KonamiButton reward;
     bool lastResult = false;
     int lastScore = 0;
+    std::string pendingPlayerMac;
 };

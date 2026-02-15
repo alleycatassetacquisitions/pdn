@@ -296,9 +296,11 @@ private:
         }
         if (targetDevice >= 0 && targetDevice < static_cast<int>(devices.size())) {
             auto& dev = devices[targetDevice];
-            State* currentState = dev.game->getCurrentState();
+            // Show the active app's state, not just the Quickdraw state
+            StateMachine* activeApp = dev.pdn->getActiveApp();
+            State* currentState = activeApp ? activeApp->getCurrentState() : nullptr;
             int stateId = currentState ? currentState->getStateId() : -1;
-            result.message = dev.deviceId + ": " + getStateName(stateId);
+            result.message = dev.deviceId + ": " + getStateName(stateId, dev.deviceType);
         } else {
             result.message = "Invalid device";
         }

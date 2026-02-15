@@ -66,6 +66,7 @@ bool NpcIdle::transitionToHandshake() {
 void NpcIdle::serialEventCallback(const std::string& message) {
     LOG_I(TAG, "Serial received: %s", message.c_str());
     if (message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
+        game->setPendingPlayerMac(message.substr(SEND_MAC_ADDRESS.length()));
         transitionToHandshakeState = true;
     }
 }

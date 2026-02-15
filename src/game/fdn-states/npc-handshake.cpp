@@ -23,6 +23,17 @@ void NpcHandshake::onStateMounted(Device* PDN) {
 
     timeoutTimer.setTimer(HANDSHAKE_TIMEOUT_MS);
 
+    // NpcIdle stores the player MAC on FdnGame before transitioning here.
+    // Send fack immediately so the player side (FdnDetected) can proceed.
+    const std::string& pendingMac = game->getPendingPlayerMac();
+    if (!pendingMac.empty()) {
+        playerMacAddress = pendingMac;
+        LOG_I(TAG, "Player MAC from NpcIdle: %s — sending fack", playerMacAddress.c_str());
+        PDN->writeString(FDN_ACK.c_str());
+        transitionToGameActiveState = true;
+    }
+
+    // Fallback callback in case smac arrives after mount (direct connection)
     PDN->setOnStringReceivedCallback([this, PDN](const std::string& message) {
         LOG_I(TAG, "Handshake serial: %s", message.c_str());
         if (message.rfind(SEND_MAC_ADDRESS, 0) == 0) {

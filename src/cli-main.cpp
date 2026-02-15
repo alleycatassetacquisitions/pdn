@@ -403,12 +403,13 @@ void runScript(const std::string& path,
             std::cout << result.message << std::endl;
         }
 
-        // Print state after each command
+        // Print state after each command — show active app's state
         for (size_t i = 0; i < devices.size(); i++) {
-            auto* sm = devices[i].game;
-            if (sm && sm->getCurrentState()) {
+            StateMachine* activeApp = devices[i].pdn->getActiveApp();
+            State* currentState = activeApp ? activeApp->getCurrentState() : nullptr;
+            if (currentState) {
                 std::cout << "  [" << devices[i].deviceId << "] "
-                          << cli::getStateName(sm->getCurrentState()->getStateId(),
+                          << cli::getStateName(currentState->getStateId(),
                                                devices[i].deviceType)
                           << std::endl;
             }

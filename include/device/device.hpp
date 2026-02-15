@@ -33,6 +33,8 @@ public:
     void setActiveApp(StateId appId);
     void returnToPreviousApp();
     StateMachine* getApp(StateId appId);
+    StateMachine* getActiveApp();
+    StateId getActiveAppId() const { return currentAppId; }
 
     virtual void loop();
 
