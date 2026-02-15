@@ -7,7 +7,7 @@ on:
 
 jobs:
   test-native:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - name: Checkout code
@@ -34,7 +34,7 @@ jobs:
       run: pio test -e native
 
   test-native-cli:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - name: Checkout code

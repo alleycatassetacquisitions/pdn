@@ -8,7 +8,7 @@ on:
 
 jobs:
   binary-size:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,7 +33,7 @@ jobs:
           python3 scripts/check-binary-size.py docs/baselines/binary-size.json /tmp/size-output.txt
 
   duplication:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - name: Download PMD
@@ -47,7 +47,7 @@ jobs:
           python3 scripts/check-duplication.py docs/baselines/duplication.json /tmp/cpd-output.txt
 
   static-analysis:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
       - name: Install cppcheck
