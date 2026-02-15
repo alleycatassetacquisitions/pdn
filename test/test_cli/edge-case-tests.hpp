@@ -596,6 +596,169 @@ void edgeCaseFdnResultManagerClearEmpty(EdgeCaseTestSuite* suite) {
     ASSERT_EQ(manager.getCachedResultCount(), 0);
 }
 
+/*
+ * Test: NPC output buffer flood on cable connect (#205)
+ * Verifies that accumulated NPC broadcast messages are cleared when
+ * a serial cable is connected, preventing message flood.
+ *
+ * Before fix: ~30 duplicate FDN messages fire simultaneously
+ * After fix: Only 1-2 FDN messages fire (from actual broadcast after connect)
+ */
+void edgeCaseNpcBufferFloodOnConnect(FdnEdgeCaseTestSuite* suite) {
+    // Create devices but DON'T connect them yet
+    SerialCableBroker::getInstance().disconnect(0, 1);
+
+    DeviceInstance player = DeviceFactory::createDevice(0, true);
+    DeviceInstance fdn = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
+    SimpleTimer::setPlatformClock(player.clockDriver);
+
+    player.game->skipToState(player.pdn, 6);
+    player.pdn->loop();
+
+    // Let NPC broadcast for several seconds while disconnected
+    // NPC broadcasts every 500ms, so 10 seconds = ~20 messages
+    for (int i = 0; i < 100; i++) {
+        player.clockDriver->advance(100);
+        fdn.clockDriver->advance(100);
+        fdn.pdn->loop();
+    }
+
+    // Track FDN detection events
+    int fdnDetectionCount = 0;
+    auto initialStateId = player.game->getCurrentState()->getStateId();
+
+    // Now connect the cable - this should clear buffered messages
+    SerialCableBroker::getInstance().connect(0, 1);
+
+    // Run a few ticks to process any messages
+    for (int i = 0; i < 10; i++) {
+        SerialCableBroker::getInstance().transferData();
+        player.pdn->loop();
+        fdn.pdn->loop();
+
+        // Count FDN detections (state transitions from IDLE to FDN_DETECTED)
+        auto currentStateId = player.game->getCurrentState()->getStateId();
+        if (currentStateId == FDN_DETECTED && initialStateId != FDN_DETECTED) {
+            fdnDetectionCount++;
+        }
+        initialStateId = currentStateId;
+    }
+
+    // Should only detect FDN once (not 20+ times)
+    ASSERT_LE(fdnDetectionCount, 2) << "Too many FDN detections - buffer not cleared on connect";
+
+    // Cleanup
+    SerialCableBroker::getInstance().disconnect(0, 1);
+    DeviceFactory::destroyDevice(fdn);
+    DeviceFactory::destroyDevice(player);
+}
+
+/*
+ * Test: NPC continues broadcasting at correct interval after cable connect
+ * Verifies that clearing the buffer on connect doesn't break ongoing broadcasts
+ */
+void edgeCaseNpcBroadcastAfterConnect(FdnEdgeCaseTestSuite* suite) {
+    // Start with disconnected devices
+    SerialCableBroker::getInstance().disconnect(0, 1);
+
+    DeviceInstance player = DeviceFactory::createDevice(0, true);
+    DeviceInstance fdn = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
+    SimpleTimer::setPlatformClock(player.clockDriver);
+
+    player.game->skipToState(player.pdn, 6);
+    player.pdn->loop();
+
+    // Connect cable (clears any buffered messages)
+    SerialCableBroker::getInstance().connect(0, 1);
+
+    // Clear any immediate messages
+    for (int i = 0; i < 5; i++) {
+        SerialCableBroker::getInstance().transferData();
+        player.pdn->loop();
+        fdn.pdn->loop();
+    }
+
+    // Wait for next broadcast (500ms interval + some buffer)
+    for (int i = 0; i < 7; i++) {
+        player.clockDriver->advance(100);
+        fdn.clockDriver->advance(100);
+        SerialCableBroker::getInstance().transferData();
+        player.pdn->loop();
+        fdn.pdn->loop();
+    }
+
+    // Should have received at least one FDN message
+    ASSERT_EQ(player.game->getCurrentState()->getStateId(), FDN_DETECTED)
+        << "NPC not broadcasting after cable connect";
+
+    // Cleanup
+    SerialCableBroker::getInstance().disconnect(0, 1);
+    DeviceFactory::destroyDevice(fdn);
+    DeviceFactory::destroyDevice(player);
+}
+
+/*
+ * Test: Disconnect and reconnect clears buffer again
+ * Verifies that buffer clearing works for multiple connect cycles
+ */
+void edgeCaseNpcReconnectClearsBuffer(FdnEdgeCaseTestSuite* suite) {
+    SerialCableBroker::getInstance().disconnect(0, 1);
+
+    DeviceInstance player = DeviceFactory::createDevice(0, true);
+    DeviceInstance fdn = DeviceFactory::createFdnDevice(1, GameType::SIGNAL_ECHO);
+    SimpleTimer::setPlatformClock(player.clockDriver);
+
+    player.game->skipToState(player.pdn, 6);
+    player.pdn->loop();
+
+    // First cycle: accumulate messages while disconnected
+    for (int i = 0; i < 50; i++) {
+        fdn.clockDriver->advance(100);
+        fdn.pdn->loop();
+    }
+
+    // Connect - should clear buffer
+    SerialCableBroker::getInstance().connect(0, 1);
+    for (int i = 0; i < 5; i++) {
+        SerialCableBroker::getInstance().transferData();
+        player.pdn->loop();
+        fdn.pdn->loop();
+    }
+
+    // Disconnect again
+    SerialCableBroker::getInstance().disconnect(0, 1);
+
+    // Second cycle: accumulate MORE messages
+    for (int i = 0; i < 50; i++) {
+        fdn.clockDriver->advance(100);
+        fdn.pdn->loop();
+    }
+
+    // Reconnect - should clear buffer again
+    int fdnDetectionCount = 0;
+    auto initialStateId = player.game->getCurrentState()->getStateId();
+
+    SerialCableBroker::getInstance().connect(0, 1);
+    for (int i = 0; i < 10; i++) {
+        SerialCableBroker::getInstance().transferData();
+        player.pdn->loop();
+        fdn.pdn->loop();
+
+        auto currentStateId = player.game->getCurrentState()->getStateId();
+        if (currentStateId == FDN_DETECTED && initialStateId != FDN_DETECTED) {
+            fdnDetectionCount++;
+        }
+        initialStateId = currentStateId;
+    }
+
+    ASSERT_LE(fdnDetectionCount, 2) << "Buffer not cleared on reconnect";
+
+    // Cleanup
+    SerialCableBroker::getInstance().disconnect(0, 1);
+    DeviceFactory::destroyDevice(fdn);
+    DeviceFactory::destroyDevice(player);
+}
+
 // ============================================
 // DEVICE LIFECYCLE EDGE CASES
 // ============================================
