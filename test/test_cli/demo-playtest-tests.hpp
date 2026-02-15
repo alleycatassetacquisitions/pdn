@@ -154,7 +154,6 @@ void signalEchoEasyPlaytest(DemoPlaytestSuite* suite) {
         }
 
         totalAttempts += attempts;
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(device);
     }
 
@@ -250,7 +249,6 @@ void signalEchoHardPlaytest(DemoPlaytestSuite* suite) {
         }
 
         totalAttempts += attempts;
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(device);
     }
 
@@ -348,7 +346,6 @@ void ghostRunnerEasyPlaytest(DemoPlaytestSuite* suite) {
         }
 
         totalAttempts += attempts;
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(device);
     }
 
@@ -431,7 +428,6 @@ void ghostRunnerHardPlaytest(DemoPlaytestSuite* suite) {
         }
 
         totalAttempts += attempts;
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(device);
     }
 

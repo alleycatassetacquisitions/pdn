@@ -41,7 +41,6 @@ public:
     }
 
     void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(fdnFirewall_);
         DeviceFactory::destroyDevice(fdnSignalEcho_);
         DeviceFactory::destroyDevice(player_);

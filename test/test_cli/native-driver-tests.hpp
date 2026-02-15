@@ -909,7 +909,6 @@ public:
 
     void TearDown() override {
         cli::DeviceFactory::destroyDevice(device_);
-        SimpleTimer::setPlatformClock(nullptr);
         g_logger = nullptr;
         delete globalLogger_;
         delete globalClock_;
@@ -1015,7 +1014,6 @@ public:
         }
         devices_.clear();
 
-        SimpleTimer::setPlatformClock(nullptr);
         g_logger = nullptr;
         delete globalLogger_;
         delete globalClock_;

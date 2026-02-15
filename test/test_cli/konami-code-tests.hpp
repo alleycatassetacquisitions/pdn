@@ -30,7 +30,6 @@ public:
     }
 
     void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(device_);
     }
 

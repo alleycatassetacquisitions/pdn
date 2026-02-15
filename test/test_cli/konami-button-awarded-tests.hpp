@@ -40,7 +40,6 @@ public:
     }
 
     void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
         delete progressManager;
         DeviceFactory::destroyDevice(player_);
     }

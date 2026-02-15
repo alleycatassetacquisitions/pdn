@@ -33,7 +33,6 @@ public:
     }
 
     void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(device_);
     }
 
@@ -75,7 +74,6 @@ public:
 
     void TearDown() override {
         SerialCableBroker::getInstance().disconnect(0, 1);
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(fdn_);
         DeviceFactory::destroyDevice(player_);
     }

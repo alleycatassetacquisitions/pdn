@@ -39,7 +39,6 @@ public:
     }
 
     void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(fdn_);
         DeviceFactory::destroyDevice(hunter_);
     }
@@ -130,7 +129,6 @@ public:
     }
 
     void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
         DeviceFactory::destroyDevice(fdn_);
         DeviceFactory::destroyDevice(bounty_);
     }
