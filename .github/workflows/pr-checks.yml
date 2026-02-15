@@ -81,6 +81,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: 'true'
 
     - name: Set up Python 3.11
       uses: actions/setup-python@v5
@@ -89,8 +91,6 @@ jobs:
 
     - name: Install PlatformIO
       run: pip install platformio
-      with:
-        submodules: 'true'
 
     - name: Create WiFi credentials
       run: |
@@ -145,7 +145,7 @@ jobs:
         while IFS= read -r file; do
           if [ -f "$file" ]; then
             if grep -n -E '^(<{7}|={7}|>{7})' "$file"; then
-              echo "❌ CONFLICT MARKERS FOUND in $file"
+              echo "CONFLICT MARKERS FOUND in $file"
               CONFLICTS_FOUND=1
             fi
           fi
@@ -158,6 +158,6 @@ jobs:
           echo "=========================================="
           exit 1
         else
-          echo "✅ No conflict markers found"
+          echo "No conflict markers found"
           exit 0
         fi
