@@ -691,7 +691,12 @@ private:
     MatchManager* matchManager;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     SimpleTimer delayTimer;
+    SimpleTimer retryTimer;
     const int delay = 100;
+    const int retryTimeout = 3000;
+    const int maxRetries = 3;
+    int retryCount = 0;
+    bool waitingForHunterReady = false;
     bool transitionToConnectionSuccessfulState = false;
 };
 

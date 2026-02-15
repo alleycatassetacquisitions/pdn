@@ -75,10 +75,10 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
     }
 
     LOG_I("BOUNTY_SEND_CC", "Received command: %d", command.command);
-    
+
     if (command.command == HUNTER_RECEIVE_MATCH) {
         LOG_I("BOUNTY_SEND_CC", "Received HUNTER_RECEIVE_MATCH command");
-        
+
         // Validate received match data
         if (command.match.getMatchId().empty()) {
             LOG_E("BOUNTY_SEND_CC", "Received empty match ID");
@@ -111,9 +111,24 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
                 *match
             );
             LOG_I("BOUNTY_SEND_CC", "Sent BOUNTY_FINAL_ACK");
-            transitionToConnectionSuccessfulState = true;
+
+            // Start waiting for HUNTER_READY
+            waitingForHunterReady = true;
+            retryCount = 0;
+            retryTimer.setTimer(retryTimeout);
+            LOG_I("BOUNTY_SEND_CC", "Waiting for HUNTER_READY (timeout: %dms)", retryTimeout);
         } catch (const std::exception& e) {
             LOG_E("BOUNTY_SEND_CC", "Failed to send BOUNTY_FINAL_ACK: %s", e.what());
+        }
+    } else if (command.command == HUNTER_READY) {
+        LOG_I("BOUNTY_SEND_CC", "Received HUNTER_READY from opponent");
+
+        if (waitingForHunterReady) {
+            waitingForHunterReady = false;
+            transitionToConnectionSuccessfulState = true;
+            LOG_I("BOUNTY_SEND_CC", "Handshake complete - both devices confirmed");
+        } else {
+            LOG_W("BOUNTY_SEND_CC", "Received HUNTER_READY but not waiting for it");
         }
     } else {
         LOG_W("BOUNTY_SEND_CC", "Received unexpected command: %d", command.command);
@@ -121,11 +136,47 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
 }
 
 void BountySendConnectionConfirmedState::onStateLoop(Device *PDN) {
-    
+    if (!waitingForHunterReady) {
+        return;
+    }
+
+    retryTimer.updateTime();
+    if (retryTimer.expired()) {
+        if (retryCount < maxRetries) {
+            // Retry sending BOUNTY_FINAL_ACK
+            retryCount++;
+            LOG_W("BOUNTY_SEND_CC", "HUNTER_READY timeout - retry %d/%d", retryCount, maxRetries);
+
+            Match* match = matchManager->getCurrentMatch();
+            if (!match) {
+                LOG_E("BOUNTY_SEND_CC", "No current match for retry");
+                return;
+            }
+
+            try {
+                quickdrawWirelessManager->broadcastPacket(
+                    player->getOpponentMacAddress(),
+                    BOUNTY_FINAL_ACK,
+                    *match
+                );
+                LOG_I("BOUNTY_SEND_CC", "Re-sent BOUNTY_FINAL_ACK");
+                retryTimer.setTimer(retryTimeout);
+            } catch (const std::exception& e) {
+                LOG_E("BOUNTY_SEND_CC", "Failed to retry BOUNTY_FINAL_ACK: %s", e.what());
+            }
+        } else {
+            LOG_E("BOUNTY_SEND_CC", "Max retries exhausted, falling back to global timeout");
+            waitingForHunterReady = false;
+            // Don't set transition flag - let the global timeout handle it
+        }
+    }
 }
 
 void BountySendConnectionConfirmedState::onStateDismounted(Device *PDN) {
     transitionToConnectionSuccessfulState = false;
+    waitingForHunterReady = false;
+    retryCount = 0;
+    retryTimer.invalidate();
     LOG_I("BOUNTY_SEND_CC", "State dismounted");
     BaseHandshakeState::resetTimeout();
     quickdrawWirelessManager->clearCallbacks();

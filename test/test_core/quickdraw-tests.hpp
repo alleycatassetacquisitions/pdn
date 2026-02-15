@@ -266,22 +266,29 @@ inline void handshakeTimeoutReturnsToIdle(HandshakeStateTests* suite) {
 inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
     suite->player->setIsHunter(false);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
-    
+
     // Expect packet to be sent when state mounts
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
-    
+
     BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
     bountyState.onStateMounted(&suite->device);
-    
+
     // Should not transition yet
     EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
-    
+
     // Simulate receiving HUNTER_RECEIVE_MATCH command
     Match receivedMatch("test-match-id", "5678", "1234");
     QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
-    
+
+    // Still not done - need HUNTER_READY
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+
+    // Simulate receiving HUNTER_READY command
+    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(hunterReady);
+
     // Should now transition to connection successful
     EXPECT_TRUE(bountyState.transitionToConnectionSuccessful());
 }
@@ -290,29 +297,29 @@ inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
 inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
     suite->player->setIsHunter(true);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
-    
+
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
-    
+
     HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
     hunterState.onStateMounted(&suite->device);
-    
+
     // Should not transition yet
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
-    
+
     // Simulate receiving CONNECTION_CONFIRMED command
     Match receivedMatch("test-match-id", "", "5678");
     QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
-    
+
     // Still not done - need BOUNTY_FINAL_ACK
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
-    
-    // Simulate receiving BOUNTY_FINAL_ACK
+
+    // Simulate receiving BOUNTY_FINAL_ACK (Hunter sends HUNTER_READY and transitions)
     QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
-    
-    // Should now transition
+
+    // Should now transition (after sending HUNTER_READY)
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
 }
 
@@ -1676,12 +1683,146 @@ inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
 inline void cleanupHandshakeClearsWirelessCallbacks(StateCleanupTests* suite) {
     HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
     hunterState.onStateMounted(&suite->device);
-    
+
     // Dismount should clear wireless callbacks
     hunterState.onStateDismounted(&suite->device);
-    
+
     // Transition flag should be reset
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
+}
+
+// ============================================
+// 4-Way Handshake Protocol Tests
+// ============================================
+
+// Test: Hunter sends HUNTER_READY after receiving BOUNTY_FINAL_ACK
+inline void handshakeHunterSendsHunterReady(HandshakeStateTests* suite) {
+    suite->player->setIsHunter(true);
+    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillRepeatedly(Return(1));
+
+    HunterSendIdState hunterState(suite->player, suite->matchManager, suite->wirelessManager);
+    hunterState.onStateMounted(&suite->device);
+
+    // Simulate receiving CONNECTION_CONFIRMED and sending HUNTER_RECEIVE_MATCH
+    Match receivedMatch("test-match-id", "", "5678");
+    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    hunterState.onQuickdrawCommandReceived(connectionConfirmed);
+
+    // Now receive BOUNTY_FINAL_ACK - should send HUNTER_READY and transition
+    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    hunterState.onQuickdrawCommandReceived(finalAck);
+
+    EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
+}
+
+// Test: Bounty waits for HUNTER_READY before transitioning
+inline void handshakeBountyWaitsForHunterReady(HandshakeStateTests* suite) {
+    suite->player->setIsHunter(false);
+    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillRepeatedly(Return(1));
+
+    BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
+    bountyState.onStateMounted(&suite->device);
+
+    // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
+    Match receivedMatch("test-match-id", "5678", "1234");
+    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(command);
+
+    // Should not transition yet - waiting for HUNTER_READY
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+}
+
+// Test: Bounty retries BOUNTY_FINAL_ACK if HUNTER_READY not received
+inline void handshakeBountyRetriesBountyFinalAck(HandshakeStateTests* suite) {
+    suite->player->setIsHunter(false);
+    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillRepeatedly(Return(1));
+
+    BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
+    bountyState.onStateMounted(&suite->device);
+
+    // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
+    Match receivedMatch("test-match-id", "5678", "1234");
+    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(command);
+
+    // Still not done
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+
+    // Advance time past retry timeout (3000ms)
+    suite->fakeClock->advance(3100);
+    bountyState.onStateLoop(&suite->device);
+
+    // Should have retried but not transitioned yet
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+
+    // Advance time for second retry
+    suite->fakeClock->advance(3100);
+    bountyState.onStateLoop(&suite->device);
+
+    // Still waiting
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+}
+
+// Test: Bounty exhausts retries and falls back to global timeout
+inline void handshakeBountyExhaustsRetries(HandshakeStateTests* suite) {
+    suite->player->setIsHunter(false);
+    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillRepeatedly(Return(1));
+
+    BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
+    bountyState.onStateMounted(&suite->device);
+
+    // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
+    Match receivedMatch("test-match-id", "5678", "1234");
+    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(command);
+
+    // Exhaust all 3 retries (3 timeouts at 3000ms each)
+    for (int i = 0; i < 3; i++) {
+        suite->fakeClock->advance(3100);
+        bountyState.onStateLoop(&suite->device);
+    }
+
+    // After max retries, should not transition yet - falls back to global timeout
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+
+    // Should still be able to timeout via global timeout mechanism
+    // (tested separately in existing timeout test)
+}
+
+// Test: Bounty transitions immediately when HUNTER_READY received
+inline void handshakeBountyTransitionsOnHunterReady(HandshakeStateTests* suite) {
+    suite->player->setIsHunter(false);
+    suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillRepeatedly(Return(1));
+
+    BountySendConnectionConfirmedState bountyState(suite->player, suite->matchManager, suite->wirelessManager);
+    bountyState.onStateMounted(&suite->device);
+
+    // Receive HUNTER_RECEIVE_MATCH and send BOUNTY_FINAL_ACK
+    Match receivedMatch("test-match-id", "5678", "1234");
+    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(command);
+
+    // Receive HUNTER_READY before any timeout
+    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(hunterReady);
+
+    // Should immediately transition
+    EXPECT_TRUE(bountyState.transitionToConnectionSuccessful());
 }
 
 // Test: DuelResult state clears wireless callbacks on dismount
