@@ -1,0 +1,7 @@
+{
+  "total_duplicate_tokens": 8613,
+  "total_duplicate_blocks": 104,
+  "threshold_tokens": 50,
+  "timestamp": "2026-02-15",
+  "note": "Initial baseline from Wave 13"
+}
