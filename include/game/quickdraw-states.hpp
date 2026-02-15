@@ -288,6 +288,7 @@ private:
     bool fackReceived = false;
     bool macSent = false;
     bool handshakeComplete = false;
+    bool gameLaunched = false;
     std::string fdnMessage;
     GameType pendingGameType = GameType::QUICKDRAW;
     KonamiButton pendingReward = KonamiButton::UP;
@@ -297,6 +298,7 @@ struct FdnDetectedSnapshot : public Snapshot {
     GameType gameType = GameType::QUICKDRAW;
     KonamiButton reward = KonamiButton::UP;
     bool handshakeComplete = false;
+    bool gameLaunched = false;
 };
 
 /*

@@ -40,6 +40,7 @@ void FdnDetected::onStateMounted(Device* PDN) {
     fackReceived = false;
     macSent = false;
     handshakeComplete = false;
+    gameLaunched = false;
 
     // Read the pending FDN message from Player (set by Idle)
     fdnMessage = player->getPendingCdevMessage();
@@ -142,6 +143,7 @@ void FdnDetected::onStateLoop(Device* PDN) {
 
         player->setRecreationalMode(false);
         game->resetGame();
+        gameLaunched = true;
         PDN->setActiveApp(StateId(appId));
         return;
     }
@@ -166,6 +168,7 @@ std::unique_ptr<Snapshot> FdnDetected::onStatePaused(Device* PDN) {
     snapshot->gameType = pendingGameType;
     snapshot->reward = pendingReward;
     snapshot->handshakeComplete = handshakeComplete;
+    snapshot->gameLaunched = gameLaunched;
     return snapshot;
 }
 
@@ -175,10 +178,11 @@ void FdnDetected::onStateResumed(Device* PDN, Snapshot* snapshot) {
         pendingGameType = fdnSnapshot->gameType;
         pendingReward = fdnSnapshot->reward;
         handshakeComplete = fdnSnapshot->handshakeComplete;
+        gameLaunched = fdnSnapshot->gameLaunched;
     }
 
-    // If handshake was complete when we paused, the minigame is done
-    if (handshakeComplete) {
+    // If we launched a game and it's now done, transition to FdnComplete
+    if (gameLaunched) {
         transitionToFdnCompleteState = true;
     }
 }
