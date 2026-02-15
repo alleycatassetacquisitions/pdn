@@ -20,13 +20,23 @@ namespace cli {
  */
 class Renderer {
 public:
-    // Status display starting row (after 12-line header + 1 blank line)
-    static constexpr int STATUS_START_ROW = 14;
-    
     Renderer() = default;
 
-    void setDisplayMirror(bool enabled) { displayMirrorEnabled_ = enabled; }
-    void toggleDisplayMirror() { displayMirrorEnabled_ = !displayMirrorEnabled_; }
+    void setDisplayMirror(bool enabled) {
+        bool wasEnabled = displayMirrorEnabled_;
+        displayMirrorEnabled_ = enabled;
+        // Clear header area if transitioning to compact mode (display mirror on)
+        if (!wasEnabled && displayMirrorEnabled_) {
+            clearHeaderArea();
+        }
+    }
+    void toggleDisplayMirror() {
+        displayMirrorEnabled_ = !displayMirrorEnabled_;
+        // Clear header area if transitioning to compact mode (display mirror on)
+        if (displayMirrorEnabled_) {
+            clearHeaderArea();
+        }
+    }
     bool isDisplayMirrorEnabled() const { return displayMirrorEnabled_; }
 
     void setCaptions(bool enabled) { captionsEnabled_ = enabled; }
@@ -114,6 +124,27 @@ private:
     std::vector<std::string> currentFrame_;
     int termWidth_ = 0;
     int termHeight_ = 0;
+
+    /**
+     * Calculate the starting row for status display.
+     * Returns 1 if display mirror is active (skip header to save space).
+     * Returns 14 if display mirror is off (show banner at rows 1-13).
+     */
+    int getStatusStartRow() const {
+        return displayMirrorEnabled_ ? 1 : 14;
+    }
+
+    /**
+     * Clear the header area (rows 1-13) when transitioning to compact mode.
+     * This removes the banner to reclaim screen space.
+     */
+    void clearHeaderArea() {
+        for (int row = 1; row <= 13; row++) {
+            Terminal::moveCursor(row, 1);
+            Terminal::clearLine();
+        }
+        Terminal::flush();
+    }
     
     /**
      * Add a line to the current frame buffer.
@@ -158,6 +189,7 @@ private:
      */
     void renderDiff() {
         int termHeight = getTerminalHeight();
+        int startRow = getStatusStartRow();
 
         // Ensure we have enough lines in previous frame for comparison
         while (previousFrame_.size() < currentFrame_.size()) {
@@ -166,7 +198,7 @@ private:
 
         // Compare and update only changed lines (within terminal bounds)
         for (size_t i = 0; i < currentFrame_.size(); i++) {
-            int row = STATUS_START_ROW + static_cast<int>(i);
+            int row = startRow + static_cast<int>(i);
             if (row >= termHeight) break;
 
             if (i >= previousFrame_.size() || currentFrame_[i] != previousFrame_[i]) {
@@ -179,7 +211,7 @@ private:
         // Clear any extra lines from previous frame (within terminal bounds)
         if (previousFrame_.size() > currentFrame_.size()) {
             for (size_t i = currentFrame_.size(); i < previousFrame_.size(); i++) {
-                int row = STATUS_START_ROW + static_cast<int>(i);
+                int row = startRow + static_cast<int>(i);
                 if (row >= termHeight) break;
                 Terminal::moveCursor(row, 1);
                 Terminal::clearLine();
