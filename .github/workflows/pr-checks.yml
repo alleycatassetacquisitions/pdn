@@ -170,3 +170,53 @@ jobs:
 
     - name: Build Native CLI
       run: pio run -e native_cli
+
+  conflict-markers:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Check for merge conflict markers
+      run: |
+        echo "Checking for merge conflict markers in PR files..."
+
+        # Get the list of changed files in this PR
+        git fetch origin ${{ github.base_ref }}
+        CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+        if [ -z "$CHANGED_FILES" ]; then
+          echo "No files changed in this PR"
+          exit 0
+        fi
+
+        echo "Changed files:"
+        echo "$CHANGED_FILES"
+        echo ""
+
+        # Check each changed file for conflict markers
+        CONFLICTS_FOUND=0
+        while IFS= read -r file; do
+          if [ -f "$file" ]; then
+            # Search for conflict markers
+            if grep -n -E '^(<{7}|={7}|>{7})' "$file"; then
+              echo "❌ CONFLICT MARKERS FOUND in $file"
+              CONFLICTS_FOUND=1
+            fi
+          fi
+        done <<< "$CHANGED_FILES"
+
+        if [ $CONFLICTS_FOUND -eq 1 ]; then
+          echo ""
+          echo "=========================================="
+          echo "ERROR: Merge conflict markers detected!"
+          echo "Please resolve all conflicts before merging."
+          echo "=========================================="
+          exit 1
+        else
+          echo "✅ No conflict markers found"
+          exit 0
+        fi
