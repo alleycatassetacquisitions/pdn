@@ -2,6 +2,7 @@
 
 #include <vector>
 #include "device/device.hpp"
+#include "device/drivers/logger.hpp"
 #include "state.hpp"
 
 /*
@@ -75,9 +76,29 @@ public:
     void checkStateTransitions() {
         newState = currentState->checkTransitions();
         stateChangeReady = (newState != nullptr);
+
+        #ifdef DEBUG
+        // Debug assertion - validate state transitions during development
+        if (stateChangeReady && newState == nullptr) {
+            LOG_E("StateMachine", "ASSERTION FAILED: stateChangeReady true but newState is null");
+        }
+        #endif
     };
 
     void commitState(Device *PDN) {
+        if (newState == nullptr) {
+            LOG_W("StateMachine", "commitState called with null newState - skipping transition");
+            stateChangeReady = false;
+            return;
+        }
+
+        #ifdef DEBUG
+        // Debug assertion - catch null transitions during development
+        if (newState == nullptr) {
+            LOG_E("StateMachine", "ASSERTION FAILED: commitState() received null state pointer");
+        }
+        #endif
+
         currentState->onStateDismounted(PDN);
 
         currentState = newState;

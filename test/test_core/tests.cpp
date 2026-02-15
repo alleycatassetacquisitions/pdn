@@ -226,6 +226,63 @@ TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
     ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
 }
 
+TEST_F(StateMachineTestSuite, commitStateHandlesNullStateGracefully) {
+    NullStateTestMachine nullStateMachine;
+    MockDevice device;
+
+    nullStateMachine.initialize(&device);
+
+    State* initialState = nullStateMachine.getCurrentState();
+    ASSERT_NE(initialState, nullptr);
+    ASSERT_EQ(initialState->getStateId(), INITIAL_STATE);
+
+    // Force commitState with null newState (simulating an error condition)
+    nullStateMachine.forceCommitWithNull(&device);
+
+    // Should remain in initial state without crashing
+    ASSERT_EQ(nullStateMachine.getCurrentState()->getStateId(), INITIAL_STATE);
+    ASSERT_FALSE(nullStateMachine.getTransitionReadyFlag());
+}
+
+TEST_F(StateMachineTestSuite, checkTransitionsWithNullNextStatePreventCommit) {
+    NullStateTestMachine nullStateMachine;
+    MockDevice device;
+
+    nullStateMachine.initialize(&device);
+
+    // Trigger transition to null state
+    InitialTestState* initial = dynamic_cast<InitialTestState*>(nullStateMachine.getCurrentState());
+    initial->transitionToSecond = true;
+
+    nullStateMachine.checkStateTransitions();
+
+    // checkStateTransitions should set stateChangeReady to false when newState is null
+    ASSERT_FALSE(nullStateMachine.getTransitionReadyFlag());
+    ASSERT_EQ(nullStateMachine.getNewState(), nullptr);
+
+    // Should remain in initial state
+    ASSERT_EQ(nullStateMachine.getCurrentState()->getStateId(), INITIAL_STATE);
+}
+
+TEST_F(StateMachineTestSuite, onStateLoopWithNullTransitionDoesNotCrash) {
+    NullStateTestMachine nullStateMachine;
+    MockDevice device;
+
+    nullStateMachine.initialize(&device);
+
+    // Trigger transition to null state
+    InitialTestState* initial = dynamic_cast<InitialTestState*>(nullStateMachine.getCurrentState());
+    initial->transitionToSecond = true;
+
+    // onStateLoop includes checkStateTransitions + commitState
+    // This should not crash even with null transition
+    nullStateMachine.onStateLoop(&device);
+
+    // Should remain in initial state (because checkTransitions returns null,
+    // stateChangeReady is false, and commitState is never called)
+    ASSERT_EQ(nullStateMachine.getCurrentState()->getStateId(), INITIAL_STATE);
+}
+
 // ============================================
 // DEVICE TESTS - APP PATTERN
 // ============================================
