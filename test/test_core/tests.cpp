@@ -770,6 +770,51 @@ TEST_F(HandshakeStateTests, statesClearOnDismount) {
     handshakeStatesClearOnDismount(this);
 }
 
+// Handshake Edge Case Tests
+TEST_F(HandshakeStateTests, duplicateConnectionConfirmedHandled) {
+    handshakeDuplicateConnectionConfirmedHandled(this);
+}
+
+TEST_F(HandshakeStateTests, duplicateHunterReceiveMatchHandled) {
+    handshakeDuplicateHunterReceiveMatchHandled(this);
+}
+
+TEST_F(HandshakeStateTests, outOfOrderBountyFinalAckAccepted) {
+    handshakeOutOfOrderBountyFinalAckAccepted(this);
+}
+
+TEST_F(HandshakeStateTests, outOfOrderHunterReceiveMatchIgnored) {
+    handshakeOutOfOrderHunterReceiveMatchIgnored(this);
+}
+
+TEST_F(HandshakeStateTests, emptyMatchIdRejected) {
+    handshakeEmptyMatchIdRejected(this);
+}
+
+TEST_F(HandshakeStateTests, emptyPlayerIdsRejected) {
+    handshakeEmptyPlayerIdsRejected(this);
+}
+
+TEST_F(HandshakeStateTests, invalidCommandTypeIgnored) {
+    handshakeInvalidCommandTypeIgnored(this);
+}
+
+TEST_F(HandshakeStateTests, hunterTimeoutAfterConnectionConfirmed) {
+    handshakeHunterTimeoutAfterConnectionConfirmed(this);
+}
+
+TEST_F(HandshakeStateTests, bountyTimeoutNoHunterReceiveMatch) {
+    handshakeBountyTimeoutNoHunterReceiveMatch(this);
+}
+
+TEST_F(HandshakeStateTests, globalTimeoutFires) {
+    handshakeGlobalTimeoutFires(this);
+}
+
+TEST_F(HandshakeStateTests, simultaneousConnectionAttempt) {
+    handshakeSimultaneousConnectionAttempt(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
