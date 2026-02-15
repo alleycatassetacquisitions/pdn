@@ -770,6 +770,26 @@ TEST_F(HandshakeStateTests, statesClearOnDismount) {
     handshakeStatesClearOnDismount(this);
 }
 
+TEST_F(HandshakeStateTests, hunterSendsHunterReady) {
+    handshakeHunterSendsHunterReady(this);
+}
+
+TEST_F(HandshakeStateTests, bountyWaitsForHunterReady) {
+    handshakeBountyWaitsForHunterReady(this);
+}
+
+TEST_F(HandshakeStateTests, bountyRetriesBountyFinalAck) {
+    handshakeBountyRetriesBountyFinalAck(this);
+}
+
+TEST_F(HandshakeStateTests, bountyExhaustsRetries) {
+    handshakeBountyExhaustsRetries(this);
+}
+
+TEST_F(HandshakeStateTests, bountyTransitionsOnHunterReady) {
+    handshakeBountyTransitionsOnHunterReady(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
