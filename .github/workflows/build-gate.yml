@@ -7,13 +7,21 @@ on:
 
 jobs:
   test-native:
-    runs-on: [self-hosted, pdn-ci]
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: 'true'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PlatformIO
+      run: pip install platformio
 
     - name: Create WiFi credentials
       run: |
@@ -26,13 +34,21 @@ jobs:
       run: pio test -e native
 
   test-native-cli:
-    runs-on: [self-hosted, pdn-ci]
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: 'true'
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install PlatformIO
+      run: pip install platformio
 
     - name: Create WiFi credentials
       run: |
