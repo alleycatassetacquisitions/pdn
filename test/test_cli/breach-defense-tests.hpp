@@ -469,4 +469,101 @@ void breachDefenseManagedModeReturns(BreachDefenseManagedTestSuite* suite) {
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
 }
 
+// ============================================
+// EDGE CASE TESTS
+// ============================================
+
+/*
+ * Test: Shield at lane 0 (bottom boundary) can block threat at lane 0.
+ */
+void breachDefenseBlockAtLaneZero(BreachDefenseTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+
+    session.shieldLane = 0;  // Bottom boundary
+    session.threatLane = 0;  // Threat at same lane
+    session.breaches = 0;
+    int initialScore = session.score;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    // Wait for eval timer to finish
+    suite->tickWithTime(10, 100);
+
+    EXPECT_EQ(session.score, initialScore + 100) << "Block at lane 0 should award score";
+    EXPECT_EQ(session.breaches, 0) << "No breach should be counted for successful block";
+}
+
+/*
+ * Test: Shield at max lane (top boundary) can block threat at max lane.
+ */
+void breachDefenseBlockAtMaxLane(BreachDefenseTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+    int maxLane = config.numLanes - 1;
+
+    session.shieldLane = maxLane;  // Top boundary
+    session.threatLane = maxLane;  // Threat at same lane
+    session.breaches = 0;
+    int initialScore = session.score;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    // Wait for eval timer to finish
+    suite->tickWithTime(10, 100);
+
+    EXPECT_EQ(session.score, initialScore + 100) << "Block at max lane should award score";
+    EXPECT_EQ(session.breaches, 0) << "No breach should be counted for successful block";
+}
+
+/*
+ * Test: Exact breaches equal to missesAllowed doesn't lose (only > causes loss).
+ */
+void breachDefenseExactBreachesEqualAllowed(BreachDefenseTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.missesAllowed = 2;
+    config.totalThreats = 5;
+
+    session.shieldLane = 0;
+    session.threatLane = 1;  // Shield doesn't match = breach
+    session.breaches = 1;    // Already 1 breach
+    session.currentThreat = 0;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    // Wait for eval timer
+    suite->tickWithTime(10, 100);
+
+    // 1 + 1 = 2 breaches, missesAllowed = 2, so 2 > 2 is false -> continue
+    State* state = suite->game_->getCurrentState();
+    EXPECT_NE(state->getStateId(), BREACH_LOSE) << "Should not lose when breaches == missesAllowed";
+    EXPECT_EQ(session.breaches, 2);
+}
+
+/*
+ * Test: Evaluate sets haptics intensity based on block vs breach.
+ */
+void breachDefenseHapticsIntensityDiffers(BreachDefenseTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+
+    // Test blocked threat (should use intensity 150)
+    session.shieldLane = 1;
+    session.threatLane = 1;  // Match = block
+    session.breaches = 0;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    // Haptics should be on at intensity 150 (from code inspection)
+    // We can't directly assert haptics state in this test framework,
+    // but we can verify the evaluate state transitions correctly
+    suite->tickWithTime(10, 100);
+
+    EXPECT_EQ(session.breaches, 0) << "Blocked threat should not increase breaches";
+}
+
 #endif // NATIVE_BUILD

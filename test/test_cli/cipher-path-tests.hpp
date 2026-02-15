@@ -553,4 +553,84 @@ void cipherPathManagedModeReturns(CipherPathManagedTestSuite* suite) {
     ASSERT_EQ(suite->getPlayerStateId(), FDN_COMPLETE);
 }
 
+// ============================================
+// EDGE CASE TESTS
+// ============================================
+
+/*
+ * Test: Budget exhaustion at position 0 (no moves made) causes loss.
+ */
+void cipherPathBudgetExhaustedAtStart(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    session.playerPosition = 0;
+    session.movesUsed = config.moveBudget;  // Budget exhausted immediately
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    State* state = suite->game_->getCurrentState();
+    EXPECT_EQ(state->getStateId(), CIPHER_LOSE) << "Budget exhausted without reaching exit should lose";
+}
+
+/*
+ * Test: Reaching exit at exact position (gridSize - 1) triggers win condition.
+ */
+void cipherPathReachExitExactPosition(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.rounds = 1;
+    session.currentRound = 0;
+    session.playerPosition = config.gridSize - 1;  // Exactly at exit
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    EXPECT_EQ(session.score, 100) << "Reaching exit should award 100 points";
+    State* state = suite->game_->getCurrentState();
+    EXPECT_EQ(state->getStateId(), CIPHER_WIN) << "Reaching exit on final round should win";
+}
+
+/*
+ * Test: Budget exhaustion one step before exit causes loss.
+ */
+void cipherPathBudgetExhaustedNearExit(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    session.playerPosition = config.gridSize - 2;  // One step before exit
+    session.movesUsed = config.moveBudget;  // Budget exhausted
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    State* state = suite->game_->getCurrentState();
+    EXPECT_EQ(state->getStateId(), CIPHER_LOSE) << "Budget exhausted before exit should lose";
+}
+
+/*
+ * Test: Player at position 0 (start boundary) can move forward.
+ */
+void cipherPathMoveFromStartBoundary(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.moveBudget = 10;
+    session.playerPosition = 0;  // Start position
+    session.movesUsed = 0;
+    session.cipher[0] = 1;  // DOWN is correct for position 0
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Press secondary button (DOWN) to move forward
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(2);
+
+    EXPECT_EQ(session.playerPosition, 1) << "Player should move from position 0 to 1";
+    EXPECT_EQ(session.movesUsed, 1) << "Moves used should be 1";
+}
+
 #endif // NATIVE_BUILD

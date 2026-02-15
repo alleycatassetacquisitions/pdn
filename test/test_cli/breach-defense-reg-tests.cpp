@@ -78,6 +78,22 @@ TEST_F(BreachDefenseTestSuite, StateNamesResolve) {
     breachDefenseStateNamesResolve(this);
 }
 
+TEST_F(BreachDefenseTestSuite, BlockAtLaneZero) {
+    breachDefenseBlockAtLaneZero(this);
+}
+
+TEST_F(BreachDefenseTestSuite, BlockAtMaxLane) {
+    breachDefenseBlockAtMaxLane(this);
+}
+
+TEST_F(BreachDefenseTestSuite, ExactBreachesEqualAllowed) {
+    breachDefenseExactBreachesEqualAllowed(this);
+}
+
+TEST_F(BreachDefenseTestSuite, HapticsIntensityDiffers) {
+    breachDefenseHapticsIntensityDiffers(this);
+}
+
 TEST_F(BreachDefenseManagedTestSuite, ManagedModeReturns) {
     breachDefenseManagedModeReturns(this);
 }

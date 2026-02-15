@@ -468,6 +468,103 @@ void ghostRunnerManagedModeReturns(GhostRunnerManagedTestSuite* suite) {
 }
 
 // ============================================
+// EDGE CASE TESTS
+// ============================================
+
+/*
+ * Test: Press at exact target zone start boundary counts as hit.
+ */
+void ghostRunnerPressAtZoneStartBoundary(GhostRunnerTestSuite* suite) {
+    suite->game_->getConfig().targetZoneStart = 40;
+    suite->game_->getConfig().targetZoneEnd = 60;
+    suite->game_->getConfig().missesAllowed = 3;
+
+    auto& session = suite->game_->getSession();
+    session.currentRound = 0;
+    session.ghostPosition = 40;  // Exactly at zone start
+    session.playerPressed = true;
+    session.strikes = 0;
+    int initialScore = session.score;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    EXPECT_EQ(session.score, initialScore + 100) << "Press at zone start should be a hit";
+    EXPECT_EQ(session.strikes, 0) << "No strike should be added for hit";
+}
+
+/*
+ * Test: Press at exact target zone end boundary counts as hit.
+ */
+void ghostRunnerPressAtZoneEndBoundary(GhostRunnerTestSuite* suite) {
+    suite->game_->getConfig().targetZoneStart = 40;
+    suite->game_->getConfig().targetZoneEnd = 60;
+    suite->game_->getConfig().missesAllowed = 3;
+
+    auto& session = suite->game_->getSession();
+    session.currentRound = 0;
+    session.ghostPosition = 60;  // Exactly at zone end
+    session.playerPressed = true;
+    session.strikes = 0;
+    int initialScore = session.score;
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    EXPECT_EQ(session.score, initialScore + 100) << "Press at zone end should be a hit";
+    EXPECT_EQ(session.strikes, 0) << "No strike should be added for hit";
+}
+
+/*
+ * Test: Exact strikes equal to missesAllowed doesn't lose (only > causes loss).
+ */
+void ghostRunnerExactStrikesEqualAllowed(GhostRunnerTestSuite* suite) {
+    suite->game_->getConfig().missesAllowed = 2;
+    suite->game_->getConfig().rounds = 5;
+
+    auto& session = suite->game_->getSession();
+    session.currentRound = 0;
+    session.ghostPosition = 0;   // Outside zone
+    session.playerPressed = true; // Press outside = strike
+    session.strikes = 1;         // Already 1 strike
+
+    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->tick(3);
+
+    // 1 + 1 = 2 strikes, missesAllowed = 2, so 2 > 2 is false -> continue
+    State* state = suite->game_->getCurrentState();
+    EXPECT_NE(state->getStateId(), GHOST_LOSE) << "Should not lose when strikes == missesAllowed";
+    EXPECT_EQ(session.strikes, 2);
+}
+
+/*
+ * Test: Timeout with exactly missesAllowed strikes doesn't lose immediately.
+ */
+void ghostRunnerTimeoutAtExactMissesAllowed(GhostRunnerTestSuite* suite) {
+    suite->game_->getConfig().ghostSpeedMs = 5;
+    suite->game_->getConfig().screenWidth = 10;
+    suite->game_->getConfig().targetZoneStart = 3;
+    suite->game_->getConfig().targetZoneEnd = 7;
+    suite->game_->getConfig().rounds = 4;
+    suite->game_->getConfig().missesAllowed = 2;
+
+    auto& session = suite->game_->getSession();
+    session.strikes = 1;  // Already 1 strike
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Let ghost reach end (timeout = another strike, total 2)
+    suite->tickWithTime(20, 10);
+
+    // After timeout, strikes should be 2, equal to missesAllowed
+    // Should advance to next round, not lose
+    EXPECT_EQ(session.strikes, 2);
+    State* state = suite->game_->getCurrentState();
+    EXPECT_NE(state->getStateId(), GHOST_LOSE) << "Should not lose when strikes == missesAllowed after timeout";
+}
+
+// ============================================
 // STATE NAME TESTS
 // ============================================
 
