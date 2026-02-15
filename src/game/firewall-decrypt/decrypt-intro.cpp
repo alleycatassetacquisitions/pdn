@@ -23,7 +23,7 @@ void DecryptIntro::onStateMounted(Device* PDN) {
 
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
-    game->seedRng();
+    game->seedRng(game->getConfig().rngSeed);
     game->setupRound();
 
     PDN->getDisplay()->invalidateScreen();

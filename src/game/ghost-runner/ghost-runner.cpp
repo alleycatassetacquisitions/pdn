@@ -7,7 +7,7 @@
  * 0=Intro, 1=Show, 2=Gameplay, 3=Evaluate, 4=Win, 5=Lose
  */
 void GhostRunner::populateStateMap() {
-    seedRng();
+    seedRng(config.rngSeed);
 
     GhostRunnerIntro* intro = new GhostRunnerIntro(this);
     GhostRunnerShow* show = new GhostRunnerShow(this);
@@ -74,12 +74,4 @@ void GhostRunner::populateStateMap() {
 void GhostRunner::resetGame() {
     MiniGame::resetGame();
     session.reset();
-}
-
-void GhostRunner::seedRng() {
-    if (config.rngSeed != 0) {
-        srand(static_cast<unsigned int>(config.rngSeed));
-    } else {
-        srand(static_cast<unsigned int>(0));
-    }
 }

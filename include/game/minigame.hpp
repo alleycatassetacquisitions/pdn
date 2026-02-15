@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdlib>
 #include "state/state-machine.hpp"
 #include "device/device-types.hpp"
 
@@ -59,6 +60,19 @@ public:
 
     void setStartTime(uint32_t timeMs) {
         outcome.startTimeMs = timeMs;
+    }
+
+    /*
+     * Seed the PRNG. Should be called once during initialization (e.g., in populateStateMap).
+     * If the minigame config has a nonzero rngSeed, uses that seed (deterministic for tests).
+     * Otherwise uses 0 (production would use MAC address or time-based, but standalone falls back to 0).
+     */
+    void seedRng(unsigned long rngSeed) {
+        if (rngSeed != 0) {
+            srand(static_cast<unsigned int>(rngSeed));
+        } else {
+            srand(static_cast<unsigned int>(0));
+        }
     }
 
 protected:

@@ -35,7 +35,7 @@ public:
 
 // Test: Generated addresses have correct format (XX:XX:XX:XX)
 void decryptAddressFormat(DecryptAddressTestSuite* suite) {
-    suite->game->seedRng();
+    suite->game->seedRng(suite->game->getConfig().rngSeed);
     std::string addr = suite->game->generateAddress();
     // Format: "XX:XX:XX:XX" = 11 chars
     ASSERT_EQ(addr.length(), 11u);
@@ -46,17 +46,17 @@ void decryptAddressFormat(DecryptAddressTestSuite* suite) {
 
 // Test: Seeded RNG produces deterministic addresses
 void decryptAddressDeterministic(DecryptAddressTestSuite* suite) {
-    suite->game->seedRng();
+    suite->game->seedRng(suite->game->getConfig().rngSeed);
     std::string addr1 = suite->game->generateAddress();
     // Re-seed with same seed
-    suite->game->seedRng();
+    suite->game->seedRng(suite->game->getConfig().rngSeed);
     std::string addr2 = suite->game->generateAddress();
     ASSERT_EQ(addr1, addr2);
 }
 
 // Test: Decoy differs from target
 void decryptDecoyDiffers(DecryptAddressTestSuite* suite) {
-    suite->game->seedRng();
+    suite->game->seedRng(suite->game->getConfig().rngSeed);
     std::string target = suite->game->generateAddress();
     std::string decoy = suite->game->generateDecoy(target, 0.0f);
     ASSERT_NE(target, decoy);
@@ -65,7 +65,7 @@ void decryptDecoyDiffers(DecryptAddressTestSuite* suite) {
 
 // Test: High similarity decoy shares some pairs with target
 void decryptDecoySimilarity(DecryptAddressTestSuite* suite) {
-    suite->game->seedRng();
+    suite->game->seedRng(suite->game->getConfig().rngSeed);
     std::string target = suite->game->generateAddress();
     std::string decoy = suite->game->generateDecoy(target, 0.7f);
     ASSERT_NE(target, decoy);
@@ -76,7 +76,7 @@ void decryptDecoySimilarity(DecryptAddressTestSuite* suite) {
 
 // Test: setupRound populates candidates with target included
 void decryptSetupRoundContainsTarget(DecryptAddressTestSuite* suite) {
-    suite->game->seedRng();
+    suite->game->seedRng(suite->game->getConfig().rngSeed);
     suite->game->setupRound();
 
     auto& session = suite->game->getSession();

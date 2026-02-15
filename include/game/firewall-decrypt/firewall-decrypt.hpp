@@ -87,8 +87,6 @@ public:
      */
     void setupRound();
 
-    void seedRng();
-
 private:
     FirewallDecryptConfig config;
     FirewallDecryptSession session;

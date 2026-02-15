@@ -26,7 +26,7 @@ void GhostRunnerIntro::onStateMounted(Device* PDN) {
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
 
     // Seed RNG for this run
-    game->seedRng();
+    game->seedRng(game->getConfig().rngSeed);
 
     // Display title screen
     PDN->getDisplay()->invalidateScreen();

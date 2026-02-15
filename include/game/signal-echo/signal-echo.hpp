@@ -72,14 +72,6 @@ public:
      */
     std::vector<bool> generateSequence(int length);
 
-    /*
-     * Seed the PRNG. Called once during initialization.
-     * If config.rngSeed != 0, uses that seed (deterministic for tests).
-     * Otherwise uses 0 (production would use MAC address, but standalone
-     * mode falls back to time-based or 0).
-     */
-    void seedRng();
-
 private:
     SignalEchoConfig config;
     SignalEchoSession session;

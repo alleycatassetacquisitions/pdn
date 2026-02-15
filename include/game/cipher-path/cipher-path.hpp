@@ -75,7 +75,6 @@ public:
     CipherPathConfig& getConfig() { return config; }
     CipherPathSession& getSession() { return session; }
 
-    void seedRng();
     void generateCipher();  // fills session.cipher[] with random 0/1 values
 
 private:
