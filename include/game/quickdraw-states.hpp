@@ -633,7 +633,7 @@ public:
     }
 
 protected:
-    static SimpleTimer* handshakeTimeout;
+    static SimpleTimer handshakeTimeout;
     static bool timeoutInitialized;
     static const int timeout = 20000;
 
@@ -641,20 +641,19 @@ protected:
     ~BaseHandshakeState() override = default;
 
     static void initTimeout() {
-        if (!handshakeTimeout) handshakeTimeout = new SimpleTimer();
-        handshakeTimeout->setTimer(timeout);
+        handshakeTimeout.setTimer(timeout);
         timeoutInitialized = true;
     }
 
     static bool isTimedOut() {
-        if (!timeoutInitialized || !handshakeTimeout) return false;
-        handshakeTimeout->updateTime();
-        return handshakeTimeout->expired();
+        if (!timeoutInitialized) return false;
+        handshakeTimeout.updateTime();
+        return handshakeTimeout.expired();
     }
 
     static void resetTimeout() {
         timeoutInitialized = false;
-        handshakeTimeout->invalidate();
+        handshakeTimeout.invalidate();
     }
 };
 

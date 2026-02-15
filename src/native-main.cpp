@@ -248,12 +248,14 @@ int main(int argc, char** argv) {
     for (auto& device : devices) {
         delete device.game;
         delete device.player;
-        delete device.pdn;
+        delete device.pdn;  // This deletes drivers via DriverManager::dismountDrivers()
+        // Note: drivers are deleted by PDN's destructor, so we don't delete them here
     }
-    
+
+    // Clean up global drivers (these are NOT owned by any PDN instance)
     delete globalLogger;
     delete globalClock;
-    
+
     return 0;
 }
 
