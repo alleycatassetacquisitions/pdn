@@ -1,12 +1,12 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/player-registration/player-registration-states.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "game/quickdraw.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/device.hpp"
 
 static const char* TAG = "WelcomeMessage";
 
-WelcomeMessage::WelcomeMessage(Player* player) : State(QuickdrawStateId::WELCOME_MESSAGE) {
+WelcomeMessage::WelcomeMessage(Player* player) : State(PlayerRegistrationStateId::WELCOME_MESSAGE) {
     this->player = player;
 }
 

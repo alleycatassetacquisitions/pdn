@@ -1,11 +1,11 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "ConfirmOfflineState";
 
-ConfirmOfflineState::ConfirmOfflineState(Player* player) : State(QuickdrawStateId::CONFIRM_OFFLINE) {
+ConfirmOfflineState::ConfirmOfflineState(Player* player) : State(PlayerRegistrationStateId::CONFIRM_OFFLINE) {
     this->player = player;
     LOG_I(TAG, "ConfirmOfflineState mounted");
 }

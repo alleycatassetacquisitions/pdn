@@ -23,22 +23,14 @@ Quickdraw::~Quickdraw() {
 void Quickdraw::populateStateMap() {
     matchManager->initialize(player, storageManager, peerComms, quickdrawWirelessManager);
 
-    PlayerRegistration* playerRegistration = new PlayerRegistration(player, matchManager);
-    FetchUserDataState* fetchUserData = new FetchUserDataState(player, wirelessManager, remoteDebugManager);
-    WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
-    ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
-    ChooseRoleState* chooseRole = new ChooseRoleState(player);
-    AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
-    
+    // Sub-state machines for player registration and handshake
+    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    HandshakeApp* handshake = new HandshakeApp(player, matchManager, quickdrawWirelessManager);
+
+    // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, quickdrawWirelessManager);
-    
-    HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
-    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player, matchManager, quickdrawWirelessManager);
-    HunterSendIdState* hunterSendId = new HunterSendIdState(player, matchManager, quickdrawWirelessManager);
 
-    ConnectionSuccessful* connectionSuccessful = new ConnectionSuccessful(player);
-    
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager);
     Duel* duel = new Duel(player, matchManager, quickdrawWirelessManager);
     DuelPushed* duelPushed = new DuelPushed(player, matchManager);
@@ -51,56 +43,13 @@ void Quickdraw::populateStateMap() {
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
+    // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(
         new StateTransition(
-            std::bind(&PlayerRegistration::transitionToUserFetch, playerRegistration),
-            fetchUserData));
-
-    fetchUserData->addTransition(
-        new StateTransition(
-            std::bind(&FetchUserDataState::transitionToConfirmOffline, fetchUserData),
-            confirmOffline));
-
-    fetchUserData->addTransition(
-        new StateTransition(
-            std::bind(&FetchUserDataState::transitionToUploadMatches, fetchUserData),
-            uploadMatches));
-
-    fetchUserData->addTransition(
-        new StateTransition(
-            std::bind(&FetchUserDataState::transitionToWelcomeMessage, fetchUserData),
-            welcomeMessage));
-
-    fetchUserData->addTransition(
-        new StateTransition(
-            std::bind(&FetchUserDataState::transitionToPlayerRegistration, fetchUserData),
-            playerRegistration));
-
-    confirmOffline->addTransition(
-        new StateTransition(
-            std::bind(&ConfirmOfflineState::transitionToChooseRole, confirmOffline),
-            chooseRole));
-
-    confirmOffline->addTransition(
-        new StateTransition(
-            std::bind(&ConfirmOfflineState::transitionToPlayerRegistration, confirmOffline),
-            playerRegistration));
-
-    chooseRole->addTransition(
-        new StateTransition(
-            std::bind(&ChooseRoleState::transitionToAllegiancePicker, chooseRole),
-            allegiancePicker));
-
-    allegiancePicker->addTransition(
-        new StateTransition(
-            std::bind(&AllegiancePickerState::transitionToWelcomeMessage, allegiancePicker),
-            welcomeMessage));
-
-    welcomeMessage->addTransition(
-        new StateTransition(
-            std::bind(&WelcomeMessage::transitionToGameplay, welcomeMessage),
+            std::bind(&PlayerRegistrationApp::readyForGameplay, playerRegistration),
             awakenSequence));
 
+    // --- Quickdraw gameplay transitions ---
     awakenSequence->addTransition(
         new StateTransition(
             std::bind(&AwakenSequence::transitionToIdle, awakenSequence),
@@ -109,48 +58,20 @@ void Quickdraw::populateStateMap() {
     idle->addTransition(
         new StateTransition(
             std::bind(&Idle::transitionToHandshake, idle),
-            handshakeInitiate));
+            handshake));
 
-    handshakeInitiate->addTransition(
+    // --- Transitions from Handshake app ---
+    handshake->addTransition(
         new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToBountySendCC, handshakeInitiate),
-            bountySendCC));
-    
-    handshakeInitiate->addTransition(
-        new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToHunterSendId, handshakeInitiate),
-            hunterSendId));
-    
-    handshakeInitiate->addTransition(
-        new StateTransition(
-            std::bind(&BaseHandshakeState::transitionToIdle, handshakeInitiate),
-            idle));
-    
-    bountySendCC->addTransition(
-        new StateTransition(
-            std::bind(&BountySendConnectionConfirmedState::transitionToConnectionSuccessful, bountySendCC),
-            connectionSuccessful));
-    
-    bountySendCC->addTransition(
-        new StateTransition(
-            std::bind(&BaseHandshakeState::transitionToIdle, bountySendCC),
-            idle));
-    
-    hunterSendId->addTransition(
-        new StateTransition(
-            std::bind(&HunterSendIdState::transitionToConnectionSuccessful, hunterSendId),
-            connectionSuccessful));
-    
-    hunterSendId->addTransition(
-        new StateTransition(
-            std::bind(&BaseHandshakeState::transitionToIdle, hunterSendId),
-            idle));
-
-    connectionSuccessful->addTransition(
-        new StateTransition(
-            std::bind(&ConnectionSuccessful::transitionToCountdown, connectionSuccessful),
+            std::bind(&HandshakeApp::readyForCountdown, handshake),
             duelCountdown));
 
+    handshake->addTransition(
+        new StateTransition(
+            std::bind(&HandshakeApp::transitionToIdle, handshake),
+            idle));
+
+    // --- Duel flow ---
     duelCountdown->addTransition(
         new StateTransition(
             std::bind(&DuelCountdown::shallWeBattle, duelCountdown),
@@ -191,6 +112,7 @@ void Quickdraw::populateStateMap() {
             std::bind(&DuelResult::transitionToLose, duelResult),
             lose));
 
+    // --- Post-game flow ---
     win->addTransition(
         new StateTransition(
             std::bind(&Win::resetGame, win),
@@ -206,28 +128,16 @@ void Quickdraw::populateStateMap() {
             std::bind(&UploadMatchesState::transitionToSleep, uploadMatches),
             sleep));
 
-    uploadMatches->addTransition(
-        new StateTransition(
-            std::bind(&UploadMatchesState::transitionToPlayerRegistration, uploadMatches),
-            playerRegistration));
-
     sleep->addTransition(
         new StateTransition(
             std::bind(&Sleep::transitionToAwakenSequence, sleep),
             awakenSequence));
 
+    // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
-    stateMap.push_back(fetchUserData);
-    stateMap.push_back(confirmOffline);
-    stateMap.push_back(chooseRole);
-    stateMap.push_back(allegiancePicker);
-    stateMap.push_back(welcomeMessage);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
-    stateMap.push_back(handshakeInitiate);
-    stateMap.push_back(bountySendCC);
-    stateMap.push_back(hunterSendId);
-    stateMap.push_back(connectionSuccessful);
+    stateMap.push_back(handshake);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
     stateMap.push_back(duelPushed);
@@ -237,8 +147,4 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(lose);
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
-}
-
-Image Quickdraw::getImageForAllegiance(Allegiance allegiance, ImageType whichImage) {
-    return getCollectionForAllegiance(allegiance)->at(whichImage);
 }

@@ -112,7 +112,7 @@ bool Idle::transitionToHandshake() {
 
 void Idle::cycleStats(Device *PDN) {
     PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
+    PDN->getDisplay()->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
     if(statsIndex == 0) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);

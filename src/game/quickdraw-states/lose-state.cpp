@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
+#include "game/quickdraw-resources.hpp"
+#include "device/device.hpp"
 
 Lose::Lose(Player *player) : State(LOSE) {
     this->player = player;
@@ -11,7 +12,7 @@ Lose::~Lose() {
 
 void Lose::onStateMounted(Device *PDN) {
     PDN->getDisplay()->invalidateScreen()->
-    drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
+    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOSE))->
     render();
 
     loseTimer.setTimer(8000);

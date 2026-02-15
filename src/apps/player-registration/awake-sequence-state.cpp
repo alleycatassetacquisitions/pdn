@@ -1,37 +1,6 @@
 #include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
-
-/*
-    bool activationSequence()
-    {
-      if (timerExpired())
-      {
-        if (activateMotorCount < 20)
-        {
-          if (activateMotor)
-          {
-            setMotorOutput(255);
-          }
-          else
-          {
-            setMotorOutput(0);
-          }
-
-          setTimer(100);
-          activateMotorCount++;
-          activateMotor = !activateMotor;
-          return false;
-        }
-        else
-        {
-          activateMotorCount = 0;
-          activateMotor = false;
-          return true;
-        }
-      }
-      return false;
-    }
- */
+#include "game/quickdraw-resources.hpp"
+#include "device/device.hpp"
 
 AwakenSequence::AwakenSequence(Player* player) : State(AWAKEN_SEQUENCE) {
     this->player = player;
@@ -48,8 +17,8 @@ void AwakenSequence::onStateMounted(Device *PDN) {
 
     PDN->getDisplay()->
     invalidateScreen()->
-        drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
-        drawImage(Quickdraw::getImageForAllegiance(player->getAllegiance(), ImageType::STAMP))->
+        drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
+        drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::STAMP))->
         render();
 }
 

@@ -1,7 +1,7 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 
-ChooseRoleState::ChooseRoleState(Player* player) : State(QuickdrawStateId::CHOOSE_ROLE) {
+ChooseRoleState::ChooseRoleState(Player* player) : State(PlayerRegistrationStateId::CHOOSE_ROLE) {
     this->player = player;
 }
 
@@ -20,7 +20,7 @@ void ChooseRoleState::onStateMounted(Device *PDN) {
     PDN->getSecondaryButton()->setButtonPress([](void *ctx) {
         ChooseRoleState* chooseRoleState = (ChooseRoleState*)ctx;
         chooseRoleState->player->setIsHunter(chooseRoleState->hunterSelected);
-        chooseRoleState->transitionToAllegiancePickerState = true;
+        chooseRoleState->transitionToWelcomeMessageState = true;
     }, this, ButtonInteraction::CLICK);
 }
 
@@ -34,13 +34,13 @@ void ChooseRoleState::onStateLoop(Device *PDN) {
 void ChooseRoleState::onStateDismounted(Device *PDN) {
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
-    transitionToAllegiancePickerState = false;
+    transitionToWelcomeMessageState = false;
     displayIsDirty = false;
     hunterSelected = true;
 }
 
-bool ChooseRoleState::transitionToAllegiancePicker() {
-    return transitionToAllegiancePickerState;
+bool ChooseRoleState::transitionToWelcomeMessage() {
+    return transitionToWelcomeMessageState;
 }
 
 void ChooseRoleState::renderUi(Device *PDN) {
