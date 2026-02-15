@@ -128,7 +128,7 @@ bool Duel::transitionToDuelReceivedResult() {
 void Duel::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
 
-    // Remove button callbacks
+    // Clear button callbacks set in onStateMounted
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
 
