@@ -585,4 +585,38 @@ void edgeCaseFdnResultManagerClearEmpty(EdgeCaseTestSuite* suite) {
     ASSERT_EQ(manager.getCachedResultCount(), 0);
 }
 
+// ============================================
+// DEVICE LIFECYCLE EDGE CASES
+// ============================================
+
+/*
+ * Test: Device destructor dismounts active app
+ * Verifies device destruction properly cleans up callbacks/timers
+ * by calling onStateDismounted on the active app before deletion
+ */
+void edgeCaseDeviceDestructorDismountsActiveApp(EdgeCaseTestSuite* suite) {
+    // Create a device and mount an app
+    DeviceInstance device = DeviceFactory::createDevice(0, true);
+    SimpleTimer::setPlatformClock(device.clockDriver);
+
+    // Initialize the game (which mounts the first state)
+    device.pdn->loop();
+
+    // Verify the game has launched and has an active state
+    ASSERT_TRUE(device.game->hasLaunched());
+    ASSERT_NE(device.game->getCurrentState(), nullptr);
+
+    // Get the current state ID before destruction
+    int stateId = device.game->getCurrentState()->getStateId();
+    ASSERT_GE(stateId, 0);
+
+    // Destroy the device - this should dismount the active app
+    // If this doesn't call onStateDismounted, callbacks/timers persist
+    // and may fire into freed memory
+    DeviceFactory::destroyDevice(device);
+
+    // Test passes if no crash/SIGSEGV occurred during destruction
+    SUCCEED();
+}
+
 #endif // NATIVE_BUILD

@@ -453,17 +453,25 @@ TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {
     // driverManager.execDrivers() and the app's onStateLoop
     AppConfig config;
     config[APP_ONE] = appOne;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     // Device loop should execute drivers and then app loop
     device->loop();
-    
+
     // App loop was called
     ASSERT_EQ(appOne->loopCount, 1);
-    
+
     // Note: We can't directly test execDrivers() was called since
     // it's not mockable, but this documents the expected behavior
+}
+
+TEST_F(DeviceTestSuite, destructorDismountsActiveStateBeforeDeletion) {
+    destructorDismountsActiveStateBeforeDeletion(this);
+}
+
+TEST_F(DeviceTestSuite, destructorDismountsAllRegisteredApps) {
+    destructorDismountsAllRegisteredApps(this);
 }
 
 // ============================================
