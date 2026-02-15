@@ -1,6 +1,7 @@
 #include "game/fdn-states.hpp"
 #include "game/fdn-game.hpp"
 #include "game/fdn-resources.hpp"
+#include "game/color-profiles.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "NpcIdle";
@@ -25,12 +26,15 @@ void NpcIdle::onStateMounted(Device* PDN) {
 
     broadcastTimer.setTimer(BROADCAST_INTERVAL_MS);
 
+    // Display the game's color palette
+    const LEDState& profileState = getColorProfileState(static_cast<int>(game->getGameType()));
     AnimationConfig config;
-    config.type = AnimationType::TRANSMIT_BREATH;
-    config.speed = 8;
-    config.curve = EaseCurve::EASE_IN_OUT;
+    config.type = AnimationType::IDLE;
+    config.speed = 16;
+    config.curve = EaseCurve::LINEAR;
+    config.initialState = profileState;
     config.loop = true;
-    config.loopDelayMs = 500;
+    config.loopDelayMs = 0;
     PDN->getLightManager()->startAnimation(config);
 
     renderDisplay(PDN);

@@ -46,4 +46,33 @@ void cliFdnRegistersWithBroker(CliFdnTestSuite* suite) {
     DeviceFactory::destroyDevice(fdn);
 }
 
+// Test: FDN idle state displays game color profile
+void cliFdnIdleDisplaysColorProfile(CliFdnTestSuite* suite) {
+    // Create FDN devices for different games
+    auto signalEcho = DeviceFactory::createFdnDevice(0, GameType::SIGNAL_ECHO);
+    auto ghostRunner = DeviceFactory::createFdnDevice(1, GameType::GHOST_RUNNER);
+    auto spikeVector = DeviceFactory::createFdnDevice(2, GameType::SPIKE_VECTOR);
+
+    // Run a few loops to ensure animation starts
+    for (int i = 0; i < 5; i++) {
+        signalEcho.pdn->loop();
+        ghostRunner.pdn->loop();
+        spikeVector.pdn->loop();
+    }
+
+    // Verify current animation is IDLE (not TRANSMIT_BREATH)
+    ASSERT_EQ(signalEcho.pdn->getLightManager()->getCurrentAnimation(), AnimationType::IDLE);
+    ASSERT_EQ(ghostRunner.pdn->getLightManager()->getCurrentAnimation(), AnimationType::IDLE);
+    ASSERT_EQ(spikeVector.pdn->getLightManager()->getCurrentAnimation(), AnimationType::IDLE);
+
+    // Verify animation is running (color palette should be visible)
+    ASSERT_TRUE(signalEcho.pdn->getLightManager()->isAnimating());
+    ASSERT_TRUE(ghostRunner.pdn->getLightManager()->isAnimating());
+    ASSERT_TRUE(spikeVector.pdn->getLightManager()->isAnimating());
+
+    DeviceFactory::destroyDevice(spikeVector);
+    DeviceFactory::destroyDevice(ghostRunner);
+    DeviceFactory::destroyDevice(signalEcho);
+}
+
 #endif // NATIVE_BUILD

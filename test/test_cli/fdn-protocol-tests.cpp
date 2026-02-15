@@ -93,6 +93,10 @@ TEST_F(CliFdnTestSuite, RegistersWithBroker) {
     cliFdnRegistersWithBroker(this);
 }
 
+TEST_F(CliFdnTestSuite, IdleDisplaysColorProfile) {
+    cliFdnIdleDisplaysColorProfile(this);
+}
+
 // ============================================
 // DEVICE EXTENSION TESTS
 // ============================================
