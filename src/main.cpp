@@ -20,6 +20,7 @@
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
+#include "game/konami-metagame.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
@@ -62,8 +63,9 @@ Device* pdn = nullptr;
 IdGenerator* idGenerator = nullptr;
 Player* player = nullptr;
 
-// Game instance
+// Game instances
 Quickdraw* game = nullptr;
+KonamiMetaGame* konamiMetaGame = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -155,7 +157,8 @@ void setup() {
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
     
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
-    
+    konamiMetaGame = new KonamiMetaGame(player);
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(Quickdraw::getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
@@ -165,7 +168,8 @@ void setup() {
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
-        {StateId(QUICKDRAW_APP_ID), game}
+        {StateId(QUICKDRAW_APP_ID), game},
+        {StateId(KONAMI_METAGAME_APP_ID), konamiMetaGame}
     };
     pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
 }
