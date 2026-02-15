@@ -6,11 +6,14 @@
 const char* TAG = "Device";
 
 Device::~Device() {
-    // Properly dismount all registered apps before deletion
-    // This ensures active state cleanup (timers, callbacks, resources) runs
+    // Dismount launched apps before deletion to ensure active state cleanup
+    // (timers, callbacks, resources) runs properly. Only dismount apps that
+    // were actually launched to respect the mount/dismount lifecycle contract.
     for (auto& pair : appConfig) {
         if (pair.second != nullptr) {
-            pair.second->onStateDismounted(this);
+            if (pair.second->hasLaunched()) {
+                pair.second->onStateDismounted(this);
+            }
             delete pair.second;
             pair.second = nullptr;
         }
