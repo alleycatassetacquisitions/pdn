@@ -8,9 +8,14 @@ on:
 
 jobs:
   binary-size:
-    runs-on: [self-hosted, pdn-ci]
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PlatformIO
+        run: pip install platformio
       - name: Create WiFi credentials
         run: |
           cp wifi_credentials.ini.example wifi_credentials.ini
@@ -21,24 +26,34 @@ jobs:
         run: pio run -e native_cli
       - name: Check binary size
         run: |
+          # Capture current sizes
           size .pio/build/native_cli/program > /tmp/size-output.txt
           cat /tmp/size-output.txt
+          # Compare against baseline
           python3 scripts/check-binary-size.py docs/baselines/binary-size.json /tmp/size-output.txt
 
   duplication:
-    runs-on: [self-hosted, pdn-ci]
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
+      - name: Download PMD
+        run: |
+          wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-dist-7.0.0-bin.zip
+          unzip -q pmd-dist-7.0.0-bin.zip
       - name: Run CPD
         run: |
-          /opt/pmd-bin-7.0.0/bin/pmd cpd --minimum-tokens 50 --language cpp --dir src/ --dir include/ --format text --skip-lexical-errors > /tmp/cpd-output.txt 2>&1 || true
+          ./pmd-bin-7.0.0/bin/pmd cpd --minimum-tokens 50 --language cpp --dir src/ --dir include/ --format text --skip-lexical-errors > /tmp/cpd-output.txt 2>&1 || true
           cat /tmp/cpd-output.txt
           python3 scripts/check-duplication.py docs/baselines/duplication.json /tmp/cpd-output.txt
 
   static-analysis:
-    runs-on: [self-hosted, pdn-ci]
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
       - name: Run cppcheck
         run: |
           cppcheck --enable=warning,style,performance,portability \
@@ -47,6 +62,7 @@ jobs:
             --inline-suppr \
             -I include/ \
             src/ 2>&1 | tee /tmp/cppcheck-output.txt || echo "Cppcheck found issues"
+          # Only fail on high severity issues (errors)
           if grep -q "error:" /tmp/cppcheck-output.txt; then
             echo "❌ Critical issues found"
             exit 1
