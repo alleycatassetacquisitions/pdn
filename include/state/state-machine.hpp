@@ -46,6 +46,20 @@ public:
         }
     };
 
+    /**
+     * Gracefully shutdown the state machine before destruction.
+     * This sets a flag to prevent further state transitions, then calls the
+     * virtual onStateDismounted() method to allow derived classes to perform cleanup.
+     * Must be called before the destructor to avoid pure virtual method calls.
+     */
+    void shutdown(Device *PDN) {
+        if (stopped) return;  // Already shutdown
+        stopped = true;
+        // Call the virtual onStateDismounted() to allow derived class overrides to execute.
+        // The stopped flag prevents infinite recursion.
+        onStateDismounted(PDN);
+    }
+
     void initialize(Device *PDN) {
         populateStateMap();
         currentState = stateMap[0];
@@ -60,6 +74,7 @@ public:
      * @return true if successful, false if index out of range
      */
     bool skipToState(Device *PDN, int stateIndex) {
+        if (stopped) return false;  // Don't transition if shutdown
         if (stateIndex < 0 || stateIndex >= static_cast<int>(stateMap.size())) {
             return false;
         }
@@ -86,6 +101,7 @@ public:
     };
 
     void commitState(Device *PDN) {
+        if (stopped) return;  // Don't transition if shutdown
         if (newState == nullptr) {
             LOG_W("StateMachine", "commitState called with null newState - skipping transition");
             stateChangeReady = false;
@@ -99,13 +115,17 @@ public:
         }
         #endif
 
-        currentState->onStateDismounted(PDN);
+        if (currentState) {
+            currentState->onStateDismounted(PDN);
+        }
 
         currentState = newState;
         stateChangeReady = false;
         newState = nullptr;
 
-        currentState->onStateMounted(PDN);
+        if (currentState) {
+            currentState->onStateMounted(PDN);
+        }
     };
 
     State *getCurrentState() {
@@ -121,21 +141,30 @@ public:
      * state machine itself needs to hold onto any data beyond the current state's snapshot.
      */
     std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        currentSnapshot = currentState->onStatePaused(PDN);
-        currentState->onStateDismounted(PDN);
+        if (stopped) return nullptr;  // Don't pause if shutdown
+        if (currentState) {
+            currentSnapshot = currentState->onStatePaused(PDN);
+            currentState->onStateDismounted(PDN);
+        }
         paused = true;
         return nullptr;
     }
 
     void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
-        currentState->onStateMounted(PDN);
-        currentState->onStateResumed(PDN, currentSnapshot.get());
+        if (stopped) return;  // Don't resume if shutdown
+        if (currentState) {
+            currentState->onStateMounted(PDN);
+            currentState->onStateResumed(PDN, currentSnapshot.get());
+        }
         currentSnapshot = nullptr;
         paused = false;
     }
 
     void onStateLoop(Device *PDN) override {
-        currentState->onStateLoop(PDN);
+        if (stopped) return;  // Don't process if shutdown
+        if (currentState) {
+            currentState->onStateLoop(PDN);
+        }
         checkStateTransitions();
         if (stateChangeReady) {
             commitState(PDN);
@@ -143,11 +172,18 @@ public:
     }
 
     void onStateDismounted(Device *PDN) override {
-        currentState->onStateDismounted(PDN);
-        currentSnapshot = nullptr;
-        currentState = nullptr;
-        stateChangeReady = false;
+        if (!stopped) {
+            // Normal dismount (not during shutdown) - set the flag
+            stopped = true;
+        }
+        // Perform cleanup: dismount the current state
+        if (currentState) {
+            currentState->onStateDismounted(PDN);
+            currentState = nullptr;
+        }
         newState = nullptr;
+        stateChangeReady = false;
+        currentSnapshot = nullptr;
     }
 
     bool hasLaunched() const {
@@ -172,4 +208,5 @@ private:
 
     bool launched = false;
     bool paused = false;
+    bool stopped = false;  // Set to true when shutdown() is called
 };

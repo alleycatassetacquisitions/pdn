@@ -18,7 +18,9 @@ void Device::shutdownApps() {
     for (auto& pair : appConfig) {
         if (pair.second != nullptr) {
             if (pair.second->hasLaunched()) {
-                pair.second->onStateDismounted(this);
+                // Call shutdown() to gracefully stop the state machine before destruction.
+                // This prevents pure virtual method calls during onStateDismounted().
+                pair.second->shutdown(this);
             }
             delete pair.second;
             pair.second = nullptr;
