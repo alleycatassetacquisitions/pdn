@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include "cli/cli-device.hpp"
 #include "utils/simple-timer.hpp"
+#include "../test-constants.hpp"
 
 using namespace cli;
 
@@ -63,7 +64,7 @@ void fdnGameNpcIdleBroadcasts(FdnGameTestSuite* suite) {
 
 // Test: NpcIdle transitions to NpcHandshake on receiving MAC address
 void fdnGameNpcIdleTransitionsOnMac(FdnGameTestSuite* suite) {
-    suite->fdn_.serialOutDriver->injectInput("*smacAA:BB:CC:DD:EE:FF\r");
+    suite->fdn_.serialOutDriver->injectInput("*smac" + std::string(TestConstants::TEST_MAC_DEFAULT) + "\r");
     suite->tick(3);
 
     State* state = suite->fdn_.game->getCurrentState();
@@ -73,11 +74,11 @@ void fdnGameNpcIdleTransitionsOnMac(FdnGameTestSuite* suite) {
 // Test: NpcHandshake sends fack on receiving MAC
 void fdnGameHandshakeSendsFack(FdnGameTestSuite* suite) {
     // First get to handshake
-    suite->fdn_.serialOutDriver->injectInput("*smacAA:BB:CC:DD:EE:FF\r");
+    suite->fdn_.serialOutDriver->injectInput("*smac" + std::string(TestConstants::TEST_MAC_DEFAULT) + "\r");
     suite->tick(3);
 
     // Now inject another MAC in handshake state
-    suite->fdn_.serialOutDriver->injectInput("*smac11:22:33:44:55:66\r");
+    suite->fdn_.serialOutDriver->injectInput("*smac" + std::string(TestConstants::TEST_MAC_NPC_1) + "\r");
     suite->tick(3);
 
     auto& history = suite->fdn_.serialOutDriver->getSentHistory();
@@ -93,7 +94,7 @@ void fdnGameHandshakeSendsFack(FdnGameTestSuite* suite) {
 
 // Test: NpcHandshake times out and returns to NpcIdle
 void fdnGameHandshakeTimeout(FdnGameTestSuite* suite) {
-    suite->fdn_.serialOutDriver->injectInput("*smacAA:BB:CC:DD:EE:FF\r");
+    suite->fdn_.serialOutDriver->injectInput("*smac" + std::string(TestConstants::TEST_MAC_DEFAULT) + "\r");
     suite->tick(3);
 
     ASSERT_EQ(suite->fdn_.game->getCurrentState()->getStateId(), 1);  // NPC_HANDSHAKE

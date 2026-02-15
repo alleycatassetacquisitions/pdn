@@ -7,6 +7,7 @@
 #include "game/player.hpp"
 #include "device-mock.hpp"
 #include "id-generator.hpp"
+#include "../test-constants.hpp"
 
 // ============================================
 // Integration Test Fixture
@@ -23,7 +24,7 @@ class DuelIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {
         // Seed ID generator for reproducible tests
-        IdGenerator idGenerator = IdGenerator(54321);
+        IdGenerator idGenerator = IdGenerator(TestConstants::TEST_SEED_INTEGRATION);
         
         // Create two players (simulating two different devices)
         hunter = new Player();
@@ -85,7 +86,7 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     const unsigned long BOUNTY_REACTION_MS = 300;
     
     // Generate match ID
-    char* matchId = IdGenerator(54321).generateId();
+    char* matchId = IdGenerator(TestConstants::TEST_SEED_INTEGRATION).generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -168,7 +169,7 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 350;
     const unsigned long BOUNTY_REACTION_MS = 180;
     
-    char* matchId = IdGenerator(54321).generateId();
+    char* matchId = IdGenerator(TestConstants::TEST_SEED_INTEGRATION).generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -222,9 +223,9 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
 inline void matchSerializationRoundTrip() {
     // Simulate creating a match on device A
     Match originalMatch(
-        "abcdef12-3456-7890-abcd-ef1234567890",
-        "a0b1c2d3-0000-0000-0000-000000000001",
-        "b0a1b2c3-0000-0000-0000-000000000002"
+        TestConstants::TEST_UUID_MATCH_1,
+        TestConstants::TEST_UUID_NPC_1,
+        TestConstants::TEST_UUID_NPC_2
     );
     originalMatch.setHunterDrawTime(225);
     originalMatch.setBountyDrawTime(310);
@@ -315,11 +316,11 @@ inline void playerStatsAccumulateAcrossMatches(Player* player) {
 
 inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
     suite->initializeAsHunterDevice();
-    
+
     Match* match = suite->matchManager->createMatch(
-        "tie-match-1234-5678-9abc-def012345678", 
-        suite->hunter->getUserID(), 
-        "bounty-1234-5678-9abc-def012345678"
+        TestConstants::TEST_MATCH_ID_TIE,
+        suite->hunter->getUserID(),
+        TestConstants::TEST_UUID_BOUNTY_1
     );
     match->setHunterDrawTime(250);
     match->setBountyDrawTime(250); // Exact tie
@@ -333,11 +334,11 @@ inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
 
 inline void duelWithOpponentTimeout(DuelIntegrationTestSuite* suite) {
     suite->initializeAsHunterDevice();
-    
+
     Match* match = suite->matchManager->createMatch(
-        "timeout-match-1234-5678-9abc-def01234",
-        suite->hunter->getUserID(), 
-        "afk-bounty-1234-5678-9abc-def01234567"
+        TestConstants::TEST_MATCH_ID_TIMEOUT,
+        suite->hunter->getUserID(),
+        TestConstants::TEST_UUID_BOUNTY_2
     );
     match->setHunterDrawTime(300);
     match->setBountyDrawTime(0); // Opponent never pressed

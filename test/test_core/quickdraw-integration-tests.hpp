@@ -12,6 +12,7 @@
 #include "utility-tests.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/wireless-manager.hpp"
+#include "../test-constants.hpp"
 
 using ::testing::_;
 using ::testing::Return;
@@ -78,7 +79,7 @@ class SingleDeviceTestFixture : public testing::Test {
 public:
     static constexpr const char* DEFAULT_HUNTER_ID = "hunt";
     static constexpr const char* DEFAULT_BOUNTY_ID = "boun";
-    static constexpr const char* DEFAULT_OPPONENT_MAC = "AA:BB:CC:DD:EE:FF";
+    static constexpr const char* DEFAULT_OPPONENT_MAC = TestConstants::TEST_MAC_DEFAULT;
     static constexpr long DEFAULT_START_TIME = 10000;
 
     void SetUp() override {
@@ -901,7 +902,7 @@ inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
     });
     
     suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
-                               "mac-test-match-id-1234567890", "hunt", "boun");
+                               TestConstants::TEST_MATCH_ID_MAC, "hunt", "boun");
     
     // The MAC address should be captured in the command
     EXPECT_FALSE(receivedCommand.wifiMacAddr.empty());
