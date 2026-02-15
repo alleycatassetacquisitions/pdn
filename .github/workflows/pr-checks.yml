@@ -10,7 +10,7 @@ on:
 jobs:
   # Shared setup as a reusable pattern
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     outputs:
       core-count: ${{ steps.core-tests.outputs.count }}
       cli-count: ${{ steps.cli-tests.outputs.count }}
@@ -84,7 +84,7 @@ jobs:
   badges:
     needs: test
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - name: Update test count badge
@@ -98,7 +98,7 @@ jobs:
         color: brightgreen
 
   build-esp32:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - uses: actions/checkout@v4
@@ -135,7 +135,7 @@ jobs:
       run: pio run -e esp32-s3_release
 
   build-cli:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
 
     steps:
     - uses: actions/checkout@v4
@@ -172,7 +172,7 @@ jobs:
       run: pio run -e native_cli
 
   conflict-markers:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     if: github.event_name == 'pull_request'
 
     steps:
