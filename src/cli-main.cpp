@@ -44,6 +44,7 @@ std::string g_scriptFile;  // Script file path (empty = interactive mode)
 std::vector<std::string> g_npcGames;  // NPC games to spawn (--npc flag)
 std::string g_launchGame;  // Game to launch directly (--game flag)
 bool g_autoCable = false;  // Auto-cable first player to first NPC (--auto-cable flag)
+bool g_interactiveMode = false;  // Interactive mode (--interactive flag)
 
 // Debug cycling state (defined in cli-globals.cpp)
 extern bool g_panelCycling;
@@ -102,6 +103,12 @@ int parseArgs(int argc, char** argv) {
             continue;
         }
 
+        // Interactive mode flag
+        if (arg == "--interactive") {
+            g_interactiveMode = true;
+            continue;
+        }
+
         // Check for -n or --count flag
         if ((arg == "-n" || arg == "--count") && i + 1 < argc) {
             int count = std::atoi(argv[i + 1]);
@@ -122,6 +129,7 @@ int parseArgs(int argc, char** argv) {
             printf("  --npc <game>        Spawn an NPC/FDN device (can be repeated)\n");
             printf("  --game <game>       Launch directly into a specific minigame\n");
             printf("  --auto-cable        Auto-cable first player to first NPC\n");
+            printf("  --interactive       Enable interactive mode (arrow keys for buttons, q to quit)\n");
             printf("  -h, --help          Show this help message\n");
             printf("\nValid game names:\n");
             printf("  ghost-runner, spike-vector, firewall-decrypt, cipher-path,\n");
@@ -132,6 +140,7 @@ int parseArgs(int argc, char** argv) {
             printf("  %s 2 --script demos/fdn-quickstart.demo\n", argv[0]);
             printf("  %s --npc ghost-runner --auto-cable\n", argv[0]);
             printf("  %s --game signal-echo  Launch Signal Echo directly\n", argv[0]);
+            printf("  %s --game ghost-runner --interactive  Play interactively\n", argv[0]);
             exit(0);
         }
 
@@ -483,8 +492,91 @@ int main(int argc, char** argv) {
     if (!g_scriptFile.empty()) {
         // Script mode — no raw terminal, no TUI
         runScript(g_scriptFile, devices, commandProcessor, renderer);
+    } else if (g_interactiveMode) {
+        // Interactive gameplay mode — simplified display, direct arrow key controls
+        #ifndef _WIN32
+        struct termios oldTermios = cli::Terminal::enableRawMode();
+        #endif
+
+        cli::Terminal::clearScreen();
+        cli::Terminal::hideCursor();
+
+        printf("\033[1;32m");  // Bold green
+        printf("Interactive Mode: UP=Primary Button  DOWN=Secondary Button  Q=Quit\n");
+        printf("\033[0m");
+        fflush(stdout);
+
+        // Main interactive loop
+        while (g_running) {
+            // Handle input (non-blocking)
+            int key = cli::Terminal::readKey();
+            while (key != static_cast<int>(cli::Key::NONE)) {
+                if (key == static_cast<int>(cli::Key::ARROW_UP)) {
+                    // Primary button
+                    if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                        devices[g_selectedDevice].primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+                    }
+                } else if (key == static_cast<int>(cli::Key::ARROW_DOWN)) {
+                    // Secondary button
+                    if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                        devices[g_selectedDevice].secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+                    }
+                } else if (key == 'q' || key == 'Q') {
+                    // Quit
+                    g_running = false;
+                } else if (key == 3) {  // Ctrl-C
+                    g_running = false;
+                }
+                key = cli::Terminal::readKey();
+            }
+
+            // Game loop
+            NativePeerBroker::getInstance().deliverPackets();
+            cli::SerialCableBroker::getInstance().transferData();
+            for (auto& device : devices) {
+                device.pdn->loop();
+            }
+            checkAndRecordDuel(devices);
+
+            // Clear screen and redraw display
+            cli::Terminal::clearScreen();
+
+            // Show controls
+            printf("\033[1;32m");
+            printf("Interactive Mode: \033[1;33mUP\033[1;32m=Primary  \033[1;33mDOWN\033[1;32m=Secondary  \033[1;33mQ\033[1;32m=Quit\n");
+            printf("\033[0m\n");
+
+            // Show display for selected device
+            if (g_selectedDevice >= 0 && g_selectedDevice < static_cast<int>(devices.size())) {
+                auto& device = devices[g_selectedDevice];
+
+                // Get current state
+                StateMachine* activeApp = device.pdn->getActiveApp();
+                State* currentState = activeApp ? activeApp->getCurrentState() : nullptr;
+
+                printf("\033[1;36m");  // Bold cyan
+                printf("Device: %s", device.deviceId.c_str());
+                if (currentState) {
+                    printf("  State: %s", cli::getStateName(currentState->getStateId(), device.deviceType, device.gameType));
+                }
+                printf("\n\033[0m\n");
+
+                // Render display as braille art
+                auto brailleLines = device.displayDriver->renderToBraille();
+                for (const auto& line : brailleLines) {
+                    printf("%s\n", line.c_str());
+                }
+            }
+
+            fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::milliseconds(33));
+        }
+
+        cli::Terminal::showCursor();
+        cli::Terminal::restoreTerminal(oldTermios);
+        printf("\n\nShutting down...\n");
     } else {
-        // Interactive mode
+        // Standard TUI mode
         #ifndef _WIN32
         struct termios oldTermios = cli::Terminal::enableRawMode();
         #endif
