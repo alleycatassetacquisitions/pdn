@@ -67,7 +67,8 @@ public:
     }
 
     void advanceToIdle() {
-        player_.game->skipToState(player_.pdn, 7);
+        // stateMap index 6 = Idle (after removing AllegiancePickerState)
+        player_.game->skipToState(player_.pdn, 6);
         player_.pdn->loop();
     }
 

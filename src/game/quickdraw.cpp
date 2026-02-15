@@ -36,8 +36,7 @@ void Quickdraw::populateStateMap() {
     WelcomeMessage* welcomeMessage = new WelcomeMessage(player);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);
-    AllegiancePickerState* allegiancePicker = new AllegiancePickerState(player);
-    
+
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, quickdrawWirelessManager, progressManager);
     
@@ -111,11 +110,6 @@ void Quickdraw::populateStateMap() {
     chooseRole->addTransition(
         new StateTransition(
             std::bind(&ChooseRoleState::transitionToAllegiancePicker, chooseRole),
-            allegiancePicker));
-
-    allegiancePicker->addTransition(
-        new StateTransition(
-            std::bind(&AllegiancePickerState::transitionToWelcomeMessage, allegiancePicker),
             welcomeMessage));
 
     welcomeMessage->addTransition(
@@ -352,7 +346,6 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(fetchUserData);
     stateMap.push_back(confirmOffline);
     stateMap.push_back(chooseRole);
-    stateMap.push_back(allegiancePicker);
     stateMap.push_back(welcomeMessage);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
