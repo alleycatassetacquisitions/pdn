@@ -11,7 +11,7 @@ FirewallDecrypt::FirewallDecrypt(FirewallDecryptConfig config) :
 }
 
 void FirewallDecrypt::populateStateMap() {
-    seedRng();
+    seedRng(config.rngSeed);
 
     DecryptIntro* intro = new DecryptIntro(this);
     DecryptScan* scan = new DecryptScan(this);
@@ -64,14 +64,6 @@ void FirewallDecrypt::populateStateMap() {
 void FirewallDecrypt::resetGame() {
     MiniGame::resetGame();
     session.reset();
-}
-
-void FirewallDecrypt::seedRng() {
-    if (config.rngSeed != 0) {
-        srand(static_cast<unsigned int>(config.rngSeed));
-    } else {
-        srand(static_cast<unsigned int>(0));
-    }
 }
 
 std::string FirewallDecrypt::generateAddress() {

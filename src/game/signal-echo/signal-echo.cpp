@@ -9,7 +9,7 @@ SignalEcho::SignalEcho(SignalEchoConfig config) :
 }
 
 void SignalEcho::populateStateMap() {
-    seedRng();
+    seedRng(config.rngSeed);
 
     EchoIntro* intro = new EchoIntro(this);
     EchoShowSequence* showSequence = new EchoShowSequence(this);
@@ -70,14 +70,6 @@ void SignalEcho::populateStateMap() {
 void SignalEcho::resetGame() {
     MiniGame::resetGame();
     session.reset();
-}
-
-void SignalEcho::seedRng() {
-    if (config.rngSeed != 0) {
-        srand(static_cast<unsigned int>(config.rngSeed));
-    } else {
-        srand(static_cast<unsigned int>(0));
-    }
 }
 
 std::vector<bool> SignalEcho::generateSequence(int length) {

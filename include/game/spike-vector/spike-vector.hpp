@@ -75,8 +75,6 @@ public:
     SpikeVectorConfig& getConfig() { return config; }
     SpikeVectorSession& getSession() { return session; }
 
-    void seedRng();
-
 private:
     SpikeVectorConfig config;
     SpikeVectorSession session;

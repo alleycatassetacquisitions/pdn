@@ -72,8 +72,6 @@ public:
     BreachDefenseConfig& getConfig() { return config; }
     BreachDefenseSession& getSession() { return session; }
 
-    void seedRng();
-
 private:
     BreachDefenseConfig config;
     BreachDefenseSession session;

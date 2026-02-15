@@ -2,6 +2,8 @@
 #include "game/spike-vector/spike-vector-states.hpp"
 
 void SpikeVector::populateStateMap() {
+    seedRng(config.rngSeed);
+
     SpikeVectorIntro* intro = new SpikeVectorIntro(this);
     SpikeVectorShow* show = new SpikeVectorShow(this);
     SpikeVectorGameplay* gameplay = new SpikeVectorGameplay(this);
@@ -68,12 +70,4 @@ void SpikeVector::populateStateMap() {
 void SpikeVector::resetGame() {
     MiniGame::resetGame();
     session.reset();
-}
-
-void SpikeVector::seedRng() {
-    if (config.rngSeed != 0) {
-        srand(static_cast<unsigned int>(config.rngSeed));
-    } else {
-        srand(static_cast<unsigned int>(0));
-    }
 }

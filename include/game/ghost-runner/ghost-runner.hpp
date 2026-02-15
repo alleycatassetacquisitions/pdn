@@ -83,13 +83,6 @@ public:
     GhostRunnerConfig& getConfig() { return config; }
     GhostRunnerSession& getSession() { return session; }
 
-    /*
-     * Seed the PRNG. Called once during initialization.
-     * If config.rngSeed != 0, uses that seed (deterministic for tests).
-     * Otherwise uses 0.
-     */
-    void seedRng();
-
 private:
     GhostRunnerConfig config;
     GhostRunnerSession session;

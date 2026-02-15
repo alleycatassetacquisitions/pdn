@@ -2,6 +2,8 @@
 #include "game/cipher-path/cipher-path-states.hpp"
 
 void CipherPath::populateStateMap() {
+    seedRng(config.rngSeed);
+
     CipherPathIntro* intro = new CipherPathIntro(this);
     CipherPathShow* show = new CipherPathShow(this);
     CipherPathGameplay* gameplay = new CipherPathGameplay(this);
@@ -68,14 +70,6 @@ void CipherPath::populateStateMap() {
 void CipherPath::resetGame() {
     MiniGame::resetGame();
     session.reset();
-}
-
-void CipherPath::seedRng() {
-    if (config.rngSeed != 0) {
-        srand(static_cast<unsigned int>(config.rngSeed));
-    } else {
-        srand(static_cast<unsigned int>(0));
-    }
 }
 
 void CipherPath::generateCipher() {

@@ -2,6 +2,8 @@
 #include "game/breach-defense/breach-defense-states.hpp"
 
 void BreachDefense::populateStateMap() {
+    seedRng(config.rngSeed);
+
     BreachDefenseIntro* intro       = new BreachDefenseIntro(this);
     BreachDefenseShow* show         = new BreachDefenseShow(this);
     BreachDefenseGameplay* gameplay = new BreachDefenseGameplay(this);
@@ -66,12 +68,4 @@ void BreachDefense::populateStateMap() {
 void BreachDefense::resetGame() {
     MiniGame::resetGame();
     session.reset();
-}
-
-void BreachDefense::seedRng() {
-    if (config.rngSeed != 0) {
-        srand(static_cast<unsigned int>(config.rngSeed));
-    } else {
-        srand(static_cast<unsigned int>(0));
-    }
 }

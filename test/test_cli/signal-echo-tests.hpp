@@ -55,7 +55,7 @@ void echoSequenceGenerationLength(SignalEchoTestSuite* suite) {
     config.rngSeed = 42;
 
     SignalEcho tempGame(config);
-    tempGame.seedRng();
+    tempGame.seedRng(tempGame.getConfig().rngSeed);
     std::vector<bool> seq = tempGame.generateSequence(6);
     ASSERT_EQ(static_cast<int>(seq.size()), 6);
 
@@ -69,7 +69,7 @@ void echoSequenceGenerationMixed(SignalEchoTestSuite* suite) {
     config.rngSeed = 42;
 
     SignalEcho tempGame(config);
-    tempGame.seedRng();
+    tempGame.seedRng(tempGame.getConfig().rngSeed);
 
     std::vector<bool> seq = tempGame.generateSequence(100);
     int ups = 0, downs = 0;

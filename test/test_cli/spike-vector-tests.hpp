@@ -264,7 +264,7 @@ void spikeVectorMissedDodge(SpikeVectorTestSuite* suite) {
     // Use deterministic seed and short track
     config.rngSeed = 42;
     config.trackLength = 5;
-    suite->game_->seedRng();
+    suite->game_->seedRng(suite->game_->getConfig().rngSeed);
 
     // Skip to Show (index 1)
     suite->game_->skipToState(suite->device_.pdn, 1);
