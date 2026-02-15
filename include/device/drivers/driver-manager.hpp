@@ -29,6 +29,15 @@ class DriverManager {
         }
     }
 
+    void clearButtonCallbacks() {
+        for(auto& driver : driverConfig) {
+            if(driver.second->type == DriverType::BUTTON) {
+                ButtonDriverInterface* button = static_cast<ButtonDriverInterface*>(driver.second);
+                button->removeButtonCallbacks();
+            }
+        }
+    }
+
     void dismountDrivers() {
         for(auto& driver : driverConfig) {
             delete driver.second;

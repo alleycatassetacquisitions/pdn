@@ -6,8 +6,11 @@
 const char* TAG = "Device";
 
 Device::~Device() {
+    // Clear button callbacks to prevent dangling Device* pointers
+    // This must be done before deleting apps and drivers
+    driverManager.clearButtonCallbacks();
+
     // Delete all registered apps
-    // Note: Apps should be properly dismounted before Device destruction via normal lifecycle
     for (auto& pair : appConfig) {
         if (pair.second != nullptr) {
             delete pair.second;

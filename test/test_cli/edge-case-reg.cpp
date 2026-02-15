@@ -117,3 +117,11 @@ TEST_F(EdgeCaseTestSuite, FdnResultManagerMaxCapacity) {
 TEST_F(EdgeCaseTestSuite, FdnResultManagerClearEmpty) {
     edgeCaseFdnResultManagerClearEmpty(this);
 }
+
+// ============================================
+// DEVICE LIFECYCLE EDGE CASES
+// ============================================
+
+TEST_F(EdgeCaseTestSuite, DeviceDestructorDismountsActiveApp) {
+    edgeCaseDeviceDestructorDismountsActiveApp(this);
+}
