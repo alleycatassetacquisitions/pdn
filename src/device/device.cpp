@@ -6,9 +6,15 @@
 const char* TAG = "Device";
 
 Device::~Device() {
-    // Dismount launched apps before deletion to ensure active state cleanup
-    // (timers, callbacks, resources) runs properly. Only dismount apps that
-    // were actually launched to respect the mount/dismount lifecycle contract.
+    // shutdownApps() is called here for test mocks and simple Device subclasses.
+    // For PDN, shutdownApps() is called first in PDN::~PDN() (while the vtable
+    // still has PDN's virtual method implementations). The second call here is
+    // a no-op since shutdownApps() clears appConfig after processing.
+    shutdownApps();
+    driverManager.dismountDrivers();
+}
+
+void Device::shutdownApps() {
     for (auto& pair : appConfig) {
         if (pair.second != nullptr) {
             if (pair.second->hasLaunched()) {
@@ -19,7 +25,6 @@ Device::~Device() {
         }
     }
     appConfig.clear();
-    driverManager.dismountDrivers();
 }
 
 void Device::loadAppConfig(AppConfig config, StateId launchAppId) {

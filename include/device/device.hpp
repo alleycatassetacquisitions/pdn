@@ -51,6 +51,7 @@ public:
     virtual WirelessManager* getWirelessManager() = 0;
 
 protected:
+    void shutdownApps();
     explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {
         driverManager.initialize();
     }
