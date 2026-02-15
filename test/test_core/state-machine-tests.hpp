@@ -262,6 +262,38 @@ public:
     }
 };
 
+class NullStateTestMachine : public StateMachine {
+public:
+    NullStateTestMachine() : StateMachine(0) {}
+
+    void populateStateMap() override {
+        InitialTestState *initialState = new InitialTestState();
+
+        // Add a transition that points to nullptr (simulating invalid state)
+        initialState->addTransition(
+            new StateTransition(
+                std::bind(&InitialTestState::transitionToSecondState, initialState),
+                nullptr));
+
+        stateMap.push_back(initialState);
+    }
+
+    bool getTransitionReadyFlag() {
+        return stateChangeReady;
+    }
+
+    State* getNewState() {
+        return newState;
+    }
+
+    // Test helper to manually trigger commitState with null
+    void forceCommitWithNull(Device* PDN) {
+        newState = nullptr;
+        stateChangeReady = true;
+        commitState(PDN);
+    }
+};
+
 class StateMachineTestSuite : public testing::Test {
 
 protected:
