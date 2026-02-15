@@ -15,14 +15,6 @@ jobs:
       with:
         submodules: 'true'
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install PlatformIO
-      run: pip install platformio
-
     - name: Create WiFi credentials
       run: |
         cp wifi_credentials.ini.example wifi_credentials.ini
@@ -41,14 +33,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: 'true'
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install PlatformIO
-      run: pip install platformio
 
     - name: Create WiFi credentials
       run: |
