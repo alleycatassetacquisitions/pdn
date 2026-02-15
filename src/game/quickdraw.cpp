@@ -18,6 +18,7 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
 Quickdraw::~Quickdraw() {
     player = nullptr;
     quickdrawWirelessManager = nullptr;
+    delete matchManager;
     matchManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;

@@ -956,6 +956,14 @@ TEST_F(ConnectionSuccessfulTests, transitionsAfterThreshold) {
 }
 
 // ============================================
+// QUICKDRAW DESTRUCTOR TESTS
+// ============================================
+
+TEST_F(QuickdrawDestructorTests, destructorCleansUpMatchManager) {
+    quickdrawDestructorCleansUpMatchManager(this);
+}
+
+// ============================================
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================
 
