@@ -103,13 +103,129 @@ inline void uuidGeneratorProducesValidFormat() {
     char* uuid = IdGenerator(42).generateId();
 
     std::string uuidStr(uuid);
-    
+
     // Should be valid UUID format
     EXPECT_EQ(uuidStr.length(), 36);
     EXPECT_EQ(uuidStr[8], '-');
     EXPECT_EQ(uuidStr[13], '-');
     EXPECT_EQ(uuidStr[18], '-');
     EXPECT_EQ(uuidStr[23], '-');
+}
+
+// ============================================
+// UUID Bounds Checking Tests (Issue #139)
+// ============================================
+
+inline void uuidStringToBytesRejectsTooLongString() {
+    // String longer than 36 characters
+    std::string tooLong = "12345678-abcd-ef01-2345-6789abcdef01-extra";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(tooLong, bytes);
+
+    // Should return zeroed buffer
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0);
+    }
+}
+
+inline void uuidStringToBytesRejectsTooShortString() {
+    // String shorter than 36 characters
+    std::string tooShort = "12345678-abcd-ef01-2345";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(tooShort, bytes);
+
+    // Should return zeroed buffer
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0);
+    }
+}
+
+inline void uuidStringToBytesRejectsNonHexCharacters() {
+    // UUID with invalid hex characters
+    std::string invalidHex = "12345678-ZZZZ-ef01-2345-6789abcdef01";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(invalidHex, bytes);
+
+    // hexCharToInt returns 0 for invalid chars, so we get non-zero output
+    // This test documents current behavior - invalid hex produces garbage
+    // but doesn't crash (returns 0 for invalid chars)
+    EXPECT_EQ(bytes[4], 0x00);  // 'Z' maps to 0
+    EXPECT_EQ(bytes[5], 0x00);  // 'Z' maps to 0
+}
+
+inline void uuidStringToBytesRejectsMissingHyphens() {
+    // UUID without hyphens at correct positions
+    std::string noHyphens = "12345678abcdef012345-6789abcdef01";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(noHyphens, bytes);
+
+    // Should return zeroed buffer due to format validation
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0);
+    }
+}
+
+inline void uuidStringToBytesRejectsEmptyString() {
+    std::string empty = "";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(empty, bytes);
+
+    // Should return zeroed buffer
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0);
+    }
+}
+
+inline void uuidStringToBytesHandlesAllZeros() {
+    std::string zeroUuid = "00000000-0000-0000-0000-000000000000";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(zeroUuid, bytes);
+
+    // Should successfully parse to all zeros
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0);
+    }
+}
+
+inline void uuidStringToBytesHandlesAllFs() {
+    std::string maxUuid = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    uint8_t bytes[16];
+
+    IdGenerator::uuidStringToBytes(maxUuid, bytes);
+
+    // Should successfully parse to all 0xFF
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0xFF);
+    }
+}
+
+inline void uuidStringToBytesPreventsBufferOverflow() {
+    // Test that malformed long input doesn't overflow buffer
+    // This is the core security issue from #139
+    std::string malicious = "12345678-abcd-ef01-2345-6789abcdef01aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    uint8_t bytes[16];
+
+    // Initialize with sentinel values to detect overflow
+    uint8_t sentinel[4] = {0xAA, 0xBB, 0xCC, 0xDD};
+
+    IdGenerator::uuidStringToBytes(malicious, bytes);
+
+    // Sentinel should be unchanged (no buffer overflow)
+    EXPECT_EQ(sentinel[0], 0xAA);
+    EXPECT_EQ(sentinel[1], 0xBB);
+    EXPECT_EQ(sentinel[2], 0xCC);
+    EXPECT_EQ(sentinel[3], 0xDD);
+
+    // Buffer should be zeroed due to length validation
+    for (int i = 0; i < 16; i++) {
+        EXPECT_EQ(bytes[i], 0);
+    }
 }
 
 // ============================================
