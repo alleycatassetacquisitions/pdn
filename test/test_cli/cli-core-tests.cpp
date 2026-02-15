@@ -407,3 +407,244 @@ TEST_F(CliCommandTestSuite, RebootFromLaterState) {
 TEST_F(CliCommandTestSuite, RebootClearsHistory) {
     cliCommandRebootClearsHistory(this);
 }
+
+// ============================================
+// CLI COMMAND PROCESSOR EDGE CASE TESTS
+// ============================================
+
+#include "cli-command-edge-tests.hpp"
+
+// Help command tests
+TEST_F(CliCommandProcessorTestSuite, HelpCommandNoArgs) {
+    helpCommandNoArgs(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, HelpCommandAliases) {
+    helpCommandAliases(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, Help2CommandShowsExtendedHelp) {
+    help2CommandShowsExtendedHelp(this);
+}
+
+// Quit command tests
+TEST_F(CliCommandProcessorTestSuite, QuitCommandSetsShouldQuit) {
+    quitCommandSetsShouldQuit(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, QuitCommandAliases) {
+    quitCommandAliases(this);
+}
+
+// Cable/connect command tests
+TEST_F(CliCommandProcessorTestSuite, CableCommandNoArgs) {
+    cableCommandNoArgs(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableCommandInvalidDeviceId) {
+    cableCommandInvalidDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableCommandNegativeDeviceId) {
+    cableCommandNegativeDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableCommandConnectToSelf) {
+    cableCommandConnectToSelf(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableCommandNonNumericId) {
+    cableCommandNonNumericId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableCommandAliases) {
+    cableCommandAliases(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableDisconnectNoArgs) {
+    cableDisconnectNoArgs(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CableListNoConnections) {
+    cableListNoConnections(this);
+}
+
+// Reboot command tests
+TEST_F(CliCommandProcessorTestSuite, RebootCommandNoArgs) {
+    rebootCommandNoArgs(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RebootCommandInvalidDeviceId) {
+    rebootCommandInvalidDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RebootCommandExtraArgs) {
+    rebootCommandExtraArgs(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RebootCommandAlias) {
+    rebootCommandAlias(this);
+}
+
+// Display command tests
+TEST_F(CliCommandProcessorTestSuite, DisplayCommandToggle) {
+    displayCommandToggle(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, DisplayCommandOn) {
+    displayCommandOn(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, DisplayCommandOff) {
+    displayCommandOff(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, DisplayCommandInvalidArg) {
+    displayCommandInvalidArg(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, DisplayCommandAlias) {
+    displayCommandAlias(this);
+}
+
+// Role command tests
+TEST_F(CliCommandProcessorTestSuite, RoleCommandShowsSelectedDevice) {
+    roleCommandShowsSelectedDevice(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RoleCommandWithDeviceId) {
+    roleCommandWithDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RoleCommandAll) {
+    roleCommandAll(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RoleCommandInvalidDeviceId) {
+    roleCommandInvalidDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, RoleCommandAlias) {
+    roleCommandAlias(this);
+}
+
+// Edge case tests
+TEST_F(CliCommandProcessorTestSuite, EmptyInputNoOp) {
+    emptyInputNoOp(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, WhitespaceOnlyInput) {
+    whitespaceOnlyInput(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, UnknownCommandShowsError) {
+    unknownCommandShowsError(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CommandWithLeadingWhitespace) {
+    commandWithLeadingWhitespace(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CommandWithTrailingWhitespace) {
+    commandWithTrailingWhitespace(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CommandWithMultipleSpaces) {
+    commandWithMultipleSpaces(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, VeryLongInputString) {
+    veryLongInputString(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CommandWithSpecialCharacters) {
+    commandWithSpecialCharacters(this);
+}
+
+// List and select command tests
+TEST_F(CliCommandProcessorTestSuite, ListCommandShowsAllDevices) {
+    listCommandShowsAllDevices(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, ListCommandAlias) {
+    listCommandAlias(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, SelectCommandNoArgs) {
+    selectCommandNoArgs(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, SelectCommandValidDeviceId) {
+    selectCommandValidDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, SelectCommandInvalidDeviceId) {
+    selectCommandInvalidDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, SelectCommandAlias) {
+    selectCommandAlias(this);
+}
+
+// State command tests
+TEST_F(CliCommandProcessorTestSuite, StateCommandShowsCurrentState) {
+    stateCommandShowsCurrentState(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, StateCommandWithDeviceId) {
+    stateCommandWithDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, StateCommandInvalidDeviceId) {
+    stateCommandInvalidDeviceId(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, StateCommandAlias) {
+    stateCommandAlias(this);
+}
+
+// Games command tests
+TEST_F(CliCommandProcessorTestSuite, GamesCommandListsAllGames) {
+    gamesCommandListsAllGames(this);
+}
+
+// Mirror and captions command tests
+TEST_F(CliCommandProcessorTestSuite, MirrorCommandToggle) {
+    mirrorCommandToggle(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, MirrorCommandOn) {
+    mirrorCommandOn(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, MirrorCommandOff) {
+    mirrorCommandOff(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, MirrorCommandInvalidArg) {
+    mirrorCommandInvalidArg(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, MirrorCommandAlias) {
+    mirrorCommandAlias(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CaptionsCommandToggle) {
+    captionsCommandToggle(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CaptionsCommandOn) {
+    captionsCommandOn(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CaptionsCommandOff) {
+    captionsCommandOff(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CaptionsCommandInvalidArg) {
+    captionsCommandInvalidArg(this);
+}
+
+TEST_F(CliCommandProcessorTestSuite, CaptionsCommandAlias) {
+    captionsCommandAlias(this);
+}
