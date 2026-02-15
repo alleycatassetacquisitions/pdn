@@ -142,6 +142,14 @@ public:
         }
         
         connections_.push_back(conn);
+
+        // Clear accumulated output buffers to prevent message flood
+        // when connecting to a device that was broadcasting before connection
+        NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
+        NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
+        jackA->clearOutput();
+        jackB->clearOutput();
+
         return true;
     }
     

@@ -118,6 +118,18 @@ TEST_F(EdgeCaseTestSuite, FdnResultManagerClearEmpty) {
     edgeCaseFdnResultManagerClearEmpty(this);
 }
 
+TEST_F(FdnEdgeCaseTestSuite, NpcBufferFloodOnConnect) {
+    edgeCaseNpcBufferFloodOnConnect(this);
+}
+
+TEST_F(FdnEdgeCaseTestSuite, NpcBroadcastAfterConnect) {
+    edgeCaseNpcBroadcastAfterConnect(this);
+}
+
+TEST_F(FdnEdgeCaseTestSuite, NpcReconnectClearsBuffer) {
+    edgeCaseNpcReconnectClearsBuffer(this);
+}
+
 // ============================================
 // DEVICE LIFECYCLE EDGE CASES
 // ============================================
