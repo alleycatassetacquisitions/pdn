@@ -14,6 +14,7 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
+#include "quickdraw-edge-tests.hpp"
 #include "konami-metagame-tests.hpp"
 #include "konami-handshake-tests.hpp"
 #include "lifecycle-tests.hpp"
@@ -1499,6 +1500,91 @@ TEST_F(StateTransitionEdgeCaseTests, duelPushedGracePeriodExpiry) {
 
 TEST_F(StateTransitionEdgeCaseTests, handshakeWithMalformedMac) {
     edgeCaseHandshakeWithMalformedMac(this);
+}
+
+// ============================================
+// QUICKDRAW EDGE CASE TESTS
+// ============================================
+
+// Timeout Edge Cases
+TEST_F(QuickdrawEdgeCaseTests, timeoutAtExactBoundary) {
+    duelTimeoutAtExactBoundary(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, veryShortTimeout) {
+    duelVeryShortTimeout(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, bothPlayersTimeout) {
+    duelBothPlayersTimeout(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, pushedGracePeriodExactBoundary) {
+    duelPushedGracePeriodExactBoundary(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, receivedResultGracePeriodExactBoundary) {
+    duelReceivedResultGracePeriodExactBoundary(this);
+}
+
+// Simultaneous Press Edge Cases
+TEST_F(QuickdrawEdgeCaseTests, exactSimultaneousPress) {
+    duelExactSimultaneousPress(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, pressWithin1ms) {
+    duelPressWithin1ms(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, bothFalseStartBeforeSignal) {
+    duelBothFalseStartBeforeSignal(this);
+}
+
+// Result Calculation Edge Cases
+TEST_F(QuickdrawEdgeCaseTests, zeroReactionTime) {
+    duelZeroReactionTime(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, maximumReactionTime) {
+    duelMaximumReactionTime(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, opponentNeverPressedSentinel) {
+    duelOpponentNeverPressedSentinel(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, maxButtonMasherPenalty) {
+    duelMaxButtonMasherPenalty(this);
+}
+
+// State Transition Edge Cases
+TEST_F(QuickdrawEdgeCaseTests, receiveResultAtButtonPress) {
+    duelReceiveResultAtButtonPress(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, multipleLoopsWithoutTimeAdvancement) {
+    duelMultipleLoopsWithoutTimeAdvancement(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, dismountBeforeTimeout) {
+    duelDismountBeforeTimeout(this);
+}
+
+// Result Propagation Edge Cases
+TEST_F(QuickdrawEdgeCaseTests, winUpdatesPlayerStats) {
+    resultWinUpdatesPlayerStats(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, loseUpdatesPlayerStats) {
+    resultLoseUpdatesPlayerStats(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, winStreakIncrementsOnWin) {
+    resultWinStreakIncrementsOnWin(this);
+}
+
+TEST_F(QuickdrawEdgeCaseTests, winStreakResetsOnLoss) {
+    resultWinStreakResetsOnLoss(this);
 }
 
 // ============================================
