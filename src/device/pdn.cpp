@@ -7,6 +7,10 @@ PDN* PDN::createPDN(DriverConfig& driverConfig) {
 }
 
 PDN::~PDN() {
+    // Dismount apps here (not in ~Device) because state dismount callbacks
+    // may call virtual methods like getHaptics(). During ~Device(), the vtable
+    // reverts to Device's pure virtual definitions, causing SIGABRT.
+    shutdownApps();
 }
 
 PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {

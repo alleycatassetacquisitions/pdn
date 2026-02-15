@@ -416,10 +416,13 @@ public:
         // State dismount callbacks may call SimpleTimer::updateTime() which needs valid clock or nullptr
         SimpleTimer::setPlatformClock(nullptr);
 
-        // Note: device.game and minigames are now deleted by PDN destructor (Device::~Device)
+        // Delete PDN first — its destructor dismounts apps, which may call
+        // quickdrawWirelessManager->clearCallbacks(). Must happen before
+        // deleting the wireless manager.
+        delete device.pdn;
+        // Note: device.game and minigames are deleted by PDN destructor
         delete device.quickdrawWirelessManager;
         delete device.player;
-        delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
     }
 
