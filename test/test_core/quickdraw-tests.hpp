@@ -431,6 +431,13 @@ inline void handshakeDuplicateHunterReceiveMatchHandled(HandshakeStateTests* sui
     QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
 
+    // With 4-way handshake, bounty waits for HUNTER_READY after HUNTER_RECEIVE_MATCH
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+
+    // Send HUNTER_READY to complete handshake
+    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(hunterReady);
+
     EXPECT_TRUE(bountyState.transitionToConnectionSuccessful());
 
     // Send duplicate HUNTER_RECEIVE_MATCH
@@ -438,7 +445,7 @@ inline void handshakeDuplicateHunterReceiveMatchHandled(HandshakeStateTests* sui
     QuickdrawCommand duplicateCommand("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, duplicateMatch);
     bountyState.onQuickdrawCommandReceived(duplicateCommand);
 
-    // Should still transition successfully (no crash)
+    // Should still be in transition state (no crash from duplicate)
     EXPECT_TRUE(bountyState.transitionToConnectionSuccessful());
 
     bountyState.onStateDismounted(&suite->device);
@@ -456,15 +463,15 @@ inline void handshakeOutOfOrderBountyFinalAckAccepted(HandshakeStateTests* suite
     hunterState.onStateMounted(&suite->device);
 
     // Send BOUNTY_FINAL_ACK BEFORE CONNECTION_CONFIRMED
-    // Current implementation accepts this (sets transition flag regardless of order)
+    // With 4-way handshake, hunter needs a match to send HUNTER_READY — rejects out-of-order
     Match receivedMatch("test-match-id", "", "5678");
     QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
 
-    // Current implementation sets transition flag even if out of order
-    EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
+    // Out-of-order BOUNTY_FINAL_ACK rejected (no match to send HUNTER_READY for)
+    EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
 
-    // Now send CONNECTION_CONFIRMED (late)
+    // Now send CONNECTION_CONFIRMED (creates match and sends HUNTER_RECEIVE_MATCH)
     QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
 
@@ -473,7 +480,11 @@ inline void handshakeOutOfOrderBountyFinalAckAccepted(HandshakeStateTests* suite
     ASSERT_NE(currentMatch, nullptr);
     EXPECT_EQ(currentMatch->getMatchId(), "test-match-id");
 
-    // State still ready to transition (no crash from out-of-order packets)
+    // Still not transitioned — need BOUNTY_FINAL_ACK again (now with match present)
+    EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
+
+    // Re-send BOUNTY_FINAL_ACK — now hunter has match, can send HUNTER_READY
+    hunterState.onQuickdrawCommandReceived(finalAck);
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());
 
     hunterState.onStateDismounted(&suite->device);
@@ -506,6 +517,13 @@ inline void handshakeOutOfOrderHunterReceiveMatchIgnored(HandshakeStateTests* su
 
     // Send HUNTER_RECEIVE_MATCH in correct order
     bountyState.onQuickdrawCommandReceived(command);
+
+    // With 4-way handshake, bounty waits for HUNTER_READY
+    EXPECT_FALSE(bountyState.transitionToConnectionSuccessful());
+
+    // Send HUNTER_READY to complete handshake
+    QuickdrawCommand hunterReady("AA:BB:CC:DD:EE:FF", HUNTER_READY, receivedMatch);
+    bountyState.onQuickdrawCommandReceived(hunterReady);
 
     // Should transition successfully
     EXPECT_TRUE(bountyState.transitionToConnectionSuccessful());
