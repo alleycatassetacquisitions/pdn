@@ -98,7 +98,62 @@ public:
     void TearDown() override {
         // Note: appOne, appTwo, appThree are deleted by device destructor
         // since ownership was transferred via loadAppConfig()
-        delete device;
+        if (device != nullptr) {
+            delete device;
+        }
     }
 };
+
+// Regression test for #144: Device destructor must call onStateDismounted
+// on all registered apps to ensure active state cleanup runs
+void destructorDismountsActiveStateBeforeDeletion(DeviceTestSuite* suite) {
+    AppConfig config;
+    config[APP_ONE] = suite->appOne;
+
+    suite->device->loadAppConfig(std::move(config), APP_ONE);
+
+    // Run some loops to ensure state is active
+    suite->device->loop();
+    suite->device->loop();
+
+    // Verify app is mounted and active
+    ASSERT_EQ(suite->appOne->mountedCount, 1);
+    ASSERT_EQ(suite->appOne->loopCount, 2);
+    ASSERT_EQ(suite->appOne->dismountedCount, 0);
+
+    // Delete device - this should call onStateDismounted on the active app
+    delete suite->device;
+    suite->device = nullptr; // Prevent double-delete in TearDown
+
+    // Verify dismount was called for the active app
+    ASSERT_EQ(suite->appOne->dismountedCount, 1);
+}
+
+// Verify that destructor dismounts ALL apps, not just the active one
+void destructorDismountsAllRegisteredApps(DeviceTestSuite* suite) {
+    AppConfig config;
+    config[APP_ONE] = suite->appOne;
+    config[APP_TWO] = suite->appTwo;
+    config[APP_THREE] = suite->appThree;
+
+    suite->device->loadAppConfig(std::move(config), APP_ONE);
+
+    // Switch between apps
+    suite->device->setActiveApp(APP_TWO);
+    suite->device->setActiveApp(APP_THREE);
+
+    // Verify lifecycle before destruction
+    ASSERT_EQ(suite->appOne->mountedCount, 1);
+    ASSERT_EQ(suite->appTwo->mountedCount, 1);
+    ASSERT_EQ(suite->appThree->mountedCount, 1);
+
+    // Delete device
+    delete suite->device;
+    suite->device = nullptr;
+
+    // All apps should be dismounted
+    ASSERT_EQ(suite->appOne->dismountedCount, 1);
+    ASSERT_EQ(suite->appTwo->dismountedCount, 1);
+    ASSERT_EQ(suite->appThree->dismountedCount, 1);
+}
 
