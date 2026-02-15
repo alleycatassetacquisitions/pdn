@@ -22,7 +22,6 @@ enum QuickdrawStateId {
     FETCH_USER_DATA = 1,
     CONFIRM_OFFLINE = 2,
     CHOOSE_ROLE = 3,
-    ALLEGIANCE_PICKER = 4,
     WELCOME_MESSAGE = 5,
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
@@ -147,25 +146,6 @@ private:
     bool transitionToAllegiancePickerState = false;
     bool displayIsDirty = false;
     bool hunterSelected = true;
-};
-
-class AllegiancePickerState : public State {
-public:
-    explicit AllegiancePickerState(Player* player);
-    ~AllegiancePickerState();
-
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToWelcomeMessage();
-    void renderUi(Device *PDN);
-
-private:
-    Player* player;
-    bool transitionToWelcomeMessageState = false;
-    bool displayIsDirty = false;
-    int currentAllegiance = 0;
-    const Allegiance allegianceArray[4] = {Allegiance::ALLEYCAT, Allegiance::ENDLINE, Allegiance::HELIX, Allegiance::RESISTANCE};
 };
 
 class WelcomeMessage : public State {
