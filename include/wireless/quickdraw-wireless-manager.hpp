@@ -19,14 +19,15 @@ enum QDCommand {
     CONNECTION_CONFIRMED = 0, //Bounty -> Hunter
     HUNTER_RECEIVE_MATCH = 1, //Hunter -> Bounty
     BOUNTY_FINAL_ACK = 4, //Bounty -> Hunter
-    
+    HUNTER_READY = 5, //Hunter -> Bounty
+
     // Game Commands
     HACK = 6,
-    HACK_ACK = 7, 
+    HACK_ACK = 7,
     HACK_CONFIRMED = 8,
     LOCKDOWN = 9,
     LOCKDOWN_ACK = 10,
-    LOCKDOWN_CONFIRMED = 11,    
+    LOCKDOWN_CONFIRMED = 11,
     DRAW_RESULT = 12,
     NEVER_PRESSED = 13,
     COMMAND_COUNT,  // Always add new commands above this line

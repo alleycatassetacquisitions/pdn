@@ -81,6 +81,25 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         }
     } else if (command.command == BOUNTY_FINAL_ACK) {
         LOG_I("HUNTER_SEND_ID", "Received BOUNTY_FINAL_ACK from opponent");
+
+        // Send HUNTER_READY to confirm receipt
+        Match* currentMatch = matchManager->getCurrentMatch();
+        if (!currentMatch) {
+            LOG_E("HUNTER_SEND_ID", "No current match when sending HUNTER_READY");
+            return;
+        }
+
+        try {
+            quickdrawWirelessManager->broadcastPacket(
+                player->getOpponentMacAddress(),
+                HUNTER_READY,
+                *currentMatch
+            );
+            LOG_I("HUNTER_SEND_ID", "Sent HUNTER_READY");
+        } catch (const std::exception& e) {
+            LOG_E("HUNTER_SEND_ID", "Failed to send HUNTER_READY: %s", e.what());
+        }
+
         transitionToConnectionSuccessfulState = true;
     } else {
         LOG_W("HUNTER_SEND_ID", "Received unexpected command: %d", command.command);
