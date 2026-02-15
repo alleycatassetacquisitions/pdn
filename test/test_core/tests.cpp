@@ -915,8 +915,8 @@ TEST_F(StateCleanupTests, countdownClearsButtonCallbacks) {
     cleanupCountdownClearsButtonCallbacks(this);
 }
 
-TEST_F(StateCleanupTests, duelStateDoesNotClearCallbacksOnDismount) {
-    cleanupDuelStateDoesNotClearCallbacksOnDismount(this);
+TEST_F(StateCleanupTests, duelStateClearsCallbacksOnDismount) {
+    cleanupDuelStateClearsCallbacksOnDismount(this);
 }
 
 TEST_F(StateCleanupTests, duelReceivedResultClearsButtonCallbacks) {

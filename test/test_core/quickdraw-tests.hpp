@@ -1214,22 +1214,22 @@ inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
 }
 
 // Test: Duel state preserves button callbacks for DuelPushed/DuelReceivedResult
-inline void cleanupDuelStateDoesNotClearCallbacksOnDismount(StateCleanupTests* suite) {
+inline void cleanupDuelStateClearsCallbacksOnDismount(StateCleanupTests* suite) {
     suite->matchManager->createMatch("test-match", suite->player->getUserID(), "5678");
-    
+
     Duel duelState(suite->player, suite->matchManager, suite->wirelessManager);
-    
+
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    
+
     duelState.onStateMounted(&suite->device);
-    
-    // Duel state should NOT clear button callbacks on dismount
-    // The next state (DuelPushed or DuelReceivedResult) uses them
-    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(0);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(0);
-    
+
+    // Fixed: Duel state now DOES clear button callbacks on dismount (issue #145)
+    // This prevents phantom button presses after state exits
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+
     duelState.onStateDismounted(&suite->device);
 }
 
