@@ -616,25 +616,59 @@ TEST_F(MatchTestSuite, withLargeDrawTimes) {
     matchWithLargeDrawTimes();
 }
 
-// // ============================================
-// // UUID TESTS
-// // ============================================
+// ============================================
+// UUID TESTS
+// ============================================
 
-// TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
-//     uuidStringToBytesProducesCorrectOutput();
-// }
+TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+    uuidStringToBytesProducesCorrectOutput();
+}
 
-// TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-//     uuidBytesToStringProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
+    uuidBytesToStringProducesValidFormat();
+}
 
-// TEST_F(UUIDTestSuite, roundTripPreservesData) {
-//     uuidRoundTripPreservesData();
-// }
+TEST_F(UUIDTestSuite, roundTripPreservesData) {
+    uuidRoundTripPreservesData();
+}
 
+// Note: This test fails due to pre-existing UUID generator issue (not related to #139)
 // TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
 //     uuidGeneratorProducesValidFormat();
 // }
+
+// UUID Bounds Checking Tests (Issue #139)
+TEST_F(UUIDTestSuite, stringToBytesRejectsTooLongString) {
+    uuidStringToBytesRejectsTooLongString();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesRejectsTooShortString) {
+    uuidStringToBytesRejectsTooShortString();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesRejectsNonHexCharacters) {
+    uuidStringToBytesRejectsNonHexCharacters();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesRejectsMissingHyphens) {
+    uuidStringToBytesRejectsMissingHyphens();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesRejectsEmptyString) {
+    uuidStringToBytesRejectsEmptyString();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesHandlesAllZeros) {
+    uuidStringToBytesHandlesAllZeros();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesHandlesAllFs) {
+    uuidStringToBytesHandlesAllFs();
+}
+
+TEST_F(UUIDTestSuite, stringToBytesPreventsBufferOverflow) {
+    uuidStringToBytesPreventsBufferOverflow();
+}
 
 // ============================================
 // MAC ADDRESS TESTS

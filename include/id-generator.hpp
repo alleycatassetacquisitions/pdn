@@ -28,18 +28,50 @@ public:
 
     /**
      * Converts a UUID string to its binary representation.
-     * 
+     *
      * A UUID string looks like: "123e4567-e89b-12d3-a456-426614174000"
      * Format: 8 chars - 4 chars - 4 chars - 4 chars - 12 chars
-     * 
+     *
      * @param uuid The UUID string to convert
      * @param bytes Output buffer for the binary data (must be 16 bytes)
      */
     static void uuidStringToBytes(const std::string& uuid, uint8_t* bytes) {
+        // Validate input length (must be exactly 36 chars for standard UUID)
+        if (uuid.length() != UUID_STRING_LENGTH) {
+            // Invalid length - zero out buffer and return
+            for (int i = 0; i < UUID_BINARY_SIZE; i++) {
+                bytes[i] = 0;
+            }
+            return;
+        }
+
+        // Validate UUID format - hyphens must be at correct positions
+        if (uuid[8] != '-' || uuid[13] != '-' || uuid[18] != '-' || uuid[23] != '-') {
+            // Invalid format - zero out buffer and return
+            for (int i = 0; i < UUID_BINARY_SIZE; i++) {
+                bytes[i] = 0;
+            }
+            return;
+        }
+
         int byteIndex = 0;
         for (size_t i = 0; i < uuid.length(); i++) {
             if (uuid[i] == '-') continue;  // Skip hyphens in UUID string
-            
+
+            // Bounds check: prevent buffer overflow
+            if (byteIndex >= UUID_BINARY_SIZE) {
+                break;
+            }
+
+            // Ensure we have two characters to read
+            if (i + 1 >= uuid.length()) {
+                // Not enough characters - zero remaining and return
+                for (int j = byteIndex; j < UUID_BINARY_SIZE; j++) {
+                    bytes[j] = 0;
+                }
+                return;
+            }
+
             // Take two hex chars and combine them into one byte
             uint8_t highNibble = hexCharToInt(uuid[i++]);  // First char -> upper 4 bits
             uint8_t lowNibble = hexCharToInt(uuid[i]);     // Second char -> lower 4 bits
