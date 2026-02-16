@@ -28,7 +28,7 @@
 
 // Constants
 static constexpr int MIN_DEVICES = 1;
-static constexpr int MAX_DEVICES = 8;
+static constexpr int MAX_DEVICES = 11;
 
 // Global running flag for signal handling
 std::atomic<bool> g_running{true};
