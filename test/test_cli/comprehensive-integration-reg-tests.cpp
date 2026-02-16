@@ -37,29 +37,30 @@ TEST_F(ComprehensiveIntegrationTestSuite, SignalEchoRapidButtonPresses) {
 // ============================================
 // GHOST RUNNER INTEGRATION TESTS
 // ============================================
-// NOTE: Tests disabled during Wave 18 redesign (#220) — Guitar Hero → Memory Maze
-// TODO(#220): Rewrite Ghost Runner integration tests for maze API
-/*
-TEST_F(ComprehensiveIntegrationTestSuite, GhostRunnerEasyWinUnlocksButton) {
+
+// DISABLED: Ghost Runner redesigned in Wave 18 (memory maze, PR #220)
+// These tests use old rhythm game API (ghostSpeedMs, targetZoneStart, targetZoneEnd, notesPerRound).
+// New API uses maze navigation (cols, rows, previewMazeMs, previewTraceMs).
+
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerEasyWinUnlocksButton) {
         ghostRunnerEasyWinUnlocksButton(this);
 }
 
-TEST_F(ComprehensiveIntegrationTestSuite, GhostRunnerHardWinUnlocksColorProfile) {
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerHardWinUnlocksColorProfile) {
         ghostRunnerHardWinUnlocksColorProfile(this);
 }
 
-TEST_F(ComprehensiveIntegrationTestSuite, GhostRunnerLossNoRewards) {
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerLossNoRewards) {
         ghostRunnerLossNoRewards(this);
 }
 
-TEST_F(ComprehensiveIntegrationTestSuite, GhostRunnerBoundaryPress) {
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerBoundaryPress) {
         ghostRunnerBoundaryPress(this);
 }
 
-TEST_F(ComprehensiveIntegrationTestSuite, GhostRunnerRapidPresses) {
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerRapidPresses) {
         ghostRunnerRapidPresses(this);
 }
-*/
 
 // ============================================
 // SPIKE VECTOR INTEGRATION TESTS
@@ -100,21 +101,22 @@ TEST_F(ComprehensiveIntegrationTestSuite, FirewallDecryptLossNoRewards) {
 // ============================================
 // CIPHER PATH INTEGRATION TESTS
 // ============================================
-// NOTE: Tests disabled during Wave 18 redesign (#242) — binary cipher → wire routing
-// TODO(#242): Rewrite Cipher Path integration tests for wire routing API
-/*
-TEST_F(ComprehensiveIntegrationTestSuite, CipherPathEasyWinUnlocksButton) {
+
+// DISABLED: Cipher Path redesigned in Wave 18 (wire routing puzzle, PR #242)
+// These tests use old API (gridSize, moveBudget, cipher[], playerPosition).
+// New API uses BioShock-inspired wire tiles (tileType[], tileRotation[], pathOrder[], flowState).
+
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_CipherPathEasyWinUnlocksButton) {
     cipherPathEasyWinUnlocksButton(this);
 }
 
-TEST_F(ComprehensiveIntegrationTestSuite, CipherPathHardWinUnlocksColorProfile) {
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_CipherPathHardWinUnlocksColorProfile) {
     cipherPathHardWinUnlocksColorProfile(this);
 }
 
-TEST_F(ComprehensiveIntegrationTestSuite, CipherPathLossNoRewards) {
+TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_CipherPathLossNoRewards) {
     cipherPathLossNoRewards(this);
 }
-*/
 
 // ============================================
 // EXPLOIT SEQUENCER INTEGRATION TESTS
