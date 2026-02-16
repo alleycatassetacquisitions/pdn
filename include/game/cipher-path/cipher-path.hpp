@@ -7,44 +7,71 @@
 constexpr int CIPHER_PATH_APP_ID = 6;
 
 struct CipherPathConfig {
-    int gridSize = 8;             // path length (positions 0 to gridSize-1)
-    int moveBudget = 12;          // max moves allowed per round
-    int rounds = 3;               // rounds to complete
+    int cols = 5;                 // grid columns (5 for easy, 7 for hard)
+    int rows = 4;                 // grid rows (4 for easy, 5 for hard)
+    int rounds = 1;               // puzzles to solve (1 for easy, 3 for hard)
+    int flowSpeedMs = 200;        // ms per pixel of flow advancement
+    int flowSpeedDecayMs = 0;     // ms/pixel reduction per round (hard mode escalation)
+    int noisePercent = 30;        // % of non-path cells that get noise wires
     unsigned long rngSeed = 0;    // 0 = random, nonzero = deterministic
     bool managedMode = false;
 };
 
 struct CipherPathSession {
-    int playerPosition = 0;       // current position on path (0 to gridSize-1)
-    int movesUsed = 0;            // moves consumed this round
     int currentRound = 0;
     int score = 0;
-    bool lastMoveCorrect = false; // for display feedback
-    // The cipher: for each position, 0 = UP is correct, 1 = DOWN is correct
-    int cipher[16] = {0};        // max grid size 16
+
+    // Grid state (max 7x5 = 35 cells)
+    int tileType[35];             // 0=empty, 1=straight, 2=elbow, 3=t-junction, 4=cross, 5=endpoint
+    int tileRotation[35];         // current rotation: 0, 1, 2, 3 (×90°)
+    int correctRotation[35];      // solution rotation for validation
+    int pathOrder[35];            // index in path sequence (-1 = not on path)
+    int pathLength;               // number of tiles on the path
+
+    // Flow state
+    int flowTileIndex;            // which path tile electricity is currently in (0-based)
+    int flowPixelInTile;          // pixel position within current tile (0 to ~9)
+    bool flowActive;              // true when electricity is advancing
+
+    // Cursor state
+    int cursorPathIndex;          // which path tile the cursor is on (index into path sequence)
+
     void reset() {
-        playerPosition = 0;
-        movesUsed = 0;
         currentRound = 0;
         score = 0;
-        lastMoveCorrect = false;
-        for (int i = 0; i < 16; i++) cipher[i] = 0;
+        for (int i = 0; i < 35; i++) {
+            tileType[i] = 0;
+            tileRotation[i] = 0;
+            correctRotation[i] = 0;
+            pathOrder[i] = -1;
+        }
+        pathLength = 0;
+        flowTileIndex = 0;
+        flowPixelInTile = 0;
+        flowActive = false;
+        cursorPathIndex = 0;
     }
 };
 
 inline CipherPathConfig makeCipherPathEasyConfig() {
     CipherPathConfig c;
-    c.gridSize = 6;
-    c.moveBudget = 12;   // generous budget (2x path length)
-    c.rounds = 2;
+    c.cols = 5;
+    c.rows = 4;
+    c.rounds = 1;              // Single puzzle
+    c.flowSpeedMs = 200;       // ~1.8s per tile, ~20s total
+    c.flowSpeedDecayMs = 0;    // N/A (1 round)
+    c.noisePercent = 30;       // 30% of non-path cells get thin noise wires
     return c;
 }
 
 inline CipherPathConfig makeCipherPathHardConfig() {
     CipherPathConfig c;
-    c.gridSize = 10;
-    c.moveBudget = 14;   // tight budget (1.4x path length)
-    c.rounds = 4;
+    c.cols = 7;
+    c.rows = 5;
+    c.rounds = 3;              // Three puzzles, escalating speed
+    c.flowSpeedMs = 80;        // ~0.7s per tile, ~15s total
+    c.flowSpeedDecayMs = 10;   // Round 2: 70ms, Round 3: 60ms
+    c.noisePercent = 40;       // 40% noise — busier board
     return c;
 }
 
@@ -52,11 +79,12 @@ const CipherPathConfig CIPHER_PATH_EASY = makeCipherPathEasyConfig();
 const CipherPathConfig CIPHER_PATH_HARD = makeCipherPathHardConfig();
 
 /*
- * Cipher Path -- pathfinding puzzle minigame.
+ * Cipher Path -- wire routing puzzle minigame.
  *
- * Player navigates a linear path from start to exit. Each position has a
- * cipher (correct direction: UP or DOWN). Correct guess advances position,
- * wrong guess wastes a move. Reach the exit within the move budget to win.
+ * BioShock-inspired wire rotation puzzle with real-time electricity flow.
+ * Player rotates scrambled wire tiles to reconnect a circuit before
+ * electricity reaches a dead end. 2D grid, input/output terminals fixed,
+ * flow advances pixel-by-pixel creating time pressure.
  *
  * In managed mode (via FDN), terminal states call
  * Device::returnToPreviousApp(). In standalone mode, loops to intro.
@@ -75,7 +103,8 @@ public:
     CipherPathConfig& getConfig() { return config; }
     CipherPathSession& getSession() { return session; }
 
-    void generateCipher();  // fills session.cipher[] with random 0/1 values
+    void generatePath();    // generates the wire path and scrambles tiles
+    void generateNoise();   // adds noise tiles to non-path cells
 
 private:
     CipherPathConfig config;

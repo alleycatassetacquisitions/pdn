@@ -25,11 +25,11 @@ void CipherPathIntro::onStateMounted(Device* PDN) {
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
 
-    // Display title screen
+    // Display title screen with new subtitle
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
         ->drawText("CIPHER PATH", 10, 20)
-        ->drawText("Decode the route.", 10, 45);
+        ->drawText("Route the signal.", 10, 45);
     PDN->getDisplay()->render();
 
     // Start idle LED animation
@@ -42,11 +42,31 @@ void CipherPathIntro::onStateMounted(Device* PDN) {
     config.loop = true;
     PDN->getLightManager()->startAnimation(config);
 
-    // Start intro timer
+    // Start intro timer and animation timer
     introTimer.setTimer(INTRO_DURATION_MS);
+    animTimer.setTimer(150);  // Flash circuit elements every 150ms
 }
 
 void CipherPathIntro::onStateLoop(Device* PDN) {
+    // Simple circuit flash animation — random wire segments flash on/off
+    if (animTimer.expired()) {
+        // Draw a few random small wire segments to create "circuit board" effect
+        PDN->getDisplay()->setDrawColor(1);
+        for (int i = 0; i < 8; i++) {
+            int x = 10 + (rand() % 100);
+            int y = 8 + (rand() % 48);
+            int w = 3 + (rand() % 8);
+            bool horiz = (rand() % 2) == 0;
+            if (horiz) {
+                PDN->getDisplay()->drawBox(x, y, w, 1);
+            } else {
+                PDN->getDisplay()->drawBox(x, y, 1, w);
+            }
+        }
+        PDN->getDisplay()->render();
+        animTimer.setTimer(150);
+    }
+
     if (introTimer.expired()) {
         transitionToShowState = true;
     }
@@ -54,6 +74,7 @@ void CipherPathIntro::onStateLoop(Device* PDN) {
 
 void CipherPathIntro::onStateDismounted(Device* PDN) {
     introTimer.invalidate();
+    animTimer.invalidate();
     transitionToShowState = false;
 }
 
