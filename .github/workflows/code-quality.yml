@@ -46,7 +46,11 @@ jobs:
       - name: Download PMD
         run: |
           wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-dist-7.0.0-bin.zip
-          unzip -q pmd-dist-7.0.0-bin.zip
+          if command -v unzip &> /dev/null; then
+            unzip -q pmd-dist-7.0.0-bin.zip
+          else
+            python3 -c "import zipfile; zipfile.ZipFile('pmd-dist-7.0.0-bin.zip').extractall()"
+          fi
       - name: Run CPD
         run: |
           ./pmd-bin-7.0.0/bin/pmd cpd --minimum-tokens 50 --language cpp --dir src/ --dir include/ --format text --skip-lexical-errors > /tmp/cpd-output.txt 2>&1 || true
