@@ -3,5 +3,28 @@
   "total_duplicate_blocks": 104,
   "threshold_tokens": 50,
   "timestamp": "2026-02-15",
-  "note": "Initial baseline from Wave 13"
+  "note": "Initial baseline from Wave 13",
+  "wave19_analysis": {
+    "timestamp": "2026-02-16",
+    "manual_analysis": {
+      "intro_states_duplicated_lines": 385,
+      "win_states_duplicated_lines": 525,
+      "lose_states_duplicated_lines": 325,
+      "populate_state_map_duplicated_lines": 420,
+      "state_transition_methods_duplicated_lines": 117,
+      "total_structural_duplication": 1772
+    },
+    "improvements_since_wave13": {
+      "seedRng_extracted": -42,
+      "signal_echo_renderer_created": -150,
+      "total_reduction": -192
+    },
+    "codebase_metrics": {
+      "total_game_source_lines": 12936,
+      "total_game_header_lines": 7515,
+      "total_game_code_lines": 20451,
+      "minigame_count": 7,
+      "average_lines_per_minigame": 863
+    }
+  }
 }
