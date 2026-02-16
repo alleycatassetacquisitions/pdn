@@ -20,13 +20,15 @@ void CipherPathEvaluate::onStateMounted(Device* PDN) {
     auto& session = game->getSession();
     auto& config = game->getConfig();
 
-    // Check if player reached exit (round complete)
-    if (session.playerPosition >= config.gridSize - 1) {
+    // Check if electricity reached the output terminal (round complete)
+    // flowActive == false means flow stopped (either win or circuit break)
+    // flowTileIndex >= pathLength means we completed the circuit
+    if (!session.flowActive && session.flowTileIndex >= session.pathLength) {
         // Round complete — award score
         session.score += 100;
         session.currentRound++;
 
-        LOG_I(TAG, "Round complete. Score: %d, Round: %d/%d",
+        LOG_I(TAG, "Circuit routed. Score: %d, Round: %d/%d",
               session.score, session.currentRound, config.rounds);
 
         // Check if all rounds completed
@@ -37,9 +39,8 @@ void CipherPathEvaluate::onStateMounted(Device* PDN) {
             transitionToShowState = true;
         }
     } else {
-        // Budget exhausted without reaching exit — lose
-        LOG_I(TAG, "Budget exhausted at position %d/%d",
-              session.playerPosition, config.gridSize - 1);
+        // Circuit break — flow stopped before reaching output
+        LOG_I(TAG, "Circuit break at tile %d/%d", session.flowTileIndex, session.pathLength);
         transitionToLoseState = true;
     }
 }

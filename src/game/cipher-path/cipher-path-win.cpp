@@ -19,8 +19,8 @@ void CipherPathWin::onStateMounted(Device* PDN) {
     auto& config = game->getConfig();
     auto& session = game->getSession();
 
-    // Determine hard mode: tight budget on long grid
-    bool isHard = (config.gridSize >= 10 && config.moveBudget <= 14);
+    // Determine hard mode: 7x5 grid or 3 rounds
+    bool isHard = (config.cols >= 7 || config.rounds >= 3);
 
     MiniGameOutcome winOutcome;
     winOutcome.result = MiniGameResult::WON;
@@ -28,11 +28,12 @@ void CipherPathWin::onStateMounted(Device* PDN) {
     winOutcome.hardMode = isHard;
     game->setOutcome(winOutcome);
 
-    LOG_I(TAG, "PATH DECODED (score=%d, hard=%d)", session.score, isHard);
+    LOG_I(TAG, "CIRCUIT ROUTED (score=%d, hard=%d)", session.score, isHard);
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("PATH DECODED", 10, 30);
+        ->drawText("CIRCUIT", 20, 20)
+        ->drawText("ROUTED", 30, 40);
     PDN->getDisplay()->render();
 
     // Win LED animation

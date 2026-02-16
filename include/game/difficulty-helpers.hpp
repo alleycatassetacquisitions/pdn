@@ -116,18 +116,21 @@ inline FirewallDecryptConfig makeScaledFirewallDecryptConfig(float scale, bool m
 }
 
 /*
- * Cipher Path scaled config
- * Easy: size=6, budget=12, rounds=2
- * Hard: size=10, budget=14, rounds=4
+ * Cipher Path scaled config (wire routing puzzle)
+ * Easy: 5x4 grid, 1 round, 200ms flow, 30% noise
+ * Hard: 7x5 grid, 3 rounds, 80ms flow, 40% noise
  */
 inline CipherPathConfig makeScaledCipherPathConfig(float scale, bool managedMode = false) {
     const auto& easy = CIPHER_PATH_EASY;
     const auto& hard = CIPHER_PATH_HARD;
 
     CipherPathConfig config;
-    config.gridSize = lerp(easy.gridSize, hard.gridSize, scale);
-    config.moveBudget = lerp(easy.moveBudget, hard.moveBudget, scale);
+    config.cols = lerp(easy.cols, hard.cols, scale);
+    config.rows = lerp(easy.rows, hard.rows, scale);
     config.rounds = lerp(easy.rounds, hard.rounds, scale);
+    config.flowSpeedMs = lerp(easy.flowSpeedMs, hard.flowSpeedMs, scale);
+    config.flowSpeedDecayMs = lerp(easy.flowSpeedDecayMs, hard.flowSpeedDecayMs, scale);
+    config.noisePercent = lerp(easy.noisePercent, hard.noisePercent, scale);
     config.rngSeed = 0;
     config.managedMode = managedMode;
 
