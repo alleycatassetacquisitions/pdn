@@ -1,6 +1,7 @@
 #include "game/firewall-decrypt/firewall-decrypt-states.hpp"
 #include "game/firewall-decrypt/firewall-decrypt.hpp"
 #include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
+#include "game/ui-clean-minimal.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "DecryptIntro";
@@ -25,11 +26,25 @@ void DecryptIntro::onStateMounted(Device* PDN) {
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
     game->setupRound();
 
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("FIREWALL", 20, 20)
-        ->drawText("DECRYPT", 25, 40);
-    PDN->getDisplay()->render();
+    auto display = PDN->getDisplay();
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::TEXT);
+
+    // Outer border frame (firewall terminal window)
+    display->drawFrame(0, 0, 128, 64);
+
+    // Title block with double border
+    BoldRetroUI::drawBorderedFrame(display, 20, 14, 88, 22);
+    display->drawText("FIREWALL", 32, 26);
+    display->drawText("DECRYPT", 35, 34);
+
+    // Subtitle
+    BoldRetroUI::drawCenteredText(display, ">> BREACH MODE <<", 46);
+
+    // Instruction
+    display->drawText("FIND THE KEY", 22, 58);
+
+    display->render();
 
     // Green idle animation
     AnimationConfig config;

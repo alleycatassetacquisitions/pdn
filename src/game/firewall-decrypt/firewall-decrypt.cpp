@@ -112,8 +112,12 @@ void FirewallDecrypt::setupRound() {
     session.target = generateAddress();
     session.candidates.clear();
 
+    // Target is always at index 0 (banner position)
+    session.candidates.push_back(session.target);
+    session.targetIndex = 0;
+
     // Generate decoys
-    for (int i = 0; i < config.numCandidates - 1; i++) {
+    for (int i = 1; i < config.numCandidates; i++) {
         std::string decoy;
         // Ensure no duplicate candidates
         int attempts = 0;
@@ -124,8 +128,18 @@ void FirewallDecrypt::setupRound() {
         session.candidates.push_back(decoy);
     }
 
-    // Insert target at random position
-    int insertPos = rand() % config.numCandidates;
-    session.candidates.insert(session.candidates.begin() + insertPos, session.target);
-    session.targetIndex = insertPos;
+    // Shuffle only the decoys (indices 1..N), keep target at 0
+    if (session.candidates.size() > 2) {
+        auto first = session.candidates.begin() + 1;
+        auto last = session.candidates.end();
+        // Simple Fisher-Yates shuffle for decoys
+        for (auto it = first; it != last - 1; ++it) {
+            int offset = rand() % (last - it);
+            std::swap(*it, *(it + offset));
+        }
+    }
+
+    // Reset cursor to position 1 (first candidate after banner)
+    session.cursorIndex = 1;
+    session.viewStart = 0;
 }

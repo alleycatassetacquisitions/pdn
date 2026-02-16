@@ -1,7 +1,9 @@
 #include "game/firewall-decrypt/firewall-decrypt-states.hpp"
 #include "game/firewall-decrypt/firewall-decrypt.hpp"
+#include "game/ui-clean-minimal.hpp"
 #include "device/drivers/logger.hpp"
 #include <cstdio>
+#include <algorithm>
 
 static const char* TAG = "DecryptScan";
 
@@ -15,20 +17,34 @@ DecryptScan::~DecryptScan() {
 
 void DecryptScan::onStateMounted(Device* PDN) {
     transitionToEvaluateState = false;
-    cursorIndex = 0;
     displayIsDirty = false;
     timedOut = false;
 
+    auto& session = game->getSession();
+
     LOG_I(TAG, "Scan round %d, target: %s, %zu candidates",
-          game->getSession().currentRound + 1,
-          game->getSession().target.c_str(),
-          game->getSession().candidates.size());
+          session.currentRound + 1,
+          session.target.c_str(),
+          session.candidates.size());
+
+    // Initialize cursor at position 1 (first candidate after banner)
+    cursorIndex = session.cursorIndex;
 
     // Set up button callbacks
     parameterizedCallbackFunction scrollCb = [](void* ctx) {
         auto* self = static_cast<DecryptScan*>(ctx);
-        int listSize = static_cast<int>(self->game->getSession().candidates.size());
-        self->cursorIndex = (self->cursorIndex + 1) % listSize;
+        auto& session = self->game->getSession();
+        int listSize = static_cast<int>(session.candidates.size());
+
+        // UP button scrolls forward
+        self->cursorIndex++;
+
+        // Wrap behavior: skip index 0 (banner), reset to 1
+        if (self->cursorIndex >= listSize) {
+            self->cursorIndex = 1;
+        }
+
+        session.cursorIndex = self->cursorIndex;
         self->displayIsDirty = true;
     };
 
@@ -42,7 +58,16 @@ void DecryptScan::onStateMounted(Device* PDN) {
 
     // Start time limit if configured
     if (game->getConfig().timeLimitMs > 0) {
-        roundTimer.setTimer(game->getConfig().timeLimitMs);
+        // Calculate depleting timer for hard mode
+        int timerForRound = game->getConfig().timeLimitMs;
+
+        // Hard mode: timer depletes each round (12s, 10s, 8s, 6s)
+        if (game->getConfig().numRounds == 4 && game->getConfig().numCandidates >= 40) {
+            timerForRound = 12000 - (session.currentRound * 2000);
+            if (timerForRound < 6000) timerForRound = 6000;
+        }
+
+        roundTimer.setTimer(timerForRound);
     }
 
     renderUi(PDN);
@@ -56,6 +81,10 @@ void DecryptScan::onStateLoop(Device* PDN) {
 
     if (game->getConfig().timeLimitMs > 0) {
         roundTimer.updateTime();
+
+        // Redraw every frame to update timer bar
+        renderUi(PDN);
+
         if (roundTimer.expired()) {
             LOG_I(TAG, "Round timed out");
             timedOut = true;
@@ -82,41 +111,118 @@ void DecryptScan::renderUi(Device* PDN) {
     if (!PDN) return;
 
     auto& session = game->getSession();
+    auto& config = game->getConfig();
+    auto display = PDN->getDisplay();
 
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::TEXT);
 
-    // Header: target address
-    char header[20];
-    snprintf(header, sizeof(header), "FIND: %s", session.target.c_str());
-    PDN->getDisplay()->drawText(header, 2, 8);
+    // 1. HUD bar (inverted header, y0-9)
+    display->drawBox(0, 0, 128, 10);
+    display->setDrawColor(0);
+    display->drawText("DECRYPT", 2, 9);
 
-    // Show round counter
-    char roundStr[16];
-    snprintf(roundStr, sizeof(roundStr), "Round %d/%d",
-             session.currentRound + 1, game->getConfig().numRounds);
-    PDN->getDisplay()->drawText(roundStr, 80, 8);
+    // Round counter
+    char roundText[8];
+    snprintf(roundText, sizeof(roundText), "%d/%d",
+             session.currentRound + 1, config.numRounds);
+    display->drawText(roundText, 104, 9);
+    display->setDrawColor(1);
 
-    // Scrollable list: show up to 3 items centered on cursor
+    // 2. List area (y10-49, 5 visible items × 8px each)
     int listSize = static_cast<int>(session.candidates.size());
-    int visibleCount = (listSize < 3) ? listSize : 3;
+    int visibleCount = 5;
 
-    for (int i = 0; i < visibleCount; i++) {
-        int idx = (cursorIndex + i) % listSize;
-        int y = 24 + (i * 12);
-        const char* addr = session.candidates[idx].c_str();
+    // Calculate viewport (5 items centered on cursor)
+    int viewStart = cursorIndex - 2;
+    if (viewStart < 0) viewStart = 0;
+    if (viewStart + visibleCount > listSize) {
+        viewStart = listSize - visibleCount;
+        if (viewStart < 0) viewStart = 0;
+    }
 
-        if (idx == cursorIndex) {
-            char line[20];
-            snprintf(line, sizeof(line), "> %s", addr);
-            PDN->getDisplay()->drawText(line, 2, y);
+    for (int i = 0; i < visibleCount && (viewStart + i) < listSize; i++) {
+        int listIndex = viewStart + i;
+        int y = 10 + (i * 8);
+        const char* addr = session.candidates[listIndex].c_str();
+
+        if (listIndex == cursorIndex) {
+            // Cursor: inverted highlight
+            display->drawBox(2, y, 120, 8);
+            display->setDrawColor(0);
+            display->drawText("> ", 4, y + 7);
+            display->drawText(addr, 16, y + 7);
+            display->setDrawColor(1);
+        } else if (listIndex == 0) {
+            // Banner (target MAC): framed
+            display->drawFrame(2, y, 80, 8);
+            display->drawText(addr, 6, y + 7);
         } else {
-            char line[20];
-            snprintf(line, sizeof(line), "  %s", addr);
-            PDN->getDisplay()->drawText(line, 2, y);
+            // Normal item
+            display->drawText("  ", 4, y + 7);
+            display->drawText(addr, 16, y + 7);
         }
     }
 
-    PDN->getDisplay()->drawText("UP:scroll DOWN:ok", 5, 60);
-    PDN->getDisplay()->render();
+    // 3. Scrollbar (x123-127, y10-49)
+    int trackTop = 10;
+    int trackHeight = 40;
+    display->drawFrame(123, trackTop, 5, trackHeight);
+
+    // Scrollbar thumb
+    int thumbHeight = std::max(3, (visibleCount * trackHeight) / listSize);
+    int thumbOffset = ((cursorIndex - 1) * (trackHeight - thumbHeight)) / std::max(1, listSize - 2);
+    if (thumbOffset < 0) thumbOffset = 0;
+    if (thumbOffset + thumbHeight > trackHeight) thumbOffset = trackHeight - thumbHeight;
+    display->drawBox(124, trackTop + thumbOffset, 3, thumbHeight);
+
+    // 4. Divider (y50)
+    display->drawBox(0, 50, 128, 1);
+
+    // 5. Fuse bar (y51-57, always visible)
+    if (config.timeLimitMs > 0) {
+        int timerY = 51;
+        int barWidth = 100;
+        int barX = 4;
+
+        // Frame
+        display->drawFrame(barX, timerY, barWidth + 2, 7);
+
+        // Fill (depletes as time runs out)
+        roundTimer.updateTime();
+        unsigned long elapsed = roundTimer.getElapsedTime();
+
+        // Calculate timer duration based on round
+        int timerForRound = config.timeLimitMs;
+        if (config.numRounds == 4 && config.numCandidates >= 40) {
+            timerForRound = 12000 - (session.currentRound * 2000);
+            if (timerForRound < 6000) timerForRound = 6000;
+        }
+
+        unsigned long remaining = (elapsed < (unsigned long)timerForRound)
+            ? ((unsigned long)timerForRound - elapsed) : 0;
+        float timeRatio = (float)remaining / (float)timerForRound;
+        int fillWidth = (int)(timeRatio * barWidth);
+        if (fillWidth > 0) {
+            display->drawBox(barX + 1, timerY + 1, fillWidth, 5);
+        }
+
+        // Time remaining text
+        char timeText[8];
+        snprintf(timeText, sizeof(timeText), "%d.%ds",
+                 (int)(remaining / 1000), (int)((remaining % 1000) / 100));
+        display->drawText(timeText, 108, timerY + 6);
+    } else {
+        // No timer: show lives pips instead
+        int pipY = 53;
+        for (int i = 0; i < session.mistakesRemaining; i++) {
+            display->drawBox(4 + (i * 10), pipY, 6, 4);
+        }
+    }
+
+    // 6. Controls bar (y58-63)
+    display->drawText("[UP]SCR", 2, 63);
+    display->drawText("SEL[DN]", 90, 63);
+
+    display->render();
 }

@@ -8,8 +8,8 @@
 
 /*
  * Firewall Decrypt configuration — all tuning variables for difficulty.
- * EASY: 5 candidates, 3 rounds, obvious decoys, no timer.
- * HARD: 10 candidates, 4 rounds, subtle decoys, 15s per round.
+ * EASY: 15 candidates, 3 rounds, 0.5 similarity, no timer, 3 mistakes.
+ * HARD: 40 candidates, 4 rounds, 0.7 similarity, 12s→10s→8s→6s timer, 1 mistake.
  */
 struct FirewallDecryptConfig {
     int numCandidates = 5;
@@ -27,11 +27,16 @@ struct FirewallDecryptConfig {
 struct FirewallDecryptSession {
     std::string target;                     // The MAC address to find
     std::vector<std::string> candidates;    // Scrollable list (includes target)
-    int targetIndex = 0;                    // Index of target in candidates
+    int targetIndex = 0;                    // Index of target in candidates (always 0 now)
     int currentRound = 0;
     int score = 0;
     int selectedIndex = -1;                 // Player's selection (-1 = none)
     bool timedOut = false;                  // Whether the round timed out
+    int cursorIndex = 1;                    // Player's cursor position (1 to numCandidates)
+    int viewStart = 0;                      // First visible item in viewport
+    int mistakesRemaining = 3;              // Lives (easy: 3, hard: 1)
+    bool retryPromptActive = false;         // Showing retry prompt overlay
+    unsigned long timerPausedAt = 0;        // When timer was paused (0 = running)
 
     void reset() {
         target.clear();
@@ -41,6 +46,11 @@ struct FirewallDecryptSession {
         score = 0;
         selectedIndex = -1;
         timedOut = false;
+        cursorIndex = 1;
+        viewStart = 0;
+        mistakesRemaining = 3;
+        retryPromptActive = false;
+        timerPausedAt = 0;
     }
 };
 
