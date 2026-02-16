@@ -110,12 +110,12 @@ const LEDState SIGNAL_ECHO_CORRECT_STATE = [](){
 // Difficulty presets
 inline SignalEchoConfig makeEasyConfig() {
     SignalEchoConfig c;
-    c.sequenceLength = 4;
-    c.numSequences = 4;
-    c.displaySpeedMs = 600;
+    c.sequenceLength = 7;
+    c.numSequences = 3;
+    c.displaySpeedMs = 550;
     c.timeLimitMs = 0;
     c.cumulative = false;
-    c.allowedMistakes = 3;
+    c.allowedMistakes = 0;
     c.rngSeed = 0;
     c.managedMode = false;
     return c;
@@ -123,12 +123,12 @@ inline SignalEchoConfig makeEasyConfig() {
 
 inline SignalEchoConfig makeHardConfig() {
     SignalEchoConfig c;
-    c.sequenceLength = 8;
-    c.numSequences = 4;
+    c.sequenceLength = 11;
+    c.numSequences = 5;
     c.displaySpeedMs = 400;
     c.timeLimitMs = 0;
     c.cumulative = false;
-    c.allowedMistakes = 1;
+    c.allowedMistakes = 0;
     c.rngSeed = 0;
     c.managedMode = false;
     return c;
@@ -136,3 +136,160 @@ inline SignalEchoConfig makeHardConfig() {
 
 const SignalEchoConfig SIGNAL_ECHO_EASY = makeEasyConfig();
 const SignalEchoConfig SIGNAL_ECHO_HARD = makeHardConfig();
+
+/*
+ * Signal Echo renderer — reusable drawing helpers for pixel arrow glyphs
+ * and framed slot layout.
+ */
+namespace SignalEchoRenderer {
+
+struct SlotLayout {
+    int startX;
+    int slotWidth;
+    int slotHeight;
+    int gap;
+    int startY;
+    int count;
+};
+
+inline SlotLayout getLayout(int sequenceLength) {
+    SlotLayout layout;
+    layout.count = sequenceLength;
+    layout.slotHeight = 26;
+    layout.startY = 18;
+
+    if (sequenceLength <= 7) {
+        // Easy mode (7 slots)
+        layout.slotWidth = 14;
+        layout.gap = 3;
+        layout.startX = 6;
+    } else {
+        // Hard mode (11 slots)
+        layout.slotWidth = 10;
+        layout.gap = 1;
+        layout.startX = 4;
+    }
+
+    return layout;
+}
+
+inline void drawUpArrow(Display* d, int x, int y, int cellW, int cellH) {
+    if (cellW >= 14) {
+        // Easy mode (14px wide)
+        d->drawBox(x + 5, y + 2, 4, 2);    // tip
+        d->drawBox(x + 3, y + 4, 8, 2);    // mid
+        d->drawBox(x + 1, y + 6, 12, 2);   // base
+        d->drawBox(x + 5, y + 8, 4, 14);   // shaft
+    } else {
+        // Hard mode (10px wide)
+        d->drawBox(x + 3, y + 2, 4, 2);    // tip
+        d->drawBox(x + 1, y + 4, 8, 2);    // base-head
+        d->drawBox(x + 3, y + 6, 4, 16);   // shaft
+    }
+}
+
+inline void drawDownArrow(Display* d, int x, int y, int cellW, int cellH) {
+    if (cellW >= 14) {
+        // Easy mode (14px wide)
+        d->drawBox(x + 5, y + 2, 4, 14);   // shaft
+        d->drawBox(x + 1, y + 16, 12, 2);  // base
+        d->drawBox(x + 3, y + 18, 8, 2);   // mid
+        d->drawBox(x + 5, y + 20, 4, 2);   // tip
+    } else {
+        // Hard mode (10px wide)
+        d->drawBox(x + 3, y + 2, 4, 16);   // shaft
+        d->drawBox(x + 1, y + 18, 8, 2);   // base-head
+        d->drawBox(x + 3, y + 20, 4, 2);   // tip
+    }
+}
+
+inline void drawSlotEmpty(Display* d, int x, int y, int w, int h) {
+    d->drawFrame(x, y, w, h);
+}
+
+inline void drawSlotFilled(Display* d, int x, int y, int w, int h, bool isUp) {
+    d->drawFrame(x, y, w, h);
+    if (isUp) {
+        drawUpArrow(d, x, y, w, h);
+    } else {
+        drawDownArrow(d, x, y, w, h);
+    }
+}
+
+inline void drawSlotActive(Display* d, int x, int y, int w, int h) {
+    d->drawBox(x, y, w, h);  // filled white
+}
+
+inline void drawAllSlots(Display* d, const SlotLayout& layout,
+                         const std::vector<bool>& sequence,
+                         int revealCount,
+                         int activeSlot = -1) {
+    for (int i = 0; i < layout.count; i++) {
+        int x = layout.startX + i * (layout.slotWidth + layout.gap);
+        int y = layout.startY;
+
+        if (i == activeSlot) {
+            // Active cursor — inverted
+            drawSlotActive(d, x, y, layout.slotWidth, layout.slotHeight);
+        } else if (i < revealCount) {
+            // Revealed/input signal
+            drawSlotFilled(d, x, y, layout.slotWidth, layout.slotHeight, sequence[i]);
+        } else {
+            // Empty future slot
+            drawSlotEmpty(d, x, y, layout.slotWidth, layout.slotHeight);
+        }
+    }
+}
+
+inline void drawHUD(Display* d, int currentRound, int totalRounds) {
+    // Left: round label
+    std::string roundLabel = "SEQ " + std::to_string(currentRound + 1) +
+                             "/" + std::to_string(totalRounds);
+    d->setGlyphMode(FontMode::TEXT)->drawText(roundLabel.c_str(), 2, 6);
+
+    // Right: progress pips
+    int pipSize = 4;
+    int pipGap = 2;
+    int pipTotal = totalRounds * (pipSize + pipGap) - pipGap;
+    int pipStartX = 128 - pipTotal - 2;
+
+    for (int i = 0; i < totalRounds; i++) {
+        int pipX = pipStartX + i * (pipSize + pipGap);
+        if (i < currentRound) {
+            d->drawBox(pipX, 2, pipSize, pipSize);  // filled
+        } else {
+            d->drawFrame(pipX, 2, pipSize, pipSize);  // outline
+        }
+    }
+}
+
+inline void drawSeparators(Display* d) {
+    d->drawBox(0, 8, 128, 1);   // top separator
+    d->drawBox(0, 55, 128, 1);  // bottom separator
+}
+
+inline void drawControls(Display* d, bool showButtons) {
+    if (showButtons) {
+        d->setGlyphMode(FontMode::TEXT)
+            ->drawText("[^]", 2, 62)
+            ->drawText("[v]", 108, 62);
+    }
+}
+
+inline void drawProgressBar(Display* d, int current, int total) {
+    int barWidth = 80;
+    int barHeight = 4;
+    int barX = (128 - barWidth) / 2;
+    int barY = 47;
+
+    d->drawFrame(barX, barY, barWidth, barHeight);
+
+    if (total > 0) {
+        int fillWidth = (current * barWidth) / total;
+        if (fillWidth > 0) {
+            d->drawBox(barX, barY, fillWidth, barHeight);
+        }
+    }
+}
+
+}  // namespace SignalEchoRenderer

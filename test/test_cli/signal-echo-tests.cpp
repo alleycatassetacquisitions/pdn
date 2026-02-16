@@ -34,16 +34,16 @@ TEST_F(SignalEchoTestSuite, CorrectInputAdvancesIndex) {
     echoCorrectInputAdvancesIndex(this);
 }
 
-TEST_F(SignalEchoTestSuite, WrongInputCountsMistake) {
-    echoWrongInputCountsMistake(this);
+TEST_F(SignalEchoTestSuite, WrongInputStored) {
+    echoWrongInputStored(this);
 }
 
 TEST_F(SignalEchoTestSuite, AllCorrectInputsNextRound) {
     echoAllCorrectInputsNextRound(this);
 }
 
-TEST_F(SignalEchoTestSuite, MistakesExhaustedLose) {
-    echoMistakesExhaustedLose(this);
+TEST_F(SignalEchoTestSuite, WrongSequenceLoses) {
+    echoWrongSequenceLoses(this);
 }
 
 TEST_F(SignalEchoTestSuite, AllRoundsCompletedWin) {
@@ -86,16 +86,16 @@ TEST_F(SignalEchoDifficultyTestSuite, EasySequenceLength) {
     echoDiffEasySequenceLength(this);
 }
 
-TEST_F(SignalEchoDifficultyTestSuite, Easy3MistakesAllowed) {
-    echoDiffEasy3MistakesAllowed(this);
+TEST_F(SignalEchoDifficultyTestSuite, EasyConfigParams) {
+    echoDiffEasyConfigParams(this);
 }
 
 TEST_F(SignalEchoDifficultyTestSuite, HardSequenceLength) {
     echoDiffHardSequenceLength(this);
 }
 
-TEST_F(SignalEchoDifficultyTestSuite, Hard1MistakeAllowed) {
-    echoDiffHard1MistakeAllowed(this);
+TEST_F(SignalEchoDifficultyTestSuite, WrongSequenceLoses) {
+    echoDiffWrongSequenceLoses(this);
 }
 
 TEST_F(SignalEchoDifficultyTestSuite, EasyWinOutcome) {
@@ -118,8 +118,8 @@ TEST_F(SignalEchoDifficultyTestSuite, WrongInputAdvances) {
 // EDGE CASE TESTS (NEW)
 // ============================================
 
-TEST_F(SignalEchoTestSuite, MistakesBoundaryExactMatch) {
-    echoMistakesBoundaryExactMatch(this);
+TEST_F(SignalEchoTestSuite, OneWrongArrowLoses) {
+    echoOneWrongArrowLoses(this);
 }
 
 TEST_F(SignalEchoTestSuite, ButtonPressDuringIntroIgnored) {

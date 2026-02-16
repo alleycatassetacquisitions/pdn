@@ -138,16 +138,17 @@ void echoCorrectInputAdvancesIndex(SignalEchoTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->tick(1);
 
-    // Sequence: UP, DOWN, UP, DOWN. Press UP — correct for position 0
+    // Sequence: UP, DOWN, UP, DOWN. Press UP
     suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(1);
 
     ASSERT_EQ(suite->game_->getSession().inputIndex, 1);
-    ASSERT_EQ(suite->game_->getSession().mistakes, 0);
+    ASSERT_EQ(static_cast<int>(suite->game_->getSession().playerInput.size()), 1);
+    ASSERT_EQ(suite->game_->getSession().playerInput[0], true);
 }
 
-// Test: Wrong button press increments mistakes
-void echoWrongInputCountsMistake(SignalEchoTestSuite* suite) {
+// Test: Wrong button press stores input (deferred evaluation)
+void echoWrongInputStored(SignalEchoTestSuite* suite) {
     suite->game_->getConfig().displaySpeedMs = 10;
     suite->game_->getSession().currentSequence = {true, false, true, false};
     suite->game_->getSession().inputIndex = 0;
@@ -155,12 +156,13 @@ void echoWrongInputCountsMistake(SignalEchoTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->tick(1);
 
-    // Sequence starts with UP, press DOWN — wrong
+    // Sequence starts with UP, press DOWN — wrong (but no immediate feedback)
     suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(1);
 
-    ASSERT_EQ(suite->game_->getSession().inputIndex, 1);  // Still advances
-    ASSERT_EQ(suite->game_->getSession().mistakes, 1);
+    ASSERT_EQ(suite->game_->getSession().inputIndex, 1);
+    ASSERT_EQ(static_cast<int>(suite->game_->getSession().playerInput.size()), 1);
+    ASSERT_EQ(suite->game_->getSession().playerInput[0], false);
 }
 
 // Test: Completing all inputs correctly leads to next round via Evaluate
@@ -168,10 +170,11 @@ void echoAllCorrectInputsNextRound(SignalEchoTestSuite* suite) {
     suite->game_->getConfig().displaySpeedMs = 10;
     suite->game_->getConfig().numSequences = 3;
     suite->game_->getConfig().sequenceLength = 2;
-    suite->game_->getConfig().allowedMistakes = 3;
+    suite->game_->getConfig().allowedMistakes = 0;
     suite->game_->getSession().currentSequence = {true, false};
     suite->game_->getSession().currentRound = 0;
     suite->game_->getSession().inputIndex = 0;
+    suite->game_->getSession().playerInput.clear();
 
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->tick(1);
@@ -187,22 +190,23 @@ void echoAllCorrectInputsNextRound(SignalEchoTestSuite* suite) {
                 state->getStateId() == ECHO_SHOW_SEQUENCE);
 }
 
-// Test: Exceeding allowed mistakes leads to EchoLose
-void echoMistakesExhaustedLose(SignalEchoTestSuite* suite) {
+// Test: Wrong sequence leads to EchoLose (deferred evaluation)
+void echoWrongSequenceLoses(SignalEchoTestSuite* suite) {
     suite->game_->getConfig().displaySpeedMs = 10;
-    suite->game_->getConfig().allowedMistakes = 1;
+    suite->game_->getConfig().allowedMistakes = 0;
     suite->game_->getConfig().sequenceLength = 4;
     suite->game_->getSession().currentSequence = {true, true, true, true};
     suite->game_->getSession().inputIndex = 0;
-    suite->game_->getSession().mistakes = 0;
+    suite->game_->getSession().playerInput.clear();
 
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->tick(1);
 
-    // Press wrong button twice (allowedMistakes = 1, 2nd exceeds)
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Enter wrong sequence: DOWN, DOWN, DOWN, DOWN (correct is all UP)
+    for (int i = 0; i < 4; i++) {
+        suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        suite->tick(1);
+    }
     suite->tick(5);
 
     State* state = suite->game_->getCurrentState();
@@ -214,10 +218,11 @@ void echoAllRoundsCompletedWin(SignalEchoTestSuite* suite) {
     suite->game_->getConfig().displaySpeedMs = 10;
     suite->game_->getConfig().numSequences = 1;
     suite->game_->getConfig().sequenceLength = 2;
-    suite->game_->getConfig().allowedMistakes = 3;
+    suite->game_->getConfig().allowedMistakes = 0;
     suite->game_->getSession().currentSequence = {true, false};
     suite->game_->getSession().currentRound = 0;
     suite->game_->getSession().inputIndex = 0;
+    suite->game_->getSession().playerInput.clear();
 
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->tick(1);
@@ -244,7 +249,7 @@ void echoCumulativeModeAppends(SignalEchoTestSuite* suite) {
     config.cumulative = true;
     config.rngSeed = 42;
     config.displaySpeedMs = 10;
-    config.allowedMistakes = 10;
+    config.allowedMistakes = 0;
 
     SignalEcho* customGame = new SignalEcho(config);
     customGame->initialize(suite->device_.pdn);
@@ -274,7 +279,7 @@ void echoFreshModeNewSequence(SignalEchoTestSuite* suite) {
     config.cumulative = false;
     config.rngSeed = 42;
     config.displaySpeedMs = 10;
-    config.allowedMistakes = 10;
+    config.allowedMistakes = 0;
 
     SignalEcho* customGame = new SignalEcho(config);
     customGame->initialize(suite->device_.pdn);
@@ -442,43 +447,22 @@ void echoDiffEasySequenceLength(SignalEchoDifficultyTestSuite* suite) {
     suite->destroyDevice(device);
 }
 
-// Test: Easy mode allows 3 mistakes before losing
-void echoDiffEasy3MistakesAllowed(SignalEchoDifficultyTestSuite* suite) {
+// Test: Easy mode config has 7-length sequences and 3 rounds
+void echoDiffEasyConfigParams(SignalEchoDifficultyTestSuite* suite) {
     SignalEchoConfig config = SIGNAL_ECHO_EASY;
     config.rngSeed = 42;
-    config.displaySpeedMs = 10;
     auto device = suite->createDeviceWithConfig(config);
     auto* game = dynamic_cast<SignalEcho*>(device.game);
 
-    game->getSession().currentSequence = {true, true, true, true};
-    game->getSession().inputIndex = 0;
-
-    game->skipToState(device.pdn, 2);
-    device.pdn->loop();
-
-    // Press wrong 3 times — should still be in game
-    for (int i = 0; i < 3; i++) {
-        device.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-        device.pdn->loop();
-    }
-    ASSERT_EQ(game->getSession().mistakes, 3);
-
-    State* state = game->getCurrentState();
-    ASSERT_EQ(state->getStateId(), ECHO_PLAYER_INPUT);
-
-    // 4th wrong press exceeds the limit
-    device.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    for (int i = 0; i < 5; i++) {
-        device.pdn->loop();
-    }
-
-    state = game->getCurrentState();
-    ASSERT_EQ(state->getStateId(), ECHO_LOSE);
+    ASSERT_EQ(config.sequenceLength, 7);
+    ASSERT_EQ(config.numSequences, 3);
+    ASSERT_EQ(config.allowedMistakes, 0);
+    ASSERT_EQ(static_cast<int>(game->getSession().currentSequence.size()), 7);
 
     suite->destroyDevice(device);
 }
 
-// Test: Hard config generates 8-element sequences
+// Test: Hard config generates 11-element sequences with 5 rounds
 void echoDiffHardSequenceLength(SignalEchoDifficultyTestSuite* suite) {
     SignalEchoConfig config = SIGNAL_ECHO_HARD;
     config.rngSeed = 42;
@@ -487,32 +471,34 @@ void echoDiffHardSequenceLength(SignalEchoDifficultyTestSuite* suite) {
 
     ASSERT_EQ(static_cast<int>(game->getSession().currentSequence.size()),
               config.sequenceLength);
-    ASSERT_EQ(config.sequenceLength, 8);
+    ASSERT_EQ(config.sequenceLength, 11);
+    ASSERT_EQ(config.numSequences, 5);
 
     suite->destroyDevice(device);
 }
 
-// Test: Hard mode — 2nd wrong press causes lose
-void echoDiffHard1MistakeAllowed(SignalEchoDifficultyTestSuite* suite) {
+// Test: Wrong sequence causes immediate lose (deferred evaluation)
+void echoDiffWrongSequenceLoses(SignalEchoDifficultyTestSuite* suite) {
     SignalEchoConfig config = SIGNAL_ECHO_HARD;
     config.rngSeed = 42;
     config.displaySpeedMs = 10;
     auto device = suite->createDeviceWithConfig(config);
     auto* game = dynamic_cast<SignalEcho*>(device.game);
 
-    game->getSession().currentSequence = {true, true, true, true, true, true, true, true};
+    game->getSession().currentSequence = {true, true, false, false};
     game->getSession().inputIndex = 0;
+    game->getSession().playerInput.clear();
 
     game->skipToState(device.pdn, 2);
     device.pdn->loop();
 
-    // First wrong press
-    device.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    device.pdn->loop();
-    ASSERT_EQ(game->getSession().mistakes, 1);
+    // Enter wrong sequence: UP, UP, UP, UP (correct is UP, UP, DOWN, DOWN)
+    for (int i = 0; i < 4; i++) {
+        device.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        device.pdn->loop();
+    }
 
-    // Second wrong press exceeds allowedMistakes (1)
-    device.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Wait for evaluation
     for (int i = 0; i < 5; i++) {
         device.pdn->loop();
     }
@@ -624,34 +610,31 @@ void echoDiffWrongInputAdvances(SignalEchoDifficultyTestSuite* suite) {
 // EDGE CASE TESTS (NEW)
 // ============================================
 
-// Test: Mistakes exactly equal to allowedMistakes stays in game
-void echoMistakesBoundaryExactMatch(SignalEchoTestSuite* suite) {
+// Test: One wrong arrow in sequence causes lose (deferred evaluation)
+void echoOneWrongArrowLoses(SignalEchoTestSuite* suite) {
     suite->game_->getConfig().displaySpeedMs = 10;
-    suite->game_->getConfig().allowedMistakes = 2;
+    suite->game_->getConfig().allowedMistakes = 0;
     suite->game_->getConfig().sequenceLength = 5;
     suite->game_->getSession().currentSequence = {true, true, true, true, true};
     suite->game_->getSession().inputIndex = 0;
-    suite->game_->getSession().mistakes = 0;
+    suite->game_->getSession().playerInput.clear();
 
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->tick(1);
 
-    // Make exactly 2 mistakes (equals allowedMistakes)
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    // Enter sequence with one mistake: UP, UP, DOWN (wrong), UP, UP
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(1);
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(1);
-
-    ASSERT_EQ(suite->game_->getSession().mistakes, 2);
-
-    // Should still be in PlayerInput (not lose)
-    State* state = suite->game_->getCurrentState();
-    ASSERT_EQ(state->getStateId(), ECHO_PLAYER_INPUT);
-
-    // One more mistake should trigger loss
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);  // WRONG
+    suite->tick(1);
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(5);
-    state = suite->game_->getCurrentState();
+
+    State* state = suite->game_->getCurrentState();
     ASSERT_EQ(state->getStateId(), ECHO_LOSE);
 }
 
@@ -660,7 +643,6 @@ void echoButtonPressDuringIntroIgnored(SignalEchoTestSuite* suite) {
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_INTRO);
 
     auto& session = suite->game_->getSession();
-    session.mistakes = 0;
     session.inputIndex = 0;
 
     // Press buttons during intro
@@ -670,8 +652,8 @@ void echoButtonPressDuringIntroIgnored(SignalEchoTestSuite* suite) {
     suite->tick(1);
 
     // Session should be unchanged
-    ASSERT_EQ(session.mistakes, 0);
     ASSERT_EQ(session.inputIndex, 0);
+    ASSERT_EQ(static_cast<int>(session.playerInput.size()), 0);
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_INTRO);
 }
 
@@ -682,7 +664,7 @@ void echoButtonPressDuringShowIgnored(SignalEchoTestSuite* suite) {
 
     auto& session = suite->game_->getSession();
     int initialIndex = session.inputIndex;
-    int initialMistakes = session.mistakes;
+    int initialInputs = static_cast<int>(session.playerInput.size());
 
     // Press buttons during show
     suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
@@ -692,7 +674,7 @@ void echoButtonPressDuringShowIgnored(SignalEchoTestSuite* suite) {
 
     // Session should be unchanged
     ASSERT_EQ(session.inputIndex, initialIndex);
-    ASSERT_EQ(session.mistakes, initialMistakes);
+    ASSERT_EQ(static_cast<int>(session.playerInput.size()), initialInputs);
 }
 
 // Test: Cumulative mode with maximum sequence length
@@ -703,7 +685,7 @@ void echoCumulativeModeMaxLength(SignalEchoTestSuite* suite) {
     config.cumulative = true;
     config.rngSeed = 42;
     config.displaySpeedMs = 10;
-    config.allowedMistakes = 50;  // Prevent loss
+    config.allowedMistakes = 0;
 
     SignalEcho* customGame = new SignalEcho(config);
     customGame->initialize(suite->device_.pdn);

@@ -27,8 +27,8 @@ void EchoIntro::onStateMounted(Device* PDN) {
     // Display title screen
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("SIGNAL ECHO", 15, 20)
-        ->drawText("Watch. Repeat.", 10, 45);
+        ->drawText("CYPHER RECALL", 10, 20)
+        ->drawText("Memorize. Echo.", 8, 45);
     PDN->getDisplay()->render();
 
     // Start idle LED animation

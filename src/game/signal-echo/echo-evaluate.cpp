@@ -18,38 +18,91 @@ void EchoEvaluate::onStateMounted(Device* PDN) {
     auto& session = game->getSession();
     auto& config = game->getConfig();
 
-    // Check if player has exceeded allowed mistakes
-    if (session.mistakes > config.allowedMistakes) {
+    // Full-sequence binary comparison
+    bool sequenceMatches = true;
+    int seqLen = static_cast<int>(session.currentSequence.size());
+
+    if (static_cast<int>(session.playerInput.size()) != seqLen) {
+        sequenceMatches = false;
+    } else {
+        for (int i = 0; i < seqLen; i++) {
+            if (session.playerInput[i] != session.currentSequence[i]) {
+                sequenceMatches = false;
+                break;
+            }
+        }
+    }
+
+    if (!sequenceMatches) {
+        // Wrong sequence — game over
         transitionToLoseState = true;
         return;
     }
 
-    // Round completed successfully — advance
-    session.currentRound++;
+    // Correct sequence — award score
+    session.score += seqLen * 100;
 
     // Check if all rounds completed
+    session.currentRound++;
     if (session.currentRound >= config.numSequences) {
         transitionToWinState = true;
         return;
     }
 
+    // Round clear celebration
+    PDN->getDisplay()->invalidateScreen();
+    SignalEchoRenderer::drawHUD(PDN->getDisplay(), session.currentRound - 1, config.numSequences);
+    SignalEchoRenderer::drawSeparators(PDN->getDisplay());
+
+    // Show "SEQ N LOCKED" message
+    std::string lockMsg = "SEQ " + std::to_string(session.currentRound) + " LOCKED";
+    PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
+        ->drawText(lockMsg.c_str(), 25, 30);
+    PDN->getDisplay()->render();
+
+    // Celebration haptic
+    PDN->getHaptics()->setIntensity(200);
+
+    // Green LED chase
+    AnimationConfig ledConfig;
+    ledConfig.type = AnimationType::VERTICAL_CHASE;
+    ledConfig.speed = 5;
+    ledConfig.curve = EaseCurve::EASE_IN_OUT;
+    ledConfig.loop = false;
+
+    LEDState state;
+    LEDColor green[4] = {
+        LEDColor(0, 255, 0),
+        LEDColor(0, 220, 0),
+        LEDColor(0, 180, 0),
+        LEDColor(0, 140, 0)
+    };
+    for (int i = 0; i < 9; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(green[i % 4], 200);
+        state.rightLights[i] = LEDState::SingleLEDState(green[i % 4], 200);
+    }
+    ledConfig.initialState = state;
+    PDN->getLightManager()->startAnimation(ledConfig);
+
+    // Brief delay before next round (non-blocking)
+    // Note: LED animation and haptic will auto-cleanup on state dismount
+
     // Generate next sequence
     if (config.cumulative) {
-        // Cumulative mode: append one more element
         session.currentSequence.push_back(rand() % 2 == 0);
     } else {
-        // Fresh mode: completely new sequence
         session.currentSequence = game->generateSequence(config.sequenceLength);
     }
 
-    // Reset input index for the new round
+    // Reset input for next round
     session.inputIndex = 0;
+    session.playerInput.clear();
 
     transitionToShowSequenceState = true;
 }
 
 void EchoEvaluate::onStateLoop(Device* PDN) {
-    // Transitions are determined in onStateMounted — nothing to do here
+    // All logic handled in onStateMounted
 }
 
 void EchoEvaluate::onStateDismounted(Device* PDN) {
