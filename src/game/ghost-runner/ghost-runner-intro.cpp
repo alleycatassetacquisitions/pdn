@@ -25,9 +25,6 @@ void GhostRunnerIntro::onStateMounted(Device* PDN) {
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
 
-    // Seed RNG for this run
-    game->seedRng(game->getConfig().rngSeed);
-
     // Display title screen
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)

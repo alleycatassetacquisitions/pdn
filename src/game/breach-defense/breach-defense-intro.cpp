@@ -23,7 +23,6 @@ void BreachDefenseIntro::onStateMounted(Device* PDN) {
 
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
-    game->seedRng(game->getConfig().rngSeed);
 
     // Display title screen
     PDN->getDisplay()->invalidateScreen();

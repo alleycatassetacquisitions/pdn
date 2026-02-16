@@ -20,8 +20,7 @@ void EchoIntro::onStateMounted(Device* PDN) {
     PlatformClock* clock = SimpleTimer::getPlatformClock();
     game->setStartTime(clock != nullptr ? clock->milliseconds() : 0);
 
-    // Seed RNG and generate the first sequence
-    game->seedRng(game->getConfig().rngSeed);
+    // Generate the first sequence
     game->getSession().currentSequence = game->generateSequence(
         game->getConfig().sequenceLength);
 
