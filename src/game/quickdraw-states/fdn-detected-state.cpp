@@ -11,6 +11,8 @@
 #include "game/breach-defense/breach-defense.hpp"
 #include "game/difficulty-scaler.hpp"
 #include "game/difficulty-helpers.hpp"
+#include "game/color-profiles.hpp"
+#include "game/quickdraw-resources.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/device-constants.hpp"
@@ -61,6 +63,33 @@ void FdnDetected::onStateMounted(Device* PDN) {
     LOG_I(TAG, "Challenge: %s, reward: %s",
            getGameDisplayName(pendingGameType),
            getKonamiButtonName(pendingReward));
+
+    // Set up LED animation - use equipped profile or role-default colors
+    AnimationConfig config;
+    int equipped = player->getEquippedColorProfile();
+    if (equipped >= 0) {
+        config.type = AnimationType::IDLE;
+        config.speed = 16;
+        config.curve = EaseCurve::LINEAR;
+        config.initialState = getColorProfileState(equipped);
+        config.loopDelayMs = 0;
+        config.loop = true;
+    } else if (player->isHunter()) {
+        config.type = AnimationType::IDLE;
+        config.speed = 16;
+        config.curve = EaseCurve::LINEAR;
+        config.initialState = HUNTER_IDLE_STATE_ALTERNATE;
+        config.loopDelayMs = 0;
+        config.loop = true;
+    } else {
+        config.type = AnimationType::VERTICAL_CHASE;
+        config.speed = 5;
+        config.curve = EaseCurve::ELASTIC;
+        config.initialState = BOUNTY_IDLE_STATE;
+        config.loopDelayMs = 1500;
+        config.loop = true;
+    }
+    PDN->getLightManager()->startAnimation(config);
 
     // Set up serial callback to listen for fack
     PDN->setOnStringReceivedCallback([this](const std::string& message) {
