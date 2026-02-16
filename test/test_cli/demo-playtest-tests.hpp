@@ -268,6 +268,9 @@ void signalEchoHardPlaytest(DemoPlaytestSuite* suite) {
 // ============================================
 // GHOST RUNNER PLAYTEST SIMULATIONS
 // ============================================
+// NOTE: Tests disabled during Wave 18 redesign (#220) — Guitar Hero → Memory Maze
+// TODO(#220): Rewrite Ghost Runner playtest for maze navigation mechanics
+#if 0
 
 /*
  * Ghost Runner Easy Mode Playtest
@@ -444,6 +447,8 @@ void ghostRunnerHardPlaytest(DemoPlaytestSuite* suite) {
     EXPECT_LE(avgAttempts, 10.0) << "Hard mode too hard (> 10 attempts)";
 }
 
+#endif // Ghost Runner playtest tests disabled
+
 // ============================================
 // SUMMARY PLAYTEST (ALL GAMES)
 // ============================================
@@ -466,8 +471,9 @@ void demoPlaytestSummary(DemoPlaytestSuite* suite) {
     // Run all game playtests
     signalEchoEasyPlaytest(suite);
     signalEchoHardPlaytest(suite);
-    ghostRunnerEasyPlaytest(suite);
-    ghostRunnerHardPlaytest(suite);
+    // Ghost Runner playtests disabled — Wave 18 redesign (#220) changed to maze
+    // ghostRunnerEasyPlaytest(suite);
+    // ghostRunnerHardPlaytest(suite);
 
     // Note: Other games (Spike Vector, Firewall Decrypt, Cipher Path,
     // Exploit Sequencer, Breach Defense) would have playtests added here

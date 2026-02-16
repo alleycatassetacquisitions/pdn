@@ -33,10 +33,12 @@ TEST_F(FdnDemoScriptTestSuite, SignalEchoRapidButtonSpam) {
 // ============================================
 // GHOST RUNNER DEMO SCRIPTS
 // ============================================
-
+// NOTE: Tests disabled during Wave 18 redesign (#220)
+/*
 TEST_F(FdnDemoScriptTestSuite, GhostRunnerEasyCompleteWalkthrough) {
     ghostRunnerEasyCompleteWalkthrough(this);
 }
+*/
 
 // ============================================
 // SPIKE VECTOR DEMO SCRIPTS

@@ -117,6 +117,9 @@ public:
 // ============================================
 // GHOST RUNNER E2E TESTS
 // ============================================
+// NOTE: Tests disabled during Wave 18 redesign (#220) — Guitar Hero → Memory Maze
+// TODO(#220): Rewrite Ghost Runner E2E tests for maze API
+#if 0
 
 /*
  * Test: Ghost Runner EASY win → unlocks START button.
@@ -255,6 +258,8 @@ void e2eGhostRunnerLoss(E2EGameSuiteTestSuite* suite) {
     // No progression
     ASSERT_EQ(suite->player_.player->getKonamiProgress(), progressBefore);
 }
+
+#endif // Ghost Runner E2E tests disabled
 
 // ============================================
 // SPIKE VECTOR E2E TESTS
@@ -417,6 +422,9 @@ void e2eSpikeVectorLoss(E2EGameSuiteTestSuite* suite) {
 // ============================================
 // CIPHER PATH E2E TESTS
 // ============================================
+// NOTE: Tests disabled during Wave 18 redesign (#242) — binary cipher → wire routing
+// TODO(#242): Rewrite Cipher Path E2E tests for wire routing API
+#if 0
 
 /*
  * Test: Cipher Path EASY win → unlocks RIGHT button.
@@ -576,6 +584,8 @@ void e2eCipherPathLoss(E2EGameSuiteTestSuite* suite) {
     // No progression
     ASSERT_EQ(suite->player_.player->getKonamiProgress(), progressBefore);
 }
+
+#endif // Cipher Path E2E tests disabled
 
 // ============================================
 // EXPLOIT SEQUENCER E2E TESTS
