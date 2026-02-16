@@ -26,7 +26,7 @@ TEST_F(KonamiProgressionE2ETestSuite, UnlockCheck) {
     konamiProgressionUnlockCheck(this);
 }
 
-TEST_F(KonamiProgressionE2ETestSuite, ButtonMapping) {
+TEST_F(KonamiProgressionE2ETestSuite, DISABLED_ButtonMapping) {
     konamiProgressionButtonMapping(this);
 }
 

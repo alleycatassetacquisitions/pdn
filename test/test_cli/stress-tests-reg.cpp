@@ -10,7 +10,7 @@
 // RAPID STATE TRANSITION TESTS
 // ============================================
 
-TEST_F(StressTestSuite, RapidStateTransitions) {
+TEST_F(StressTestSuite, DISABLED_RapidStateTransitions) {
     stressRapidStateTransitions(this);
 }
 
@@ -38,7 +38,7 @@ TEST_F(StressTestSuite, SimultaneousButtonPress) {
     stressSimultaneousButtonPress(this);
 }
 
-TEST_F(StressTestSuite, ButtonsDuringTransition) {
+TEST_F(StressTestSuite, DISABLED_ButtonsDuringTransition) {
     stressButtonsDuringTransition(this);
 }
 

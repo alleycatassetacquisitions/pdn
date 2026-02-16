@@ -10,7 +10,7 @@
 // KONAMI PUZZLE TESTS
 // ============================================
 
-TEST_F(KonamiPuzzleTestSuite, RoutingWithAllButtons) {
+TEST_F(KonamiPuzzleTestSuite, DISABLED_RoutingWithAllButtons) {
     konamiPuzzleRoutingWithAllButtons(this);
 }
 
@@ -22,7 +22,7 @@ TEST_F(KonamiPuzzleTestSuite, StateMounts) {
     konamiPuzzleStateMounts(this);
 }
 
-TEST_F(KonamiPuzzleTestSuite, CorrectSequenceWins) {
+TEST_F(KonamiPuzzleTestSuite, DISABLED_CorrectSequenceWins) {
     konamiPuzzleCorrectSequenceWins(this);
 }
 

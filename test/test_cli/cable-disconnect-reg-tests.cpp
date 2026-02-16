@@ -11,8 +11,10 @@
 // Cable disconnect detection implemented in PR #295 (fixes Issue #207)
 // Tests verify that minigames abort when player cable is disconnected.
 //
-// DISABLED: Tests fail because they try to reach Idle by ticking rather than
-// using skipToState. Boot sequence takes too long — needs test setup fix.
+// DISABLED: Two issues prevent these from working:
+// 1. Tests use begin() + ticking instead of skipToState — boot too slow
+// 2. KonamiMetaGame routing (Wave 17, #271) — returnToPreviousApp() only goes
+//    one level (minigame → KMG), not back to Quickdraw. Need full rewrite.
 
 TEST_F(CableDisconnectTestSuite, DISABLED_CableDisconnectDuringIntro) {
     cableDisconnectDuringIntro(this);
