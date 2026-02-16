@@ -38,29 +38,9 @@ TEST_F(ComprehensiveIntegrationTestSuite, SignalEchoRapidButtonPresses) {
 // GHOST RUNNER INTEGRATION TESTS
 // ============================================
 
-// DISABLED: Ghost Runner redesigned in Wave 18 (memory maze, PR #220)
-// These tests use old rhythm game API (ghostSpeedMs, targetZoneStart, targetZoneEnd, notesPerRound).
-// New API uses maze navigation (cols, rows, previewMazeMs, previewTraceMs).
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerEasyWinUnlocksButton) {
-        ghostRunnerEasyWinUnlocksButton(this);
-}
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerHardWinUnlocksColorProfile) {
-        ghostRunnerHardWinUnlocksColorProfile(this);
-}
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerLossNoRewards) {
-        ghostRunnerLossNoRewards(this);
-}
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerBoundaryPress) {
-        ghostRunnerBoundaryPress(this);
-}
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_GhostRunnerRapidPresses) {
-        ghostRunnerRapidPresses(this);
-}
+// REMOVED: Ghost Runner redesigned in Wave 18 (memory maze, PR #220).
+// Old rhythm game test functions were deleted — these registrations had no backing code.
+// Re-add when new memory maze integration tests are written.
 
 // ============================================
 // SPIKE VECTOR INTEGRATION TESTS
@@ -102,21 +82,9 @@ TEST_F(ComprehensiveIntegrationTestSuite, FirewallDecryptLossNoRewards) {
 // CIPHER PATH INTEGRATION TESTS
 // ============================================
 
-// DISABLED: Cipher Path redesigned in Wave 18 (wire routing puzzle, PR #242)
-// These tests use old API (gridSize, moveBudget, cipher[], playerPosition).
-// New API uses BioShock-inspired wire tiles (tileType[], tileRotation[], pathOrder[], flowState).
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_CipherPathEasyWinUnlocksButton) {
-    cipherPathEasyWinUnlocksButton(this);
-}
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_CipherPathHardWinUnlocksColorProfile) {
-    cipherPathHardWinUnlocksColorProfile(this);
-}
-
-TEST_F(ComprehensiveIntegrationTestSuite, DISABLED_CipherPathLossNoRewards) {
-    cipherPathLossNoRewards(this);
-}
+// REMOVED: Cipher Path redesigned in Wave 18 (wire routing puzzle, PR #242).
+// Old API test functions were deleted — these registrations had no backing code.
+// Re-add when new wire routing integration tests are written.
 
 // ============================================
 // EXPLOIT SEQUENCER INTEGRATION TESTS

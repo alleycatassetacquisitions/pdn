@@ -22,17 +22,9 @@ TEST_F(DemoPlaytestSuite, SignalEchoHardPlaytest) {
 // GHOST RUNNER PLAYTEST TESTS
 // ============================================
 
-// DISABLED: Ghost Runner redesigned in Wave 18 (memory maze, PR #220).
-// These playtest simulations use old rhythm game API (ghostSpeedMs, targetZoneStart, etc.)
-// and need complete rewrite for new memory maze mechanics.
-
-TEST_F(DemoPlaytestSuite, DISABLED_GhostRunnerEasyPlaytest) {
-    ghostRunnerEasyPlaytest(this);
-}
-
-TEST_F(DemoPlaytestSuite, DISABLED_GhostRunnerHardPlaytest) {
-    ghostRunnerHardPlaytest(this);
-}
+// REMOVED: Ghost Runner redesigned in Wave 18 (memory maze, PR #220).
+// Old playtest functions were deleted — these registrations had no backing code.
+// Re-add when new memory maze playtest simulations are written.
 
 // ============================================
 // SUMMARY TEST
