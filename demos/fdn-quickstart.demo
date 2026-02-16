@@ -1,6 +1,6 @@
 # FDN Quickstart Demo
 # Demonstrates player encountering NPC, playing Signal Echo, winning, and unlocking Konami button
-# Runtime: ~30 seconds
+# Runtime: ~45 seconds
 # Usage: .pio/build/native_cli/program --npc signal-echo --auto-cable --script demos/fdn-quickstart.demo
 
 # Wait for devices to settle into Idle
@@ -23,31 +23,70 @@ wait 3
 # Now in Signal Echo game - wait for intro (2s)
 wait 2.5
 
-# Game shows sequence (Signal Echo EASY: 4 elements, ~800ms)
-wait 1
+# Signal Echo redesign (Wave 18): Arrow sequence memory game
+# Easy mode: 3 rounds, 7 arrows per sequence, ~550ms display speed
+# Player must memorize and replay arrow sequences (UP/DOWN)
 
-# Player input phase - enter correct sequence
-# For demo purposes, we'll use a known sequence from tests
-# Signal Echo EASY allows 3 mistakes, so let's play perfectly
+# ROUND 1: Show sequence (~4s for 7 arrows)
+wait 4.5
 
-# Press UP (button 1)
+# Player input phase - enter 7 arrow sequence
+# Demo uses simple alternating pattern for reliability
 b 0
 wait 0.3
-
-# Press DOWN (button 2)
 b2 0
 wait 0.3
-
-# Press UP (button 1)
 b 0
 wait 0.3
-
-# Press DOWN (button 2)
 b2 0
 wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.5
+
+# ROUND 2: Show sequence
+wait 4.5
+
+# Player input - 7 arrows
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.5
+
+# ROUND 3: Show sequence
+wait 4.5
+
+# Player input - 7 arrows
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.5
 
 # Wait for evaluation and win state
-wait 3
+wait 2
 
 # Win state displays for 3s, then returns to FdnComplete
 wait 3.5

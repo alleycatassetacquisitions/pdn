@@ -1,54 +1,74 @@
 # All Games Showcase Demo
 # Demonstrates each of the 7 minigames played in standalone mode
-# Runtime: ~2 minutes
+# Runtime: ~3 minutes
 # Usage: .pio/build/native_cli/program 1 --script demos/all-games-showcase.demo
 
 # ========================================
-# GAME 1: Ghost Runner
+# GAME 1: Ghost Runner (Wave 18: Memory Maze)
 # ========================================
 add challenge ghost-runner
 state
 wait 2.5
 
-# Show timer
-wait 2
+# Maze preview phase (~4s) - player sees maze layout
+wait 4.5
 
-# Press to catch ghost
+# Solution trace preview (~4s) - path shown
+wait 4.5
+
+# Gameplay: Navigate invisible maze from memory
+# PRIMARY = cycle direction, SECONDARY = move forward
+# Simple demo: just make a few moves
 b 0
-wait 4
+wait 0.5
+b2 0
+wait 0.5
+b 0
+wait 0.5
+b2 0
+wait 3
 
 # Reboot to Idle for next game
 reboot 0
 wait 2
 
 # ========================================
-# GAME 2: Spike Vector
+# GAME 2: Spike Vector (Wave 18: Side-scrolling Wall Gauntlet)
 # ========================================
 add challenge spike-vector
 state
 wait 2.5
 
-# Dodge spikes
-wait 1
+# Level 1 show phase - walls scroll in, player sees gap positions
+wait 2
+
+# Gameplay: Move cursor to gaps before walls arrive
+# PRIMARY = move cursor left, SECONDARY = move cursor right
+# Easy mode: 5 lanes, slower speed, 3 hits allowed
 b 0
 wait 0.5
 b2 0
 wait 0.5
+b2 0
+wait 0.5
 b 0
-wait 4
+wait 5
 
 # Reboot
 reboot 0
 wait 2
 
 # ========================================
-# GAME 3: Firewall Decrypt
+# GAME 3: Firewall Decrypt (Wave 18: Terminal Breach - MAC finder)
 # ========================================
 add challenge firewall-decrypt
 state
 wait 2.5
 
-# Round 1
+# Round 1: Scroll through MAC addresses to find target
+# PRIMARY = scroll down, SECONDARY = confirm selection
+# Easy mode: 15 candidates, target always visible
+wait 1
 b 0
 wait 0.2
 b 0
@@ -57,31 +77,39 @@ b2 0
 wait 1
 
 # Round 2
+wait 1
 b 0
 wait 0.2
 b2 0
-wait 4
+wait 3
 
 # Reboot
 reboot 0
 wait 2
 
 # ========================================
-# GAME 4: Cipher Path
+# GAME 4: Cipher Path (Wave 18: BioShock Wire Routing Puzzle)
 # ========================================
 add challenge cipher-path
 state
 wait 2.5
 
-# Navigate path
+# Wire routing puzzle - rotate tiles to complete circuit
+# PRIMARY = rotate current tile, SECONDARY = move to next tile
+# Easy mode: 5x4 grid, single puzzle, electricity flows through path
+# Player rotates scrambled wire tiles before flow reaches dead end
 b 0
-wait 0.3
+wait 0.4
 b2 0
 wait 0.3
 b 0
-wait 0.3
+wait 0.4
 b2 0
-wait 4
+wait 0.3
+b 0
+wait 0.4
+b2 0
+wait 5
 
 # Reboot
 reboot 0
@@ -107,35 +135,40 @@ reboot 0
 wait 2
 
 # ========================================
-# GAME 6: Breach Defense
+# GAME 6: Breach Defense (Wave 18: Pong x Space Invaders)
 # ========================================
 add challenge breach-defense
 state
 wait 2.5
 
-# Defensive presses
+# Lane defense - move shield to block incoming threats
+# PRIMARY = move shield up, SECONDARY = move shield down
+# Easy mode: 3 lanes, 6 threats, 1.5s spawn interval
+wait 1
 b2 0
-wait 0.4
+wait 1
+b 0
+wait 1
 b2 0
-wait 0.4
-b2 0
-wait 4
+wait 1
+b 0
+wait 5
 
 # Reboot
 reboot 0
 wait 2
 
 # ========================================
-# GAME 7: Signal Echo
+# GAME 7: Signal Echo (Wave 18: Cypher Recall - Arrow Memory)
 # ========================================
 add challenge signal-echo
 state
 wait 2.5
 
-# Show sequence
-wait 1
+# Round 1: Show arrow sequence
+wait 4.5
 
-# Player input
+# Player input - memorize and replay 7 arrows
 b 0
 wait 0.3
 b2 0
@@ -143,7 +176,13 @@ wait 0.3
 b 0
 wait 0.3
 b2 0
-wait 4
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 5
 
 # Final state
 state
