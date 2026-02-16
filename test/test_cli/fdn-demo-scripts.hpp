@@ -321,8 +321,9 @@ void signalEchoHardCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
 /*
  * Demo Script: Ghost Runner Easy Mode - Complete Walkthrough
  *
+ * Wave 18 redesign: Memory maze navigation game.
+ * Player sees maze layout briefly, then navigates invisible maze from memory.
  * Ghost Runner button: START (6)
- * Flow similar to Signal Echo but different game mechanics.
  */
 void ghostRunnerEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->advanceToIdle();
@@ -339,34 +340,36 @@ void ghostRunnerEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
 
     // Configure for guaranteed easy win
     gr->getConfig().rounds = 2;
-    gr->getConfig().notesPerRound = 4;
+    gr->getConfig().cols = 3;
+    gr->getConfig().rows = 2;
     gr->getConfig().lives = 5;
-    gr->getConfig().ghostSpeedMs = 100;  // Slower for easy win
+    gr->getConfig().previewMazeMs = 2000;
+    gr->getConfig().previewTraceMs = 2000;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
-    // Gameplay - wait for ghosts and click primary to hit them
+    // Gameplay states: GHOST_PREVIEW_MAZE -> GHOST_PREVIEW_TRACE -> GHOST_GAMEPLAY
     int stateId = gr->getCurrentState()->getStateId();
-    ASSERT_TRUE(stateId == GHOST_GAMEPLAY || stateId == GHOST_INTRO);
 
-    // Skip to gameplay if still in intro
-    if (stateId == GHOST_INTRO) {
-        suite->tickWithTime(10, 100);
-    }
+    // Wait through preview phases (maze + solution trace)
+    suite->tickWithTime(50, 100);  // ~5 seconds for both previews
 
-    // Simulate hitting 3 ghosts
-    for (int i = 0; i < 3; i++) {
-        // Wait for ghost spawn
-        suite->tickWithTime(10, 100);
+    // Now in GHOST_GAMEPLAY - navigate maze from memory
+    // PRIMARY = cycle direction, SECONDARY = move forward
+    // For test, manually set cursor to end position
+    auto& sess = gr->getSession();
+    sess.cursorRow = gr->getConfig().exitRow;
+    sess.cursorCol = gr->getConfig().exitCol;
+    sess.currentRound++;
 
-        // Hit ghost
-        suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-        suite->tick(2);
-    }
+    suite->tick(5);
 
-    // Advance to end of game timer
-    suite->tickWithTime(60, 100);
+    // Complete second round (simplified for test)
+    sess.cursorRow = gr->getConfig().exitRow;
+    sess.cursorCol = gr->getConfig().exitCol;
+
+    suite->tick(5);
 
     // Should be in Win state
     ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);

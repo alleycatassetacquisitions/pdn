@@ -1,6 +1,6 @@
 # Full Progression Demo
 # Demonstrates completing all 7 FDN minigames, collecting all Konami buttons, and unlocking the boon
-# Runtime: ~3 minutes
+# Runtime: ~5 minutes
 # Usage: .pio/build/native_cli/program 1 --script demos/full-progression.demo
 
 # Wait for player device to settle
@@ -8,7 +8,7 @@ wait 2
 state
 
 # ========================================
-# GAME 1: Ghost Runner (Konami Button: UP)
+# GAME 1: Ghost Runner (Konami Button: START) - Memory Maze
 # ========================================
 add npc ghost-runner
 cable 0 1
@@ -17,14 +17,23 @@ wait 4
 # Ghost Runner intro (2s)
 wait 2.5
 
-# Show timer (1.5s)
-wait 2
+# Maze preview + solution trace (~8s)
+wait 9
 
-# Gameplay - press when ghost is in zone
+# Gameplay - navigate maze (simplified for demo)
+# PRIMARY = cycle direction, SECONDARY = move
 b 0
-wait 0.2
+wait 0.5
+b2 0
+wait 0.5
+b 0
+wait 0.5
+b2 0
+wait 0.5
+b2 0
+wait 3
 
-# Wait for win state (3s)
+# Wait for win state
 wait 4
 
 # Disconnect
@@ -33,7 +42,7 @@ wait 1
 konami
 
 # ========================================
-# GAME 2: Spike Vector (Konami Button: DOWN)
+# GAME 2: Spike Vector (Konami Button: DOWN) - Wall Gauntlet
 # ========================================
 add npc spike-vector
 cable 0 2
@@ -42,14 +51,19 @@ wait 4
 # Spike Vector intro (2s)
 wait 2.5
 
-# Gameplay - dodge spikes (timing-based button presses)
-wait 1
+# Level 1 show phase
+wait 2
+
+# Gameplay - move cursor to gaps
+# PRIMARY = move left, SECONDARY = move right
 b 0
 wait 0.5
 b2 0
 wait 0.5
-b 0
+b2 0
 wait 0.5
+b 0
+wait 4
 
 # Wait for win state
 wait 4
@@ -60,7 +74,7 @@ wait 1
 konami
 
 # ========================================
-# GAME 3: Firewall Decrypt (Konami Button: LEFT)
+# GAME 3: Firewall Decrypt (Konami Button: LEFT) - MAC Address Hunter
 # ========================================
 add npc firewall-decrypt
 cable 0 3
@@ -69,7 +83,8 @@ wait 4
 # Firewall Decrypt intro (2s)
 wait 2.5
 
-# Round 1 - scroll to target and confirm
+# Round 1 - scroll and confirm target MAC
+wait 1
 b 0
 wait 0.2
 b 0
@@ -78,10 +93,20 @@ b2 0
 wait 1
 
 # Round 2
+wait 1
 b 0
 wait 0.2
 b2 0
 wait 1
+
+# Round 3
+wait 1
+b 0
+wait 0.2
+b 0
+wait 0.2
+b2 0
+wait 2
 
 # Wait for win state
 wait 4
@@ -92,7 +117,7 @@ wait 1
 konami
 
 # ========================================
-# GAME 4: Cipher Path (Konami Button: RIGHT)
+# GAME 4: Cipher Path (Konami Button: RIGHT) - Wire Routing
 # ========================================
 add npc cipher-path
 cable 0 4
@@ -101,15 +126,24 @@ wait 4
 # Cipher Path intro (2s)
 wait 2.5
 
-# Gameplay - navigate path with directional inputs
+# Gameplay - rotate wire tiles to complete circuit
+# PRIMARY = rotate, SECONDARY = next tile
 b 0
-wait 0.3
+wait 0.4
 b2 0
 wait 0.3
 b 0
-wait 0.3
+wait 0.4
 b2 0
 wait 0.3
+b 0
+wait 0.4
+b2 0
+wait 0.3
+b 0
+wait 0.4
+b2 0
+wait 5
 
 # Wait for win state
 wait 4
@@ -146,7 +180,7 @@ wait 1
 konami
 
 # ========================================
-# GAME 6: Breach Defense (Konami Button: A)
+# GAME 6: Breach Defense (Konami Button: A) - Lane Defense
 # ========================================
 add npc breach-defense
 cable 0 6
@@ -155,13 +189,19 @@ wait 4
 # Breach Defense intro (2s)
 wait 2.5
 
-# Gameplay - defensive button presses
+# Gameplay - move shield to block threats
+# PRIMARY = move up, SECONDARY = move down
+wait 1
 b2 0
-wait 0.4
+wait 1
+b 0
+wait 1
 b2 0
-wait 0.4
+wait 1
+b 0
+wait 1
 b2 0
-wait 0.4
+wait 4
 
 # Wait for win state
 wait 4
@@ -172,7 +212,7 @@ wait 1
 konami
 
 # ========================================
-# GAME 7: Signal Echo (Konami Button: START)
+# GAME 7: Signal Echo (Konami Button: UP) - Arrow Memory
 # ========================================
 add npc signal-echo
 cable 0 7
@@ -181,10 +221,10 @@ wait 4
 # Signal Echo intro (2s)
 wait 2.5
 
-# Show sequence
-wait 1
+# Round 1: Show sequence (~4.5s for 7 arrows)
+wait 4.5
 
-# Player input - 4 button sequence
+# Player input - memorize and replay 7 arrows
 b 0
 wait 0.3
 b2 0
@@ -193,6 +233,46 @@ b 0
 wait 0.3
 b2 0
 wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.5
+
+# Round 2
+wait 4.5
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.5
+
+# Round 3
+wait 4.5
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 2
 
 # Wait for win state
 wait 4

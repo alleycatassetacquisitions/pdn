@@ -14,13 +14,14 @@ All demos are run using the CLI simulator with the `--script` flag:
 
 ### 1. FDN Quickstart (`fdn-quickstart.demo`)
 
-**Runtime:** ~30 seconds
+**Runtime:** ~45 seconds
 **Purpose:** Quick introduction to the FDN encounter system
 
 Demonstrates:
 - Player encountering an FDN NPC device
-- Playing Signal Echo minigame (EASY difficulty)
-- Winning and unlocking the first Konami button
+- Playing Signal Echo minigame (EASY difficulty) - Wave 18 arrow memory game
+- Completing 3 rounds of arrow sequence recall
+- Winning and unlocking the UP Konami button
 - Returning to Idle state
 
 **Run command:**
@@ -30,12 +31,12 @@ Demonstrates:
 
 ### 2. Full Progression (`full-progression.demo`)
 
-**Runtime:** ~3 minutes
+**Runtime:** ~5 minutes
 **Purpose:** Complete progression loop showcasing all 7 minigames
 
 Demonstrates:
-- Sequential encounters with all 7 FDN game types
-- Collecting all 7 Konami buttons (UP, DOWN, LEFT, RIGHT, B, A, START)
+- Sequential encounters with all 7 FDN game types (Wave 18 redesigns)
+- Collecting all 7 Konami buttons (START, DOWN, LEFT, RIGHT, B, A, UP)
 - Automatic Konami boon unlock after completing all games
 - Full progression tracking
 
@@ -45,13 +46,13 @@ Demonstrates:
 ```
 
 **Games played (in order):**
-1. Ghost Runner → UP button
-2. Spike Vector → DOWN button
-3. Firewall Decrypt → LEFT button
-4. Cipher Path → RIGHT button
-5. Exploit Sequencer → B button
-6. Breach Defense → A button
-7. Signal Echo → START button
+1. Ghost Runner (Memory Maze) → START button
+2. Spike Vector (Wall Gauntlet) → DOWN button
+3. Firewall Decrypt (Terminal Breach) → LEFT button
+4. Cipher Path (Wire Routing) → RIGHT button
+5. Exploit Sequencer (Rhythm Game) → B button
+6. Breach Defense (Lane Defense) → A button
+7. Signal Echo (Arrow Memory) → UP button
 
 ### 3. Quickdraw Duel (`duel.demo`)
 
@@ -72,11 +73,12 @@ Demonstrates:
 
 ### 4. All Games Showcase (`all-games-showcase.demo`)
 
-**Runtime:** ~2 minutes
+**Runtime:** ~3 minutes
 **Purpose:** Showcase each minigame individually in standalone mode
 
 Demonstrates:
 - All 7 minigames running in standalone mode (no FDN progression)
+- Wave 18 visual redesigns for all games
 - Each game played to completion
 - Quick transitions between games using reboot command
 
@@ -85,14 +87,14 @@ Demonstrates:
 .pio/build/native_cli/program 1 --script demos/all-games-showcase.demo
 ```
 
-**Games showcased:**
-1. Ghost Runner
-2. Spike Vector
-3. Firewall Decrypt
-4. Cipher Path
-5. Exploit Sequencer
-6. Breach Defense
-7. Signal Echo
+**Games showcased (Wave 18 redesigns):**
+1. Ghost Runner (Memory Maze - navigate invisible maze from memory)
+2. Spike Vector (Wall Gauntlet - dodge scrolling walls)
+3. Firewall Decrypt (Terminal Breach - find MAC addresses)
+4. Cipher Path (Wire Routing - BioShock-style puzzle)
+5. Exploit Sequencer (Rhythm Game - Guitar Hero style)
+6. Breach Defense (Lane Defense - Pong x Invaders)
+7. Signal Echo (Arrow Memory - Cypher Recall)
 
 ## Script Syntax Reference
 
@@ -164,10 +166,12 @@ The CLI simulator supports several startup flags that can be used with demos:
 
 2. **Use state commands** - Insert `state` commands to verify expected states during debugging
 
-3. **Button sequences** - Minigame input sequences are deterministic based on RNG seed:
-   - Use sequences from test suites for reliable wins
-   - Signal Echo EASY: 4 buttons, 3 mistakes allowed
-   - Each game has specific input patterns documented in test files
+3. **Button sequences** - Wave 18 redesigns have new mechanics:
+   - Signal Echo EASY: 3 rounds, 7 arrows per sequence, 0 mistakes allowed
+   - Ghost Runner: Memory maze with preview/trace phases (~8s total)
+   - Spike Vector: Wall gauntlet with lane positioning
+   - Cipher Path: Wire rotation puzzle with time pressure
+   - Each game has specific mechanics documented in header files
 
 4. **Device indexing** - Devices are indexed starting from 0 in the order they're created
 
