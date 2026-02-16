@@ -84,9 +84,10 @@ public:
 inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 200;
     const unsigned long BOUNTY_REACTION_MS = 300;
-    
+
     // Generate match ID
-    char* matchId = IdGenerator(TestConstants::TEST_SEED_INTEGRATION).generateId();
+    IdGenerator idGen(TestConstants::TEST_SEED_INTEGRATION);
+    char* matchId = idGen.generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -168,8 +169,9 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
 inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 350;
     const unsigned long BOUNTY_REACTION_MS = 180;
-    
-    char* matchId = IdGenerator(TestConstants::TEST_SEED_INTEGRATION).generateId();
+
+    IdGenerator idGen(TestConstants::TEST_SEED_INTEGRATION);
+    char* matchId = idGen.generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
