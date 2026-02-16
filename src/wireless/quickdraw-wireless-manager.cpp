@@ -13,7 +13,13 @@ struct QuickdrawPacket {
     int command;
 } __attribute__((packed));
 
-QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
+QuickdrawWirelessManager::QuickdrawWirelessManager() :
+    wirelessManager(nullptr),
+    player(nullptr),
+    broadcastTimer(),
+    broadcastDelay(0)
+{
+}
 
 QuickdrawWirelessManager::~QuickdrawWirelessManager() {
     player = nullptr;
@@ -77,7 +83,7 @@ int QuickdrawWirelessManager::broadcastPacket(const std::string& macAddress,
         ret = wirelessManager->sendEspNowData(
             targetMac,
             PktType::kQuickdrawCommand,
-            (uint8_t*)&qdPacket,
+            reinterpret_cast<uint8_t*>(&qdPacket),
             sizeof(qdPacket));
     } else {
         ret = -1;
@@ -97,7 +103,7 @@ int QuickdrawWirelessManager::processQuickdrawCommand(const uint8_t *macAddress,
         return -1;
     }
 
-    QuickdrawPacket *packet = (QuickdrawPacket *)data;
+    const QuickdrawPacket *packet = reinterpret_cast<const QuickdrawPacket*>(data);
 
     Match match = Match(packet->matchId, packet->hunterId, packet->bountyId);
     match.setHunterDrawTime(packet->hunterDrawTime);

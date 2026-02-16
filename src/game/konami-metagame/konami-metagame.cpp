@@ -112,7 +112,7 @@ void KonamiMetaGame::wireTransitions() {
 
     // [1-7] EasyLaunch transitions
     for (int i = 1; i <= 7; i++) {
-        GameLaunchState* state = dynamic_cast<GameLaunchState*>(stateMap[i]);
+        GameLaunchState* state = static_cast<GameLaunchState*>(stateMap[i]);
         if (state) {
             state->addTransition(new StateTransition(
                 [state]() { return state->transitionToButtonAwarded(); },
@@ -127,7 +127,7 @@ void KonamiMetaGame::wireTransitions() {
 
     // [8-14] ReplayEasy transitions - always go to GameOverReturn
     for (int i = 8; i <= 14; i++) {
-        GameLaunchState* state = dynamic_cast<GameLaunchState*>(stateMap[i]);
+        GameLaunchState* state = static_cast<GameLaunchState*>(stateMap[i]);
         if (state) {
             state->addTransition(new StateTransition(
                 [state]() { return state->transitionToGameOver(); },
@@ -138,7 +138,7 @@ void KonamiMetaGame::wireTransitions() {
 
     // [15-21] HardLaunch transitions
     for (int i = 15; i <= 21; i++) {
-        GameLaunchState* state = dynamic_cast<GameLaunchState*>(stateMap[i]);
+        GameLaunchState* state = static_cast<GameLaunchState*>(stateMap[i]);
         if (state) {
             state->addTransition(new StateTransition(
                 [state]() { return state->transitionToBoonAwarded(); },
@@ -153,7 +153,7 @@ void KonamiMetaGame::wireTransitions() {
 
     // [22-28] MasteryReplay transitions
     for (int i = 22; i <= 28; i++) {
-        MasteryReplay* state = dynamic_cast<MasteryReplay*>(stateMap[i]);
+        MasteryReplay* state = static_cast<MasteryReplay*>(stateMap[i]);
         if (state) {
             int gameIndex = i - 22;
             state->addTransition(new StateTransition(
@@ -168,7 +168,7 @@ void KonamiMetaGame::wireTransitions() {
     }
 
     // [29] ButtonAwarded → GameOverReturn
-    KmgButtonAwarded* buttonAwarded = dynamic_cast<KmgButtonAwarded*>(stateMap[29]);
+    KmgButtonAwarded* buttonAwarded = static_cast<KmgButtonAwarded*>(stateMap[29]);
     if (buttonAwarded) {
         buttonAwarded->addTransition(new StateTransition(
             [buttonAwarded]() { return buttonAwarded->transitionToGameOver(); },
@@ -177,7 +177,7 @@ void KonamiMetaGame::wireTransitions() {
     }
 
     // [30] BoonAwarded → GameOverReturn
-    KonamiBoonAwarded* boonAwarded = dynamic_cast<KonamiBoonAwarded*>(stateMap[30]);
+    KonamiBoonAwarded* boonAwarded = static_cast<KonamiBoonAwarded*>(stateMap[30]);
     if (boonAwarded) {
         boonAwarded->addTransition(new StateTransition(
             [boonAwarded]() { return boonAwarded->transitionToGameOver(); },
@@ -188,7 +188,7 @@ void KonamiMetaGame::wireTransitions() {
     // [31] GameOverReturn - no transitions, calls setActiveApp(0) in onStateLoop
 
     // [32] CodeEntry transitions
-    KonamiCodeEntry* codeEntry = dynamic_cast<KonamiCodeEntry*>(stateMap[32]);
+    KonamiCodeEntry* codeEntry = static_cast<KonamiCodeEntry*>(stateMap[32]);
     if (codeEntry) {
         codeEntry->addTransition(new StateTransition(
             [codeEntry]() { return codeEntry->transitionToAccepted(); },
@@ -201,7 +201,7 @@ void KonamiMetaGame::wireTransitions() {
     }
 
     // [33] CodeAccepted → returns to Quickdraw via setActiveApp
-    KonamiCodeAccepted* codeAccepted = dynamic_cast<KonamiCodeAccepted*>(stateMap[33]);
+    KonamiCodeAccepted* codeAccepted = static_cast<KonamiCodeAccepted*>(stateMap[33]);
     if (codeAccepted) {
         codeAccepted->addTransition(new StateTransition(
             [codeAccepted]() { return codeAccepted->transitionToReturnQuickdraw(); },
@@ -210,7 +210,7 @@ void KonamiMetaGame::wireTransitions() {
     }
 
     // [34] CodeRejected → returns to Quickdraw via setActiveApp
-    KonamiCodeRejected* codeRejected = dynamic_cast<KonamiCodeRejected*>(stateMap[34]);
+    KonamiCodeRejected* codeRejected = static_cast<KonamiCodeRejected*>(stateMap[34]);
     if (codeRejected) {
         codeRejected->addTransition(new StateTransition(
             [codeRejected]() { return codeRejected->transitionToReturnQuickdraw(); },
@@ -223,7 +223,7 @@ void KonamiMetaGame::onStateLoop(Device* PDN) {
     // Special handling for Handshake state (index 0) before base onStateLoop
     // Handshake uses dynamic routing via getTargetStateIndex()
     if (currentState && currentState->getStateId() == 0) {
-        KonamiHandshake* handshake = dynamic_cast<KonamiHandshake*>(currentState);
+        KonamiHandshake* handshake = static_cast<KonamiHandshake*>(currentState);
         if (handshake && handshake->shouldTransition()) {
             int targetIndex = handshake->getTargetStateIndex();
             if (targetIndex >= 0 && targetIndex < static_cast<int>(stateMap.size())) {
