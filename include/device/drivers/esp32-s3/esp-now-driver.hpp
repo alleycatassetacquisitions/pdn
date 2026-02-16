@@ -239,9 +239,9 @@ private:
 
     struct DataRecvBuffer
     {
-        uint8_t* data;
-        unsigned long mostRecentRecvPktTime;
-        uint8_t expectedNextIdx;
+        uint8_t* data = nullptr;
+        unsigned long mostRecentRecvPktTime = 0;
+        uint8_t expectedNextIdx = 0;
     };
 
     explicit EspNowManager(const std::string& name) :
