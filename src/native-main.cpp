@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
             numDevices = atoi(argv[++i]);
             if (numDevices < 1) numDevices = 1;
-            if (numDevices > 8) numDevices = 8;  // Reasonable limit
+            if (numDevices > 11) numDevices = 11;  // Reasonable limit
         } else if (strcmp(argv[i], "-h") == 0) {
             printUsage(argv[0]);
             return 0;
