@@ -23,21 +23,21 @@ constexpr int KONAMI_METAGAME_APP_ID = 9;
  * [34] = CodeRejected
  */
 enum KonamiMetaGameStateId {
-    KONAMI_HANDSHAKE = 0,
-    KONAMI_EASY_LAUNCH_START = 1,
-    KONAMI_EASY_LAUNCH_END = 7,
-    KONAMI_REPLAY_EASY_START = 8,
-    KONAMI_REPLAY_EASY_END = 14,
-    KONAMI_HARD_LAUNCH_START = 15,
-    KONAMI_HARD_LAUNCH_END = 21,
-    KONAMI_MASTERY_REPLAY_START = 22,
-    KONAMI_MASTERY_REPLAY_END = 28,
-    KONAMI_BUTTON_AWARDED = 29,
-    KONAMI_BOON_AWARDED = 30,
-    KONAMI_GAME_OVER_RETURN = 31,
-    KONAMI_CODE_ENTRY = 32,
-    KONAMI_CODE_ACCEPTED = 33,
-    KONAMI_CODE_REJECTED = 34
+    KMG_HANDSHAKE = 0,
+    KMG_EASY_LAUNCH_START = 1,
+    KMG_EASY_LAUNCH_END = 7,
+    KMG_REPLAY_EASY_START = 8,
+    KMG_REPLAY_EASY_END = 14,
+    KMG_HARD_LAUNCH_START = 15,
+    KMG_HARD_LAUNCH_END = 21,
+    KMG_MASTERY_REPLAY_START = 22,
+    KMG_MASTERY_REPLAY_END = 28,
+    KMG_BUTTON_AWARDED = 29,
+    KMG_BOON_AWARDED = 30,
+    KMG_GAME_OVER_RETURN = 31,
+    KMG_CODE_ENTRY = 32,
+    KMG_CODE_ACCEPTED = 33,
+    KMG_CODE_REJECTED = 34
 };
 
 /*
@@ -69,7 +69,9 @@ public:
     ~KonamiMetaGame() override;
 
     void populateStateMap() override;
+    void onStateLoop(Device* PDN) override;
 
 private:
     Player* player;
+    void wireTransitions();
 };

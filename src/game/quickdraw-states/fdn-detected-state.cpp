@@ -92,59 +92,18 @@ void FdnDetected::onStateLoop(Device* PDN) {
     if (fackReceived && !handshakeComplete) {
         handshakeComplete = true;
 
-        // Store game info on Player for FdnReencounter / FdnComplete to read
+        // Store game info on Player for KonamiMetaGame Handshake to read
         player->setLastFdnGameType(static_cast<int>(pendingGameType));
         player->setLastFdnReward(static_cast<uint8_t>(pendingReward));
 
-        // Check if player has all 7 Konami buttons -- route to Konami Puzzle
-        if (player->hasAllKonamiButtons()) {
-            LOG_I(TAG, "All 7 buttons collected - routing to Konami Puzzle!");
-            transitionToKonamiPuzzleState = true;
-            return;
-        }
+        LOG_I(TAG, "FDN handshake complete - routing to KonamiMetaGame (app 9)");
+        LOG_I(TAG, "Challenge: %s, reward: %s",
+               getGameDisplayName(pendingGameType),
+               getKonamiButtonName(pendingReward));
 
-        // Check per-game progression to decide routing
-        bool hasButton = player->hasUnlockedButton(static_cast<uint8_t>(pendingReward));
-        bool hasProfile = player->hasColorProfileEligibility(static_cast<int>(pendingGameType));
-
-        if (hasButton) {
-            // Re-encounter -- route to FdnReencounter for difficulty choice
-            LOG_I(TAG, "Re-encounter: hasButton=%d hasProfile=%d", hasButton, hasProfile);
-            transitionToReencounterState = true;
-            return;
-        }
-
-        // First encounter -- launch EASY directly
-        int appId = getAppIdForGame(pendingGameType);
-        if (appId < 0) {
-            LOG_W(TAG, "No app registered for game type %d", static_cast<int>(pendingGameType));
-            transitionToIdleState = true;
-            return;
-        }
-
-        auto* game = static_cast<MiniGame*>(PDN->getApp(StateId(appId)));
-        if (!game) {
-            LOG_W(TAG, "App %d not found in AppConfig", appId);
-            transitionToIdleState = true;
-            return;
-        }
-
-        // First encounter is always EASY (with auto-scaling within easy range)
-        if (scaler) {
-            applyScaledDifficulty(pendingGameType, game, *scaler, false, true);
-        }
-
-        float currentScale = scaler ? scaler->getScaledDifficulty(pendingGameType) : 0.0f;
-        LOG_I(TAG, "First encounter: launching %s (EASY, scale=%.2f)",
-               getGameDisplayName(pendingGameType), currentScale);
-
-        // Increment easy attempt counter
-        player->incrementEasyAttempts(pendingGameType);
-
-        player->setRecreationalMode(false);
-        game->resetGame();
+        // Launch KonamiMetaGame app - it will handle all routing via Handshake state
         gameLaunched = true;
-        PDN->setActiveApp(StateId(appId));
+        PDN->setActiveApp(StateId(9));  // KONAMI_METAGAME_APP_ID
         return;
     }
 
