@@ -11,7 +11,6 @@
 // ============================================
 
 TEST_F(E2EGameSuiteTestSuite, GhostRunnerEasyWin) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
     e2eGhostRunnerEasyWin(this);
 }
 

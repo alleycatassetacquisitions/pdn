@@ -11,111 +11,89 @@
 // ============================================
 
 TEST_F(GhostRunnerTestSuite, EasyConfigPresets) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerEasyConfigPresets(this);
+        ghostRunnerEasyConfigPresets(this);
 }
 
 TEST_F(GhostRunnerTestSuite, HardConfigPresets) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerHardConfigPresets(this);
+        ghostRunnerHardConfigPresets(this);
 }
 
 TEST_F(GhostRunnerTestSuite, IntroSeedsRng) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerIntroSeedsRng(this);
+        ghostRunnerIntroSeedsRng(this);
 }
 
 TEST_F(GhostRunnerTestSuite, IntroTransitionsToShow) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerIntroTransitionsToShow(this);
+        ghostRunnerIntroTransitionsToShow(this);
 }
 
 TEST_F(GhostRunnerTestSuite, ShowDisplaysRoundInfo) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerShowDisplaysRoundInfo(this);
+        ghostRunnerShowDisplaysRoundInfo(this);
 }
 
 TEST_F(GhostRunnerTestSuite, ShowTransitionsToGameplay) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerShowTransitionsToGameplay(this);
+        ghostRunnerShowTransitionsToGameplay(this);
 }
 
 TEST_F(GhostRunnerTestSuite, GhostAdvancesWithTime) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerGhostAdvancesWithTime(this);
+        ghostRunnerGhostAdvancesWithTime(this);
 }
 
 TEST_F(GhostRunnerTestSuite, CorrectPressInTargetZone) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerCorrectPressInTargetZone(this);
+        ghostRunnerCorrectPressInTargetZone(this);
 }
 
 TEST_F(GhostRunnerTestSuite, IncorrectPressOutsideZone) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerIncorrectPressOutsideZone(this);
+        ghostRunnerIncorrectPressOutsideZone(this);
 }
 
 TEST_F(GhostRunnerTestSuite, GhostTimeoutCountsStrike) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerGhostTimeoutCountsStrike(this);
+        ghostRunnerGhostTimeoutCountsStrike(this);
 }
 
 TEST_F(GhostRunnerTestSuite, EvaluateRoutesToNextRound) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerEvaluateRoutesToNextRound(this);
+        ghostRunnerEvaluateRoutesToNextRound(this);
 }
 
 TEST_F(GhostRunnerTestSuite, EvaluateRoutesToWin) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerEvaluateRoutesToWin(this);
+        ghostRunnerEvaluateRoutesToWin(this);
 }
 
 TEST_F(GhostRunnerTestSuite, EvaluateRoutesToLose) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerEvaluateRoutesToLose(this);
+        ghostRunnerEvaluateRoutesToLose(this);
 }
 
 TEST_F(GhostRunnerTestSuite, WinSetsOutcome) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerWinSetsOutcome(this);
+        ghostRunnerWinSetsOutcome(this);
 }
 
 TEST_F(GhostRunnerTestSuite, LoseSetsOutcome) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerLoseSetsOutcome(this);
+        ghostRunnerLoseSetsOutcome(this);
 }
 
 TEST_F(GhostRunnerTestSuite, StandaloneLoopsToIntro) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerStandaloneLoopsToIntro(this);
+        ghostRunnerStandaloneLoopsToIntro(this);
 }
 
 TEST_F(GhostRunnerTestSuite, StateNamesResolve) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerStateNamesResolve(this);
+        ghostRunnerStateNamesResolve(this);
 }
 
 TEST_F(GhostRunnerTestSuite, PressAtZoneStartBoundary) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerPressAtZoneStartBoundary(this);
+        ghostRunnerPressAtZoneStartBoundary(this);
 }
 
 TEST_F(GhostRunnerTestSuite, PressAtZoneEndBoundary) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerPressAtZoneEndBoundary(this);
+        ghostRunnerPressAtZoneEndBoundary(this);
 }
 
 TEST_F(GhostRunnerTestSuite, ExactStrikesEqualAllowed) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerExactStrikesEqualAllowed(this);
+        ghostRunnerExactStrikesEqualAllowed(this);
 }
 
 TEST_F(GhostRunnerTestSuite, TimeoutAtExactMissesAllowed) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerTimeoutAtExactMissesAllowed(this);
+        ghostRunnerTimeoutAtExactMissesAllowed(this);
 }
 
 TEST_F(GhostRunnerManagedTestSuite, ManagedModeReturns) {
-    GTEST_SKIP() << "Ghost Runner API changed in PR #225 — test needs rewrite (see #240)";
-    ghostRunnerManagedModeReturns(this);
+        ghostRunnerManagedModeReturns(this);
 }

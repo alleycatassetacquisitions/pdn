@@ -134,10 +134,10 @@ void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
 
     // Configure for easy win
     gr->getConfig().ghostSpeedMs = 5;
-    gr->getConfig().screenWidth = 100;
-    gr->getConfig().targetZoneStart = 5;
-    gr->getConfig().targetZoneEnd = 95;
+    gr->getConfig().notesPerRound = 1;
     gr->getConfig().rounds = 1;
+    gr->getConfig().rngSeed = 42;
+    gr->getConfig().dualLaneChance = 0.0f;  // EASY mode
 
     // Advance past intro timer (2s)
     suite->tickWithTime(25, 100);
@@ -145,12 +145,16 @@ void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
     // Advance past show timer (1.5s)
     suite->tickWithTime(20, 100);
 
-    // Should be in Gameplay — advance ghost into zone and press
-    suite->tickWithTime(10, 10);
+    // Should be in Gameplay — move note to hit zone and press
+    auto& session = gr->getSession();
+    session.currentPattern[0].xPosition = 15;  // center of hit zone
+    session.currentPattern[0].lane = Lane::UP;
+
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickWithTime(5, 100);
 
     // Should be in Win
+    suite->tick(5);
     ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
     ASSERT_EQ(gr->getOutcome().result, MiniGameResult::WON);
 
