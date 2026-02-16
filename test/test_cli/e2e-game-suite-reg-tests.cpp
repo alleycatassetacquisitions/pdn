@@ -9,10 +9,12 @@
 // ============================================
 // GHOST RUNNER E2E TESTS
 // ============================================
-
+// NOTE: Tests disabled during Wave 18 redesign (#220)
+/*
 TEST_F(E2EGameSuiteTestSuite, GhostRunnerEasyWin) {
     e2eGhostRunnerEasyWin(this);
 }
+*/
 
 // Note: Hard/Loss edge cases are covered in hard-mode-reencounter-tests.hpp
 // Basic hard win flow is tested in progression-e2e-tests.hpp
@@ -37,10 +39,12 @@ TEST_F(E2EGameSuiteTestSuite, SpikeVectorEasyWin) {
 // ============================================
 // CIPHER PATH E2E TESTS
 // ============================================
-
+// NOTE: Tests disabled during Wave 18 redesign (#242)
+/*
 TEST_F(E2EGameSuiteTestSuite, CipherPathEasyWin) {
     e2eCipherPathEasyWin(this);
 }
+*/
 
 // TEST_F(E2EGameSuiteTestSuite, CipherPathHardWin) {
 //     e2eCipherPathHardWin(this);

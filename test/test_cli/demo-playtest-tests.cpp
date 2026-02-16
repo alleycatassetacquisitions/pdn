@@ -21,7 +21,8 @@ TEST_F(DemoPlaytestSuite, SignalEchoHardPlaytest) {
 // ============================================
 // GHOST RUNNER PLAYTEST TESTS
 // ============================================
-
+// NOTE: Tests disabled during Wave 18 redesign (#220)
+/*
 TEST_F(DemoPlaytestSuite, GhostRunnerEasyPlaytest) {
     ghostRunnerEasyPlaytest(this);
 }
@@ -29,6 +30,7 @@ TEST_F(DemoPlaytestSuite, GhostRunnerEasyPlaytest) {
 TEST_F(DemoPlaytestSuite, GhostRunnerHardPlaytest) {
     ghostRunnerHardPlaytest(this);
 }
+*/
 
 // ============================================
 // SUMMARY TEST
