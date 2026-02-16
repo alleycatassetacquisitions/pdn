@@ -113,7 +113,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     DeviceInstance player_;
@@ -625,7 +625,7 @@ void edgeCaseNpcBufferFloodOnConnect(FdnEdgeCaseTestSuite* suite) {
 
     // Track FDN detection events
     int fdnDetectionCount = 0;
-    auto initialStateId = player.game->getCurrentState()->getStateId();
+    auto initialStateId = player.game->getCurrentStateId();
 
     // Now connect the cable - this should clear buffered messages
     SerialCableBroker::getInstance().connect(0, 1);
@@ -637,7 +637,7 @@ void edgeCaseNpcBufferFloodOnConnect(FdnEdgeCaseTestSuite* suite) {
         fdn.pdn->loop();
 
         // Count FDN detections (state transitions from IDLE to FDN_DETECTED)
-        auto currentStateId = player.game->getCurrentState()->getStateId();
+        auto currentStateId = player.game->getCurrentStateId();
         if (currentStateId == FDN_DETECTED && initialStateId != FDN_DETECTED) {
             fdnDetectionCount++;
         }
@@ -688,7 +688,7 @@ void edgeCaseNpcBroadcastAfterConnect(FdnEdgeCaseTestSuite* suite) {
     }
 
     // Should have received at least one FDN message
-    ASSERT_EQ(player.game->getCurrentState()->getStateId(), FDN_DETECTED)
+    ASSERT_EQ(player.game->getCurrentStateId(), FDN_DETECTED)
         << "NPC not broadcasting after cable connect";
 
     // Cleanup
@@ -736,7 +736,7 @@ void edgeCaseNpcReconnectClearsBuffer(FdnEdgeCaseTestSuite* suite) {
 
     // Reconnect - should clear buffer again
     int fdnDetectionCount = 0;
-    auto initialStateId = player.game->getCurrentState()->getStateId();
+    auto initialStateId = player.game->getCurrentStateId();
 
     SerialCableBroker::getInstance().connect(0, 1);
     for (int i = 0; i < 10; i++) {
@@ -744,7 +744,7 @@ void edgeCaseNpcReconnectClearsBuffer(FdnEdgeCaseTestSuite* suite) {
         player.pdn->loop();
         fdn.pdn->loop();
 
-        auto currentStateId = player.game->getCurrentState()->getStateId();
+        auto currentStateId = player.game->getCurrentStateId();
         if (currentStateId == FDN_DETECTED && initialStateId != FDN_DETECTED) {
             fdnDetectionCount++;
         }
@@ -781,7 +781,7 @@ void edgeCaseDeviceDestructorDismountsActiveApp(EdgeCaseTestSuite* suite) {
     ASSERT_NE(device.game->getCurrentState(), nullptr);
 
     // Get the current state ID before destruction
-    int stateId = device.game->getCurrentState()->getStateId();
+    int stateId = device.game->getCurrentStateId();
     ASSERT_GE(stateId, 0);
 
     // Destroy the device - this should dismount the active app

@@ -97,7 +97,7 @@ void testKonamiCodeCorrectSequence(KonamiCodeTestSuite* suite) {
     suite->tick();
 
     // Verify we're in the right state
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), KONAMI_CODE_ENTRY);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), KONAMI_CODE_ENTRY);
 
     // The correct sequence: UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT B A B A START
     // Button indices: 0 0 1 1 2 3 2 3 4 5 4 5 6
@@ -126,7 +126,7 @@ void testKonamiCodeCorrectSequence(KonamiCodeTestSuite* suite) {
 
     // After completing the sequence, we should transition to KonamiCodeAccepted
     suite->tick(5);
-    EXPECT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), KONAMI_CODE_ACCEPTED);
+    EXPECT_EQ(suite->quickdraw_->getCurrentStateId(), KONAMI_CODE_ACCEPTED);
 
     // Verify hard mode was unlocked
     EXPECT_TRUE(suite->player_->hasHardModeUnlocked());
@@ -160,7 +160,7 @@ void testKonamiCodeIncorrectInput(KonamiCodeTestSuite* suite) {
     suite->tick();
 
     // The state should still be KonamiCodeEntry, but position should reset to 0
-    EXPECT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), KONAMI_CODE_ENTRY);
+    EXPECT_EQ(suite->quickdraw_->getCurrentStateId(), KONAMI_CODE_ENTRY);
 }
 
 void testKonamiCodeTimeout(KonamiCodeTestSuite* suite) {
@@ -175,7 +175,7 @@ void testKonamiCodeTimeout(KonamiCodeTestSuite* suite) {
     suite->tickWithTime(1, 30100);
 
     // Should transition to GameOverReturnIdle
-    EXPECT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), GAME_OVER_RETURN_IDLE);
+    EXPECT_EQ(suite->quickdraw_->getCurrentStateId(), GAME_OVER_RETURN_IDLE);
 }
 
 void testKonamiCodeRejectedNoButtons(KonamiCodeTestSuite* suite) {
@@ -186,13 +186,13 @@ void testKonamiCodeRejectedNoButtons(KonamiCodeTestSuite* suite) {
     suite->tick();
 
     // Verify we're in the right state
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), KONAMI_CODE_REJECTED);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), KONAMI_CODE_REJECTED);
 
     // Wait for display timeout (4 seconds)
     suite->tickWithTime(5, 1000);
 
     // Should transition back to Idle
-    EXPECT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), IDLE);
+    EXPECT_EQ(suite->quickdraw_->getCurrentStateId(), IDLE);
 }
 
 void testKonamiCodeAcceptedStateTransition(KonamiCodeTestSuite* suite) {
@@ -204,7 +204,7 @@ void testKonamiCodeAcceptedStateTransition(KonamiCodeTestSuite* suite) {
     suite->tick();
 
     // Verify we're in the right state
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), KONAMI_CODE_ACCEPTED);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), KONAMI_CODE_ACCEPTED);
 
     // Verify hard mode gets unlocked
     EXPECT_TRUE(suite->player_->hasHardModeUnlocked());
@@ -213,7 +213,7 @@ void testKonamiCodeAcceptedStateTransition(KonamiCodeTestSuite* suite) {
     suite->tickWithTime(6, 1000);
 
     // Should transition back to Idle
-    EXPECT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), IDLE);
+    EXPECT_EQ(suite->quickdraw_->getCurrentStateId(), IDLE);
 }
 
 void testGameOverReturnIdleTransition(KonamiCodeTestSuite* suite) {
@@ -222,13 +222,13 @@ void testGameOverReturnIdleTransition(KonamiCodeTestSuite* suite) {
     suite->tick();
 
     // Verify we're in the right state
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), GAME_OVER_RETURN_IDLE);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), GAME_OVER_RETURN_IDLE);
 
     // Wait for display timeout (2 seconds)
     suite->tickWithTime(3, 1000);
 
     // Should transition back to Idle
-    EXPECT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), IDLE);
+    EXPECT_EQ(suite->quickdraw_->getCurrentStateId(), IDLE);
 }
 
 void testHardModeUnlockPersistence(KonamiCodeTestSuite* suite) {

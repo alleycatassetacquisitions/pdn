@@ -640,7 +640,7 @@ void echoOneWrongArrowLoses(SignalEchoTestSuite* suite) {
 
 // Test: Button press during Intro state is ignored
 void echoButtonPressDuringIntroIgnored(SignalEchoTestSuite* suite) {
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), ECHO_INTRO);
 
     auto& session = suite->game_->getSession();
     session.inputIndex = 0;
@@ -654,13 +654,13 @@ void echoButtonPressDuringIntroIgnored(SignalEchoTestSuite* suite) {
     // Session should be unchanged
     ASSERT_EQ(session.inputIndex, 0);
     ASSERT_EQ(static_cast<int>(session.playerInput.size()), 0);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), ECHO_INTRO);
 }
 
 // Test: Button press during ShowSequence state is ignored
 void echoButtonPressDuringShowIgnored(SignalEchoTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
 
     auto& session = suite->game_->getSession();
     int initialIndex = session.inputIndex;

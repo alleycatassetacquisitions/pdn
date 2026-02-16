@@ -97,7 +97,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     SpikeVector* getSpikeVector() {
@@ -180,12 +180,12 @@ void spikeVectorIntroResetsSession(SpikeVectorTestSuite* suite) {
  * Test: Intro timer transitions to Show state.
  */
 void spikeVectorIntroTransitionsToShow(SpikeVectorTestSuite* suite) {
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_INTRO);
 
     // Advance past 2s intro timer
     suite->tickWithTime(25, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_SHOW);
 }
 
 /*
@@ -196,7 +196,7 @@ void spikeVectorShowGeneratesGaps(SpikeVectorTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->device_.pdn->loop();
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_SHOW);
 
     auto& session = suite->game_->getSession();
     auto& config = suite->game_->getConfig();
@@ -219,12 +219,12 @@ void spikeVectorShowTransitionsToGameplay(SpikeVectorTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->device_.pdn->loop();
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_SHOW);
 
     // Advance past 1000ms show timer
     suite->tickWithTime(15, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_GAMEPLAY);
 }
 
 /*
@@ -235,7 +235,7 @@ void spikeVectorFormationAdvances(SpikeVectorTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->device_.pdn->loop();
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_GAMEPLAY);
 
     auto& session = suite->game_->getSession();
     int initialX = session.formationX;
@@ -266,7 +266,7 @@ void spikeVectorCorrectDodge(SpikeVectorTestSuite* suite) {
 
     // Advance past show timer to gameplay
     suite->tickWithTime(15, 100);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_GAMEPLAY);
 
     // Move cursor to match gap position using button presses
     while (session.cursorPosition > firstGap) {
@@ -308,7 +308,7 @@ void spikeVectorMissedDodge(SpikeVectorTestSuite* suite) {
 
     // Advance past show timer to gameplay
     suite->tickWithTime(15, 100);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_GAMEPLAY);
 
     // Move cursor to a position that is NOT the gap
     int wrongPos = (firstGap + 1) % config.numPositions;
@@ -343,7 +343,7 @@ void spikeVectorFormationCompleteTransition(SpikeVectorTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->device_.pdn->loop();
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_GAMEPLAY);
 
     // Advance enough time for all walls to pass off-screen
     // formationX starts at 128, needs to reach ~-26 (2 walls * 20 + 6)
@@ -351,7 +351,7 @@ void spikeVectorFormationCompleteTransition(SpikeVectorTestSuite* suite) {
     suite->tickWithTime(160 / speedMs + 10, speedMs);
 
     // Should have transitioned to Evaluate or beyond
-    int stateId = suite->game_->getCurrentState()->getStateId();
+    int stateId = suite->game_->getCurrentStateId();
     ASSERT_NE(stateId, SPIKE_GAMEPLAY);
 }
 
@@ -373,7 +373,7 @@ void spikeVectorEvaluateRoutesToNextLevel(SpikeVectorTestSuite* suite) {
     // Evaluate should route to Show for the next level
     suite->tick(1);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_SHOW);
 }
 
 /*
@@ -392,7 +392,7 @@ void spikeVectorEvaluateRoutesToWin(SpikeVectorTestSuite* suite) {
     suite->device_.pdn->loop();
     suite->tick(1);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_WIN);
 }
 
 /*
@@ -411,7 +411,7 @@ void spikeVectorEvaluateRoutesToLose(SpikeVectorTestSuite* suite) {
     suite->device_.pdn->loop();
     suite->tick(1);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_LOSE);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_LOSE);
 }
 
 /*
@@ -454,12 +454,12 @@ void spikeVectorStandaloneLoopsToIntro(SpikeVectorTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 4);
     suite->device_.pdn->loop();
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_WIN);
 
     // Advance past win timer (3s)
     suite->tickWithTime(35, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), SPIKE_INTRO);
 }
 
 /*
@@ -507,7 +507,7 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     auto* sv = suite->getSpikeVector();
     ASSERT_NE(sv, nullptr);
     ASSERT_TRUE(sv->getConfig().managedMode);
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_INTRO);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_INTRO);
 
     // Reduce level count for faster test
     sv->getConfig().levels = 2;
@@ -517,7 +517,7 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     auto& session = sv->getSession();
 
     for (int attempt = 0; attempt < 150; attempt++) {
-        int stateId = sv->getCurrentState()->getStateId();
+        int stateId = sv->getCurrentStateId();
         if (stateId == SPIKE_WIN || stateId == SPIKE_LOSE) break;
 
         if (stateId == SPIKE_INTRO) {
@@ -531,7 +531,7 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
                 int firstGap = session.gapPositions[0];
                 suite->tickWithTime(1, 1100);
                 // Now in gameplay, move cursor
-                if (sv->getCurrentState()->getStateId() == SPIKE_GAMEPLAY) {
+                if (sv->getCurrentStateId() == SPIKE_GAMEPLAY) {
                     while (session.cursorPosition > firstGap) {
                         suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
                     }
@@ -555,7 +555,7 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     }
 
     // Should be in Win
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_WIN);
     ASSERT_EQ(sv->getOutcome().result, MiniGameResult::WON);
 
     // Advance past win timer (3s)
@@ -669,7 +669,7 @@ void spikeVectorLoseOnFinalLevel(SpikeVectorTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
     suite->tick(3);
 
-    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_LOSE)
+    EXPECT_EQ(suite->game_->getCurrentStateId(), SPIKE_LOSE)
         << "Should lose even on final level if hits exceed allowed";
 }
 

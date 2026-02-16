@@ -74,7 +74,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return hunter_.game->getCurrentState()->getStateId();
+        return hunter_.game->getCurrentStateId();
     }
 
     SignalEcho* getSignalEcho() {
@@ -164,7 +164,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return bounty_.game->getCurrentState()->getStateId();
+        return bounty_.game->getCurrentStateId();
     }
 
     SignalEcho* getSignalEcho() {

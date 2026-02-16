@@ -132,6 +132,14 @@ public:
         return currentState;
     }
 
+    /**
+     * Safely get the current state's ID, or -1 if currentState is null.
+     * Use this instead of getCurrentState()->getStateId() to avoid null dereference crashes.
+     */
+    int getCurrentStateId() {
+        return currentState ? currentState->getStateId() : -1;
+    }
+
     void onStateMounted(Device *PDN) override {
         initialize(PDN);
     }

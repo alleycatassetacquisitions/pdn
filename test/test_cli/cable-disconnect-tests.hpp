@@ -115,14 +115,14 @@ void cableDisconnectDuringIntro(CableDisconnectTestSuite* suite) {
     suite->tickWithTime(100, 100);
 
     // Player should be in Idle state
-    int playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    int playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, IDLE);
 
     // Initiate FDN handshake
     suite->tick(50);
 
     // Player should detect FDN and enter FdnDetected state
-    playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, FDN_DETECTED);
 
     // Complete handshake and launch minigame
@@ -139,7 +139,7 @@ void cableDisconnectDuringIntro(CableDisconnectTestSuite* suite) {
     suite->tickWithTime(200, 10);
 
     // After disconnect + ticks, player should return to Idle (not crash/hang)
-    playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, IDLE) << "Player should return to Idle after cable disconnect, not hang in minigame";
 }
 
@@ -153,14 +153,14 @@ void cableDisconnectDuringGameplay(CableDisconnectTestSuite* suite) {
     suite->tickWithTime(100, 100);
 
     // Player should be in Idle state
-    int playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    int playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, IDLE);
 
     // Initiate FDN handshake
     suite->tick(50);
 
     // Player should detect FDN and enter FdnDetected state
-    playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, FDN_DETECTED);
 
     // Complete handshake and launch minigame
@@ -180,7 +180,7 @@ void cableDisconnectDuringGameplay(CableDisconnectTestSuite* suite) {
     suite->tickWithTime(200, 10);
 
     // After disconnect + ticks, player should return to Idle (not crash/hang)
-    playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, IDLE) << "Player should return to Idle after cable disconnect during gameplay";
 }
 
@@ -217,7 +217,7 @@ void cableReconnectToDifferentNpc(CableDisconnectTestSuite* suite) {
     suite->tickWithTime(300, 10);
 
     // Player should return to Idle first
-    int playerState = suite->player_.pdn->getActiveApp()->getCurrentState()->getStateId();
+    int playerState = suite->player_.pdn->getActiveApp()->getCurrentStateId();
     ASSERT_EQ(playerState, IDLE) << "Player should return to Idle after disconnect before detecting new NPC";
 
     // Cleanup
