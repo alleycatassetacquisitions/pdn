@@ -56,7 +56,7 @@ wait 3.5
 state
 
 # Check Konami progress
-konami 0
+konami
 
 # Disconnect devices
 cable -d 0 1

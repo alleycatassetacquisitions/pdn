@@ -630,23 +630,71 @@ private:
             result.message = buf;
             return result;
         }
-        // Set progress: konami <device> <value> OR konami <value>
-        std::string valueStr = (tokens.size() >= 3) ? tokens[2] : tokens[1];
-        int value = std::atoi(valueStr.c_str());
-        dev.player->setKonamiProgress(static_cast<uint8_t>(value & 0xFF));
 
-        // Auto-boon if all 7 set
-        if (dev.player->isKonamiComplete()) {
-            dev.player->setKonamiBoon(true);
+        // Two-token case: konami <device> — show that device's progress
+        if (tokens.size() == 2) {
+            // Check if tokens[1] is a valid device ID or index
+            bool found = false;
+            int deviceIdx = -1;
+            for (size_t i = 0; i < devices.size(); i++) {
+                if (devices[i].deviceId == tokens[1] || std::to_string(i) == tokens[1]) {
+                    deviceIdx = static_cast<int>(i);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found && deviceIdx >= 0) {
+                auto& targetDev = devices[deviceIdx];
+                if (!targetDev.player) {
+                    result.message = "Device has no player (FDN devices don't have players)";
+                    return result;
+                }
+                uint8_t progress = targetDev.player->getKonamiProgress();
+                bool boon = targetDev.player->hasKonamiBoon();
+                char buf[64];
+                snprintf(buf, sizeof(buf), "Konami: 0x%02X (%d/7) boon=%s",
+                         progress, __builtin_popcount(progress & 0x7F),
+                         boon ? "yes" : "no");
+                result.message = buf;
+                return result;
+            }
+            result.message = "Unknown device: " + tokens[1];
+            return result;
         }
 
-        uint8_t progress = dev.player->getKonamiProgress();
-        bool boon = dev.player->hasKonamiBoon();
-        char buf[64];
-        snprintf(buf, sizeof(buf), "Konami set: 0x%02X (%d/7) boon=%s",
-                 progress, __builtin_popcount(progress & 0x7F),
-                 boon ? "yes" : "no");
-        result.message = buf;
+        // Three+ tokens: konami set <device> <value>
+        if (tokens.size() >= 3 && tokens[1] == "set") {
+            int deviceIdx = findDevice(tokens[2], devices, selectedDevice);
+            if (deviceIdx < 0 || deviceIdx >= static_cast<int>(devices.size())) {
+                result.message = "Invalid device";
+                return result;
+            }
+            auto& targetDev = devices[deviceIdx];
+            if (!targetDev.player) {
+                result.message = "Device has no player (FDN devices don't have players)";
+                return result;
+            }
+            int value = std::atoi(tokens[3].c_str());
+            targetDev.player->setKonamiProgress(static_cast<uint8_t>(value & 0xFF));
+
+            // Auto-boon if all 7 set
+            if (targetDev.player->isKonamiComplete()) {
+                targetDev.player->setKonamiBoon(true);
+            }
+
+            uint8_t progress = targetDev.player->getKonamiProgress();
+            bool boon = targetDev.player->hasKonamiBoon();
+            char buf[64];
+            snprintf(buf, sizeof(buf), "Konami set: 0x%02X (%d/7) boon=%s",
+                     progress, __builtin_popcount(progress & 0x7F),
+                     boon ? "yes" : "no");
+            result.message = buf;
+            return result;
+        }
+
+        // Invalid command format
+        result.message = "Usage: konami [<device>] OR konami set <device> <value>";
         return result;
     }
 

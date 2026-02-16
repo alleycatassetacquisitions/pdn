@@ -30,7 +30,7 @@ wait 4
 # Disconnect
 cable -d 0 1
 wait 1
-konami 0
+konami
 
 # ========================================
 # GAME 2: Spike Vector (Konami Button: DOWN)
@@ -57,7 +57,7 @@ wait 4
 # Disconnect
 cable -d 0 2
 wait 1
-konami 0
+konami
 
 # ========================================
 # GAME 3: Firewall Decrypt (Konami Button: LEFT)
@@ -89,7 +89,7 @@ wait 4
 # Disconnect
 cable -d 0 3
 wait 1
-konami 0
+konami
 
 # ========================================
 # GAME 4: Cipher Path (Konami Button: RIGHT)
@@ -117,7 +117,7 @@ wait 4
 # Disconnect
 cable -d 0 4
 wait 1
-konami 0
+konami
 
 # ========================================
 # GAME 5: Exploit Sequencer (Konami Button: B)
@@ -143,7 +143,7 @@ wait 4
 # Disconnect
 cable -d 0 5
 wait 1
-konami 0
+konami
 
 # ========================================
 # GAME 6: Breach Defense (Konami Button: A)
@@ -169,7 +169,7 @@ wait 4
 # Disconnect
 cable -d 0 6
 wait 1
-konami 0
+konami
 
 # ========================================
 # GAME 7: Signal Echo (Konami Button: START)
@@ -204,7 +204,7 @@ wait 1
 # ========================================
 # ALL 7 KONAMI BUTTONS UNLOCKED!
 # ========================================
-konami 0
+konami
 
 # Player now has all 7 buttons - Konami Puzzle unlocked
 # The boon is automatically granted when all 7 buttons are collected
