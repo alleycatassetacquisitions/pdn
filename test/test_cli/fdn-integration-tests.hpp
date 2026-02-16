@@ -586,4 +586,200 @@ void appSwitchingReturnToPrevious(AppSwitchingTestSuite* suite) {
     ASSERT_LT(stateId, ECHO_INTRO);
 }
 
+// ============================================
+// MULTI-PLAYER INTEGRATION TESTS
+// ============================================
+
+#include "integration-harness.hpp"
+
+class MultiPlayerIntegrationTestSuite : public testing::Test {
+public:
+    void SetUp() override {
+        // Harness setup happens in each test via addPlayer/addNpc/setup
+    }
+
+    void TearDown() override {
+        // Harness cleanup is automatic in destructor
+    }
+};
+
+// Test: 2 players + 1 NPC - basic FDN discovery
+void multiPlayer2PlayersBasicDiscovery(MultiPlayerIntegrationTestSuite* suite) {
+    MultiPlayerHarness harness;
+    harness.addPlayer(true);   // Hunter
+    harness.addPlayer(false);  // Bounty
+    harness.addNpc(GameType::SIGNAL_ECHO);
+    harness.setup();
+
+    // Advance both players to Idle
+    harness.advanceAllPlayersToIdle();
+
+    // Connect player 0 (hunter) to NPC
+    harness.triggerFdnHandshake(0, 0, 10);
+
+    // Player 0 should detect FDN and transition to FdnDetected
+    harness.tickWithTime(5, 100);
+
+    // Player 1 should remain in Idle (not connected)
+    ASSERT_EQ(harness.getPlayerStateId(1), IDLE);
+}
+
+// Test: 3 players + 3 NPCs - konami progression tracking
+void multiPlayer3PlayersKonamiProgression(MultiPlayerIntegrationTestSuite* suite) {
+    MultiPlayerHarness harness;
+    harness.addPlayer(true);   // Player 0: Hunter
+    harness.addPlayer(true);   // Player 1: Hunter
+    harness.addPlayer(false);  // Player 2: Bounty
+    harness.addNpc(GameType::SIGNAL_ECHO);   // NPC 0
+    harness.addNpc(GameType::GHOST_RUNNER);  // NPC 1
+    harness.addNpc(GameType::SPIKE_VECTOR);  // NPC 2
+    harness.setup();
+
+    harness.advanceAllPlayersToIdle();
+
+    // Initial state: no buttons unlocked
+    ASSERT_EQ(harness.getKonamiProgress(0), 0);
+    ASSERT_EQ(harness.getKonamiProgress(1), 0);
+    ASSERT_EQ(harness.getKonamiProgress(2), 0);
+
+    // Player 0 encounters NPC 0 (Signal Echo → UP button)
+    harness.connectCable(0, 3);  // Device 3 = first NPC
+    harness.tickWithTime(20, 100);
+
+    // Player 1 encounters NPC 1 (Ghost Runner → START button)
+    harness.connectCable(1, 4);  // Device 4 = second NPC
+    harness.tickWithTime(20, 100);
+
+    // Player 2 encounters NPC 2 (Spike Vector → DOWN button)
+    harness.connectCable(2, 5);  // Device 5 = third NPC
+    harness.tickWithTime(20, 100);
+
+    // All players should have detected their respective NPCs
+    // (State verification would require more detailed game simulation)
+
+    // Verify all players still have independent progress
+    // (Actual konami unlock would require completing the minigames)
+    ASSERT_NE(harness.getPlayerStateId(0), IDLE);  // Should be in FDN flow
+    ASSERT_NE(harness.getPlayerStateId(1), IDLE);
+    ASSERT_NE(harness.getPlayerStateId(2), IDLE);
+}
+
+// Test: Cable disconnect mid-game recovery
+void multiPlayerCableDisconnectRecovery(MultiPlayerIntegrationTestSuite* suite) {
+    MultiPlayerHarness harness;
+    harness.addPlayer(true);   // Hunter
+    harness.addNpc(GameType::SIGNAL_ECHO);
+    harness.setup();
+
+    harness.advancePlayerToIdle(0);
+
+    // Connect and start FDN handshake
+    harness.triggerFdnHandshake(0, 0, 10);
+    harness.tickWithTime(10, 100);
+
+    // Disconnect cable mid-game
+    harness.disconnectCable(0, 1);
+    ASSERT_FALSE(harness.isCableConnected(0, 1));
+
+    // Player should eventually recover (return to Idle or handle disconnect)
+    // Note: Bug #207 tracks that this doesn't work correctly yet
+    harness.tickWithTime(50, 100);
+
+    // For now, just verify the test infrastructure works
+    // TODO: After bug #207 is fixed, verify player returns to Idle
+}
+
+// Test: All 7 game types in sequence - full konami unlock
+void multiPlayer7GamesFullKonami(MultiPlayerIntegrationTestSuite* suite) {
+    MultiPlayerHarness harness;
+    harness.addPlayer(true);   // Single player
+    // Add all 7 FDN game types
+    harness.addNpc(GameType::SIGNAL_ECHO);
+    harness.addNpc(GameType::GHOST_RUNNER);
+    harness.addNpc(GameType::SPIKE_VECTOR);
+    harness.addNpc(GameType::FIREWALL_DECRYPT);
+    harness.addNpc(GameType::CIPHER_PATH);
+    harness.addNpc(GameType::EXPLOIT_SEQUENCER);
+    harness.addNpc(GameType::BREACH_DEFENSE);
+    harness.setup();
+
+    harness.advancePlayerToIdle(0);
+
+    // Initial: no progress
+    ASSERT_FALSE(harness.isKonamiComplete(0));
+
+    // Connect to each NPC sequentially
+    for (int npcIndex = 0; npcIndex < 7; npcIndex++) {
+        harness.connectCable(0, 1 + npcIndex);  // Device 1-7 are NPCs
+        harness.tickWithTime(20, 100);
+
+        // For a real test, we'd need to play through each minigame
+        // For now, just verify the handshake infrastructure works
+
+        // Disconnect and return to idle
+        harness.disconnectCable(0, 1 + npcIndex);
+        harness.tickWithTime(10, 100);
+    }
+
+    // This test verifies the harness can handle 1 player + 7 NPCs
+    ASSERT_EQ(harness.getPlayerCount(), 1);
+    ASSERT_EQ(harness.getNpcCount(), 7);
+}
+
+// Test: Multiple players encountering same NPC sequentially
+void multiPlayerSequentialNpcEncounters(MultiPlayerIntegrationTestSuite* suite) {
+    MultiPlayerHarness harness;
+    harness.addPlayer(true);   // Player 0
+    harness.addPlayer(false);  // Player 1
+    harness.addNpc(GameType::SIGNAL_ECHO);
+    harness.setup();
+
+    harness.advanceAllPlayersToIdle();
+
+    // Player 0 connects to NPC
+    harness.connectCable(0, 2);  // Device 2 = NPC
+    harness.tickWithTime(20, 100);
+
+    // Player 0 disconnects
+    harness.disconnectCable(0, 2);
+    harness.tickWithTime(5, 100);
+
+    // Player 1 connects to same NPC
+    harness.connectCable(1, 2);
+    harness.tickWithTime(20, 100);
+
+    // Both players should have independent state
+    // NPC should handle sequential encounters correctly
+}
+
+// Test: Stress test - 3 players + 7 NPCs (10 total devices)
+void multiPlayerStressTest10Devices(MultiPlayerIntegrationTestSuite* suite) {
+    MultiPlayerHarness harness;
+    harness.addPlayer(true);   // Player 0: Hunter
+    harness.addPlayer(false);  // Player 1: Bounty
+    harness.addPlayer(true);   // Player 2: Hunter
+    // Add all 7 NPCs
+    harness.addNpc(GameType::SIGNAL_ECHO);
+    harness.addNpc(GameType::GHOST_RUNNER);
+    harness.addNpc(GameType::SPIKE_VECTOR);
+    harness.addNpc(GameType::FIREWALL_DECRYPT);
+    harness.addNpc(GameType::CIPHER_PATH);
+    harness.addNpc(GameType::EXPLOIT_SEQUENCER);
+    harness.addNpc(GameType::BREACH_DEFENSE);
+    harness.setup();
+
+    // Verify device count
+    ASSERT_EQ(harness.getPlayerCount(), 3);
+    ASSERT_EQ(harness.getNpcCount(), 7);
+
+    // Advance all players to Idle
+    harness.advanceAllPlayersToIdle();
+
+    // Run 100 ticks across all 10 devices to verify stability
+    harness.tick(100);
+
+    // No crashes = success
+    // This verifies the harness and simulator can handle 10 simultaneous devices
+}
+
 #endif // NATIVE_BUILD

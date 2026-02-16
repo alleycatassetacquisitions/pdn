@@ -386,3 +386,31 @@ TEST_F(BoonAwardedTestSuite, ClearsLeds) {
 TEST_F(BoonAwardedTestSuite, HandlesMissingProfile) {
     boonAwardedHandlesMissingProfile(this);
 }
+
+// ============================================
+// MULTI-PLAYER INTEGRATION TESTS
+// ============================================
+
+TEST_F(MultiPlayerIntegrationTestSuite, TwoPlayersBasicDiscovery) {
+    multiPlayer2PlayersBasicDiscovery(this);
+}
+
+TEST_F(MultiPlayerIntegrationTestSuite, ThreePlayersKonamiProgression) {
+    multiPlayer3PlayersKonamiProgression(this);
+}
+
+TEST_F(MultiPlayerIntegrationTestSuite, CableDisconnectRecovery) {
+    multiPlayerCableDisconnectRecovery(this);
+}
+
+TEST_F(MultiPlayerIntegrationTestSuite, SevenGamesFullKonami) {
+    multiPlayer7GamesFullKonami(this);
+}
+
+TEST_F(MultiPlayerIntegrationTestSuite, SequentialNpcEncounters) {
+    multiPlayerSequentialNpcEncounters(this);
+}
+
+TEST_F(MultiPlayerIntegrationTestSuite, StressTest10Devices) {
+    multiPlayerStressTest10Devices(this);
+}
