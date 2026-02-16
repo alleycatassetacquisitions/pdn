@@ -1,6 +1,7 @@
 #include "game/firewall-decrypt/firewall-decrypt-states.hpp"
 #include "game/firewall-decrypt/firewall-decrypt.hpp"
 #include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
+#include "game/ui-clean-minimal.hpp"
 #include "device/drivers/logger.hpp"
 #include <cstdio>
 
@@ -27,15 +28,27 @@ void DecryptLose::onStateMounted(Device* PDN) {
 
     LOG_I(TAG, "FIREWALL INTACT. Score: %d", session.score);
 
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("FIREWALL", 20, 20)
-        ->drawText("INTACT", 30, 40);
+    auto display = PDN->getDisplay();
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::TEXT);
 
+    // Outer frame
+    display->drawFrame(0, 0, 128, 64);
+
+    // Title block
+    BoldRetroUI::drawBorderedFrame(display, 20, 14, 88, 22);
+    display->drawText("ACCESS", 38, 24);
+    display->drawText("DENIED", 37, 32);
+
+    // Subtitle
+    BoldRetroUI::drawCenteredText(display, "FIREWALL INTACT", 46);
+
+    // Score
     char scoreStr[16];
     snprintf(scoreStr, sizeof(scoreStr), "Score: %d", session.score);
-    PDN->getDisplay()->drawText(scoreStr, 30, 55);
-    PDN->getDisplay()->render();
+    BoldRetroUI::drawCenteredText(display, scoreStr, 58);
+
+    display->render();
 
     // Red LED fade
     AnimationConfig config;

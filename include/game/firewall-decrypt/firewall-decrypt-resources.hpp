@@ -58,10 +58,10 @@ const LEDState FIREWALL_DECRYPT_CORRECT_STATE = [](){
 // Difficulty presets
 inline FirewallDecryptConfig makeDecryptEasyConfig() {
     FirewallDecryptConfig c;
-    c.numCandidates = 5;
-    c.numRounds = 3;
-    c.similarity = 0.2f;
-    c.timeLimitMs = 0;
+    c.numCandidates = 15;      // was 5 — expanded for "needle in haystack" gameplay
+    c.numRounds = 3;            // unchanged
+    c.similarity = 0.5f;        // was 0.2 — more confusing decoys
+    c.timeLimitMs = 0;          // no timer in easy mode
     c.rngSeed = 0;
     c.managedMode = false;
     return c;
@@ -69,10 +69,10 @@ inline FirewallDecryptConfig makeDecryptEasyConfig() {
 
 inline FirewallDecryptConfig makeDecryptHardConfig() {
     FirewallDecryptConfig c;
-    c.numCandidates = 10;
-    c.numRounds = 4;
-    c.similarity = 0.7f;
-    c.timeLimitMs = 15000;
+    c.numCandidates = 40;       // was 10 — large haystack
+    c.numRounds = 4;            // unchanged
+    c.similarity = 0.7f;        // unchanged — very similar MACs
+    c.timeLimitMs = 12000;      // was 15000 — 12s for round 1, depletes each round
     c.rngSeed = 0;
     c.managedMode = false;
     return c;

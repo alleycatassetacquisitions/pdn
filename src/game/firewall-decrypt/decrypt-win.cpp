@@ -1,6 +1,7 @@
 #include "game/firewall-decrypt/firewall-decrypt-states.hpp"
 #include "game/firewall-decrypt/firewall-decrypt.hpp"
 #include "game/firewall-decrypt/firewall-decrypt-resources.hpp"
+#include "game/ui-clean-minimal.hpp"
 #include "device/drivers/logger.hpp"
 #include <cstdio>
 #include <string>
@@ -33,14 +34,27 @@ void DecryptWin::onStateMounted(Device* PDN) {
     LOG_I(TAG, "DECRYPTED! Score: %d, Hard: %s",
           session.score, isHard ? "yes" : "no");
 
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("DECRYPTED!", 15, 25);
+    auto display = PDN->getDisplay();
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::TEXT);
 
+    // Outer frame
+    display->drawFrame(0, 0, 128, 64);
+
+    // Title block
+    BoldRetroUI::drawBorderedFrame(display, 20, 14, 88, 22);
+    display->drawText("ACCESS", 38, 24);
+    display->drawText("GRANTED", 35, 32);
+
+    // Subtitle
+    BoldRetroUI::drawCenteredText(display, "FIREWALL DOWN", 46);
+
+    // Score
     char scoreStr[16];
     snprintf(scoreStr, sizeof(scoreStr), "Score: %d", session.score);
-    PDN->getDisplay()->drawText(scoreStr, 30, 50);
-    PDN->getDisplay()->render();
+    BoldRetroUI::drawCenteredText(display, scoreStr, 58);
+
+    display->render();
 
     // Green LED sweep
     AnimationConfig config;
