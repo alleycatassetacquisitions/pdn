@@ -74,8 +74,8 @@ void Idle::onStateMounted(Device *PDN) {
     PDN->getPrimaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
     PDN->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
 
-    // Long press secondary → color profile picker (only if player has eligible profiles)
-    if (!player->getColorProfileEligibility().empty()) {
+    // Long press secondary → color profile picker (accessible after Konami code)
+    if (player->hasHardModeUnlocked()) {
         parameterizedCallbackFunction longPressCb = [](void *ctx) {
             Idle* idle = (Idle*)ctx;
             idle->colorPickerRequested = true;

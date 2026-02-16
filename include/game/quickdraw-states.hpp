@@ -428,6 +428,7 @@ private:
     ProgressManager* progressManager;
     bool transitionToIdleState = false;
     bool displayIsDirty = false;
+    bool ledPreviewRequested = false;
     int cursorIndex = 0;
     std::vector<int> profileList;  // game type values (-1 = DEFAULT)
     void buildProfileList();

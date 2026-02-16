@@ -295,6 +295,22 @@ TEST_F(ColorProfilePickerTestSuite, PreselectsEquipped) {
     colorProfilePickerPreselectsEquipped(this);
 }
 
+TEST_F(ColorProfilePickerTestSuite, ShowsDefaultOnly) {
+    colorProfilePickerShowsDefaultOnly(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, LedPreview) {
+    colorProfilePickerLedPreview(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, VisualRedesign) {
+    colorProfilePickerVisualRedesign(this);
+}
+
+TEST_F(ColorProfilePickerTestSuite, ControlLabel) {
+    colorProfilePickerControlLabel(this);
+}
+
 // ============================================
 // FDN COMPLETE ROUTING TESTS
 // ============================================
