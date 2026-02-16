@@ -286,6 +286,73 @@ void colorProfilePickerPreselectsEquipped(ColorProfilePickerTestSuite* suite) {
               static_cast<int>(GameType::SIGNAL_ECHO));
 }
 
+// Test: Picker shows DEFAULT option when no palettes earned
+void colorProfilePickerShowsDefaultOnly(ColorProfilePickerTestSuite* suite) {
+    // No eligible profiles, just DEFAULT
+    suite->device_.game->skipToState(suite->device_.pdn, 25);  // ColorProfilePicker
+    suite->tick(1);
+
+    auto& textHistory = suite->device_.displayDriver->getTextHistory();
+    bool foundDefault = false;
+    for (const auto& entry : textHistory) {
+        if (entry.find("DEFAULT") != std::string::npos) foundDefault = true;
+    }
+    ASSERT_TRUE(foundDefault);
+}
+
+// Test: Cycling profiles triggers LED preview
+void colorProfilePickerLedPreview(ColorProfilePickerTestSuite* suite) {
+    suite->skipToPicker();
+
+    // Get initial LED state for left lights (first LED)
+    auto initialColor = suite->device_.lightDriver->getLight(LightIdentifier::LEFT_LIGHTS, 0);
+
+    // Cycle to next profile (SECONDARY button cycles, PRIMARY confirms)
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(2);
+
+    // LED state should have changed (preview triggered)
+    auto newColor = suite->device_.lightDriver->getLight(LightIdentifier::LEFT_LIGHTS, 0);
+    bool changed = (initialColor.color.red != newColor.color.red ||
+                    initialColor.color.green != newColor.color.green ||
+                    initialColor.color.blue != newColor.color.blue);
+    ASSERT_TRUE(changed);
+}
+
+// Test: Visual redesign shows updated control labels
+void colorProfilePickerVisualRedesign(ColorProfilePickerTestSuite* suite) {
+    suite->skipToPicker();
+
+    // Check for new control text format
+    auto& textHistory = suite->device_.displayDriver->getTextHistory();
+    bool foundNewFormat = false;
+    for (const auto& entry : textHistory) {
+        if (entry.find("[UP]") != std::string::npos ||
+            entry.find("[DOWN]") != std::string::npos ||
+            entry.find("CYCLE") != std::string::npos ||
+            entry.find("SELECT") != std::string::npos) {
+            foundNewFormat = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(foundNewFormat);
+}
+
+// Test: Control label shows new format
+void colorProfilePickerControlLabel(ColorProfilePickerTestSuite* suite) {
+    suite->skipToPicker();
+
+    auto& textHistory = suite->device_.displayDriver->getTextHistory();
+    bool foundNewControls = false;
+    for (const auto& entry : textHistory) {
+        if (entry.find("[UP] CYCLE") != std::string::npos ||
+            entry.find("[DOWN] SELECT") != std::string::npos) {
+            foundNewControls = true;
+        }
+    }
+    ASSERT_TRUE(foundNewControls);
+}
+
 // ============================================
 // FDN COMPLETE → COLOR PROMPT ROUTING
 // ============================================
@@ -422,9 +489,9 @@ public:
     DeviceInstance device_;
 };
 
-// Test: Long press secondary enters ColorProfilePicker when eligible profiles exist
+// Test: Long press secondary enters ColorProfilePicker after Konami code (hard mode unlocked)
 void idleLongPressEntersPicker(IdleColorPickerTestSuite* suite) {
-    suite->device_.player->addColorProfileEligibility(static_cast<int>(GameType::SIGNAL_ECHO));
+    suite->device_.player->unlockHardMode();
     suite->skipToIdle();
     ASSERT_EQ(suite->getStateId(), IDLE);
 
@@ -434,7 +501,7 @@ void idleLongPressEntersPicker(IdleColorPickerTestSuite* suite) {
     ASSERT_EQ(suite->getStateId(), COLOR_PROFILE_PICKER);
 }
 
-// Test: Long press does NOT enter picker when no eligible profiles
+// Test: Long press does NOT enter picker before Konami code (hard mode not unlocked)
 void idleLongPressNoPickerWithoutEligibility(IdleColorPickerTestSuite* suite) {
     suite->skipToIdle();
     ASSERT_EQ(suite->getStateId(), IDLE);
@@ -442,7 +509,7 @@ void idleLongPressNoPickerWithoutEligibility(IdleColorPickerTestSuite* suite) {
     suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::LONG_PRESS);
     suite->tick(2);
 
-    // Should stay in Idle since no eligible profiles
+    // Should stay in Idle since hard mode not unlocked
     ASSERT_EQ(suite->getStateId(), IDLE);
 }
 

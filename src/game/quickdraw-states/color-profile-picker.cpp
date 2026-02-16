@@ -32,6 +32,7 @@ void ColorProfilePicker::buildProfileList() {
 void ColorProfilePicker::onStateMounted(Device* PDN) {
     transitionToIdleState = false;
     displayIsDirty = false;
+    ledPreviewRequested = false;
     cursorIndex = 0;
 
     buildProfileList();
@@ -64,6 +65,7 @@ void ColorProfilePicker::onStateMounted(Device* PDN) {
         auto* self = static_cast<ColorProfilePicker*>(ctx);
         self->cursorIndex = (self->cursorIndex + 1) % static_cast<int>(self->profileList.size());
         self->displayIsDirty = true;
+        self->ledPreviewRequested = true;
     };
 
     PDN->getPrimaryButton()->setButtonPress(cycleCb, this, ButtonInteraction::CLICK);
@@ -73,6 +75,43 @@ void ColorProfilePicker::onStateMounted(Device* PDN) {
 }
 
 void ColorProfilePicker::onStateLoop(Device* PDN) {
+    // Handle LED preview
+    if (ledPreviewRequested) {
+        int selected = profileList[cursorIndex];
+        if (selected >= 0) {
+            // Preview game-specific palette
+            const LEDState& preview = getColorProfileState(selected);
+            AnimationConfig config;
+            config.type = AnimationType::IDLE;
+            config.speed = 16;
+            config.curve = EaseCurve::LINEAR;
+            config.initialState = preview;
+            config.loopDelayMs = 0;
+            config.loop = true;
+            PDN->getLightManager()->startAnimation(config);
+        } else {
+            // DEFAULT: show role-based idle LED
+            AnimationConfig config;
+            if (player->isHunter()) {
+                config.type = AnimationType::IDLE;
+                config.speed = 16;
+                config.curve = EaseCurve::LINEAR;
+                config.initialState = HUNTER_IDLE_STATE_ALTERNATE;
+                config.loopDelayMs = 0;
+                config.loop = true;
+            } else {
+                config.type = AnimationType::VERTICAL_CHASE;
+                config.speed = 5;
+                config.curve = EaseCurve::ELASTIC;
+                config.initialState = BOUNTY_IDLE_STATE;
+                config.loopDelayMs = 1500;
+                config.loop = true;
+            }
+            PDN->getLightManager()->startAnimation(config);
+        }
+        ledPreviewRequested = false;
+    }
+
     if (displayIsDirty) {
         renderUi(PDN);
         displayIsDirty = false;
@@ -94,29 +133,45 @@ void ColorProfilePicker::renderUi(Device* PDN) {
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
-    PDN->getDisplay()->drawText("COLOR PALETTE", 10, 12);
 
-    // Show up to 3 items centered around cursor
+    // Header region
+    PDN->getDisplay()->drawText("COLOR PALETTE", 4, 10);
+    PDN->getDisplay()->drawBox(0, 14, 128, 1);  // Header separator
+
+    // Scrolling window: show 3 items centered on cursor
     int listSize = static_cast<int>(profileList.size());
-    int startIdx = cursorIndex;  // Start from cursor, show up to 3
     int visibleCount = (listSize < 3) ? listSize : 3;
 
+    // Calculate start index to keep cursor centered
+    int startIdx = cursorIndex;
+    if (listSize > 3) {
+        // Center cursor in 3-item window
+        startIdx = cursorIndex - 1;
+        if (startIdx < 0) startIdx = 0;
+        if (startIdx + 3 > listSize) startIdx = listSize - 3;
+    }
+
+    // Render visible items
     for (int i = 0; i < visibleCount; i++) {
-        int idx = (startIdx + i) % listSize;
-        int y = 28 + (i * 12);
+        int idx = startIdx + i;
+        int itemY = 24 + (i * 12);
         const char* name = getColorProfileName(profileList[idx], player->isHunter());
 
         if (idx == cursorIndex) {
-            char line[32];
-            snprintf(line, sizeof(line), "> %s", name);
-            PDN->getDisplay()->drawText(line, 5, y);
+            // Inverted highlight for selected item
+            PDN->getDisplay()->drawBox(0, itemY - 2, 128, 12);  // White background
+            PDN->getDisplay()->setDrawColor(0);  // Black text
+            PDN->getDisplay()->drawText(name, 8, itemY);
+            PDN->getDisplay()->setDrawColor(1);  // Restore white
         } else {
-            char line[32];
-            snprintf(line, sizeof(line), "  %s", name);
-            PDN->getDisplay()->drawText(line, 5, y);
+            // Regular text for unselected items
+            PDN->getDisplay()->drawText(name, 8, itemY);
         }
     }
 
-    PDN->getDisplay()->drawText("UP:next DOWN:equip", 5, 60);
+    // Footer separator and controls
+    PDN->getDisplay()->drawBox(0, 54, 128, 1);
+    PDN->getDisplay()->drawText("[UP] CYCLE  [DOWN] SELECT", 4, 62);
+
     PDN->getDisplay()->render();
 }
