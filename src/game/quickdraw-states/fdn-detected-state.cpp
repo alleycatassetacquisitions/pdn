@@ -17,6 +17,10 @@
 #include "device/device-types.hpp"
 #include <cstdint>
 
+#ifdef NATIVE_BUILD
+#include "cli/cli-serial-broker.hpp"
+#endif
+
 static const char* TAG = "FdnDetected";
 
 FdnDetected::FdnDetected(Player* player, DifficultyScaler* scaler) :
