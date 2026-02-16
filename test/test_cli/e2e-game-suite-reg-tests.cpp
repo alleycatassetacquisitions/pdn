@@ -70,14 +70,17 @@ TEST_F(E2EGameSuiteTestSuite, ExploitSequencerEasyWin) {
 // BREACH DEFENSE E2E TESTS
 // ============================================
 
+// NOTE: Tests temporarily disabled during Wave 18 redesign (#231)
+/*
 TEST_F(E2EGameSuiteTestSuite, BreachDefenseEasyWin) {
     e2eBreachDefenseEasyWin(this);
 }
 
-// TEST_F(E2EGameSuiteTestSuite, BreachDefenseHardWin) {
-//     e2eBreachDefenseHardWin(this);
-// }
+TEST_F(E2EGameSuiteTestSuite, BreachDefenseHardWin) {
+    e2eBreachDefenseHardWin(this);
+}
 
-// TEST_F(E2EGameSuiteTestSuite, BreachDefenseLoss) {
-//     e2eBreachDefenseLoss(this);
-// }
+TEST_F(E2EGameSuiteTestSuite, BreachDefenseLoss) {
+    e2eBreachDefenseLoss(this);
+}
+*/

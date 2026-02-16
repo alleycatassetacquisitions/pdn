@@ -5,45 +5,26 @@ void BreachDefense::populateStateMap() {
     seedRng(config.rngSeed);
 
     BreachDefenseIntro* intro       = new BreachDefenseIntro(this);
-    BreachDefenseShow* show         = new BreachDefenseShow(this);
     BreachDefenseGameplay* gameplay = new BreachDefenseGameplay(this);
-    BreachDefenseEvaluate* evaluate = new BreachDefenseEvaluate(this);
     BreachDefenseWin* win           = new BreachDefenseWin(this);
     BreachDefenseLose* lose         = new BreachDefenseLose(this);
 
-    // Intro -> Show
+    // Intro -> Gameplay (combo starts)
     intro->addTransition(
         new StateTransition(
-            std::bind(&BreachDefenseIntro::transitionToShow, intro),
-            show));
-
-    // Show -> Gameplay
-    show->addTransition(
-        new StateTransition(
-            std::bind(&BreachDefenseShow::transitionToGameplay, show),
+            std::bind(&BreachDefenseIntro::transitionToGameplay, intro),
             gameplay));
 
-    // Gameplay -> Evaluate
+    // Gameplay -> Win or Lose (combo ends)
     gameplay->addTransition(
         new StateTransition(
-            std::bind(&BreachDefenseGameplay::transitionToEvaluate, gameplay),
-            evaluate));
-
-    // Evaluate -> Show (next threat), Win, or Lose
-    evaluate->addTransition(
-        new StateTransition(
-            std::bind(&BreachDefenseEvaluate::transitionToLose, evaluate),
-            lose));
-
-    evaluate->addTransition(
-        new StateTransition(
-            std::bind(&BreachDefenseEvaluate::transitionToWin, evaluate),
+            std::bind(&BreachDefenseGameplay::transitionToWin, gameplay),
             win));
 
-    evaluate->addTransition(
+    gameplay->addTransition(
         new StateTransition(
-            std::bind(&BreachDefenseEvaluate::transitionToShow, evaluate),
-            show));
+            std::bind(&BreachDefenseGameplay::transitionToLose, gameplay),
+            lose));
 
     // Standalone mode: win/lose loop back to intro for replay
     win->addTransition(
@@ -56,11 +37,9 @@ void BreachDefense::populateStateMap() {
             std::bind(&BreachDefenseLose::transitionToIntro, lose),
             intro));
 
-    // Push order: intro(0), show(1), gameplay(2), evaluate(3), win(4), lose(5)
+    // Push order: intro(0), gameplay(1), win(2), lose(3)
     stateMap.push_back(intro);
-    stateMap.push_back(show);
     stateMap.push_back(gameplay);
-    stateMap.push_back(evaluate);
     stateMap.push_back(win);
     stateMap.push_back(lose);
 }

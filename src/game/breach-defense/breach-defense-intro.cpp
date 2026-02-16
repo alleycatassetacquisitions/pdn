@@ -13,7 +13,7 @@ BreachDefenseIntro::~BreachDefenseIntro() {
 }
 
 void BreachDefenseIntro::onStateMounted(Device* PDN) {
-    transitionToShowState = false;
+    transitionToGameplayState = false;
 
     LOG_I(TAG, "Breach Defense intro");
 
@@ -44,15 +44,15 @@ void BreachDefenseIntro::onStateMounted(Device* PDN) {
 
 void BreachDefenseIntro::onStateLoop(Device* PDN) {
     if (introTimer.expired()) {
-        transitionToShowState = true;
+        transitionToGameplayState = true;
     }
 }
 
 void BreachDefenseIntro::onStateDismounted(Device* PDN) {
     introTimer.invalidate();
-    transitionToShowState = false;
+    transitionToGameplayState = false;
 }
 
-bool BreachDefenseIntro::transitionToShow() {
-    return transitionToShowState;
+bool BreachDefenseIntro::transitionToGameplay() {
+    return transitionToGameplayState;
 }
