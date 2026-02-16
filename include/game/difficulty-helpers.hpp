@@ -52,21 +52,27 @@ inline SignalEchoConfig makeScaledSignalEchoConfig(float scale, bool managedMode
 }
 
 /*
- * Ghost Runner scaled config
- * Easy: speed=50ms, zone=35-65 (30 wide), rounds=4, misses=3
- * Hard: speed=30ms, zone=42-58 (16 wide), rounds=6, misses=1
+ * Ghost Runner scaled config (Memory Maze)
+ * Easy: 5x3 grid, 4 rounds, 3 lives, 4s preview
+ * Hard: 7x5 grid, 6 rounds, 1 life, 2.5s preview
  */
 inline GhostRunnerConfig makeScaledGhostRunnerConfig(float scale, bool managedMode = false) {
     const auto& easy = GHOST_RUNNER_EASY;
     const auto& hard = GHOST_RUNNER_HARD;
 
     GhostRunnerConfig config;
-    config.ghostSpeedMs = lerp(easy.ghostSpeedMs, hard.ghostSpeedMs, scale);
-    config.screenWidth = 100;  // constant
-    config.targetZoneStart = lerp(easy.targetZoneStart, hard.targetZoneStart, scale);
-    config.targetZoneEnd = lerp(easy.targetZoneEnd, hard.targetZoneEnd, scale);
+    config.cols = lerp(easy.cols, hard.cols, scale);
+    config.rows = lerp(easy.rows, hard.rows, scale);
     config.rounds = lerp(easy.rounds, hard.rounds, scale);
-    config.missesAllowed = lerp(easy.missesAllowed, hard.missesAllowed, scale);
+    config.lives = lerp(easy.lives, hard.lives, scale);
+    config.previewMazeMs = lerp(easy.previewMazeMs, hard.previewMazeMs, scale);
+    config.previewTraceMs = lerp(easy.previewTraceMs, hard.previewTraceMs, scale);
+    config.bonkFlashMs = lerp(easy.bonkFlashMs, hard.bonkFlashMs, scale);
+    config.startRow = 0;
+    config.startCol = 0;
+    config.exitRow = config.rows - 1;
+    config.exitCol = config.cols - 1;
+    config.previewShrinkPerRound = 0.8f;
     config.rngSeed = 0;
     config.managedMode = managedMode;
 

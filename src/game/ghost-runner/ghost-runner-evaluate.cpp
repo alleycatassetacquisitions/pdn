@@ -20,11 +20,24 @@ void GhostRunnerEvaluate::onStateMounted(Device* PDN) {
 
     auto& session = game->getSession();
     auto& config = game->getConfig();
-    auto& outcome = game->getOutcome();
 
-    LOG_I(TAG, "Round %d complete: P=%d G=%d M=%d Lives=%d Score=%d",
-          session.currentRound, session.perfectCount, session.goodCount,
-          session.missCount, session.livesRemaining, session.score);
+    LOG_I(TAG, "Round %d evaluation: Steps=%d Bonks=%d Lives=%d",
+          session.currentRound, session.stepsUsed, session.bonkCount,
+          session.livesRemaining);
+
+    // Calculate score for this round
+    // 100 per correct move (optimal path length)
+    int optimalMoves = session.solutionLength;
+    int roundScore = optimalMoves * 100;
+
+    // Bonus for zero bonks (perfect memory)
+    if (session.bonkCount == 0) {
+        roundScore += 500;
+        LOG_I(TAG, "Zero-bonk bonus: +500");
+    }
+
+    session.score += roundScore;
+    LOG_I(TAG, "Round score: %d, Total score: %d", roundScore, session.score);
 
     // Check for immediate loss (no lives remaining)
     if (session.livesRemaining <= 0) {
@@ -33,54 +46,17 @@ void GhostRunnerEvaluate::onStateMounted(Device* PDN) {
         return;
     }
 
-    // Round completed — advance
+    // Advance to next round
     session.currentRound++;
 
     // Check if all rounds completed
     if (session.currentRound >= config.rounds) {
-        // Evaluate win conditions based on difficulty
-        bool won = false;
-
-        int totalNotes = session.perfectCount + session.goodCount + session.missCount;
-        float perfectPercent = (totalNotes > 0) ?
-            (static_cast<float>(session.perfectCount) / totalNotes) : 0.0f;
-        float missPercent = (totalNotes > 0) ?
-            (static_cast<float>(session.missCount) / totalNotes) : 0.0f;
-
-        if (config.dualLaneChance == 0.0f) {
-            // EASY mode: every hit must be GOOD or better, PERFECTs cancel MISSes
-            int effectiveGood = session.goodCount + session.perfectCount;
-            int netMisses = session.missCount - session.perfectCount;
-            if (netMisses < 0) netMisses = 0;
-
-            won = (netMisses == 0 && effectiveGood >= session.goodCount);
-            LOG_I(TAG, "EASY eval: effectiveGood=%d netMisses=%d won=%d",
-                  effectiveGood, netMisses, won);
-        } else {
-            // HARD mode: 60%+ PERFECT, <=10% MISS
-            won = (perfectPercent >= 0.60f && missPercent <= 0.10f);
-            LOG_I(TAG, "HARD eval: P=%.2f%% M=%.2f%% won=%d",
-                  perfectPercent * 100, missPercent * 100, won);
-        }
-
-        if (won) {
-            transitionToWinState = true;
-        } else {
-            transitionToLoseState = true;
-        }
+        LOG_I(TAG, "All rounds complete - WIN! Final score: %d", session.score);
+        transitionToWinState = true;
         return;
     }
 
-    // Reset for next round
-    session.currentPattern.clear();
-    session.currentNoteIndex = 0;
-    session.upPressed = false;
-    session.downPressed = false;
-    session.upHoldActive = false;
-    session.downHoldActive = false;
-    session.upHoldNoteIndex = -1;
-    session.downHoldNoteIndex = -1;
-
+    // Continue to next round
     transitionToShowState = true;
 }
 
