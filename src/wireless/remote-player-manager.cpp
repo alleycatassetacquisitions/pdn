@@ -16,11 +16,12 @@ struct PlayerInfoPkt
 
 
 RemotePlayerManager::RemotePlayerManager(PeerCommsInterface* peerComms) :
+    peerComms(peerComms),
+    localPlayerInfo(nullptr),
     remotePlayerTTL(60000),
     broadcastInterval(5000),
     lastBroadcastTime(0)
 {
-    this->peerComms = peerComms;
 }
 
 void RemotePlayerManager::Update()
@@ -59,7 +60,7 @@ int RemotePlayerManager::BroadcastPlayerInfo()
 
     int ret = peerComms->sendData(peerComms->getGlobalBroadcastAddress(),
                                                      PktType::kPlayerInfoBroadcast,
-                                                     (uint8_t*)&broadcastPkt,
+                                                     reinterpret_cast<uint8_t*>(&broadcastPkt),
                                                      sizeof(broadcastPkt));
     lastBroadcastTime = SimpleTimer::getPlatformClock()->milliseconds();
     return ret;
@@ -93,7 +94,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
         return -1;
     }
 
-    const PlayerInfoPkt* pkt = (const PlayerInfoPkt*)data;
+    const PlayerInfoPkt* pkt = reinterpret_cast<const PlayerInfoPkt*>(data);
 
     //Find our remote player record in local list
     auto remotePlayer = std::find_if(remotePlayers.begin(), remotePlayers.end(),

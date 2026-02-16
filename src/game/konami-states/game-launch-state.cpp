@@ -105,7 +105,7 @@ std::unique_ptr<Snapshot> GameLaunchState::onStatePaused(Device* PDN) {
 
 void GameLaunchState::onStateResumed(Device* PDN, Snapshot* snapshot) {
     if (snapshot) {
-        auto* gameLaunchSnapshot = dynamic_cast<GameLaunchSnapshot*>(snapshot);
+        auto* gameLaunchSnapshot = static_cast<GameLaunchSnapshot*>(snapshot);
         if (gameLaunchSnapshot) {
             gameLaunched = gameLaunchSnapshot->gameLaunched;
             gameResumed = true;  // Mark as resumed so we can check outcome
@@ -180,7 +180,7 @@ void GameLaunchState::readOutcome(Device* PDN) {
     }
 
     StateMachine* stateMachineApp = PDN->getApp(StateId(appId));
-    MiniGame* completedApp = dynamic_cast<MiniGame*>(stateMachineApp);
+    MiniGame* completedApp = static_cast<MiniGame*>(stateMachineApp);
     if (completedApp) {
         const MiniGameOutcome& outcome = completedApp->getOutcome();
         playerWon = (outcome.result == MiniGameResult::WON);

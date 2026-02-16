@@ -27,7 +27,7 @@ struct RemotePlayer
 class RemotePlayerManager
 {
 public:
-    RemotePlayerManager(PeerCommsInterface* peerComms);
+    explicit RemotePlayerManager(PeerCommsInterface* peerComms);
 
     void Update();
 
