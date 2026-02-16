@@ -31,7 +31,7 @@ public:
   //  seeds the UUID instance with compile time constants
   //  plus the micros() value as run time component
   //  to be fairly random for every instance.
-  UUID(unsigned long initialSeed);
+  explicit UUID(unsigned long initialSeed);
 
   //  at least one seed value is mandatory, two is better.
   //  seed can be random or explicitly fixed.

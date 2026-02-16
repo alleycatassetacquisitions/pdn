@@ -20,7 +20,7 @@
 
 class LightManager {
 public:
-    LightManager(LightStrip& pdnLights);
+    explicit LightManager(LightStrip& pdnLights);
     ~LightManager();
 
     // Core functionality

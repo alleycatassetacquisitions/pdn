@@ -48,11 +48,11 @@ public:
     WirelessManager* getWirelessManager() override;
 
 protected:
-    PDN(DriverConfig& driverConfig);
+    explicit PDN(DriverConfig& driverConfig);
 
-    HWSerialWrapper* outputJack();
+    HWSerialWrapper* outputJack() override;
 
-    HWSerialWrapper* inputJack();
+    HWSerialWrapper* inputJack() override;
 
 private:
 
