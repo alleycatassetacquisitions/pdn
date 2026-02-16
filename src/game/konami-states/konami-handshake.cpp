@@ -100,10 +100,10 @@ int KonamiHandshake::calculateTargetState(FdnGameType gameType) {
     if (gameType == FdnGameType::KONAMI_CODE) {
         if (player->hasAllKonamiButtons()) {
             LOG_I(TAG, "KONAMI_CODE FDN - all buttons collected → CodeEntry");
-            return 29;  // CodeEntry state index
+            return 32;  // CodeEntry state index (KONAMI_CODE_ENTRY)
         } else {
             LOG_I(TAG, "KONAMI_CODE FDN - incomplete buttons → CodeRejected");
-            return 30;  // CodeRejected state index
+            return 34;  // CodeRejected state index (KONAMI_CODE_REJECTED)
         }
     }
 
