@@ -40,13 +40,13 @@ private:
 };
 
 /*
- * EchoShowSequence — Displays the sequence one signal at a time.
- * Each signal (UP or DOWN) is shown for displaySpeedMs.
- * After the last signal, transitions to EchoPlayerInput.
+ * EchoShowSequence — Displays the sequence with cumulative slot-based reveal.
+ * Arrows fill slots L→R and stay visible for spatial memorization.
+ * After full reveal + pause, all wipe clean → transition to EchoPlayerInput.
  *
- * Display: Large arrow (^ or v) + "Signal N of M"
- * LEDs: Chase up for UP, chase down for DOWN
- * Haptics: Light pulse per signal
+ * Display: Slot grid with progressive arrow reveal, progress bar
+ * LEDs: Cyan vertical chase per signal
+ * Haptics: 180 intensity pulse per signal, 200 intensity rumble at end
  */
 class EchoShowSequence : public State {
 public:
@@ -60,12 +60,22 @@ public:
 
 private:
     SignalEcho* game;
-    SimpleTimer signalTimer;
+    SimpleTimer phaseTimer;
     int currentSignalIndex = 0;
     bool transitionToPlayerInputState = false;
-    bool displayedCurrentSignal = false;
 
-    void displaySignal(Device* PDN, bool isUp, int index, int total);
+    enum class ShowPhase {
+        INITIAL_PAUSE,
+        REVEALING,
+        SIGNAL_HOLD,
+        MEMORIZE_PAUSE,
+        COMMIT_RUMBLE,
+        WIPE_CLEAN,
+        FINAL_PAUSE
+    };
+    ShowPhase phase = ShowPhase::INITIAL_PAUSE;
+
+    void renderSlots(Device* PDN);
 };
 
 /*
@@ -151,12 +161,14 @@ private:
 };
 
 /*
- * EchoLose — Defeat screen. Shows "SIGNAL LOST".
+ * EchoLose — Defeat screen with hieroglyphic scramble animation.
+ * Scramble: all slots rapidly cycle random arrows for 1.2s.
+ * Then shows "SIGNAL LOST".
  * Sets outcome to LOST. In standalone mode, transitions back to EchoIntro.
  * In managed mode, calls Device::returnToPreviousApp().
  *
  * LEDs: Red fade
- * Haptics: Long buzz
+ * Haptics: Max buzz during scramble
  */
 class EchoLose : public State {
 public:
@@ -171,7 +183,16 @@ public:
 
 private:
     SignalEcho* game;
-    SimpleTimer loseTimer;
-    static constexpr int LOSE_DISPLAY_MS = 3000;
+    SimpleTimer phaseTimer;
+    static constexpr int SCRAMBLE_DURATION_MS = 1200;
+    static constexpr int SCRAMBLE_FRAME_MS = 50;
+    static constexpr int MESSAGE_DISPLAY_MS = 1500;
     bool transitionToIntroState = false;
+
+    enum class LosePhase {
+        SCRAMBLING,
+        MESSAGE_DISPLAY
+    };
+    LosePhase phase = LosePhase::SCRAMBLING;
+    int scrambleFrameCount = 0;
 };

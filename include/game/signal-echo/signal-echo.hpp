@@ -11,12 +11,12 @@
  * SIGNAL_ECHO_EASY (default) and SIGNAL_ECHO_HARD.
  */
 struct SignalEchoConfig {
-    int sequenceLength = 4;
+    int sequenceLength = 7;
     int numSequences = 3;
-    int displaySpeedMs = 600;
+    int displaySpeedMs = 550;
     int timeLimitMs = 0;
     bool cumulative = false;
-    int allowedMistakes = 2;
+    int allowedMistakes = 0;
     unsigned long rngSeed = 0;
     bool managedMode = false;
 };
@@ -28,16 +28,16 @@ struct SignalEchoConfig {
  */
 struct SignalEchoSession {
     std::vector<bool> currentSequence;
+    std::vector<bool> playerInput;
     int currentRound = 0;
     int inputIndex = 0;
-    int mistakes = 0;
     int score = 0;
 
     void reset() {
         currentSequence.clear();
+        playerInput.clear();
         currentRound = 0;
         inputIndex = 0;
-        mistakes = 0;
         score = 0;
     }
 };

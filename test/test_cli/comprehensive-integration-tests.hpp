@@ -256,11 +256,11 @@ void signalEchoLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
 
     // Configure for guaranteed loss
     se->getConfig().displaySpeedMs = 10;
-    se->getConfig().allowedMistakes = 1;
+    se->getConfig().allowedMistakes = 0;
     se->getConfig().sequenceLength = 4;
     se->getSession().currentSequence = {true, true, true, true};
     se->getSession().inputIndex = 0;
-    se->getSession().mistakes = 0;
+    se->getSession().playerInput.clear();
 
     // Skip intro
     suite->tickWithTime(25, 100);
@@ -1450,9 +1450,12 @@ void allGamesHandleZeroScore(ComprehensiveIntegrationTestSuite* suite) {
     auto* se = suite->getSignalEcho();
     ASSERT_NE(se, nullptr);
 
-    // Force game to lose immediately
+    // Force game to lose with wrong sequence
     se->getConfig().allowedMistakes = 0;
-    se->getSession().mistakes = 1;
+    se->getConfig().sequenceLength = 2;
+    se->getSession().currentSequence = {true, true};
+    se->getSession().playerInput = {false, false};  // Wrong inputs
+    se->getSession().inputIndex = 2;
 
     suite->tickWithTime(50, 100);
 

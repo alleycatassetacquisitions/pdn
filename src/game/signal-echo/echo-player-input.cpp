@@ -28,6 +28,27 @@ void EchoPlayerInput::onStateMounted(Device* PDN) {
     PDN->getPrimaryButton()->setButtonPress(upCallback, this, ButtonInteraction::CLICK);
     PDN->getSecondaryButton()->setButtonPress(downCallback, this, ButtonInteraction::CLICK);
 
+    // Start idle LED animation
+    AnimationConfig ledConfig;
+    ledConfig.type = AnimationType::IDLE;
+    ledConfig.speed = 12;
+    ledConfig.curve = EaseCurve::LINEAR;
+    ledConfig.loop = true;
+
+    LEDState state;
+    LEDColor blue[4] = {
+        LEDColor(0, 100, 200),
+        LEDColor(0, 120, 220),
+        LEDColor(0, 140, 240),
+        LEDColor(0, 160, 255)
+    };
+    for (int i = 0; i < 9; i++) {
+        state.leftLights[i] = LEDState::SingleLEDState(blue[i % 4], 120);
+        state.rightLights[i] = LEDState::SingleLEDState(blue[i % 4], 120);
+    }
+    ledConfig.initialState = state;
+    PDN->getLightManager()->startAnimation(ledConfig);
+
     renderInputScreen(PDN);
 }
 
@@ -42,12 +63,6 @@ void EchoPlayerInput::onStateLoop(Device* PDN) {
 
     // Check if all inputs have been entered
     if (session.inputIndex >= seqLen) {
-        transitionToEvaluateState = true;
-        return;
-    }
-
-    // Check if mistakes exceeded allowed
-    if (session.mistakes > game->getConfig().allowedMistakes) {
         transitionToEvaluateState = true;
         return;
     }
@@ -72,18 +87,16 @@ void EchoPlayerInput::handleInput(bool isUp, Device* PDN) {
         return;  // Already completed input for this round
     }
 
-    bool expected = session.currentSequence[session.inputIndex];
+    // Store input (no immediate evaluation)
+    session.playerInput.push_back(isUp);
+    session.inputIndex++;
 
-    if (isUp == expected) {
-        // Correct input
-        session.score += 100;
-    } else {
-        // Wrong input — count mistake, advance anyway (locked in)
-        session.mistakes++;
+    // Light haptic feedback
+    if (PDN != nullptr) {
+        PDN->getHaptics()->setIntensity(100);
+        // Haptic will auto-off in next render cycle
     }
 
-    // Always advance to next position
-    session.inputIndex++;
     displayIsDirty = true;
 }
 
@@ -93,43 +106,45 @@ void EchoPlayerInput::renderInputScreen(Device* PDN) {
     int seqLen = static_cast<int>(session.currentSequence.size());
 
     PDN->getDisplay()->invalidateScreen();
+
+    // HUD
+    SignalEchoRenderer::drawHUD(PDN->getDisplay(), session.currentRound, config.numSequences);
+    SignalEchoRenderer::drawSeparators(PDN->getDisplay());
+
+    // Label
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("YOUR TURN", 25, 12);
+        ->drawText("RECALL", 48, 16);
 
-    // Build input progress string
-    std::string inputProgress;
-    for (int i = 0; i < seqLen; i++) {
-        if (i < session.inputIndex) {
-            bool expected = session.currentSequence[i];
-            if (expected) {
-                inputProgress += "^ ";
-            } else {
-                inputProgress += "v ";
-            }
+    // Slots with player input and active cursor
+    auto layout = SignalEchoRenderer::getLayout(seqLen);
+    int activeSlot = session.inputIndex < seqLen ? session.inputIndex : -1;
+
+    // Draw all slots
+    for (int i = 0; i < layout.count; i++) {
+        int x = layout.startX + i * (layout.slotWidth + layout.gap);
+        int y = layout.startY;
+
+        if (i == activeSlot) {
+            // Active cursor — inverted white box
+            SignalEchoRenderer::drawSlotActive(PDN->getDisplay(), x, y,
+                                               layout.slotWidth, layout.slotHeight);
+        } else if (i < session.inputIndex) {
+            // Player has input this slot
+            bool isUp = session.playerInput[i];
+            SignalEchoRenderer::drawSlotFilled(PDN->getDisplay(), x, y,
+                                               layout.slotWidth, layout.slotHeight, isUp);
         } else {
-            inputProgress += "_ ";
+            // Empty future slot
+            SignalEchoRenderer::drawSlotEmpty(PDN->getDisplay(), x, y,
+                                              layout.slotWidth, layout.slotHeight);
         }
     }
 
-    PDN->getDisplay()->drawText(inputProgress.c_str(), 5, 35);
+    // Controls
+    SignalEchoRenderer::drawControls(PDN->getDisplay(), true);
 
-    // Round counter + life indicator
-    int livesRemaining = config.allowedMistakes - session.mistakes;
-    if (livesRemaining < 0) livesRemaining = 0;
-
-    std::string roundInfo = "Round " + std::to_string(session.currentRound + 1) +
-                            "/" + std::to_string(config.numSequences);
-
-    std::string lives;
-    for (int i = 0; i < config.allowedMistakes; i++) {
-        if (i < livesRemaining) {
-            lives += "* ";  // Remaining life (filled)
-        } else {
-            lives += "o ";  // Lost life (empty)
-        }
-    }
-
-    PDN->getDisplay()->drawText(roundInfo.c_str(), 5, 55);
-    PDN->getDisplay()->drawText(lives.c_str(), 80, 55);
     PDN->getDisplay()->render();
+
+    // Turn off haptic after rendering (50ms pulse)
+    PDN->getHaptics()->off();
 }

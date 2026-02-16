@@ -16,8 +16,8 @@ void EchoWin::onStateMounted(Device* PDN) {
     auto& session = game->getSession();
 
     // Determine if this was a hard mode win
-    bool isHard = (game->getConfig().allowedMistakes <= 1 &&
-                   game->getConfig().sequenceLength >= 8);
+    bool isHard = (game->getConfig().sequenceLength >= 11 &&
+                   game->getConfig().numSequences >= 5);
 
     MiniGameOutcome winOutcome;
     winOutcome.result = MiniGameResult::WON;
@@ -28,7 +28,7 @@ void EchoWin::onStateMounted(Device* PDN) {
     // Display victory screen
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("ACCESS GRANTED", 5, 25);
+        ->drawText("YOU'RE IN", 30, 25);
 
     std::string scoreStr = "Score: " + std::to_string(session.score);
     PDN->getDisplay()->drawText(scoreStr.c_str(), 30, 50);
