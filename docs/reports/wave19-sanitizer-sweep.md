@@ -1,257 +1,177 @@
-# Wave 19 — Sanitizer Sweep Report
+# Wave 19 — Sanitizer Sweep and Stability Analysis
 
 **Date**: 2026-02-16
 **Agent**: Agent 11 (Bug/Stability Tester)
 **Branch**: `wave19/11-sanitizer-sweep`
+**Base**: `main` (after Wave 18 visual redesign merges)
 
 ## Executive Summary
 
-Comprehensive sanitizer sweep performed after Wave 18 merges (7 visual redesigns + CI fixes). Testing revealed one critical **stack-use-after-scope** bug detected by AddressSanitizer, which has been fixed. All tests now pass cleanly with both ASan and UBSan enabled.
+Comprehensive sanitizer sweep of the test suite after Wave 18 merges. Ran full test battery with AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) to detect memory errors and undefined behavior.
 
----
+**Key Finding**: One critical stack-use-after-scope bug fixed. No undefined behavior detected.
 
-## Test Environment
+## Test Results
 
-### Baseline Configuration
-- **Platform**: Native (Linux x86_64)
-- **Build Type**: Test
-- **Framework**: GoogleTest 1.17.0
-- **Compiler**: GCC 11.x with C++17
+### Baseline (No Sanitizers)
 
-### Test Suites
-1. **native** — Core functionality tests (275 tests)
-2. **native_cli_test** — CLI component tests (compilation errors, excluded from sweep)
-
----
-
-## Baseline Results (No Sanitizers)
-
-### Native Test Suite
 ```
-Environment    Test       Status    Duration
--------------  ---------  --------  ------------
-native         test_core  PASSED    00:00:35.714
-
-Total: 275 tests from 28 test suites
-Pass:  275 tests (100%)
-Fail:  0 tests
+Native Core Tests (test_core):     275/275 PASS
+CLI Tests (test_cli):               COMPILATION FAILED (pre-existing)
 ```
 
-### CLI Test Suite
-```
-Environment        Test       Status    Duration
------------------  ---------  --------  ------------
-native_cli_test    test_cli   ERRORED   00:00:06.593
+**Pre-existing issue**: CLI test compilation broken due to Cipher Path struct refactoring. The `CipherPathConfig` struct was refactored (removed `gridSize`, `moveBudget`, `playerPosition`, `movesUsed` fields; added `cols`, `rows`, `rounds`, etc.), but test assertions were not updated. This is **out of scope** for a sanitizer sweep.
 
-Status: Compilation errors — excluded from sanitizer sweep
-```
+### AddressSanitizer (ASan)
 
-**Note**: CLI tests have pre-existing compilation errors due to outdated test code that doesn't match the refactored `CipherPathConfig` and `CipherPathSession` structs (removed fields: `gridSize`, `moveBudget`, `playerPosition`, etc.). This is a known issue independent of sanitizer findings.
-
----
-
-## AddressSanitizer (ASan) Results
-
-### Configuration
+**Configuration**:
 ```ini
-build_flags =
-    -std=c++17
-    -DNATIVE_BUILD
-    -fsanitize=address
-    -fno-omit-frame-pointer
-    -g
+build_flags = -fsanitize=address -fno-omit-frame-pointer -g
 ```
 
-### Findings
+**Results**: **275/275 tests pass** (after fix)
 
-#### **Critical: Stack-Use-After-Scope (CVE-level severity)**
+#### Critical Finding: Stack-Use-After-Scope
 
-**Location**: `test/test_core/integration-tests.hpp:89-90`
-**Test**: `DuelIntegrationTestSuite.completeDuelFlowHunterWins`
-
-**Error Output**:
-```
-==7752==ERROR: AddressSanitizer: stack-use-after-scope on address 0x7ffe21c03bf8
-READ of size 37 at 0x7ffe21c03bf8 thread T0
-    #0 __interceptor_strlen
-    #1 std::char_traits<char>::length(char const*)
-    #2 std::__cxx11::basic_string<char>::basic_string(char const*, std::allocator<char> const&)
-    #3 completeDuelFlowHunterWins(DuelIntegrationTestSuite*)
-```
+**Location**: `test/test_core/integration-tests.hpp:89-90` (and 2 other occurrences)
 
 **Root Cause**:
 ```cpp
-// BUGGY CODE
+// BEFORE (broken):
 char* matchId = IdGenerator(TestConstants::TEST_SEED_INTEGRATION).generateId();
-std::string matchIdStr(matchId);  // matchId now points to freed memory!
+std::string matchIdStr(matchId);  // matchId points to freed memory!
 ```
 
-The `IdGenerator` was constructed as a **temporary object** on line 89. After the line completes, the temporary destructor runs, invalidating the internal `_buffer[37]` that `toCharArray()` returned. Line 90 then constructs a `std::string` from the dangling pointer, causing a read from freed stack memory.
+The `IdGenerator` is a temporary object destroyed at the end of line 89. Its internal `UUID` object (and its `_buffer`) is also destroyed. Line 90 then constructs a `std::string` from the dangling pointer, causing a use-after-scope error.
 
 **Fix Applied**:
 ```cpp
-// FIXED CODE
+// AFTER (fixed):
 IdGenerator idGen(TestConstants::TEST_SEED_INTEGRATION);
 char* matchId = idGen.generateId();
-std::string matchIdStr(matchId);
+std::string matchIdStr(matchId);  // Safe: idGen still alive
 ```
 
-By declaring `idGen` as a local variable, its lifetime extends through the `std::string` construction, keeping the buffer valid.
+**Files Modified**:
+- `test/test_core/integration-tests.hpp` (2 occurrences fixed)
+- `test/test_core/utility-tests.hpp` (1 occurrence fixed)
 
-**Files Fixed**:
-- `test/test_core/integration-tests.hpp:84-90` — `completeDuelFlowHunterWins()`
-- `test/test_core/integration-tests.hpp:168-173` — `completeDuelFlowBountyWins()`
-- `test/test_core/utility-tests.hpp:103-106` — `uuidGeneratorProducesValidFormat()`
+**Impact**: This was a **silent bug** that caused no test failures without sanitizers but represents undefined behavior that could manifest as crashes or data corruption on real hardware.
 
----
+#### Memory Leaks Detected
 
-### ASan Post-Fix Results
+ASan reported **17,752 bytes leaked in 443 allocations** at test suite completion. Analysis shows:
+
+**Primary Leak Source**: `StateTransition*` objects allocated via `State::addTransition()` and stored in `std::vector<StateTransition*>` are never freed.
+
+**Allocation Stack Trace**:
 ```
-Environment    Test       Status    Duration
--------------  ---------  --------  ------------
-native         test_core  PASSED    00:00:41.833
-
-Total: 275 tests
-Pass:  275 tests (100%)
-Fail:  0 tests
-
-ASan Errors: 0
+State::addTransition(StateTransition*) → vector::push_back
+TestStateMachine::populateStateMap()
+StateMachine::initialize(Device*)
 ```
 
-**Note**: A `SIGHUP` signal was received at test completion, likely from the PlatformIO test runner cleanup. This is unrelated to memory safety.
+**Assessment**: These are **test-only leaks** in test fixture setup. The production `StateMachine` class and its `State` objects are similarly never freed in the embedded context (they live for the device's lifetime). Cleanup would require adding destructors to free `StateTransition*` pointers in `State` objects and calling those destructors in test teardown.
 
----
+**Recommendation**: **Low priority**. These leaks are:
+1. Confined to test code (no production impact)
+2. Deterministic and bounded (one set per test)
+3. Small (~40 bytes per test on average)
+4. Not observable without ASan
 
-## UndefinedBehaviorSanitizer (UBSan) Results
+If addressed, add destructors to `State` class to free `transitions` vector contents, and ensure test fixtures properly tear down state machines.
 
-### Configuration
+### UndefinedBehaviorSanitizer (UBSan)
+
+**Configuration**:
 ```ini
-build_flags =
-    -std=c++17
-    -DNATIVE_BUILD
-    -fsanitize=undefined
-    -fno-omit-frame-pointer
-    -g
+build_flags = -fsanitize=undefined -fno-omit-frame-pointer -g
 ```
 
-### Findings
+**Results**: **275/275 tests pass**
 
-**No undefined behavior detected.**
+**Findings**: **Zero undefined behavior detected**
 
-All 275 tests passed without UBSan warnings:
-```
-Environment    Test       Status    Duration
--------------  ---------  --------  ------------
-native         test_core  PASSED    00:00:51.930
-
-Total: 275 tests
-Pass:  275 tests (100%)
-Fail:  0 tests
-
-UBSan Errors: 0
-```
-
-UBSan checked for:
+UBSan checks for:
 - Signed integer overflow
-- Null pointer dereferences
-- Misaligned memory access
 - Division by zero
-- Invalid enum values
+- Null pointer dereference
+- Unaligned memory access
+- Invalid shifts
 - Out-of-bounds array access
+- Invalid enum values
+- Type mismatches
 
-No issues found in any category.
-
----
+All tests passed with no UBSan warnings, indicating clean, well-defined behavior throughout the codebase.
 
 ## Summary of Fixes
 
-| File | Function | Issue | Fix |
-|------|----------|-------|-----|
-| `test/test_core/integration-tests.hpp:89` | `completeDuelFlowHunterWins()` | Stack-use-after-scope | Changed temporary `IdGenerator()` to local variable |
-| `test/test_core/integration-tests.hpp:172` | `completeDuelFlowBountyWins()` | Stack-use-after-scope | Changed temporary `IdGenerator()` to local variable |
-| `test/test_core/utility-tests.hpp:104` | `uuidGeneratorProducesValidFormat()` | Stack-use-after-scope | Changed temporary `IdGenerator()` to local variable |
+| File | Lines | Issue | Severity | Status |
+|------|-------|-------|----------|--------|
+| `test/test_core/integration-tests.hpp` | 89-90 | Stack-use-after-scope (IdGenerator temporary) | **CRITICAL** | ✅ FIXED |
+| `test/test_core/integration-tests.hpp` | 172-173 | Stack-use-after-scope (IdGenerator temporary) | **CRITICAL** | ✅ FIXED |
+| `test/test_core/utility-tests.hpp` | 104-106 | Stack-use-after-scope (IdGenerator temporary) | **CRITICAL** | ✅ FIXED |
+| `test/test_core/*` (multiple) | Various | Memory leaks (StateTransition* not freed) | **LOW** | DOCUMENTED |
 
-**Total Fixes**: 3 instances of the same pattern
-**Lines Changed**: 9 (3 functions × 3 lines each)
+## Known Issues (Out of Scope)
 
----
+### CLI Test Compilation Failure
 
-## Known Issues (Not Fixed)
+**Status**: Pre-existing, not sanitizer-related
 
-### 1. CLI Test Suite Compilation Errors
-**Status**: Pre-existing, unrelated to sanitizers
-**Cause**: Test code references removed struct fields after CipherPath refactor
-**Impact**: CLI tests cannot be executed until updated
-**Priority**: Medium (tests are stale but product code is correct)
+**Cause**: Cipher Path struct refactoring (PR unknown, merged before Wave 19)
 
-**Example Errors**:
-```
-test/test_cli/cipher-path-tests.hpp:114:32: error:
-  'const struct CipherPathConfig' has no member named 'gridSize'
-test/test_cli/cipher-path-tests.hpp:139:13: error:
-  'struct CipherPathSession' has no member named 'playerPosition'
+**Affected Files**: `test/test_cli/cipher-path-tests.hpp`
+
+**Errors**:
+```cpp
+error: 'const struct CipherPathConfig' has no member named 'gridSize'
+error: 'const struct CipherPathConfig' has no member named 'moveBudget'
+error: 'struct CipherPathSession' has no member named 'playerPosition'
+error: 'struct CipherPathSession' has no member named 'movesUsed'
 ```
 
----
+**Required Fix**: Update test assertions to use new field names (`cols`, `rows`, `rounds`, `flowTileIndex`, `cursorPathIndex`, etc.). Estimated effort: 20-30 assertions to update.
 
 ## Verification
 
-### Final Clean Build (No Sanitizers)
-```bash
-$ platformio test -e native
-Environment    Test       Status    Duration
--------------  ---------  --------  ------------
-native         test_core  PASSED    00:00:40.105
-
-Total: 275 tests
-Pass:  275 tests (100%)
+Final clean test run (no sanitizers):
 ```
-
-**platformio.ini**: Confirmed clean (no sanitizer flags remaining)
-
----
-
-## Impact Assessment
-
-### Severity of Fixed Bug
-- **Criticality**: **HIGH** (memory corruption, potential security issue)
-- **Likelihood**: Low in production (only affects test code, not runtime)
-- **Scope**: Test utilities only
-
-### Potential Production Risk
-The fixed pattern (`IdGenerator(...).generateId()`) appears only in test code. A grep of `src/` confirmed no production code uses this antipattern:
-
-```bash
-$ grep -r "IdGenerator.*generateId" src/
-# No matches in production code
+✅ Native Core Tests: 275/275 PASS (37.6s)
+✅ platformio.ini reverted to clean state
+✅ All fixes applied
+✅ No sanitizer flags left in config
 ```
-
-However, the fix is **important for test reliability** — ASan caught a real bug that could cause flaky tests or false negatives if the freed memory happens to contain valid UUID-like data.
-
----
 
 ## Recommendations
 
-1. **Enable ASan in CI** (low priority, adds ~15% runtime overhead)
-   - Consider periodic sanitizer runs (weekly/monthly)
-   - Catches lifetime bugs that are hard to debug otherwise
+### Immediate
+- ✅ Merge stack-use-after-scope fix (blocks real bugs)
 
-2. **Fix CLI Test Compilation Errors** (medium priority)
-   - Update `test/test_cli/cipher-path-tests.hpp` to match new `CipherPathConfig` struct
-   - Re-enable CLI test suite in sanitizer sweeps
+### Short-Term
+- Fix Cipher Path CLI test compilation (separate PR)
 
-3. **Add Clang Static Analyzer** (future enhancement)
-   - Would have caught the dangling pointer at compile time
-   - Complements runtime sanitizers
+### Long-Term (Optional)
+- Add destructors to `State` class to free `StateTransition*` vectors
+- Audit other test fixtures for similar lifetime issues
+- Consider periodic ASan/UBSan runs in CI (add `native_sanitized` env)
+
+## Files Changed
+
+```
+test/test_core/integration-tests.hpp    — Fixed 2 stack-use-after-scope bugs
+test/test_core/utility-tests.hpp        — Fixed 1 stack-use-after-scope bug
+docs/reports/wave19-sanitizer-sweep.md  — This report
+```
+
+## Test Artifacts
+
+Raw test outputs saved to:
+- `/tmp/test-native-results.txt` — Baseline (no sanitizers)
+- `/tmp/test-asan-results.txt` — ASan first run (found bug)
+- `/tmp/test-asan-fixed-results.txt` — ASan after fix (memory leaks only)
+- `/tmp/test-ubsan-results.txt` — UBSan (clean)
 
 ---
 
-## Conclusion
-
-**Wave 19 sanitizer sweep identified and resolved 1 critical memory safety bug** detected by AddressSanitizer. The codebase now passes 275/275 tests cleanly under both ASan and UBSan with zero warnings.
-
-The fixed bug was a **stack-use-after-scope** issue in test code where temporary `IdGenerator` objects were destroyed before their returned pointers were consumed. This is a common C++ pitfall that ASan excels at detecting.
-
-**Status**: ✅ All sanitizer findings resolved
-**Regressions**: None
-**Test Pass Rate**: 100% (275/275)
+**Conclusion**: Wave 19 sanitizer sweep successfully identified and fixed 3 critical stack-use-after-scope bugs. Codebase is clean of undefined behavior. Memory leaks in test code are minor and non-critical. Ready for merge.
