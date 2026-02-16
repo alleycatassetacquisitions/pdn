@@ -36,6 +36,14 @@ FdnDetected::~FdnDetected() {
 }
 
 void FdnDetected::onStateMounted(Device* PDN) {
+    // Guard: If we're resuming after launching a game, skip message parsing
+    // and transition directly to FdnComplete (onStateResumed already set the flag)
+    if (gameLaunched) {
+        LOG_I(TAG, "Resuming after game completion, transitioning to FdnComplete");
+        transitionToFdnCompleteState = true;
+        return;
+    }
+
     transitionToIdleState = false;
     transitionToFdnCompleteState = false;
     transitionToReencounterState = false;
