@@ -88,7 +88,7 @@ void konamiPuzzleRoutingWithAllButtons(KonamiPuzzleTestSuite* suite) {
     suite->device_.serialOutDriver->injectInput("*fdn:7:6\r");
     suite->tick(3);
 
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), FDN_DETECTED);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), FDN_DETECTED);
 
     // Simulate handshake (send fack)
     suite->device_.serialOutDriver->injectInput("*fack\r");
@@ -114,7 +114,7 @@ void konamiPuzzleNoRoutingWithoutAllButtons(KonamiPuzzleTestSuite* suite) {
     suite->device_.serialOutDriver->injectInput("*fdn:7:6\r");
     suite->tick(3);
 
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), FDN_DETECTED);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), FDN_DETECTED);
 
     // Simulate handshake
     suite->device_.serialOutDriver->injectInput("*fack\r");

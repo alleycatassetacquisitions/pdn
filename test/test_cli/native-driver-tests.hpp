@@ -979,7 +979,7 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     for (int i = 0; i < 10; i++) {
         suite->device_.pdn->loop();
     }
-    ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), WELCOME_MESSAGE);
+    ASSERT_EQ(suite->device_.game->getCurrentStateId(), WELCOME_MESSAGE);
 
     // Reboot
     suite->device_.httpClientDriver->setMockServerEnabled(true);
@@ -988,13 +988,13 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     suite->device_.lastStateId = -1;
     suite->device_.game->skipToState(suite->device_.pdn, 1);
 
-    ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), FETCH_USER_DATA);
+    ASSERT_EQ(suite->device_.game->getCurrentStateId(), FETCH_USER_DATA);
 
     // Run loops again — should transition to WelcomeMessage again
     for (int i = 0; i < 10; i++) {
         suite->device_.pdn->loop();
     }
-    ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), WELCOME_MESSAGE);
+    ASSERT_EQ(suite->device_.game->getCurrentStateId(), WELCOME_MESSAGE);
 }
 
 // ============================================
@@ -1136,5 +1136,5 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device_.lastStateId, -1);
 
     // Device should be at FetchUserData
-    ASSERT_EQ(suite->device_.game->getCurrentState()->getStateId(), FETCH_USER_DATA);
+    ASSERT_EQ(suite->device_.game->getCurrentStateId(), FETCH_USER_DATA);
 }

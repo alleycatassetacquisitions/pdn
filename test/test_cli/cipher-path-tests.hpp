@@ -92,7 +92,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     CipherPath* getCipherPath() {
@@ -156,32 +156,32 @@ void cipherPathIntroResetsSession(CipherPathTestSuite* suite) {
  * Test: Intro transitions to Show after timer expires.
  */
 void cipherPathIntroTransitionsToShow(CipherPathTestSuite* suite) {
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_INTRO);
 
     // Advance past 2s intro timer (use generous buffer)
     suite->tickWithTime(30, 100);
 
     // After intro timer, should be in Show (or Gameplay if Show timer also expired)
-    int stateId = suite->game_->getCurrentState()->getStateId();
+    int stateId = suite->game_->getCurrentStateId();
     ASSERT_TRUE(stateId == CIPHER_SHOW || stateId == CIPHER_GAMEPLAY)
         << "Expected Show or Gameplay after intro, got " << stateId;
 
     // More robust: skip to Intro, advance with enough time for intro but not show
     suite->game_->skipToState(suite->device_.pdn, 0);
     suite->tick(1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_INTRO);
 
     // Advance in small increments, checking for transition
     for (int i = 0; i < 30; i++) {
         suite->device_.clockDriver->advance(100);
         suite->device_.pdn->loop();
-        if (suite->game_->getCurrentState()->getStateId() != CIPHER_INTRO) {
+        if (suite->game_->getCurrentStateId() != CIPHER_INTRO) {
             break;
         }
     }
 
     // First transition from Intro should be to Show
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_SHOW);
 }
 
 // ============================================
@@ -196,7 +196,7 @@ void cipherPathShowDisplaysRoundInfo(CipherPathTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->tick(1);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_SHOW);
 }
 
 /*
@@ -228,12 +228,12 @@ void cipherPathShowTransitionsToGameplay(CipherPathTestSuite* suite) {
     // Skip to Show (index 1)
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->tick(1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_SHOW);
 
     // Advance past 1.5s show timer
     suite->tickWithTime(20, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_GAMEPLAY);
 }
 
 // ============================================
@@ -315,7 +315,7 @@ void cipherPathReachExitTriggersEvaluate(CipherPathTestSuite* suite) {
     suite->tick(2);
 
     // Evaluate routes through to Show (next round) since more rounds remain
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_SHOW);
 }
 
 /*
@@ -347,7 +347,7 @@ void cipherPathBudgetExhaustedTriggersEvaluate(CipherPathTestSuite* suite) {
     suite->tick(2);
 
     // Evaluate routes through to Lose since budget exhausted without reaching exit
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_LOSE);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_LOSE);
 }
 
 // ============================================
@@ -370,7 +370,7 @@ void cipherPathEvaluateRoutesToNextRound(CipherPathTestSuite* suite) {
     suite->tick(2);
 
     // Should route to Show for next round
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_SHOW);
     ASSERT_EQ(session.currentRound, 1);
 }
 
@@ -390,7 +390,7 @@ void cipherPathEvaluateRoutesToWin(CipherPathTestSuite* suite) {
     suite->tick(2);
 
     // Should route to Win
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_WIN);
 }
 
 /*
@@ -409,7 +409,7 @@ void cipherPathEvaluateRoutesToLose(CipherPathTestSuite* suite) {
     suite->tick(2);
 
     // Should route to Lose
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_LOSE);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_LOSE);
 }
 
 // ============================================
@@ -457,12 +457,12 @@ void cipherPathStandaloneLoopsToIntro(CipherPathTestSuite* suite) {
     // Skip to Win (index 4)
     suite->game_->skipToState(suite->device_.pdn, 4);
     suite->tick(1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_WIN);
 
     // Advance past win timer (3s)
     suite->tickWithTime(35, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), CIPHER_INTRO);
 }
 
 // ============================================
@@ -524,13 +524,13 @@ void cipherPathManagedModeReturns(CipherPathManagedTestSuite* suite) {
         }
 
         // Should be in Show state now
-        ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+        ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
         // Advance past show timer (1.5s)
         suite->tickWithTime(20, 100);
 
         // Should be in Gameplay state
-        ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_GAMEPLAY);
+        ASSERT_EQ(cp->getCurrentStateId(), CIPHER_GAMEPLAY);
 
         auto& sess = cp->getSession();
 
@@ -538,7 +538,7 @@ void cipherPathManagedModeReturns(CipherPathManagedTestSuite* suite) {
         // After each correct move, check if we're still in Gameplay.
         // When we reach the exit, the state transitions through Evaluate.
         for (int step = 0; step < config.gridSize; step++) {
-            if (cp->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+            if (cp->getCurrentStateId() != CIPHER_GAMEPLAY) {
                 break;
             }
             int correctDir = sess.cipher[sess.playerPosition];
@@ -554,7 +554,7 @@ void cipherPathManagedModeReturns(CipherPathManagedTestSuite* suite) {
     }
 
     // After last round, should be in Win
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_WIN);
     ASSERT_EQ(cp->getOutcome().result, MiniGameResult::WON);
 
     // Advance past win timer (3s) — managed mode returns to previous app
@@ -705,7 +705,7 @@ void cipherPathBudgetEqualsGridSize(CipherPathTestSuite* suite) {
     EXPECT_EQ(session.playerPosition, config.gridSize - 1);
     EXPECT_LE(session.movesUsed, config.moveBudget);
     suite->tick(3);
-    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_WIN);
+    EXPECT_EQ(suite->game_->getCurrentStateId(), CIPHER_WIN);
 }
 
 /*
@@ -733,7 +733,7 @@ void cipherPathReachExitMidGame(CipherPathTestSuite* suite) {
     suite->tick(3);
 
     // Should transition through Evaluate to Show (next round)
-    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    EXPECT_EQ(suite->game_->getCurrentStateId(), CIPHER_SHOW);
     EXPECT_EQ(session.currentRound, 2);
 }
 
@@ -781,7 +781,7 @@ void cipherPathHardModePerfectPlayRequired(CipherPathTestSuite* suite) {
         }
         suite->tick(2);
 
-        if (suite->game_->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+        if (suite->game_->getCurrentStateId() != CIPHER_GAMEPLAY) {
             break;
         }
     }
@@ -819,7 +819,7 @@ void cipherPathExitReachedAtBudgetLimit(CipherPathTestSuite* suite) {
     // Should win (exit reached takes precedence over budget exhaustion)
     EXPECT_EQ(session.playerPosition, config.gridSize - 1);
     EXPECT_EQ(session.movesUsed, config.moveBudget);
-    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_WIN);
+    EXPECT_EQ(suite->game_->getCurrentStateId(), CIPHER_WIN);
 }
 
 /*
@@ -849,7 +849,7 @@ void cipherPathWrongMoveAtBudgetLimit(CipherPathTestSuite* suite) {
     // Should lose (budget exhausted without reaching exit)
     EXPECT_EQ(session.playerPosition, 0);
     EXPECT_EQ(session.movesUsed, config.moveBudget);
-    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_LOSE);
+    EXPECT_EQ(suite->game_->getCurrentStateId(), CIPHER_LOSE);
 }
 
 #endif // NATIVE_BUILD

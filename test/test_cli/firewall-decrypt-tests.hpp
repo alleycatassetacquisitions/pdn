@@ -128,7 +128,7 @@ public:
     }
 
     int getStateId() {
-        return device_.game->getCurrentState()->getStateId();
+        return device_.game->getCurrentStateId();
     }
 
     FirewallDecrypt* getGame() {
@@ -409,7 +409,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     FirewallDecrypt* getFirewallDecrypt() {
@@ -568,7 +568,7 @@ public:
 void decryptScanTimeoutSetsFlag(DecryptTimeoutTestSuite* suite) {
     suite->tick(1);
     suite->tickWithTime(5, 500);  // Advance to Scan
-    ASSERT_EQ(suite->getGame()->getCurrentState()->getStateId(), DECRYPT_SCAN);
+    ASSERT_EQ(suite->getGame()->getCurrentStateId(), DECRYPT_SCAN);
 
     auto& session = suite->getGame()->getSession();
     ASSERT_FALSE(session.timedOut);
@@ -577,21 +577,21 @@ void decryptScanTimeoutSetsFlag(DecryptTimeoutTestSuite* suite) {
     suite->tickWithTime(60, 100);
 
     // Should have transitioned to Evaluate
-    ASSERT_EQ(suite->getGame()->getCurrentState()->getStateId(), DECRYPT_EVALUATE);
+    ASSERT_EQ(suite->getGame()->getCurrentStateId(), DECRYPT_EVALUATE);
 }
 
 // Test: Timeout causes evaluate to route to lose
 void decryptTimeoutRoutesToLose(DecryptTimeoutTestSuite* suite) {
     suite->tick(1);
     suite->tickWithTime(5, 500);  // Advance to Scan
-    ASSERT_EQ(suite->getGame()->getCurrentState()->getStateId(), DECRYPT_SCAN);
+    ASSERT_EQ(suite->getGame()->getCurrentStateId(), DECRYPT_SCAN);
 
     // Advance past timeout
     suite->tickWithTime(60, 100);
 
     // After evaluate processes timeout, should be in lose state
     suite->tick(3);
-    ASSERT_EQ(suite->getGame()->getCurrentState()->getStateId(), DECRYPT_LOSE);
+    ASSERT_EQ(suite->getGame()->getCurrentStateId(), DECRYPT_LOSE);
 }
 
 // Test: Timeout sets outcome to LOST
@@ -608,7 +608,7 @@ void decryptTimeoutSetsLoseOutcome(DecryptTimeoutTestSuite* suite) {
 void decryptSelectionBeforeTimeout(DecryptTimeoutTestSuite* suite) {
     suite->tick(1);
     suite->tickWithTime(5, 500);
-    ASSERT_EQ(suite->getGame()->getCurrentState()->getStateId(), DECRYPT_SCAN);
+    ASSERT_EQ(suite->getGame()->getCurrentStateId(), DECRYPT_SCAN);
 
     auto& session = suite->getGame()->getSession();
 

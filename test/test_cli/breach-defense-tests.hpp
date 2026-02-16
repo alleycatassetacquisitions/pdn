@@ -92,7 +92,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     BreachDefense* getBreachDefense() {
@@ -162,13 +162,13 @@ void breachDefenseIntroTransitionsToShow(BreachDefenseTestSuite* suite) {
     // Use skipToState to mount Intro cleanly with the platform clock set
     suite->game_->skipToState(suite->device_.pdn, 0);
     suite->tick(1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_INTRO);
 
     // Advance past 2s intro timer
     suite->tickWithTime(25, 100);
 
     // Should have transitioned to Show (1500ms timer), not yet to Gameplay
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_SHOW);
 }
 
 /*
@@ -178,7 +178,7 @@ void breachDefenseShowDisplaysThreatInfo(BreachDefenseTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);  // Show is index 1
     suite->tick(1);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_SHOW);
 }
 
 /*
@@ -187,12 +187,12 @@ void breachDefenseShowDisplaysThreatInfo(BreachDefenseTestSuite* suite) {
 void breachDefenseShowTransitionsToGameplay(BreachDefenseTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);  // Show
     suite->tick(1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_SHOW);
 
     // Advance past 1.5s show timer
     suite->tickWithTime(20, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_GAMEPLAY);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_GAMEPLAY);
 }
 
 /*
@@ -310,7 +310,7 @@ void breachDefenseEvaluateRoutesToNextThreat(BreachDefenseTestSuite* suite) {
     // Wait for eval to complete and transition
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_SHOW);
 }
 
 /*
@@ -335,7 +335,7 @@ void breachDefenseEvaluateRoutesToWin(BreachDefenseTestSuite* suite) {
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_WIN);
 }
 
 /*
@@ -365,7 +365,7 @@ void breachDefenseEvaluateRoutesToLose(BreachDefenseTestSuite* suite) {
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_LOSE);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_LOSE);
 }
 
 /*
@@ -394,12 +394,12 @@ void breachDefenseLoseSetsOutcome(BreachDefenseTestSuite* suite) {
 void breachDefenseStandaloneLoopsToIntro(BreachDefenseTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 4);  // Win
     suite->tick(1);
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_WIN);
 
     // Advance past 3s win timer
     suite->tickWithTime(35, 100);
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), BREACH_INTRO);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), BREACH_INTRO);
 }
 
 /*
@@ -454,7 +454,7 @@ void breachDefenseManagedModeReturns(BreachDefenseManagedTestSuite* suite) {
 
     // Should be in Gameplay by now (past intro 2s + show 1.5s = 3.5s, we advanced 4s)
     // The threat may or may not have arrived depending on exact timing
-    int stateId = bd->getCurrentState()->getStateId();
+    int stateId = bd->getCurrentStateId();
 
     // If still in Gameplay, force the threat through
     if (stateId == BREACH_GAMEPLAY) {
@@ -463,13 +463,13 @@ void breachDefenseManagedModeReturns(BreachDefenseManagedTestSuite* suite) {
     }
 
     // If in Evaluate, wait for eval timer
-    stateId = bd->getCurrentState()->getStateId();
+    stateId = bd->getCurrentStateId();
     if (stateId == BREACH_EVALUATE) {
         suite->tickWithTime(10, 100);  // Past 500ms eval timer
     }
 
     // Should be in Win now (or already past it)
-    stateId = bd->getCurrentState()->getStateId();
+    stateId = bd->getCurrentStateId();
     if (stateId == BREACH_WIN) {
         ASSERT_EQ(bd->getOutcome().result, MiniGameResult::WON);
         // Advance past win timer (3s)

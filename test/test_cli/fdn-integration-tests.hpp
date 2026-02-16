@@ -78,11 +78,11 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     int getFdnStateId() {
-        return fdn_.game->getCurrentState()->getStateId();
+        return fdn_.game->getCurrentStateId();
     }
 
     void connectCable() {
@@ -156,7 +156,7 @@ void fdnIntegrationTransitionsToSignalEcho(FdnIntegrationTestSuite* suite) {
     // Check Signal Echo via getApp:
     auto* echo = suite->player_.pdn->getApp(StateId(SIGNAL_ECHO_APP_ID));
     ASSERT_NE(echo, nullptr);
-    int echoStateId = echo->getCurrentState()->getStateId();
+    int echoStateId = echo->getCurrentStateId();
     ASSERT_GE(echoStateId, ECHO_INTRO);
 }
 
@@ -348,14 +348,14 @@ void fdnCompleteTransitionsToIdleAfterTimer(FdnCompleteTestSuite* suite) {
     suite->tick(1);
 
     // Should be at FdnComplete
-    int stateId = suite->device_.game->getCurrentState()->getStateId();
+    int stateId = suite->device_.game->getCurrentStateId();
     ASSERT_EQ(stateId, FDN_COMPLETE);
 
     // Wait for display timer (3 seconds)
     suite->tickWithTime(20, 200);
 
     // Should have transitioned back to Idle
-    stateId = suite->device_.game->getCurrentState()->getStateId();
+    stateId = suite->device_.game->getCurrentStateId();
     ASSERT_EQ(stateId, IDLE);
 }
 
@@ -563,7 +563,7 @@ void appSwitchingQuickdrawActiveAtStart(AppSwitchingTestSuite* suite) {
     ASSERT_NE(suite->device_.game, nullptr);
 
     // Its current state should be in the Quickdraw range (0-22)
-    int stateId = suite->device_.game->getCurrentState()->getStateId();
+    int stateId = suite->device_.game->getCurrentStateId();
     ASSERT_LE(stateId, 22);
 }
 
@@ -575,14 +575,14 @@ void appSwitchingReturnToPrevious(AppSwitchingTestSuite* suite) {
 
     // Get the Signal Echo app and check it's in the Echo state range
     auto* echo = suite->device_.pdn->getApp(StateId(SIGNAL_ECHO_APP_ID));
-    int stateId = echo->getCurrentState()->getStateId();
+    int stateId = echo->getCurrentStateId();
     ASSERT_GE(stateId, ECHO_INTRO);
 
     // Return to previous (Quickdraw)
     suite->device_.pdn->returnToPreviousApp();
     suite->tick(1);
 
-    stateId = suite->device_.game->getCurrentState()->getStateId();
+    stateId = suite->device_.game->getCurrentStateId();
     ASSERT_LT(stateId, ECHO_INTRO);
 }
 

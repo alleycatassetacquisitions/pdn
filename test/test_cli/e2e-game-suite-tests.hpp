@@ -73,7 +73,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     // Helper: trigger FDN handshake from Idle
@@ -158,7 +158,7 @@ void e2eGhostRunnerEasyWin(E2EGameSuiteTestSuite* suite) {
 
     // Should be in Win
     suite->tick(5);
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_WIN);
     ASSERT_EQ(gr->getOutcome().result, MiniGameResult::WON);
 
     // Advance past win timer (3s) → returns to FdnComplete
@@ -206,7 +206,7 @@ void e2eGhostRunnerHardWin(E2EGameSuiteTestSuite* suite) {
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickWithTime(5, 100);
 
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -249,7 +249,7 @@ void e2eGhostRunnerLoss(E2EGameSuiteTestSuite* suite) {
     suite->tickWithTime(5, 100);
 
     // Should be in Lose
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_LOSE);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -304,7 +304,7 @@ void e2eSpikeVectorEasyWin(E2EGameSuiteTestSuite* suite) {
     suite->tickWithTime(20, 50);
 
     // Should be in Win
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -357,7 +357,7 @@ void e2eSpikeVectorHardWin(E2EGameSuiteTestSuite* suite) {
     // Advance until wall arrives
     suite->tickWithTime(20, 50);
 
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -409,7 +409,7 @@ void e2eSpikeVectorLoss(E2EGameSuiteTestSuite* suite) {
     // Advance until wall arrives
     suite->tickWithTime(20, 50);
 
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_LOSE);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -447,7 +447,7 @@ void e2eCipherPathEasyWin(E2EGameSuiteTestSuite* suite) {
     // Play through all rounds
     for (int round = 0; round < config.rounds; round++) {
         // In Show
-        ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+        ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
         // Advance past show timer
         suite->tickWithTime(20, 100);
@@ -455,7 +455,7 @@ void e2eCipherPathEasyWin(E2EGameSuiteTestSuite* suite) {
         // In Gameplay — make correct moves until exit
         auto& sess = cp->getSession();
         for (int step = 0; step < config.gridSize; step++) {
-            if (cp->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+            if (cp->getCurrentStateId() != CIPHER_GAMEPLAY) {
                 break;
             }
             int correctDir = sess.cipher[sess.playerPosition];
@@ -469,7 +469,7 @@ void e2eCipherPathEasyWin(E2EGameSuiteTestSuite* suite) {
     }
 
     // Should be in Win
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -504,7 +504,7 @@ void e2eCipherPathHardWin(E2EGameSuiteTestSuite* suite) {
 
     // Play through all rounds
     for (int round = 0; round < config.rounds; round++) {
-        ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+        ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
         // Advance past show timer
         suite->tickWithTime(20, 100);
@@ -512,7 +512,7 @@ void e2eCipherPathHardWin(E2EGameSuiteTestSuite* suite) {
         // Make correct moves
         auto& sess = cp->getSession();
         for (int step = 0; step < config.gridSize; step++) {
-            if (cp->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+            if (cp->getCurrentStateId() != CIPHER_GAMEPLAY) {
                 break;
             }
             int correctDir = sess.cipher[sess.playerPosition];
@@ -525,7 +525,7 @@ void e2eCipherPathHardWin(E2EGameSuiteTestSuite* suite) {
         }
     }
 
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -557,7 +557,7 @@ void e2eCipherPathLoss(E2EGameSuiteTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // In Show
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
     // Advance past show timer
     suite->tickWithTime(20, 100);
@@ -575,7 +575,7 @@ void e2eCipherPathLoss(E2EGameSuiteTestSuite* suite) {
         suite->tick(2);
     }
 
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_LOSE);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -624,7 +624,7 @@ void e2eExploitSequencerEasyWin(E2EGameSuiteTestSuite* suite) {
     // Wait for evaluate and transition
     suite->tickWithTime(5, 100);
 
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_WIN);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -671,7 +671,7 @@ void e2eExploitSequencerHardWin(E2EGameSuiteTestSuite* suite) {
 
     suite->tickWithTime(5, 100);
 
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_WIN);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -713,7 +713,7 @@ void e2eExploitSequencerLoss(E2EGameSuiteTestSuite* suite) {
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(3);
 
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_LOSE);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -761,7 +761,7 @@ void e2eBreachDefenseEasyWin(E2EGameSuiteTestSuite* suite) {
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -808,7 +808,7 @@ void e2eBreachDefenseHardWin(E2EGameSuiteTestSuite* suite) {
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -857,7 +857,7 @@ void e2eBreachDefenseLoss(E2EGameSuiteTestSuite* suite) {
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_LOSE);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);

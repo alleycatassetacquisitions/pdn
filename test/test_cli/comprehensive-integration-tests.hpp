@@ -84,7 +84,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     // Helper: trigger FDN handshake from Idle
@@ -174,7 +174,7 @@ void signalEchoEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
     suite->tick(5);
 
     // Should be in Win
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_WIN);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_WIN);
 
     // Advance past win timer → FdnComplete
     suite->tickWithTime(35, 100);
@@ -229,7 +229,7 @@ void signalEchoHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* sui
     }
     suite->tick(5);
 
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_WIN);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -274,7 +274,7 @@ void signalEchoLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(5);
 
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_LOSE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -301,7 +301,7 @@ void signalEchoTimeoutEdgeCase(ComprehensiveIntegrationTestSuite* suite) {
 
     // Don't press any buttons, just wait for timeout (if implemented)
     // For now, just verify clean state
-    int stateId = se->getCurrentState()->getStateId();
+    int stateId = se->getCurrentStateId();
     ASSERT_TRUE(stateId == ECHO_PLAYER_INPUT || stateId == ECHO_LOSE || stateId == ECHO_WIN);
 }
 
@@ -331,7 +331,7 @@ void signalEchoRapidButtonPresses(ComprehensiveIntegrationTestSuite* suite) {
     suite->tick(5);
 
     // Game should handle gracefully (either ignore extras or count mistakes)
-    int stateId = se->getCurrentState()->getStateId();
+    int stateId = se->getCurrentStateId();
     ASSERT_TRUE(stateId == ECHO_PLAYER_INPUT || stateId == ECHO_LOSE || stateId == ECHO_WIN || stateId == ECHO_EVALUATE);
 }
 
@@ -380,7 +380,7 @@ void ghostRunnerEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
 
     // Should transition to Evaluate then Win
     suite->tick(5);
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -432,7 +432,7 @@ void ghostRunnerHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* su
     suite->tick(10);
 
     // Should be in Win (100% PERFECT = passes hard mode requirement)
-    int stateId = gr->getCurrentState()->getStateId();
+    int stateId = gr->getCurrentStateId();
     if (stateId != GHOST_WIN) {
         // Debug: print actual state and stats
         std::cerr << "State: " << stateId << " P:" << session.perfectCount
@@ -483,7 +483,7 @@ void ghostRunnerLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     session.livesRemaining = 0;
 
     suite->tick(5);  // Let evaluate trigger
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_LOSE);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -525,7 +525,7 @@ void ghostRunnerBoundaryPress(ComprehensiveIntegrationTestSuite* suite) {
 
     // Should register as hit (boundaries are inclusive)
     suite->tick(5);
-    int stateId = gr->getCurrentState()->getStateId();
+    int stateId = gr->getCurrentStateId();
     ASSERT_TRUE(stateId == GHOST_WIN || stateId == GHOST_EVALUATE);
 }
 
@@ -556,7 +556,7 @@ void ghostRunnerRapidPresses(ComprehensiveIntegrationTestSuite* suite) {
     }
 
     // Should handle gracefully - game continues or ends cleanly
-    int stateId = gr->getCurrentState()->getStateId();
+    int stateId = gr->getCurrentStateId();
     ASSERT_TRUE(stateId >= GHOST_INTRO && stateId <= GHOST_LOSE) << "Invalid state: " << stateId;
 }
 
@@ -605,7 +605,7 @@ void spikeVectorEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
     int speedMs = speedMsForLevel(sv->getConfig(), 0);
     suite->tickWithTime(160 / speedMs + 10, speedMs);
 
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -655,7 +655,7 @@ void spikeVectorHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* su
     int speedMs = speedMsForLevel(sv->getConfig(), 0);
     suite->tickWithTime(160 / speedMs + 10, speedMs);
 
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -704,7 +704,7 @@ void spikeVectorLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
 
     suite->tickWithTime(20, 50);
 
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_LOSE);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -739,7 +739,7 @@ void spikeVectorRapidCursorMovement(ComprehensiveIntegrationTestSuite* suite) {
     }
 
     // Should handle gracefully
-    int stateId = sv->getCurrentState()->getStateId();
+    int stateId = sv->getCurrentStateId();
     ASSERT_TRUE(stateId >= SPIKE_INTRO && stateId <= SPIKE_EVALUATE);
 }
 
@@ -787,7 +787,7 @@ void firewallDecryptEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suit
     suite->tickWithTime(10, 100);
 
     // Should be in Win
-    ASSERT_EQ(fd->getCurrentState()->getStateId(), DECRYPT_WIN);
+    ASSERT_EQ(fd->getCurrentStateId(), DECRYPT_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -836,7 +836,7 @@ void firewallDecryptHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite
 
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(fd->getCurrentState()->getStateId(), DECRYPT_WIN);
+    ASSERT_EQ(fd->getCurrentStateId(), DECRYPT_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -884,7 +884,7 @@ void firewallDecryptLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
 
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(fd->getCurrentState()->getStateId(), DECRYPT_LOSE);
+    ASSERT_EQ(fd->getCurrentStateId(), DECRYPT_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -923,14 +923,14 @@ void cipherPathEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
 
     // Play through all rounds
     for (int round = 0; round < config.rounds; round++) {
-        ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+        ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
         suite->tickWithTime(20, 100);
 
         // Make correct moves
         auto& sess = cp->getSession();
         for (int step = 0; step < config.gridSize; step++) {
-            if (cp->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+            if (cp->getCurrentStateId() != CIPHER_GAMEPLAY) {
                 break;
             }
             int correctDir = sess.cipher[sess.playerPosition];
@@ -943,7 +943,7 @@ void cipherPathEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
         }
     }
 
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -977,13 +977,13 @@ void cipherPathHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* sui
 
     // Play through all rounds
     for (int round = 0; round < config.rounds; round++) {
-        ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+        ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
         suite->tickWithTime(20, 100);
 
         auto& sess = cp->getSession();
         for (int step = 0; step < config.gridSize; step++) {
-            if (cp->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+            if (cp->getCurrentStateId() != CIPHER_GAMEPLAY) {
                 break;
             }
             int correctDir = sess.cipher[sess.playerPosition];
@@ -996,7 +996,7 @@ void cipherPathHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* sui
         }
     }
 
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_WIN);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -1027,7 +1027,7 @@ void cipherPathLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     // Advance past intro
     suite->tickWithTime(25, 100);
 
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_SHOW);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_SHOW);
 
     suite->tickWithTime(20, 100);
 
@@ -1044,7 +1044,7 @@ void cipherPathLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
         suite->tick(2);
     }
 
-    ASSERT_EQ(cp->getCurrentState()->getStateId(), CIPHER_LOSE);
+    ASSERT_EQ(cp->getCurrentStateId(), CIPHER_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -1092,7 +1092,7 @@ void exploitSequencerEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* sui
 
     suite->tickWithTime(5, 100);
 
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_WIN);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -1137,7 +1137,7 @@ void exploitSequencerHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuit
 
     suite->tickWithTime(5, 100);
 
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_WIN);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -1179,7 +1179,7 @@ void exploitSequencerLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(3);
 
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_LOSE);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -1219,7 +1219,7 @@ void exploitSequencerExactMarkerPress(ComprehensiveIntegrationTestSuite* suite) 
     suite->tickWithTime(5, 100);
 
     // Should be a perfect hit → Win
-    ASSERT_EQ(es->getCurrentState()->getStateId(), EXPLOIT_WIN);
+    ASSERT_EQ(es->getCurrentStateId(), EXPLOIT_WIN);
 }
 
 // ============================================
@@ -1261,7 +1261,7 @@ void breachDefenseEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite)
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -1305,7 +1305,7 @@ void breachDefenseHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* 
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -1353,7 +1353,7 @@ void breachDefenseLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     // Wait for eval timer
     suite->tickWithTime(10, 100);
 
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_LOSE);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_LOSE);
 
     // Advance past lose timer
     suite->tickWithTime(35, 100);
@@ -1395,7 +1395,7 @@ void breachDefenseShieldMovementDuringThreat(ComprehensiveIntegrationTestSuite* 
     suite->tickWithTime(10, 100);
 
     // Should win
-    ASSERT_EQ(bd->getCurrentState()->getStateId(), BREACH_WIN);
+    ASSERT_EQ(bd->getCurrentStateId(), BREACH_WIN);
 }
 
 #endif // Breach Defense tests disabled
@@ -1481,7 +1481,7 @@ void allGamesHandleZeroScore(ComprehensiveIntegrationTestSuite* suite) {
     suite->tickWithTime(50, 100);
 
     // Should handle zero score gracefully
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_LOSE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_LOSE);
     ASSERT_EQ(se->getOutcome().score, 0);
 }
 

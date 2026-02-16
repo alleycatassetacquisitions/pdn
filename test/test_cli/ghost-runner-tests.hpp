@@ -92,7 +92,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     GhostRunner* getGhostRunner() {
@@ -205,7 +205,7 @@ void ghostRunnerShowDisplaysRoundInfo(GhostRunnerTestSuite* suite) {
 void ghostRunnerShowTransitionsToGameplay(GhostRunnerTestSuite* suite) {
     suite->game_->skipToState(suite->device_.pdn, 1);  // index 1 = Show
 
-    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), GHOST_SHOW);
+    ASSERT_EQ(suite->game_->getCurrentStateId(), GHOST_SHOW);
 
     // Advance past 1.5s show timer
     suite->tickWithTime(20, 100);
@@ -480,13 +480,13 @@ void ghostRunnerManagedModeReturns(GhostRunnerManagedTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // Should be in Show state
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_SHOW);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_SHOW);
 
     // Advance past show timer (1.5s)
     suite->tickWithTime(20, 100);
 
     // Should be in Gameplay
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_GAMEPLAY);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_GAMEPLAY);
 
     // Move note into hit zone and press
     auto& session = gr->getSession();
@@ -499,7 +499,7 @@ void ghostRunnerManagedModeReturns(GhostRunnerManagedTestSuite* suite) {
 
     // Should be in Evaluate, then Win
     suite->tick(5);
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_WIN);
     ASSERT_EQ(gr->getOutcome().result, MiniGameResult::WON);
 
     // Advance past win timer (3s)
