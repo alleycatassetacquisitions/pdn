@@ -39,8 +39,9 @@ private:
 };
 
 /*
- * GhostRunnerShow — Brief round display. Shows current round info.
- * Transitions to GhostRunnerGameplay after SHOW_DURATION_MS.
+ * GhostRunnerShow — Preview phase. Generates maze, shows maze layout,
+ * then traces solution path with compressed directional sequence.
+ * Transitions to GhostRunnerGameplay after preview complete.
  */
 class GhostRunnerShow : public State {
 public:
@@ -54,17 +55,24 @@ public:
 
 private:
     GhostRunner* game;
-    SimpleTimer showTimer;
-    static constexpr int SHOW_DURATION_MS = 1500;
+    SimpleTimer mazePreviewTimer;
+    SimpleTimer tracePreviewTimer;
+    SimpleTimer traceStepTimer;
+    bool showingMaze = true;       // true = maze phase, false = trace phase
+    int traceIndex = 0;            // current step in solution trace
     bool transitionToGameplayState = false;
+
+    // Maze rendering helpers
+    void drawMaze(Device* PDN, bool showWalls);
+    void drawSolutionText(Device* PDN);
 };
 
 /*
- * GhostRunnerGameplay — The core gameplay state.
- * Ghost position advances on a timer (ghostSpeedMs per step).
- * Player presses PRIMARY button to attempt a catch.
- * Transitions to GhostRunnerEvaluate when player presses or ghost
- * reaches end of screen (timeout).
+ * GhostRunnerGameplay — Invisible maze navigation.
+ * PRIMARY button: Cycle direction clockwise (UP→RIGHT→DOWN→LEFT)
+ * SECONDARY button: Move in current direction
+ * Hitting invisible walls costs a life and flashes maze visible.
+ * Transitions to GhostRunnerEvaluate when exit reached or lives depleted.
  */
 class GhostRunnerGameplay : public State {
 public:
@@ -76,10 +84,20 @@ public:
     void onStateDismounted(Device* PDN) override;
     bool transitionToEvaluate();
 
+    bool bonkTriggered = false;  // Set in callback, processed in loop
+
 private:
     GhostRunner* game;
-    SimpleTimer ghostStepTimer;
+    SimpleTimer mazeFlashTimer;
+    SimpleTimer cursorFlashTimer;
     bool transitionToEvaluateState = false;
+    bool displayDirty = false;
+
+    // Maze navigation helpers
+    bool hasWall(int row, int col, int direction);
+    void triggerBonk(Device* PDN);
+    void drawMaze(Device* PDN, bool showWalls);
+    const char* getDirectionArrow(int dir);
 };
 
 /*

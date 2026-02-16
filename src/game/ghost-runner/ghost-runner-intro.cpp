@@ -32,7 +32,8 @@ void GhostRunnerIntro::onStateMounted(Device* PDN) {
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
         ->drawText("GHOST RUNNER", 10, 20)
-        ->drawText("Phase through.", 10, 45);
+        ->drawText("Navigate from", 10, 40)
+        ->drawText("memory.", 10, 50);
     PDN->getDisplay()->render();
 
     // Start idle LED animation

@@ -24,11 +24,11 @@ void GhostRunnerLose::onStateMounted(Device* PDN) {
     loseOutcome.hardMode = false;
     game->setOutcome(loseOutcome);
 
-    LOG_I(TAG, "GHOST CAUGHT — score=%d, strikes=%d", session.score, session.strikes);
+    LOG_I(TAG, "MAZE FAILED — score=%d, lives=%d", session.score, session.livesRemaining);
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("GHOST CAUGHT", 10, 30);
+        ->drawText("MAZE FAILED", 15, 30);
     PDN->getDisplay()->render();
 
     // Red fade LED

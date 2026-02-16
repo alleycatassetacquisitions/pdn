@@ -20,9 +20,8 @@ void GhostRunnerWin::onStateMounted(Device* PDN) {
     auto& session = game->getSession();
     auto& config = game->getConfig();
 
-    // Determine if this was a hard mode win
-    int zoneWidth = config.targetZoneEnd - config.targetZoneStart;
-    bool isHard = (config.missesAllowed <= 1 && zoneWidth <= 16);
+    // Determine if this was hard mode
+    bool isHard = (config.cols >= 7 && config.rows >= 5);
 
     MiniGameOutcome winOutcome;
     winOutcome.result = MiniGameResult::WON;
@@ -30,16 +29,16 @@ void GhostRunnerWin::onStateMounted(Device* PDN) {
     winOutcome.hardMode = isHard;
     game->setOutcome(winOutcome);
 
-    LOG_I(TAG, "RUN COMPLETE — score=%d, hardMode=%s",
+    LOG_I(TAG, "MAZE CLEARED — score=%d, hardMode=%s",
           session.score, isHard ? "true" : "false");
 
     // Display victory screen
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
-        ->drawText("RUN COMPLETE", 10, 25);
+        ->drawText("MAZE CLEARED", 15, 20);
 
     std::string scoreStr = "Score: " + std::to_string(session.score);
-    PDN->getDisplay()->drawText(scoreStr.c_str(), 30, 50);
+    PDN->getDisplay()->drawText(scoreStr.c_str(), 30, 40);
     PDN->getDisplay()->render();
 
     // Win LED animation
