@@ -4,6 +4,7 @@
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
 #include "game/konami-states/konami-handshake.hpp"
+#include "game/konami-metagame.hpp"
 #include "game/player.hpp"
 #include "game/fdn-game-type.hpp"
 
@@ -30,7 +31,7 @@ public:
 // KONAMI FDN ROUTING TESTS
 // ============================================
 
-// Test: KONAMI_CODE FDN with all buttons collected routes to CodeEntry (index 29)
+// Test: KONAMI_CODE FDN with all buttons collected routes to CodeEntry (index KMG_CODE_ENTRY=32)
 inline void konamiCodeWithAllButtonsRoutesToCodeEntry(KonamiHandshakeTestSuite* suite) {
     // Setup: Player has all 7 Konami buttons (0-6)
     for (uint8_t i = 0; i < 7; i++) {
@@ -47,10 +48,10 @@ inline void konamiCodeWithAllButtonsRoutesToCodeEntry(KonamiHandshakeTestSuite* 
     suite->konamiHandshake->onStateLoop(suite->device);
 
     EXPECT_TRUE(suite->konamiHandshake->shouldTransition());
-    EXPECT_EQ(suite->konamiHandshake->getTargetStateIndex(), 29);
+    EXPECT_EQ(suite->konamiHandshake->getTargetStateIndex(), KMG_CODE_ENTRY);
 }
 
-// Test: KONAMI_CODE FDN without all buttons routes to CodeRejected (index 30)
+// Test: KONAMI_CODE FDN without all buttons routes to CodeRejected (index KMG_CODE_REJECTED=34)
 inline void konamiCodeWithoutAllButtonsRoutesToCodeRejected(KonamiHandshakeTestSuite* suite) {
     // Setup: Player has only 3 buttons (incomplete)
     suite->player->unlockKonamiButton(0);
@@ -67,7 +68,7 @@ inline void konamiCodeWithoutAllButtonsRoutesToCodeRejected(KonamiHandshakeTestS
     suite->konamiHandshake->onStateLoop(suite->device);
 
     EXPECT_TRUE(suite->konamiHandshake->shouldTransition());
-    EXPECT_EQ(suite->konamiHandshake->getTargetStateIndex(), 30);
+    EXPECT_EQ(suite->konamiHandshake->getTargetStateIndex(), KMG_CODE_REJECTED);
 }
 
 // ============================================

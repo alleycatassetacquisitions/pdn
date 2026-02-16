@@ -4,6 +4,7 @@
 #pragma once
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <memory>
 
 #include "device-mock.hpp"
 #include "state/state-machine.hpp"
@@ -20,63 +21,70 @@ public:
     // Minimal implementation - just exists to satisfy StateMachine requirements
 };
 
-// Mock StateMachine for testing
-class MockStateMachine : public StateMachine {
-public:
-    explicit MockStateMachine(int appId) : StateMachine(appId) {
-        // Initialize with a dummy state so currentState is not nullptr
-        stateMap.push_back(new MockState());
-    }
-    
-    void populateStateMap() override {
-        // Already populated in constructor
-    }
-    
-    // Track lifecycle calls
+// Shared lifecycle counters that survive object deletion.
+// Device::shutdownApps() deletes registered apps, so tests that verify
+// destructor behavior need counters that outlive the mock objects.
+struct LifecycleCounters {
     int mountedCount = 0;
     int loopCount = 0;
     int dismountedCount = 0;
     int pausedCount = 0;
     int resumedCount = 0;
-    
     bool wasPaused = false;
-    
+};
+
+// Mock StateMachine for testing
+class MockStateMachine : public StateMachine {
+public:
+    // Shared counters survive deletion by Device::shutdownApps()
+    std::shared_ptr<LifecycleCounters> counters;
+
+    explicit MockStateMachine(int appId) : StateMachine(appId),
+        counters(std::make_shared<LifecycleCounters>()) {
+        // Initialize with a dummy state so currentState is not nullptr
+        stateMap.push_back(new MockState());
+    }
+
+    void populateStateMap() override {
+        // Already populated in constructor
+    }
+
     void onStateMounted(Device *PDN) override {
-        mountedCount++;
+        counters->mountedCount++;
         launched = true;
         // Call parent to properly initialize the state machine
         // This will call initialize() which sets currentState
-        if (mountedCount == 1) {
+        if (counters->mountedCount == 1) {
             StateMachine::onStateMounted(PDN);
         }
     }
-    
+
     void onStateLoop(Device *PDN) override {
-        loopCount++;
+        counters->loopCount++;
     }
-    
+
     void onStateDismounted(Device *PDN) override {
-        dismountedCount++;
+        counters->dismountedCount++;
     }
-    
+
     std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        pausedCount++;
-        wasPaused = true;
+        counters->pausedCount++;
+        counters->wasPaused = true;
         // Call parent to set the base class's paused flag
         return StateMachine::onStatePaused(PDN);
     }
-    
+
     void onStateResumed(Device *PDN, Snapshot* snapshot) override {
-        resumedCount++;
-        wasPaused = false;
+        counters->resumedCount++;
+        counters->wasPaused = false;
         // Call parent to clear the base class's paused flag
         StateMachine::onStateResumed(PDN, snapshot);
     }
-    
+
     // Expose protected members for testing
     bool hasLaunchedPublic() const { return launched; }
     bool isPausedPublic() const { return isPaused(); }
-    
+
 private:
     bool launched = false;
 };
@@ -107,6 +115,9 @@ public:
 // Regression test for #144: Device destructor must call onStateDismounted
 // on all registered apps to ensure active state cleanup runs
 void destructorDismountsActiveStateBeforeDeletion(DeviceTestSuite* suite) {
+    // Capture shared counters before device takes ownership and deletes the mocks
+    auto appOneCounters = suite->appOne->counters;
+
     AppConfig config;
     config[APP_ONE] = suite->appOne;
 
@@ -117,20 +128,26 @@ void destructorDismountsActiveStateBeforeDeletion(DeviceTestSuite* suite) {
     suite->device->loop();
 
     // Verify app is mounted and active
-    ASSERT_EQ(suite->appOne->mountedCount, 1);
-    ASSERT_EQ(suite->appOne->loopCount, 2);
-    ASSERT_EQ(suite->appOne->dismountedCount, 0);
+    ASSERT_EQ(appOneCounters->mountedCount, 1);
+    ASSERT_EQ(appOneCounters->loopCount, 2);
+    ASSERT_EQ(appOneCounters->dismountedCount, 0);
 
     // Delete device - this should call onStateDismounted on the active app
+    // Note: shutdownApps() deletes the mock objects, so we use shared counters
     delete suite->device;
     suite->device = nullptr; // Prevent double-delete in TearDown
 
-    // Verify dismount was called for the active app
-    ASSERT_EQ(suite->appOne->dismountedCount, 1);
+    // Verify dismount was called for the active app (via shared counter)
+    ASSERT_EQ(appOneCounters->dismountedCount, 1);
 }
 
 // Verify that destructor dismounts ALL apps, not just the active one
 void destructorDismountsAllRegisteredApps(DeviceTestSuite* suite) {
+    // Capture shared counters before device takes ownership and deletes the mocks
+    auto appOneCounters = suite->appOne->counters;
+    auto appTwoCounters = suite->appTwo->counters;
+    auto appThreeCounters = suite->appThree->counters;
+
     AppConfig config;
     config[APP_ONE] = suite->appOne;
     config[APP_TWO] = suite->appTwo;
@@ -143,17 +160,17 @@ void destructorDismountsAllRegisteredApps(DeviceTestSuite* suite) {
     suite->device->setActiveApp(APP_THREE);
 
     // Verify lifecycle before destruction
-    ASSERT_EQ(suite->appOne->mountedCount, 1);
-    ASSERT_EQ(suite->appTwo->mountedCount, 1);
-    ASSERT_EQ(suite->appThree->mountedCount, 1);
+    ASSERT_EQ(appOneCounters->mountedCount, 1);
+    ASSERT_EQ(appTwoCounters->mountedCount, 1);
+    ASSERT_EQ(appThreeCounters->mountedCount, 1);
 
     // Delete device
     delete suite->device;
     suite->device = nullptr;
 
-    // All apps should be dismounted
-    ASSERT_EQ(suite->appOne->dismountedCount, 1);
-    ASSERT_EQ(suite->appTwo->dismountedCount, 1);
-    ASSERT_EQ(suite->appThree->dismountedCount, 1);
+    // All apps should be dismounted (via shared counters)
+    ASSERT_EQ(appOneCounters->dismountedCount, 1);
+    ASSERT_EQ(appTwoCounters->dismountedCount, 1);
+    ASSERT_EQ(appThreeCounters->dismountedCount, 1);
 }
 
