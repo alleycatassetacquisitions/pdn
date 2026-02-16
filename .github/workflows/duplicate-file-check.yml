@@ -17,6 +17,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install gh CLI
+        run: |
+          if ! command -v gh &> /dev/null; then
+            echo "Installing gh CLI..."
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt-get update && sudo apt-get install -y gh || echo "::warning::Could not install gh CLI"
+          else
+            echo "gh CLI already installed"
+          fi
+
       - name: Get added files in this PR
         id: get-added-files
         run: |
@@ -50,6 +61,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CURRENT_PR: ${{ github.event.pull_request.number }}
         run: |
+          if ! command -v gh &> /dev/null; then
+            echo "::warning::gh CLI not available, skipping duplicate file check"
+            exit 0
+          fi
+
           ADDED_FILES="${{ steps.get-added-files.outputs.added_files }}"
 
           # Get list of all open PRs except this one
