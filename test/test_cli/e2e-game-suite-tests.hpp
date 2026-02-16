@@ -274,15 +274,15 @@ void e2eSpikeVectorEasyWin(E2EGameSuiteTestSuite* suite) {
     ASSERT_TRUE(sv->getConfig().managedMode);
 
     // Configure for easy win
-    sv->getConfig().trackLength = 3;
-    sv->getConfig().waves = 1;
+    sv->getConfig().levels = 1;
+    sv->getConfig().baseWallCount = 2;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
     // In Show — get gap position
     auto& sess = sv->getSession();
-    int gap = sess.gapPosition;
+    int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
     // Advance past show timer
     suite->tickWithTime(20, 100);
@@ -328,15 +328,15 @@ void e2eSpikeVectorHardWin(E2EGameSuiteTestSuite* suite) {
     ASSERT_NE(sv, nullptr);
 
     // Configure for easy win
-    sv->getConfig().trackLength = 3;
-    sv->getConfig().waves = 1;
+    sv->getConfig().levels = 1;
+    sv->getConfig().baseWallCount = 2;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
     // In Show — get gap
     auto& sess = sv->getSession();
-    int gap = sess.gapPosition;
+    int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
     // Advance past show timer
     suite->tickWithTime(20, 100);
@@ -378,8 +378,8 @@ void e2eSpikeVectorLoss(E2EGameSuiteTestSuite* suite) {
     ASSERT_NE(sv, nullptr);
 
     // Configure for guaranteed loss — wrong cursor position
-    sv->getConfig().trackLength = 3;
-    sv->getConfig().waves = 1;
+    sv->getConfig().levels = 1;
+    sv->getConfig().baseWallCount = 2;
     sv->getConfig().hitsAllowed = 0;
 
     // Advance past intro
@@ -387,7 +387,7 @@ void e2eSpikeVectorLoss(E2EGameSuiteTestSuite* suite) {
 
     // In Show — get gap
     auto& sess = sv->getSession();
-    int gap = sess.gapPosition;
+    int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
     // Advance past show timer
     suite->tickWithTime(20, 100);

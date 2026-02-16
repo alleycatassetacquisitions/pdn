@@ -1,7 +1,25 @@
 #pragma once
 
 #include "device/drivers/light-interface.hpp"
+#include "device/drivers/display.hpp"
 #include <cstdint>
+
+/*
+ * Spike Vector visual resources — XBM sprites and LED palettes
+ */
+
+// Right-pointing triangle cursor (5x7 XBM)
+static const uint8_t CURSOR_SPRITE_DATA[] = {
+    0x01, 0x03, 0x07, 0x0F, 0x07, 0x03, 0x01
+};
+
+static const Image CURSOR_SPRITE = Image(
+    CURSOR_SPRITE_DATA,
+    5,   // width
+    7,   // height
+    0,   // defaultStartX
+    0    // defaultStartY
+);
 
 /*
  * Spike Vector LED palettes — magenta/purple theme.

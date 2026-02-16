@@ -573,18 +573,18 @@ void spikeVectorEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
     ASSERT_TRUE(sv->getConfig().managedMode);
 
     // Configure for easy win
-    sv->getConfig().trackLength = 3;
-    sv->getConfig().waves = 1;
+    sv->getConfig().levels = 1;
+    sv->getConfig().baseWallCount = 2;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
-    // Get gap position during show
+    // Get first gap position during show
     auto& sess = sv->getSession();
-    int gap = sess.gapPosition;
+    int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
     // Advance past show
-    suite->tickWithTime(20, 100);
+    suite->tickWithTime(15, 100);
 
     // Move cursor to gap
     while (sess.cursorPosition > gap) {
@@ -594,8 +594,9 @@ void spikeVectorEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
         suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     }
 
-    // Wait for wall
-    suite->tickWithTime(20, 50);
+    // Wait for walls to pass
+    int speedMs = speedMsForLevel(sv->getConfig(), 0);
+    suite->tickWithTime(160 / speedMs + 10, speedMs);
 
     ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
 
@@ -624,17 +625,17 @@ void spikeVectorHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* su
     auto* sv = suite->getSpikeVector();
     ASSERT_NE(sv, nullptr);
 
-    sv->getConfig().trackLength = 3;
-    sv->getConfig().waves = 1;
+    sv->getConfig().levels = 1;
+    sv->getConfig().baseWallCount = 2;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
     auto& sess = sv->getSession();
-    int gap = sess.gapPosition;
+    int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
     // Advance past show
-    suite->tickWithTime(20, 100);
+    suite->tickWithTime(15, 100);
 
     // Move to gap
     while (sess.cursorPosition > gap) {
@@ -644,7 +645,8 @@ void spikeVectorHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* su
         suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     }
 
-    suite->tickWithTime(20, 50);
+    int speedMs = speedMsForLevel(sv->getConfig(), 0);
+    suite->tickWithTime(160 / speedMs + 10, speedMs);
 
     ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
 
@@ -671,18 +673,18 @@ void spikeVectorLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     auto* sv = suite->getSpikeVector();
     ASSERT_NE(sv, nullptr);
 
-    sv->getConfig().trackLength = 3;
-    sv->getConfig().waves = 1;
+    sv->getConfig().levels = 1;
+    sv->getConfig().baseWallCount = 2;
     sv->getConfig().hitsAllowed = 0;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
     auto& sess = sv->getSession();
-    int gap = sess.gapPosition;
+    int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
     // Advance past show
-    suite->tickWithTime(20, 100);
+    suite->tickWithTime(15, 100);
 
     // Move to WRONG position
     int wrongPos = (gap + 1) % sv->getConfig().numPositions;

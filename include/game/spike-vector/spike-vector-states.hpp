@@ -39,9 +39,10 @@ private:
 };
 
 /*
- * SpikeVectorShow — Wave info screen. Shows "Wave X of Y" and lives.
- * Generates gap position for this wave, resets wall.
- * Transitions to SpikeVectorGameplay after SHOW_DURATION_MS.
+ * SpikeVectorShow — Level info screen with progress pips.
+ * Shows level progress (●●●○○) with newly-completed pip flashing.
+ * Generates gap positions array for all walls in the level.
+ * Transitions to SpikeVectorGameplay after flash animation.
  */
 class SpikeVectorShow : public State {
 public:
@@ -56,15 +57,20 @@ public:
 private:
     SpikeVector* game;
     SimpleTimer showTimer;
-    static constexpr int SHOW_DURATION_MS = 1500;
+    SimpleTimer flashTimer;
+    int flashCount = 0;
+    bool flashState = false;
+    static constexpr int SHOW_DURATION_MS = 1000;  // Total duration for flash sequence
+    static constexpr int FLASH_INTERVAL_MS = 150;  // Toggle interval
     bool transitionToGameplayState = false;
 };
 
 /*
- * SpikeVectorGameplay — Active dodging. Wall advances on timer.
+ * SpikeVectorGameplay — Side-scrolling wall gauntlet.
+ * Multi-wall formation slides left. Player dodges through gaps.
  * Primary button = move cursor UP (decrease position).
  * Secondary button = move cursor DOWN (increase position).
- * When wall reaches trackLength, transitions to SpikeVectorEvaluate.
+ * Collision detected inline per-wall. Transitions to Evaluate when all walls pass.
  */
 class SpikeVectorGameplay : public State {
 public:
@@ -79,15 +85,25 @@ public:
     SpikeVector* game;
 
 private:
-    SimpleTimer wallTimer;
+    SimpleTimer moveTimer;
+    SimpleTimer hitFlashTimer;
+    bool hitFlashActive = false;
+    int hitFlashCount = 0;
     bool transitionToEvaluateState = false;
+
+    // Rendering helpers
+    void renderFrame(Device* PDN);
+    void renderHUD(Device* PDN);
+    void renderGameArea(Device* PDN);
+    void renderControls(Device* PDN);
+    void handleCollisions(Device* PDN);
+    void triggerHitFeedback(Device* PDN);
 };
 
 /*
- * SpikeVectorEvaluate — Checks dodge result.
- * If cursor == gap: dodge (score += 100).
- * If cursor != gap: hit (hits++).
- * Routes to Show (next wave), Win (all waves cleared), or Lose (too many hits).
+ * SpikeVectorEvaluate — Level-complete logic.
+ * Checks if all levels completed (win), too many hits (lose), or continue (next level).
+ * Collision already handled inline during Gameplay — this just routes outcomes.
  */
 class SpikeVectorEvaluate : public State {
 public:
