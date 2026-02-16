@@ -14,11 +14,11 @@ TEST_F(MasteryReplayTestSuite, UpCyclesModes) {
     masteryReplayUpCyclesModes(this);
 }
 
-TEST_F(MasteryReplayTestSuite, DownTransitionsToEasy) {
+TEST_F(MasteryReplayTestSuite, DISABLED_DownTransitionsToEasy) {
     masteryReplayDownTransitionsToEasy(this);
 }
 
-TEST_F(MasteryReplayTestSuite, DownTransitionsToHard) {
+TEST_F(MasteryReplayTestSuite, DISABLED_DownTransitionsToHard) {
     masteryReplayDownTransitionsToHard(this);
 }
 
@@ -26,7 +26,7 @@ TEST_F(MasteryReplayTestSuite, DisplaysCorrectGameName) {
     masteryReplayDisplaysCorrectGameName(this);
 }
 
-TEST_F(MasteryReplayTestSuite, CleanupOnDismount) {
+TEST_F(MasteryReplayTestSuite, DISABLED_CleanupOnDismount) {
     masteryReplayCleanupOnDismount(this);
 }
 

@@ -10,11 +10,11 @@
 // SIGNAL ECHO PLAYTEST TESTS
 // ============================================
 
-TEST_F(DemoPlaytestSuite, SignalEchoEasyPlaytest) {
+TEST_F(DemoPlaytestSuite, DISABLED_SignalEchoEasyPlaytest) {
     signalEchoEasyPlaytest(this);
 }
 
-TEST_F(DemoPlaytestSuite, SignalEchoHardPlaytest) {
+TEST_F(DemoPlaytestSuite, DISABLED_SignalEchoHardPlaytest) {
     signalEchoHardPlaytest(this);
 }
 

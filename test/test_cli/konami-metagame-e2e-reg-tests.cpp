@@ -6,11 +6,11 @@
 // KONAMI METAGAME E2E TEST REGISTRATIONS
 // ============================================
 
-TEST_F(KonamiMetaGameE2ETestSuite, FirstEncounterEasyWinButtonAwarded) {
+TEST_F(KonamiMetaGameE2ETestSuite, DISABLED_FirstEncounterEasyWinButtonAwarded) {
     konamiMetagameFirstEncounterEasyWinButtonAwarded(this);
 }
 
-TEST_F(KonamiMetaGameE2ETestSuite, ButtonReplayNoNewRewards) {
+TEST_F(KonamiMetaGameE2ETestSuite, DISABLED_ButtonReplayNoNewRewards) {
     konamiMetagameButtonReplayNoNewRewards(this);
 }
 

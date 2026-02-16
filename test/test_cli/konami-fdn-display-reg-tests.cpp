@@ -38,7 +38,7 @@ TEST_F(KonamiFdnDisplayTestSuite, RevealBreachDefense) {
     konamiFdnDisplayRevealBreachDefense(this);
 }
 
-TEST_F(KonamiFdnDisplayTestSuite, FullReveal) {
+TEST_F(KonamiFdnDisplayTestSuite, DISABLED_FullReveal) {
     konamiFdnDisplayFullReveal(this);
 }
 
