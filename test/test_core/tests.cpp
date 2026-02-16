@@ -20,6 +20,12 @@
 #include "lifecycle-tests.hpp"
 #include "contract-tests.hpp"
 
+// Core utility tests
+#include "uuid-tests.hpp"
+#include "timer-tests.hpp"
+#include "difficulty-scaler-tests.hpp"
+#include "sequence-provider-tests.hpp"
+
 #if defined(ARDUINO)
 #include <Arduino.h>
 
