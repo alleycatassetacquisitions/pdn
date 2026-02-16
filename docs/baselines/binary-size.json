@@ -1,8 +1,26 @@
 {
-  "text": 4094229,
-  "data": 41232,
-  "bss": 157768,
-  "total": 4293229,
-  "timestamp": "2026-02-15",
-  "note": "Initial baseline from Wave 13"
+  "text": 4181574,
+  "data": 41488,
+  "bss": 158600,
+  "total": 4381662,
+  "timestamp": "2026-02-16",
+  "note": "Updated after Wave 18 visual redesigns (7 games)",
+  "previous": {
+    "text": 4094229,
+    "data": 41232,
+    "bss": 157768,
+    "total": 4293229,
+    "timestamp": "2026-02-15",
+    "note": "Wave 13 baseline"
+  },
+  "esp32": {
+    "flash_used": 2927702,
+    "flash_total": 3342336,
+    "flash_percent": 87.6,
+    "ram_used": 155848,
+    "ram_total": 327680,
+    "ram_percent": 47.6,
+    "firmware_size": 2928112,
+    "timestamp": "2026-02-16"
+  }
 }
