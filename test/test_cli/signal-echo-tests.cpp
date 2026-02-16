@@ -113,3 +113,27 @@ TEST_F(SignalEchoDifficultyTestSuite, LifeIndicator) {
 TEST_F(SignalEchoDifficultyTestSuite, WrongInputAdvances) {
     echoDiffWrongInputAdvances(this);
 }
+
+// ============================================
+// EDGE CASE TESTS (NEW)
+// ============================================
+
+TEST_F(SignalEchoTestSuite, MistakesBoundaryExactMatch) {
+    echoMistakesBoundaryExactMatch(this);
+}
+
+TEST_F(SignalEchoTestSuite, ButtonPressDuringIntroIgnored) {
+    echoButtonPressDuringIntroIgnored(this);
+}
+
+TEST_F(SignalEchoTestSuite, ButtonPressDuringShowIgnored) {
+    echoButtonPressDuringShowIgnored(this);
+}
+
+TEST_F(SignalEchoTestSuite, CumulativeModeMaxLength) {
+    echoCumulativeModeMaxLength(this);
+}
+
+TEST_F(SignalEchoTestSuite, ZeroLengthSequenceConfig) {
+    echoZeroLengthSequenceConfig(this);
+}

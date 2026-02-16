@@ -644,4 +644,212 @@ void cipherPathMoveFromStartBoundary(CipherPathTestSuite* suite) {
     EXPECT_EQ(session.movesUsed, 1) << "Moves used should be 1";
 }
 
+// ============================================
+// ADDITIONAL EDGE CASE TESTS (NEW)
+// ============================================
+
+/*
+ * Test: Multiple consecutive wrong moves accumulate without advancing position.
+ */
+void cipherPathMultipleConsecutiveWrongMoves(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.moveBudget = 10;
+    session.playerPosition = 0;
+    session.movesUsed = 0;
+    session.cipher[0] = 0;  // UP is correct
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Make 3 consecutive wrong moves (press DOWN when UP is correct)
+    for (int i = 0; i < 3; i++) {
+        suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        suite->tick(2);
+    }
+
+    EXPECT_EQ(session.playerPosition, 0) << "Position should not advance after wrong moves";
+    EXPECT_EQ(session.movesUsed, 3) << "Should have used 3 moves";
+    EXPECT_FALSE(session.lastMoveCorrect);
+}
+
+/*
+ * Test: Budget exactly equals gridSize allows perfect completion.
+ */
+void cipherPathBudgetEqualsGridSize(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.gridSize = 5;
+    config.moveBudget = 5;  // Exactly enough for perfect play
+    config.rounds = 1;
+    session.currentRound = 0;
+
+    suite->game_->skipToState(suite->device_.pdn, 1);  // Show
+    suite->tick(1);
+    suite->tickWithTime(20, 100);  // Advance to Gameplay
+
+    // Make perfect moves to reach exit
+    for (int pos = 0; pos < config.gridSize - 1; pos++) {
+        int correctDir = session.cipher[pos];
+        if (correctDir == 0) {
+            suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        } else {
+            suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        }
+        suite->tick(2);
+    }
+
+    // Should reach win state
+    EXPECT_EQ(session.playerPosition, config.gridSize - 1);
+    EXPECT_LE(session.movesUsed, config.moveBudget);
+    suite->tick(3);
+    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_WIN);
+}
+
+/*
+ * Test: Reaching exit position advances through evaluate to next round.
+ */
+void cipherPathReachExitMidGame(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.gridSize = 4;
+    config.rounds = 3;
+    session.currentRound = 1;  // Middle of game
+    session.playerPosition = config.gridSize - 2;
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Make one correct move to reach exit
+    int correctDir = session.cipher[session.playerPosition];
+    if (correctDir == 0) {
+        suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    } else {
+        suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    }
+    suite->tick(3);
+
+    // Should transition through Evaluate to Show (next round)
+    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_SHOW);
+    EXPECT_EQ(session.currentRound, 2);
+}
+
+/*
+ * Test: Hard mode with tight budget requires perfect play.
+ */
+void cipherPathHardModePerfectPlayRequired(CipherPathTestSuite* suite) {
+    auto& config = suite->game_->getConfig();
+
+    // Hard mode preset
+    config.gridSize = 10;
+    config.moveBudget = 14;  // Only 4 mistakes allowed
+    config.rounds = 1;
+
+    suite->game_->getSession().currentRound = 0;
+
+    suite->game_->skipToState(suite->device_.pdn, 1);  // Show
+    suite->tick(1);
+    suite->tickWithTime(20, 100);  // Advance to Gameplay
+
+    auto& session = suite->game_->getSession();
+
+    // Make 4 wrong moves, then perfect moves
+    for (int i = 0; i < 4; i++) {
+        int correctDir = session.cipher[session.playerPosition];
+        // Press wrong button intentionally
+        if (correctDir == 0) {
+            suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        } else {
+            suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        }
+        suite->tick(2);
+    }
+
+    EXPECT_EQ(session.movesUsed, 4);
+    EXPECT_EQ(session.playerPosition, 0);  // No progress
+
+    // Now make correct moves until budget exhausted or exit reached
+    while (session.movesUsed < config.moveBudget && session.playerPosition < config.gridSize - 1) {
+        int correctDir = session.cipher[session.playerPosition];
+        if (correctDir == 0) {
+            suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        } else {
+            suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+        }
+        suite->tick(2);
+
+        if (suite->game_->getCurrentState()->getStateId() != CIPHER_GAMEPLAY) {
+            break;
+        }
+    }
+
+    // Should reach exit with exactly the budget
+    EXPECT_EQ(session.playerPosition, config.gridSize - 1);
+}
+
+/*
+ * Test: Simultaneous exit reach and budget exhaustion (exit takes precedence).
+ */
+void cipherPathExitReachedAtBudgetLimit(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.gridSize = 5;
+    config.moveBudget = 10;
+    config.rounds = 1;
+    session.currentRound = 0;
+    session.playerPosition = config.gridSize - 2;  // One step from exit
+    session.movesUsed = config.moveBudget - 1;  // One move left
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Make final correct move that both reaches exit and exhausts budget
+    int correctDir = session.cipher[session.playerPosition];
+    if (correctDir == 0) {
+        suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    } else {
+        suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    }
+    suite->tick(3);
+
+    // Should win (exit reached takes precedence over budget exhaustion)
+    EXPECT_EQ(session.playerPosition, config.gridSize - 1);
+    EXPECT_EQ(session.movesUsed, config.moveBudget);
+    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_WIN);
+}
+
+/*
+ * Test: Wrong move at exact budget limit without reaching exit causes loss.
+ */
+void cipherPathWrongMoveAtBudgetLimit(CipherPathTestSuite* suite) {
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    config.gridSize = 5;
+    config.moveBudget = 3;
+    session.playerPosition = 0;
+    session.movesUsed = 2;  // One move left
+
+    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
+    suite->tick(1);
+
+    // Make wrong move that exhausts budget
+    int correctDir = session.cipher[0];
+    if (correctDir == 0) {
+        suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    } else {
+        suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    }
+    suite->tick(3);
+
+    // Should lose (budget exhausted without reaching exit)
+    EXPECT_EQ(session.playerPosition, 0);
+    EXPECT_EQ(session.movesUsed, config.moveBudget);
+    EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), CIPHER_LOSE);
+}
+
 #endif // NATIVE_BUILD
