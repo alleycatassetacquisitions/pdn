@@ -26,7 +26,7 @@ struct DebugPacket {
         memset(baseUrl, 0, sizeof(baseUrl));
     }
 
-    DebugPacket(int cmd, const char* wifiSsid = "", const char* wifiPassword = "", const char* url = "") : command(cmd) {
+    explicit DebugPacket(int cmd, const char* wifiSsid = "", const char* wifiPassword = "", const char* url = "") : command(cmd) {
         strncpy(ssid, wifiSsid, sizeof(ssid) - 1);
         strncpy(password, wifiPassword, sizeof(password) - 1);
         strncpy(baseUrl, url, sizeof(baseUrl) - 1);

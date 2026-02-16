@@ -1072,10 +1072,8 @@ private:
             // Easy mode
             if (perGame->easy.totalAttempts > 0) {
                 char buf[256];
-                float easyWinRate = (perGame->easy.totalAttempts > 0) ?
-                                    (100.0f * perGame->easy.wins / perGame->easy.totalAttempts) : 0.0f;
-                uint32_t easyAvg = (perGame->easy.totalAttempts > 0) ?
-                                   (perGame->easy.totalTimeMs / perGame->easy.totalAttempts) : 0;
+                float easyWinRate = 100.0f * perGame->easy.wins / perGame->easy.totalAttempts;
+                uint32_t easyAvg = perGame->easy.totalTimeMs / perGame->easy.totalAttempts;
                 uint32_t easyBest = perGame->easy.bestTimeMs;
 
                 snprintf(buf, sizeof(buf),
@@ -1090,10 +1088,8 @@ private:
             // Hard mode
             if (perGame->hard.totalAttempts > 0) {
                 char buf[256];
-                float hardWinRate = (perGame->hard.totalAttempts > 0) ?
-                                    (100.0f * perGame->hard.wins / perGame->hard.totalAttempts) : 0.0f;
-                uint32_t hardAvg = (perGame->hard.totalAttempts > 0) ?
-                                   (perGame->hard.totalTimeMs / perGame->hard.totalAttempts) : 0;
+                float hardWinRate = 100.0f * perGame->hard.wins / perGame->hard.totalAttempts;
+                uint32_t hardAvg = perGame->hard.totalTimeMs / perGame->hard.totalAttempts;
                 uint32_t hardBest = perGame->hard.bestTimeMs;
 
                 snprintf(buf, sizeof(buf),
