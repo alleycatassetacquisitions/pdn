@@ -81,20 +81,25 @@ inline GhostRunnerConfig makeScaledGhostRunnerConfig(float scale, bool managedMo
 
 /*
  * Spike Vector scaled config
- * Easy: speed=40ms, positions=5, waves=5, hits=3
- * Hard: speed=20ms, positions=7, waves=8, hits=1
+ * Easy: baseSpeed=1, positions=5, levels=5, hits=3
+ * Hard: baseSpeed=4, positions=7, levels=5, hits=1
  */
 inline SpikeVectorConfig makeScaledSpikeVectorConfig(float scale, bool managedMode = false) {
     const auto& easy = SPIKE_VECTOR_EASY;
     const auto& hard = SPIKE_VECTOR_HARD;
 
     SpikeVectorConfig config;
-    config.approachSpeedMs = lerp(easy.approachSpeedMs, hard.approachSpeedMs, scale);
-    config.trackLength = 100;  // constant
+    config.levels = 5;  // constant
+    config.baseWallCount = lerp(easy.baseWallCount, hard.baseWallCount, scale);
+    config.wallCountIncrement = lerp(easy.wallCountIncrement, hard.wallCountIncrement, scale);
+    config.baseSpeedLevel = lerp(easy.baseSpeedLevel, hard.baseSpeedLevel, scale);
+    config.speedLevelIncrement = lerp(easy.speedLevelIncrement, hard.speedLevelIncrement, scale);
+    config.baseMaxGapDistance = lerp(easy.baseMaxGapDistance, hard.baseMaxGapDistance, scale);
     config.numPositions = lerp(easy.numPositions, hard.numPositions, scale);
     config.startPosition = (config.numPositions / 2);  // always middle
-    config.waves = lerp(easy.waves, hard.waves, scale);
     config.hitsAllowed = lerp(easy.hitsAllowed, hard.hitsAllowed, scale);
+    config.wallWidth = 6;
+    config.wallSpacing = 14;
     config.rngSeed = 0;
     config.managedMode = managedMode;
 

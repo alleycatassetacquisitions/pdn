@@ -403,21 +403,21 @@ void spikeVectorEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     ASSERT_TRUE(sv->getConfig().managedMode);
 
     // Configure for guaranteed easy win
-    sv->getConfig().waves = 2;
+    sv->getConfig().levels = 2;
+    sv->getConfig().baseWallCount = 2;
     sv->getConfig().hitsAllowed = 5;
-    sv->getConfig().approachSpeedMs = 100;  // Slower for easy win
 
     // Advance past intro
     suite->tickWithTime(25, 100);
 
-    // Simulate 2 waves (configured)
-    for (int wave = 0; wave < 2; wave++) {
-        // Get gap position during show phase
+    // Simulate 2 levels (configured)
+    for (int level = 0; level < 2; level++) {
+        // Get first gap position during show phase
         auto& sess = sv->getSession();
-        int gap = sess.gapPosition;
+        int gap = sess.gapPositions.empty() ? 0 : sess.gapPositions[0];
 
         // Advance past show
-        suite->tickWithTime(20, 100);
+        suite->tickWithTime(15, 100);
 
         // Move cursor to gap position
         while (sess.cursorPosition > gap) {
@@ -429,8 +429,9 @@ void spikeVectorEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
             suite->tick(1);
         }
 
-        // Wait for wall to arrive
-        suite->tickWithTime(30, 50);
+        // Wait for walls to pass
+        int speedMs = speedMsForLevel(sv->getConfig(), level);
+        suite->tickWithTime(160 / speedMs + 10, speedMs);
     }
 
     // Should be in Win state

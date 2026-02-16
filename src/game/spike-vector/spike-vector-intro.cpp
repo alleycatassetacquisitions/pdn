@@ -29,7 +29,7 @@ void SpikeVectorIntro::onStateMounted(Device* PDN) {
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
         ->drawText("SPIKE VECTOR", 10, 20)
-        ->drawText("Dodge the grid.", 10, 45);
+        ->drawText("Weave the gauntlet.", 5, 45);
     PDN->getDisplay()->render();
 
     // Start idle LED animation

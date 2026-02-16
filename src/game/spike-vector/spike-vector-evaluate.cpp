@@ -20,33 +20,31 @@ void SpikeVectorEvaluate::onStateMounted(Device* PDN) {
     auto& session = game->getSession();
     auto& config = game->getConfig();
 
-    // Check if player dodged or got hit
-    if (session.cursorPosition == session.gapPosition) {
-        // Dodge — player was at the gap
-        session.score += 100;
-        LOG_I(TAG, "Dodge! Score: %d", session.score);
-    } else {
-        // Hit — player was not at the gap
-        session.hits++;
-        LOG_I(TAG, "Hit! Hits: %d/%d", session.hits, config.hitsAllowed);
-    }
+    // Collision detection already happened inline during Gameplay
+    // This state just routes to the next outcome
 
-    // Check for loss condition
+    LOG_I(TAG, "Level %d complete. Hits: %d/%d, Score: %d",
+          session.currentLevel + 1, session.hits, config.hitsAllowed, session.score);
+
+    // Check for loss condition (hits > allowed)
     if (session.hits > config.hitsAllowed) {
+        LOG_I(TAG, "Too many hits — routing to Lose");
         transitionToLoseState = true;
         return;
     }
 
-    // Advance wave
-    session.currentWave++;
+    // Advance to next level
+    session.currentLevel++;
 
-    // Check for win condition
-    if (session.currentWave >= config.waves) {
+    // Check for win condition (all levels completed)
+    if (session.currentLevel >= config.levels) {
+        LOG_I(TAG, "All levels complete — routing to Win");
         transitionToWinState = true;
         return;
     }
 
-    // Continue to next wave
+    // Continue to next level
+    LOG_I(TAG, "Advancing to level %d", session.currentLevel + 1);
     transitionToShowState = true;
 }
 

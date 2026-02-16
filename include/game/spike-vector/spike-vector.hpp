@@ -3,58 +3,127 @@
 #include "game/minigame.hpp"
 #include "game/spike-vector/spike-vector-states.hpp"
 #include <cstdlib>
+#include <vector>
 
 constexpr int SPIKE_VECTOR_APP_ID = 5;
 
+// Speed level to ms-per-pixel mapping (1-indexed, 0 unused)
+static constexpr int SPEED_TABLE[] = {
+    0,    // unused (1-indexed)
+    60,   // speed 1
+    50,   // speed 2
+    40,   // speed 3
+    35,   // speed 4
+    30,   // speed 5
+    25,   // speed 6
+    20,   // speed 7
+    15,   // speed 8
+};
+
 struct SpikeVectorConfig {
-    int approachSpeedMs = 40;     // ms per wall step (lower = faster)
-    int trackLength = 100;        // wall travels 0 to trackLength
-    int numPositions = 5;         // number of lane positions (0 to numPositions-1)
-    int startPosition = 2;        // player starts in middle
-    int waves = 5;                // total waves to survive
-    int hitsAllowed = 2;          // damage before losing
-    unsigned long rngSeed = 0;    // 0 = random, nonzero = deterministic
+    // Per-level scaling (5 levels per mode)
+    int levels = 5;
+    int baseWallCount = 5;          // walls on level 1
+    int wallCountIncrement = 1;     // additional walls per level (0 or 1)
+    int baseSpeedLevel = 1;         // speed level on level 1 (1-8)
+    int speedLevelIncrement = 1;    // speed increase per level
+    int baseMaxGapDistance = 2;     // max gap distance on level 1
+
+    // Fixed parameters
+    int numPositions = 5;           // lane count (5 easy, 7 hard)
+    int startPosition = 2;          // player starts in middle
+    int hitsAllowed = 3;            // damage before losing
+    int wallWidth = 6;              // pixels
+    int wallSpacing = 14;           // inter-wall gap in pixels
+
+    unsigned long rngSeed = 0;      // 0 = random, nonzero = deterministic
     bool managedMode = false;
 };
 
 struct SpikeVectorSession {
-    int cursorPosition = 2;       // current player position
-    int wallPosition = 0;         // current wall distance (0 = far, trackLength = arrived)
-    int gapPosition = 0;          // where the gap is this wave
-    int currentWave = 0;
+    int cursorPosition = 2;
+    int currentLevel = 0;           // 0-indexed (was currentWave)
     int hits = 0;
     int score = 0;
-    bool wallArrived = false;     // true when wall reaches end
+
+    // Per-level state (reset each level)
+    std::vector<int> gapPositions;  // gap position for each wall
+    int formationX = 128;           // current X offset of formation
+    int nextWallIndex = 0;          // which wall to evaluate next
+    bool levelComplete = false;
+
+    // Visual feedback
+    bool primaryPressed = false;
+    bool secondaryPressed = false;
+
     void reset() {
         cursorPosition = 2;
-        wallPosition = 0;
-        gapPosition = 0;
-        currentWave = 0;
+        currentLevel = 0;
         hits = 0;
         score = 0;
-        wallArrived = false;
+        gapPositions.clear();
+        formationX = 128;
+        nextWallIndex = 0;
+        levelComplete = false;
+        primaryPressed = false;
+        secondaryPressed = false;
     }
 };
 
+// Helper functions for level parameter derivation
+inline int wallsForLevel(const SpikeVectorConfig& c, int level) {
+    // Easy: 5,6,6,7,8  Hard: 8,9,10,11,12
+    // Spread increment across levels with rounding
+    int additionalWalls = (level * c.wallCountIncrement * 3) / (c.levels - 1);
+    return c.baseWallCount + additionalWalls;
+}
+
+inline int speedMsForLevel(const SpikeVectorConfig& c, int level) {
+    int speedLevel = c.baseSpeedLevel + (level * c.speedLevelIncrement);
+    // Clamp to valid range [1, 8]
+    if (speedLevel < 1) speedLevel = 1;
+    if (speedLevel > 8) speedLevel = 8;
+    return SPEED_TABLE[speedLevel];
+}
+
+inline int maxGapForLevel(const SpikeVectorConfig& c, int level) {
+    // Easy: 2,2,3,3,4 ramp. Hard: 6,6,6,6,6 flat (already at max)
+    if (c.baseMaxGapDistance >= c.numPositions - 1) {
+        return c.numPositions - 1;
+    }
+    int range = (c.numPositions - 1) - c.baseMaxGapDistance;  // room to grow
+    return c.baseMaxGapDistance + (level * range / (c.levels - 1));
+}
+
 inline SpikeVectorConfig makeSpikeVectorEasyConfig() {
     SpikeVectorConfig c;
-    c.approachSpeedMs = 40;
-    c.trackLength = 100;
+    c.levels = 5;
+    c.baseWallCount = 5;
+    c.wallCountIncrement = 1;       // 5,6,6,7,8 walls across levels
+    c.baseSpeedLevel = 1;           // speeds: 1,2,3,4,5
+    c.speedLevelIncrement = 1;
+    c.baseMaxGapDistance = 2;       // max gap: 2,2,3,3,4 across levels
     c.numPositions = 5;
     c.startPosition = 2;
-    c.waves = 5;
-    c.hitsAllowed = 3;    // generous
+    c.hitsAllowed = 3;
+    c.wallWidth = 6;
+    c.wallSpacing = 14;
     return c;
 }
 
 inline SpikeVectorConfig makeSpikeVectorHardConfig() {
     SpikeVectorConfig c;
-    c.approachSpeedMs = 20;       // faster walls
-    c.trackLength = 100;
-    c.numPositions = 7;           // more positions to track
+    c.levels = 5;
+    c.baseWallCount = 8;
+    c.wallCountIncrement = 1;       // 8,9,10,11,12 walls
+    c.baseSpeedLevel = 4;           // speeds: 4,5,6,7,8
+    c.speedLevelIncrement = 1;
+    c.baseMaxGapDistance = 6;       // full range always (numPositions-1)
+    c.numPositions = 7;
     c.startPosition = 3;
-    c.waves = 8;                  // more waves
-    c.hitsAllowed = 1;            // almost no margin
+    c.hitsAllowed = 1;
+    c.wallWidth = 6;
+    c.wallSpacing = 14;
     return c;
 }
 

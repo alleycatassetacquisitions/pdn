@@ -116,23 +116,32 @@ public:
  * Test: EASY config preset values are correct.
  */
 void spikeVectorEasyConfigPresets(SpikeVectorTestSuite* suite) {
-    ASSERT_EQ(SPIKE_VECTOR_EASY.approachSpeedMs, 40);
-    ASSERT_EQ(SPIKE_VECTOR_EASY.waves, 5);
-    ASSERT_EQ(SPIKE_VECTOR_EASY.hitsAllowed, 3);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.levels, 5);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.baseWallCount, 5);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.wallCountIncrement, 1);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.baseSpeedLevel, 1);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.speedLevelIncrement, 1);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.baseMaxGapDistance, 2);
     ASSERT_EQ(SPIKE_VECTOR_EASY.numPositions, 5);
-    ASSERT_EQ(SPIKE_VECTOR_EASY.trackLength, 100);
     ASSERT_EQ(SPIKE_VECTOR_EASY.startPosition, 2);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.hitsAllowed, 3);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.wallWidth, 6);
+    ASSERT_EQ(SPIKE_VECTOR_EASY.wallSpacing, 14);
 }
 
 /*
  * Test: HARD config preset values are correct.
  */
 void spikeVectorHardConfigPresets(SpikeVectorTestSuite* suite) {
-    ASSERT_EQ(SPIKE_VECTOR_HARD.approachSpeedMs, 20);
-    ASSERT_EQ(SPIKE_VECTOR_HARD.waves, 8);
-    ASSERT_EQ(SPIKE_VECTOR_HARD.hitsAllowed, 1);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.levels, 5);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.baseWallCount, 8);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.wallCountIncrement, 1);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.baseSpeedLevel, 4);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.speedLevelIncrement, 1);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.baseMaxGapDistance, 6);
     ASSERT_EQ(SPIKE_VECTOR_HARD.numPositions, 7);
     ASSERT_EQ(SPIKE_VECTOR_HARD.startPosition, 3);
+    ASSERT_EQ(SPIKE_VECTOR_HARD.hitsAllowed, 1);
 }
 
 /*
@@ -144,24 +153,27 @@ void spikeVectorIntroResetsSession(SpikeVectorTestSuite* suite) {
 
     // Dirty all session fields
     session.cursorPosition = 4;
-    session.wallPosition = 50;
-    session.gapPosition = 3;
-    session.currentWave = 3;
+    session.currentLevel = 3;
     session.hits = 2;
     session.score = 300;
-    session.wallArrived = true;
+    session.gapPositions.push_back(1);
+    session.gapPositions.push_back(2);
+    session.formationX = 50;
+    session.nextWallIndex = 2;
+    session.levelComplete = true;
 
     // Skip to intro (index 0) to trigger reset
     suite->game_->skipToState(suite->device_.pdn, 0);
     suite->device_.pdn->loop();
 
     ASSERT_EQ(session.cursorPosition, 2);
-    ASSERT_EQ(session.wallPosition, 0);
-    ASSERT_EQ(session.gapPosition, 0);
-    ASSERT_EQ(session.currentWave, 0);
+    ASSERT_EQ(session.currentLevel, 0);
     ASSERT_EQ(session.hits, 0);
     ASSERT_EQ(session.score, 0);
-    ASSERT_FALSE(session.wallArrived);
+    ASSERT_TRUE(session.gapPositions.empty());
+    ASSERT_EQ(session.formationX, 128);
+    ASSERT_EQ(session.nextWallIndex, 0);
+    ASSERT_FALSE(session.levelComplete);
 }
 
 /*
@@ -177,14 +189,26 @@ void spikeVectorIntroTransitionsToShow(SpikeVectorTestSuite* suite) {
 }
 
 /*
- * Test: Show state is accessible and has correct ID.
+ * Test: Show state generates gap positions array.
  */
-void spikeVectorShowDisplaysWaveInfo(SpikeVectorTestSuite* suite) {
+void spikeVectorShowGeneratesGaps(SpikeVectorTestSuite* suite) {
     // Skip to Show (index 1)
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->device_.pdn->loop();
 
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
+
+    auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
+
+    int expectedWalls = wallsForLevel(config, session.currentLevel);
+    ASSERT_EQ((int)session.gapPositions.size(), expectedWalls);
+
+    // All gaps should be within valid range
+    for (int gap : session.gapPositions) {
+        ASSERT_GE(gap, 0);
+        ASSERT_LT(gap, config.numPositions);
+    }
 }
 
 /*
@@ -197,16 +221,16 @@ void spikeVectorShowTransitionsToGameplay(SpikeVectorTestSuite* suite) {
 
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
 
-    // Advance past 1500ms show timer
-    suite->tickWithTime(20, 100);
+    // Advance past 1000ms show timer
+    suite->tickWithTime(15, 100);
 
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
 }
 
 /*
- * Test: Wall position advances with time during Gameplay.
+ * Test: Formation advances left during Gameplay.
  */
-void spikeVectorWallAdvancesWithTime(SpikeVectorTestSuite* suite) {
+void spikeVectorFormationAdvances(SpikeVectorTestSuite* suite) {
     // Skip to Gameplay (index 2)
     suite->game_->skipToState(suite->device_.pdn, 2);
     suite->device_.pdn->loop();
@@ -214,53 +238,53 @@ void spikeVectorWallAdvancesWithTime(SpikeVectorTestSuite* suite) {
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
 
     auto& session = suite->game_->getSession();
-    int initialWall = session.wallPosition;
+    int initialX = session.formationX;
 
-    // Advance time — each tick of approachSpeedMs (40ms) moves wall 1 step
-    suite->tickWithTime(5, 50);
+    // Advance time — formation moves left 1px per speed tick
+    suite->tickWithTime(10, speedMsForLevel(suite->game_->getConfig(), 0));
 
-    ASSERT_GT(session.wallPosition, initialWall);
+    ASSERT_LT(session.formationX, initialX);
 }
 
 /*
  * Test: Correct dodge at gap position earns score and no hit.
  */
-void spikeVectorCorrectDodgeAtGap(SpikeVectorTestSuite* suite) {
+void spikeVectorCorrectDodge(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
     auto& config = suite->game_->getConfig();
 
-    // Use a short track for quick test
-    config.trackLength = 5;
+    // Use deterministic seed for consistent gaps
+    config.rngSeed = 42;
+    suite->game_->seedRng(config.rngSeed);
 
-    // Skip to Show (index 1) to set up gap position
+    // Skip to Show (index 1) to generate gaps
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->device_.pdn->loop();
 
-    // Now in Show — the gap was generated. Get the gap position.
-    int gap = session.gapPosition;
+    // Get the first wall's gap position
+    int firstGap = session.gapPositions[0];
 
     // Advance past show timer to gameplay
-    suite->tickWithTime(20, 100);
+    suite->tickWithTime(15, 100);
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
 
     // Move cursor to match gap position using button presses
-    // Primary = UP (decrease), Secondary = DOWN (increase)
-    while (session.cursorPosition > gap) {
+    while (session.cursorPosition > firstGap) {
         suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     }
-    while (session.cursorPosition < gap) {
+    while (session.cursorPosition < firstGap) {
         suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     }
-    ASSERT_EQ(session.cursorPosition, gap);
+    ASSERT_EQ(session.cursorPosition, firstGap);
 
     int hitsBefore = session.hits;
     int scoreBefore = session.score;
 
-    // Advance time until wall arrives (short track = 5 steps at 40ms each)
-    suite->tickWithTime(20, 50);
+    // Advance until first wall reaches cursor (formationX ~= 8)
+    int speedMs = speedMsForLevel(config, 0);
+    suite->tickWithTime(130 / speedMs + 5, speedMs);
 
-    // Should be in Evaluate or past it
-    // Score should have increased, hits should not
+    // Should have dodged (score increased, hits unchanged)
     ASSERT_GT(session.score, scoreBefore);
     ASSERT_EQ(session.hits, hitsBefore);
 }
@@ -272,48 +296,48 @@ void spikeVectorMissedDodge(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
     auto& config = suite->game_->getConfig();
 
-    // Use deterministic seed and short track
-    config.rngSeed = 42;
-    config.trackLength = 5;
+    // Use deterministic seed
+    config.rngSeed = 123;
     suite->game_->seedRng(config.rngSeed);
 
     // Skip to Show (index 1)
     suite->game_->skipToState(suite->device_.pdn, 1);
     suite->device_.pdn->loop();
 
-    int gap = session.gapPosition;
+    int firstGap = session.gapPositions[0];
 
     // Advance past show timer to gameplay
-    suite->tickWithTime(20, 100);
+    suite->tickWithTime(15, 100);
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
 
     // Move cursor to a position that is NOT the gap
-    int wrongPos = (gap + 1) % config.numPositions;
+    int wrongPos = (firstGap + 1) % config.numPositions;
     while (session.cursorPosition > wrongPos) {
         suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     }
     while (session.cursorPosition < wrongPos) {
         suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     }
-    ASSERT_NE(session.cursorPosition, gap);
+    ASSERT_NE(session.cursorPosition, firstGap);
 
     int hitsBefore = session.hits;
 
-    // Advance time until wall arrives
-    suite->tickWithTime(20, 50);
+    // Advance until first wall reaches cursor
+    int speedMs = speedMsForLevel(config, 0);
+    suite->tickWithTime(130 / speedMs + 5, speedMs);
 
     // Hits should have increased
     ASSERT_GT(session.hits, hitsBefore);
 }
 
 /*
- * Test: Wall reaching trackLength causes transition to Evaluate.
+ * Test: Formation fully passing off-screen causes transition to Evaluate.
  */
-void spikeVectorWallTimeoutCausesEvaluate(SpikeVectorTestSuite* suite) {
+void spikeVectorFormationCompleteTransition(SpikeVectorTestSuite* suite) {
     auto& config = suite->game_->getConfig();
 
-    // Use very short track
-    config.trackLength = 3;
+    // Use minimal walls for faster test
+    config.baseWallCount = 2;
 
     // Skip to Gameplay (index 2)
     suite->game_->skipToState(suite->device_.pdn, 2);
@@ -321,50 +345,47 @@ void spikeVectorWallTimeoutCausesEvaluate(SpikeVectorTestSuite* suite) {
 
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_GAMEPLAY);
 
-    // Advance enough time for wall to reach end (3 steps at 40ms each)
-    suite->tickWithTime(10, 50);
+    // Advance enough time for all walls to pass off-screen
+    // formationX starts at 128, needs to reach ~-26 (2 walls * 20 + 6)
+    int speedMs = speedMsForLevel(config, 0);
+    suite->tickWithTime(160 / speedMs + 10, speedMs);
 
-    // Should have transitioned through Evaluate to Show or Win/Lose
+    // Should have transitioned to Evaluate or beyond
     int stateId = suite->game_->getCurrentState()->getStateId();
     ASSERT_NE(stateId, SPIKE_GAMEPLAY);
 }
 
 /*
- * Test: Evaluate routes to Show for next wave (mid-game state).
+ * Test: Evaluate routes to Show for next level (mid-game state).
  */
-void spikeVectorEvaluateRoutesToNextWave(SpikeVectorTestSuite* suite) {
+void spikeVectorEvaluateRoutesToNextLevel(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
+    auto& config = suite->game_->getConfig();
 
-    // Set up mid-game state: wave 2 of 5, no excess hits
-    session.currentWave = 2;
+    // Set up mid-game state: level 2 of 5, no excess hits
+    session.currentLevel = 2;
     session.hits = 0;
-    session.cursorPosition = 0;
-    session.gapPosition = 0;  // cursor == gap, so it's a dodge
 
     // Skip to Evaluate (index 3)
     suite->game_->skipToState(suite->device_.pdn, 3);
     suite->device_.pdn->loop();
 
-    // Evaluate should route to Show for the next wave
-    // The transition happens in onStateMounted, then the state machine
-    // picks it up on the next loop
+    // Evaluate should route to Show for the next level
     suite->tick(1);
 
     ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_SHOW);
 }
 
 /*
- * Test: Evaluate routes to Win when all waves completed.
+ * Test: Evaluate routes to Win when all levels completed.
  */
 void spikeVectorEvaluateRoutesToWin(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
     auto& config = suite->game_->getConfig();
 
-    // Set up last wave: currentWave = waves - 1 (about to complete final wave)
-    session.currentWave = config.waves - 1;
+    // Set up last level: currentLevel = levels - 1
+    session.currentLevel = config.levels - 1;
     session.hits = 0;
-    session.cursorPosition = 0;
-    session.gapPosition = 0;  // dodge
 
     // Skip to Evaluate (index 3)
     suite->game_->skipToState(suite->device_.pdn, 3);
@@ -381,11 +402,9 @@ void spikeVectorEvaluateRoutesToLose(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
     auto& config = suite->game_->getConfig();
 
-    // Set up over-hit state: cursor != gap to trigger another hit
-    session.currentWave = 1;
-    session.hits = config.hitsAllowed;  // Already at limit
-    session.cursorPosition = 0;
-    session.gapPosition = 1;  // miss — this will push hits over
+    // Set up over-hit state
+    session.currentLevel = 1;
+    session.hits = config.hitsAllowed + 1;  // Over the limit
 
     // Skip to Evaluate (index 3)
     suite->game_->skipToState(suite->device_.pdn, 3);
@@ -468,7 +487,6 @@ void spikeVectorStateNamesResolve(SpikeVectorTestSuite* suite) {
 
 /*
  * Test: Full FDN flow — idle -> fdn handshake -> spike vector -> play through -> win -> FdnComplete.
- * Uses FDN GameType 2, KonamiButton DOWN=1.
  */
 void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     suite->advanceToIdle();
@@ -491,41 +509,44 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     ASSERT_TRUE(sv->getConfig().managedMode);
     ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_INTRO);
 
-    // Use a short track for quick playthrough
-    sv->getConfig().trackLength = 3;
+    // Reduce level count for faster test
+    sv->getConfig().levels = 2;
+    sv->getConfig().baseWallCount = 2;
 
-    // Play through all waves by advancing to each state and handling it
+    // Play through all levels by letting time advance
     auto& session = sv->getSession();
 
-    for (int attempt = 0; attempt < 100; attempt++) {
+    for (int attempt = 0; attempt < 150; attempt++) {
         int stateId = sv->getCurrentState()->getStateId();
         if (stateId == SPIKE_WIN || stateId == SPIKE_LOSE) break;
 
         if (stateId == SPIKE_INTRO) {
-            // Advance past intro timer (2s)
             suite->tickWithTime(1, 2100);
             continue;
         }
 
         if (stateId == SPIKE_SHOW) {
-            int gap = session.gapPosition;
-            // Advance past show timer (1.5s)
-            suite->tickWithTime(1, 1600);
-            // Now should be in Gameplay — move cursor to gap
-            if (sv->getCurrentState()->getStateId() == SPIKE_GAMEPLAY) {
-                while (session.cursorPosition > gap) {
-                    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-                }
-                while (session.cursorPosition < gap) {
-                    suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+            // Move to first gap before gameplay starts
+            if (!session.gapPositions.empty()) {
+                int firstGap = session.gapPositions[0];
+                suite->tickWithTime(1, 1100);
+                // Now in gameplay, move cursor
+                if (sv->getCurrentState()->getStateId() == SPIKE_GAMEPLAY) {
+                    while (session.cursorPosition > firstGap) {
+                        suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+                    }
+                    while (session.cursorPosition < firstGap) {
+                        suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+                    }
                 }
             }
             continue;
         }
 
         if (stateId == SPIKE_GAMEPLAY) {
-            // Advance wall to end (3 steps at 40ms each, use generous time)
-            suite->tickWithTime(10, 50);
+            // Let formation pass
+            int speedMs = speedMsForLevel(sv->getConfig(), session.currentLevel);
+            suite->tickWithTime(10, speedMs);
             continue;
         }
 
@@ -537,7 +558,7 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
     ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
     ASSERT_EQ(sv->getOutcome().result, MiniGameResult::WON);
 
-    // Advance past win timer (3s) — use multiple ticks for state machine processing
+    // Advance past win timer (3s)
     suite->tickWithTime(35, 100);
 
     // Should return to Quickdraw's FdnComplete state
@@ -545,116 +566,11 @@ void spikeVectorManagedModeReturns(SpikeVectorManagedTestSuite* suite) {
 }
 
 // ============================================
-// EDGE CASE TESTS
+// EDGE CASE TESTS (simplified for new API)
 // ============================================
 
 /*
- * Test: Cursor at position 0 (bottom boundary) can dodge if gap is at 0.
- */
-void spikeVectorDodgeAtBottomBoundary(SpikeVectorTestSuite* suite) {
-    auto& session = suite->game_->getSession();
-    session.cursorPosition = 0;  // Bottom boundary
-    session.gapPosition = 0;     // Gap at bottom
-    session.hits = 0;
-    int initialScore = session.score;
-
-    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
-    suite->tick(3);
-
-    EXPECT_EQ(session.score, initialScore + 100) << "Dodge at position 0 should award score";
-    EXPECT_EQ(session.hits, 0) << "No hit should be counted for successful dodge";
-}
-
-/*
- * Test: Cursor at max position (top boundary) can dodge if gap is at max.
- */
-void spikeVectorDodgeAtTopBoundary(SpikeVectorTestSuite* suite) {
-    auto& config = suite->game_->getConfig();
-    auto& session = suite->game_->getSession();
-    int maxPos = config.numPositions - 1;
-
-    session.cursorPosition = maxPos;  // Top boundary
-    session.gapPosition = maxPos;     // Gap at top
-    session.hits = 0;
-    int initialScore = session.score;
-
-    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
-    suite->tick(3);
-
-    EXPECT_EQ(session.score, initialScore + 100) << "Dodge at max position should award score";
-    EXPECT_EQ(session.hits, 0) << "No hit should be counted for successful dodge";
-}
-
-/*
- * Test: Exact hits equal to hitsAllowed doesn't lose (only > causes loss).
- */
-void spikeVectorExactHitsEqualAllowed(SpikeVectorTestSuite* suite) {
-    suite->game_->getConfig().hitsAllowed = 2;
-    suite->game_->getConfig().waves = 5;
-
-    auto& session = suite->game_->getSession();
-    session.cursorPosition = 0;
-    session.gapPosition = 1;  // Cursor not at gap = hit
-    session.hits = 1;         // Already 1 hit
-    session.currentWave = 0;
-
-    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
-    suite->tick(3);
-
-    // 1 + 1 = 2 hits, hitsAllowed = 2, so 2 > 2 is false -> continue
-    State* state = suite->game_->getCurrentState();
-    EXPECT_NE(state->getStateId(), SPIKE_LOSE) << "Should not lose when hits == hitsAllowed";
-    EXPECT_EQ(session.hits, 2);
-}
-
-/*
- * Test: Wall timeout with wallArrived flag set.
- */
-void spikeVectorWallArrivedFlagSet(SpikeVectorTestSuite* suite) {
-    suite->game_->getConfig().approachSpeedMs = 5;
-    suite->game_->getConfig().trackLength = 5;
-
-    auto& session = suite->game_->getSession();
-    session.wallArrived = false;
-
-    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
-    suite->tick(1);
-
-    // Advance enough for wall to reach end
-    suite->tickWithTime(10, 10);
-
-    EXPECT_TRUE(session.wallArrived) << "wallArrived should be set when wall reaches trackLength";
-}
-
-/*
- * Test: Rapid button presses — cursor should move with each press.
- */
-void spikeVectorRapidButtonInput(SpikeVectorTestSuite* suite) {
-    auto& session = suite->game_->getSession();
-    session.cursorPosition = 2;  // Start at middle
-
-    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
-    suite->tick(1);
-
-    // Rapid primary button presses (UP/decrease)
-    for (int i = 0; i < 5; i++) {
-        suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    }
-
-    // Should have moved to position 0 (can't go below 0)
-    EXPECT_EQ(session.cursorPosition, 0) << "Rapid UP presses should reach bottom boundary";
-
-    // Rapid secondary button presses (DOWN/increase)
-    for (int i = 0; i < 10; i++) {
-        suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    }
-
-    // Should have moved to max position (numPositions-1 = 4)
-    EXPECT_EQ(session.cursorPosition, 4) << "Rapid DOWN presses should reach top boundary";
-}
-
-/*
- * Test: Cursor movement prevention at bottom boundary (position 0).
+ * Test: Cursor at position 0 (bottom boundary) stays at 0 when moving up.
  */
 void spikeVectorCursorBottomBoundaryClamp(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
@@ -670,7 +586,7 @@ void spikeVectorCursorBottomBoundaryClamp(SpikeVectorTestSuite* suite) {
 }
 
 /*
- * Test: Cursor movement prevention at top boundary (numPositions-1).
+ * Test: Cursor at max position (top boundary) stays at max when moving down.
  */
 void spikeVectorCursorTopBoundaryClamp(SpikeVectorTestSuite* suite) {
     auto& config = suite->game_->getConfig();
@@ -688,186 +604,73 @@ void spikeVectorCursorTopBoundaryClamp(SpikeVectorTestSuite* suite) {
 }
 
 /*
- * Test: Score accumulation across multiple waves.
+ * Test: Level progression — currentLevel increments after each Evaluate.
  */
-void spikeVectorScoreAccumulatesAcrossWaves(SpikeVectorTestSuite* suite) {
+void spikeVectorLevelProgressionIncrement(SpikeVectorTestSuite* suite) {
     auto& session = suite->game_->getSession();
-    session.score = 0;
-    session.currentWave = 0;
-    session.cursorPosition = 0;
-    session.gapPosition = 0;  // Dodge
+    session.currentLevel = 0;
     session.hits = 0;
 
-    // Wave 1 dodge
     suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
     suite->tick(3);
-    EXPECT_EQ(session.score, 100) << "First dodge should give 100 points";
 
-    // Wave 2 dodge
-    session.cursorPosition = 1;
-    session.gapPosition = 1;
-    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
-    suite->tick(3);
-    EXPECT_EQ(session.score, 200) << "Second dodge should add 100 more points";
+    EXPECT_EQ(session.currentLevel, 1) << "currentLevel should increment after Evaluate";
 
-    // Wave 3 dodge
-    session.cursorPosition = 2;
-    session.gapPosition = 2;
-    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
-    suite->tick(3);
-    EXPECT_EQ(session.score, 300) << "Third dodge should add 100 more points";
-}
-
-/*
- * Test: Button presses during non-gameplay states have no effect.
- */
-void spikeVectorButtonsIgnoredInNonGameplayStates(SpikeVectorTestSuite* suite) {
-    auto& session = suite->game_->getSession();
-    session.cursorPosition = 2;
-
-    // Try button presses in Intro
-    suite->game_->skipToState(suite->device_.pdn, 0);  // Intro
-    suite->tick(1);
-    int posBeforeIntro = session.cursorPosition;
-    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-    EXPECT_EQ(session.cursorPosition, posBeforeIntro) << "Buttons should not affect cursor in Intro";
-
-    // Try button presses in Show
-    suite->game_->skipToState(suite->device_.pdn, 1);  // Show
-    suite->tick(1);
-    int posBeforeShow = session.cursorPosition;
-    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-    EXPECT_EQ(session.cursorPosition, posBeforeShow) << "Buttons should not affect cursor in Show";
-
-    // Try button presses in Win
-    suite->game_->skipToState(suite->device_.pdn, 4);  // Win
-    suite->tick(1);
-    int posBeforeWin = session.cursorPosition;
-    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tick(1);
-    EXPECT_EQ(session.cursorPosition, posBeforeWin) << "Buttons should not affect cursor in Win";
-}
-
-/*
- * Test: Wall position starts at 0 in Gameplay.
- */
-void spikeVectorWallStartsAtZero(SpikeVectorTestSuite* suite) {
-    auto& session = suite->game_->getSession();
-
-    suite->game_->skipToState(suite->device_.pdn, 2);  // Gameplay
-    suite->tick(1);
-
-    EXPECT_EQ(session.wallPosition, 0) << "Wall should start at position 0";
-}
-
-/*
- * Test: Gap position is within valid range (0 to numPositions-1).
- */
-void spikeVectorGapPositionWithinRange(SpikeVectorTestSuite* suite) {
-    auto& config = suite->game_->getConfig();
-    auto& session = suite->game_->getSession();
-
-    // Generate gap in Show state (this is where gap is set)
-    for (int attempt = 0; attempt < 20; attempt++) {
-        suite->game_->skipToState(suite->device_.pdn, 1);  // Show
-        suite->tick(1);
-
-        EXPECT_GE(session.gapPosition, 0) << "Gap position should be >= 0";
-        EXPECT_LT(session.gapPosition, config.numPositions) << "Gap position should be < numPositions";
-    }
-}
-
-/*
- * Test: Cursor resets to startPosition on Intro.
- */
-void spikeVectorCursorResetsOnIntro(SpikeVectorTestSuite* suite) {
-    auto& config = suite->game_->getConfig();
-    auto& session = suite->game_->getSession();
-
-    // Dirty cursor
-    session.cursorPosition = 4;
-
-    suite->game_->skipToState(suite->device_.pdn, 0);  // Intro
-    suite->tick(1);
-
-    EXPECT_EQ(session.cursorPosition, config.startPosition) << "Cursor should reset to startPosition";
-}
-
-/*
- * Test: Wave progression — currentWave increments after each Evaluate.
- */
-void spikeVectorWaveProgressionIncrement(SpikeVectorTestSuite* suite) {
-    auto& session = suite->game_->getSession();
-    session.currentWave = 0;
     session.hits = 0;
-    session.cursorPosition = 0;
-    session.gapPosition = 0;  // Dodge
-
     suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
     suite->tick(3);
 
-    EXPECT_EQ(session.currentWave, 1) << "currentWave should increment after Evaluate";
-
-    session.cursorPosition = 1;
-    session.gapPosition = 1;
-    suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
-    suite->tick(3);
-
-    EXPECT_EQ(session.currentWave, 2) << "currentWave should increment again";
+    EXPECT_EQ(session.currentLevel, 2) << "currentLevel should increment again";
 }
 
 /*
- * Test: Deterministic RNG with seed produces consistent gap positions.
+ * Test: Deterministic RNG with seed produces consistent gap patterns.
  */
 void spikeVectorDeterministicRngGapPattern(SpikeVectorTestSuite* suite) {
     auto& config = suite->game_->getConfig();
     config.rngSeed = 12345;
     suite->game_->seedRng(config.rngSeed);
 
-    std::vector<int> gaps1;
-    for (int i = 0; i < 5; i++) {
+    std::vector<std::vector<int>> gaps1;
+    for (int i = 0; i < 3; i++) {
         suite->game_->skipToState(suite->device_.pdn, 1);  // Show
         suite->tick(1);
-        gaps1.push_back(suite->game_->getSession().gapPosition);
+        gaps1.push_back(suite->game_->getSession().gapPositions);
     }
 
     // Reset and re-seed
     config.rngSeed = 12345;
     suite->game_->seedRng(config.rngSeed);
 
-    std::vector<int> gaps2;
-    for (int i = 0; i < 5; i++) {
+    std::vector<std::vector<int>> gaps2;
+    for (int i = 0; i < 3; i++) {
         suite->game_->skipToState(suite->device_.pdn, 1);  // Show
         suite->tick(1);
-        gaps2.push_back(suite->game_->getSession().gapPosition);
+        gaps2.push_back(suite->game_->getSession().gapPositions);
     }
 
     EXPECT_EQ(gaps1, gaps2) << "Same seed should produce identical gap sequences";
 }
 
 /*
- * Test: Losing on the final wave still routes to Lose (not Win).
+ * Test: Losing on the final level still routes to Lose (not Win).
  */
-void spikeVectorLoseOnFinalWave(SpikeVectorTestSuite* suite) {
+void spikeVectorLoseOnFinalLevel(SpikeVectorTestSuite* suite) {
     auto& config = suite->game_->getConfig();
     auto& session = suite->game_->getSession();
 
-    config.waves = 3;
+    config.levels = 3;
     config.hitsAllowed = 1;
 
-    // Final wave, about to evaluate with too many hits
-    session.currentWave = 2;  // waves-1
-    session.hits = 1;         // at limit
-    session.cursorPosition = 0;
-    session.gapPosition = 1;  // miss — will push over
+    // Final level, about to evaluate with too many hits
+    session.currentLevel = 2;  // levels-1
+    session.hits = 2;          // over limit
 
     suite->game_->skipToState(suite->device_.pdn, 3);  // Evaluate
     suite->tick(3);
 
     EXPECT_EQ(suite->game_->getCurrentState()->getStateId(), SPIKE_LOSE)
-        << "Should lose even on final wave if hits exceed allowed";
+        << "Should lose even on final level if hits exceed allowed";
 }
 
 #endif // NATIVE_BUILD

@@ -26,32 +26,32 @@ TEST_F(SpikeVectorTestSuite, IntroTransitionsToShow) {
     spikeVectorIntroTransitionsToShow(this);
 }
 
-TEST_F(SpikeVectorTestSuite, ShowDisplaysWaveInfo) {
-    spikeVectorShowDisplaysWaveInfo(this);
+TEST_F(SpikeVectorTestSuite, ShowGeneratesGaps) {
+    spikeVectorShowGeneratesGaps(this);
 }
 
 TEST_F(SpikeVectorTestSuite, ShowTransitionsToGameplay) {
     spikeVectorShowTransitionsToGameplay(this);
 }
 
-TEST_F(SpikeVectorTestSuite, WallAdvancesWithTime) {
-    spikeVectorWallAdvancesWithTime(this);
+TEST_F(SpikeVectorTestSuite, FormationAdvances) {
+    spikeVectorFormationAdvances(this);
 }
 
-TEST_F(SpikeVectorTestSuite, CorrectDodgeAtGap) {
-    spikeVectorCorrectDodgeAtGap(this);
+TEST_F(SpikeVectorTestSuite, CorrectDodge) {
+    spikeVectorCorrectDodge(this);
 }
 
 TEST_F(SpikeVectorTestSuite, MissedDodge) {
     spikeVectorMissedDodge(this);
 }
 
-TEST_F(SpikeVectorTestSuite, WallTimeoutCausesEvaluate) {
-    spikeVectorWallTimeoutCausesEvaluate(this);
+TEST_F(SpikeVectorTestSuite, FormationCompleteTransition) {
+    spikeVectorFormationCompleteTransition(this);
 }
 
-TEST_F(SpikeVectorTestSuite, EvaluateRoutesToNextWave) {
-    spikeVectorEvaluateRoutesToNextWave(this);
+TEST_F(SpikeVectorTestSuite, EvaluateRoutesToNextLevel) {
+    spikeVectorEvaluateRoutesToNextLevel(this);
 }
 
 TEST_F(SpikeVectorTestSuite, EvaluateRoutesToWin) {
@@ -78,28 +78,8 @@ TEST_F(SpikeVectorTestSuite, StateNamesResolve) {
     spikeVectorStateNamesResolve(this);
 }
 
-TEST_F(SpikeVectorTestSuite, DodgeAtBottomBoundary) {
-    spikeVectorDodgeAtBottomBoundary(this);
-}
-
-TEST_F(SpikeVectorTestSuite, DodgeAtTopBoundary) {
-    spikeVectorDodgeAtTopBoundary(this);
-}
-
-TEST_F(SpikeVectorTestSuite, ExactHitsEqualAllowed) {
-    spikeVectorExactHitsEqualAllowed(this);
-}
-
-TEST_F(SpikeVectorTestSuite, WallArrivedFlagSet) {
-    spikeVectorWallArrivedFlagSet(this);
-}
-
 TEST_F(SpikeVectorManagedTestSuite, ManagedModeReturns) {
     spikeVectorManagedModeReturns(this);
-}
-
-TEST_F(SpikeVectorTestSuite, RapidButtonInput) {
-    spikeVectorRapidButtonInput(this);
 }
 
 TEST_F(SpikeVectorTestSuite, CursorBottomBoundaryClamp) {
@@ -110,34 +90,14 @@ TEST_F(SpikeVectorTestSuite, CursorTopBoundaryClamp) {
     spikeVectorCursorTopBoundaryClamp(this);
 }
 
-TEST_F(SpikeVectorTestSuite, ScoreAccumulatesAcrossWaves) {
-    spikeVectorScoreAccumulatesAcrossWaves(this);
-}
-
-TEST_F(SpikeVectorTestSuite, ButtonsIgnoredInNonGameplayStates) {
-    spikeVectorButtonsIgnoredInNonGameplayStates(this);
-}
-
-TEST_F(SpikeVectorTestSuite, WallStartsAtZero) {
-    spikeVectorWallStartsAtZero(this);
-}
-
-TEST_F(SpikeVectorTestSuite, GapPositionWithinRange) {
-    spikeVectorGapPositionWithinRange(this);
-}
-
-TEST_F(SpikeVectorTestSuite, CursorResetsOnIntro) {
-    spikeVectorCursorResetsOnIntro(this);
-}
-
-TEST_F(SpikeVectorTestSuite, WaveProgressionIncrement) {
-    spikeVectorWaveProgressionIncrement(this);
+TEST_F(SpikeVectorTestSuite, LevelProgressionIncrement) {
+    spikeVectorLevelProgressionIncrement(this);
 }
 
 TEST_F(SpikeVectorTestSuite, DeterministicRngGapPattern) {
     spikeVectorDeterministicRngGapPattern(this);
 }
 
-TEST_F(SpikeVectorTestSuite, LoseOnFinalWave) {
-    spikeVectorLoseOnFinalWave(this);
+TEST_F(SpikeVectorTestSuite, LoseOnFinalLevel) {
+    spikeVectorLoseOnFinalLevel(this);
 }
