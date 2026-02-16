@@ -100,7 +100,7 @@ public:
     }
 
     int getStateId() {
-        return device_.game->getCurrentState()->getStateId();
+        return device_.game->getCurrentStateId();
     }
 
     DeviceInstance device_;
@@ -203,7 +203,7 @@ public:
     }
 
     int getStateId() {
-        return device_.game->getCurrentState()->getStateId();
+        return device_.game->getCurrentStateId();
     }
 
     DeviceInstance device_;
@@ -392,7 +392,7 @@ public:
     }
 
     int getStateId() {
-        return device_.game->getCurrentState()->getStateId();
+        return device_.game->getCurrentStateId();
     }
 
     DeviceInstance device_;
@@ -483,7 +483,7 @@ public:
     }
 
     int getStateId() {
-        return device_.game->getCurrentState()->getStateId();
+        return device_.game->getCurrentStateId();
     }
 
     DeviceInstance device_;

@@ -123,7 +123,7 @@ void testKonamiCLIDoesNotResetProgress(Wave18BugRegressionTestSuite* suite) {
 void testFdnDetectedMessageNotEmptyOnResume(Wave18BugRegressionTestSuite* suite) {
     // Advance to Idle state
     suite->advanceToIdle();
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), IDLE);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), IDLE);
 
     // Simulate FDN detection with a valid challenge message
     std::string fdnChallenge = "*fdn:7:6\r";  // Signal Echo, UP button reward
@@ -131,7 +131,7 @@ void testFdnDetectedMessageNotEmptyOnResume(Wave18BugRegressionTestSuite* suite)
     suite->tick(3);
 
     // Should transition to FdnDetected (state 21)
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), 21);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), 21);
 
     // Get the FdnDetected state
     auto* fdnState = dynamic_cast<FdnDetected*>(suite->quickdraw_->getCurrentState());
@@ -176,7 +176,7 @@ void testFdnDetectedMessageNotEmptyOnResume(Wave18BugRegressionTestSuite* suite)
 void testFdnDetectedLEDsNotBlack(Wave18BugRegressionTestSuite* suite) {
     // Advance to Idle state
     suite->advanceToIdle();
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), IDLE);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), IDLE);
 
     // Simulate FDN detection
     std::string fdnChallenge = "*fdn:7:6\r";  // Signal Echo, UP button reward
@@ -184,7 +184,7 @@ void testFdnDetectedLEDsNotBlack(Wave18BugRegressionTestSuite* suite) {
     suite->tick(3);
 
     // Should transition to FdnDetected (state 21)
-    ASSERT_EQ(suite->quickdraw_->getCurrentState()->getStateId(), 21);
+    ASSERT_EQ(suite->quickdraw_->getCurrentStateId(), 21);
 
     // Get LED state from the light driver
     auto* lightDriver = suite->device_.lightDriver;

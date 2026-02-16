@@ -97,13 +97,13 @@ void fdnGameHandshakeTimeout(FdnGameTestSuite* suite) {
     suite->fdn_.serialOutDriver->injectInput("*smac" + std::string(TestConstants::TEST_MAC_DEFAULT) + "\r");
     suite->tick(3);
 
-    ASSERT_EQ(suite->fdn_.game->getCurrentState()->getStateId(), 1);  // NPC_HANDSHAKE
+    ASSERT_EQ(suite->fdn_.game->getCurrentStateId(), 1);  // NPC_HANDSHAKE
 
     // Advance past timeout
     suite->fdn_.clockDriver->advance(11000);
     suite->tick(3);
 
-    ASSERT_EQ(suite->fdn_.game->getCurrentState()->getStateId(), 0);  // NPC_IDLE
+    ASSERT_EQ(suite->fdn_.game->getCurrentStateId(), 0);  // NPC_IDLE
 }
 
 // Test: FdnGame tracks game type and reward

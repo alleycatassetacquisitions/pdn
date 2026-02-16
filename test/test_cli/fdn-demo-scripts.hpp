@@ -87,7 +87,7 @@ public:
     }
 
     int getPlayerStateId() {
-        return player_.game->getCurrentState()->getStateId();
+        return player_.game->getCurrentStateId();
     }
 
     // Helper: trigger FDN handshake from Idle
@@ -211,14 +211,14 @@ void signalEchoEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // STEP 6: Gameplay - show sequence
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
     se->getSession().currentSequence = {true, false};  // PRIMARY, SECONDARY
 
     // Wait for sequence display
     suite->tickWithTime(20, 100);
 
     // Player input phase
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_PLAYER_INPUT);
 
     // Enter correct sequence: PRIMARY (true), SECONDARY (false)
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
@@ -227,7 +227,7 @@ void signalEchoEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->tick(5);
 
     // STEP 7: Win state
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_WIN);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_WIN);
 
     // Advance past win timer → FdnComplete
     suite->tickWithTime(35, 100);
@@ -276,12 +276,12 @@ void signalEchoHardCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // Gameplay
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
     se->getSession().currentSequence = {true, true, false};
     suite->tickWithTime(20, 100);
 
     // Player input - correct sequence
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_PLAYER_INPUT);
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(1);
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
@@ -290,7 +290,7 @@ void signalEchoHardCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->tick(5);
 
     // Win
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_WIN);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_WIN);
     suite->tickWithTime(35, 100);
 
     // Should route to BoonAwarded (color profile reward)
@@ -350,7 +350,7 @@ void ghostRunnerEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // Gameplay states: GHOST_PREVIEW_MAZE -> GHOST_PREVIEW_TRACE -> GHOST_GAMEPLAY
-    int stateId = gr->getCurrentState()->getStateId();
+    int stateId = gr->getCurrentStateId();
 
     // Wait through preview phases (maze + solution trace)
     suite->tickWithTime(50, 100);  // ~5 seconds for both previews
@@ -372,7 +372,7 @@ void ghostRunnerEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     suite->tick(5);
 
     // Should be in Win state
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
+    ASSERT_EQ(gr->getCurrentStateId(), GHOST_WIN);
 
     // Advance to FdnComplete
     suite->tickWithTime(35, 100);
@@ -443,7 +443,7 @@ void spikeVectorEasyCompleteWalkthrough(FdnDemoScriptTestSuite* suite) {
     }
 
     // Should be in Win state
-    ASSERT_EQ(sv->getCurrentState()->getStateId(), SPIKE_WIN);
+    ASSERT_EQ(sv->getCurrentStateId(), SPIKE_WIN);
 
     // Advance to FdnComplete
     suite->tickWithTime(35, 100);
@@ -514,17 +514,17 @@ void signalEchoLossNoRewards(FdnDemoScriptTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // Gameplay - intentionally make mistake
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
     se->getSession().currentSequence = {true, true, false, true, false};
     suite->tickWithTime(20, 100);
 
     // Player input - wrong first input
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_PLAYER_INPUT);
     suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);  // Wrong!
     suite->tick(5);
 
     // Should be in Loss state
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_LOSE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_LOSE);
 
     // Advance to FdnComplete
     suite->tickWithTime(35, 100);
@@ -563,17 +563,17 @@ void signalEchoMultipleErrorsLoss(FdnDemoScriptTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // Show sequence
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
     se->getSession().currentSequence = {true, false, true};
     suite->tickWithTime(20, 100);
 
     // Player input phase - make one wrong input
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_PLAYER_INPUT);
     suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);  // Wrong! Should be PRIMARY
     suite->tick(5);
 
     // Should be in Loss state immediately (0 mistakes allowed)
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_LOSE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_LOSE);
 
     // Verify no button unlock
     suite->assertButtonUnlocked(KonamiButton::UP, false);
@@ -603,12 +603,12 @@ void signalEchoRapidButtonSpam(FdnDemoScriptTestSuite* suite) {
     suite->tickWithTime(25, 100);
 
     // Show sequence
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
     se->getSession().currentSequence = {true, false};
     suite->tickWithTime(20, 100);
 
     // Player input - spam both buttons rapidly
-    ASSERT_EQ(se->getCurrentState()->getStateId(), ECHO_PLAYER_INPUT);
+    ASSERT_EQ(se->getCurrentStateId(), ECHO_PLAYER_INPUT);
     for (int i = 0; i < 20; i++) {
         suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
         suite->player_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
@@ -616,7 +616,7 @@ void signalEchoRapidButtonSpam(FdnDemoScriptTestSuite* suite) {
     }
 
     // Game should still be running or in loss state, not crashed
-    int stateId = se->getCurrentState()->getStateId();
+    int stateId = se->getCurrentStateId();
     ASSERT_TRUE(stateId == ECHO_PLAYER_INPUT || stateId == ECHO_LOSE || stateId == ECHO_WIN);
 }
 

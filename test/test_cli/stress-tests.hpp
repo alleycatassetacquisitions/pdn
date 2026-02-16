@@ -62,7 +62,7 @@ public:
     }
 
     int getStateId() {
-        return device_.game->getCurrentState()->getStateId();
+        return device_.game->getCurrentStateId();
     }
 
     DeviceInstance device_;
@@ -145,14 +145,14 @@ void stressFullGameLifecycles(MinigameStressTestSuite* suite) {
         suite->echo_->skipToState(suite->device_.pdn, 0);
         suite->tick(1);
 
-        EXPECT_EQ(suite->echo_->getCurrentState()->getStateId(), ECHO_INTRO);
+        EXPECT_EQ(suite->echo_->getCurrentStateId(), ECHO_INTRO);
 
         // Skip intro timer
         suite->tickWithTime(5, 500);
 
         // Auto-transition to ShowSequence
         suite->tick(1);
-        EXPECT_EQ(suite->echo_->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+        EXPECT_EQ(suite->echo_->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
 
         // Skip to evaluate without playing
         suite->echo_->skipToState(suite->device_.pdn, 3);
@@ -161,7 +161,7 @@ void stressFullGameLifecycles(MinigameStressTestSuite* suite) {
         // Should be in Lose state (no input provided)
         suite->echo_->skipToState(suite->device_.pdn, 5);
         suite->tick(1);
-        EXPECT_EQ(suite->echo_->getCurrentState()->getStateId(), ECHO_LOSE);
+        EXPECT_EQ(suite->echo_->getCurrentStateId(), ECHO_LOSE);
 
         // Allow outcome to persist
         suite->tickWithTime(5, 100);
@@ -295,7 +295,7 @@ void stressButtonSpamDuringGameplay(MinigameStressTestSuite* suite) {
     suite->tick(1);
 
     // Should be in ShowSequence
-    ASSERT_EQ(suite->echo_->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+    ASSERT_EQ(suite->echo_->getCurrentStateId(), ECHO_SHOW_SEQUENCE);
 
     // Wait for player input phase
     suite->tickWithTime(10, 100);

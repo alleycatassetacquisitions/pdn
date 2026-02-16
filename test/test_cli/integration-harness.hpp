@@ -263,7 +263,7 @@ public:
      */
     int getPlayerStateId(int playerIndex) {
         DeviceInstance& player = getPlayer(playerIndex);
-        return player.game->getCurrentState()->getStateId();
+        return player.game->getCurrentStateId();
     }
 
     /**
@@ -271,7 +271,7 @@ public:
      */
     int getNpcStateId(int npcIndex) {
         DeviceInstance& npc = getNpc(npcIndex);
-        return npc.game->getCurrentState()->getStateId();
+        return npc.game->getCurrentStateId();
     }
 
     /**
