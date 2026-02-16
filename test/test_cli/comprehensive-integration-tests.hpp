@@ -354,10 +354,10 @@ void ghostRunnerEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
 
     // Configure for easy win
     gr->getConfig().ghostSpeedMs = 5;
-    gr->getConfig().screenWidth = 100;
-    gr->getConfig().targetZoneStart = 5;
-    gr->getConfig().targetZoneEnd = 95;
+    gr->getConfig().notesPerRound = 1;
     gr->getConfig().rounds = 1;
+    gr->getConfig().rngSeed = 42;
+    gr->getConfig().dualLaneChance = 0.0f;  // EASY mode
 
     // Advance past intro
     suite->tickWithTime(25, 100);
@@ -365,11 +365,16 @@ void ghostRunnerEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* suite) {
     // Advance past show
     suite->tickWithTime(20, 100);
 
-    // Gameplay — advance ghost into zone and press
-    suite->tickWithTime(10, 10);
+    // Gameplay — move note to hit zone and press
+    auto& session = gr->getSession();
+    session.currentPattern[0].xPosition = 15;  // center of hit zone
+    session.currentPattern[0].lane = Lane::UP;
+
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickWithTime(5, 100);
 
+    // Should transition to Evaluate then Win
+    suite->tick(5);
     ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
 
     // Advance past win timer
@@ -397,23 +402,38 @@ void ghostRunnerHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuite* su
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
 
-    // Configure for hard win (missesAllowed <= 1, zoneWidth <= 16)
+    // Configure for hard win (dualLaneChance > 0 = HARD mode)
     gr->getConfig().ghostSpeedMs = 5;
-    gr->getConfig().screenWidth = 100;
-    gr->getConfig().targetZoneStart = 42;
-    gr->getConfig().targetZoneEnd = 58;
+    gr->getConfig().notesPerRound = 1;
     gr->getConfig().rounds = 1;
-    gr->getConfig().missesAllowed = 1;
+    gr->getConfig().rngSeed = 42;
+    gr->getConfig().dualLaneChance = 0.4f;  // HARD mode
 
-    // Advance past intro + show
-    suite->tickWithTime(50, 100);
+    // Advance past intro
+    suite->tickWithTime(25, 100);
 
-    // Press in zone
-    suite->tickWithTime(10, 10);
+    // Advance past show
+    suite->tickWithTime(20, 100);
+
+    // Should be in Gameplay — hit the note perfectly
+    auto& session = gr->getSession();
+    session.currentPattern[0].xPosition = 15;  // center of perfect zone
+    session.currentPattern[0].lane = Lane::UP;
+
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickWithTime(5, 100);
 
-    ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_WIN);
+    // Give it time to transition through evaluate to win
+    suite->tick(10);
+
+    // Should be in Win (100% PERFECT = passes hard mode requirement)
+    int stateId = gr->getCurrentState()->getStateId();
+    if (stateId != GHOST_WIN) {
+        // Debug: print actual state and stats
+        std::cerr << "State: " << stateId << " P:" << session.perfectCount
+                  << " G:" << session.goodCount << " M:" << session.missCount << "\n";
+    }
+    ASSERT_EQ(stateId, GHOST_WIN);
 
     // Advance past win timer
     suite->tickWithTime(35, 100);
@@ -438,21 +458,26 @@ void ghostRunnerLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
 
-    // Configure for guaranteed loss
-    gr->getConfig().ghostSpeedMs = 100;
-    gr->getConfig().screenWidth = 100;
-    gr->getConfig().targetZoneStart = 80;
-    gr->getConfig().targetZoneEnd = 90;
+    // Configure for guaranteed loss (run out of lives)
+    gr->getConfig().ghostSpeedMs = 5;
+    gr->getConfig().notesPerRound = 3;
     gr->getConfig().rounds = 1;
-    gr->getConfig().missesAllowed = 0;
+    gr->getConfig().rngSeed = 42;
+    gr->getConfig().lives = 3;
 
     // Advance past intro + show
     suite->tickWithTime(50, 100);
 
-    // Press outside zone (ghost at 0, zone at 80-90)
-    suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
-    suite->tickWithTime(5, 100);
+    // Miss all 3 notes to run out of lives
+    auto& session = gr->getSession();
+    for (auto& note : session.currentPattern) {
+        note.grade = NoteGrade::MISS;
+        note.active = false;
+    }
+    session.missCount = 3;
+    session.livesRemaining = 0;
 
+    suite->tick(5);  // Let evaluate trigger
     ASSERT_EQ(gr->getCurrentState()->getStateId(), GHOST_LOSE);
 
     // Advance past lose timer
@@ -464,7 +489,7 @@ void ghostRunnerLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
 }
 
 /*
- * Test: Ghost Runner press exactly at zone boundary
+ * Test: Ghost Runner press exactly at hit zone boundary
  */
 void ghostRunnerBoundaryPress(ComprehensiveIntegrationTestSuite* suite) {
     suite->advanceToIdle();
@@ -474,29 +499,29 @@ void ghostRunnerBoundaryPress(ComprehensiveIntegrationTestSuite* suite) {
     auto* gr = suite->getGhostRunner();
     ASSERT_NE(gr, nullptr);
 
-    // Configure narrow zone
+    // Configure for boundary test
     gr->getConfig().ghostSpeedMs = 10;
-    gr->getConfig().screenWidth = 100;
-    gr->getConfig().targetZoneStart = 50;
-    gr->getConfig().targetZoneEnd = 51;
+    gr->getConfig().notesPerRound = 1;
     gr->getConfig().rounds = 1;
+    gr->getConfig().rngSeed = 42;
+    gr->getConfig().hitZoneWidthPx = 20;
 
     // Advance past intro + show
     suite->tickWithTime(50, 100);
 
-    // Advance ghost to exactly 50
-    auto& sess = gr->getSession();
-    while (sess.ghostPosition < 50) {
-        suite->tickWithTime(1, 10);
-    }
+    // Position note at exact hit zone start boundary (x=8)
+    auto& session = gr->getSession();
+    session.currentPattern[0].xPosition = 8;
+    session.currentPattern[0].lane = Lane::UP;
 
     // Press at boundary
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tickWithTime(5, 100);
 
-    // Should register as hit or miss depending on boundary logic
+    // Should register as hit (boundaries are inclusive)
+    suite->tick(5);
     int stateId = gr->getCurrentState()->getStateId();
-    ASSERT_TRUE(stateId == GHOST_WIN || stateId == GHOST_LOSE || stateId == GHOST_EVALUATE);
+    ASSERT_TRUE(stateId == GHOST_WIN || stateId == GHOST_EVALUATE);
 }
 
 /*
@@ -511,20 +536,23 @@ void ghostRunnerRapidPresses(ComprehensiveIntegrationTestSuite* suite) {
     ASSERT_NE(gr, nullptr);
 
     gr->getConfig().ghostSpeedMs = 10;
+    gr->getConfig().notesPerRound = 3;
     gr->getConfig().rounds = 1;
+    gr->getConfig().rngSeed = 42;
+    gr->getConfig().lives = 5;  // Extra lives to survive rapid presses
 
     // Advance to gameplay
     suite->tickWithTime(50, 100);
 
-    // Rapid press 20 times
-    for (int i = 0; i < 20; i++) {
+    // Rapid press 10 times (should only grade the nearest notes, not crash)
+    for (int i = 0; i < 10; i++) {
         suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
         suite->tick(1);
     }
 
-    // Should handle gracefully
+    // Should handle gracefully - game continues or ends cleanly
     int stateId = gr->getCurrentState()->getStateId();
-    ASSERT_TRUE(stateId >= GHOST_INTRO && stateId <= GHOST_EVALUATE);
+    ASSERT_TRUE(stateId >= GHOST_INTRO && stateId <= GHOST_LOSE) << "Invalid state: " << stateId;
 }
 
 // ============================================
