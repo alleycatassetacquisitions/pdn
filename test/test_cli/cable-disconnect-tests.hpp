@@ -5,6 +5,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <map>
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "utils/simple-timer.hpp"
@@ -30,6 +31,9 @@ public:
 
         // Connect devices via cable
         SerialCableBroker::getInstance().connect(0, 1);
+
+        // Reset cable state tracking
+        cableStates_.clear();
     }
 
     void TearDown() override {
@@ -40,11 +44,40 @@ public:
         SerialCableBroker::resetInstance();
         MockHttpServer::resetInstance();
         SimpleTimer::resetClock();
+        cableStates_.clear();
+    }
+
+    void checkCableDisconnectForDevice(DeviceInstance& dev) {
+        // Check for cable disconnect during minigames (app IDs 1-7)
+        int currentConnectedDevice = SerialCableBroker::getInstance().getConnectedDevice(dev.deviceIndex);
+        int activeAppId = dev.pdn->getActiveAppId().id;
+        bool inMinigame = (activeAppId >= 1 && activeAppId <= 7);
+
+        // Track cable state changes
+        if (currentConnectedDevice != -1 && cableStates_[dev.deviceIndex].connectedDeviceIndex == -1) {
+            // Cable just connected
+            cableStates_[dev.deviceIndex].appIdWhenConnected = activeAppId;
+            cableStates_[dev.deviceIndex].connectedDeviceIndex = currentConnectedDevice;
+        } else if (currentConnectedDevice == -1 && cableStates_[dev.deviceIndex].connectedDeviceIndex != -1) {
+            // Cable just disconnected
+            cableStates_[dev.deviceIndex].connectedDeviceIndex = -1;
+            if (inMinigame) {
+                dev.pdn->returnToPreviousApp();
+            }
+        } else if (currentConnectedDevice != -1 && cableStates_[dev.deviceIndex].connectedDeviceIndex != currentConnectedDevice) {
+            // Cable switched to different device
+            cableStates_[dev.deviceIndex].connectedDeviceIndex = currentConnectedDevice;
+            if (inMinigame) {
+                dev.pdn->returnToPreviousApp();
+            }
+        }
     }
 
     void tick(int n = 1) {
         for (int i = 0; i < n; i++) {
             SerialCableBroker::getInstance().transferData();
+            checkCableDisconnectForDevice(player_);
+            checkCableDisconnectForDevice(fdn_);
             player_.pdn->loop();
             fdn_.pdn->loop();
         }
@@ -55,6 +88,8 @@ public:
             player_.clockDriver->advance(delayMs);
             fdn_.clockDriver->advance(delayMs);
             SerialCableBroker::getInstance().transferData();
+            checkCableDisconnectForDevice(player_);
+            checkCableDisconnectForDevice(fdn_);
             player_.pdn->loop();
             fdn_.pdn->loop();
         }
@@ -62,6 +97,12 @@ public:
 
     DeviceInstance player_;
     DeviceInstance fdn_;
+
+    struct CableState {
+        int appIdWhenConnected = 0;
+        int connectedDeviceIndex = -1;
+    };
+    std::map<int, CableState> cableStates_;
 };
 
 // Test: Cable disconnect during minigame intro causes clean abort

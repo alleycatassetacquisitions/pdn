@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include <map>
 #include <thread>
 #include <chrono>
 #include <atomic>
@@ -45,6 +46,13 @@ std::vector<std::string> g_npcGames;  // NPC games to spawn (--npc flag)
 std::string g_launchGame;  // Game to launch directly (--game flag)
 bool g_autoCable = false;  // Auto-cable first player to first NPC (--auto-cable flag)
 bool g_interactiveMode = false;  // Interactive mode (--interactive flag)
+
+// Cable disconnect tracking: maps device index -> {appId when cable connected, connected device index}
+struct CableState {
+    int appIdWhenConnected = 0;
+    int connectedDeviceIndex = -1;
+};
+std::map<int, CableState> g_cableStates;
 
 // Debug cycling state (defined in cli-globals.cpp)
 extern bool g_panelCycling;
@@ -276,6 +284,53 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
 }
 
 /**
+ * Check for cable disconnects during minigames and abort if necessary.
+ * FDN minigames (app IDs 1-7) should abort if the cable is disconnected.
+ * Called from main loop before device.pdn->loop().
+ */
+void checkCableDisconnectAbort(std::vector<cli::DeviceInstance>& devices) {
+    for (auto& dev : devices) {
+        // Only check for player devices
+        if (dev.deviceType != DeviceType::PLAYER) continue;
+
+        int currentConnectedDevice = cli::SerialCableBroker::getInstance().getConnectedDevice(dev.deviceIndex);
+        int activeAppId = dev.pdn->getActiveAppId().id;
+
+        // Check if we're in a minigame (app IDs 1-7)
+        bool inMinigame = (activeAppId >= 1 && activeAppId <= 7);
+
+        // Update cable state tracking
+        if (currentConnectedDevice != -1 && g_cableStates[dev.deviceIndex].connectedDeviceIndex == -1) {
+            // Cable just connected - record current app and connected device
+            g_cableStates[dev.deviceIndex].appIdWhenConnected = activeAppId;
+            g_cableStates[dev.deviceIndex].connectedDeviceIndex = currentConnectedDevice;
+        } else if (currentConnectedDevice == -1 && g_cableStates[dev.deviceIndex].connectedDeviceIndex != -1) {
+            // Cable just disconnected
+            int wasConnectedTo = g_cableStates[dev.deviceIndex].connectedDeviceIndex;
+            g_cableStates[dev.deviceIndex].connectedDeviceIndex = -1;
+
+            // If we're in a minigame, abort it
+            if (inMinigame) {
+                LOG_I("CableDisconnect", "Device %d: cable disconnected during minigame (app %d), aborting...",
+                      dev.deviceIndex, activeAppId);
+                dev.pdn->returnToPreviousApp();
+            }
+        } else if (currentConnectedDevice != -1 && g_cableStates[dev.deviceIndex].connectedDeviceIndex != currentConnectedDevice) {
+            // Cable switched to a different device mid-game
+            int oldDevice = g_cableStates[dev.deviceIndex].connectedDeviceIndex;
+            g_cableStates[dev.deviceIndex].connectedDeviceIndex = currentConnectedDevice;
+
+            // If we're in a minigame, abort it (player cabled to different NPC)
+            if (inMinigame) {
+                LOG_I("CableDisconnect", "Device %d: cable switched from %d to %d during minigame (app %d), aborting...",
+                      dev.deviceIndex, oldDevice, currentConnectedDevice, activeAppId);
+                dev.pdn->returnToPreviousApp();
+            }
+        }
+    }
+}
+
+/**
  * Check if a duel just completed and record it in duel history.
  * Called from main loop to detect Win/Lose state entry.
  */
@@ -398,6 +453,7 @@ void runScript(const std::string& path,
             while (std::chrono::steady_clock::now() < end && g_running) {
                 NativePeerBroker::getInstance().deliverPackets();
                 cli::SerialCableBroker::getInstance().transferData();
+                checkCableDisconnectAbort(devices);
                 for (auto& d : devices) d.pdn->loop();
                 checkAndRecordDuel(devices);
                 std::this_thread::sleep_for(std::chrono::milliseconds(33));
@@ -429,6 +485,7 @@ void runScript(const std::string& path,
         // One frame tick between commands
         NativePeerBroker::getInstance().deliverPackets();
         cli::SerialCableBroker::getInstance().transferData();
+        checkCableDisconnectAbort(devices);
         for (auto& d : devices) d.pdn->loop();
         checkAndRecordDuel(devices);
     }
@@ -533,6 +590,7 @@ int main(int argc, char** argv) {
             // Game loop
             NativePeerBroker::getInstance().deliverPackets();
             cli::SerialCableBroker::getInstance().transferData();
+            checkCableDisconnectAbort(devices);
             for (auto& device : devices) {
                 device.pdn->loop();
             }
@@ -642,6 +700,7 @@ int main(int argc, char** argv) {
 
             NativePeerBroker::getInstance().deliverPackets();
             cli::SerialCableBroker::getInstance().transferData();
+            checkCableDisconnectAbort(devices);
             for (auto& device : devices) {
                 device.pdn->loop();
             }
