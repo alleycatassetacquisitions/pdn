@@ -2,6 +2,71 @@
   "total_duplicate_tokens": 8613,
   "total_duplicate_blocks": 104,
   "threshold_tokens": 50,
-  "timestamp": "2026-02-15",
-  "note": "Initial baseline from Wave 13"
+  "timestamp": "2026-02-16",
+  "note": "Post-Wave 18 audit combining two independent analyses (Agent 03 + Agent 05)",
+  "wave19_analysis": {
+    "timestamp": "2026-02-16",
+    "manual_analysis": {
+      "intro_states_duplicated_lines": 385,
+      "win_states_duplicated_lines": 525,
+      "lose_states_duplicated_lines": 325,
+      "populate_state_map_duplicated_lines": 420,
+      "state_transition_methods_duplicated_lines": 117,
+      "total_structural_duplication": 1772
+    },
+    "improvements_since_wave13": {
+      "seedRng_extracted": -42,
+      "signal_echo_renderer_created": -150,
+      "total_reduction": -192
+    },
+    "codebase_metrics": {
+      "total_game_source_lines": 12936,
+      "total_game_header_lines": 7515,
+      "total_game_code_lines": 20451,
+      "minigame_count": 7,
+      "average_lines_per_minigame": 863
+    }
+  },
+  "agent05_analysis": {
+    "minigame_lines": {
+      "signal_echo": 547,
+      "ghost_runner": 669,
+      "spike_vector": 629,
+      "cipher_path": 612,
+      "exploit_sequencer": 664,
+      "breach_defense": 435,
+      "firewall_decrypt": 547,
+      "total": 4103
+    },
+    "duplication_hotspots": {
+      "intro_states": 441,
+      "win_states": 564,
+      "lose_states": 516,
+      "total_outcome_states": 1521,
+      "estimated_extractable": 1260
+    },
+    "extraction_priorities": [
+      {
+        "priority": 1,
+        "name": "Base Outcome State Classes",
+        "estimated_savings_lines": 1260,
+        "effort_hours": 5,
+        "risk": "medium"
+      },
+      {
+        "priority": 2,
+        "name": "Score Display Utility",
+        "estimated_savings_lines": 21,
+        "effort_hours": 0.5,
+        "risk": "low"
+      },
+      {
+        "priority": 3,
+        "name": "Common Timer Constants",
+        "estimated_savings_lines": 0,
+        "effort_hours": 1,
+        "risk": "very_low"
+      }
+    ]
+  }
 }
