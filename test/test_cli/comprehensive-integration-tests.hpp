@@ -1029,10 +1029,11 @@ void exploitSequencerEasyWinUnlocksButton(ComprehensiveIntegrationTestSuite* sui
     ASSERT_NE(es, nullptr);
     ASSERT_TRUE(es->getConfig().managedMode);
 
-    // Configure for easy win
-    es->getConfig().timingWindow = 45;
-    es->getConfig().exploitsPerSeq = 1;
-    es->getConfig().sequences = 1;
+    // Configure for easy win (rhythm game)
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().noteSpeedMs = 500;  // very slow
+    es->getConfig().hitZoneWidthPx = 60;  // very wide
 
     // Advance past intro
     suite->tickWithTime(25, 100);
@@ -1074,9 +1075,10 @@ void exploitSequencerHardWinUnlocksColorProfile(ComprehensiveIntegrationTestSuit
     auto* es = suite->getExploitSequencer();
     ASSERT_NE(es, nullptr);
 
-    es->getConfig().timingWindow = 45;
-    es->getConfig().exploitsPerSeq = 1;
-    es->getConfig().sequences = 1;
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().noteSpeedMs = 500;
+    es->getConfig().hitZoneWidthPx = 60;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
@@ -1116,11 +1118,11 @@ void exploitSequencerLossNoRewards(ComprehensiveIntegrationTestSuite* suite) {
     auto* es = suite->getExploitSequencer();
     ASSERT_NE(es, nullptr);
 
-    // Configure for guaranteed loss
-    es->getConfig().scrollSpeedMs = 100;
-    es->getConfig().markerPosition = 50;
-    es->getConfig().timingWindow = 2;
-    es->getConfig().failsAllowed = 0;
+    // Configure for guaranteed loss (no lives, so first mistake loses)
+    es->getConfig().lives = 1;
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().hitZoneWidthPx = 2;  // nearly impossible to hit
 
     // Advance past intro
     suite->tickWithTime(25, 100);
@@ -1154,22 +1156,19 @@ void exploitSequencerExactMarkerPress(ComprehensiveIntegrationTestSuite* suite) 
     auto* es = suite->getExploitSequencer();
     ASSERT_NE(es, nullptr);
 
-    es->getConfig().scrollSpeedMs = 50;
-    es->getConfig().markerPosition = 50;
-    es->getConfig().timingWindow = 5;
-    es->getConfig().exploitsPerSeq = 1;
-    es->getConfig().sequences = 1;
+    // Configure for easy rhythm game win
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().noteSpeedMs = 100;
+    es->getConfig().hitZoneWidthPx = 40;
 
     // Advance past intro + show
     suite->tickWithTime(50, 100);
 
-    // Wait for symbol to reach exactly marker position
-    auto& sess = es->getSession();
-    while (sess.symbolPosition < 50) {
-        suite->tickWithTime(1, 50);
-    }
+    // Advance a few ticks to let note move
+    suite->tickWithTime(5, 100);
 
-    // Press at exact marker
+    // Press to hit note
     suite->player_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
     suite->tick(3);
 

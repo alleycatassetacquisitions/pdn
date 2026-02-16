@@ -136,21 +136,24 @@ inline CipherPathConfig makeScaledCipherPathConfig(float scale, bool managedMode
 
 /*
  * Exploit Sequencer scaled config
- * Easy: speed=40ms, window=15, exploits=2, sequences=2, fails=3
- * Hard: speed=25ms, window=6, exploits=4, sequences=4, fails=1
+ * Easy: noteSpeed=50ms, hitZone=20px, rounds=4, notes=8, lives=3
+ * Hard: noteSpeed=30ms, hitZone=14px, rounds=4, notes=12, lives=3, speed ramp 1.1x
  */
 inline ExploitSequencerConfig makeScaledExploitSequencerConfig(float scale, bool managedMode = false) {
     const auto& easy = EXPLOIT_SEQUENCER_EASY;
     const auto& hard = EXPLOIT_SEQUENCER_HARD;
 
     ExploitSequencerConfig config;
-    config.scrollSpeedMs = lerp(easy.scrollSpeedMs, hard.scrollSpeedMs, scale);
-    config.scrollLength = 100;  // constant
-    config.markerPosition = 50;  // constant
-    config.timingWindow = lerp(easy.timingWindow, hard.timingWindow, scale);
-    config.exploitsPerSeq = lerp(easy.exploitsPerSeq, hard.exploitsPerSeq, scale);
-    config.sequences = lerp(easy.sequences, hard.sequences, scale);
-    config.failsAllowed = lerp(easy.failsAllowed, hard.failsAllowed, scale);
+    config.rounds = 4;  // constant
+    config.notesPerRound = lerp(easy.notesPerRound, hard.notesPerRound, scale);
+    config.dualLaneChance = lerp(easy.dualLaneChance, hard.dualLaneChance, scale);
+    config.holdNoteChance = lerp(easy.holdNoteChance, hard.holdNoteChance, scale);
+    config.noteSpeedMs = lerp(easy.noteSpeedMs, hard.noteSpeedMs, scale);
+    config.speedRampPerRound = easy.speedRampPerRound + (hard.speedRampPerRound - easy.speedRampPerRound) * scale;
+    config.holdDurationMs = lerp(easy.holdDurationMs, hard.holdDurationMs, scale);
+    config.hitZoneWidthPx = lerp(easy.hitZoneWidthPx, hard.hitZoneWidthPx, scale);
+    config.perfectZonePx = lerp(easy.perfectZonePx, hard.perfectZonePx, scale);
+    config.lives = 3;  // constant
     config.rngSeed = 0;
     config.managedMode = managedMode;
 
