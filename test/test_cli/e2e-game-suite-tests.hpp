@@ -594,10 +594,11 @@ void e2eExploitSequencerEasyWin(E2EGameSuiteTestSuite* suite) {
     ASSERT_NE(es, nullptr);
     ASSERT_TRUE(es->getConfig().managedMode);
 
-    // Configure for easy win
-    es->getConfig().timingWindow = 45;
-    es->getConfig().exploitsPerSeq = 1;
-    es->getConfig().sequences = 1;
+    // Configure for easy win (rhythm game)
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().noteSpeedMs = 500;
+    es->getConfig().hitZoneWidthPx = 60;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
@@ -641,10 +642,11 @@ void e2eExploitSequencerHardWin(E2EGameSuiteTestSuite* suite) {
     auto* es = suite->getExploitSequencer();
     ASSERT_NE(es, nullptr);
 
-    // Configure for easy win
-    es->getConfig().timingWindow = 45;
-    es->getConfig().exploitsPerSeq = 1;
-    es->getConfig().sequences = 1;
+    // Configure for easy win (rhythm game)
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().noteSpeedMs = 500;
+    es->getConfig().hitZoneWidthPx = 60;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
@@ -684,11 +686,11 @@ void e2eExploitSequencerLoss(E2EGameSuiteTestSuite* suite) {
     auto* es = suite->getExploitSequencer();
     ASSERT_NE(es, nullptr);
 
-    // Configure for guaranteed loss — narrow window, press far from marker
-    es->getConfig().scrollSpeedMs = 100;
-    es->getConfig().markerPosition = 50;
-    es->getConfig().timingWindow = 2;
-    es->getConfig().failsAllowed = 0;
+    // Configure for guaranteed loss (rhythm game - impossible hit zone)
+    es->getConfig().lives = 1;
+    es->getConfig().rounds = 1;
+    es->getConfig().notesPerRound = 1;
+    es->getConfig().hitZoneWidthPx = 2;
 
     // Advance past intro
     suite->tickWithTime(25, 100);
