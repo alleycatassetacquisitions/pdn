@@ -1,0 +1,4 @@
+#!/bin/bash
+# Pre-commit: run core tests only (fast, reliable)
+pio test -e native --test-port /dev/null 2>/dev/null
+exit $?

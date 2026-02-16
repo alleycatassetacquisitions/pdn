@@ -18,6 +18,7 @@
 #include "konami-metagame-tests.hpp"
 #include "konami-handshake-tests.hpp"
 #include "lifecycle-tests.hpp"
+#include "contract-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1637,6 +1638,42 @@ TEST_F(QuickdrawEdgeCaseTests, winStreakIncrementsOnWin) {
 
 TEST_F(QuickdrawEdgeCaseTests, winStreakResetsOnLoss) {
     resultWinStreakResetsOnLoss(this);
+}
+
+// ============================================
+// CONTRACT TESTS (Native/ESP32 Parity)
+// ============================================
+
+TEST_F(ContractTestSuite, displayBufferSize) {
+    displayContractBufferSize(this);
+}
+
+TEST_F(ContractTestSuite, displayDrawBitmapWritesBothOnAndOffPixels) {
+    displayContractDrawBitmapWritesBothOnAndOffPixels(this);
+}
+
+TEST_F(ContractTestSuite, buttonDebounceTimingMatches) {
+    buttonContractDebounceTimingMatches(this);
+}
+
+TEST_F(ContractTestSuite, serialBufferSizeLimits) {
+    serialContractBufferSizeLimits(this);
+}
+
+TEST_F(ContractTestSuite, timerOverflowHandling) {
+    timerContractOverflowHandling(this);
+}
+
+TEST_F(ContractTestSuite, stateMachineLifecycleOrder) {
+    stateMachineContractLifecycleOrder(this);
+}
+
+TEST_F(ContractTestSuite, playerJsonFormat) {
+    serializationContractPlayerJsonFormat(this);
+}
+
+TEST_F(ContractTestSuite, matchBinaryFormat) {
+    serializationContractMatchBinaryFormat(this);
 }
 
 // ============================================
