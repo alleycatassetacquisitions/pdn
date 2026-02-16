@@ -97,3 +97,47 @@ TEST_F(SpikeVectorTestSuite, WallArrivedFlagSet) {
 TEST_F(SpikeVectorManagedTestSuite, ManagedModeReturns) {
     spikeVectorManagedModeReturns(this);
 }
+
+TEST_F(SpikeVectorTestSuite, RapidButtonInput) {
+    spikeVectorRapidButtonInput(this);
+}
+
+TEST_F(SpikeVectorTestSuite, CursorBottomBoundaryClamp) {
+    spikeVectorCursorBottomBoundaryClamp(this);
+}
+
+TEST_F(SpikeVectorTestSuite, CursorTopBoundaryClamp) {
+    spikeVectorCursorTopBoundaryClamp(this);
+}
+
+TEST_F(SpikeVectorTestSuite, ScoreAccumulatesAcrossWaves) {
+    spikeVectorScoreAccumulatesAcrossWaves(this);
+}
+
+TEST_F(SpikeVectorTestSuite, ButtonsIgnoredInNonGameplayStates) {
+    spikeVectorButtonsIgnoredInNonGameplayStates(this);
+}
+
+TEST_F(SpikeVectorTestSuite, WallStartsAtZero) {
+    spikeVectorWallStartsAtZero(this);
+}
+
+TEST_F(SpikeVectorTestSuite, GapPositionWithinRange) {
+    spikeVectorGapPositionWithinRange(this);
+}
+
+TEST_F(SpikeVectorTestSuite, CursorResetsOnIntro) {
+    spikeVectorCursorResetsOnIntro(this);
+}
+
+TEST_F(SpikeVectorTestSuite, WaveProgressionIncrement) {
+    spikeVectorWaveProgressionIncrement(this);
+}
+
+TEST_F(SpikeVectorTestSuite, DeterministicRngGapPattern) {
+    spikeVectorDeterministicRngGapPattern(this);
+}
+
+TEST_F(SpikeVectorTestSuite, LoseOnFinalWave) {
+    spikeVectorLoseOnFinalWave(this);
+}
