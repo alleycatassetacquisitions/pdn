@@ -620,4 +620,132 @@ void echoDiffWrongInputAdvances(SignalEchoDifficultyTestSuite* suite) {
     suite->destroyDevice(device);
 }
 
+// ============================================
+// EDGE CASE TESTS (NEW)
+// ============================================
+
+// Test: Mistakes exactly equal to allowedMistakes stays in game
+void echoMistakesBoundaryExactMatch(SignalEchoTestSuite* suite) {
+    suite->game_->getConfig().displaySpeedMs = 10;
+    suite->game_->getConfig().allowedMistakes = 2;
+    suite->game_->getConfig().sequenceLength = 5;
+    suite->game_->getSession().currentSequence = {true, true, true, true, true};
+    suite->game_->getSession().inputIndex = 0;
+    suite->game_->getSession().mistakes = 0;
+
+    suite->game_->skipToState(suite->device_.pdn, 2);
+    suite->tick(1);
+
+    // Make exactly 2 mistakes (equals allowedMistakes)
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+
+    ASSERT_EQ(suite->game_->getSession().mistakes, 2);
+
+    // Should still be in PlayerInput (not lose)
+    State* state = suite->game_->getCurrentState();
+    ASSERT_EQ(state->getStateId(), ECHO_PLAYER_INPUT);
+
+    // One more mistake should trigger loss
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(5);
+    state = suite->game_->getCurrentState();
+    ASSERT_EQ(state->getStateId(), ECHO_LOSE);
+}
+
+// Test: Button press during Intro state is ignored
+void echoButtonPressDuringIntroIgnored(SignalEchoTestSuite* suite) {
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_INTRO);
+
+    auto& session = suite->game_->getSession();
+    session.mistakes = 0;
+    session.inputIndex = 0;
+
+    // Press buttons during intro
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+
+    // Session should be unchanged
+    ASSERT_EQ(session.mistakes, 0);
+    ASSERT_EQ(session.inputIndex, 0);
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_INTRO);
+}
+
+// Test: Button press during ShowSequence state is ignored
+void echoButtonPressDuringShowIgnored(SignalEchoTestSuite* suite) {
+    suite->game_->skipToState(suite->device_.pdn, 1);
+    ASSERT_EQ(suite->game_->getCurrentState()->getStateId(), ECHO_SHOW_SEQUENCE);
+
+    auto& session = suite->game_->getSession();
+    int initialIndex = session.inputIndex;
+    int initialMistakes = session.mistakes;
+
+    // Press buttons during show
+    suite->device_.primaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+    suite->device_.secondaryButtonDriver->execCallback(ButtonInteraction::CLICK);
+    suite->tick(1);
+
+    // Session should be unchanged
+    ASSERT_EQ(session.inputIndex, initialIndex);
+    ASSERT_EQ(session.mistakes, initialMistakes);
+}
+
+// Test: Cumulative mode with maximum sequence length
+void echoCumulativeModeMaxLength(SignalEchoTestSuite* suite) {
+    SignalEchoConfig config;
+    config.sequenceLength = 3;
+    config.numSequences = 10;  // Build up to length 12
+    config.cumulative = true;
+    config.rngSeed = 42;
+    config.displaySpeedMs = 10;
+    config.allowedMistakes = 50;  // Prevent loss
+
+    SignalEcho* customGame = new SignalEcho(config);
+    customGame->initialize(suite->device_.pdn);
+
+    // First round: length 3
+    ASSERT_EQ(static_cast<int>(customGame->getSession().currentSequence.size()), 3);
+
+    // Simulate completing multiple rounds
+    for (int round = 0; round < 5; round++) {
+        auto& session = customGame->getSession();
+        session.inputIndex = static_cast<int>(session.currentSequence.size());
+        customGame->skipToState(suite->device_.pdn, 3);  // Evaluate
+        suite->tick(2);
+    }
+
+    // After 5 rounds, sequence should have grown by 5
+    ASSERT_EQ(static_cast<int>(customGame->getSession().currentSequence.size()), 8);
+
+    delete customGame;
+}
+
+// Test: Empty sequence edge case (0-length config)
+void echoZeroLengthSequenceConfig(SignalEchoTestSuite* suite) {
+    SignalEchoConfig config;
+    config.sequenceLength = 0;  // Invalid config
+    config.numSequences = 1;
+    config.rngSeed = 42;
+
+    SignalEcho* customGame = new SignalEcho(config);
+    customGame->initialize(suite->device_.pdn);
+
+    // Should generate empty sequence
+    ASSERT_EQ(static_cast<int>(customGame->getSession().currentSequence.size()), 0);
+
+    // Skip to input state
+    customGame->skipToState(suite->device_.pdn, 2);
+    suite->tick(1);
+
+    // Input index should immediately equal length, triggering evaluate
+    ASSERT_EQ(customGame->getSession().inputIndex, 0);
+
+    delete customGame;
+}
+
 #endif // NATIVE_BUILD

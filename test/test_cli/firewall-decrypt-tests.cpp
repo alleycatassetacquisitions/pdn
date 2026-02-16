@@ -125,3 +125,31 @@ TEST_F(DecryptStateNameTestSuite, GetStateNameRoutes) {
 TEST_F(DecryptAppIdTestSuite, AppIdForGame) {
     decryptAppIdForGame(this);
 }
+
+// ============================================
+// TIMEOUT & ERROR PATH TESTS (NEW)
+// ============================================
+
+TEST_F(DecryptTimeoutTestSuite, ScanTimeoutSetsFlag) {
+    decryptScanTimeoutSetsFlag(this);
+}
+
+TEST_F(DecryptTimeoutTestSuite, TimeoutRoutesToLose) {
+    decryptTimeoutRoutesToLose(this);
+}
+
+TEST_F(DecryptTimeoutTestSuite, TimeoutSetsLoseOutcome) {
+    decryptTimeoutSetsLoseOutcome(this);
+}
+
+TEST_F(DecryptTimeoutTestSuite, SelectionBeforeTimeout) {
+    decryptSelectionBeforeTimeout(this);
+}
+
+TEST_F(DecryptLifecycleTestSuite, CursorWrapSingleCandidate) {
+    decryptCursorWrapSingleCandidate(this);
+}
+
+TEST_F(DecryptLifecycleTestSuite, CursorWrapTwoCandidates) {
+    decryptCursorWrapTwoCandidates(this);
+}

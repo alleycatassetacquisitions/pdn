@@ -101,3 +101,31 @@ TEST_F(CipherPathTestSuite, MoveFromStartBoundary) {
 TEST_F(CipherPathManagedTestSuite, ManagedModeReturns) {
     cipherPathManagedModeReturns(this);
 }
+
+// ============================================
+// ADDITIONAL EDGE CASE TESTS (NEW)
+// ============================================
+
+TEST_F(CipherPathTestSuite, MultipleConsecutiveWrongMoves) {
+    cipherPathMultipleConsecutiveWrongMoves(this);
+}
+
+TEST_F(CipherPathTestSuite, BudgetEqualsGridSize) {
+    cipherPathBudgetEqualsGridSize(this);
+}
+
+TEST_F(CipherPathTestSuite, ReachExitMidGame) {
+    cipherPathReachExitMidGame(this);
+}
+
+TEST_F(CipherPathTestSuite, HardModePerfectPlayRequired) {
+    cipherPathHardModePerfectPlayRequired(this);
+}
+
+TEST_F(CipherPathTestSuite, ExitReachedAtBudgetLimit) {
+    cipherPathExitReachedAtBudgetLimit(this);
+}
+
+TEST_F(CipherPathTestSuite, WrongMoveAtBudgetLimit) {
+    cipherPathWrongMoveAtBudgetLimit(this);
+}
