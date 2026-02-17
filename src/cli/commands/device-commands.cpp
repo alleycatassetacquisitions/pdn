@@ -4,8 +4,10 @@
 #include "cli/commands/command-utils.hpp"
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
-// DeviceFactory is in cli-device.hpp
 #include "device/device-types.hpp"
+#include "device/pdn.hpp"
+#include "state/state-machine.hpp"
+#include "device/drivers/native/native-http-client-driver.hpp"
 
 namespace cli {
 

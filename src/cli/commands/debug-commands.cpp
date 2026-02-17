@@ -2,7 +2,9 @@
 
 #include "cli/commands/debug-commands.hpp"
 #include "cli/commands/command-utils.hpp"
-#include "cli/cli-device.hpp"
+#include "state/state-machine.hpp"
+#include "game/player.hpp"
+#include "device/pdn.hpp"
 #include <chrono>
 #include <cstdio>
 

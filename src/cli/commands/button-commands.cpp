@@ -2,6 +2,7 @@
 
 #include "cli/commands/button-commands.hpp"
 #include "cli/commands/command-utils.hpp"
+#include "device/drivers/native/native-button-driver.hpp"
 
 namespace cli {
 

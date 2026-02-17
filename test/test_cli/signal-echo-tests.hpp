@@ -3,7 +3,7 @@
 #ifdef NATIVE_BUILD
 
 #include <gtest/gtest.h>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "game/signal-echo/signal-echo.hpp"
 #include "game/signal-echo/signal-echo-states.hpp"
 #include "game/signal-echo/signal-echo-resources.hpp"

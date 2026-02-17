@@ -3,7 +3,7 @@
 #ifdef NATIVE_BUILD
 
 #include <gtest/gtest.h>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"
 #include "game/spike-vector/spike-vector.hpp"

@@ -3,6 +3,7 @@
 #include "cli/commands/network-commands.hpp"
 #include "cli/commands/command-utils.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
+#include "device/drivers/native/native-peer-comms-driver.hpp"
 #include <cstring>
 
 namespace cli {

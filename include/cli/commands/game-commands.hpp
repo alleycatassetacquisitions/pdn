@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include "cli/commands/command-result.hpp"
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-types.hpp"
 
 namespace cli {
 

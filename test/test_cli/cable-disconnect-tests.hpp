@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 #include <map>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "utils/simple-timer.hpp"
 

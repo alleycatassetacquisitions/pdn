@@ -4,7 +4,7 @@
 
 #include <gtest/gtest.h>
 #include <random>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "game/signal-echo/signal-echo.hpp"
 #include "game/ghost-runner/ghost-runner.hpp"
 #include "game/signal-echo/signal-echo-resources.hpp"

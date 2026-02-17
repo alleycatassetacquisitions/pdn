@@ -7,10 +7,20 @@
 #include <sys/ioctl.h>
 
 #include "cli/cli-terminal.hpp"
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-types.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
+#include "device/drivers/native/native-serial-driver.hpp"
+#include "device/drivers/native/native-light-strip-driver.hpp"
+#include "device/drivers/native/native-haptics-driver.hpp"
+#include "device/drivers/native/native-display-driver.hpp"
+#include "device/drivers/native/native-logger-driver.hpp"
+#include "device/drivers/native/native-peer-comms-driver.hpp"
+#include "device/drivers/native/native-http-client-driver.hpp"
+#include "state/state.hpp"
+#include "game/fdn-game.hpp"
+#include "game/player.hpp"
 
 namespace cli {
 

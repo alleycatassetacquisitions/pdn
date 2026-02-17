@@ -18,7 +18,7 @@
 // #include "breach-defense-tests.hpp"
 
 // Manually include dependencies for ManagedMode test only
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "game/breach-defense/breach-defense.hpp"
 #include "device/device-types.hpp"

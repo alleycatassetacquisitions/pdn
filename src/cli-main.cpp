@@ -22,10 +22,16 @@
 #include "cli/cli-renderer.hpp"
 #include "cli/cli-commands.hpp"
 
-// Native drivers for global instances
-#include "device/drivers/native/native-logger-driver.hpp"
-#include "device/drivers/native/native-clock-driver.hpp"
+// Complete types needed by main loop
 #include "device/drivers/native/native-peer-broker.hpp"
+#include "device/drivers/native/native-clock-driver.hpp"
+#include "device/drivers/native/native-button-driver.hpp"
+#include "device/drivers/native/native-http-client-driver.hpp"
+#include "device/drivers/native/native-logger-driver.hpp"
+#include "device/pdn.hpp"
+#include "state/state-machine.hpp"
+#include "game/player.hpp"
+#include "game/quickdraw-state-ids.hpp"
 
 // Constants
 static constexpr int MIN_DEVICES = 1;

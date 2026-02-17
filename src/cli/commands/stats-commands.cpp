@@ -2,7 +2,7 @@
 
 #include "cli/commands/stats-commands.hpp"
 #include "cli/commands/command-utils.hpp"
-#include "cli/cli-device.hpp"
+#include "game/player.hpp"
 #include "game/game-stats.hpp"
 #include <cstdio>
 

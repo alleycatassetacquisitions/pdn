@@ -5,7 +5,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "cli/cli-commands.hpp"
 #include "cli/cli-renderer.hpp"
 #include "cli/cli-serial-broker.hpp"

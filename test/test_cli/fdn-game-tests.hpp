@@ -3,7 +3,7 @@
 #ifdef NATIVE_BUILD
 
 #include <gtest/gtest.h>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "utils/simple-timer.hpp"
 #include "../test-constants.hpp"
 

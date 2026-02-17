@@ -10,7 +10,7 @@
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-button-driver.hpp"
 #include "device/drivers/native/native-light-strip-driver.hpp"
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "cli/cli-commands.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"

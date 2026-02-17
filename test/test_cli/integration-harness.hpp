@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 #include <vector>
 #include <map>
-#include "cli/cli-device.hpp"
+#include "cli/cli-device-full.hpp"
 #include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"
 #include "game/minigame.hpp"

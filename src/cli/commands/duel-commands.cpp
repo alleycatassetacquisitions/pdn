@@ -3,7 +3,9 @@
 #include "cli/commands/duel-commands.hpp"
 #include "cli/commands/command-utils.hpp"
 #include "cli/cli-serial-broker.hpp"
-#include "game/quickdraw-states.hpp"
+#include "game/quickdraw-state-ids.hpp"
+#include "state/state-machine.hpp"
+#include "device/pdn.hpp"
 
 namespace cli {
 

@@ -3,7 +3,6 @@
 #include "cli/commands/game-commands.hpp"
 #include "cli/commands/command-utils.hpp"
 #include "cli/cli-device.hpp"
-// DeviceFactory is in cli-device.hpp
 #include "device/device-types.hpp"
 #include "game/quickdraw.hpp"
 #include "game/difficulty-scaler.hpp"
