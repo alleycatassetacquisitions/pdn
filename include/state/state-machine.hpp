@@ -74,8 +74,13 @@ public:
      * @return true if successful, false if index out of range
      */
     bool skipToState(Device *PDN, int stateIndex) {
-        if (stopped) return false;  // Don't transition if shutdown
+        if (stopped) {
+            LOG_W("StateMachine", "skipToState() called on shutdown state machine");
+            return false;
+        }
         if (stateIndex < 0 || stateIndex >= static_cast<int>(stateMap.size())) {
+            LOG_W("StateMachine", "skipToState() index out of range: %d (stateMap size: %zu, current state: %p)",
+                  stateIndex, stateMap.size(), (void*)currentState);
             return false;
         }
         if (currentState) {

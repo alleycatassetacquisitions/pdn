@@ -45,6 +45,8 @@ void MatchManager::clearCurrentMatch() {
 Match* MatchManager::createMatch(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id) {
     // Only allow one active match at a time
     if (activeDuelState.match != nullptr) {
+        LOG_W(MATCH_MANAGER_TAG, "Cannot create match %s - active match already exists (ID: %s)",
+              match_id.c_str(), activeDuelState.match->getMatchId().c_str());
         return nullptr;
     }
 
@@ -55,16 +57,18 @@ Match* MatchManager::createMatch(const std::string& match_id, const std::string&
 Match* MatchManager::receiveMatch(const Match& match) {
     // Only allow one active match at a time
     if (activeDuelState.match != nullptr) {
+        LOG_W(MATCH_MANAGER_TAG, "Cannot receive match %s - active match already exists (ID: %s)",
+              match.getMatchId().c_str(), activeDuelState.match->getMatchId().c_str());
         return nullptr;
     }
 
     // Create a new Match object on the heap instead of storing a pointer to the parameter
     activeDuelState.match = new Match(match.getMatchId(), match.getHunterId(), match.getBountyId());
-    
+
     // Copy draw times
     activeDuelState.match->setHunterDrawTime(match.getHunterDrawTime());
     activeDuelState.match->setBountyDrawTime(match.getBountyDrawTime());
-    
+
     return activeDuelState.match;
 }
 

@@ -31,12 +31,13 @@ void Device::shutdownApps() {
 
 void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     this->appConfig = std::move(config);
-    this->currentAppId = launchAppId;
-    if(appConfig.find(currentAppId) == appConfig.end()) {
-        LOG_E(TAG, "App %d not found", currentAppId.id);
+
+    if(appConfig.find(launchAppId) == appConfig.end()) {
+        LOG_E(TAG, "App %d not found in appConfig (size: %zu)", launchAppId.id, appConfig.size());
         return;
     }
-    
+
+    this->currentAppId = launchAppId;
     appConfig[currentAppId]->onStateMounted(this);
 }
 
