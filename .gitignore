@@ -62,3 +62,10 @@ compile_commands.json
 
 # WiFi credentials (sensitive data)
 wifi_credentials.ini
+# Claude Code artifacts (stored on NFS, symlinked into repo)
+CLAUDE.md
+CLAUDE-*.md
+test/CLAUDE.md
+docs/AGENT-REFERENCE.md
+.agent-checkpoint.json
+.cmux/
