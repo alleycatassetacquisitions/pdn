@@ -3,9 +3,11 @@ name: Duplicate File Detection
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
 
 jobs:
   check-duplicate-files:
+    if: github.event_name == 'pull_request'
     runs-on: [self-hosted, linux, x64]
     permissions:
       pull-requests: write

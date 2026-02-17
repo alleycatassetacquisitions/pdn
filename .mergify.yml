@@ -1,0 +1,134 @@
+queue_rules:
+  - name: urgent
+    # P0 bug fixes jump the line
+    batch_size: 1
+    batch_max_wait_time: 0 s
+    merge_method: squash
+    queue_conditions:
+      - check-success = test-native
+      - check-success = test-native-cli
+      - check-success = build-cli
+    merge_conditions:
+      - check-success = test-native
+      - check-success = test-native-cli
+      - check-success = test
+      - check-success = build-esp32
+      - check-success = build-cli
+
+  - name: default
+    # Standard wave PRs — batch for efficiency
+    batch_size: 8
+    batch_max_wait_time: 5 min
+    speculative_checks: 2
+    merge_method: squash
+    queue_conditions:
+      - check-success = test-native
+      - check-success = test-native-cli
+      - check-success = build-cli
+    merge_conditions:
+      - check-success = test-native
+      - check-success = test-native-cli
+      - check-success = test
+      - check-success = build-esp32
+      - check-success = build-cli
+
+  - name: docs
+    # Docs-only PRs — fast lane, minimal CI
+    batch_size: 10
+    batch_max_wait_time: 2 min
+    merge_method: squash
+    queue_conditions:
+      - check-success = build-cli
+    merge_conditions:
+      - check-success = build-cli
+
+priority_rules:
+  - name: P0 critical
+    conditions:
+      - "label = priority: p0"
+    priority: high
+
+  - name: bug fixes
+    conditions:
+      - label = bug
+    priority: 2500
+
+  - name: testing
+    conditions:
+      - "label = type: testing"
+    priority: 2000
+
+  - name: docs and reports
+    conditions:
+      - title ~= ^docs:
+    priority: 1500
+
+  - name: enhancements
+    conditions:
+      - label = enhancement
+    priority: medium
+
+pull_request_rules:
+  # Auto-queue P0 bug fixes into urgent lane
+  - name: auto-queue urgent bug fixes
+    conditions:
+      - base = main
+      - "label = priority: p0"
+      - label = bug
+      - -label = do-not-merge
+      - -draft
+    actions:
+      queue:
+        name: urgent
+
+  # Auto-queue docs PRs into fast lane
+  - name: auto-queue docs PRs
+    conditions:
+      - base = main
+      - title ~= ^docs:
+      - -label = do-not-merge
+      - -draft
+    actions:
+      queue:
+        name: docs
+
+  # Label PRs by type based on title prefix
+  - name: label bug fix PRs
+    conditions:
+      - title ~= ^fix:
+    actions:
+      label:
+        add:
+          - bug
+
+  - name: label test PRs
+    conditions:
+      - title ~= ^test:
+    actions:
+      label:
+        add:
+          - "type: testing"
+
+  - name: label docs PRs
+    conditions:
+      - title ~= ^docs:
+    actions:
+      label:
+        add:
+          - documentation
+
+  - name: label refactor PRs
+    conditions:
+      - title ~= ^refactor:
+    actions:
+      label:
+        add:
+          - enhancement
+
+  - name: label infra PRs
+    conditions:
+      - title ~= ^(infra|chore):
+    actions:
+      label:
+        add:
+          - infrastructure
