@@ -1,0 +1,77 @@
+# 3-Player Game: 2 Hunter + 1 Bounty
+# Demonstrates a 3-player scenario with 2 hunters and 1 bounty
+# Runtime: ~30 seconds
+# Usage: .pio/build/native_cli/program 3 --script demos/3player-2hunter-1bounty.demo
+# Note: You need to add a third device with hunter role after launch
+
+# Wait for devices to settle into Idle
+wait 3
+
+# Check initial device configuration
+# Device 0: Hunter (default)
+# Device 1: Bounty (default)
+# Device 2: Hunter (need to manually add with: add hunter)
+state
+
+# Display roles
+role all
+
+# Device 0 (Hunter) initiates duel with Device 1 (Bounty)
+l 0
+
+# Wait for duel broadcast
+wait 1
+
+# Device 1 (Bounty) accepts duel
+l 1
+
+# Wait for handshake to complete
+wait 1
+
+state
+
+# Countdown (3 seconds)
+wait 3
+
+# Draw phase - Device 0 (Hunter) draws first
+b 0
+
+# Wait for result determination
+wait 1
+
+# Display result
+state
+
+# Result displays for 3 seconds
+wait 3.5
+
+# Back to Idle
+state
+
+# Now Device 2 (second Hunter) challenges Device 1 (Bounty)
+l 2
+
+wait 1
+
+# Device 1 (Bounty) accepts the second duel
+l 1
+
+wait 1
+
+state
+
+# Countdown
+wait 3
+
+# Device 1 (Bounty) draws faster this time
+b 1
+
+wait 1
+
+state
+
+wait 3.5
+
+# Final states - all back to Idle
+state
+role all

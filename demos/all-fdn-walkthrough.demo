@@ -1,0 +1,304 @@
+# Full FDN Walkthrough - Mixed Allegiance
+# Demonstrates completing all 7 FDN minigames with mixed player/NPC allegiances
+# Shows cross-allegiance gameplay (bounty player vs hunter NPCs, hunter player vs bounty NPCs)
+# Runtime: ~5 minutes
+# Usage: .pio/build/native_cli/program 1 --script demos/all-fdn-walkthrough.demo
+
+# Wait for player device to settle (device 0 is hunter by default)
+wait 2
+state
+role 0
+
+# ========================================
+# GAME 1: Ghost Runner (Konami Button: START) - Memory Maze
+# Player: Hunter, NPC: Bounty (cross-allegiance)
+# ========================================
+add npc ghost-runner
+cable 0 1
+wait 4
+
+# Ghost Runner intro (2s)
+wait 2.5
+
+# Maze preview + solution trace (~8s)
+wait 9
+
+# Gameplay - navigate maze (simplified for demo)
+# PRIMARY = cycle direction, SECONDARY = move
+b 0
+wait 0.5
+b2 0
+wait 0.5
+b 0
+wait 0.5
+b2 0
+wait 0.5
+b2 0
+wait 3
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 1
+wait 1
+konami 0
+
+# ========================================
+# GAME 2: Spike Vector (Konami Button: DOWN) - Wall Gauntlet
+# Player: Hunter, NPC: Hunter (same allegiance)
+# ========================================
+add npc spike-vector
+cable 0 2
+wait 4
+
+# Spike Vector intro (2s)
+wait 2.5
+
+# Level 1 show phase
+wait 2
+
+# Gameplay - move cursor to gaps
+# PRIMARY = move left, SECONDARY = move right
+b 0
+wait 0.5
+b2 0
+wait 0.5
+b2 0
+wait 0.5
+b 0
+wait 4
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 2
+wait 1
+konami 0
+
+# ========================================
+# GAME 3: Firewall Decrypt (Konami Button: LEFT) - MAC Address Hunter
+# Player: Hunter, NPC: Bounty (cross-allegiance)
+# ========================================
+add npc firewall-decrypt
+cable 0 3
+wait 4
+
+# Firewall Decrypt intro (2s)
+wait 2.5
+
+# Round 1 - scroll and confirm target MAC
+wait 1
+b 0
+wait 0.2
+b 0
+wait 0.2
+b2 0
+wait 1
+
+# Round 2
+wait 1
+b 0
+wait 0.2
+b2 0
+wait 1
+
+# Round 3
+wait 1
+b 0
+wait 0.2
+b2 0
+wait 1
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 3
+wait 1
+konami 0
+
+# ========================================
+# GAME 4: Cipher Path (Konami Button: RIGHT) - Wire Routing
+# Player: Hunter, NPC: Hunter (same allegiance)
+# ========================================
+add npc cipher-path
+cable 0 4
+wait 4
+
+# Cipher Path intro (2s)
+wait 2.5
+
+# Gameplay - rotate wires to complete path
+# PRIMARY = rotate current wire, SECONDARY = move to next
+wait 2
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 3
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 4
+wait 1
+konami 0
+
+# ========================================
+# GAME 5: Exploit Sequencer (Konami Button: B) - Rhythm Game
+# Player: Hunter, NPC: Bounty (cross-allegiance)
+# ========================================
+add npc exploit-sequencer
+cable 0 5
+wait 4
+
+# Exploit Sequencer intro (2s)
+wait 2.5
+
+# Gameplay - hit notes as they reach target line
+# PRIMARY = hit note, timing is critical
+wait 1.5
+b 0
+wait 0.8
+b 0
+wait 0.8
+b 0
+wait 0.8
+b 0
+wait 0.8
+b 0
+wait 3
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 5
+wait 1
+konami 0
+
+# ========================================
+# GAME 6: Breach Defense (Konami Button: A) - Lane Defense
+# Player: Hunter, NPC: Hunter (same allegiance)
+# ========================================
+add npc breach-defense
+cable 0 6
+wait 4
+
+# Breach Defense intro (2s)
+wait 2.5
+
+# Gameplay - defend lanes from incoming threats
+# PRIMARY = move left, SECONDARY = fire/block
+wait 2
+b2 0
+wait 0.5
+b 0
+wait 0.3
+b2 0
+wait 0.5
+b 0
+wait 0.3
+b2 0
+wait 0.5
+b2 0
+wait 3
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 6
+wait 1
+konami 0
+
+# ========================================
+# GAME 7: Signal Echo (Konami Button: UP) - Arrow Memory
+# Player: Hunter, NPC: Bounty (cross-allegiance)
+# ========================================
+add npc signal-echo
+cable 0 7
+wait 4
+
+# Signal Echo intro (2s)
+wait 2.5
+
+# Round 1 - watch pattern, then repeat (7 arrows, 0 mistakes allowed)
+wait 8
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 2
+
+# Round 2
+wait 8
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 2
+
+# Round 3
+wait 8
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 0.3
+b2 0
+wait 0.3
+b 0
+wait 0.3
+b 0
+wait 0.3
+b2 0
+wait 2
+
+# Wait for win state
+wait 4
+
+# Disconnect
+cable -d 0 7
+wait 1
+
+# ========================================
+# FINAL STATUS: All 7 Konami Buttons Unlocked + Boon Active
+# ========================================
+konami 0
+progress 0
+state
+
+# All 7 games completed with mixed allegiance gameplay
+role 0
