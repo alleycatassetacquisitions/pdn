@@ -69,6 +69,17 @@ priority_rules:
     priority: medium
 
 pull_request_rules:
+  # Queue PRs with ready-to-merge label into default queue
+  - name: queue PRs with ready-to-merge label
+    conditions:
+      - base = main
+      - label = ready-to-merge
+      - -label = do-not-merge
+      - -draft
+    actions:
+      queue:
+        name: default
+
   # Auto-queue P0 bug fixes into urgent lane
   - name: auto-queue urgent bug fixes
     conditions:

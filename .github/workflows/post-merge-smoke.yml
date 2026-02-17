@@ -1,0 +1,26 @@
+name: Post-Merge Smoke Test
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'demos/**'
+
+jobs:
+  smoke-test:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Run core tests
+        run: pio test -e native
+      - name: Run CLI tests
+        run: pio test -e native_cli_test
+      - name: Build CLI
+        run: pio run -e native_cli
