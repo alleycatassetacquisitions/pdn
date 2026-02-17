@@ -1,5 +1,4 @@
-#include "game/konami-metagame/konami-metagame.hpp"
-#include "game/konami-metagame/konami-metagame-states.hpp"
+#include "game/konami-metagame.hpp"
 #include "game/konami-states/konami-handshake.hpp"
 #include "game/konami-states/game-launch-state.hpp"
 #include "game/konami-states/konami-reward-states.hpp"

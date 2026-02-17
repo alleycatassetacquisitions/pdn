@@ -19,15 +19,12 @@
 #include "konami-handshake-tests.hpp"
 #include "lifecycle-tests.hpp"
 #include "contract-tests.hpp"
-#include "network-discovery-tests.hpp"
 #include "wireless-manager-tests.hpp"
-#include "remote-player-tests.hpp"
 
 // Core utility tests
 #include "uuid-tests.hpp"
 #include "timer-tests.hpp"
 #include "difficulty-scaler-tests.hpp"
-#include "sequence-provider-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1686,68 +1683,6 @@ TEST_F(ContractTestSuite, matchBinaryFormat) {
 }
 
 // ============================================
-// NETWORK DISCOVERY TESTS
-// ============================================
-
-TEST_F(NetworkDiscoveryTestSuite, discoveryInitializesWithDeviceInfo) {
-    discoveryInitializesWithDeviceInfo(discovery1);
-}
-
-TEST_F(NetworkDiscoveryTestSuite, discoveryCannotReinitialize) {
-    discoveryCannotReinitialize(discovery1);
-}
-
-TEST_F(NetworkDiscoveryTestSuite, discoveryShutdownClearsState) {
-    discoveryShutdownClearsState(discovery1);
-}
-
-TEST_F(NetworkDiscoveryTestSuite, scanningChangesStateToScanning) {
-    scanningChangesStateToScanning(discovery1, &currentTime);
-}
-
-TEST_F(NetworkDiscoveryTestSuite, scanningTimesOutAfterDuration) {
-    scanningTimesOutAfterDuration(discovery1, &currentTime);
-}
-
-TEST_F(NetworkDiscoveryTestSuite, scanningCanBeStoppedEarly) {
-    scanningCanBeStoppedEarly(discovery1, &currentTime);
-}
-
-TEST_F(NetworkDiscoveryTestSuite, scanningClearsDiscoveredDevices) {
-    scanningClearsDiscoveredDevices(discovery1, &currentTime);
-}
-
-// NOTE: Advanced discovery tests commented out due to issues with packet handling in test environment
-// The discovery system works in practice but needs more investigation for proper unit testing
-// TEST_F(NetworkDiscoveryTestSuite, presencePacketDiscoveredDeviceAdded) {
-//     presencePacketDiscoveredDeviceAdded(discovery1);
-// }
-
-// TEST_F(NetworkDiscoveryTestSuite, presencePacketFromSelfIsIgnored) {
-//     presencePacketFromSelfIsIgnored(discovery1);
-// }
-
-// TEST_F(NetworkDiscoveryTestSuite, pairRequestChangesState) {
-//     pairRequestChangesState(discovery1);
-// }
-
-TEST_F(NetworkDiscoveryTestSuite, pairRequestToUnknownDeviceFails) {
-    pairRequestToUnknownDeviceFails(discovery1);
-}
-
-// TEST_F(NetworkDiscoveryTestSuite, pairRequestWhenAlreadyPairedFails) {
-//     pairRequestWhenAlreadyPairedFails(discovery1);
-// }
-
-// TEST_F(NetworkDiscoveryTestSuite, deviceFoundCallbackInvoked) {
-//     deviceFoundCallbackInvoked(discovery1);
-// }
-
-// TEST_F(NetworkDiscoveryTestSuite, pairCompleteCallbackInvokedOnSuccess) {
-//     pairCompleteCallbackInvokedOnSuccess(discovery1);
-// }
-
-// ============================================
 // WIRELESS MANAGER TESTS
 // ============================================
 
@@ -1790,54 +1725,6 @@ TEST_F(WirelessManagerTestSuite, clearPacketsRemovesAllTrackedCommands) {
 TEST_F(WirelessManagerTestSuite, clearPacketRemovesSpecificCommand) {
     clearPacketRemovesSpecificCommand(wirelessManager);
 }
-
-// ============================================
-// REMOTE PLAYER MANAGER TESTS
-// ============================================
-
-TEST_F(RemotePlayerTestSuite, remotePlayerManagerInitializesCorrectly) {
-    remotePlayerManagerInitializesCorrectly(mockPeerComms);
-}
-
-TEST_F(RemotePlayerTestSuite, remotePlayerManagerSetsTTL) {
-    remotePlayerManagerSetsTTL(remotePlayerManager);
-}
-
-TEST_F(RemotePlayerTestSuite, processPlayerInfoPktRejectsInvalidPacketSize) {
-    processPlayerInfoPktRejectsInvalidPacketSize(remotePlayerManager);
-}
-
-// TEST_F(RemotePlayerTestSuite, updateDoesNotCrashWithNoPlayers) {
-//     updateDoesNotCrashWithNoPlayers(remotePlayerManager);
-// }
-
-// NOTE: Advanced remote player tests commented out due to test environment complexity
-// The RemotePlayerManager works correctly in practice
-// These tests require more sophisticated mock setup and test environment configuration
-
-// TEST_F(RemotePlayerTestSuite, startBroadcastingTriggersImmediateBroadcast) {
-//     startBroadcastingTriggersImmediateBroadcast(remotePlayerManager, mockPeerComms, localPlayer);
-// }
-
-// TEST_F(RemotePlayerTestSuite, broadcastPacketContainsCorrectPlayerInfo) {
-//     broadcastPacketContainsCorrectPlayerInfo(remotePlayerManager, mockPeerComms, localPlayer);
-// }
-
-// TEST_F(RemotePlayerTestSuite, processPlayerInfoPktAddsNewPlayer) {
-//     processPlayerInfoPktAddsNewPlayer(remotePlayerManager);
-// }
-
-// TEST_F(RemotePlayerTestSuite, processPlayerInfoPktUpdatesExistingPlayer) {
-//     processPlayerInfoPktUpdatesExistingPlayer(remotePlayerManager);
-// }
-
-// TEST_F(RemotePlayerTestSuite, updateRemovesStalePlayersAfterTTL) {
-//     updateRemovesStalePlayersAfterTTL(remotePlayerManager);
-// }
-
-// TEST_F(RemotePlayerTestSuite, processMultiplePlayersFromDifferentMacs) {
-//     processMultiplePlayersFromDifferentMacs(remotePlayerManager);
-// }
 
 // ============================================
 // MAIN

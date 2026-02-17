@@ -6,7 +6,6 @@
 #include "utils/simple-timer.hpp"
 #include "game/fdn-result-manager.hpp"
 #include <string>
-#include <vector>
 
 class FdnGame;
 
@@ -74,21 +73,6 @@ private:
     static constexpr int INACTIVITY_TIMEOUT_MS = 30000;
     bool transitionToReceiveResultState = false;
     bool transitionToIdleState = false;
-
-    int currentRound = 0;
-    int totalRounds = 3;
-    int sequenceLength = 4;
-    int inputIndex = 0;
-    int playerLives = 3;
-    int playerScore = 0;
-    bool gameComplete = false;
-    bool playerWon = false;
-    std::vector<bool> currentSequence;
-
-    void generateSequence();
-    void sendSequence(Device* PDN);
-    void onEspNowReceived(const std::string& message, Device* PDN);
-    void renderDisplay(Device* PDN);
 };
 
 class NpcReceiveResult : public State {

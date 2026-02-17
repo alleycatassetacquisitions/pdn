@@ -1,0 +1,34 @@
+# Cppcheck suppression file
+# cppcheck does not recognize C++11 default member initializers in structs,
+# causing false "uninitvar" and "uninitStructMember" errors for fields like
+# AnimationConfig.curve, AnimationConfig.loopDelayMs, DeviceInstance.lastStateId, etc.
+
+# DeviceInstance — all fields have defaults in cli-device.hpp
+uninitvar:include/cli/cli-device.hpp
+
+# Variadic template snprintf — cppcheck can't resolve parameter pack
+wrongPrintfScanfArgNum:include/cli/cli-terminal.hpp
+
+# AnimationConfig — all fields have defaults in light-interface.hpp
+uninitStructMember:src/game/exploit-sequencer/exploit-sequencer-evaluate.cpp
+uninitStructMember:src/game/exploit-sequencer/exploit-sequencer-lose.cpp
+
+# AnimationConfig/LEDConfig used across game states — all have struct defaults
+uninitvar:src/game/exploit-sequencer/exploit-sequencer-evaluate.cpp
+uninitvar:src/game/exploit-sequencer/exploit-sequencer-gameplay.cpp
+uninitvar:src/game/exploit-sequencer/exploit-sequencer-lose.cpp
+uninitvar:src/game/ghost-runner/ghost-runner-gameplay.cpp
+uninitvar:src/game/konami-states/konami-code-entry.cpp
+uninitvar:src/game/konami-states/konami-code-result.cpp
+uninitvar:src/game/quickdraw-states/boon-awarded.cpp
+uninitvar:src/game/quickdraw-states/connection-lost-state.cpp
+uninitvar:src/game/quickdraw-states/connection-successful-state.cpp
+uninitvar:src/game/quickdraw-states/duel-state.cpp
+uninitvar:src/game/quickdraw-states/konami-button-awarded.cpp
+uninitvar:src/game/quickdraw-states/lose-state.cpp
+uninitvar:src/game/quickdraw-states/player-registration-state.cpp
+uninitvar:src/game/quickdraw-states/upload-matches-state.cpp
+uninitvar:src/game/quickdraw-states/win-state.cpp
+uninitvar:src/game/signal-echo/echo-evaluate.cpp
+uninitvar:src/game/signal-echo/echo-player-input.cpp
+uninitvar:src/game/signal-echo/echo-show-sequence.cpp

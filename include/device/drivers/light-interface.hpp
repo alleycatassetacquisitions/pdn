@@ -94,9 +94,9 @@ enum class EaseCurve {
 };
 
 struct AnimationConfig {
-    AnimationType type;
-    bool loop;
-    uint8_t speed;
+    AnimationType type = AnimationType::IDLE;
+    bool loop = false;
+    uint8_t speed = 1;
     EaseCurve curve = EaseCurve::LINEAR;  // Default to linear curve
     LEDState initialState = LEDState();                // Initial LED state for the animation
     uint16_t loopDelayMs = 0;             // Delay between animation loops (in milliseconds)

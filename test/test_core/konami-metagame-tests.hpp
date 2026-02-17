@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 #include "game/player.hpp"
 #include "game/fdn-game-type.hpp"
-#include "game/konami-metagame/konami-metagame.hpp"
+#include "game/konami-metagame.hpp"
 #include "device/device-types.hpp"
 
 class KonamiMetaGameTestSuite : public testing::Test {

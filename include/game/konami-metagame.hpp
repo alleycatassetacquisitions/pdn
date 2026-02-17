@@ -41,24 +41,6 @@ enum KonamiMetaGameStateId {
 };
 
 /*
- * PlaceholderState — A stub state for slots not yet implemented.
- * Logs entry and immediately returns to Idle.
- */
-class PlaceholderState : public State {
-public:
-    explicit PlaceholderState(int stateId);
-    ~PlaceholderState() override;
-
-    void onStateMounted(Device* PDN) override;
-    void onStateLoop(Device* PDN) override;
-    void onStateDismounted(Device* PDN) override;
-    bool transitionToIdle();
-
-private:
-    bool transitionToIdleState = false;
-};
-
-/*
  * KonamiMetaGame — Top-level state machine for Konami metagame.
  * Manages the flow of minigame launches, difficulty selection, button awards,
  * and the final Konami Code entry puzzle.

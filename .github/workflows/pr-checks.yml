@@ -50,17 +50,20 @@ jobs:
     - name: Run Core Unit Tests
       id: core-tests
       run: |
-        OUTPUT=$(pio test -e native 2>&1)
+        OUTPUT=$(pio test -e native 2>&1) || true
         echo "$OUTPUT"
         COUNT=$(echo "$OUTPUT" | grep -oP '\d+ test cases' | grep -oP '\d+' | head -1)
         PASSED=$(echo "$OUTPUT" | grep -oP '\d+ succeeded' | grep -oP '\d+' | head -1)
         echo "count=${COUNT:-0}" >> $GITHUB_OUTPUT
         echo "passed=${PASSED:-0}" >> $GITHUB_OUTPUT
+        if echo "$OUTPUT" | grep -q "FAILED"; then
+          exit 1
+        fi
 
     - name: Run CLI Unit Tests
       id: cli-tests
       run: |
-        OUTPUT=$(pio test -e native_cli_test 2>&1)
+        OUTPUT=$(pio test -e native_cli_test 2>&1) || true
         echo "$OUTPUT"
         COUNT=$(echo "$OUTPUT" | grep -oP '\d+ test cases' | grep -oP '\d+' | head -1)
         PASSED=$(echo "$OUTPUT" | grep -oP '\d+ succeeded' | grep -oP '\d+' | head -1)

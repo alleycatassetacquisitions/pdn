@@ -7,7 +7,7 @@
 #include "cli/cli-serial-broker.hpp"
 #include "cli/cli-http-server.hpp"
 #include "game/player.hpp"
-#include "game/konami-metagame/konami-metagame.hpp"
+#include "game/konami-metagame.hpp"
 #include "device/device-types.hpp"
 #include "utils/simple-timer.hpp"
 

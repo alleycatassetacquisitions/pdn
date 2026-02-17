@@ -83,6 +83,7 @@ jobs:
           cppcheck --enable=warning,style,performance,portability \
             --error-exitcode=1 \
             --suppress=missingIncludeSystem \
+            --suppressions-list=.cppcheck-suppressions.txt \
             --inline-suppr \
             -I include/ \
             src/ 2>&1 | tee /tmp/cppcheck-output.txt || echo "Cppcheck found issues"

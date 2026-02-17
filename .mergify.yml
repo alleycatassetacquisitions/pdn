@@ -19,7 +19,6 @@ queue_rules:
     # Standard wave PRs — batch for efficiency
     batch_size: 8
     batch_max_wait_time: 5 min
-    speculative_checks: 2
     merge_method: squash
     queue_conditions:
       - check-success = test-native
@@ -60,7 +59,7 @@ priority_rules:
 
   - name: docs and reports
     conditions:
-      - title ~= ^docs:
+      - "title ~= ^docs:"
     priority: 1500
 
   - name: enhancements
@@ -96,7 +95,7 @@ pull_request_rules:
   - name: auto-queue docs PRs
     conditions:
       - base = main
-      - title ~= ^docs:
+      - "title ~= ^docs:"
       - -label = do-not-merge
       - -draft
     actions:
@@ -106,7 +105,7 @@ pull_request_rules:
   # Label PRs by type based on title prefix
   - name: label bug fix PRs
     conditions:
-      - title ~= ^fix:
+      - "title ~= ^fix:"
     actions:
       label:
         add:
@@ -114,7 +113,7 @@ pull_request_rules:
 
   - name: label test PRs
     conditions:
-      - title ~= ^test:
+      - "title ~= ^test:"
     actions:
       label:
         add:
@@ -122,7 +121,7 @@ pull_request_rules:
 
   - name: label docs PRs
     conditions:
-      - title ~= ^docs:
+      - "title ~= ^docs:"
     actions:
       label:
         add:
@@ -130,7 +129,7 @@ pull_request_rules:
 
   - name: label refactor PRs
     conditions:
-      - title ~= ^refactor:
+      - "title ~= ^refactor:"
     actions:
       label:
         add:
@@ -138,7 +137,7 @@ pull_request_rules:
 
   - name: label infra PRs
     conditions:
-      - title ~= ^(infra|chore):
+      - "title ~= ^(infra|chore):"
     actions:
       label:
         add:

@@ -2,7 +2,6 @@
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 #include "game/difficulty-scaler.hpp"
-#include "game/sequence-provider.hpp"
 #include "state/state-machine.hpp"
 #include "game/minigame.hpp"
 
@@ -130,19 +129,6 @@ void GameLaunchState::launchGame(Device* PDN) {
     LOG_I(TAG, "Launching game %d with mode %d",
           static_cast<int>(gameType), static_cast<int>(launchMode));
 
-    // Set difficulty based on launch mode
-    Difficulty difficulty;
-    switch (launchMode) {
-        case LaunchMode::EASY_FIRST_ENCOUNTER:
-        case LaunchMode::EASY_REPLAY:
-            difficulty = Difficulty::EASY;
-            break;
-        case LaunchMode::HARD_FIRST_ENCOUNTER:
-        case LaunchMode::MASTERY_REPLAY:
-            difficulty = Difficulty::HARD;
-            break;
-    }
-
     // Get the app ID for the game type
     int appId;
     switch (gameType) {
@@ -155,11 +141,6 @@ void GameLaunchState::launchGame(Device* PDN) {
         case GameType::BREACH_DEFENSE:    appId = 7; break;
         default:                          appId = 1; break;
     }
-
-    // TODO: Configure difficulty - minigames need to read this from somewhere
-    // For now, we just launch the game. The minigames may need modification
-    // to accept difficulty configuration from external sources.
-    // Difficulty is: %s", (difficulty == Difficulty::EASY) ? "EASY" : "HARD"
 
     // Launch the app
     PDN->setActiveApp(StateId(appId));

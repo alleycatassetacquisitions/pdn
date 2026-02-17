@@ -22,7 +22,6 @@
 #include "game/quickdraw.hpp"
 #include "game/konami-metagame.hpp"
 #include "id-generator.hpp"
-#include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"

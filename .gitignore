@@ -60,6 +60,10 @@ compile_commands.json
 
 .cursor/
 
+# Agent artifacts
+.agent-checkpoint.json
+.cmux/
+
 # WiFi credentials (sensitive data)
 wifi_credentials.ini
 # Claude Code artifacts (stored on NFS, symlinked into repo)
