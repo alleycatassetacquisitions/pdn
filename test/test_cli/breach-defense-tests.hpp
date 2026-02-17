@@ -432,11 +432,17 @@ void breachDefenseManagedModeReturns(BreachDefenseManagedTestSuite* suite) {
     }
     ASSERT_EQ(suite->getPlayerStateId(), FDN_DETECTED);
 
-    // Complete handshake
+    // Complete FDN handshake
     suite->player_.serialOutDriver->injectInput("*fack\r");
+    suite->tickWithTime(3, 100);
+
+    // After Wave 17: FDN launches KonamiMetaGame (app 9), which routes to the minigame
+    // The active app should be KonamiMetaGame now
+    // KMG Handshake waits for *fgame: message with FdnGameType (BREACH_DEFENSE = 6)
+    suite->player_.serialOutDriver->injectInput("*fgame:6\r");
     suite->tickWithTime(5, 100);
 
-    // Should be in Breach Defense now
+    // KMG should have launched Breach Defense by now
     auto* bd = suite->getBreachDefense();
     ASSERT_NE(bd, nullptr);
     ASSERT_TRUE(bd->getConfig().managedMode);
