@@ -61,12 +61,17 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Install cppcheck
         run: |
           if command -v cppcheck &> /dev/null; then
-            echo "cppcheck already installed"
+            echo "cppcheck already installed: $(cppcheck --version)"
           else
-            sudo apt-get update && sudo apt-get install -y cppcheck || echo "::warning::Could not install cppcheck, skipping static analysis"
+            echo "Installing cppcheck via pip..."
+            pip install cppcheck 2>/dev/null || sudo apt-get update && sudo apt-get install -y cppcheck || echo "::warning::Could not install cppcheck, skipping static analysis"
           fi
       - name: Run cppcheck
         run: |
