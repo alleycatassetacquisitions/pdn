@@ -377,9 +377,7 @@ private:
                 int byteIndex = row * bytesPerRow + col / 8;
                 int bitIndex = col % 8;  // LSB first
                 bool pixelOn = (data[byteIndex] >> bitIndex) & 1;
-                if (pixelOn) {
-                    setPixel(offsetX + col, offsetY + row, true);
-                }
+                setPixel(offsetX + col, offsetY + row, pixelOn);
             }
         }
     }
