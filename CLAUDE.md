@@ -264,6 +264,14 @@ Key rules:
 
 **Shared Files (Do Not Touch Unless Assigned):** `include/cli/cli-device.hpp`, `include/device/device-types.hpp`, `src/game/quickdraw-states/fdn-detected-state.cpp`, `src/game/quickdraw.cpp`, `include/game/color-profiles.hpp`
 
+### Agent Provisioning
+
+On session start, run the fleet provisioning script (idempotent, takes <5s if already provisioned):
+```bash
+bash /mnt/scratch/fleet/provision-agent.sh
+```
+This installs the pdn-tools MCP server (#324) and Stop hook (#330). Verify with `--check`.
+
 ### Context Resilience
 
 On session start: check `~/pdn/.agent-checkpoint.json`, then re-read your plan. If checkpoint exists, you are **resuming mid-task** — do NOT restart from scratch.
