@@ -6,10 +6,11 @@
 const char* TAG = "Device";
 
 Device::~Device() {
-    // shutdownApps() is called here for test mocks and simple Device subclasses.
-    // For PDN, shutdownApps() is called first in PDN::~PDN() (while the vtable
-    // still has PDN's virtual method implementations). The second call here is
-    // a no-op since shutdownApps() clears appConfig after processing.
+    // shutdownApps() is called here as a safety fallback for any Device subclass
+    // that forgets to call it in its own destructor. For PDN and MockDevice,
+    // shutdownApps() is called first in their destructors (while the vtable still
+    // has their virtual method implementations). The second call here is a no-op
+    // since shutdownApps() clears appConfig after processing.
     shutdownApps();
     driverManager.dismountDrivers();
 }

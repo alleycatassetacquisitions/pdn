@@ -207,6 +207,10 @@ public:
     }
 
     ~MockDevice() {
+        // Shutdown apps here (not in ~Device) because state dismount callbacks
+        // may call virtual methods. During ~Device(), the vtable reverts to
+        // Device's pure virtual definitions, causing SIGSEGV.
+        shutdownApps();
         delete mockDisplay;
         delete mockPrimaryButton;
         delete mockSecondaryButton;
