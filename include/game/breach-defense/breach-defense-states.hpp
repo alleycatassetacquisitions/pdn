@@ -2,6 +2,9 @@
 
 #include "state/state.hpp"
 #include "utils/simple-timer.hpp"
+#include "game/base-states/base-intro-state.hpp"
+#include "game/base-states/base-win-state.hpp"
+#include "game/base-states/base-lose-state.hpp"
 
 class BreachDefense;
 
@@ -21,21 +24,13 @@ enum BreachDefenseStateId {
  * BreachDefenseIntro — Title screen. Shows "BREACH DEFENSE" and subtitle.
  * Resets session and seeds RNG. Transitions to Gameplay after timer.
  */
-class BreachDefenseIntro : public State {
+class BreachDefenseIntro : public BaseIntroState<BreachDefense> {
 public:
     explicit BreachDefenseIntro(BreachDefense* game);
-    ~BreachDefenseIntro() override;
 
-    void onStateMounted(Device* PDN) override;
-    void onStateLoop(Device* PDN) override;
-    void onStateDismounted(Device* PDN) override;
-    bool transitionToGameplay();
-
-private:
-    BreachDefense* game;
-    SimpleTimer introTimer;
-    static constexpr int INTRO_DURATION_MS = 2000;
-    bool transitionToGameplayState = false;
+    bool transitionToGameplay() const {
+        return shouldTransition();
+    }
 };
 
 /*
@@ -79,22 +74,13 @@ private:
  * Sets outcome to WON. In standalone mode, transitions back to Intro.
  * In managed mode, calls Device::returnToPreviousApp().
  */
-class BreachDefenseWin : public State {
+class BreachDefenseWin : public BaseWinState<BreachDefense> {
 public:
     explicit BreachDefenseWin(BreachDefense* game);
-    ~BreachDefenseWin() override;
 
-    void onStateMounted(Device* PDN) override;
-    void onStateLoop(Device* PDN) override;
-    void onStateDismounted(Device* PDN) override;
-    bool transitionToIntro();
-    bool isTerminalState() const override;
-
-private:
-    BreachDefense* game;
-    SimpleTimer winTimer;
-    static constexpr int WIN_DISPLAY_MS = 3000;
-    bool transitionToIntroState = false;
+    bool transitionToIntro() const {
+        return shouldTransition();
+    }
 };
 
 /*
@@ -102,20 +88,11 @@ private:
  * Sets outcome to LOST. In standalone mode, transitions back to Intro.
  * In managed mode, calls Device::returnToPreviousApp().
  */
-class BreachDefenseLose : public State {
+class BreachDefenseLose : public BaseLoseState<BreachDefense> {
 public:
     explicit BreachDefenseLose(BreachDefense* game);
-    ~BreachDefenseLose() override;
 
-    void onStateMounted(Device* PDN) override;
-    void onStateLoop(Device* PDN) override;
-    void onStateDismounted(Device* PDN) override;
-    bool transitionToIntro();
-    bool isTerminalState() const override;
-
-private:
-    BreachDefense* game;
-    SimpleTimer loseTimer;
-    static constexpr int LOSE_DISPLAY_MS = 3000;
-    bool transitionToIntroState = false;
+    bool transitionToIntro() const {
+        return shouldTransition();
+    }
 };
