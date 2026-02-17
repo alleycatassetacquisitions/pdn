@@ -5,6 +5,7 @@
 
 #include "device.hpp"
 #include "device/light-manager.hpp"
+#include "device/serial-manager.hpp"
 
 #include <string>
 
@@ -46,13 +47,10 @@ public:
     PeerCommsInterface* getPeerComms() override;
     StorageInterface* getStorage() override;
     WirelessManager* getWirelessManager() override;
+    SerialManager* getSerialManager() override;
 
 protected:
     PDN(DriverConfig& driverConfig);
-
-    HWSerialWrapper* outputJack();
-
-    HWSerialWrapper* inputJack();
 
 private:
 
@@ -62,9 +60,7 @@ private:
     Button* secondary;
     LightStrip* pdnLights;
     LightManager* lightManager;
-
-    HWSerialWrapper* serialOut;
-    HWSerialWrapper* serialIn;
+    SerialManager* serialManager;
 
     HttpClientInterface* httpClient;
     PeerCommsInterface* peerComms;
