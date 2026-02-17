@@ -82,17 +82,6 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
 };
 
 class FakeDevice : public Device {
-protected:
-    HWSerialWrapper* outputJackSerial;
-    HWSerialWrapper* inputJackSerial;
-
-    HWSerialWrapper* outputJack() override {
-        return outputJackSerial;
-    }
-
-    HWSerialWrapper* inputJack() override {
-        return inputJackSerial;
-    }
 };
 
 // Mock classes for each interface
@@ -198,6 +187,7 @@ public:
         mockPeerComms = new MockPeerComms();
         mockStorage = new MockStorage();
         lightManager = new LightManager(fakeLightStrip);
+        serialManager = new SerialManager(&outputJackSerial, &inputJackSerial);
         wirelessManager = new WirelessManager(mockPeerComms, mockHttpClient);
     }
 
@@ -210,6 +200,7 @@ public:
         delete mockPeerComms;
         delete mockStorage;
         delete lightManager;
+        delete serialManager;
         delete wirelessManager;
     }
 
@@ -228,18 +219,10 @@ public:
     StorageInterface* getStorage() override { return mockStorage; }
     LightManager* getLightManager() override { return lightManager; }
     WirelessManager* getWirelessManager() override { return wirelessManager; }
-
-    // DeviceSerial methods
-    HWSerialWrapper* outputJack() override {
-        return &outputJackSerial;
-    }
-
-    HWSerialWrapper* inputJack() override {
-        return &inputJackSerial;
-    }
+    SerialManager* getSerialManager() override { return serialManager; }
 
     std::string getHead() {
-        return primaryHead;
+        return serialManager->getPrimaryHead();
     }
 
     // Mock interface instances
@@ -252,6 +235,7 @@ public:
     MockStorage* mockStorage;
     FakeLightStrip fakeLightStrip;
     LightManager* lightManager;
+    SerialManager* serialManager;
     WirelessManager* wirelessManager;
 
     FakeHWSerialWrapper outputJackSerial;
