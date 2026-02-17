@@ -117,9 +117,10 @@ void echoShowTransitionsToInput(SignalEchoTestSuite* suite) {
     suite->game_->getSession().currentSequence = {true, false};
 
     suite->game_->skipToState(suite->device_.pdn, 1);
+    suite->tick(1);
 
-    // Advance enough time for both signals to display
-    suite->tickWithTime(20, 60);
+    // Advance enough time for both signals to display (2 * displaySpeedMs + margin)
+    suite->tickWithTime(50, 60);
 
     State* state = suite->game_->getCurrentState();
     ASSERT_EQ(state->getStateId(), ECHO_PLAYER_INPUT);
@@ -258,20 +259,23 @@ void echoCumulativeModeAppends(SignalEchoTestSuite* suite) {
     int firstLen = static_cast<int>(customGame->getSession().currentSequence.size());
     ASSERT_EQ(firstLen, 3);
 
-    // Simulate completing a round
+    // Simulate completing a round with correct input
     auto& session = customGame->getSession();
+    session.playerInput = session.currentSequence;  // correct input
     session.inputIndex = firstLen;
     session.currentRound = 0;
 
     // Trigger evaluate logic
-    customGame->skipToState(suite->device_.pdn, 3);
+    customGame->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->device_.pdn->loop();
+
     ASSERT_EQ(session.currentRound, 1);
     ASSERT_EQ(static_cast<int>(session.currentSequence.size()), 4);
 
     delete customGame;
 }
 
-// Test: Fresh mode generates new sequence each round
+// Test: Fresh mode generates new sequence each round (same length each round)
 void echoFreshModeNewSequence(SignalEchoTestSuite* suite) {
     SignalEchoConfig config;
     config.sequenceLength = 4;
@@ -286,12 +290,19 @@ void echoFreshModeNewSequence(SignalEchoTestSuite* suite) {
 
     auto& session = customGame->getSession();
 
+    // First round: length should be 4
+    ASSERT_EQ(static_cast<int>(session.currentSequence.size()), 4);
+
     // Simulate completing round 0
     session.inputIndex = 4;
+    session.playerInput = session.currentSequence;  // correct input
     session.currentRound = 0;
 
-    customGame->skipToState(suite->device_.pdn, 3);
+    customGame->skipToState(suite->device_.pdn, 3);  // Evaluate
+    suite->device_.pdn->loop();
+
     ASSERT_EQ(session.currentRound, 1);
+    // Fresh mode: same length each round
     ASSERT_EQ(static_cast<int>(session.currentSequence.size()), 4);
 
     delete customGame;
@@ -433,7 +444,7 @@ public:
     NativeClockDriver* globalClock_ = nullptr;
 };
 
-// Test: Easy config generates 4-element sequences
+// Test: Easy config generates 7-element sequences (updated for Wave 18 Cypher Recall)
 void echoDiffEasySequenceLength(SignalEchoDifficultyTestSuite* suite) {
     SignalEchoConfig config = SIGNAL_ECHO_EASY;
     config.rngSeed = 42;
@@ -442,7 +453,7 @@ void echoDiffEasySequenceLength(SignalEchoDifficultyTestSuite* suite) {
 
     ASSERT_EQ(static_cast<int>(game->getSession().currentSequence.size()),
               config.sequenceLength);
-    ASSERT_EQ(config.sequenceLength, 4);
+    ASSERT_EQ(config.sequenceLength, 7);
 
     suite->destroyDevice(device);
 }
@@ -677,7 +688,7 @@ void echoButtonPressDuringShowIgnored(SignalEchoTestSuite* suite) {
     ASSERT_EQ(static_cast<int>(session.playerInput.size()), initialInputs);
 }
 
-// Test: Cumulative mode with maximum sequence length
+// Test: Cumulative mode with maximum sequence length (appends 1 element per round)
 void echoCumulativeModeMaxLength(SignalEchoTestSuite* suite) {
     SignalEchoConfig config;
     config.sequenceLength = 3;
@@ -696,12 +707,13 @@ void echoCumulativeModeMaxLength(SignalEchoTestSuite* suite) {
     // Simulate completing multiple rounds
     for (int round = 0; round < 5; round++) {
         auto& session = customGame->getSession();
+        session.playerInput = session.currentSequence;  // correct input
         session.inputIndex = static_cast<int>(session.currentSequence.size());
         customGame->skipToState(suite->device_.pdn, 3);  // Evaluate
-        suite->tick(2);
+        suite->device_.pdn->loop();
     }
 
-    // After 5 rounds, sequence should have grown by 5
+    // After 5 rounds, sequence should have grown by 5 (one element appended per round)
     ASSERT_EQ(static_cast<int>(customGame->getSession().currentSequence.size()), 8);
 
     delete customGame;

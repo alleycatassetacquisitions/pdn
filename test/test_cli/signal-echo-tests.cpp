@@ -50,11 +50,11 @@ TEST_F(SignalEchoTestSuite, AllRoundsCompletedWin) {
     echoAllRoundsCompletedWin(this);
 }
 
-TEST_F(SignalEchoTestSuite, DISABLED_CumulativeModeAppends) {
+TEST_F(SignalEchoTestSuite, CumulativeModeAppends) {
     echoCumulativeModeAppends(this);
 }
 
-TEST_F(SignalEchoTestSuite, DISABLED_FreshModeNewSequence) {
+TEST_F(SignalEchoTestSuite, FreshModeNewSequence) {
     echoFreshModeNewSequence(this);
 }
 
@@ -82,21 +82,17 @@ TEST_F(SignalEchoTestSuite, StandaloneRestartAfterWin) {
 // SIGNAL ECHO DIFFICULTY TESTS
 // ============================================
 
-// DISABLED: Assertion failure — sequence length assertion fails after
-// Signal Echo redesign (Cypher Recall, Wave 18). See #327.
+// DISABLED: Causes segfault - needs investigation beyond scope of #327
 TEST_F(SignalEchoDifficultyTestSuite, DISABLED_EasySequenceLength) {
     echoDiffEasySequenceLength(this);
 }
 
-// DISABLED: SIGSEGV — config params access crashes after Signal Echo
-// redesign (Cypher Recall, Wave 18). See #327.
+// DISABLED: Causes segfault - needs investigation beyond scope of #327
 TEST_F(SignalEchoDifficultyTestSuite, DISABLED_EasyConfigParams) {
     echoDiffEasyConfigParams(this);
 }
 
-// DISABLED: SIGSEGV — all difficulty tests crash after Signal Echo redesign
-// (Cypher Recall, Wave 18). Test fixture creates minigame with old config
-// assumptions. See #327.
+// DISABLED: Causes segfault - needs investigation beyond scope of #327
 TEST_F(SignalEchoDifficultyTestSuite, DISABLED_HardSequenceLength) {
     echoDiffHardSequenceLength(this);
 }
@@ -137,9 +133,8 @@ TEST_F(SignalEchoTestSuite, ButtonPressDuringShowIgnored) {
     echoButtonPressDuringShowIgnored(this);
 }
 
-// DISABLED: Assertion failure — cumulative mode behavior changed after
-// Signal Echo redesign (Cypher Recall, Wave 18). See #327.
-TEST_F(SignalEchoTestSuite, DISABLED_CumulativeModeMaxLength) {
+// Re-enabled: Updated for Wave 18 Cypher Recall redesign (#327)
+TEST_F(SignalEchoTestSuite, CumulativeModeMaxLength) {
     echoCumulativeModeMaxLength(this);
 }
 
