@@ -61,13 +61,13 @@ public:
      *
      * Overflow safety: This method is safe across uint32_t overflow boundaries
      * because getElapsedTime() correctly handles unsigned wraparound (see above).
-     * The comparison (duration < elapsed) will work correctly even if millis()
+     * The comparison (duration <= elapsed) will work correctly even if millis()
      * has wrapped around zero since the timer was started.
      */
     bool expired()
     {
         if(running) {
-            return duration < getElapsedTime();
+            return duration <= getElapsedTime();
         }
 
         return false;

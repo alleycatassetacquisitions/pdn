@@ -80,12 +80,12 @@ inline void duelTimeoutAtExactBoundary(QuickdrawEdgeCaseTests* suite) {
     Duel duelState(suite->player, suite->matchManager, suite->wirelessManager);
     duelState.onStateMounted(&suite->device);
 
-    // Advance to exactly 4000ms - should not timeout (timer uses <, not <=)
-    suite->fakeClock->advance(4000);
+    // Advance to exactly 3999ms - should not timeout yet
+    suite->fakeClock->advance(3999);
     duelState.onStateLoop(&suite->device);
     EXPECT_FALSE(duelState.transitionToIdle());
 
-    // Advance to 4001ms - should timeout
+    // Advance to 4000ms - should timeout (timer uses <=)
     suite->fakeClock->advance(1);
     duelState.onStateLoop(&suite->device);
     EXPECT_TRUE(duelState.transitionToIdle());
@@ -134,12 +134,12 @@ inline void duelPushedGracePeriodExactBoundary(QuickdrawEdgeCaseTests* suite) {
     DuelPushed pushedState(suite->player, suite->matchManager);
     pushedState.onStateMounted(&suite->device);
 
-    // Advance to 900ms - should not transition (timer uses <, not <=)
-    suite->fakeClock->advance(900);
+    // Advance to 899ms - should not transition yet
+    suite->fakeClock->advance(899);
     pushedState.onStateLoop(&suite->device);
     EXPECT_FALSE(pushedState.transitionToDuelResult());
 
-    // Advance to 901ms - should transition
+    // Advance to 900ms - should transition (timer uses <=)
     suite->fakeClock->advance(1);
     pushedState.onStateLoop(&suite->device);
     EXPECT_TRUE(pushedState.transitionToDuelResult());
@@ -156,12 +156,12 @@ inline void duelReceivedResultGracePeriodExactBoundary(QuickdrawEdgeCaseTests* s
     DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
     receivedState.onStateMounted(&suite->device);
 
-    // Advance to 750ms - should not transition (timer uses <, not <=)
-    suite->fakeClock->advance(750);
+    // Advance to 749ms - should not transition yet
+    suite->fakeClock->advance(749);
     receivedState.onStateLoop(&suite->device);
     EXPECT_FALSE(receivedState.transitionToDuelResult());
 
-    // Advance to 751ms - should transition
+    // Advance to 750ms - should transition (timer uses <=)
     suite->fakeClock->advance(1);
     receivedState.onStateLoop(&suite->device);
     EXPECT_TRUE(receivedState.transitionToDuelResult());
