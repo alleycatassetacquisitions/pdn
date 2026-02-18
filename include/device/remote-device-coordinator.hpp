@@ -7,7 +7,7 @@
 enum class PortStatus {
     DISCONNECTED = 0,
     CONNECTED = 1,
-    DAISY_CHAINED = 2, //Not implementing this yet.
+    DAISY_CHAINED = 2,
 };
 
 struct PortState {
@@ -24,8 +24,18 @@ public:
 
     void sync();
 
+    /**
+     * Returns the status of the port.
+     * 
+     * Connected : Exactly 1 peer connected.
+     * Disconnected : No peers connected.
+     * DaisyChained : More than 1 peer connected.
+     */
     PortStatus getPortStatus(SerialByState port);
 
+    /**
+     * Returns the state of the port with all connected peers.
+     */
     PortState getPortState(SerialByState port);
 
 private:

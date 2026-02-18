@@ -7,7 +7,7 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL_RECEIVED_RESULT) {
+DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager) : ConnectState(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -66,4 +66,6 @@ bool DuelReceivedResult::transitionToDuelResult() {
     return matchManager->matchResultsAreIn() || transitionToDuelResultState;
 }
 
-
+bool DuelReceivedResult::disconnectedBackToIdle() {
+    return !isConnected();
+}

@@ -3,6 +3,7 @@
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
 #include "state/state.hpp"
+#include "state/connect-state.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <queue>
 #include <string>
+#include "device/remote-device-coordinator.hpp"
 
 enum QuickdrawStateId {    
     SLEEP = 6,
@@ -65,45 +67,45 @@ private:
     Player* player;
 };
 
-class Idle : public State {
+class Idle : public ConnectState {
 public:
-    Idle(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-    bool transitionToHandshake();
+    bool transitionToDuelCountdown();
     void cycleStats(Device *PDN);
 
 private:
     Player *player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* quickdrawWirelessManager;
-    SimpleTimer heartbeatTimer;
-    const int HEARTBEAT_INTERVAL_MS = 250;
-    bool transitionToHandshakeState = false;
-    bool sendMacAddress = false;
-    bool waitingForMacAddress = false;
+    // SimpleTimer heartbeatTimer;
+    // const int HEARTBEAT_INTERVAL_MS = 250;
+    bool transitionToDuelCountdownState = false;
+    // bool sendMacAddress = false;
+    // bool waitingForMacAddress = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 5;
 
-    void serialEventCallbacks(const std::string& message);
-    void ledAnimation(Device *PDN);
+    // void serialEventCallbacks(const std::string& message);
 };
 
 
 
-class DuelCountdown : public State {
+class DuelCountdown : public ConnectState {
 public:
-    DuelCountdown(Player* player, MatchManager* matchManager);
+    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelCountdown();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool shallWeBattle();
+    bool disconnectedBackToIdle();
 
 private:
     enum class CountdownStep {
@@ -154,9 +156,9 @@ private:
     MatchManager* matchManager;
 };
 
-class Duel : public State {
+class Duel : public ConnectState {
 public:
-    Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
+    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~Duel();
 
     void onStateMounted(Device *PDN) override;
@@ -179,9 +181,9 @@ private:
     const int DUEL_TIMEOUT = 4000;
 };
 
-class DuelPushed : public State {
+class DuelPushed : public ConnectState {
 public:
-    DuelPushed(Player* player, MatchManager* matchManager);
+    DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelPushed();
 
     void onStateMounted(Device *PDN) override;
@@ -189,6 +191,7 @@ public:
     void onStateDismounted(Device *PDN) override;
     void onQuickdrawCommandReceived(QuickdrawCommand command);
     bool transitionToDuelResult();
+    bool disconnectedBackToIdle();
 
 private:
     Player* player;
@@ -197,15 +200,16 @@ private:
     const int DUEL_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public State {
+class DuelReceivedResult : public ConnectState {
 public:
-    DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
+    DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelReceivedResult();
 
     void onStateMounted(Device *PDN) override;  
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;   
     bool transitionToDuelResult();
+    bool disconnectedBackToIdle();
 
 private:
     SimpleTimer buttonPushGraceTimer;

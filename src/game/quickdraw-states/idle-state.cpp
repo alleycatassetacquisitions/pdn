@@ -4,8 +4,9 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
+#include "state/connect-state.hpp"
 
-Idle::Idle(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager) : ConnectState(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -24,7 +25,7 @@ void Idle::onStateMounted(Device *PDN) {
 
     quickdrawWirelessManager->clearCallbacks();
     matchManager->clearCurrentMatch();
-    PDN->getSerialManager()->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
+    // PDN->getSerialManager()->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
     AnimationConfig config;
     
     if(player->isHunter()) {
@@ -42,7 +43,7 @@ void Idle::onStateMounted(Device *PDN) {
         config.loopDelayMs = 1500;
         config.loop = true;
 
-        heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
+        // heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
     }
     PDN->getLightManager()->startAnimation(config);
 
@@ -58,21 +59,21 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    if(!player->isHunter() && heartbeatTimer.expired()) {
-        PDN->getSerialManager()->writeString(SERIAL_HEARTBEAT.c_str());
-        heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
-    }
+    // if(!player->isHunter() && heartbeatTimer.expired()) {
+    //     PDN->getSerialManager()->writeString(SERIAL_HEARTBEAT.c_str());
+    //     heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
+    // }
 
-    if(sendMacAddress) {
-        uint8_t* macAddr = PDN->getWirelessManager()->getMacAddress();
-        const char* macStr = MacToString(macAddr);
-        LOG_I("IDLE", "Preparing to Send Mac Address: %s", macStr);
+    // if(sendMacAddress) {
+    //     uint8_t* macAddr = PDN->getWirelessManager()->getMacAddress();
+    //     const char* macStr = MacToString(macAddr);
+    //     LOG_I("IDLE", "Preparing to Send Mac Address: %s", macStr);
         
-        // Send as single concatenated message to avoid fragmentation
-        std::string message = SEND_MAC_ADDRESS + std::string(macStr);
-        PDN->getSerialManager()->writeString(message.c_str());
-        transitionToHandshakeState = true;
-    }
+    //     // Send as single concatenated message to avoid fragmentation
+    //     std::string message = SEND_MAC_ADDRESS + std::string(macStr);
+    //     PDN->getSerialManager()->writeString(message.c_str());
+    //     transitionToHandshakeState = true;
+    // }
 
     if(displayIsDirty) {
         cycleStats(PDN);
@@ -81,10 +82,10 @@ void Idle::onStateLoop(Device *PDN) {
 }
 
 void Idle::onStateDismounted(Device *PDN) {
-    transitionToHandshakeState = false;
-    sendMacAddress = false;
-    waitingForMacAddress = false;
-    heartbeatTimer.invalidate();
+    // transitionToHandshakeState = false;
+    // sendMacAddress = false;
+    // waitingForMacAddress = false;
+    // heartbeatTimer.invalidate();
     statsIndex = 0;
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
@@ -93,21 +94,21 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->getSerialManager()->clearCallbacks();  // Clear serial callbacks
 }
 
-void Idle::serialEventCallbacks(const std::string& message) {
-    LOG_I("IDLE", "Serial event received: %s", message.c_str());
-    if(message.compare(SERIAL_HEARTBEAT) == 0) {
-        sendMacAddress = true;  
-    } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
-        // Message starts with "smac" - extract MAC address after prefix
-        std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());
-        LOG_I("IDLE", "Received opponent MAC address: %s", macAddress.c_str());
-        player->setOpponentMacAddress(macAddress);
-        transitionToHandshakeState = true;
-    }
-}
+// void Idle::serialEventCallbacks(const std::string& message) {
+//     LOG_I("IDLE", "Serial event received: %s", message.c_str());
+//     if(message.compare(SERIAL_HEARTBEAT) == 0) {
+//         sendMacAddress = true;  
+//     } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
+//         // Message starts with "smac" - extract MAC address after prefix
+//         std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());
+//         LOG_I("IDLE", "Received opponent MAC address: %s", macAddress.c_str());
+//         player->setOpponentMacAddress(macAddress);
+//         transitionToHandshakeState = true;
+//     }
+// }
 
-bool Idle::transitionToHandshake() {
-    return transitionToHandshakeState;
+bool Idle::transitionToDuelCountdown() {
+    return isConnected();
 }
 
 void Idle::cycleStats(Device *PDN) {
