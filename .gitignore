@@ -38,6 +38,7 @@ pdn-pcb/#auto_saved_files#
 compile_commands.json
 
 .vscode/*
+!.vscode/extensions.json
 
 .idea/*
 
@@ -62,3 +63,9 @@ compile_commands.json
 
 # WiFi credentials (sensitive data)
 wifi_credentials.ini
+
+*.code-workspace
+
+.cache/
+
+.vscode/extensions.json

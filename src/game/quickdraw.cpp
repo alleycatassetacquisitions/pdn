@@ -8,7 +8,7 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
-    PDN->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
+    PDN->getSerialManager()->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
 }
 
 Quickdraw::~Quickdraw() {

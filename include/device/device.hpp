@@ -1,10 +1,10 @@
 #pragma once
 
 #include <string>
-#include "device-serial.hpp"
 #include "drivers/display.hpp"
 #include "drivers/button.hpp"
 #include "drivers/light-interface.hpp"
+#include "serial-manager.hpp"
 #include "light-manager.hpp"
 #include "drivers/driver-manager.hpp"
 #include "drivers/logger.hpp"
@@ -16,7 +16,7 @@ class StateMachine;
 
 using AppConfig = std::map<StateId, StateMachine*>;
 
-class Device : public DeviceSerial {
+class Device {
 public:
     // Delete copy and move operations (Rule of 5)
     Device(const Device&) = delete;
@@ -24,7 +24,7 @@ public:
     Device(Device&&) = delete;
     Device& operator=(Device&&) = delete;
 
-    ~Device() override {
+    virtual ~Device() {
         driverManager.dismountDrivers();
         appConfig.clear();
     }
@@ -50,6 +50,7 @@ public:
     virtual PeerCommsInterface* getPeerComms() = 0;
     virtual StorageInterface* getStorage() = 0;
     virtual WirelessManager* getWirelessManager() = 0;
+    virtual SerialManager* getSerialManager() = 0;
 
 protected:
     explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {

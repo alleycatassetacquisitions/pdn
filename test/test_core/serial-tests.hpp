@@ -25,21 +25,21 @@ protected:
     }
 
     void serialWriteAppendsStringStart() {
-        stateTestDevice.setActiveComms(SerialIdentifier::OUTPUT_JACK);
+        stateTestDevice.getSerialManager()->setActiveComms(SerialIdentifier::OUTPUT_JACK);
 
-        stateTestDevice.writeString(TEST_WRITE_STRING.c_str());
+        stateTestDevice.getSerialManager()->writeString(TEST_WRITE_STRING.c_str());
 
         ASSERT_EQ(stateTestDevice.outputJackSerial.peek(), STRING_START);
     }
 
     void headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue() {
-        stateTestDevice.setActiveComms(SerialIdentifier::OUTPUT_JACK);
+        stateTestDevice.getSerialManager()->setActiveComms(SerialIdentifier::OUTPUT_JACK);
 
-        stateTestDevice.writeString(TEST_WRITE_STRING.c_str());
+        stateTestDevice.getSerialManager()->writeString(TEST_WRITE_STRING.c_str());
 
         ASSERT_EQ(stateTestDevice.getHead(), "");
 
-        stateTestDevice.peekComms();
+        stateTestDevice.getSerialManager()->peekComms();
 
         ASSERT_EQ(stateTestDevice.outputJackSerial.available(), 0);
 
@@ -47,12 +47,12 @@ protected:
     }
 
     void whenHeadIsEmptyReadStringStillReturnsNextString() {
-        stateTestDevice.setActiveComms(SerialIdentifier::OUTPUT_JACK);
-        stateTestDevice.writeString(TEST_WRITE_STRING.c_str());
+        stateTestDevice.getSerialManager()->setActiveComms(SerialIdentifier::OUTPUT_JACK);
+        stateTestDevice.getSerialManager()->writeString(TEST_WRITE_STRING.c_str());
 
         ASSERT_EQ(stateTestDevice.getHead(), "");
 
-        std::string readResult = stateTestDevice.readString();
+        std::string readResult = stateTestDevice.getSerialManager()->readString();
 
         ASSERT_EQ(readResult, TEST_WRITE_STRING);
     }

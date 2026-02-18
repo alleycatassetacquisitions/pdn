@@ -24,7 +24,7 @@ void Idle::onStateMounted(Device *PDN) {
 
     quickdrawWirelessManager->clearCallbacks();
     matchManager->clearCurrentMatch();
-    PDN->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
+    PDN->getSerialManager()->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
     AnimationConfig config;
     
     if(player->isHunter()) {
@@ -59,7 +59,7 @@ void Idle::onStateMounted(Device *PDN) {
 
 void Idle::onStateLoop(Device *PDN) {
     if(!player->isHunter() && heartbeatTimer.expired()) {
-        PDN->writeString(SERIAL_HEARTBEAT.c_str());
+        PDN->getSerialManager()->writeString(SERIAL_HEARTBEAT.c_str());
         heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
     }
 
@@ -70,7 +70,7 @@ void Idle::onStateLoop(Device *PDN) {
         
         // Send as single concatenated message to avoid fragmentation
         std::string message = SEND_MAC_ADDRESS + std::string(macStr);
-        PDN->writeString(message.c_str());
+        PDN->getSerialManager()->writeString(message.c_str());
         transitionToHandshakeState = true;
     }
 
@@ -89,8 +89,8 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
-    PDN->flushSerial();
-    PDN->clearCallbacks();  // Clear serial callbacks
+    PDN->getSerialManager()->flushSerial();
+    PDN->getSerialManager()->clearCallbacks();  // Clear serial callbacks
 }
 
 void Idle::serialEventCallbacks(const std::string& message) {
