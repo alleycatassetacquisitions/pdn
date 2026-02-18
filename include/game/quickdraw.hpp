@@ -7,7 +7,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "apps/player-registration/player-registration.hpp"
-#include "apps/handshake/handshake.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -31,6 +30,7 @@ private:
     WirelessManager* wirelessManager;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     RemoteDebugManager* remoteDebugManager;
 };

@@ -2,7 +2,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager) : State(DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
 }
@@ -86,4 +86,16 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
 
 bool DuelCountdown::shallWeBattle() {
     return doBattle;
+}
+
+bool DuelCountdown::disconnectedBackToIdle() {
+    return !isConnected();
+}
+
+bool DuelCountdown::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool DuelCountdown::isAuxRequired() {
+    return !player->isHunter();
 }

@@ -26,11 +26,13 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     lightManager = new LightManager(*lights);
     serialManager = new SerialManager(serialOut, serialIn);
     wirelessManager = new WirelessManager(peerComms, httpClient);
+    remoteDeviceCoordinator = new RemoteDeviceCoordinator();
 }
 
 int PDN::begin() {
     // Initialize wireless manager to set up initial state
     wirelessManager->initialize();
+    remoteDeviceCoordinator->initialize(wirelessManager, serialManager);
     return 1;
 }
 
@@ -41,6 +43,9 @@ std::string PDN::getDeviceId() {
 void PDN::loop() {
     Device::loop();
     lightManager->loop();
+    if (remoteDeviceCoordinator) {
+        remoteDeviceCoordinator->sync(this);
+    }
 }
 
 Display* PDN::getDisplay() {
@@ -81,6 +86,10 @@ StorageInterface* PDN::getStorage() {
 
 WirelessManager* PDN::getWirelessManager() {
     return wirelessManager;
+}
+
+RemoteDeviceCoordinator* PDN::getRemoteDeviceCoordinator() {
+    return remoteDeviceCoordinator;
 }
 
 void PDN::setDeviceId(const std::string& id) {

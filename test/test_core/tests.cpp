@@ -712,12 +712,12 @@ TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) {
 // QUICKDRAW STATE TESTS - IDLE
 // ============================================
 
-TEST_F(IdleStateTests, serialHeartbeatTriggersMacAddressSend) {
-    idleSerialHeartbeatTriggersMacAddressSend(this);
+TEST_F(IdleStateTests, mountRegistersButtonCallbacks) {
+    idleMountRegistersButtonCallbacks(this);
 }
 
-TEST_F(IdleStateTests, receiveMacAddressTransitionsToHandshake) {
-    idleReceiveMacAddressTransitionsToHandshake(this);
+TEST_F(IdleStateTests, doesNotTransitionWhenDisconnected) {
+    idleDoesNotTransitionWhenDisconnected(this);
 }
 
 TEST_F(IdleStateTests, stateClearsOnDismount) {
@@ -732,32 +732,40 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
 // QUICKDRAW STATE TESTS - HANDSHAKE
 // ============================================
 
-TEST_F(HandshakeStateTests, hunterRoutesToHunterSendIdState) {
-    handshakeHunterRoutesToHunterSendIdState(this);
+TEST_F(HandshakeStateTests, primaryIdleTransitionsOnMacReceived) {
+    primaryIdleTransitionsOnMacReceived(this);
 }
 
-TEST_F(HandshakeStateTests, bountyRoutesToBountySendCCState) {
-    handshakeBountyRoutesToBountySendCCState(this);
+TEST_F(HandshakeStateTests, primaryIdleIgnoresUnrelatedSerial) {
+    primaryIdleIgnoresUnrelatedSerial(this);
 }
 
-TEST_F(HandshakeStateTests, timeoutReturnsToIdle) {
-    handshakeTimeoutReturnsToIdle(this);
+TEST_F(HandshakeStateTests, primaryIdleClearsCallbackOnDismount) {
+    primaryIdleClearsCallbackOnDismount(this);
 }
 
-TEST_F(HandshakeStateTests, bountyFlowSucceeds) {
-    handshakeBountyFlowSucceeds(this);
+TEST_F(HandshakeStateTests, primarySendIdTransitionsOnExchangeIdAck) {
+    primarySendIdTransitionsOnExchangeIdAck(this);
 }
 
-TEST_F(HandshakeStateTests, hunterFlowSucceeds) {
-    handshakeHunterFlowSucceeds(this);
+TEST_F(HandshakeStateTests, primarySendIdClearsOnDismount) {
+    primarySendIdClearsOnDismount(this);
 }
 
-TEST_F(HandshakeStateTests, sendsDirectMessagesNotBroadcast) {
-    handshakeSendsDirectMessagesNotBroadcast(this);
+TEST_F(HandshakeStateTests, auxiliaryIdleTransitionsOnExchangeId) {
+    auxiliaryIdleTransitionsOnExchangeId(this);
 }
 
-TEST_F(HandshakeStateTests, statesClearOnDismount) {
-    handshakeStatesClearOnDismount(this);
+TEST_F(HandshakeStateTests, auxiliarySendIdTransitionsOnExchangeIdAck) {
+    auxiliarySendIdTransitionsOnExchangeIdAck(this);
+}
+
+TEST_F(HandshakeStateTests, auxiliarySendIdClearsOnDismount) {
+    auxiliarySendIdClearsOnDismount(this);
+}
+
+TEST_F(HandshakeStateTests, handshakeAppOutputJackTimeoutResetsToIdle) {
+    handshakeAppOutputJackTimeoutResetsToIdle(this);
 }
 
 // ============================================

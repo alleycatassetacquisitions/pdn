@@ -1,69 +1,102 @@
 #include "apps/handshake/handshake.hpp"
 
-HandshakeApp::HandshakeApp(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager)
+HandshakeApp::HandshakeApp(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack)
     : StateMachine(HANDSHAKE_APP_ID) {
-    this->player = player;
-    this->matchManager = matchManager;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->handshakeWirelessManager = handshakeWirelessManager;
+    this->jack = jack;
 }
 
 HandshakeApp::~HandshakeApp() {
-    player = nullptr;
-    matchManager = nullptr;
-    quickdrawWirelessManager = nullptr;
+    handshakeWirelessManager = nullptr;
 
 }
 
-void HandshakeApp::onStateMounted(Device *PDN) {
-    // Initialize the state machine (populates state map and mounts first state)
-    StateMachine::onStateMounted(PDN);
-    // Initialize the timeout timer
-    initTimeout();
+void HandshakeApp::onStateLoop(Device *PDN) {
+    StateMachine::onStateLoop(PDN);
+
+    const int sendIdStateId = (jack == SerialIdentifier::OUTPUT_JACK)
+        ? HandshakeStateId::PRIMARY_SEND_ID_STATE
+        : HandshakeStateId::AUXILIARY_SEND_ID_STATE;
+
+    const int connectedStateId = (jack == SerialIdentifier::OUTPUT_JACK)
+        ? HandshakeStateId::PRIMARY_CONNECTED_STATE
+        : HandshakeStateId::AUXILIARY_CONNECTED_STATE;
+
+    if (currentState->getStateId() == sendIdStateId) {
+        if (handshakeTimer.expired()) {
+            resetApp(PDN);
+        } else if (!handshakeTimer.isRunning()) {
+            handshakeTimer.setTimer(handshakeTimeout);
+        }
+    }
+
+    if (currentState->getStateId() == connectedStateId) {
+        handshakeTimer.invalidate();
+    }
 }
 
 void HandshakeApp::onStateDismounted(Device *PDN) {
-    // Reset the timeout timer
-    resetTimeout();
-    // Clean up the state machine
     StateMachine::onStateDismounted(PDN);
+    handshakeTimer.invalidate();
 }
 
 void HandshakeApp::populateStateMap() {
-    HandshakeInitiateState* handshakeInitiate = new HandshakeInitiateState(player);
-    BountySendConnectionConfirmedState* bountySendCC = new BountySendConnectionConfirmedState(player, matchManager, quickdrawWirelessManager);
-    HunterSendIdState* hunterSendId = new HunterSendIdState(player, matchManager, quickdrawWirelessManager);
-    ConnectionSuccessful* connectionSuccessfulState = new ConnectionSuccessful(player);
-
-    handshakeInitiate->addTransition(
-        new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToBountySendCC, handshakeInitiate),
-            bountySendCC));
-
-    handshakeInitiate->addTransition(
-        new StateTransition(
-            std::bind(&HandshakeInitiateState::transitionToHunterSendId, handshakeInitiate),
-            hunterSendId));
-
-    // NOTE: BaseHandshakeState::transitionToIdle (timeout) is NOT wired internally.
-    // It is an exit condition checked by the parent state machine via didTimeout().
-
-    bountySendCC->addTransition(
-        new StateTransition(
-            std::bind(&BountySendConnectionConfirmedState::transitionToConnectionSuccessful, bountySendCC),
-            connectionSuccessfulState));
-
-    hunterSendId->addTransition(
-        new StateTransition(
-            std::bind(&HunterSendIdState::transitionToConnectionSuccessful, hunterSendId),
-            connectionSuccessfulState));
-
-    // NOTE: ConnectionSuccessful::transitionToCountdown is NOT wired internally.
-    // It is an exit condition checked by the parent state machine via readyForCountdown().
-
-    stateMap.push_back(handshakeInitiate);
-    stateMap.push_back(bountySendCC);
-    stateMap.push_back(hunterSendId);
-    stateMap.push_back(connectionSuccessfulState);
+    if (jack == SerialIdentifier::OUTPUT_JACK) {
+        createOutputJackStateMap();
+    } else {
+        createInputJackStateMap();
+    }
 }
 
+void HandshakeApp::resetApp(Device *PDN) {
+    // stateMap index 0 is always the idle state for both state maps
+    skipToState(PDN, 0);
+    handshakeWirelessManager->removeMacPeer(jack);
+    handshakeTimer.invalidate();
+}
 
+void HandshakeApp::createOutputJackStateMap() {
+    PrimaryIdleState* primaryIdleState = new PrimaryIdleState(handshakeWirelessManager);
+    PrimarySendIdState* primarySendIdState = new PrimarySendIdState(handshakeWirelessManager);
+    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK, HandshakeStateId::PRIMARY_CONNECTED_STATE);
+
+    primaryIdleState->addTransition(
+        new StateTransition(
+            std::bind(&PrimaryIdleState::transitionToPrimarySendId, primaryIdleState),
+            primarySendIdState));
+    primarySendIdState->addTransition(
+        new StateTransition(
+            std::bind(&PrimarySendIdState::transitionToConnected, primarySendIdState),
+            connectedState));
+    connectedState->addTransition(
+        new StateTransition(
+            std::bind(&HandshakeConnectedState::transitionToIdle, connectedState),
+            primaryIdleState));
+
+    stateMap.push_back(primaryIdleState);
+    stateMap.push_back(primarySendIdState);
+    stateMap.push_back(connectedState);
+}
+
+void HandshakeApp::createInputJackStateMap() {
+    AuxiliaryIdleState* auxiliaryIdleState = new AuxiliaryIdleState(handshakeWirelessManager);
+    AuxiliarySendIdState* auxiliarySendIdState = new AuxiliarySendIdState(handshakeWirelessManager);
+    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, SerialIdentifier::INPUT_JACK, HandshakeStateId::AUXILIARY_CONNECTED_STATE);
+
+    auxiliaryIdleState->addTransition(
+        new StateTransition(
+            std::bind(&AuxiliaryIdleState::transitionToSendId, auxiliaryIdleState),
+            auxiliarySendIdState));
+    auxiliarySendIdState->addTransition(
+        new StateTransition(
+            std::bind(&AuxiliarySendIdState::transitionToConnected, auxiliarySendIdState),
+            connectedState));
+    connectedState->addTransition(
+        new StateTransition(
+            std::bind(&HandshakeConnectedState::transitionToIdle, connectedState),
+            auxiliaryIdleState));
+
+    stateMap.push_back(auxiliaryIdleState);
+    stateMap.push_back(auxiliarySendIdState);
+    stateMap.push_back(connectedState);
+}

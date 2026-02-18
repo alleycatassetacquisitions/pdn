@@ -6,16 +6,17 @@
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT), player(player), matchManager(matchManager) {
+DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT) {
+    this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 DuelResult::~DuelResult() {
     LOG_I(DUEL_RESULT_TAG, "Duel result state destroyed");
-    player = nullptr;
-    matchManager = nullptr;
-    quickdrawWirelessManager = nullptr;
+    this->player = nullptr;
+    this->matchManager = nullptr;
+    this->quickdrawWirelessManager = nullptr;
 }
 
 void DuelResult::onStateMounted(Device *PDN) {
@@ -82,4 +83,3 @@ bool DuelResult::transitionToLose() {
     }
     return captured;
 }
-
