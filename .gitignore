@@ -65,3 +65,7 @@ compile_commands.json
 wifi_credentials.ini
 
 *.code-workspace
+
+.cache/
+
+.vscode/extensions.json
