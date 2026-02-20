@@ -22,6 +22,7 @@
 #include <chrono>
 #include <functional>
 #include <string>
+#include <random>
 
 #include "device/drivers/logger.hpp"
 #include "device/drivers/platform-clock.hpp"
@@ -245,8 +246,11 @@ int main(int argc, char** argv) {
 
         // Vary press times so the profiler sees all result branches.
         // Pattern covers: hunter faster, bounty faster, and close races.
-        const long hunterPress = 100 + (i % 401);   // 100–500 ms
-        const long bountyPress = 100 + (i % 397);   // 100–496 ms
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dist(100, 1500);
+        const long hunterPress = dist(gen);   // 100–1500 ms
+        const long bountyPress = dist(gen);   // 100–1500 ms
 
         clock.set(duelStart + hunterPress);
         hunter.matchMgr->getDuelButtonPush()(hunter.matchMgr);
