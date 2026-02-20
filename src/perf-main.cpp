@@ -244,13 +244,11 @@ int main(int argc, char** argv) {
         hunter.matchMgr->setDuelLocalStartTime(duelStart);
         bounty.matchMgr->setDuelLocalStartTime(duelStart);
 
-        // Vary press times so the profiler sees all result branches.
-        // Pattern covers: hunter faster, bounty faster, and close races.
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dist(100, 1500);
-        const long hunterPress = dist(gen);   // 100–1500 ms
-        const long bountyPress = dist(gen);   // 100–1500 ms
+        const long hunterPress = dist(gen);
+        const long bountyPress = dist(gen);
 
         clock.set(duelStart + hunterPress);
         hunter.matchMgr->getDuelButtonPush()(hunter.matchMgr);

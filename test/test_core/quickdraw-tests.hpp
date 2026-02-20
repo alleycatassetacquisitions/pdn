@@ -22,6 +22,8 @@ using ::testing::SaveArg;
 using ::testing::NiceMock;
 using ::testing::DoAll;
 
+static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
 // ============================================
 // Idle State Tests
 // ============================================
@@ -268,7 +270,7 @@ inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
     
     // Simulate receiving HUNTER_RECEIVE_MATCH command
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(kTestMacBytes, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
     
     // Should now transition to connection successful
@@ -291,14 +293,14 @@ inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
     
     // Simulate receiving CONNECTION_CONFIRMED command
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(kTestMacBytes, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
     
     // Still not done - need BOUNTY_FINAL_ACK
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
     
     // Simulate receiving BOUNTY_FINAL_ACK
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(kTestMacBytes, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
     
     // Should now transition
@@ -345,10 +347,10 @@ inline void handshakeStatesClearOnDismount(HandshakeStateTests* suite) {
     
     // Receive commands to set transition flag
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(kTestMacBytes, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
     
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(kTestMacBytes, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
     
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());

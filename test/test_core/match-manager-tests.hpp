@@ -46,12 +46,12 @@ protected:
 // ============================================
 
 inline void matchManagerCreatesMatchCorrectly(MatchManager* mm, Player* player) {
-    Match* match = mm->createMatch("match-123", "hunter-uuid", "bounty-uuid");
+    Match* match = mm->createMatch("match-123", "hunt", "boun");
 
     ASSERT_NE(match, nullptr);
     EXPECT_STREQ(match->getMatchId(), "match-123");
-    EXPECT_STREQ(match->getHunterId(), "hunter-uuid");
-    EXPECT_STREQ(match->getBountyId(), "bounty-uuid");
+    EXPECT_STREQ(match->getHunterId(), "hunt");
+    EXPECT_STREQ(match->getBountyId(), "boun");
     EXPECT_EQ(match->getHunterDrawTime(), 0);
     EXPECT_EQ(match->getBountyDrawTime(), 0);
 }
