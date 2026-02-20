@@ -46,12 +46,12 @@ protected:
 // ============================================
 
 inline void matchManagerCreatesMatchCorrectly(MatchManager* mm, Player* player) {
-    Match* match = mm->createMatch("match-123", "hunter-uuid", "bounty-uuid");
+    Match* match = mm->createMatch("match-123", "hunt", "boun");
 
     ASSERT_NE(match, nullptr);
-    EXPECT_EQ(match->getMatchId(), "match-123");
-    EXPECT_EQ(match->getHunterId(), "hunter-uuid");
-    EXPECT_EQ(match->getBountyId(), "bounty-uuid");
+    EXPECT_STREQ(match->getMatchId(), "match-123");
+    EXPECT_STREQ(match->getHunterId(), "hunt");
+    EXPECT_STREQ(match->getBountyId(), "boun");
     EXPECT_EQ(match->getHunterDrawTime(), 0);
     EXPECT_EQ(match->getBountyDrawTime(), 0);
 }
@@ -65,7 +65,7 @@ inline void matchManagerPreventsMultipleActiveMatches(MatchManager* mm) {
     EXPECT_EQ(second, nullptr);
 
     // Current match should still be the first one
-    EXPECT_EQ(mm->getCurrentMatch()->getMatchId(), "match-1");
+    EXPECT_STREQ(mm->getCurrentMatch()->getMatchId(), "match-1");
 }
 
 inline void matchManagerReceiveMatchWorks(MatchManager* mm) {
@@ -76,7 +76,7 @@ inline void matchManagerReceiveMatchWorks(MatchManager* mm) {
     Match* received = mm->receiveMatch(incoming);
 
     ASSERT_NE(received, nullptr);
-    EXPECT_EQ(received->getMatchId(), "received-match");
+    EXPECT_STREQ(received->getMatchId(), "received-match");
     EXPECT_EQ(received->getHunterDrawTime(), 100);
     EXPECT_EQ(received->getBountyDrawTime(), 200);
 }

@@ -26,12 +26,26 @@ public:
     Match();
 
     /**
-     * Creates a new match with the given IDs
+     * Creates a new match with the given IDs (std::string overload)
      * @param match_id Unique identifier for the match
      * @param hunter_id Hunter player's ID
      * @param bounty_id Bounty player's ID
      */
     Match(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id);
+
+    /**
+     * Creates a new match from raw C-strings — no heap allocation in the hot path.
+     */
+    Match(const char* match_id, const char* hunter_id, const char* bounty_id);
+
+    /**
+     * Fast constructor for the packet-receive hot path.
+     * Uses memcpy instead of strncpy.
+     * Precondition: match_id is exactly UUID_STRING_LENGTH chars, hunter_id and bounty_id
+     * are exactly 4 chars. Behaviour is undefined if these lengths are not met.
+     */
+    Match(const char* match_id, const char* hunter_id, const char* bounty_id,
+          unsigned long hunter_time, unsigned long bounty_time);
 
     /**
      * Legacy method to setup match details after construction
@@ -54,7 +68,7 @@ public:
      * Sets the hunter's ID
      * @param hunter_id Hunter player's ID
      */
-    void setHunterId(const std::string& hunter_id);
+    void setHunterId(const char* hunter_id);
 
     /**
      * @return Match data as JSON string
@@ -86,17 +100,17 @@ public:
      */
     static size_t binarySize() { return MATCH_BINARY_SIZE; }
 
-    // Getters
-    std::string getMatchId() const { return match_id; }
-    std::string getHunterId() const { return hunter; }
-    std::string getBountyId() const { return bounty; }
+    // Getters — return direct pointers into the fixed-size storage, no heap involved
+    const char* getMatchId() const { return match_id; }
+    const char* getHunterId() const { return hunter; }
+    const char* getBountyId() const { return bounty; }
     unsigned long getHunterDrawTime() const { return hunter_draw_time_ms; }
     unsigned long getBountyDrawTime() const { return bounty_draw_time_ms; }
 
 private:
-    std::string match_id;
-    std::string hunter;
-    std::string bounty;
+    char match_id[IdGenerator::UUID_BUFFER_SIZE] = {};
+    char hunter[5] = {};
+    char bounty[5] = {};
     unsigned long hunter_draw_time_ms = 0;
     unsigned long bounty_draw_time_ms = 0;
 };

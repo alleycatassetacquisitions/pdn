@@ -69,3 +69,5 @@ wifi_credentials.ini
 .cache/
 
 .vscode/extensions.json
+
+callgrind*

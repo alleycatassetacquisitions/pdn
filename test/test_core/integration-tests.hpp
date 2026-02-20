@@ -7,6 +7,7 @@
 #include "game/player.hpp"
 #include "device-mock.hpp"
 #include "id-generator.hpp"
+#include "utility-tests.hpp"
 
 // ============================================
 // Integration Test Fixture
@@ -22,6 +23,10 @@
 class DuelIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {
+        fakeClock = new FakePlatformClock();
+        SimpleTimer::setPlatformClock(fakeClock);
+        fakeClock->setTime(10000);
+
         // Seed ID generator for reproducible tests
         IdGenerator idGenerator = IdGenerator(54321);
         
@@ -47,6 +52,8 @@ public:
         delete matchManager;
         delete hunter;
         delete bounty;
+        SimpleTimer::setPlatformClock(nullptr);
+        delete fakeClock;
     }
 
     // Helper: Initialize match manager for hunter's device
@@ -61,6 +68,7 @@ public:
         matchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, &bountyWirelessManager);
     }
 
+    FakePlatformClock* fakeClock = nullptr;
     Player* hunter;
     Player* bounty;
     MatchManager* matchManager;
@@ -85,7 +93,8 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     const unsigned long BOUNTY_REACTION_MS = 300;
     
     // Generate match ID
-    char* matchId = IdGenerator(54321).generateId();
+    IdGenerator idGen(54321);
+    char* matchId = idGen.generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -168,7 +177,8 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     const unsigned long HUNTER_REACTION_MS = 350;
     const unsigned long BOUNTY_REACTION_MS = 180;
     
-    char* matchId = IdGenerator(54321).generateId();
+    IdGenerator idGen(54321);
+    char* matchId = idGen.generateId();
     std::string matchIdStr(matchId);
     
     // ========== HUNTER'S DEVICE ==========
@@ -240,9 +250,9 @@ inline void matchSerializationRoundTrip() {
     EXPECT_EQ(bytesRead, MATCH_BINARY_SIZE);
 
     // Verify data integrity
-    EXPECT_EQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
-    EXPECT_EQ(receivedMatch.getHunterId(), originalMatch.getHunterId());
-    EXPECT_EQ(receivedMatch.getBountyId(), originalMatch.getBountyId());
+    EXPECT_STREQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
+    EXPECT_STREQ(receivedMatch.getHunterId(), originalMatch.getHunterId());
+    EXPECT_STREQ(receivedMatch.getBountyId(), originalMatch.getBountyId());
     EXPECT_EQ(receivedMatch.getHunterDrawTime(), 225);
     EXPECT_EQ(receivedMatch.getBountyDrawTime(), 310);
 
@@ -251,7 +261,7 @@ inline void matchSerializationRoundTrip() {
     Match jsonRestored;
     jsonRestored.fromJson(json);
 
-    EXPECT_EQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
+    EXPECT_STREQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
     EXPECT_EQ(jsonRestored.getHunterDrawTime(), 225);
 }
 

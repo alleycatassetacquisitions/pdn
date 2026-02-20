@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <memory>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "game/match-manager.hpp"
@@ -19,6 +21,8 @@ using ::testing::Invoke;
 using ::testing::SaveArg;
 using ::testing::NiceMock;
 using ::testing::DoAll;
+
+static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
 // ============================================
 // Idle State Tests
@@ -266,7 +270,7 @@ inline void handshakeBountyFlowSucceeds(HandshakeStateTests* suite) {
     
     // Simulate receiving HUNTER_RECEIVE_MATCH command
     Match receivedMatch("test-match-id", "5678", "1234");
-    QuickdrawCommand command("AA:BB:CC:DD:EE:FF", HUNTER_RECEIVE_MATCH, receivedMatch);
+    QuickdrawCommand command(kTestMacBytes, HUNTER_RECEIVE_MATCH, receivedMatch);
     bountyState.onQuickdrawCommandReceived(command);
     
     // Should now transition to connection successful
@@ -289,14 +293,14 @@ inline void handshakeHunterFlowSucceeds(HandshakeStateTests* suite) {
     
     // Simulate receiving CONNECTION_CONFIRMED command
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(kTestMacBytes, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
     
     // Still not done - need BOUNTY_FINAL_ACK
     EXPECT_FALSE(hunterState.transitionToConnectionSuccessful());
     
     // Simulate receiving BOUNTY_FINAL_ACK
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(kTestMacBytes, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
     
     // Should now transition
@@ -308,11 +312,13 @@ inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite)
     suite->player->setIsHunter(false);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
     
-    // Capture the MAC address used in sendData
-    uint8_t capturedMac[6];
+    // Use a shared_ptr so the capture remains valid for the lifetime of the EXPECT_CALL
+    // (which persists in mockPeerComms until the fixture is destroyed, beyond this function's scope).
+    // Capturing by reference [&capturedMac] would be UB after this function returns.
+    auto capturedMac = std::make_shared<std::array<uint8_t, 6>>();
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillOnce(Invoke([&capturedMac](const uint8_t* mac, PktType type, const uint8_t* data, size_t len) {
-            memcpy(capturedMac, mac, 6);
+        .WillOnce(Invoke([capturedMac](const uint8_t* mac, PktType type, const uint8_t* data, size_t len) {
+            std::copy(mac, mac + 6, capturedMac->begin());
             return 1;
         }));
     
@@ -321,11 +327,11 @@ inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite)
     
     // Verify that the MAC address is not the broadcast address (FF:FF:FF:FF:FF:FF)
     uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    EXPECT_NE(memcmp(capturedMac, broadcastMac, 6), 0);
+    EXPECT_NE(memcmp(capturedMac->data(), broadcastMac, 6), 0);
     
     // Verify it's the opponent's MAC
     uint8_t expectedMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    EXPECT_EQ(memcmp(capturedMac, expectedMac, 6), 0);
+    EXPECT_EQ(memcmp(capturedMac->data(), expectedMac, 6), 0);
 }
 
 // Test: Handshake states clear on dismount
@@ -341,10 +347,10 @@ inline void handshakeStatesClearOnDismount(HandshakeStateTests* suite) {
     
     // Receive commands to set transition flag
     Match receivedMatch("test-match-id", "", "5678");
-    QuickdrawCommand connectionConfirmed("AA:BB:CC:DD:EE:FF", CONNECTION_CONFIRMED, receivedMatch);
+    QuickdrawCommand connectionConfirmed(kTestMacBytes, CONNECTION_CONFIRMED, receivedMatch);
     hunterState.onQuickdrawCommandReceived(connectionConfirmed);
     
-    QuickdrawCommand finalAck("AA:BB:CC:DD:EE:FF", BOUNTY_FINAL_ACK, receivedMatch);
+    QuickdrawCommand finalAck(kTestMacBytes, BOUNTY_FINAL_ACK, receivedMatch);
     hunterState.onQuickdrawCommandReceived(finalAck);
     
     EXPECT_TRUE(hunterState.transitionToConnectionSuccessful());

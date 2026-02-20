@@ -67,6 +67,9 @@ public:
 class State {
 public:
     virtual ~State() {
+        for (auto* t : transitions) {
+            delete t;
+        }
         transitions.clear();
     }
 

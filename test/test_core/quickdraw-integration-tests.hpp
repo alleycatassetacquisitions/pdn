@@ -808,9 +808,9 @@ inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite)
                                "handshake-match-id-1234567890", "hunt", "boun");
     
     EXPECT_EQ(receivedCommand.command, QDCommand::HUNTER_RECEIVE_MATCH);
-    EXPECT_EQ(receivedCommand.match.getMatchId(), "handshake-match-id-1234567890");
-    EXPECT_EQ(receivedCommand.match.getHunterId(), "hunt");
-    EXPECT_EQ(receivedCommand.match.getBountyId(), "boun");
+    EXPECT_STREQ(receivedCommand.match.getMatchId(), "handshake-match-id-1234567890");
+    EXPECT_STREQ(receivedCommand.match.getHunterId(), "hunt");
+    EXPECT_STREQ(receivedCommand.match.getBountyId(), "boun");
 }
 
 inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite) {
@@ -823,7 +823,7 @@ inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite)
                                "handshake-match-id-1234567890", "hunt", "boun");
     
     EXPECT_EQ(receivedCommand.command, QDCommand::CONNECTION_CONFIRMED);
-    EXPECT_EQ(receivedCommand.match.getMatchId(), "handshake-match-id-1234567890");
+    EXPECT_STREQ(receivedCommand.match.getMatchId(), "handshake-match-id-1234567890");
 }
 
 inline void handshakeTwoDeviceFullFlow(HandshakeIntegrationTests* suite) {
@@ -904,7 +904,7 @@ inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
                                "mac-test-match-id-1234567890", "hunt", "boun");
     
     // The MAC address should be captured in the command
-    EXPECT_FALSE(receivedCommand.wifiMacAddr.empty());
+    EXPECT_TRUE(receivedCommand.wifiMacAddrValid);
 }
 
 inline void handshakeMatchDataPropagatedCorrectly(HandshakeIntegrationTests* suite) {
@@ -916,9 +916,9 @@ inline void handshakeMatchDataPropagatedCorrectly(HandshakeIntegrationTests* sui
     suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
                                "propagate-match-1234567890", "HNTR", "BNTY");
     
-    EXPECT_EQ(receivedCommand.match.getMatchId(), "propagate-match-1234567890");
-    EXPECT_EQ(receivedCommand.match.getHunterId(), "HNTR");
-    EXPECT_EQ(receivedCommand.match.getBountyId(), "BNTY");
+    EXPECT_STREQ(receivedCommand.match.getMatchId(), "propagate-match-1234567890");
+    EXPECT_STREQ(receivedCommand.match.getHunterId(), "HNTR");
+    EXPECT_STREQ(receivedCommand.match.getBountyId(), "BNTY");
 }
 
 inline void handshakePacketPreservesPlayerIds(HandshakeIntegrationTests* suite) {

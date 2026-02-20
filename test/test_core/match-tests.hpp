@@ -30,9 +30,9 @@ inline void matchJsonRoundTripPreservesAllFields() {
     restored.fromJson(json);
 
     // Verify all fields preserved
-    EXPECT_EQ(restored.getMatchId(), original.getMatchId());
-    EXPECT_EQ(restored.getHunterId(), original.getHunterId());
-    EXPECT_EQ(restored.getBountyId(), original.getBountyId());
+    EXPECT_STREQ(restored.getMatchId(), original.getMatchId());
+    EXPECT_STREQ(restored.getHunterId(), original.getHunterId());
+    EXPECT_STREQ(restored.getBountyId(), original.getBountyId());
     EXPECT_EQ(restored.getHunterDrawTime(), 250);
     EXPECT_EQ(restored.getBountyDrawTime(), 300);
 }
@@ -84,9 +84,9 @@ inline void matchBinaryRoundTripPreservesAllFields() {
     EXPECT_EQ(bytesRead, MATCH_BINARY_SIZE);
 
     // Verify all fields preserved
-    EXPECT_EQ(restored.getMatchId(), original.getMatchId());
-    EXPECT_EQ(restored.getHunterId(), original.getHunterId());
-    EXPECT_EQ(restored.getBountyId(), original.getBountyId());
+    EXPECT_STREQ(restored.getMatchId(), original.getMatchId());
+    EXPECT_STREQ(restored.getHunterId(), original.getHunterId());
+    EXPECT_STREQ(restored.getBountyId(), original.getBountyId());
     EXPECT_EQ(restored.getHunterDrawTime(), 150);
     EXPECT_EQ(restored.getBountyDrawTime(), 275);
 }
@@ -112,7 +112,7 @@ inline void matchSetupClearsDrawTimes() {
 
     EXPECT_EQ(match.getHunterDrawTime(), 0);
     EXPECT_EQ(match.getBountyDrawTime(), 0);
-    EXPECT_EQ(match.getMatchId(), "new-match");
+    EXPECT_STREQ(match.getMatchId(), "new-match");
 }
 
 inline void matchDrawTimesSetCorrectly() {

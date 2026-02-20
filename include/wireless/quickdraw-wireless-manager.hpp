@@ -7,6 +7,7 @@
 #include <cstring>  // For memcpy
 #include <functional>
 #include <map>
+#include <cstdint>
 #include "utils/simple-timer.hpp"
 #include "game/player.hpp"
 #include "game/match.hpp"
@@ -35,14 +36,40 @@ enum QDCommand {
 };
 
 struct QuickdrawCommand {
-    std::string wifiMacAddr;
+    uint8_t wifiMacAddr[6];
+    bool wifiMacAddrValid;
     int command;
     Match match;
 
-    QuickdrawCommand() : command(0), match(), wifiMacAddr("") {}
+    QuickdrawCommand() : wifiMacAddrValid(false), command(0), match() {
+        memset(wifiMacAddr, 0, 6);
+    }
 
-    QuickdrawCommand(const std::string& macAddress, int command, const Match& match) :
-        command(command), match(match), wifiMacAddr(macAddress) {}
+    QuickdrawCommand(const uint8_t* macAddress, int command, const Match& match)
+        : wifiMacAddrValid(macAddress != nullptr), command(command), match(match) {
+        if (macAddress) {
+            memcpy(wifiMacAddr, macAddress, 6);
+        } else {
+            memset(wifiMacAddr, 0, 6);
+        }
+    }
+
+    /**
+     * Hot-path constructor. Constructs Match in-place from raw packet fields,
+     * avoiding an intermediate Match object and the resulting copy.
+     * Preconditions mirror Match's 5-arg constructor (full-length IDs required).
+     */
+    QuickdrawCommand(const uint8_t* macAddress, int cmd,
+                     const char* matchId, const char* hunterId, const char* bountyId,
+                     unsigned long hunterTime, unsigned long bountyTime)
+        : wifiMacAddrValid(macAddress != nullptr), command(cmd),
+          match(matchId, hunterId, bountyId, hunterTime, bountyTime) {
+        if (macAddress) {
+            memcpy(wifiMacAddr, macAddress, 6);
+        } else {
+            memset(wifiMacAddr, 0, 6);
+        }
+    }
 };
 
 using QDCommandTracker = std::map<int, QuickdrawCommand>;
@@ -56,26 +83,18 @@ public:
 
     int processQuickdrawCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
-    void setPacketReceivedCallback(const std::function<void(QuickdrawCommand)>& callback);
+    void setPacketReceivedCallback(const std::function<void(const QuickdrawCommand&)>& callback);
 
-    int broadcastPacket(const std::string& macAddress, 
-                       int command, 
+    int broadcastPacket(const uint8_t* macAddress,
+                       int command,
                        const Match& match);
 
     void clearCallbacks();
 
-    int getPacketAckCount(int command);
-
-    void clearPackets();
-
-    void clearPacket(int command);
-
-    void logPacket(const QuickdrawCommand& packet);
-
 private:
     WirelessManager* wirelessManager;
 
-    std::function<void(QuickdrawCommand)> packetReceivedCallback;
+    std::function<void(const QuickdrawCommand&)> packetReceivedCallback;
 
     Player* player;
 

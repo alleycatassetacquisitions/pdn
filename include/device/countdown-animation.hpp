@@ -30,9 +30,9 @@ protected:
         for(int i = 3; i <= 9; i++) {
             if(i == 9 && currentState_.leftLights[i-1].brightness == 255) {
                 currentLed_ = i;
-            } else if(currentState_.leftLights[i].brightness == 255) {
+            } else if(i < 9 && currentState_.leftLights[i].brightness == 255) {
                 currentLed_ = i;
-            } else if(currentState_.leftLights[i].brightness == 0
+            } else if(i < 9 && currentState_.leftLights[i].brightness == 0
                         && currentState_.leftLights[i-1].brightness == 255) {
                 currentLed_ = i;
             }

@@ -14,8 +14,6 @@ MatchManager::MatchManager()
 }
 
 MatchManager::~MatchManager() { 
-    delete activeDuelState.match;
-    activeDuelState.match = nullptr;
     quickdrawWirelessManager = nullptr;
     if (storage) {
         storage->end();
@@ -24,17 +22,13 @@ MatchManager::~MatchManager() {
 
 void MatchManager::clearCurrentMatch() {
     if (activeDuelState.match) {
-        if (peerComms && player && !player->getOpponentMacAddress().empty()) {
-            uint8_t mac[6];
-            if (StringToMac(player->getOpponentMacAddress().c_str(), mac)) {
-                peerComms->removePeer(mac);
-                LOG_I(MATCH_MANAGER_TAG, "Removed opponent peer from ESP-NOW");
-            }
+        if (peerComms && player && player->hasOpponentMac()) {
+            peerComms->removePeer(const_cast<uint8_t*>(player->getOpponentMacBytes()));
+            LOG_I(MATCH_MANAGER_TAG, "Removed opponent peer from ESP-NOW");
         }
 
         LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
-        delete activeDuelState.match;
-        activeDuelState.match = nullptr;
+        activeDuelState.match.reset();
         activeDuelState.hasReceivedDrawResult = false;
         activeDuelState.hasPressedButton = false;
         activeDuelState.duelLocalStartTime = 0;
@@ -44,28 +38,22 @@ void MatchManager::clearCurrentMatch() {
 
 Match* MatchManager::createMatch(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id) {
     // Only allow one active match at a time
-    if (activeDuelState.match != nullptr) {
+    if (activeDuelState.match.has_value()) {
         return nullptr;
     }
 
-    activeDuelState.match = new Match(match_id, hunter_id, bounty_id);
-    return activeDuelState.match;
+    activeDuelState.match.emplace(match_id.c_str(), hunter_id.c_str(), bounty_id.c_str(), 0UL, 0UL);
+    return &*activeDuelState.match;
 }
 
 Match* MatchManager::receiveMatch(const Match& match) {
     // Only allow one active match at a time
-    if (activeDuelState.match != nullptr) {
+    if (activeDuelState.match.has_value()) {
         return nullptr;
     }
 
-    // Create a new Match object on the heap instead of storing a pointer to the parameter
-    activeDuelState.match = new Match(match.getMatchId(), match.getHunterId(), match.getBountyId());
-    
-    // Copy draw times
-    activeDuelState.match->setHunterDrawTime(match.getHunterDrawTime());
-    activeDuelState.match->setBountyDrawTime(match.getBountyDrawTime());
-    
-    return activeDuelState.match;
+    activeDuelState.match = match;
+    return &*activeDuelState.match;
 }
 
 void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
@@ -118,7 +106,7 @@ bool MatchManager::finalizeMatch() {
     std::string match_id = activeDuelState.match->getMatchId();
 
     // Save to storage
-    if (appendMatchToStorage(activeDuelState.match)) {
+    if (appendMatchToStorage(&*activeDuelState.match)) {
         // Update stored count
         updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
@@ -283,12 +271,17 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
     this->quickdrawWirelessManager = quickdrawWirelessManager;
 
     duelButtonPush = [](void *ctx) {
-        unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
-        
         if (!ctx) {
             LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
             return;
         }
+
+        auto* clock = SimpleTimer::getPlatformClock();
+        if (!clock) {
+            LOG_E(MATCH_MANAGER_TAG, "Button press handler called with no platform clock");
+            return;
+        }
+        unsigned long now = clock->milliseconds();
 
         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
         ActiveDuelState* activeDuelState = &matchManager->activeDuelState;
@@ -321,16 +314,16 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
         LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
 
         // Send a packet with the reaction time
-        if (player->getOpponentMacAddress().empty()) {
+        if (!player->hasOpponentMac()) {
             LOG_E(MATCH_MANAGER_TAG, "Cannot send packet - opponent MAC address is empty");
             return;
         }
 
-        LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s", 
+        LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
                 player->getOpponentMacAddress().c_str());
-                
+
         quickdrawWirelessManager->broadcastPacket(
-            player->getOpponentMacAddress(),
+            player->getOpponentMacBytes(),
             QDCommand::DRAW_RESULT,
             *matchManager->getCurrentMatch()
         );
@@ -347,7 +340,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
     };
 }
 
-void MatchManager::listenForMatchResults(QuickdrawCommand command) {
+void MatchManager::listenForMatchResults(const QuickdrawCommand& command) {
     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
     
     if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {

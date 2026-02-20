@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <iostream>
+#include <cstdint>
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -62,9 +63,13 @@ public:
     const std::string& getCurrentOpponentId() const;
 
     void setOpponentMacAddress(const std::string& macAddress);
+    void setOpponentMacAddress(const uint8_t* macBytes);
 
     std::string& getOpponentMacAddress();
     const std::string& getOpponentMacAddress() const;
+
+    const uint8_t* getOpponentMacBytes() const;
+    bool hasOpponentMac() const;
 
     unsigned long getLastReactionTime();
 
@@ -113,6 +118,8 @@ private:
     std::string currentMatchId;
     std::string currentOpponentId;
     std::string opponentMacAddress;
+    uint8_t opponentMacBytes[6] = {};
+    bool opponentMacValid = false;
     
     bool hunter = true;
 };

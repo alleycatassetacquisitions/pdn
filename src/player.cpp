@@ -1,6 +1,8 @@
 #include "game/player.hpp"
 #include <memory>
+#include <cstring>
 #include <ArduinoJson.h>
+#include "wireless/mac-functions.hpp"
 
 Player::Player(const std::string& id, Allegiance allegiance, bool isHunter) :
   id(id),
@@ -188,6 +190,13 @@ const std::string& Player::getCurrentOpponentId() const {
 
 void Player::setOpponentMacAddress(const std::string& macAddress) {
     opponentMacAddress = macAddress;
+    opponentMacValid = StringToMac(macAddress.c_str(), opponentMacBytes);
+}
+
+void Player::setOpponentMacAddress(const uint8_t* macBytes) {
+    memcpy(opponentMacBytes, macBytes, 6);
+    opponentMacValid = true;
+    opponentMacAddress = MacToString(macBytes);
 }
 
 std::string& Player::getOpponentMacAddress() {
@@ -196,6 +205,14 @@ std::string& Player::getOpponentMacAddress() {
 
 const std::string& Player::getOpponentMacAddress() const {
     return opponentMacAddress;
+}
+
+const uint8_t* Player::getOpponentMacBytes() const {
+    return opponentMacBytes;
+}
+
+bool Player::hasOpponentMac() const {
+    return opponentMacValid;
 }
 
 unsigned long Player::getLastReactionTime() {
