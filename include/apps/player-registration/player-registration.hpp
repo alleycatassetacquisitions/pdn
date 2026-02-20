@@ -1,6 +1,7 @@
 #pragma once
 
 #include "state/state-machine.hpp"
+#include "state/instructions-state.hpp"
 #include "apps/player-registration/player-registration-states.hpp"
 #include "game/player.hpp"
 #include "device/device.hpp"
@@ -25,4 +26,7 @@ private:
     WirelessManager* wirelessManager;
     RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
+
+    InstructionsPage confirmOfflinePages[2];
+    InstructionsConfig confirmOfflineConfig;
 };

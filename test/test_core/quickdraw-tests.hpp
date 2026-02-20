@@ -49,7 +49,7 @@ public:
         // Set up default mock expectations for display
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawText(_, _, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
     }
 
@@ -1141,7 +1141,7 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawText(_, _, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, write(_, _)).WillByDefault(Return(100));

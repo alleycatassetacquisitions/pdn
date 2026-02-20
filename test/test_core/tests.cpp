@@ -14,6 +14,7 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
+#include "instructions-state-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1075,6 +1076,79 @@ TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
 
 TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
+}
+
+// ============================================
+// INSTRUCTIONS STATE TESTS
+// ============================================
+
+// No-pages: immediate menu
+TEST_F(InstructionsStateTestSuite, noPagesMountsDirectlyToMenu) {
+    noPagesMountsDirectlyToMenu(this);
+}
+
+TEST_F(InstructionsStateTestSuite, noPageTimerNotStartedWhenNoPages) {
+    noPageTimerNotStartedWhenNoPages(this);
+}
+
+// Button-driven paging
+TEST_F(InstructionsStateTestSuite, primaryButtonAdvancesPage) {
+    primaryButtonAdvancesPage(this);
+}
+
+TEST_F(InstructionsStateTestSuite, primaryButtonOnLastPageEntersMenu) {
+    primaryButtonOnLastPageEntersMenu(this);
+}
+
+TEST_F(InstructionsStateTestSuite, primaryButtonInMenuCyclesMenuIndex) {
+    primaryButtonInMenuCyclesMenuIndex(this);
+}
+
+TEST_F(InstructionsStateTestSuite, primaryButtonWrapsMenuIndexBackToZero) {
+    primaryButtonWrapsMenuIndexBackToZero(this);
+}
+
+TEST_F(InstructionsStateTestSuite, secondaryButtonIgnoredWhilePaging) {
+    secondaryButtonIgnoredWhilePaging(this);
+}
+
+// Timer-driven paging
+TEST_F(InstructionsStateTestSuite, timerAdvancesPageAfterTimeout) {
+    timerAdvancesPageAfterTimeout(this);
+}
+
+TEST_F(InstructionsStateTestSuite, timerOnSinglePageEntersMenuAfterTimeout) {
+    timerOnSinglePageEntersMenuAfterTimeout(this);
+}
+
+TEST_F(InstructionsStateTestSuite, timerDoesNotFireBeforeTimeout) {
+    timerDoesNotFireBeforeTimeout(this);
+}
+
+// onBeforeMount callback
+TEST_F(InstructionsStateTestSuite, onBeforeMountCallbackIsInvokedOnMount) {
+    onBeforeMountCallbackIsInvokedOnMount(this);
+}
+
+TEST_F(InstructionsStateTestSuite, onBeforeMountCanInjectDynamicPageContent) {
+    onBeforeMountCanInjectDynamicPageContent(this);
+}
+
+TEST_F(InstructionsStateTestSuite, onBeforeMountIsOptional) {
+    onBeforeMountIsOptional(this);
+}
+
+// Dismount / cleanup
+TEST_F(InstructionsStateTestSuite, dismountResetsSelectionState) {
+    dismountResetsSelectionState(this);
+}
+
+TEST_F(InstructionsStateTestSuite, dismountRemovesButtonCallbacks) {
+    dismountRemovesButtonCallbacks(this);
+}
+
+TEST_F(InstructionsStateTestSuite, canBeRemountedAfterDismount) {
+    canBeRemountedAfterDismount(this);
 }
 
 // ============================================

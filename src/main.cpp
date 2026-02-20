@@ -28,6 +28,7 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "apps/speeder/speeder-app.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template

@@ -650,7 +650,7 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
     
     // Allow display methods to be called (don't require specific calls)
-    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
+    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _, _))
         .WillByDefault(Return(suite->device.mockDisplay));
     
     resultState.onStateMounted(&suite->device);
@@ -681,7 +681,7 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
     
     // Allow display methods to be called (don't require specific calls)
-    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
+    ON_CALL(*suite->device.mockDisplay, drawText(_, _, _, _))
         .WillByDefault(Return(suite->device.mockDisplay));
     
     resultState.onStateMounted(&suite->device);

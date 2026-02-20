@@ -41,13 +41,25 @@ public:
         screen.sendBuffer();
     }
 
-    Display* drawText(const char *text) override {
-        screen.drawStr(0, 8, text);
+    Display* drawText(const char *text, bool centered = false) override {
+        if(centered) {
+            int textWidth = screen.getStrWidth(text);
+            int x = (128 - textWidth) / 2;
+            screen.drawStr(x, 8, text);
+        } else {
+            screen.drawStr(0, 8, text);
+        }
         return this;
     }
 
-    Display* drawText(const char *text, int xStart, int yStart) override {
-        screen.drawStr(xStart, yStart, text);
+    Display* drawText(const char *text, int xStart, int yStart, bool centered = false) override {
+        if(centered) {
+            int textWidth = screen.getStrWidth(text);
+            int x = (128 - textWidth) / 2;
+            screen.drawStr(x, yStart, text);
+        } else {
+            screen.drawStr(xStart, yStart, text);
+        }
         return this;
     }
 
@@ -116,6 +128,52 @@ public:
                 screen.setFontMode(1);
                 screen.setDrawColor(2);
                 break;
+            case FontMode::ARCADE_1:
+                screen.enableUTF8Print();
+                screen.setFont(u8g2_font_cu12_h_symbols);
+                screen.setFontMode(1);
+                screen.setDrawColor(2);
+                break;
+        }
+        return this;
+    }
+
+    Display* drawShape(const Shape& shape) override {
+        switch (shape.type) {
+            case ShapeType::RECTANGLE: {
+                const auto& r = static_cast<const Rectangle&>(shape);
+                if(r.filled) screen.drawBox(r.x, r.y, r.width, r.height);
+                else         screen.drawFrame(r.x, r.y, r.width, r.height);
+                break;
+            }
+            case ShapeType::CIRCLE: {
+                const auto& c = static_cast<const Circle&>(shape);
+                if(c.filled) screen.drawDisc(c.x, c.y, c.radius, U8G2_DRAW_ALL);
+                else         screen.drawCircle(c.x, c.y, c.radius, U8G2_DRAW_ALL);
+                break;
+            }
+            case ShapeType::ELLIPSE: {
+                const auto& e = static_cast<const Ellipse&>(shape);
+                if(e.filled) screen.drawFilledEllipse(e.x, e.y, e.radiusX, e.radiusY, U8G2_DRAW_ALL);
+                else         screen.drawEllipse(e.x, e.y, e.radiusX, e.radiusY, U8G2_DRAW_ALL);
+                break;
+            }
+            case ShapeType::TRIANGLE: {
+                const auto& t = static_cast<const Triangle&>(shape);
+                if(t.filled) {
+                    screen.drawTriangle(t.x, t.y, t.x2, t.y2, t.x3, t.y3);
+                } else {
+                    screen.drawLine(t.x,  t.y,  t.x2, t.y2);
+                    screen.drawLine(t.x2, t.y2, t.x3, t.y3);
+                    screen.drawLine(t.x3, t.y3, t.x,  t.y);
+                }
+                break;
+            }
+            case ShapeType::LINE: {
+                const auto& l = static_cast<const Line&>(shape);
+                screen.drawLine(l.x, l.y, l.endX, l.endY);
+                break;
+            }
         }
         return this;
     }

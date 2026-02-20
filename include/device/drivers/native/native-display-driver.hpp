@@ -134,11 +134,12 @@ public:
         // Native display doesn't render to hardware
     }
 
-    Display* drawText(const char *text) override {
+    Display* drawText(const char *text, bool centered = false) override {
         if (text) {
             lastText_ = text;
             addToTextHistory(text);
-            drawTextToBuffer(text, 0, 0);
+            int x = centered ? (WIDTH - (int)strlen(text) * 6) / 2 : 0;
+            drawTextToBuffer(text, x, 0);
         }
         return this;
     }
@@ -170,11 +171,42 @@ public:
         return this;
     }
 
-    Display* drawText(const char *text, int xStart, int yStart) override {
+    Display* drawText(const char *text, int xStart, int yStart, bool centered = false) override {
         if (text) {
             lastText_ = text;
             addToTextHistory(text);
-            drawTextToBuffer(text, xStart, yStart);
+            int x = centered ? (WIDTH - (int)strlen(text) * 6) / 2 : xStart;
+            drawTextToBuffer(text, x, yStart);
+        }
+        return this;
+    }
+
+    Display* drawShape(const Shape& shape) override {
+        switch (shape.type) {
+            case ShapeType::RECTANGLE: {
+                const auto& r = static_cast<const Rectangle&>(shape);
+                if (r.filled) {
+                    for (int y = r.y; y < r.y + r.height; y++)
+                        for (int x = r.x; x < r.x + r.width; x++)
+                            setPixel(x, y, true);
+                } else {
+                    drawRect(r.x, r.y, r.width, r.height);
+                }
+                break;
+            }
+            case ShapeType::CIRCLE: {
+                const auto& c = static_cast<const Circle&>(shape);
+                drawCircle(c.x, c.y, c.radius, c.filled);
+                break;
+            }
+            case ShapeType::LINE: {
+                const auto& l = static_cast<const Line&>(shape);
+                drawLine(l.x, l.y, l.endX, l.endY);
+                break;
+            }
+            case ShapeType::ELLIPSE:
+            case ShapeType::TRIANGLE:
+                break;
         }
         return this;
     }
@@ -357,6 +389,37 @@ private:
         }
     }
     
+    void drawLine(int x0, int y0, int x1, int y1) {
+        int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        while (true) {
+            setPixel(x0, y0, true);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+    }
+
+    void drawCircle(int cx, int cy, int r, bool filled) {
+        int x = 0, y = r, d = 3 - 2 * r;
+        while (x <= y) {
+            if (filled) {
+                for (int i = cx - x; i <= cx + x; i++) { setPixel(i, cy + y, true); setPixel(i, cy - y, true); }
+                for (int i = cx - y; i <= cx + y; i++) { setPixel(i, cy + x, true); setPixel(i, cy - x, true); }
+            } else {
+                setPixel(cx + x, cy + y, true); setPixel(cx - x, cy + y, true);
+                setPixel(cx + x, cy - y, true); setPixel(cx - x, cy - y, true);
+                setPixel(cx + y, cy + x, true); setPixel(cx - y, cy + x, true);
+                setPixel(cx + y, cy - x, true); setPixel(cx - y, cy - x, true);
+            }
+            if (d < 0) d += 4 * x + 6;
+            else { d += 4 * (x - y) + 10; y--; }
+            x++;
+        }
+    }
+
     void drawRect(int x, int y, int w, int h) {
         for (int i = x; i < x + w && i < WIDTH; i++) {
             setPixel(i, y, true);

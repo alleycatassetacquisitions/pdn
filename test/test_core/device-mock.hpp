@@ -89,13 +89,14 @@ class MockDisplay : public Display {
 public:
     MOCK_METHOD(Display*, invalidateScreen, (), (override));
     MOCK_METHOD(void, render, (), (override));
-    MOCK_METHOD(Display*, drawText, (const char*), (override));
+    MOCK_METHOD(Display*, drawText, (const char*, bool), (override));
     MOCK_METHOD(Display*, setGlyphMode, (FontMode), (override));
     MOCK_METHOD(Display*, renderGlyph, (const char*, int, int), (override));
     MOCK_METHOD(Display*, drawButton, (const char*, int, int), (override));
-    MOCK_METHOD(Display*, drawText, (const char*, int, int), (override));
+    MOCK_METHOD(Display*, drawText, (const char*, int, int, bool), (override));
     MOCK_METHOD(Display*, drawImage, (Image), (override));
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
+    MOCK_METHOD(Display*, drawShape, (const Shape&), (override));
 };
 
 class MockButton : public Button {

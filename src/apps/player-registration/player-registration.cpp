@@ -18,9 +18,17 @@ PlayerRegistrationApp::~PlayerRegistrationApp() {
 void PlayerRegistrationApp::populateStateMap() {
     PlayerRegistrationState* playerRegistration = new PlayerRegistrationState(player, matchManager);
     FetchUserDataState* fetchUserDataState = new FetchUserDataState(player, wirelessManager, remoteDebugManager, matchManager);
-    ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);
     WelcomeMessage* welcomeMessageState = new WelcomeMessage(player);
+
+    confirmOfflinePages[0] = { {"Unable to", "Locate Asset", ""}, 2 };
+    confirmOfflinePages[1] = { {"Proceed with", "Pairing Code", ""}, 3 };
+    confirmOfflineConfig   = { confirmOfflinePages, 2, "Confirm", "Reset" };
+
+    InstructionsState* confirmOffline = new InstructionsState(CONFIRM_OFFLINE, confirmOfflineConfig);
+    confirmOffline->onBeforeMount = [this]() {
+        confirmOfflinePages[1].lines[2] = player->getUserID();
+    };
 
     playerRegistration->addTransition(
         new StateTransition(
@@ -44,12 +52,12 @@ void PlayerRegistrationApp::populateStateMap() {
 
     confirmOffline->addTransition(
         new StateTransition(
-            std::bind(&ConfirmOfflineState::transitionToChooseRole, confirmOffline),
+            std::bind(&InstructionsState::optionOneSelectedEvent, confirmOffline),
             chooseRole));
 
     confirmOffline->addTransition(
         new StateTransition(
-            std::bind(&ConfirmOfflineState::transitionToPlayerRegistration, confirmOffline),
+            std::bind(&InstructionsState::optionTwoSelectedEvent, confirmOffline),
             playerRegistration));
 
     chooseRole->addTransition(

@@ -69,34 +69,6 @@ private:
     const int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 
-class ConfirmOfflineState : public State {
-public:
-    explicit ConfirmOfflineState(Player* player);
-    ~ConfirmOfflineState();
-
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToChooseRole();
-    bool transitionToPlayerRegistration();
-    void renderUi(Device *PDN);
-    int getDigitGlyphForIDIndex(int index);
-
-private:
-    Player* player;
-    int uiPage = 0;
-    const int UI_PAGE_COUNT = 3;
-    const int UI_PAGE_TIMEOUT = 3000;
-    bool finishedPaging = false;
-    int menuIndex = 0;
-    bool displayIsDirty = false;
-    const int MENU_ITEM_COUNT = 2;
-    SimpleTimer uiPageTimer;
-    bool transitionToChooseRoleState = false;
-    bool transitionToPlayerRegistrationState = false;
-    parameterizedCallbackFunction confirmCallback;
-    parameterizedCallbackFunction cancelCallback;
-};
 
 class ChooseRoleState : public State {
 public:
