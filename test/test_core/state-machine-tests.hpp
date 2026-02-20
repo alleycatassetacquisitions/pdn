@@ -272,6 +272,11 @@ protected:
         stateMachine = new TestStateMachine();
     }
 
+    void TearDown() override {
+        delete stateMachine;
+        stateMachine = nullptr;
+    }
+
     void advanceStateMachineToState(int stateId) {
         int loopCount = 0;
         if(stateId == INITIAL_STATE) {

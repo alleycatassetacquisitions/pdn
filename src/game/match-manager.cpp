@@ -283,12 +283,17 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
     this->quickdrawWirelessManager = quickdrawWirelessManager;
 
     duelButtonPush = [](void *ctx) {
-        unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
-        
         if (!ctx) {
             LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
             return;
         }
+
+        auto* clock = SimpleTimer::getPlatformClock();
+        if (!clock) {
+            LOG_E(MATCH_MANAGER_TAG, "Button press handler called with no platform clock");
+            return;
+        }
+        unsigned long now = clock->milliseconds();
 
         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
         ActiveDuelState* activeDuelState = &matchManager->activeDuelState;

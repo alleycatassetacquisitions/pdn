@@ -96,7 +96,8 @@ inline void uuidRoundTripPreservesData() {
 }
 
 inline void uuidGeneratorProducesValidFormat() {
-    char* uuid = IdGenerator(42).generateId();
+    IdGenerator idGen(42);
+    char* uuid = idGen.generateId();
 
     std::string uuidStr(uuid);
     
