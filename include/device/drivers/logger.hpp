@@ -54,23 +54,49 @@ inline void log_helper(LogLevel level, const char* tag, const char* file, int li
 }
 
 /**
- * Convenience macros for logging (similar to ESP_LOG style).
- * Usage: LOG_E("TAG", "Error: %d", errorCode);
- * 
- * These macros capture __FILE__ and __LINE__ at the call site
- * so log output shows the actual source location.
+ * Compile-time log level filter.
+ *
+ * CORE_DEBUG_LEVEL is set per-environment in platformio.ini:
+ *   0 = silent   1 = error   2 = warn   3 = info   4 = debug   5 = verbose
+ *
+ * Macros below the active level expand to nothing, so their arguments
+ * (e.g. MacToString(), string formatting) are never evaluated.
  */
+#ifndef CORE_DEBUG_LEVEL
+#define CORE_DEBUG_LEVEL 3  // Default: info and above
+#endif
+
+#if CORE_DEBUG_LEVEL >= 1
 #define LOG_E(tag, format, ...) \
     log_helper(LogLevel::ERROR, tag, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#else
+#define LOG_E(tag, format, ...) do {} while(0)
+#endif
 
+#if CORE_DEBUG_LEVEL >= 2
 #define LOG_W(tag, format, ...) \
     log_helper(LogLevel::WARN, tag, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#else
+#define LOG_W(tag, format, ...) do {} while(0)
+#endif
 
+#if CORE_DEBUG_LEVEL >= 3
 #define LOG_I(tag, format, ...) \
     log_helper(LogLevel::INFO, tag, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#else
+#define LOG_I(tag, format, ...) do {} while(0)
+#endif
 
+#if CORE_DEBUG_LEVEL >= 4
 #define LOG_D(tag, format, ...) \
     log_helper(LogLevel::DEBUG, tag, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#else
+#define LOG_D(tag, format, ...) do {} while(0)
+#endif
 
+#if CORE_DEBUG_LEVEL >= 5
 #define LOG_V(tag, format, ...) \
     log_helper(LogLevel::VERBOSE, tag, __FILE__, __LINE__, format, ##__VA_ARGS__)
+#else
+#define LOG_V(tag, format, ...) do {} while(0)
+#endif

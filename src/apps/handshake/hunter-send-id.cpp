@@ -35,25 +35,25 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
         LOG_I("HUNTER_SEND_ID", "Received CONNECTION_CONFIRMED from opponent");
         
         // Validate received match data
-        if (command.match.getMatchId().empty()) {
+        if (!*command.match.getMatchId()) {
             LOG_E("HUNTER_SEND_ID", "Received empty match ID");
             return;
         }
-        if (command.match.getBountyId().empty()) {
+        if (!*command.match.getBountyId()) {
             LOG_E("HUNTER_SEND_ID", "Received empty bounty ID");
             return;
         }
         
         LOG_I("HUNTER_SEND_ID", "Received match ID: %s, bounty ID: %s", 
-                 command.match.getMatchId().c_str(), 
-                 command.match.getBountyId().c_str());
+                 command.match.getMatchId(), 
+                 command.match.getBountyId());
 
         // Set opponent MAC address
-        if (command.wifiMacAddr.empty()) {
+        if (!command.wifiMacAddrValid) {
             LOG_E("HUNTER_SEND_ID", "Received empty MAC address");
             return;
         }
-        player->setOpponentMacAddress(command.wifiMacAddr);
+        player->setOpponentMacAddress(command.wifiMacAddr);  // uint8_t[6] overload
         
         // Create new match with validated data
         Match* newMatch = matchManager->createMatch(
@@ -67,11 +67,11 @@ void HunterSendIdState::onQuickdrawCommandReceived(QuickdrawCommand command) {
             return;
         }
 
-        LOG_I("HUNTER_SEND_ID", "Created match with ID: %s", newMatch->getMatchId().c_str());
+        LOG_I("HUNTER_SEND_ID", "Created match with ID: %s", newMatch->getMatchId());
         
         try {
             quickdrawWirelessManager->broadcastPacket(
-                player->getOpponentMacAddress(),
+                player->getOpponentMacBytes(),
                 HUNTER_RECEIVE_MATCH,
                 *newMatch
             );

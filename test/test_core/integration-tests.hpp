@@ -250,9 +250,9 @@ inline void matchSerializationRoundTrip() {
     EXPECT_EQ(bytesRead, MATCH_BINARY_SIZE);
 
     // Verify data integrity
-    EXPECT_EQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
-    EXPECT_EQ(receivedMatch.getHunterId(), originalMatch.getHunterId());
-    EXPECT_EQ(receivedMatch.getBountyId(), originalMatch.getBountyId());
+    EXPECT_STREQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
+    EXPECT_STREQ(receivedMatch.getHunterId(), originalMatch.getHunterId());
+    EXPECT_STREQ(receivedMatch.getBountyId(), originalMatch.getBountyId());
     EXPECT_EQ(receivedMatch.getHunterDrawTime(), 225);
     EXPECT_EQ(receivedMatch.getBountyDrawTime(), 310);
 
@@ -261,7 +261,7 @@ inline void matchSerializationRoundTrip() {
     Match jsonRestored;
     jsonRestored.fromJson(json);
 
-    EXPECT_EQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
+    EXPECT_STREQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
     EXPECT_EQ(jsonRestored.getHunterDrawTime(), 225);
 }
 

@@ -24,7 +24,7 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
         return;
     }
 
-    if (player->getOpponentMacAddress().empty()) {
+    if (!player->hasOpponentMac()) {
         LOG_E("BOUNTY_SEND_CC", "Opponent MAC address is empty");
         return;
     }
@@ -53,7 +53,7 @@ void BountySendConnectionConfirmedState::onStateMounted(Device *PDN) {
     try {
         Match initialMatch(matchId, "", bountyId);  // Empty hunter ID initially
         quickdrawWirelessManager->broadcastPacket(
-            player->getOpponentMacAddress(),
+            player->getOpponentMacBytes(),
             CONNECTION_CONFIRMED,
             initialMatch
         );
@@ -69,7 +69,7 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
         return;
     }
 
-    if (player->getOpponentMacAddress().empty()) {
+    if (!player->hasOpponentMac()) {
         LOG_E("BOUNTY_SEND_CC", "Opponent MAC address is empty");
         return;
     }
@@ -80,23 +80,23 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
         LOG_I("BOUNTY_SEND_CC", "Received HUNTER_RECEIVE_MATCH command");
         
         // Validate received match data
-        if (command.match.getMatchId().empty()) {
+        if (!*command.match.getMatchId()) {
             LOG_E("BOUNTY_SEND_CC", "Received empty match ID");
             return;
         }
-        if (command.match.getHunterId().empty()) {
+        if (!*command.match.getHunterId()) {
             LOG_E("BOUNTY_SEND_CC", "Received empty hunter ID");
             return;
         }
-        if (command.match.getBountyId().empty()) {
+        if (!*command.match.getBountyId()) {
             LOG_E("BOUNTY_SEND_CC", "Received empty bounty ID");
             return;
         }
 
         LOG_I("BOUNTY_SEND_CC", "Received match - ID: %s, Hunter: %s, Bounty: %s",
-                 command.match.getMatchId().c_str(),
-                 command.match.getHunterId().c_str(),
-                 command.match.getBountyId().c_str());
+                 command.match.getMatchId(),
+                 command.match.getHunterId(),
+                 command.match.getBountyId());
 
         Match* match = matchManager->receiveMatch(command.match);
         if (!match) {
@@ -106,7 +106,7 @@ void BountySendConnectionConfirmedState::onQuickdrawCommandReceived(QuickdrawCom
 
         try {
             quickdrawWirelessManager->broadcastPacket(
-                player->getOpponentMacAddress(),
+                player->getOpponentMacBytes(),
                 BOUNTY_FINAL_ACK,
                 *match
             );

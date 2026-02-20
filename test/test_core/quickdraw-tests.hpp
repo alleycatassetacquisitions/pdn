@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <memory>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "game/match-manager.hpp"
@@ -308,11 +310,13 @@ inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite)
     suite->player->setIsHunter(false);
     suite->player->setOpponentMacAddress("AA:BB:CC:DD:EE:FF");
     
-    // Capture the MAC address used in sendData
-    uint8_t capturedMac[6];
+    // Use a shared_ptr so the capture remains valid for the lifetime of the EXPECT_CALL
+    // (which persists in mockPeerComms until the fixture is destroyed, beyond this function's scope).
+    // Capturing by reference [&capturedMac] would be UB after this function returns.
+    auto capturedMac = std::make_shared<std::array<uint8_t, 6>>();
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillOnce(Invoke([&capturedMac](const uint8_t* mac, PktType type, const uint8_t* data, size_t len) {
-            memcpy(capturedMac, mac, 6);
+        .WillOnce(Invoke([capturedMac](const uint8_t* mac, PktType type, const uint8_t* data, size_t len) {
+            std::copy(mac, mac + 6, capturedMac->begin());
             return 1;
         }));
     
@@ -321,11 +325,11 @@ inline void handshakeSendsDirectMessagesNotBroadcast(HandshakeStateTests* suite)
     
     // Verify that the MAC address is not the broadcast address (FF:FF:FF:FF:FF:FF)
     uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    EXPECT_NE(memcmp(capturedMac, broadcastMac, 6), 0);
+    EXPECT_NE(memcmp(capturedMac->data(), broadcastMac, 6), 0);
     
     // Verify it's the opponent's MAC
     uint8_t expectedMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    EXPECT_EQ(memcmp(capturedMac, expectedMac, 6), 0);
+    EXPECT_EQ(memcmp(capturedMac->data(), expectedMac, 6), 0);
 }
 
 // Test: Handshake states clear on dismount
