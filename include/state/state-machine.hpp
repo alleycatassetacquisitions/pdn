@@ -114,6 +114,12 @@ public:
         return currentState;
     }
 
+    virtual std::unique_ptr<StateMachineSnapshot> onPaused(Device *PDN, Snapshot* currentStateSnapshot) {
+        return nullptr;
+    }
+
+    virtual void onResumed(Device *PDN, StateMachineSnapshot* stateMachineSnapshot) {}
+
 protected:
 
     void onStateMounted(Device *PDN) override final {
@@ -125,15 +131,16 @@ protected:
      * state machine itself needs to hold onto any data beyond the current state's snapshot.
      */
     std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override final {
-        currentSnapshot = currentState->onStatePaused(PDN);
+        std::unique_ptr<Snapshot> currentStateSnapshot = currentState->onStatePaused(PDN);
         currentState->onStateDismounted(PDN);
         paused = true;
+
+        return onPaused(PDN, currentStateSnapshot.get());
     }
 
     void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override final {
         currentState->onStateMounted(PDN);
-        currentState->onStateResumed(PDN, currentSnapshot.get());
-        currentSnapshot = nullptr;
+        onResumed(PDN, dynamic_cast<StateMachineSnapshot*>(stateMachineSnapshot));
         paused = false;
     }
 
@@ -147,7 +154,6 @@ protected:
 
     void onStateDismounted(Device *PDN) override final {
         currentState->onStateDismounted(PDN);
-        currentSnapshot = nullptr;
         currentState = nullptr;
         stateChangeReady = false;
         newState = nullptr;
@@ -171,7 +177,6 @@ protected:
     State *currentState = nullptr;
 
 private:
-    std::unique_ptr<Snapshot> currentSnapshot;
 
     bool launched = false;
     bool paused = false;
