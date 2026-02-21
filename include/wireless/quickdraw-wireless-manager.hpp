@@ -22,12 +22,14 @@ enum QDCommand {
     BOUNTY_FINAL_ACK = 4, //Bounty -> Hunter
     
     // Game Commands
-    HACK = 6,
-    HACK_ACK = 7, 
-    HACK_CONFIRMED = 8,
-    LOCKDOWN = 9,
-    LOCKDOWN_ACK = 10,
-    LOCKDOWN_CONFIRMED = 11,    
+    
+    //these are currently unused.
+    // HACK = 6,
+    // HACK_ACK = 7, 
+    // HACK_CONFIRMED = 8,
+    // LOCKDOWN = 9,
+    // LOCKDOWN_ACK = 10,
+    // LOCKDOWN_CONFIRMED = 11,    
     DRAW_RESULT = 12,
     NEVER_PRESSED = 13,
     COMMAND_COUNT,  // Always add new commands above this line

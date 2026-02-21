@@ -5,20 +5,20 @@
 
 const char* TAG = "Device";
 
-void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
+void Device::loadAppConfig(AppConfig config, AppId launchAppId) {
     this->appConfig = std::move(config);
-    this->currentAppId = launchAppId;
+    this->currentAppId = std::move(launchAppId);
     if(appConfig.find(currentAppId) == appConfig.end()) {
-        LOG_E(TAG, "App %d not found", currentAppId.id);
+        LOG_E(TAG, "App %d not found", currentAppId);
         return;
     }
     
     appConfig[currentAppId]->onStateMounted(this);
 }
 
-void Device::setActiveApp(StateId appId) {
+void Device::setActiveApp(AppId appId) {
     if(appConfig.find(appId) == appConfig.end()) {
-        LOG_E(TAG, "App %d not found", appId.id);
+        LOG_E(TAG, "App %d not found", static_cast<int>(appId));
         return;
     }
     

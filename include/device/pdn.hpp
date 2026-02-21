@@ -6,6 +6,7 @@
 #include "device.hpp"
 #include "device/light-manager.hpp"
 #include "device/serial-manager.hpp"
+#include "apps/wireless-app-launcher.hpp"
 
 #include <string>
 
@@ -48,11 +49,12 @@ public:
     StorageInterface* getStorage() override;
     WirelessManager* getWirelessManager() override;
     SerialManager* getSerialManager() override;
-
+    
 protected:
     PDN(DriverConfig& driverConfig);
 
 private:
+    void handleRemoteAppLaunchRequest(const WirelessAppCommand&);
 
     Display* display;
     Haptics* haptics;
@@ -68,6 +70,8 @@ private:
     LoggerInterface* logger;
     StorageInterface* storage;
     WirelessManager* wirelessManager;
+
+    WirelessAppLauncher* wirelessAppLauncher;
 
     std::string deviceId;
 };

@@ -1,7 +1,7 @@
 #include "apps/handshake/handshake.hpp"
 
 HandshakeApp::HandshakeApp(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager)
-    : StateMachine(HANDSHAKE_APP_ID) {
+    : StateMachine(static_cast<int>(AppId::HANDSHAKE)) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;

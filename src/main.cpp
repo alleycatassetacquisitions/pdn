@@ -25,6 +25,7 @@
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "apps/wireless-app-launcher.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -142,9 +143,7 @@ void setup() {
     pdn->begin();
     
     // Create wireless managers
-    LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
     quickdrawWirelessManager = new QuickdrawWirelessManager();
-    LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     
     // WiFi credentials are compile-time constants from build flags
@@ -166,9 +165,9 @@ void setup() {
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
-        {StateId(QUICKDRAW_APP_ID), game}
+        {AppId::QUICKDRAW, game}
     };
-    pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+    pdn->loadAppConfig(apps, AppId::QUICKDRAW);
 }
 
 void loop() {

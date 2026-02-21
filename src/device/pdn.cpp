@@ -26,11 +26,25 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     lightManager = new LightManager(*lights);
     serialManager = new SerialManager(serialOut, serialIn);
     wirelessManager = new WirelessManager(peerComms, httpClient);
+    wirelessAppLauncher = new WirelessAppLauncher();
 }
 
 int PDN::begin() {
     // Initialize wireless manager to set up initial state
     wirelessManager->initialize();
+    wirelessAppLauncher->initialize(wirelessManager);
+    peerComms->setPacketHandler(
+        PktType::kWirelessAppCommand,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            ((WirelessAppLauncher*)userArg)->processAppCommand(srcAddr, data, len);
+        },
+        wirelessAppLauncher
+    );
+
+    wirelessAppLauncher->setPacketReceivedCallback(
+        std::bind(&PDN::handleRemoteAppLaunchRequest, this, std::placeholders::_1)
+    );
+    
     return 1;
 }
 
@@ -85,4 +99,12 @@ WirelessManager* PDN::getWirelessManager() {
 
 void PDN::setDeviceId(const std::string& id) {
     deviceId = id;
+}
+
+void PDN::handleRemoteAppLaunchRequest(const WirelessAppCommand& command) {
+    if(command.command == AppCommand::APP_LAUNCH) {
+        AppId appId = command.appId;
+        setActiveApp(appId);
+        wirelessAppLauncher->sendAppCommand(command.macAddress, AppCommand::APP_LAUNCH_ACK, appId);
+    }
 }

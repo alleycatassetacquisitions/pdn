@@ -7,8 +7,7 @@
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
-
-constexpr int PLAYER_REGISTRATION_APP_ID = 0;
+#include "apps/app-registry.hpp"
 
 class PlayerRegistrationApp : public StateMachine {
 public:

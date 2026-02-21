@@ -1,5 +1,5 @@
 #include <vector>
-#include <cstring>  // For memcpy
+#include <cstring>
 #include <string>
 
 #include "device/drivers/peer-comms-interface.hpp"

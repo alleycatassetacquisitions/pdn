@@ -73,8 +73,10 @@ public:
         transitions.clear();
     }
 
-    explicit State(int stateId): name(stateId) {
-    }
+    explicit State(int stateId) : name(stateId) {}
+
+    template<typename T, std::enable_if_t<std::is_enum_v<T>, int> = 0>
+    explicit State(T id) : name(static_cast<int>(id)) {}
 
     void addTransition(StateTransition *transition) {
         transitions.push_back(transition);

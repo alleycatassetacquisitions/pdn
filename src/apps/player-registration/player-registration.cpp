@@ -1,7 +1,7 @@
 #include "apps/player-registration/player-registration.hpp"
 
 PlayerRegistrationApp::PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager)
-    : StateMachine(PLAYER_REGISTRATION_APP_ID) {
+    : StateMachine(static_cast<int>(AppId::PLAYER_REGISTRATION)) {
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->matchManager = matchManager;

@@ -9,12 +9,13 @@
 #include "drivers/driver-manager.hpp"
 #include "drivers/logger.hpp"
 #include "wireless-manager.hpp"
+#include "apps/app-registry.hpp"
 #include "state/state-types.hpp"
 #include <map>
 
 class StateMachine;
 
-using AppConfig = std::map<StateId, StateMachine*>;
+using AppConfig = std::map<AppId, StateMachine*>;
 
 class Device {
 public:
@@ -29,11 +30,11 @@ public:
         appConfig.clear();
     }
 
-    void loadAppConfig(AppConfig config, StateId launchAppId);
+    void loadAppConfig(AppConfig config, AppId launchAppId);
 
     virtual int begin() = 0;
 
-    void setActiveApp(StateId appId);
+    void setActiveApp(AppId appId);
 
     virtual void loop();
 
@@ -60,5 +61,5 @@ protected:
 private:
     DriverManager driverManager;
     AppConfig appConfig;
-    StateId currentAppId;
+    AppId currentAppId;
 };

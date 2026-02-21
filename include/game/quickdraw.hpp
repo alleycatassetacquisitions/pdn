@@ -11,10 +11,9 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
+#include "apps/app-registry.hpp"
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
-
-constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:

@@ -8,10 +8,10 @@
 #include "device-mock.hpp"
 #include "state/state-machine.hpp"
 
-// Test app IDs - using StateId type for compatibility
-const StateId APP_ONE(100);
-const StateId APP_TWO(200);
-const StateId APP_THREE(300);
+// Test app IDs - mapped to registered AppIds
+const AppId APP_ONE  = AppId::PLAYER_REGISTRATION;
+const AppId APP_TWO  = AppId::HANDSHAKE;
+const AppId APP_THREE = AppId::QUICKDRAW;
 
 // Simple mock state for MockStateMachine
 class MockState : public State {
@@ -23,7 +23,7 @@ public:
 // Mock StateMachine for testing
 class MockStateMachine : public StateMachine {
 public:
-    explicit MockStateMachine(int appId) : StateMachine(appId) {
+    explicit MockStateMachine(AppId appId) : StateMachine(static_cast<int>(appId)) {
         // Initialize with a dummy state so currentState is not nullptr
         stateMap.push_back(new MockState());
     }
@@ -90,9 +90,9 @@ public:
     
     void SetUp() override {
         device = new MockDevice();
-        appOne = new MockStateMachine(APP_ONE.id);
-        appTwo = new MockStateMachine(APP_TWO.id);
-        appThree = new MockStateMachine(APP_THREE.id);
+        appOne = new MockStateMachine(APP_ONE);
+        appTwo = new MockStateMachine(APP_TWO);
+        appThree = new MockStateMachine(APP_THREE);
     }
     
     void TearDown() override {

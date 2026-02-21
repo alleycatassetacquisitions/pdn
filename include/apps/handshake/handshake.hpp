@@ -7,8 +7,7 @@
 #include "game/match-manager.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/quickdraw-resources.hpp"
-
-constexpr int HANDSHAKE_APP_ID = 2;
+#include "apps/app-registry.hpp"
 
 class HandshakeApp : public StateMachine {
 public:
