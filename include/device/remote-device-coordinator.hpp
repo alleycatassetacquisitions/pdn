@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <functional>
 #include "device/serial-manager.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
@@ -14,10 +16,10 @@ enum class PortStatus {
     DAISY_CHAINED = 3, // Port is connected to more than 1 peer.
 };
 
-struct PortState {
-    SerialIdentifier port;
-    PortStatus status;
-    std::vector<std::string> peerMacAddresses;
+    struct PortState {
+        SerialIdentifier port;
+        PortStatus status;
+        std::vector<std::array<uint8_t, 6>> peerMacAddresses;
 };
 
 class RemoteDeviceCoordinator {
@@ -54,11 +56,11 @@ private:
      */
     PortStatus mapHandshakeStateToStatus(SerialIdentifier port);
 
-    void addDaisyChainedPeer(std::string macAddress);
-    void removeDaisyChainedPeer(std::string macAddress);
+    void addDaisyChainedPeer(const uint8_t* macAddress);
+    void removeDaisyChainedPeer(const uint8_t* macAddress);
 
-    void registerPeer(std::string macAddress);
-    void unregisterPeer(std::string macAddress);
+    void registerPeer(const uint8_t* macAddress);
+    void unregisterPeer(const uint8_t* macAddress);
 
     SerialManager* serialManager = nullptr;
 

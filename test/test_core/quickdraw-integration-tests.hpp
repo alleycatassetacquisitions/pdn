@@ -830,7 +830,7 @@ public:
 
 // Test: EXCHANGE_ID sent by primary (OUTPUT) is routed to the aux INPUT callback
 inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd("", -1, SerialIdentifier::INPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK);
     bool callbackFired = false;
 
     suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
@@ -838,7 +838,7 @@ inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite)
         callbackFired = true;
     }, SerialIdentifier::INPUT_JACK);
 
-    suite->primaryHWM.setMacPeer("BB:BB:BB:BB:BB:BB", SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
     suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
 
     EXPECT_TRUE(callbackFired);
@@ -848,7 +848,7 @@ inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite)
 
 // Test: EXCHANGE_ID sent by aux (INPUT) is routed to the primary OUTPUT callback
 inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd("", -1, SerialIdentifier::OUTPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::OUTPUT_JACK);
     bool callbackFired = false;
 
     suite->primaryHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
@@ -856,7 +856,7 @@ inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite)
         callbackFired = true;
     }, SerialIdentifier::OUTPUT_JACK);
 
-    suite->auxHWM.setMacPeer("AA:AA:AA:AA:AA:AA", SerialIdentifier::INPUT_JACK);
+    suite->auxHWM.setMacPeer(suite->primaryMac, SerialIdentifier::INPUT_JACK);
     suite->auxHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
 
     EXPECT_TRUE(callbackFired);
@@ -877,11 +877,11 @@ inline void handshakeTwoDeviceFullFlow(HandshakeIntegrationTests* suite) {
     }, SerialIdentifier::INPUT_JACK);
 
     // Step 1: primary → aux: EXCHANGE_ID
-    suite->primaryHWM.setMacPeer("BB:BB:BB:BB:BB:BB", SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
     suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
 
     // Step 2: aux → primary: EXCHANGE_ID reply
-    suite->auxHWM.setMacPeer("AA:AA:AA:AA:AA:AA", SerialIdentifier::INPUT_JACK);
+    suite->auxHWM.setMacPeer(suite->primaryMac, SerialIdentifier::INPUT_JACK);
     suite->auxHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
 
     // Step 3: primary → aux: final EXCHANGE_ID ack
@@ -898,7 +898,7 @@ inline void handshakeTimeoutBeforeCompletion(HandshakeIntegrationTests* suite) {
         auxCallbackFired = true;
     }, SerialIdentifier::INPUT_JACK);
 
-    suite->primaryHWM.setMacPeer("BB:BB:BB:BB:BB:BB", SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
     suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
 
     EXPECT_TRUE(auxCallbackFired);
@@ -936,25 +936,25 @@ inline void handshakeIgnoresUnexpectedCommands(HandshakeIntegrationTests* suite)
 
 // Test: Sender MAC is captured in the HandshakeCommand
 inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd("", -1, SerialIdentifier::INPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK);
     suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
         receivedCmd = cmd;
     }, SerialIdentifier::INPUT_JACK);
 
-    suite->primaryHWM.setMacPeer("BB:BB:BB:BB:BB:BB", SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
     suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
 
-    EXPECT_FALSE(receivedCmd.wifiMacAddr.empty());
+    EXPECT_TRUE(receivedCmd.wifiMacAddrValid);
 }
 
 // Test: NOTIFY_DISCONNECT is routed correctly
 inline void handshakeMatchDataPropagatedCorrectly(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd("", -1, SerialIdentifier::INPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK);
     suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
         receivedCmd = cmd;
     }, SerialIdentifier::INPUT_JACK);
 
-    suite->primaryHWM.setMacPeer("BB:BB:BB:BB:BB:BB", SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
     suite->primaryHWM.sendPacket(HSCommand::NOTIFY_DISCONNECT, SerialIdentifier::OUTPUT_JACK);
 
     EXPECT_EQ(receivedCmd.command, HSCommand::NOTIFY_DISCONNECT);

@@ -32,7 +32,12 @@ void PrimaryIdleState::onStateDismounted(Device *PDN) {
 void PrimaryIdleState::onConnectionStarted(std::string remoteMac) {
     if(remoteMac.starts_with(SEND_MAC_ADDRESS)) {
         std::string mac = remoteMac.substr(SEND_MAC_ADDRESS.length());
-        handshakeWirelessManager->setMacPeer(mac, SerialIdentifier::OUTPUT_JACK);
+        uint8_t macBytes[6];
+        if (!StringToMac(mac.c_str(), macBytes)) {
+            LOG_E(TAG, "Failed to parse MAC address from serial: %s", mac.c_str());
+            return;
+        }
+        handshakeWirelessManager->setMacPeer(macBytes, SerialIdentifier::OUTPUT_JACK);
         LOG_I(TAG, "Connection started with remote MAC: %s", mac.c_str());
         transitionToPrimarySendIDState = true;
     }

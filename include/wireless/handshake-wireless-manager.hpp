@@ -3,6 +3,7 @@
 //
 // Created by Elli Furedy on 2/22/2025.
 //
+#include <array>
 #include <cstring>
 #include <functional>
 #include <map>
@@ -19,14 +20,21 @@ enum HSCommand {
 };
 
 struct HandshakeCommand {
-    std::string wifiMacAddr;
+    uint8_t wifiMacAddr[6];
+    bool wifiMacAddrValid;
     int command;
     SerialIdentifier jack;
 
     HandshakeCommand() = delete;
 
-    HandshakeCommand(const std::string& macAddress, int command, SerialIdentifier jack) :
-        command(command), wifiMacAddr(macAddress), jack(jack) {}
+    HandshakeCommand(const uint8_t* macAddress, int command, SerialIdentifier jack)
+        : wifiMacAddrValid(macAddress != nullptr), command(command), jack(jack) {
+        if (macAddress) {
+            memcpy(wifiMacAddr, macAddress, 6);
+        } else {
+            memset(wifiMacAddr, 0, 6);
+        }
+    }
 };
 
 class HandshakeWirelessManager {
@@ -46,7 +54,7 @@ public:
 
     void clearCallbacks();
 
-    void setMacPeer(const std::string& macAddress, SerialIdentifier jack);
+    void setMacPeer(const uint8_t* macBytes, SerialIdentifier jack);
 
     void removeMacPeer(SerialIdentifier jack);
 
@@ -55,5 +63,5 @@ private:
 
     std::map<SerialIdentifier, std::function<void(HandshakeCommand)>> callbacks;
 
-    std::map<SerialIdentifier, std::string> macPeers;
+    std::map<SerialIdentifier, std::array<uint8_t, 6>> macPeers;
 };

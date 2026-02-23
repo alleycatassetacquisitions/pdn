@@ -189,22 +189,12 @@ const std::string& Player::getCurrentOpponentId() const {
 }
 
 void Player::setOpponentMacAddress(const std::string& macAddress) {
-    opponentMacAddress = macAddress;
     opponentMacValid = StringToMac(macAddress.c_str(), opponentMacBytes);
 }
 
 void Player::setOpponentMacAddress(const uint8_t* macBytes) {
     memcpy(opponentMacBytes, macBytes, 6);
     opponentMacValid = true;
-    opponentMacAddress = MacToString(macBytes);
-}
-
-std::string& Player::getOpponentMacAddress() {
-    return opponentMacAddress;
-}
-
-const std::string& Player::getOpponentMacAddress() const {
-    return opponentMacAddress;
 }
 
 const uint8_t* Player::getOpponentMacBytes() const {

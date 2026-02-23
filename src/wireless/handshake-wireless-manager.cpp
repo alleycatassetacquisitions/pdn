@@ -1,6 +1,7 @@
 //
 // Created by Elli Furedy on 2/22/2025.
 //
+#include <cstring>
 #include "wireless/handshake-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 
@@ -37,8 +38,8 @@ void HandshakeWirelessManager::clearCallbacks() {
     callbacks.clear();
 }
 
-void HandshakeWirelessManager::setMacPeer(const std::string& macAddress, SerialIdentifier jack) {
-    macPeers[jack] = macAddress;
+void HandshakeWirelessManager::setMacPeer(const uint8_t* macBytes, SerialIdentifier jack) {
+    memcpy(macPeers[jack].data(), macBytes, 6);
 }
 
 void HandshakeWirelessManager::removeMacPeer(SerialIdentifier jack) {
@@ -57,19 +58,10 @@ int HandshakeWirelessManager::sendPacket(int command, SerialIdentifier jack) {
     hsPacket.command = command;
     hsPacket.jack = static_cast<int>(jack);
 
-    const std::string& macStr = it->second;
-    uint8_t dstMac[6];
-    if (!StringToMac(macStr.c_str(), dstMac)) {
-        LOG_E("HWM", "Invalid MAC address stored for port %i: %s",
-              static_cast<int>(jack), macStr.c_str());
-        return -1;
-    }
-
-    LOG_I("HWM", "Sending command %i to %s for port %i",
-          command, macStr.c_str(), static_cast<int>(jack));
+    LOG_I("HWM", "Sending command %i to port %i", command, static_cast<int>(jack));
 
     return wirelessManager->sendEspNowData(
-        dstMac,
+        it->second.data(),
         PktType::kHandshakeCommand,
         (uint8_t*)&hsPacket,
         sizeof(hsPacket));
@@ -95,7 +87,7 @@ int HandshakeWirelessManager::processHandshakeCommand(const uint8_t* macAddress,
     // handle this packet is always the opposite of the sender's port.
     SerialIdentifier routeTo = invertJack(static_cast<SerialIdentifier>(packet->jack));
 
-    HandshakeCommand command = HandshakeCommand(MacToString(macAddress), packet->command, routeTo);
+    HandshakeCommand command(macAddress, packet->command, routeTo);
 
     auto it = callbacks.find(routeTo);
     if (it != callbacks.end() && it->second) {

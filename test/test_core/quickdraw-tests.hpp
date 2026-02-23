@@ -202,7 +202,8 @@ inline void primarySendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) 
         .WillRepeatedly(Return(1));
 
     // Seed the MAC peer so sendPacket has a destination
-    suite->handshakeWirelessManager.setMacPeer("AA:BB:CC:DD:EE:FF", SerialIdentifier::OUTPUT_JACK);
+    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->handshakeWirelessManager.setMacPeer(peerMac, SerialIdentifier::OUTPUT_JACK);
 
     PrimarySendIdState sendIdState(&suite->handshakeWirelessManager);
     sendIdState.onStateMounted(&suite->device);
@@ -222,7 +223,8 @@ inline void primarySendIdClearsOnDismount(HandshakeStateTests* suite) {
     EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
-    suite->handshakeWirelessManager.setMacPeer("AA:BB:CC:DD:EE:FF", SerialIdentifier::OUTPUT_JACK);
+    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->handshakeWirelessManager.setMacPeer(peerMac, SerialIdentifier::OUTPUT_JACK);
 
     PrimarySendIdState sendIdState(&suite->handshakeWirelessManager);
     sendIdState.onStateMounted(&suite->device);
@@ -260,7 +262,8 @@ inline void auxiliarySendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite
     EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
-    suite->handshakeWirelessManager.setMacPeer("AA:BB:CC:DD:EE:FF", SerialIdentifier::INPUT_JACK);
+    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->handshakeWirelessManager.setMacPeer(peerMac, SerialIdentifier::INPUT_JACK);
 
     AuxiliarySendIdState sendIdState(&suite->handshakeWirelessManager);
     sendIdState.onStateMounted(&suite->device);
@@ -281,7 +284,8 @@ inline void auxiliarySendIdClearsOnDismount(HandshakeStateTests* suite) {
     EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
-    suite->handshakeWirelessManager.setMacPeer("AA:BB:CC:DD:EE:FF", SerialIdentifier::INPUT_JACK);
+    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->handshakeWirelessManager.setMacPeer(peerMac, SerialIdentifier::INPUT_JACK);
 
     AuxiliarySendIdState sendIdState(&suite->handshakeWirelessManager);
     sendIdState.onStateMounted(&suite->device);
@@ -1253,7 +1257,8 @@ inline void cleanupHandshakeClearsWirelessCallbacks(StateCleanupTests* suite) {
 
     HandshakeWirelessManager hwm;
     hwm.initialize(suite->device.wirelessManager);
-    hwm.setMacPeer("AA:BB:CC:DD:EE:FF", SerialIdentifier::OUTPUT_JACK);
+    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    hwm.setMacPeer(peerMac, SerialIdentifier::OUTPUT_JACK);
 
     PrimarySendIdState primaryState(&hwm);
     primaryState.onStateMounted(&suite->device);
