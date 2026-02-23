@@ -8,7 +8,7 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
-    PDN->getSerialManager()->setActiveComms(player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK);
+    this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 }
 
 Quickdraw::~Quickdraw() {
@@ -25,16 +25,14 @@ void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
-    HandshakeApp* handshake = new HandshakeApp(player, matchManager, quickdrawWirelessManager);
-
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, quickdrawWirelessManager);
+    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
 
-    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager);
-    Duel* duel = new Duel(player, matchManager, quickdrawWirelessManager);
-    DuelPushed* duelPushed = new DuelPushed(player, matchManager);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, quickdrawWirelessManager);
+    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator);
+    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
+    DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
     DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager);
     
     Win* win = new Win(player);
@@ -57,19 +55,8 @@ void Quickdraw::populateStateMap() {
 
     idle->addTransition(
         new StateTransition(
-            std::bind(&Idle::transitionToHandshake, idle),
-            handshake));
-
-    // --- Transitions from Handshake app ---
-    handshake->addTransition(
-        new StateTransition(
-            std::bind(&HandshakeApp::readyForCountdown, handshake),
+            std::bind(&Idle::transitionToDuelCountdown, idle),
             duelCountdown));
-
-    handshake->addTransition(
-        new StateTransition(
-            std::bind(&HandshakeApp::transitionToIdle, handshake),
-            idle));
 
     // --- Duel flow ---
     duelCountdown->addTransition(
@@ -137,7 +124,6 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
-    stateMap.push_back(handshake);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
     stateMap.push_back(duelPushed);

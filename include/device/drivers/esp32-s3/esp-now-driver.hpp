@@ -205,14 +205,12 @@ public:
         return 0;
     }
 
-#if PDN_ENABLE_RSSI_TRACKING
     int GetRssiForPeer(const uint8_t* macAddr) {
         uint64_t macAddr64 = MacToUInt64(macAddr);
         if(m_rssiTracker.count(macAddr64) > 0)
             return m_rssiTracker[macAddr64];
         return -1;
     }
-#endif
 
     // Public methods for ESP-NOW callback handling 
     // (used when re-initializing ESP-NOW in EspNowState)
@@ -250,13 +248,12 @@ private:
         m_maxRetries(5),
         m_curRetries(0)
     {
-#if PDN_ENABLE_RSSI_TRACKING
+
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
         esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
         esp_wifi_set_promiscuous(true);
-#endif
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
         // after WiFi has been set up
     }
@@ -299,7 +296,6 @@ private:
         return 0;
     }
 
-#if PDN_ENABLE_RSSI_TRACKING
     //Callback for receiving raw Wifi packets, used for rssi tracking
     static void WifiPromiscuousRecvCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
         const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
@@ -320,7 +316,6 @@ private:
 
         EspNowManager::GetInstance()->m_rssiTracker[srcMac64] = rssi;
     }
-#endif
 
     //ESP-NOW callbacks
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
@@ -593,8 +588,6 @@ private:
     //Receive buffer tracking for multi-packet clusters
     std::unordered_map<uint64_t, DataRecvBuffer> m_recvBuffers;
 
-#if PDN_ENABLE_RSSI_TRACKING
     //Storage for rssi, which is captured by wifi promiscuous callback
     std::unordered_map<uint64_t, int> m_rssiTracker;
-#endif
 };

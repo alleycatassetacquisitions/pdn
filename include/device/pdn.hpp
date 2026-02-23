@@ -48,6 +48,7 @@ public:
     StorageInterface* getStorage() override;
     WirelessManager* getWirelessManager() override;
     SerialManager* getSerialManager() override;
+    RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override;
 
 protected:
     PDN(DriverConfig& driverConfig);
@@ -68,6 +69,7 @@ private:
     LoggerInterface* logger;
     StorageInterface* storage;
     WirelessManager* wirelessManager;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
     std::string deviceId;
 };

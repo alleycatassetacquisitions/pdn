@@ -7,57 +7,41 @@
 #include "drivers/driver-interface.hpp"
 #include <string>
 #include <functional>
-#include <cassert>
 #include "device-constants.hpp"
-
-enum class SerialByState {
-    PRIMARY = 0,
-    AUXILIARY = 1,
-};
 
 class SerialManager {
 public:
     SerialManager(HWSerialWrapper* outputJack, HWSerialWrapper* inputJack)
-        : outputJack_(outputJack), inputJack_(inputJack) {}
+        : outputJack(outputJack), inputJack(inputJack) {}
 
     ~SerialManager() = default;
 
-    HWSerialWrapper* getOutputJack() { return outputJack_; }
-    void setOutputJack(HWSerialWrapper* jack) { outputJack_ = jack; }
+    HWSerialWrapper* getOutputJack() { return outputJack; }
+    void setOutputJack(HWSerialWrapper* jack) { outputJack = jack; }
 
-    HWSerialWrapper* getInputJack() { return inputJack_; }
-    void setInputJack(HWSerialWrapper* jack) { inputJack_ = jack; }
+    HWSerialWrapper* getInputJack() { return inputJack; }
+    void setInputJack(HWSerialWrapper* jack) { inputJack = jack; }
 
-    void writeString(const std::string& msg, SerialByState whichJack = SerialByState::PRIMARY) {
-        if (whichJack == SerialByState::PRIMARY) {
-            getPrimaryCommsJack()->print(STRING_START);
-            getPrimaryCommsJack()->println(msg);
-        } else {
-            getAuxiliaryCommsJack()->print(STRING_START);
-            getAuxiliaryCommsJack()->println(msg);
-        }
+    void writeString(const std::string& msg, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        HWSerialWrapper* hw = getJack(jack);
+        hw->print(STRING_START);
+        hw->println(msg);
     }
 
-    std::string readString(SerialByState whichJack = SerialByState::PRIMARY){
-        std::string return_me;
+    std::string readString(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        std::string& head = getHead(jack);
+        std::string return_me = head;
+        head = "";
 
-        if (whichJack == SerialByState::PRIMARY) {
-            return_me = primaryHead;
-            primaryHead = "";
-        } else {
-            return_me = auxiliaryHead;
-            auxiliaryHead = "";
-        }
-
-        HWSerialWrapper* requestedJack = getJackByState(whichJack);
+        HWSerialWrapper* hw = getJack(jack);
 
         if (return_me.empty()) {
-            while (requestedJack->available() && requestedJack->peek() != STRING_START) {
-                requestedJack->read();
+            while (hw->available() && hw->peek() != STRING_START) {
+                hw->read();
             }
-            if (requestedJack->peek() == STRING_START) {
-                requestedJack->read();
-                return_me = std::string(requestedJack->readStringUntil(STRING_TERM).c_str());
+            if (hw->peek() == STRING_START) {
+                hw->read();
+                return_me = std::string(hw->readStringUntil(STRING_TERM).c_str());
             } else {
                 return_me = "null";
             }
@@ -65,94 +49,54 @@ public:
         return return_me;
     }
 
-    void setActiveComms(SerialIdentifier whichJack) {
-        currentCommsJack = whichJack;
-    }
-
-    std::string *peekComms(SerialByState whichJack = SerialByState::PRIMARY) {
-        if (whichJack == SerialByState::PRIMARY && primaryHead == "") {
-            primaryHead = readString(whichJack);
-        } else if (whichJack == SerialByState::AUXILIARY && auxiliaryHead == "") {
-            auxiliaryHead = readString(whichJack);
+    std::string* peekComms(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        std::string& head = getHead(jack);
+        if (head.empty()) {
+            head = readString(jack);
         }
-        if (whichJack == SerialByState::PRIMARY) {
-            return &primaryHead;
-        } else {
-            return &auxiliaryHead;
-        }
+        return &head;
     }
 
-    bool commsAvailable(SerialByState whichJack = SerialByState::PRIMARY) {
-        return getJackByState(whichJack)->available() > 0;
+    bool commsAvailable(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        return getJack(jack)->available() > 0;
     }
 
-    int getSerialWriteQueueSize(SerialByState whichJack = SerialByState::PRIMARY) {
-        return TRANSMIT_QUEUE_MAX_SIZE - getJackByState(whichJack)->availableForWrite();
+    int getSerialWriteQueueSize(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        return TRANSMIT_QUEUE_MAX_SIZE - getJack(jack)->availableForWrite();
     }
 
-    void setOnStringReceivedCallback(const std::function<void(std::string)>& callback, SerialByState whichJack = SerialByState::PRIMARY) {
-        if (whichJack == SerialByState::PRIMARY) {
-            onPrimaryJackStringReceivedCallback = callback;
-            getPrimaryCommsJack()->setStringCallback(callback);
-        } else {
-            onAuxiliaryJackStringReceivedCallback = callback;
-            getAuxiliaryCommsJack()->setStringCallback(callback);
-        }
+    void setOnStringReceivedCallback(const std::function<void(std::string)>& callback, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        getJack(jack)->setStringCallback(callback);
     }
 
+    void clearCallback(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        getJack(jack)->setStringCallback(nullptr);
+    }
 
     void clearCallbacks() {
-        onPrimaryJackStringReceivedCallback = nullptr;
-        onAuxiliaryJackStringReceivedCallback = nullptr;
-        getPrimaryCommsJack()->setStringCallback(nullptr);
-        getAuxiliaryCommsJack()->setStringCallback(nullptr);
+        outputJack->setStringCallback(nullptr);
+        inputJack->setStringCallback(nullptr);
     }
 
     void flushSerial() {
-        outputJack_->flush();
-        inputJack_->flush();
+        outputJack->flush();
+        inputJack->flush();
     }
 
-    std::string getPrimaryHead() const { return primaryHead; }
+    std::string getOutputHead() const { return outputHead; }
 
 private:
-    HWSerialWrapper* getPrimaryCommsJack() {
-        switch(currentCommsJack) {
-            case SerialIdentifier::OUTPUT_JACK:
-                return outputJack_;
-            case SerialIdentifier::INPUT_JACK:
-                return inputJack_;
-            default:
-                assert(false);
-        }
+    HWSerialWrapper* getJack(SerialIdentifier jack) {
+        return jack == SerialIdentifier::OUTPUT_JACK ? outputJack : inputJack;
     }
 
-    HWSerialWrapper* getAuxiliaryCommsJack() {
-        switch(currentCommsJack) {
-            case SerialIdentifier::OUTPUT_JACK:
-                return inputJack_;
-            case SerialIdentifier::INPUT_JACK:
-                return outputJack_;
-            default:
-                assert(false);
-        }
+    std::string& getHead(SerialIdentifier jack) {
+        return jack == SerialIdentifier::OUTPUT_JACK ? outputHead : inputHead;
     }
 
-    HWSerialWrapper* getJackByState(SerialByState whichState) {
-        if (whichState == SerialByState::PRIMARY) {
-            return getPrimaryCommsJack();
-        } else {
-            return getAuxiliaryCommsJack();
-        }
-    }
+    HWSerialWrapper* outputJack;
+    HWSerialWrapper* inputJack;
 
-    HWSerialWrapper* outputJack_;
-    HWSerialWrapper* inputJack_;
-
-    std::string primaryHead = "";
-    std::string auxiliaryHead = "";
-
-    SerialIdentifier currentCommsJack = SerialIdentifier::OUTPUT_JACK;
-    std::function<void(std::string)> onPrimaryJackStringReceivedCallback;
-    std::function<void(std::string)> onAuxiliaryJackStringReceivedCallback;
+    std::string outputHead = "";
+    std::string inputHead = "";
 };

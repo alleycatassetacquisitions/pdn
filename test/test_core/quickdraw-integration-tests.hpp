@@ -11,6 +11,7 @@
 #include "id-generator.hpp"
 #include "utility-tests.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/handshake-wireless-manager.hpp"
 #include "device/wireless-manager.hpp"
 
 using ::testing::_;
@@ -774,151 +775,189 @@ inline void twoDeviceCloseRaceCorrectWinner(TwoDeviceSimulationTests* suite) {
 }
 
 // ============================================
-// Handshake Integration Tests
+// Handshake Wireless Manager Integration Tests
 // ============================================
 
-class HandshakeIntegrationTests : public TwoDeviceTestFixture {
+// Fixture: Two HandshakeWirelessManagers backed by the same NativePeerBroker,
+// simulating a primary (OUTPUT_JACK) device and an auxiliary (INPUT_JACK) device.
+class HandshakeIntegrationTests : public testing::Test {
 public:
+    struct RawHSPacket { int jack; int command; } __attribute__((packed));
+
     void SetUp() override {
-        TwoDeviceTestFixture::SetUp();
-        // Clear matches for handshake tests - they create them dynamically
-        hunterMatchManager->clearCurrentMatch();
-        bountyMatchManager->clearCurrentMatch();
+        ON_CALL(primaryPeerComms, sendData(_, _, _, _))
+            .WillByDefault(Invoke([this](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+                auxHWM.processHandshakeCommand(primaryMac, data, len);
+                return 1;
+            }));
+        ON_CALL(auxPeerComms, sendData(_, _, _, _))
+            .WillByDefault(Invoke([this](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+                primaryHWM.processHandshakeCommand(auxMac, data, len);
+                return 1;
+            }));
+
+        primaryWirelessManager = new WirelessManager(&primaryPeerComms, &primaryHttpClient);
+        auxWirelessManager     = new WirelessManager(&auxPeerComms,     &auxHttpClient);
+
+        primaryHWM.initialize(primaryWirelessManager);
+        auxHWM.initialize(auxWirelessManager);
     }
 
-    void setupDefaultMockExpectations() override {
-        TwoDeviceTestFixture::setupDefaultMockExpectations();
-        ON_CALL(*hunterDevice.mockDisplay, invalidateScreen()).WillByDefault(Return(hunterDevice.mockDisplay));
-        ON_CALL(*hunterDevice.mockDisplay, drawImage(_)).WillByDefault(Return(hunterDevice.mockDisplay));
-        ON_CALL(*bountyDevice.mockDisplay, invalidateScreen()).WillByDefault(Return(bountyDevice.mockDisplay));
-        ON_CALL(*bountyDevice.mockDisplay, drawImage(_)).WillByDefault(Return(bountyDevice.mockDisplay));
+    void TearDown() override {
+        delete primaryWirelessManager;
+        delete auxWirelessManager;
     }
 
-    MockDevice hunterDevice;
-    MockDevice bountyDevice;
+    // Deliver a raw packet directly to a manager (bypasses sendData, for malformed-packet tests)
+    void deliverRawToAux(const uint8_t* data, size_t len) {
+        auxHWM.processHandshakeCommand(primaryMac, data, len);
+    }
+
+    NiceMock<MockPeerComms> primaryPeerComms;
+    NiceMock<MockPeerComms> auxPeerComms;
+    MockHttpClient primaryHttpClient;
+    MockHttpClient auxHttpClient;
+
+    WirelessManager* primaryWirelessManager = nullptr;
+    WirelessManager* auxWirelessManager     = nullptr;
+
+    HandshakeWirelessManager primaryHWM;
+    HandshakeWirelessManager auxHWM;
+
+    uint8_t primaryMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+    uint8_t auxMac[6]     = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
 };
 
+// Test: EXCHANGE_ID sent by primary (OUTPUT) is routed to the aux INPUT callback
 inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite) {
-    QuickdrawCommand receivedCommand;
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        receivedCommand = cmd;
-    });
-    
-    suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
-                               "handshake-match-id-1234567890", "hunt", "boun");
-    
-    EXPECT_EQ(receivedCommand.command, QDCommand::HUNTER_RECEIVE_MATCH);
-    EXPECT_STREQ(receivedCommand.match.getMatchId(), "handshake-match-id-1234567890");
-    EXPECT_STREQ(receivedCommand.match.getHunterId(), "hunt");
-    EXPECT_STREQ(receivedCommand.match.getBountyId(), "boun");
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK);
+    bool callbackFired = false;
+
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
+        receivedCmd = cmd;
+        callbackFired = true;
+    }, SerialIdentifier::INPUT_JACK);
+
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+
+    EXPECT_TRUE(callbackFired);
+    EXPECT_EQ(receivedCmd.command, HSCommand::EXCHANGE_ID);
+    EXPECT_EQ(receivedCmd.jack, SerialIdentifier::INPUT_JACK);
 }
 
+// Test: EXCHANGE_ID sent by aux (INPUT) is routed to the primary OUTPUT callback
 inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite) {
-    QuickdrawCommand receivedCommand;
-    suite->hunterWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        receivedCommand = cmd;
-    });
-    
-    suite->bountySendsToHunter(QDCommand::CONNECTION_CONFIRMED,
-                               "handshake-match-id-1234567890", "hunt", "boun");
-    
-    EXPECT_EQ(receivedCommand.command, QDCommand::CONNECTION_CONFIRMED);
-    EXPECT_STREQ(receivedCommand.match.getMatchId(), "handshake-match-id-1234567890");
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::OUTPUT_JACK);
+    bool callbackFired = false;
+
+    suite->primaryHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
+        receivedCmd = cmd;
+        callbackFired = true;
+    }, SerialIdentifier::OUTPUT_JACK);
+
+    suite->auxHWM.setMacPeer(suite->primaryMac, SerialIdentifier::INPUT_JACK);
+    suite->auxHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+
+    EXPECT_TRUE(callbackFired);
+    EXPECT_EQ(receivedCmd.command, HSCommand::EXCHANGE_ID);
+    EXPECT_EQ(receivedCmd.jack, SerialIdentifier::OUTPUT_JACK);
 }
 
+// Test: Full 4-step symmetric handshake protocol
 inline void handshakeTwoDeviceFullFlow(HandshakeIntegrationTests* suite) {
-    std::vector<QuickdrawCommand> hunterReceived;
-    std::vector<QuickdrawCommand> bountyReceived;
-    
-    suite->hunterWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        hunterReceived.push_back(cmd);
-    });
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        bountyReceived.push_back(cmd);
-    });
-    
-    // Full handshake flow
-    suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
-                               "full-flow-match-id-1234567", "hunt", "boun");
-    suite->bountySendsToHunter(QDCommand::CONNECTION_CONFIRMED,
-                               "full-flow-match-id-1234567", "hunt", "boun");
-    suite->hunterSendsToBounty(QDCommand::BOUNTY_FINAL_ACK,
-                               "full-flow-match-id-1234567", "hunt", "boun");
-    
-    EXPECT_EQ(hunterReceived.size(), 1);
-    EXPECT_EQ(bountyReceived.size(), 2);
+    std::vector<HandshakeCommand> primaryReceived;
+    std::vector<HandshakeCommand> auxReceived;
+
+    suite->primaryHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
+        primaryReceived.push_back(cmd);
+    }, SerialIdentifier::OUTPUT_JACK);
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
+        auxReceived.push_back(cmd);
+    }, SerialIdentifier::INPUT_JACK);
+
+    // Step 1: primary → aux: EXCHANGE_ID
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+
+    // Step 2: aux → primary: EXCHANGE_ID reply
+    suite->auxHWM.setMacPeer(suite->primaryMac, SerialIdentifier::INPUT_JACK);
+    suite->auxHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+
+    // Step 3: primary → aux: final EXCHANGE_ID ack
+    suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+
+    EXPECT_EQ(primaryReceived.size(), 1u);  // step 2
+    EXPECT_EQ(auxReceived.size(), 2u);      // steps 1 and 3
 }
 
+// Test: Incomplete handshake (only step 1) leaves system stable
 inline void handshakeTimeoutBeforeCompletion(HandshakeIntegrationTests* suite) {
-    // This test verifies that incomplete handshakes don't cause issues
-    QuickdrawCommand receivedCommand;
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        receivedCommand = cmd;
-    });
-    
-    // Only send first packet, no follow-up
-    suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
-                               "timeout-match-id-1234567890", "hunt", "boun");
-    
-    EXPECT_EQ(receivedCommand.command, QDCommand::HUNTER_RECEIVE_MATCH);
-    // Handshake is incomplete but system should remain stable
+    bool auxCallbackFired = false;
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand) {
+        auxCallbackFired = true;
+    }, SerialIdentifier::INPUT_JACK);
+
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+
+    EXPECT_TRUE(auxCallbackFired);
+    // Aux received the packet; primary is still waiting — no crash.
 }
 
+// Test: Malformed packet (wrong size) is rejected
 inline void handshakeRejectsInvalidPacketData(HandshakeIntegrationTests* suite) {
-    bool callbackInvoked = false;
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        callbackInvoked = true;
-    });
-    
-    // Send malformed packet
-    uint8_t badPacket[5] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    uint8_t macAddr[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
-    
-    suite->bountyWirelessManager->processQuickdrawCommand(macAddr, badPacket, sizeof(badPacket));
-    
-    EXPECT_FALSE(callbackInvoked);
+    bool callbackFired = false;
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand) {
+        callbackFired = true;
+    }, SerialIdentifier::INPUT_JACK);
+
+    uint8_t badPacket[3] = {0x01, 0x02, 0x03};
+    suite->deliverRawToAux(badPacket, sizeof(badPacket));
+
+    EXPECT_FALSE(callbackFired);
 }
 
+// Test: Out-of-range command value is rejected
 inline void handshakeIgnoresUnexpectedCommands(HandshakeIntegrationTests* suite) {
-    std::vector<QuickdrawCommand> received;
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        received.push_back(cmd);
-    });
-    
-    // Send valid but unexpected command
-    suite->hunterSendsToBounty(QDCommand::DRAW_RESULT,
-                               "unexpected-match-1234567890", "hunt", "boun");
-    
-    // Should still receive the packet (filtering is done at higher level)
-    EXPECT_EQ(received.size(), 1);
-    EXPECT_EQ(received[0].command, QDCommand::DRAW_RESULT);
+    bool callbackFired = false;
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand) {
+        callbackFired = true;
+    }, SerialIdentifier::INPUT_JACK);
+
+    HandshakeIntegrationTests::RawHSPacket pkt{
+        static_cast<int>(SerialIdentifier::OUTPUT_JACK),
+        HSCommand::HS_COMMAND_COUNT  // one past the valid range
+    };
+    suite->deliverRawToAux(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+
+    EXPECT_FALSE(callbackFired);
 }
 
+// Test: Sender MAC is captured in the HandshakeCommand
 inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
-    QuickdrawCommand receivedCommand;
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        receivedCommand = cmd;
-    });
-    
-    suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
-                               "mac-test-match-id-1234567890", "hunt", "boun");
-    
-    // The MAC address should be captured in the command
-    EXPECT_TRUE(receivedCommand.wifiMacAddrValid);
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK);
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
+        receivedCmd = cmd;
+    }, SerialIdentifier::INPUT_JACK);
+
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+
+    EXPECT_TRUE(receivedCmd.wifiMacAddrValid);
 }
 
+// Test: NOTIFY_DISCONNECT is routed correctly
 inline void handshakeMatchDataPropagatedCorrectly(HandshakeIntegrationTests* suite) {
-    QuickdrawCommand receivedCommand;
-    suite->bountyWirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        receivedCommand = cmd;
-    });
-    
-    suite->hunterSendsToBounty(QDCommand::HUNTER_RECEIVE_MATCH,
-                               "propagate-match-1234567890", "HNTR", "BNTY");
-    
-    EXPECT_STREQ(receivedCommand.match.getMatchId(), "propagate-match-1234567890");
-    EXPECT_STREQ(receivedCommand.match.getHunterId(), "HNTR");
-    EXPECT_STREQ(receivedCommand.match.getBountyId(), "BNTY");
+    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK);
+    suite->auxHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
+        receivedCmd = cmd;
+    }, SerialIdentifier::INPUT_JACK);
+
+    suite->primaryHWM.setMacPeer(suite->auxMac, SerialIdentifier::OUTPUT_JACK);
+    suite->primaryHWM.sendPacket(HSCommand::NOTIFY_DISCONNECT, SerialIdentifier::OUTPUT_JACK);
+
+    EXPECT_EQ(receivedCmd.command, HSCommand::NOTIFY_DISCONNECT);
 }
 
 inline void handshakePacketPreservesPlayerIds(HandshakeIntegrationTests* suite) {

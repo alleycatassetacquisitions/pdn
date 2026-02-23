@@ -120,10 +120,8 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     if(remotePlayer != remotePlayers.end())
     {
         remotePlayer->lastSeenTime = SimpleTimer::getPlatformClock()->milliseconds();
-#if PDN_ENABLE_RSSI_TRACKING
-        remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
-        LOG_D("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
-#endif
+        // remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
+        // LOG_D("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
     }
     return 0;
 }
