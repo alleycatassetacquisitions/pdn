@@ -11,6 +11,10 @@ HandshakeApp::~HandshakeApp() {
 
 }
 
+void HandshakeApp::onStateMounted(Device *PDN) {
+    StateMachine::onStateMounted(PDN);
+}
+
 void HandshakeApp::onStateLoop(Device *PDN) {
     StateMachine::onStateLoop(PDN);
 
