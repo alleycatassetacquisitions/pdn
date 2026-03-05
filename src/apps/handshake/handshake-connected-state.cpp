@@ -44,7 +44,7 @@ void HandshakeConnectedState::onStateDismounted(Device *PDN) {
 }
 
 void HandshakeConnectedState::heartbeatMonitorStringCallback(const std::string& message) {
-    if (message.starts_with(SERIAL_HEARTBEAT)) {
+    if (message.rfind(SERIAL_HEARTBEAT, 0) == 0) {
         heartbeatMonitorTimer.invalidate();
         heartbeatMonitorTimer.setTimer(heartbeatMonitorInterval);
     }

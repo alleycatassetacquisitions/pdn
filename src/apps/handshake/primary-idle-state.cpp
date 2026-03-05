@@ -30,7 +30,7 @@ void PrimaryIdleState::onStateDismounted(Device *PDN) {
 }
 
 void PrimaryIdleState::onConnectionStarted(std::string remoteMac) {
-    if(remoteMac.starts_with(SEND_MAC_ADDRESS)) {
+    if(remoteMac.rfind(SEND_MAC_ADDRESS, 0) == 0) {
         std::string mac = remoteMac.substr(SEND_MAC_ADDRESS.length());
         uint8_t macBytes[6];
         if (!StringToMac(mac.c_str(), macBytes)) {
