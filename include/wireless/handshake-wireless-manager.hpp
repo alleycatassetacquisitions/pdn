@@ -58,6 +58,8 @@ public:
 
     void removeMacPeer(SerialIdentifier jack);
 
+    const std::array<uint8_t, 6>* getMacPeer(SerialIdentifier jack) const;
+
 private:
     WirelessManager* wirelessManager;
 

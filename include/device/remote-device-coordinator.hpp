@@ -33,7 +33,8 @@ public:
      * register the handshakeWirelessManager's packet received callback.
      */
     void initialize(WirelessManager* wirelessManager,
-                    SerialManager* serialManager);
+                    SerialManager* serialManager,
+                    Device* PDN);
 
     /**
      * Must be called every loop tick (from PDN::loop).
@@ -66,6 +67,6 @@ private:
 
     HandshakeWirelessManager handshakeWirelessManager;
 
-    HandshakeApp* primaryPortHandshake = nullptr;
-    HandshakeApp* auxPortHandshake = nullptr;
+    HandshakeApp* inputPortHandshake = nullptr;
+    HandshakeApp* outputPortHandshake = nullptr;
 };

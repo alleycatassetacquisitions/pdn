@@ -46,6 +46,12 @@ void HandshakeWirelessManager::removeMacPeer(SerialIdentifier jack) {
     macPeers.erase(jack);
 }
 
+const std::array<uint8_t, 6>* HandshakeWirelessManager::getMacPeer(SerialIdentifier jack) const {
+    auto it = macPeers.find(jack);
+    if (it == macPeers.end()) return nullptr;
+    return &it->second;
+}
+
 int HandshakeWirelessManager::sendPacket(int command, SerialIdentifier jack) {
     auto it = macPeers.find(jack);
     if (it == macPeers.end()) {
