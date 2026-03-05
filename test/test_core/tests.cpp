@@ -14,6 +14,7 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
+#include "rdc-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1083,6 +1084,66 @@ TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
 
 TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
+}
+
+// ============================================
+// HWM UNIT TESTS
+// ============================================
+
+TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) {
+    hwmGetMacPeerReturnsNullWhenNotSet(this);
+}
+
+TEST_F(HWMUnitTests, getMacPeerReturnsCorrectMac) {
+    hwmGetMacPeerReturnsCorrectMac(this);
+}
+
+TEST_F(HWMUnitTests, removeMacPeerClearsEntry) {
+    hwmRemoveMacPeerClearsEntry(this);
+}
+
+TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) {
+    hwmSendPacketFailsWithNoPeer(this);
+}
+
+TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
+    hwmClearCallbacksRemovesAll(this);
+}
+
+TEST_F(HWMUnitTests, processRejectsNegativeCommand) {
+    hwmProcessRejectsNegativeCommand(this);
+}
+
+// ============================================
+// REMOTE DEVICE COORDINATOR TESTS
+// ============================================
+
+TEST_F(RDCTests, bothPortsDisconnectedOnInit) {
+    rdcBothPortsDisconnectedOnInit(this);
+}
+
+TEST_F(RDCTests, outputPortConnectingAfterMacReceived) {
+    rdcOutputPortConnectingAfterMacReceived(this);
+}
+
+TEST_F(RDCTests, outputPortConnectedAfterHandshakeComplete) {
+    rdcOutputPortConnectedAfterHandshakeComplete(this);
+}
+
+TEST_F(RDCTests, portStateReturnsEmptyPeersWhenDisconnected) {
+    rdcPortStateReturnsEmptyPeersWhenDisconnected(this);
+}
+
+TEST_F(RDCTests, portStateReturnsPeerWhenConnecting) {
+    rdcPortStateReturnsPeerWhenConnecting(this);
+}
+
+TEST_F(RDCTests, inputPortDisconnectedIndependentOfOutputPort) {
+    rdcInputPortDisconnectedIndependentOfOutputPort(this);
+}
+
+TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
+    rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
 }
 
 // ============================================

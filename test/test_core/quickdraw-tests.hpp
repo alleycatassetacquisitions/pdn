@@ -136,7 +136,7 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        ON_CALL(device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
         handshakeWirelessManager.initialize(device.wirelessManager);
     }
@@ -198,7 +198,7 @@ inline void primaryIdleClearsCallbackOnDismount(HandshakeStateTests* suite) {
 
 // Test: PrimarySendIdState sends EXCHANGE_ID on mount and transitions when ack arrives
 inline void primarySendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) {
-    EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
     // Seed the MAC peer so sendPacket has a destination
@@ -220,7 +220,7 @@ inline void primarySendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) 
 
 // Test: PrimarySendIdState clears state on dismount
 inline void primarySendIdClearsOnDismount(HandshakeStateTests* suite) {
-    EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
     uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -238,10 +238,10 @@ inline void primarySendIdClearsOnDismount(HandshakeStateTests* suite) {
 
 // Test: AuxiliaryIdleState emits MAC over serial and transitions on EXCHANGE_ID command
 inline void auxiliaryIdleTransitionsOnExchangeId(HandshakeStateTests* suite) {
-    EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
-    ON_CALL(suite->device.mockPeerComms, getMacAddress())
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(Return(nullptr));
 
     AuxiliaryIdleState idleState(&suite->handshakeWirelessManager);
@@ -259,7 +259,7 @@ inline void auxiliaryIdleTransitionsOnExchangeId(HandshakeStateTests* suite) {
 
 // Test: AuxiliarySendIdState transitions only after receiving EXCHANGE_ID ack
 inline void auxiliarySendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) {
-    EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
     uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -281,7 +281,7 @@ inline void auxiliarySendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite
 
 // Test: AuxiliarySendIdState clears state on dismount
 inline void auxiliarySendIdClearsOnDismount(HandshakeStateTests* suite) {
-    EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
     uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -299,7 +299,7 @@ inline void auxiliarySendIdClearsOnDismount(HandshakeStateTests* suite) {
 
 // Test: HandshakeApp output-jack path resets to idle on timeout
 inline void handshakeAppOutputJackTimeoutResetsToIdle(HandshakeStateTests* suite) {
-    EXPECT_CALL(suite->device.mockPeerComms, sendData(_, _, _, _))
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
 
     HandshakeApp handshakeApp(&suite->handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK);
@@ -670,7 +670,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
 
 // Test: DuelPushed waits for opponent result (grace period)
 inline void duelPushedWaitsForOpponentResult(DuelStateTests* suite) {
-    DuelPushed pushedState(suite->player, suite->matchManager);
+    DuelPushed pushedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
     
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
@@ -689,7 +689,7 @@ inline void duelPushedWaitsForOpponentResult(DuelStateTests* suite) {
 
 // Test: DuelPushed transitions when result received
 inline void duelPushedTransitionsOnResultReceived(DuelStateTests* suite) {
-    DuelPushed pushedState(suite->player, suite->matchManager);
+    DuelPushed pushedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
     
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
@@ -732,7 +732,7 @@ inline void duelReceivedResultWaitsForButtonPress(DuelStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
-    DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelReceivedResult receivedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->wirelessManager);
     receivedState.onStateMounted(&suite->device);
     
     // Should not transition immediately
@@ -751,7 +751,7 @@ inline void duelButtonPressDuringGracePeriodTransitions(DuelStateTests* suite) {
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
-    DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelReceivedResult receivedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->wirelessManager);
     receivedState.onStateMounted(&suite->device);
     
     // Advance some time
@@ -799,7 +799,7 @@ inline void duelPushedGracePeriodExpiresTransitions(DuelStateTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
     
-    DuelPushed pushedState(suite->player, suite->matchManager);
+    DuelPushed pushedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
     pushedState.onStateMounted(&suite->device);
     
     // Advance past grace period (900ms)
@@ -833,7 +833,7 @@ inline void duelGracePeriodExpiresSetsNeverPressed(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
-    DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelReceivedResult receivedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->wirelessManager);
     receivedState.onStateMounted(&suite->device);
     
     // Advance past grace period (750ms)
@@ -852,7 +852,7 @@ inline void duelGracePeriodExpiresSendsPityTime(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillRepeatedly(Return(1));
     
-    DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelReceivedResult receivedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->wirelessManager);
     receivedState.onStateMounted(&suite->device);
     
     // Advance past grace period
@@ -1191,7 +1191,7 @@ inline void cleanupDuelReceivedResultClearsButtonCallbacks(StateCleanupTests* su
     suite->matchManager->setBountyDrawTime(150);
     suite->matchManager->setReceivedDrawResult();
     
-    DuelReceivedResult receivedState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelReceivedResult receivedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->wirelessManager);
     receivedState.onStateMounted(&suite->device);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
@@ -1253,7 +1253,7 @@ inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
 
 // Test: PrimarySendIdState clears wireless callbacks and transition flag on dismount
 inline void cleanupHandshakeClearsWirelessCallbacks(StateCleanupTests* suite) {
-    ON_CALL(suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
     HandshakeWirelessManager hwm;
     hwm.initialize(suite->device.wirelessManager);
@@ -1328,48 +1328,37 @@ public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
-        // The state uses a SimpleTimer with 400ms delay to trigger flashes
-        // Starting time doesn't matter since the timer tracks elapsed time
-        fakeClock->setTime(800);
+        fakeClock->setTime(1000);
 
-        player = new Player();
-        { char pid[] = "1234"; player->setUserID(pid); }
-        player->setIsHunter(true);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
-        ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
+        hwm.initialize(device.wirelessManager);
+        uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+        hwm.setMacPeer(mac, SerialIdentifier::OUTPUT_JACK);
     }
 
     void TearDown() override {
-        delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
 
     MockDevice device;
-    Player* player;
+    HandshakeWirelessManager hwm;
     FakePlatformClock* fakeClock;
 };
 
-// Test: Connection successful transitions to countdown after threshold
+// Test: HandshakeConnectedState transitions to idle on heartbeat timeout
 inline void connectionSuccessfulTransitionsAfterThreshold(ConnectionSuccessfulTests* suite) {
-    ConnectionSuccessful connState(suite->player);
-    
-    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    
-    connState.onStateMounted(&suite->device);
-    
-    // Should not transition initially
-    EXPECT_FALSE(connState.transitionToCountdown());
-    
-    // Simulate flash cycles - need alertCount > 12 (threshold), so 13 flashes
-    // Each flash happens when the flashTimer expires (duration > elapsed)
-    // The timer uses strict inequality, so we need to advance by more than 400ms
-    for (int i = 0; i < 13; i++) {
-        suite->fakeClock->advance(401);
-        connState.onStateLoop(&suite->device);
-    }
-    
-    // Should now transition to countdown (alertCount > 12)
-    EXPECT_TRUE(connState.transitionToCountdown());
+    HandshakeConnectedState connectedState(&suite->hwm, SerialIdentifier::OUTPUT_JACK, HandshakeStateId::PRIMARY_CONNECTED_STATE);
+    connectedState.onStateMounted(&suite->device);
+
+    EXPECT_FALSE(connectedState.transitionToIdle());
+
+    // Advance past the firstHeartbeatTimeout (400ms)
+    suite->fakeClock->advance(500);
+    connectedState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(connectedState.transitionToIdle());
+
+    connectedState.onStateDismounted(&suite->device);
 }
