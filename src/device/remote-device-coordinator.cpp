@@ -45,8 +45,6 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
-    return mapHandshakeStateToStatus(port);
-
     PortStatus statusByState = mapHandshakeStateToStatus(port);
 
     //TODO: check the state of the device's other port and determine if it is connected to identify daisy chain!
@@ -73,10 +71,13 @@ PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
 }
 
 PortStatus RemoteDeviceCoordinator::mapHandshakeStateToStatus(SerialIdentifier port) {
-    int stateId;
+    HandshakeApp* app = (port == SerialIdentifier::INPUT_JACK) ? inputPortHandshake : outputPortHandshake;
 
-    if (port == SerialIdentifier::INPUT_JACK) { stateId = inputPortHandshake->getCurrentState()->getStateId(); }
-    else { stateId = outputPortHandshake->getCurrentState()->getStateId(); }
+    if (!app || !app->getCurrentState()) {
+        return PortStatus::DISCONNECTED;
+    }
+
+    int stateId = app->getCurrentState()->getStateId();
 
     switch (stateId) {
         case HandshakeStateId::PRIMARY_CONNECTED_STATE:
