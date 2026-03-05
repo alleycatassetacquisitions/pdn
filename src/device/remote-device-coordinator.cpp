@@ -19,17 +19,14 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
 void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, SerialManager* serialManager, Device* PDN) {
     this->serialManager = serialManager;
 
-    // TODO: this is not right lol
     handshakeWirelessManager.initialize(wirelessManager);
 
-    // TODO: determine input vs output
     inputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
     outputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK);
 
     inputPortHandshake->initialize(PDN);
     outputPortHandshake->initialize(PDN);
 
-    // TODO: register the handshakeWirelessManager's packet received callback.
     wirelessManager->setEspNowPacketHandler(
         PktType::kHandshakeCommand, 
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
