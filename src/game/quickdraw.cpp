@@ -64,6 +64,11 @@ void Quickdraw::populateStateMap() {
             std::bind(&DuelCountdown::shallWeBattle, duelCountdown),
             duel));
 
+    duelCountdown->addTransition(
+        new StateTransition(
+            std::bind(&DuelCountdown::disconnectedBackToIdle, duelCountdown),
+            idle));
+
     duel->addTransition(
         new StateTransition(
             std::bind(&Duel::transitionToIdle, duel),

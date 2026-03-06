@@ -4,6 +4,7 @@
 #include "device/device-constants.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
+#include "esp32-hal-log.h"
 #include "state/state-machine.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
@@ -27,6 +28,8 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     inputPortHandshake->initialize(PDN);
     outputPortHandshake->initialize(PDN);
 
+    syncLogTimer.setTimer(0);
+
     wirelessManager->setEspNowPacketHandler(
         PktType::kHandshakeCommand, 
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -39,6 +42,17 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
 void RemoteDeviceCoordinator::sync(Device* PDN) {
     inputPortHandshake->onStateLoop(PDN);
     outputPortHandshake->onStateLoop(PDN);
+
+    if (syncLogTimer.expired()) {
+        PortState output = getPortState(SerialIdentifier::OUTPUT_JACK);
+        PortState input = getPortState(SerialIdentifier::INPUT_JACK);
+
+        LOG_W("RDC", "OUTPUT port: status=%d peers=%u | INPUT port: status=%d peers=%u",
+              static_cast<int>(output.status), static_cast<unsigned>(output.peerMacAddresses.size()),
+              static_cast<int>(input.status), static_cast<unsigned>(input.peerMacAddresses.size()));
+
+        syncLogTimer.setTimer(100);
+    }
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include "device/serial-manager.hpp"
+#include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 
 class Device;
@@ -69,4 +70,6 @@ private:
 
     HandshakeApp* inputPortHandshake = nullptr;
     HandshakeApp* outputPortHandshake = nullptr;
+
+    SimpleTimer syncLogTimer;
 };
