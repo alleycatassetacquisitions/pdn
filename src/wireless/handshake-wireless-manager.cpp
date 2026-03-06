@@ -6,7 +6,8 @@
 #include "device/drivers/peer-comms-interface.hpp"
 
 struct HandshakePacket {
-    int jack;
+    int sendingJack;
+    int receicingJack;
     int command;
 } __attribute__((packed));
 
@@ -38,15 +39,15 @@ void HandshakeWirelessManager::clearCallbacks() {
     callbacks.clear();
 }
 
-void HandshakeWirelessManager::setMacPeer(const uint8_t* macBytes, SerialIdentifier jack) {
-    memcpy(macPeers[jack].data(), macBytes, 6);
+void HandshakeWirelessManager::setMacPeer(SerialIdentifier jack, Peer peer) {
+    macPeers[jack] = peer;
 }
 
 void HandshakeWirelessManager::removeMacPeer(SerialIdentifier jack) {
     macPeers.erase(jack);
 }
 
-const std::array<uint8_t, 6>* HandshakeWirelessManager::getMacPeer(SerialIdentifier jack) const {
+const Peer* HandshakeWirelessManager::getMacPeer(SerialIdentifier jack) const {
     auto it = macPeers.find(jack);
     if (it == macPeers.end()) return nullptr;
     return &it->second;
@@ -62,12 +63,13 @@ int HandshakeWirelessManager::sendPacket(int command, SerialIdentifier jack) {
 
     HandshakePacket hsPacket;
     hsPacket.command = command;
-    hsPacket.jack = static_cast<int>(jack);
+    hsPacket.sendingJack = static_cast<int>(jack);
+    hsPacket.receicingJack = static_cast<int>(it->second.sid);
 
     LOG_I("HWM", "Sending command %i to port %i", command, static_cast<int>(jack));
 
     return wirelessManager->sendEspNowData(
-        it->second.data(),
+        it->second.macAddr.data(),
         PktType::kHandshakeCommand,
         (uint8_t*)&hsPacket,
         sizeof(hsPacket));
@@ -89,13 +91,11 @@ int HandshakeWirelessManager::processHandshakeCommand(const uint8_t* macAddress,
         return -1;
     }
 
-    // The connection is always OUTPUT<->INPUT, so the local port that should
-    // handle this packet is always the opposite of the sender's port.
-    SerialIdentifier routeTo = invertJack(static_cast<SerialIdentifier>(packet->jack));
+    SerialIdentifier sendingJack = static_cast<SerialIdentifier>(packet->sendingJack);
+    SerialIdentifier receivingJack = static_cast<SerialIdentifier>(packet->receicingJack);
+    HandshakeCommand command(macAddress, packet->command, sendingJack, receivingJack);
 
-    HandshakeCommand command(macAddress, packet->command, routeTo);
-
-    auto it = callbacks.find(routeTo);
+    auto it = callbacks.find(receivingJack);
     if (it != callbacks.end() && it->second) {
         it->second(command);
     }

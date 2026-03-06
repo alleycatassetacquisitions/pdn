@@ -1,4 +1,5 @@
 #include "apps/handshake/handshake-states.hpp"
+#include "device/drivers/serial-wrapper.hpp"
 #include "device/wireless-manager.hpp"
 #include "device/device.hpp"
 #include <functional>
@@ -31,14 +32,21 @@ void PrimaryIdleState::onStateDismounted(Device *PDN) {
 
 void PrimaryIdleState::onConnectionStarted(std::string remoteMac) {
     if(remoteMac.rfind(SEND_MAC_ADDRESS, 0) == 0) {
-        std::string mac = remoteMac.substr(SEND_MAC_ADDRESS.length());
+        std::string payload = remoteMac.substr(SEND_MAC_ADDRESS.length());
+        size_t portSeparatorIndex = payload.rfind('#');
+
+        char portChar = payload[portSeparatorIndex + 1];
+        int portNumber = portChar - '0';
+
+        SerialIdentifier serialPort = static_cast<SerialIdentifier>(portNumber);
+        std::string mac = payload.substr(0, portSeparatorIndex);
         uint8_t macBytes[6];
         if (!StringToMac(mac.c_str(), macBytes)) {
             LOG_E(TAG, "Failed to parse MAC address from serial: %s", mac.c_str());
             return;
         }
         handshakeWirelessManager->setMacPeer(macBytes, SerialIdentifier::OUTPUT_JACK);
-        LOG_I(TAG, "Connection started with remote MAC: %s", mac.c_str());
+        LOG_I(TAG, "Connection started with remote MAC: %s on port: %d", mac.c_str(), portNumber);
         transitionToPrimarySendIDState = true;
     }
 }

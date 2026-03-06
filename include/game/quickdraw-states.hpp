@@ -96,7 +96,7 @@ private:
 
 class DuelCountdown : public ConnectState {
 public:
-    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager);
     ~DuelCountdown();
 
     void onStateMounted(Device *PDN) override;
@@ -107,6 +107,9 @@ public:
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
+
+    void sendMatchId(char* matchId);
+    void recvMatchId(QuickdrawCommand cmd);
 
 private:
     enum class CountdownStep {
@@ -155,6 +158,7 @@ private:
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
     MatchManager* matchManager;
+    QuickdrawWirelessManager* quickdrawWirelessManager;
 };
 
 class Duel : public ConnectState {

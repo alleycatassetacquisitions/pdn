@@ -4,9 +4,11 @@
 // Created by Elli Furedy on 2/22/2025.
 //
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <map>
+#include "device/drivers/serial-wrapper.hpp"
 #include "game/player.hpp"
 #include "mac-functions.hpp"
 #include "device/wireless-manager.hpp"
@@ -19,16 +21,22 @@ enum HSCommand {
     HS_INVALID_COMMAND = 0xFF
 };
 
+struct Peer {
+    std::array<uint8_t, 6> macAddr;
+    SerialIdentifier sid;
+};
+
 struct HandshakeCommand {
     uint8_t wifiMacAddr[6];
     bool wifiMacAddrValid;
     int command;
-    SerialIdentifier jack;
+    SerialIdentifier sendingJack;
+    SerialIdentifier receivingJack;
 
     HandshakeCommand() = delete;
 
-    HandshakeCommand(const uint8_t* macAddress, int command, SerialIdentifier jack)
-        : wifiMacAddrValid(macAddress != nullptr), command(command), jack(jack) {
+    HandshakeCommand(const uint8_t* macAddress, int command, SerialIdentifier sendingJack, SerialIdentifier receivingJack)
+        : wifiMacAddrValid(macAddress != nullptr), command(command), sendingJack(sendingJack), receivingJack(receivingJack) {
         if (macAddress) {
             memcpy(wifiMacAddr, macAddress, 6);
         } else {
@@ -54,16 +62,16 @@ public:
 
     void clearCallbacks();
 
-    void setMacPeer(const uint8_t* macBytes, SerialIdentifier jack);
+    void setMacPeer(SerialIdentifier jack, Peer peer);
 
     void removeMacPeer(SerialIdentifier jack);
 
-    const std::array<uint8_t, 6>* getMacPeer(SerialIdentifier jack) const;
+    const Peer* getMacPeer(SerialIdentifier jack) const;
 
 private:
     WirelessManager* wirelessManager;
 
     std::map<SerialIdentifier, std::function<void(HandshakeCommand)>> callbacks;
 
-    std::map<SerialIdentifier, std::array<uint8_t, 6>> macPeers;
+    std::map<SerialIdentifier, Peer> macPeers;
 };

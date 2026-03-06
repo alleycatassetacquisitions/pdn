@@ -1,6 +1,7 @@
 #include "apps/handshake/handshake-states.hpp"
 #include "device/device.hpp"
 #include "device/device-constants.hpp"
+#include "device/drivers/serial-wrapper.hpp"
 
 #define TAG "AUXILIARY_IDLE_STATE"
 
@@ -20,7 +21,7 @@ void AuxiliaryIdleState::onStateMounted(Device *PDN) {
 
 void AuxiliaryIdleState::onStateLoop(Device *PDN) {
     if (emitMacTimer.expired()) {
-        PDN->getSerialManager()->writeString(SEND_MAC_ADDRESS + MacToString(PDN->getWirelessManager()->getMacAddress()), SerialIdentifier::INPUT_JACK);
+        PDN->getSerialManager()->writeString(SEND_MAC_ADDRESS + MacToString(PDN->getWirelessManager()->getMacAddress()) + "#" + std::to_string((int)SerialIdentifier::INPUT_JACK), SerialIdentifier::INPUT_JACK);
         emitMacTimer.setTimer(emitMacInterval);
     }
 }
@@ -33,7 +34,11 @@ void AuxiliaryIdleState::onStateDismounted(Device *PDN) {
 
 void AuxiliaryIdleState::onHandshakeCommandReceived(HandshakeCommand command) {
     if (command.command == HSCommand::EXCHANGE_ID) {
-        handshakeWirelessManager->setMacPeer(command.wifiMacAddr, SerialIdentifier::INPUT_JACK);
+        Peer peer;
+        memcpy(peer.macAddr.data(), command.wifiMacAddr, 6);
+        peer.sid = command.sendingJack;
+
+        handshakeWirelessManager->setMacPeer(SerialIdentifier::INPUT_JACK, peer);
         transitionToSendIdState = true;
     }
 }
