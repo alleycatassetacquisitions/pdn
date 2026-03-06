@@ -320,7 +320,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, PeerCom
         }
 
         LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
-                player->getOpponentMacAddress().c_str());
+                MacToString(player->getOpponentMacBytes()));
 
         quickdrawWirelessManager->broadcastPacket(
             player->getOpponentMacBytes(),

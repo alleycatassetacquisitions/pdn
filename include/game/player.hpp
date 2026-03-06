@@ -65,9 +65,6 @@ public:
     void setOpponentMacAddress(const std::string& macAddress);
     void setOpponentMacAddress(const uint8_t* macBytes);
 
-    std::string& getOpponentMacAddress();
-    const std::string& getOpponentMacAddress() const;
-
     const uint8_t* getOpponentMacBytes() const;
     bool hasOpponentMac() const;
 
@@ -117,7 +114,6 @@ private:
 
     std::string currentMatchId;
     std::string currentOpponentId;
-    std::string opponentMacAddress;
     uint8_t opponentMacBytes[6] = {};
     bool opponentMacValid = false;
     

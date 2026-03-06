@@ -14,6 +14,7 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
+#include "rdc-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -712,12 +713,12 @@ TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) {
 // QUICKDRAW STATE TESTS - IDLE
 // ============================================
 
-TEST_F(IdleStateTests, serialHeartbeatTriggersMacAddressSend) {
-    idleSerialHeartbeatTriggersMacAddressSend(this);
+TEST_F(IdleStateTests, mountRegistersButtonCallbacks) {
+    idleMountRegistersButtonCallbacks(this);
 }
 
-TEST_F(IdleStateTests, receiveMacAddressTransitionsToHandshake) {
-    idleReceiveMacAddressTransitionsToHandshake(this);
+TEST_F(IdleStateTests, doesNotTransitionWhenDisconnected) {
+    idleDoesNotTransitionWhenDisconnected(this);
 }
 
 TEST_F(IdleStateTests, stateClearsOnDismount) {
@@ -732,32 +733,40 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
 // QUICKDRAW STATE TESTS - HANDSHAKE
 // ============================================
 
-TEST_F(HandshakeStateTests, hunterRoutesToHunterSendIdState) {
-    handshakeHunterRoutesToHunterSendIdState(this);
+TEST_F(HandshakeStateTests, primaryIdleTransitionsOnMacReceived) {
+    primaryIdleTransitionsOnMacReceived(this);
 }
 
-TEST_F(HandshakeStateTests, bountyRoutesToBountySendCCState) {
-    handshakeBountyRoutesToBountySendCCState(this);
+TEST_F(HandshakeStateTests, primaryIdleIgnoresUnrelatedSerial) {
+    primaryIdleIgnoresUnrelatedSerial(this);
 }
 
-TEST_F(HandshakeStateTests, timeoutReturnsToIdle) {
-    handshakeTimeoutReturnsToIdle(this);
+TEST_F(HandshakeStateTests, primaryIdleClearsCallbackOnDismount) {
+    primaryIdleClearsCallbackOnDismount(this);
 }
 
-TEST_F(HandshakeStateTests, bountyFlowSucceeds) {
-    handshakeBountyFlowSucceeds(this);
+TEST_F(HandshakeStateTests, primarySendIdTransitionsOnExchangeIdAck) {
+    primarySendIdTransitionsOnExchangeIdAck(this);
 }
 
-TEST_F(HandshakeStateTests, hunterFlowSucceeds) {
-    handshakeHunterFlowSucceeds(this);
+TEST_F(HandshakeStateTests, primarySendIdClearsOnDismount) {
+    primarySendIdClearsOnDismount(this);
 }
 
-TEST_F(HandshakeStateTests, sendsDirectMessagesNotBroadcast) {
-    handshakeSendsDirectMessagesNotBroadcast(this);
+TEST_F(HandshakeStateTests, auxiliaryIdleTransitionsOnExchangeId) {
+    auxiliaryIdleTransitionsOnExchangeId(this);
 }
 
-TEST_F(HandshakeStateTests, statesClearOnDismount) {
-    handshakeStatesClearOnDismount(this);
+TEST_F(HandshakeStateTests, auxiliarySendIdTransitionsOnExchangeIdAck) {
+    auxiliarySendIdTransitionsOnExchangeIdAck(this);
+}
+
+TEST_F(HandshakeStateTests, auxiliarySendIdClearsOnDismount) {
+    auxiliarySendIdClearsOnDismount(this);
+}
+
+TEST_F(HandshakeStateTests, handshakeAppOutputJackTimeoutResetsToIdle) {
+    handshakeAppOutputJackTimeoutResetsToIdle(this);
 }
 
 // ============================================
@@ -1075,6 +1084,66 @@ TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
 
 TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
+}
+
+// ============================================
+// HWM UNIT TESTS
+// ============================================
+
+TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) {
+    hwmGetMacPeerReturnsNullWhenNotSet(this);
+}
+
+TEST_F(HWMUnitTests, getMacPeerReturnsCorrectMac) {
+    hwmGetMacPeerReturnsCorrectMac(this);
+}
+
+TEST_F(HWMUnitTests, removeMacPeerClearsEntry) {
+    hwmRemoveMacPeerClearsEntry(this);
+}
+
+TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) {
+    hwmSendPacketFailsWithNoPeer(this);
+}
+
+TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
+    hwmClearCallbacksRemovesAll(this);
+}
+
+TEST_F(HWMUnitTests, processRejectsNegativeCommand) {
+    hwmProcessRejectsNegativeCommand(this);
+}
+
+// ============================================
+// REMOTE DEVICE COORDINATOR TESTS
+// ============================================
+
+TEST_F(RDCTests, bothPortsDisconnectedOnInit) {
+    rdcBothPortsDisconnectedOnInit(this);
+}
+
+TEST_F(RDCTests, outputPortConnectingAfterMacReceived) {
+    rdcOutputPortConnectingAfterMacReceived(this);
+}
+
+TEST_F(RDCTests, outputPortConnectedAfterHandshakeComplete) {
+    rdcOutputPortConnectedAfterHandshakeComplete(this);
+}
+
+TEST_F(RDCTests, portStateReturnsEmptyPeersWhenDisconnected) {
+    rdcPortStateReturnsEmptyPeersWhenDisconnected(this);
+}
+
+TEST_F(RDCTests, portStateReturnsPeerWhenConnecting) {
+    rdcPortStateReturnsPeerWhenConnecting(this);
+}
+
+TEST_F(RDCTests, inputPortDisconnectedIndependentOfOutputPort) {
+    rdcInputPortDisconnectedIndependentOfOutputPort(this);
+}
+
+TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
+    rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
 }
 
 // ============================================

@@ -100,6 +100,7 @@ void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME);

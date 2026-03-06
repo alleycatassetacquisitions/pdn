@@ -6,37 +6,8 @@
 #include "device/device.hpp"
 
 #define DUEL_TAG "DUEL_STATE"
-//
-// Created by Elli Furedy on 9/30/2024.
-//
-/*
-if (peekGameComms() == ZAP) {
-    readGameComms();
-    writeGameComms(YOU_DEFEATED_ME);
-    captured = true;
-    return;
-  } else if (peekGameComms() == YOU_DEFEATED_ME) {
-    readGameComms();
-    wonBattle = true;
-    return;
-  } else {
-    readGameComms();
-  }
 
-  // primary.tick();
-
-  if (startDuelTimer) {
-    setTimer(DUEL_TIMEOUT);
-    startDuelTimer = false;
-  }
-
-  if (timerExpired()) {
-    // FastLED.setBrightness(0);
-    bvbDuel = false;
-    duelTimedOut = true;
-  }
- */
-Duel::Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager) : ConnectState(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -106,10 +77,7 @@ void Duel::onStateLoop(Device *PDN) {
 }
 
 bool Duel::transitionToIdle() {
-    if (transitionToIdleState) {
-        LOG_I(DUEL_TAG, "Transitioning to idle state");
-    }
-    return transitionToIdleState;
+    return !isConnected();
 }
 
 bool Duel::transitionToDuelPushed() {
@@ -135,4 +103,12 @@ void Duel::onStateDismounted(Device *PDN) {
     transitionToDuelReceivedResultState = false;
     transitionToIdleState = false;
     transitionToDuelPushedState = false;
+}
+
+bool Duel::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool Duel::isAuxRequired() {
+    return !player->isHunter();
 }

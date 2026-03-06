@@ -16,11 +16,6 @@
 #include "device/wireless-manager.hpp"
 
 enum QDCommand {
-    // Handshake Commands
-    CONNECTION_CONFIRMED = 0, //Bounty -> Hunter
-    HUNTER_RECEIVE_MATCH = 1, //Hunter -> Bounty
-    BOUNTY_FINAL_ACK = 4, //Bounty -> Hunter
-    
     // Game Commands
     HACK = 6,
     HACK_ACK = 7, 
@@ -30,6 +25,8 @@ enum QDCommand {
     LOCKDOWN_CONFIRMED = 11,    
     DRAW_RESULT = 12,
     NEVER_PRESSED = 13,
+    SEND_MATCH_ID = 14,
+    MATCH_ID_ACK = 15,
     COMMAND_COUNT,  // Always add new commands above this line
     INVALID_COMMAND = 0xFF
 

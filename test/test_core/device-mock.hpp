@@ -5,6 +5,7 @@
 
 #include <gmock/gmock.h>
 #include "device/device.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "device/drivers/display.hpp"
 #include "device/drivers/button.hpp"
 #include "device/drivers/haptics.hpp"
@@ -154,6 +155,14 @@ public:
     MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
 };
 
+// Always returns DISCONNECTED — enough for tests that only check the false path
+class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
+public:
+    PortStatus getPortStatus(SerialIdentifier) override {
+        return PortStatus::DISCONNECTED;
+    }
+};
+
 // Mock QuickdrawWirelessManager for MatchManager tests
 class MockQuickdrawWirelessManager : public QuickdrawWirelessManager {
 public:
@@ -220,9 +229,10 @@ public:
     LightManager* getLightManager() override { return lightManager; }
     WirelessManager* getWirelessManager() override { return wirelessManager; }
     SerialManager* getSerialManager() override { return serialManager; }
+    RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override { return &fakeRemoteDeviceCoordinator; }
 
     std::string getHead() {
-        return serialManager->getPrimaryHead();
+        return serialManager->getOutputHead();
     }
 
     // Mock interface instances
@@ -240,4 +250,5 @@ public:
 
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
+    FakeRemoteDeviceCoordinator fakeRemoteDeviceCoordinator;
 };

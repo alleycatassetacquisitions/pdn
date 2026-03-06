@@ -1,0 +1,56 @@
+#include "apps/handshake/handshake-states.hpp"
+#include "device/drivers/serial-wrapper.hpp"
+#include "device/wireless-manager.hpp"
+#include "device/device.hpp"
+#include <functional>
+
+#define TAG "PRIMARY_IDLE_STATE"
+
+PrimaryIdleState::PrimaryIdleState(HandshakeWirelessManager* handshakeWirelessManager) : State(HandshakeStateId::PRIMARY_IDLE_STATE) {
+    this->handshakeWirelessManager = handshakeWirelessManager;
+}
+
+PrimaryIdleState::~PrimaryIdleState() {
+    handshakeWirelessManager = nullptr;
+}
+
+void PrimaryIdleState::onStateMounted(Device *PDN) {
+    LOG_I(TAG, "State mounted");
+
+    PDN->getSerialManager()->setOnStringReceivedCallback(std::bind(&PrimaryIdleState::onConnectionStarted, this, std::placeholders::_1), SerialIdentifier::OUTPUT_JACK);
+}
+
+void PrimaryIdleState::onStateLoop(Device *PDN) {
+    
+}
+
+void PrimaryIdleState::onStateDismounted(Device *PDN) {
+    LOG_I(TAG, "State dismounted");
+    transitionToPrimarySendIDState = false;
+    PDN->getSerialManager()->clearCallback(SerialIdentifier::OUTPUT_JACK);
+}
+
+void PrimaryIdleState::onConnectionStarted(std::string remoteMac) {
+    if(remoteMac.rfind(SEND_MAC_ADDRESS, 0) == 0) {
+        std::string payload = remoteMac.substr(SEND_MAC_ADDRESS.length());
+        size_t portSeparatorIndex = payload.rfind('#');
+
+        char portChar = payload[portSeparatorIndex + 1];
+        int portNumber = portChar - '0';
+
+        SerialIdentifier serialPort = static_cast<SerialIdentifier>(portNumber);
+        std::string mac = payload.substr(0, portSeparatorIndex);
+        uint8_t macBytes[6];
+        if (!StringToMac(mac.c_str(), macBytes)) {
+            LOG_E(TAG, "Failed to parse MAC address from serial: %s", mac.c_str());
+            return;
+        }
+        handshakeWirelessManager->setMacPeer(macBytes, SerialIdentifier::OUTPUT_JACK);
+        LOG_I(TAG, "Connection started with remote MAC: %s on port: %d", mac.c_str(), portNumber);
+        transitionToPrimarySendIDState = true;
+    }
+}
+
+bool PrimaryIdleState::transitionToPrimarySendId() {
+    return transitionToPrimarySendIDState;
+} 

@@ -7,6 +7,7 @@
 #include "serial-manager.hpp"
 #include "light-manager.hpp"
 #include "drivers/driver-manager.hpp"
+#include "remote-device-coordinator.hpp"
 #include "drivers/logger.hpp"
 #include "wireless-manager.hpp"
 #include "state/state-types.hpp"
@@ -51,6 +52,7 @@ public:
     virtual StorageInterface* getStorage() = 0;
     virtual WirelessManager* getWirelessManager() = 0;
     virtual SerialManager* getSerialManager() = 0;
+    virtual RemoteDeviceCoordinator* getRemoteDeviceCoordinator() = 0;
 
 protected:
     explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {

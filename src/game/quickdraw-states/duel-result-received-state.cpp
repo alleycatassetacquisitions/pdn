@@ -7,7 +7,7 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL_RECEIVED_RESULT) {
+DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager) : ConnectState(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -15,9 +15,9 @@ DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManage
 
 DuelReceivedResult::~DuelReceivedResult() {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
-    player = nullptr;
-    matchManager = nullptr;
-    quickdrawWirelessManager = nullptr;
+    this->player = nullptr;
+    this->matchManager = nullptr;
+    this->quickdrawWirelessManager = nullptr;
 }
 
 void DuelReceivedResult::onStateMounted(Device *PDN) {
@@ -66,4 +66,14 @@ bool DuelReceivedResult::transitionToDuelResult() {
     return matchManager->matchResultsAreIn() || transitionToDuelResultState;
 }
 
+bool DuelReceivedResult::disconnectedBackToIdle() {
+    return !isConnected();
+}
 
+bool DuelReceivedResult::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool DuelReceivedResult::isAuxRequired() {
+    return !player->isHunter();
+}
