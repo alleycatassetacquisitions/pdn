@@ -3,6 +3,7 @@
 #include "utils/UUID.h"
 #include <string>
 #include <random>
+#include <cassert>
 
 class IdGenerator {
 public:
@@ -15,6 +16,19 @@ public:
     explicit IdGenerator(unsigned long seed) : generator(seed) {
         generator.setVersion4Mode();
         generator.seed(seed, randomDevice());
+    }
+
+    static void initialize(unsigned long seed) {
+        if (!s_instance) {
+            s_instance = new IdGenerator(seed);
+        } else {
+            s_instance->seed(seed);
+        }
+    }
+
+    static IdGenerator& getInstance() {
+        assert(s_instance != nullptr);
+        return *s_instance;
     }
 
     char *generateId() {
@@ -75,6 +89,8 @@ public:
     }
 
 private:
+    inline static IdGenerator* s_instance = nullptr;
+
     UUID generator;
     std::random_device randomDevice;
     /**

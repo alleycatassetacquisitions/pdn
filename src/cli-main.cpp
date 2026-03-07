@@ -171,8 +171,8 @@ int main(int argc, char** argv) {
     g_logger = globalLogger;
     SimpleTimer::setPlatformClock(globalClock);
     
-    // Seed the ID generator
-    IdGenerator(globalClock->milliseconds()).seed(globalClock->milliseconds());
+    // Initialize the ID generator singleton
+    IdGenerator::initialize(globalClock->milliseconds());
     
     // Show header (before raw mode)
     cli::Terminal::clearScreen();

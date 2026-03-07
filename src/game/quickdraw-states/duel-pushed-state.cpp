@@ -1,19 +1,18 @@
 #include "game/quickdraw-states.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
 
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
-DuelPushed::DuelPushed(Player* player, MatchManager* matchManager) : State(DUEL_PUSHED) {
+DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_PUSHED) {
     this->player = player;
     this->matchManager = matchManager;
 }
 
 DuelPushed::~DuelPushed() {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state destroyed");
-    player = nullptr;
-    matchManager = nullptr;
+    this->player = nullptr;
+    this->matchManager = nullptr;
 }
 
 void DuelPushed::onStateMounted(Device *PDN) {
@@ -33,7 +32,24 @@ void DuelPushed::onStateLoop(Device *PDN) {
 
 void DuelPushed::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
+
+    if (!isConnected()) {
+        matchManager->clearCurrentMatch();
+    }
+
     gracePeriodTimer.invalidate();
+}
+
+bool DuelPushed::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool DuelPushed::isAuxRequired() {
+    return !player->isHunter();
+}
+
+bool DuelPushed::disconnectedBackToIdle() {
+    return !isConnected();
 }
 
 bool DuelPushed::transitionToDuelResult() {

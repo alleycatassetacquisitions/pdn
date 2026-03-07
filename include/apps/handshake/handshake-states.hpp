@@ -1,91 +1,112 @@
 #pragma once
 
 #include "state/state.hpp"
-#include "game/player.hpp"
-#include "game/match-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/handshake-wireless-manager.hpp"
 
 enum HandshakeStateId {
-    HANDSHAKE_INITIATE_STATE = 9,
-    BOUNTY_SEND_CC_STATE = 10,
-    HUNTER_SEND_ID_STATE = 11,
-    CONNECTION_SUCCESSFUL = 12
+
+    OUTPUT_IDLE_STATE = 80, // Output waiting to receive mac from foreign input port. When mac detected, send id to foreign mac and transition.
+    OUTPUT_SEND_ID_STATE = 81, // Waiting for id from input, then sends final ack over esp-now to received MAC.
+    OUTPUT_CONNECTED_STATE = 82, // Output Port receiving hb from foreign input port. If timeout is reached without hb, sends notify disconnect message to foreign mac.
+
+    INPUT_IDLE_STATE = 83, // Input emitting mac over serial every 250 ms. Transitions when receiving mac over esp-now from foreign device.
+    INPUT_SEND_ID_STATE = 84, // Input Port second state. Sends ACK and player id over esp-now to received MAC.
+    INPUT_CONNECTED_STATE = 85 // sends hb over serial every 50 ms. if receive disconnect message, transition to INPUT_IDLE_STATE.
 };
     
-    class HandshakeInitiateState : public State {
-    public:
-        explicit HandshakeInitiateState(Player *player);
-        ~HandshakeInitiateState();
-    
-        void onStateMounted(Device *PDN) override;
-        void onStateLoop(Device *PDN) override;
-        void onStateDismounted(Device *PDN) override;
-        bool transitionToBountySendCC();
-        bool transitionToHunterSendId();
-    
-    private:
-        Player* player;
-        SimpleTimer handshakeSettlingTimer;
-        const int HANDSHAKE_SETTLE_TIME = 500;
-        bool transitionToBountySendCCState = false;
-        bool transitionToHunterSendIdState = false;
-    };
-    
-    class BountySendConnectionConfirmedState : public State {
-    public:
-        BountySendConnectionConfirmedState(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
-        ~BountySendConnectionConfirmedState();
-        void onQuickdrawCommandReceived(QuickdrawCommand command);
-        void onStateMounted(Device *PDN) override;
-        void onStateLoop(Device *PDN) override;
-        void onStateDismounted(Device *PDN) override;
-        bool transitionToConnectionSuccessful();
-    
-    private:
-        Player* player;
-        MatchManager* matchManager;
-        QuickdrawWirelessManager* quickdrawWirelessManager;
-        SimpleTimer delayTimer;
-        const int delay = 100;
-        bool transitionToConnectionSuccessfulState = false;
-    };
-    
-    class HunterSendIdState : public State {
-    public:
-        HunterSendIdState(Player *player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
-        ~HunterSendIdState();
-    
-        void onStateMounted(Device *PDN) override;
-        void onStateLoop(Device *PDN) override;
-        void onStateDismounted(Device *PDN) override;
-        void onQuickdrawCommandReceived(QuickdrawCommand command);
-        bool transitionToConnectionSuccessful();
-    
-    private:
-        Player* player;
-        MatchManager* matchManager;
-        QuickdrawWirelessManager* quickdrawWirelessManager;
-        SimpleTimer delayTimer;
-        const int delay = 100;
-        bool transitionToConnectionSuccessfulState = false;
-    };
+class OutputIdleState : public State {
+public:
+    explicit OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~OutputIdleState();
 
-class ConnectionSuccessful : public State {
-    public:
-        explicit ConnectionSuccessful(Player *player);
-        ~ConnectionSuccessful();
-    
-        void onStateMounted(Device *PDN) override;
-        void onStateLoop(Device *PDN) override;
-        void onStateDismounted(Device *PDN) override;
-        bool transitionToCountdown();
-    
-    private:
-        Player *player;
-        bool lightsOn = true;
-        int flashDelay = 400;
-        uint8_t transitionThreshold = 12;
-        uint8_t alertCount = 0;
-        SimpleTimer flashTimer;
-    };
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToOutputSendId();
+
+    void onConnectionStarted(std::string remoteMac);
+
+private:
+    bool transitionToOutputSendIdState = false;
+    HandshakeWirelessManager* handshakeWirelessManager;
+};
+
+class OutputSendIdState : public State {
+public:
+    OutputSendIdState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~OutputSendIdState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToConnected();
+
+    void onHandshakeCommandReceived(HandshakeCommand command);
+
+private:
+    HandshakeWirelessManager* handshakeWirelessManager;
+    bool transitionToConnectionSuccessfulState = false;
+};
+
+class HandshakeConnectedState : public State {
+public:
+    HandshakeConnectedState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack, int stateId);
+    ~HandshakeConnectedState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToIdle();
+
+    void heartbeatMonitorStringCallback(const std::string& message);
+    void listenForNotifyDisconnectCommand(HandshakeCommand command);
+
+private:
+    HandshakeWirelessManager* handshakeWirelessManager;
+    SerialIdentifier jack;
+
+    SimpleTimer emitHeartbeatTimer;
+    const int emitHeartbeatInterval = 50;
+
+    SimpleTimer heartbeatMonitorTimer;
+    const int firstHeartbeatTimeout = 400;
+    const int heartbeatMonitorInterval = 150;
+    bool transitionToIdleState = false;
+};
+
+class InputIdleState : public State {
+public:
+    explicit InputIdleState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~InputIdleState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToSendId();
+
+    void onHandshakeCommandReceived(HandshakeCommand command);
+
+private:
+    HandshakeWirelessManager* handshakeWirelessManager;
+    SimpleTimer emitMacTimer;
+    const int emitMacInterval = 250;
+    bool transitionToSendIdState = false;
+};
+
+class InputSendIdState : public State {
+public:
+    explicit InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~InputSendIdState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool transitionToConnected();
+    void onHandshakeCommandReceived(HandshakeCommand command);
+
+private:
+    HandshakeWirelessManager* handshakeWirelessManager;
+    bool transitionToConnectedState = false;
+};

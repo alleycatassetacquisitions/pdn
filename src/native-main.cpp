@@ -100,7 +100,7 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     // Create PDN and game
     instance.pdn = PDN::createPDN(pdnConfig);
     instance.player = new Player();
-    instance.player->setUserID(IdGenerator(instance.clockDriver->milliseconds()).generateId());
+    instance.player->setUserID(IdGenerator::getInstance().generateId());
     instance.pdn->begin();
     
     // Create wireless manager for this device
@@ -156,8 +156,8 @@ int main(int argc, char** argv) {
     g_logger = globalLogger;
     SimpleTimer::setPlatformClock(globalClock);
     
-    // Seed the ID generator
-    IdGenerator(globalClock->milliseconds()).seed(globalClock->milliseconds());
+    // Initialize the ID generator singleton
+    IdGenerator::initialize(globalClock->milliseconds());
     
     // Create device instances
     std::vector<DeviceInstance> devices;

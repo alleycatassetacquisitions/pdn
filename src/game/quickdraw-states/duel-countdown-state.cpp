@@ -1,8 +1,9 @@
+#include "device/drivers/serial-wrapper.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager) : State(DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
 }
@@ -77,6 +78,10 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 
 
 void DuelCountdown::onStateDismounted(Device *PDN) {
+    if (!doBattle) {
+        matchManager->clearCurrentMatch();
+    }
+
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
@@ -86,4 +91,16 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
 
 bool DuelCountdown::shallWeBattle() {
     return doBattle;
+}
+
+bool DuelCountdown::disconnectedBackToIdle() {
+    return !isConnected();
+}
+
+bool DuelCountdown::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool DuelCountdown::isAuxRequired() {
+    return !player->isHunter();
 }

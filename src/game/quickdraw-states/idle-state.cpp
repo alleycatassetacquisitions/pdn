@@ -4,17 +4,16 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
+#include "state/connect-state.hpp"
 
-Idle::Idle(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 Idle::~Idle() {
     player = nullptr;
     matchManager = nullptr;
-    quickdrawWirelessManager = nullptr;
 }
 
 void Idle::onStateMounted(Device *PDN) {
@@ -22,9 +21,6 @@ void Idle::onStateMounted(Device *PDN) {
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
 
-    quickdrawWirelessManager->clearCallbacks();
-    matchManager->clearCurrentMatch();
-    PDN->getSerialManager()->setOnStringReceivedCallback(std::bind(&Idle::serialEventCallbacks, this, std::placeholders::_1));
     AnimationConfig config;
     
     if(player->isHunter()) {
@@ -41,8 +37,6 @@ void Idle::onStateMounted(Device *PDN) {
         config.initialState = BOUNTY_IDLE_STATE;
         config.loopDelayMs = 1500;
         config.loop = true;
-
-        heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
     }
     PDN->getLightManager()->startAnimation(config);
 
@@ -58,56 +52,37 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    if(!player->isHunter() && heartbeatTimer.expired()) {
-        PDN->getSerialManager()->writeString(SERIAL_HEARTBEAT.c_str());
-        heartbeatTimer.setTimer(HEARTBEAT_INTERVAL_MS);
-    }
-
-    if(sendMacAddress) {
-        uint8_t* macAddr = PDN->getWirelessManager()->getMacAddress();
-        const char* macStr = MacToString(macAddr);
-        LOG_I("IDLE", "Preparing to Send Mac Address: %s", macStr);
-        
-        // Send as single concatenated message to avoid fragmentation
-        std::string message = SEND_MAC_ADDRESS + std::string(macStr);
-        PDN->getSerialManager()->writeString(message.c_str());
-        transitionToHandshakeState = true;
-    }
-
     if(displayIsDirty) {
         cycleStats(PDN);
         displayIsDirty = false;
     }
-}
 
-void Idle::onStateDismounted(Device *PDN) {
-    transitionToHandshakeState = false;
-    sendMacAddress = false;
-    waitingForMacAddress = false;
-    heartbeatTimer.invalidate();
-    statsIndex = 0;
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
-    PDN->getSerialManager()->flushSerial();
-    PDN->getSerialManager()->clearCallbacks();  // Clear serial callbacks
-}
+    if (isConnected() && player->isHunter() && !matchInitialized) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+        if (peerMac != nullptr) {
+            matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+            matchInitialized = true;
+            matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+        }
+    }
 
-void Idle::serialEventCallbacks(const std::string& message) {
-    LOG_I("IDLE", "Serial event received: %s", message.c_str());
-    if(message.compare(SERIAL_HEARTBEAT) == 0) {
-        sendMacAddress = true;  
-    } else if(message.rfind(SEND_MAC_ADDRESS, 0) == 0) {
-        // Message starts with "smac" - extract MAC address after prefix
-        std::string macAddress = message.substr(SEND_MAC_ADDRESS.length());
-        LOG_I("IDLE", "Received opponent MAC address: %s", macAddress.c_str());
-        player->setOpponentMacAddress(macAddress);
-        transitionToHandshakeState = true;
+    if(matchInitializationTimer.expired()) {
+        matchInitialized = false;
+        matchManager->clearCurrentMatch();
     }
 }
 
-bool Idle::transitionToHandshake() {
-    return transitionToHandshakeState;
+void Idle::onStateDismounted(Device *PDN) {
+    statsIndex = 0;
+    matchInitializationTimer.invalidate();
+    matchInitialized = false;
+    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+    PDN->getPrimaryButton()->removeButtonCallbacks();
+    PDN->getSecondaryButton()->removeButtonCallbacks();
+}
+
+bool Idle::transitionToDuelCountdown() {
+    return matchManager->isMatchReady();
 }
 
 void Idle::cycleStats(Device *PDN) {
@@ -140,4 +115,12 @@ void Idle::cycleStats(Device *PDN) {
     if(statsIndex > statsCount) {
         statsIndex = 0;
     }
+}
+
+bool Idle::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool Idle::isAuxRequired() {
+    return !player->isHunter();
 }

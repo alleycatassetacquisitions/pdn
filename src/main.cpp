@@ -60,7 +60,6 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-IdGenerator* idGenerator = nullptr;
 Player* player = nullptr;
 
 // Game instance
@@ -100,6 +99,7 @@ void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
+    esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME);
@@ -135,10 +135,9 @@ void setup() {
     // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
-    idGenerator = new IdGenerator(clockDriver->milliseconds());
-    idGenerator->seed(clockDriver->milliseconds());
+    IdGenerator::initialize(clockDriver->milliseconds());
     player = new Player();
-    player->setUserID(idGenerator->generateId());
+    player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     
     // Create wireless managers

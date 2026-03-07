@@ -44,8 +44,6 @@ const std::string YOU_DEFEATED_ME = "ydm";
 
 const std::string SERIAL_HEARTBEAT = "hb";
 
-const std::string SEND_MATCH_ID = "smid";
-const std::string SEND_USER_ID = "suid";
 const std::string SEND_MAC_ADDRESS = "smac";
 
 constexpr char STRING_TERM = '\r';

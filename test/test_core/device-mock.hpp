@@ -5,6 +5,7 @@
 
 #include <gmock/gmock.h>
 #include "device/device.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "device/drivers/display.hpp"
 #include "device/drivers/button.hpp"
 #include "device/drivers/haptics.hpp"
@@ -154,10 +155,55 @@ public:
     MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
 };
 
-// Mock QuickdrawWirelessManager for MatchManager tests
-class MockQuickdrawWirelessManager : public QuickdrawWirelessManager {
+class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
-    MockQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
+    void setPortStatus(SerialIdentifier id, PortStatus status) {
+        if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
+        else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
+    }
+
+    PortStatus getPortStatus(SerialIdentifier id) override {
+        if (id == SerialIdentifier::OUTPUT_JACK) return outputStatus;
+        if (id == SerialIdentifier::INPUT_JACK) return inputStatus;
+        return PortStatus::DISCONNECTED;
+    }
+
+private:
+    PortStatus outputStatus = PortStatus::DISCONNECTED;
+    PortStatus inputStatus = PortStatus::DISCONNECTED;
+};
+
+// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
+// Call deliverLastTo() to route the most-recently-captured packet to another manager's
+// processQuickdrawCommand(), exercising the real serialization/deserialization path.
+class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
+public:
+    FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
+
+    int broadcastPacket(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
+        sentCommands.push_back(command);
+        return 0;
+    }
+
+    void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
+        if (sentCommands.empty()) return;
+        const QuickdrawCommand& cmd = sentCommands.back();
+
+        // Serialize into the same wire format used by the real broadcastPacket.
+        QuickdrawPacket pkt = {};
+        memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
+        memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
+        pkt.isHunter       = cmd.isHunter;
+        pkt.playerDrawTime = cmd.playerDrawTime;
+        pkt.command        = cmd.command;
+
+        recipient->processQuickdrawCommand(
+            senderMac,
+            reinterpret_cast<const uint8_t*>(&pkt),
+            sizeof(pkt));
+    }
+
+    std::vector<QuickdrawCommand> sentCommands;
 };
 
 // Fake light strip for LightManager
@@ -220,9 +266,10 @@ public:
     LightManager* getLightManager() override { return lightManager; }
     WirelessManager* getWirelessManager() override { return wirelessManager; }
     SerialManager* getSerialManager() override { return serialManager; }
+    RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override { return &fakeRemoteDeviceCoordinator; }
 
     std::string getHead() {
-        return serialManager->getPrimaryHead();
+        return serialManager->getOutputHead();
     }
 
     // Mock interface instances
@@ -240,4 +287,5 @@ public:
 
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
+    FakeRemoteDeviceCoordinator fakeRemoteDeviceCoordinator;
 };

@@ -53,24 +53,6 @@ public:
 
     void clearUserID();
 
-    void setCurrentMatchId(const std::string& matchId);
-
-    std::string& getCurrentMatchId();
-    const std::string& getCurrentMatchId() const;
-
-    void setCurrentOpponentId(const std::string& opponentId);
-    std::string& getCurrentOpponentId();
-    const std::string& getCurrentOpponentId() const;
-
-    void setOpponentMacAddress(const std::string& macAddress);
-    void setOpponentMacAddress(const uint8_t* macBytes);
-
-    std::string& getOpponentMacAddress();
-    const std::string& getOpponentMacAddress() const;
-
-    const uint8_t* getOpponentMacBytes() const;
-    bool hasOpponentMac() const;
-
     unsigned long getLastReactionTime();
 
     unsigned long getAverageReactionTime();
@@ -114,12 +96,6 @@ private:
     unsigned long totalReactionTime = 0;
 
     Allegiance allegiance = Allegiance::RESISTANCE;
-
-    std::string currentMatchId;
-    std::string currentOpponentId;
-    std::string opponentMacAddress;
-    uint8_t opponentMacBytes[6] = {};
-    bool opponentMacValid = false;
     
     bool hunter = true;
 };

@@ -1,52 +1,20 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device.hpp"
 
 #define DUEL_TAG "DUEL_STATE"
-//
-// Created by Elli Furedy on 9/30/2024.
-//
-/*
-if (peekGameComms() == ZAP) {
-    readGameComms();
-    writeGameComms(YOU_DEFEATED_ME);
-    captured = true;
-    return;
-  } else if (peekGameComms() == YOU_DEFEATED_ME) {
-    readGameComms();
-    wonBattle = true;
-    return;
-  } else {
-    readGameComms();
-  }
 
-  // primary.tick();
-
-  if (startDuelTimer) {
-    setTimer(DUEL_TIMEOUT);
-    startDuelTimer = false;
-  }
-
-  if (timerExpired()) {
-    // FastLED.setBrightness(0);
-    bvbDuel = false;
-    duelTimedOut = true;
-  }
- */
-Duel::Duel(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 Duel::~Duel() {
     LOG_I(DUEL_TAG, "Duel state destroyed");
     this->player = nullptr;
     this->matchManager = nullptr;
-    this->quickdrawWirelessManager = nullptr;
 }
 
 void Duel::onStateMounted(Device *PDN) {
@@ -54,16 +22,10 @@ void Duel::onStateMounted(Device *PDN) {
     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
     LOG_I(DUEL_TAG, "Setting up button handlers");
-    
-    quickdrawWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchResults, matchManager, std::placeholders::_1)
-    );
 
-    PDN->getPrimaryButton()->setButtonPress(
-        matchManager->getDuelButtonPush(), matchManager, ButtonInteraction::CLICK);
-
-    PDN->getSecondaryButton()->setButtonPress(
-        matchManager->getDuelButtonPush(), matchManager, ButtonInteraction::CLICK);
+    auto duelButtonPush = matchManager->getDuelButtonPush();
+    PDN->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    PDN->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 
@@ -100,15 +62,12 @@ void Duel::onStateLoop(Device *PDN) {
         return;
     }
     
-    if(duelTimer.expired()) {
+    if(duelTimer.expired() || !isConnected()) {
         transitionToIdleState = true;
     }
 }
 
 bool Duel::transitionToIdle() {
-    if (transitionToIdleState) {
-        LOG_I(DUEL_TAG, "Transitioning to idle state");
-    }
     return transitionToIdleState;
 }
 
@@ -127,6 +86,16 @@ bool Duel::transitionToDuelReceivedResult() {
 }
 
 void Duel::onStateDismounted(Device *PDN) {
+    if(transitionToIdleState) {
+        PDN->getHaptics()->off();
+        matchManager->clearCurrentMatch();
+        PDN->getPrimaryButton()->removeButtonCallbacks();
+        PDN->getSecondaryButton()->removeButtonCallbacks();
+    } else if(transitionToDuelReceivedResultState) {
+        PDN->getPrimaryButton()->removeButtonCallbacks();
+        PDN->getSecondaryButton()->removeButtonCallbacks();
+    }
+
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
     
     duelTimer.invalidate();
@@ -135,4 +104,12 @@ void Duel::onStateDismounted(Device *PDN) {
     transitionToDuelReceivedResultState = false;
     transitionToIdleState = false;
     transitionToDuelPushedState = false;
+}
+
+bool Duel::isPrimaryRequired() {
+    return player->isHunter();
+}
+
+bool Duel::isAuxRequired() {
+    return !player->isHunter();
 }

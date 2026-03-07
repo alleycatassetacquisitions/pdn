@@ -112,34 +112,23 @@ private:
     uint8_t mac_[6] = {0};
 };
 
-// ============================================================
-// Packet wire format (must stay in sync with
-// quickdraw-wireless-manager.cpp packed struct)
-// ============================================================
-
-struct PerfPacket {
-    char matchId[37];
-    char hunterId[5];
-    char bountyId[5];
-    long hunterDrawTime;
-    long bountyDrawTime;
-    int  command;
-} __attribute__((packed));
-
-static PerfPacket makePacket(const Match* m, int command) {
-    PerfPacket p;
-    strncpy(p.matchId,  m->getMatchId(),  36); p.matchId[36]  = '\0';
-    strncpy(p.hunterId, m->getHunterId(), 4);  p.hunterId[4]  = '\0';
-    strncpy(p.bountyId, m->getBountyId(), 4);  p.bountyId[4]  = '\0';
-    p.hunterDrawTime = m->getHunterDrawTime();
-    p.bountyDrawTime = m->getBountyDrawTime();
-    p.command        = command;
+// Build a QuickdrawPacket (the real wire format) carrying a player's draw result.
+static QuickdrawPacket makeDrawResultPacket(const std::optional<Match>& match,
+                                            bool senderIsHunter,
+                                            const char* senderId) {
+    QuickdrawPacket p = {};
+    strncpy(p.matchId,  match->getMatchId(), sizeof(p.matchId) - 1);
+    strncpy(p.playerId, senderId,            sizeof(p.playerId) - 1);
+    p.isHunter       = senderIsHunter;
+    p.playerDrawTime = senderIsHunter ? match->getHunterDrawTime()
+                                      : match->getBountyDrawTime();
+    p.command        = QDCommand::DRAW_RESULT;
     return p;
 }
 
 static void deliver(QuickdrawWirelessManager* target,
                     const uint8_t mac[6],
-                    PerfPacket& pkt) {
+                    QuickdrawPacket& pkt) {
     target->processQuickdrawCommand(
         mac,
         reinterpret_cast<const uint8_t*>(&pkt),
@@ -171,12 +160,12 @@ struct DeviceCtx {
         matchMgr    = new MatchManager();
 
         qdWireless->initialize(&player, wirelessMgr, /*broadcastCooldown=*/0);
-        matchMgr->initialize(&player, &storage, &peerComms, qdWireless);
+        matchMgr->initialize(&player, &storage, qdWireless);
     }
 
     void armCallback() {
         qdWireless->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchResults,
+            std::bind(&MatchManager::listenForMatchEvents,
                       matchMgr, std::placeholders::_1));
     }
 
@@ -206,24 +195,27 @@ int main(int argc, char** argv) {
     StepClock clock;
     SimpleTimer::setPlatformClock(&clock);
 
-    // Seed the ID generator with a fixed value for reproducibility
-    IdGenerator(42).seed(42);
+    // Initialize the ID generator singleton with a fixed seed for reproducibility
+    IdGenerator::initialize(42);
 
     DeviceCtx hunter, bounty;
     hunter.init("hunt", true,  "BB:BB:BB:BB:BB:BB");
     bounty.init("boun", false, "AA:AA:AA:AA:AA:AA");
 
+    const uint8_t kHunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+    const uint8_t kBountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+
     // Wire each device's wireless manager to its own MatchManager callback
     hunter.armCallback();
     bounty.armCallback();
-
-    const uint8_t kHunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
-    const uint8_t kBountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
 
     long hunterWins = 0, bountyWins = 0, errors = 0;
 
     fprintf(stderr, "Running %ld duel cycles (no logging)...\n", numDuels);
     const auto wallStart = std::chrono::steady_clock::now();
+
+    std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<> dist(100, 1500);
 
     // --------------------------------------------------------
     // Hot loop — this is what the profiler should see
@@ -233,20 +225,24 @@ int main(int argc, char** argv) {
         clock.set(10000 + i * 5000UL);
         const unsigned long duelStart = clock.time_ms;
 
-        // Create the match on both sides with a fixed ID per iteration.
-        // snprintf is the cheapest way to stamp a unique-enough ID without
-        // triggering UUID generation overhead (which we're not measuring).
-        char matchId[37];
-        snprintf(matchId, sizeof(matchId), "perf-%031ld", i);
+        // Hunter initiates the match via the production path.
+        hunter.matchMgr->initializeMatch(const_cast<uint8_t*>(kBountyMac));
 
-        hunter.matchMgr->createMatch(matchId, "hunt", "boun");
-        bounty.matchMgr->createMatch(matchId, "hunt", "boun");
+        // Deliver SEND_MATCH_ID to bounty via listenForMatchEvents directly
+        // (we're benchmarking match logic, not serialization overhead).
+        const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
+        QuickdrawCommand sendMatchCmd(kBountyMac, QDCommand::SEND_MATCH_ID,
+                                      matchId, "hunt", 0, true);
+        bounty.matchMgr->listenForMatchEvents(sendMatchCmd);
+
+        // Deliver MATCH_ID_ACK back to hunter
+        QuickdrawCommand ackCmd(kHunterMac, QDCommand::MATCH_ID_ACK,
+                                matchId, "boun", 0, false);
+        hunter.matchMgr->listenForMatchEvents(ackCmd);
+
         hunter.matchMgr->setDuelLocalStartTime(duelStart);
         bounty.matchMgr->setDuelLocalStartTime(duelStart);
 
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> dist(100, 1500);
         const long hunterPress = dist(gen);
         const long bountyPress = dist(gen);
 
@@ -256,11 +252,11 @@ int main(int argc, char** argv) {
         clock.set(duelStart + bountyPress);
         bounty.matchMgr->getDuelButtonPush()(bounty.matchMgr);
 
-        // Exchange draw results (simulates the ESP-NOW packet crossing)
-        PerfPacket hunterPkt = makePacket(
-            hunter.matchMgr->getCurrentMatch(), QDCommand::DRAW_RESULT);
-        PerfPacket bountyPkt = makePacket(
-            bounty.matchMgr->getCurrentMatch(), QDCommand::DRAW_RESULT);
+        // Exchange draw results via wire-format packets through processQuickdrawCommand.
+        QuickdrawPacket hunterPkt = makeDrawResultPacket(
+            hunter.matchMgr->getCurrentMatch(), true, "hunt");
+        QuickdrawPacket bountyPkt = makeDrawResultPacket(
+            bounty.matchMgr->getCurrentMatch(), false, "boun");
 
         deliver(bounty.qdWireless, kHunterMac, hunterPkt);
         deliver(hunter.qdWireless, kBountyMac, bountyPkt);
