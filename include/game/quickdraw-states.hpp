@@ -166,6 +166,7 @@ private:
     MatchManager* matchManager;
     ChainContext* chainContext_;
     bool countdownStarted_ = false;
+    SerialManager* serialManager_ = nullptr;
 };
 
 class Duel : public ConnectState {
@@ -193,6 +194,7 @@ private:
     bool transitionToIdleState = false;
     SimpleTimer duelTimer;
     const int DUEL_TIMEOUT = 4000;
+    SerialManager* serialManager_ = nullptr;
 };
 
 class DuelPushed : public ConnectState {

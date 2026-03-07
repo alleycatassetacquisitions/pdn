@@ -67,7 +67,40 @@ void RemoteDeviceCoordinator::routeSerialMessage(const std::string& msg, SerialI
     }
 }
 
+void RemoteDeviceCoordinator::checkForDisconnects() {
+    PortStatus currentOutput = getPortStatus(SerialIdentifier::OUTPUT_JACK);
+    PortStatus currentInput = getPortStatus(SerialIdentifier::INPUT_JACK);
+
+    if (onDisconnectCallback_) {
+        if (prevOutputStatus_ == PortStatus::CONNECTED && currentOutput == PortStatus::DISCONNECTED) {
+            onDisconnectCallback_(SerialIdentifier::OUTPUT_JACK);
+        }
+        if (prevInputStatus_ == PortStatus::CONNECTED && currentInput == PortStatus::DISCONNECTED) {
+            onDisconnectCallback_(SerialIdentifier::INPUT_JACK);
+        }
+    }
+
+    prevOutputStatus_ = currentOutput;
+    prevInputStatus_ = currentInput;
+}
+
+void RemoteDeviceCoordinator::setOnDisconnectCallback(std::function<void(SerialIdentifier)> callback) {
+    onDisconnectCallback_ = std::move(callback);
+}
+
+void RemoteDeviceCoordinator::clearOnDisconnectCallback() {
+    onDisconnectCallback_ = nullptr;
+}
+
+void RemoteDeviceCoordinator::fireDisconnectCallbackForTest(SerialIdentifier port) {
+    if (onDisconnectCallback_) {
+        onDisconnectCallback_(port);
+    }
+}
+
 void RemoteDeviceCoordinator::sync(Device* PDN) {
+    checkForDisconnects();
+
     inputPortHandshake->onStateLoop(PDN);
     outputPortHandshake->onStateLoop(PDN);
 

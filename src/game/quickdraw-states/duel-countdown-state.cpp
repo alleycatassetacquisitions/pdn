@@ -18,6 +18,8 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(Device *PDN) {
+    serialManager_ = PDN->getSerialManager();
+
     PDN->getDisplay()->
     invalidateScreen()->
     drawImage(getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
@@ -51,6 +53,13 @@ void DuelCountdown::onStateMounted(Device *PDN) {
                 int count = std::stoi(msg.substr(8));
                 chainContext_->confirmedSupporters = count;
             });
+
+        remoteDeviceCoordinator->setOnDisconnectCallback([this](SerialIdentifier disconnectedPort) {
+            if (!serialManager_) return;
+            SerialIdentifier notifyJack = (disconnectedPort == SerialIdentifier::OUTPUT_JACK)
+                ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
+            serialManager_->writeString("event:break", notifyJack);
+        });
     } else {
         countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
         currentStepIndex++;
@@ -114,6 +123,8 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
     }
 
     remoteDeviceCoordinator->unregisterSerialHandler("confirm:", SerialIdentifier::INPUT_JACK);
+    remoteDeviceCoordinator->clearOnDisconnectCallback();
+    serialManager_ = nullptr;
 
     doBattle = false;
     currentStepIndex = 0;

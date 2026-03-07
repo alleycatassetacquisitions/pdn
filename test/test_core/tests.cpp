@@ -19,6 +19,7 @@
 #include "chain-boost-tests.hpp"
 #include "chain-detection-tests.hpp"
 #include "supporter-ready-tests.hpp"
+#include "chain-break-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1312,6 +1313,46 @@ TEST_F(SupporterReadyTests, receiveEventWinSetsFlag) { supporterReceivesEventWin
 TEST_F(SupporterReadyTests, receiveEventLossSetsFlag) { supporterReceivesEventLossSetsFlag(this); }
 TEST_F(SupporterReadyTests, receiveEventBreakRelaysAndSetsFlag) { supporterReceivesEventBreak(this); }
 TEST_F(SupporterReadyTests, doublePressIgnored) { supporterDoublePressIgnored(this); }
+
+// ============================================
+// CHAIN BREAK / DISCONNECT PROPAGATION TESTS
+// ============================================
+
+TEST_F(ChainBreakTests, firesDisconnectCallbackOnOutputPortTransition) {
+    rdcFiresDisconnectCallbackOnOutputPortTransition(this);
+}
+
+TEST_F(ChainBreakTests, doesNotFireCallbackWhenStillConnected) {
+    rdcDoesNotFireCallbackWhenStillConnected(this);
+}
+
+TEST_F(ChainBreakTests, doesNotFireCallbackWhenAlreadyDisconnected) {
+    rdcDoesNotFireCallbackWhenAlreadyDisconnected(this);
+}
+
+TEST_F(ChainBreakTests, clearCallbackPreventsNotification) {
+    rdcClearCallbackPreventsNotification(this);
+}
+
+TEST_F(ChainBreakTests, firesDisconnectForInputJack) {
+    rdcFiresDisconnectForInputJack(this);
+}
+
+TEST_F(ChainDuelStateBreakTests, duelCountdownSendsBreakOnOutputDisconnect) {
+    duelCountdownSendsBreakOnOutputDisconnect(this);
+}
+
+TEST_F(ChainDuelStateBreakTests, duelCountdownClearsDisconnectCallbackOnDismount) {
+    duelCountdownClearsDisconnectCallbackOnDismount(this);
+}
+
+TEST_F(ChainDuelStateBreakTests, duelStateSendsBreakOnOutputDisconnect) {
+    duelStateSendsBreakOnOutputDisconnect(this);
+}
+
+TEST_F(ChainDuelStateBreakTests, duelStateClearsDisconnectCallbackOnDismount) {
+    duelStateClearsDisconnectCallbackOnDismount(this);
+}
 
 // ============================================
 // MAIN

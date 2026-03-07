@@ -21,6 +21,7 @@ Duel::~Duel() {
 
 void Duel::onStateMounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Duel state mounted");
+    serialManager_ = PDN->getSerialManager();
     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
     LOG_I(DUEL_TAG, "Setting up button handlers");
@@ -36,6 +37,13 @@ void Duel::onStateMounted(Device *PDN) {
                 int count = std::stoi(msg.substr(8));
                 chainContext_->confirmedSupporters = count;
             });
+
+        remoteDeviceCoordinator->setOnDisconnectCallback([this](SerialIdentifier disconnectedPort) {
+            if (!serialManager_) return;
+            SerialIdentifier notifyJack = (disconnectedPort == SerialIdentifier::OUTPUT_JACK)
+                ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
+            serialManager_->writeString("event:break", notifyJack);
+        });
     }
 
     duelTimer.setTimer(DUEL_TIMEOUT);
@@ -109,7 +117,9 @@ void Duel::onStateDismounted(Device *PDN) {
 
     if (chainContext_) {
         remoteDeviceCoordinator->unregisterSerialHandler("confirm:", SerialIdentifier::INPUT_JACK);
+        remoteDeviceCoordinator->clearOnDisconnectCallback();
     }
+    serialManager_ = nullptr;
 
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
     

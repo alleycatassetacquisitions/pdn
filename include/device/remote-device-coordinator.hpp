@@ -45,6 +45,23 @@ public:
      */
     void sync(Device* PDN);
 
+    /**
+     * Compares current port statuses against previous statuses and fires
+     * onDisconnectCallback_ for any port that transitioned CONNECTED -> DISCONNECTED.
+     * Called from sync(); also public for targeted testing.
+     */
+    void checkForDisconnects();
+
+    void setOnDisconnectCallback(std::function<void(SerialIdentifier)> callback);
+    void clearOnDisconnectCallback();
+
+    /**
+     * Test-only helper: directly invokes the registered disconnect callback.
+     * Allows state tests to verify callback wiring without driving the full
+     * handshake state machine.
+     */
+    void fireDisconnectCallbackForTest(SerialIdentifier port);
+
     virtual PortStatus getPortStatus(SerialIdentifier port);
     PortState getPortState(SerialIdentifier port);
 
@@ -85,6 +102,10 @@ private:
 
     void registerPeer(const uint8_t* macAddress);
     void unregisterPeer(const uint8_t* macAddress);
+
+    std::function<void(SerialIdentifier)> onDisconnectCallback_;
+    PortStatus prevOutputStatus_ = PortStatus::DISCONNECTED;
+    PortStatus prevInputStatus_ = PortStatus::DISCONNECTED;
 
     SerialManager* serialManager = nullptr;
 
