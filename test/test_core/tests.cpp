@@ -20,6 +20,7 @@
 #include "chain-detection-tests.hpp"
 #include "supporter-ready-tests.hpp"
 #include "chain-break-tests.hpp"
+#include "chain-integration-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1352,6 +1353,26 @@ TEST_F(ChainDuelStateBreakTests, duelStateSendsBreakOnOutputDisconnect) {
 
 TEST_F(ChainDuelStateBreakTests, duelStateClearsDisconnectCallbackOnDismount) {
     duelStateClearsDisconnectCallbackOnDismount(this);
+}
+
+// ============================================
+// CHAIN INTEGRATION TESTS
+// ============================================
+
+TEST_F(ChainIntegrationTests, boostValuesMatchScenario) {
+    chainIntegrationBoostValuesMatchScenario(this);
+}
+
+TEST_F(ChainIntegrationTests, countdownWaitsForSupporters) {
+    chainIntegrationCountdownWaitsForSupporters(this);
+}
+
+TEST_F(ChainIntegrationTests, resultEventsSentToSupporters) {
+    chainIntegrationResultEventsSentToSupporters(this);
+}
+
+TEST_F(ChainIntegrationTests, fullDuelTeamAWins) {
+    chainIntegrationFullDuelTeamAWins(this);
 }
 
 // ============================================
