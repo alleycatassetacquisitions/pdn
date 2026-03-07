@@ -15,6 +15,7 @@
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
 #include "rdc-tests.hpp"
+#include "chain-boost-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1201,6 +1202,16 @@ TEST_F(RDCTests, getPeerMacReturnsMacWhenConnecting) {
 TEST_F(RDCTests, getPeerMacReturnsMacWhenConnected) {
     rdcGetPeerMacReturnsMacWhenConnected(this);
 }
+
+// ============================================
+// CHAIN BOOST TESTS
+// ============================================
+
+TEST_F(ChainBoostTests, zeroSupportersGiveZeroBoost) { zeroSupportersGiveZeroBoost(this); }
+TEST_F(ChainBoostTests, oneSupporterGives30msBoost) { oneSupporterGives30msBoost(this); }
+TEST_F(ChainBoostTests, threeSupportersGive65msBoost) { threeSupportersGive65msBoost(this); }
+TEST_F(ChainBoostTests, tenSupportersGive115msBoost) { tenSupportersGive115msBoost(this); }
+TEST_F(ChainBoostTests, moreThanTenSupportersCapsAt115ms) { moreThanTenSupportersCapsAt115ms(this); }
 
 // ============================================
 // MAIN
