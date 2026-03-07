@@ -15,6 +15,7 @@
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
 #include "rdc-tests.hpp"
+#include "serial-router-tests.hpp"
 #include "chain-boost-tests.hpp"
 
 #if defined(ARDUINO)
@@ -1201,6 +1202,30 @@ TEST_F(RDCTests, getPeerMacReturnsMacWhenConnecting) {
 
 TEST_F(RDCTests, getPeerMacReturnsMacWhenConnected) {
     rdcGetPeerMacReturnsMacWhenConnected(this);
+}
+
+// ============================================
+// SERIAL ROUTER TESTS
+// ============================================
+
+TEST_F(SerialRouterTests, routesChainPrefixToOutputJackHandler) {
+    rdcRoutesChainPrefixToOutputJackHandler(this);
+}
+
+TEST_F(SerialRouterTests, routesMessagesOnInputJackIndependently) {
+    rdcRoutesMessagesOnInputJackIndependently(this);
+}
+
+TEST_F(SerialRouterTests, ignoresUnmatchedMessages) {
+    rdcIgnoresUnmatchedMessages(this);
+}
+
+TEST_F(SerialRouterTests, routesMultiplePrefixesOnSameJack) {
+    rdcRoutesMultiplePrefixesOnSameJack(this);
+}
+
+TEST_F(SerialRouterTests, unregisterRemovesHandler) {
+    rdcUnregisterRemovesHandler(this);
 }
 
 // ============================================

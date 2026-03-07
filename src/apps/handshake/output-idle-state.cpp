@@ -17,7 +17,9 @@ OutputIdleState::~OutputIdleState() {
 void OutputIdleState::onStateMounted(Device *PDN) {
     LOG_I(TAG, "State mounted");
 
-    PDN->getSerialManager()->setOnStringReceivedCallback(std::bind(&OutputIdleState::onConnectionStarted, this, std::placeholders::_1), SerialIdentifier::OUTPUT_JACK);
+    PDN->getRemoteDeviceCoordinator()->registerSerialHandler(
+        SEND_MAC_ADDRESS, SerialIdentifier::OUTPUT_JACK,
+        std::bind(&OutputIdleState::onConnectionStarted, this, std::placeholders::_1));
 }
 
 void OutputIdleState::onStateLoop(Device *PDN) {
@@ -27,7 +29,7 @@ void OutputIdleState::onStateLoop(Device *PDN) {
 void OutputIdleState::onStateDismounted(Device *PDN) {
     LOG_I(TAG, "State dismounted");
     transitionToOutputSendIdState = false;
-    PDN->getSerialManager()->clearCallback(SerialIdentifier::OUTPUT_JACK);
+    PDN->getRemoteDeviceCoordinator()->unregisterSerialHandler(SEND_MAC_ADDRESS, SerialIdentifier::OUTPUT_JACK);
 }
 
 void OutputIdleState::onConnectionStarted(std::string remoteMac) {

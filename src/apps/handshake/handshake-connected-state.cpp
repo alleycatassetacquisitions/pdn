@@ -12,8 +12,9 @@ HandshakeConnectedState::~HandshakeConnectedState() {
 }
 
 void HandshakeConnectedState::onStateMounted(Device *PDN) {
-    PDN->getSerialManager()->setOnStringReceivedCallback(
-        std::bind(&HandshakeConnectedState::heartbeatMonitorStringCallback, this, std::placeholders::_1), jack);
+    PDN->getRemoteDeviceCoordinator()->registerSerialHandler(
+        SERIAL_HEARTBEAT, jack,
+        std::bind(&HandshakeConnectedState::heartbeatMonitorStringCallback, this, std::placeholders::_1));
     handshakeWirelessManager->setPacketReceivedCallback(
         std::bind(&HandshakeConnectedState::listenForNotifyDisconnectCommand, this, std::placeholders::_1), jack);
 
@@ -35,7 +36,7 @@ void HandshakeConnectedState::onStateLoop(Device *PDN) {
 }
 
 void HandshakeConnectedState::onStateDismounted(Device *PDN) {
-    PDN->getSerialManager()->clearCallback(jack);
+    PDN->getRemoteDeviceCoordinator()->unregisterSerialHandler(SERIAL_HEARTBEAT, jack);
     heartbeatMonitorTimer.invalidate();
     emitHeartbeatTimer.invalidate();
     transitionToIdleState = false;

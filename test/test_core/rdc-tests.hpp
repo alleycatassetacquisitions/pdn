@@ -129,6 +129,7 @@ public:
                 testing::SaveArg<1>(&capturedHandler),
                 testing::SaveArg<2>(&capturedCtx)));
 
+        device.rdcOverride = &rdc;
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
     }
 

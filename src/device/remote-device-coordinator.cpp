@@ -20,6 +20,13 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
 void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, SerialManager* serialManager, Device* PDN) {
     this->serialManager = serialManager;
 
+    serialManager->setOnStringReceivedCallback(
+        [this](std::string msg) { routeSerialMessage(msg, SerialIdentifier::OUTPUT_JACK); },
+        SerialIdentifier::OUTPUT_JACK);
+    serialManager->setOnStringReceivedCallback(
+        [this](std::string msg) { routeSerialMessage(msg, SerialIdentifier::INPUT_JACK); },
+        SerialIdentifier::INPUT_JACK);
+
     handshakeWirelessManager.initialize(wirelessManager);
 
     inputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
@@ -31,12 +38,33 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     syncLogTimer.setTimer(0);
 
     wirelessManager->setEspNowPacketHandler(
-        PktType::kHandshakeCommand, 
+        PktType::kHandshakeCommand,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
             static_cast<HandshakeWirelessManager*>(ctx)->processHandshakeCommand(macAddress, data, dataLen);
         },
         &handshakeWirelessManager
     );
+}
+
+void RemoteDeviceCoordinator::registerSerialHandler(const std::string& prefix, SerialIdentifier jack,
+                                                    std::function<void(const std::string&)> handler) {
+    auto& handlers = (jack == SerialIdentifier::OUTPUT_JACK) ? outputSerialHandlers_ : inputSerialHandlers_;
+    handlers[prefix] = std::move(handler);
+}
+
+void RemoteDeviceCoordinator::unregisterSerialHandler(const std::string& prefix, SerialIdentifier jack) {
+    auto& handlers = (jack == SerialIdentifier::OUTPUT_JACK) ? outputSerialHandlers_ : inputSerialHandlers_;
+    handlers.erase(prefix);
+}
+
+void RemoteDeviceCoordinator::routeSerialMessage(const std::string& msg, SerialIdentifier jack) {
+    auto& handlers = (jack == SerialIdentifier::OUTPUT_JACK) ? outputSerialHandlers_ : inputSerialHandlers_;
+    for (auto& [prefix, handler] : handlers) {
+        if (msg.size() >= prefix.size() && msg.substr(0, prefix.size()) == prefix) {
+            handler(msg);
+            return;
+        }
+    }
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {

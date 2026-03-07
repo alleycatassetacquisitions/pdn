@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <string>
 #include "device/serial-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
@@ -52,7 +54,21 @@ public:
      */
     const uint8_t* getPeerMac(SerialIdentifier port) const;
 
+    /**
+     * Register a handler for messages arriving on the given jack whose content begins with prefix.
+     * Multiple handlers may be registered on the same jack with different prefixes.
+     */
+    virtual void registerSerialHandler(const std::string& prefix, SerialIdentifier jack,
+                                       std::function<void(const std::string&)> handler);
+
+    /**
+     * Remove the handler previously registered for (prefix, jack).
+     */
+    virtual void unregisterSerialHandler(const std::string& prefix, SerialIdentifier jack);
+
 private:
+    void routeSerialMessage(const std::string& msg, SerialIdentifier jack);
+
     void notifyDisconnect();
     void notifyConnect();
     void notifyDaisyChained();
@@ -71,6 +87,9 @@ private:
     void unregisterPeer(const uint8_t* macAddress);
 
     SerialManager* serialManager = nullptr;
+
+    std::map<std::string, std::function<void(const std::string&)>> outputSerialHandlers_;
+    std::map<std::string, std::function<void(const std::string&)>> inputSerialHandlers_;
 
     HandshakeWirelessManager handshakeWirelessManager;
 
