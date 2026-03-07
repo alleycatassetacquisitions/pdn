@@ -69,7 +69,7 @@ private:
 
 class Idle : public ConnectState {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
@@ -81,13 +81,16 @@ public:
 private:
     Player *player;
     MatchManager* matchManager;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
+    bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 5;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
+
+    SimpleTimer matchInitializationTimer;
+    const int MATCH_INITIALIZATION_TIMEOUT = 1000;
 
     // void serialEventCallbacks(const std::string& message);
 };

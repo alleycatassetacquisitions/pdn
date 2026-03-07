@@ -29,18 +29,10 @@ inline Peer makePeer(const uint8_t* mac, SerialIdentifier sid) {
 }
 
 // ============================================
-// QuickdrawPacket structure for creating test packets
-// Must match the packed structure in quickdraw-wireless-manager.cpp
+// Packet type alias — QuickdrawPacket is now defined in the header.
 // ============================================
 
-// Must match QuickdrawPacket in quickdraw-wireless-manager.cpp
-struct TestQuickdrawPacket {
-    char matchId[37];  // UUID_BUFFER_SIZE
-    char playerId[5];
-    bool isHunter;
-    long playerDrawTime;
-    int command;
-} __attribute__((packed));
+using TestQuickdrawPacket = QuickdrawPacket;
 
 // ============================================
 // Packet Creation Helpers
@@ -66,7 +58,7 @@ inline TestQuickdrawPacket createTestPacket(
 
 // Creates a packet as if the specified player is sending their draw time.
 // Pass asHunter=true when the hunter is the sender, false when the bounty is.
-inline TestQuickdrawPacket createTestPacketFromMatch(Match* match, int command, bool asHunter) {
+inline TestQuickdrawPacket createTestPacketFromMatch(const std::optional<Match>& match, int command, bool asHunter) {
     long time = asHunter ? match->getHunterDrawTime() : match->getBountyDrawTime();
     const char* pid = asHunter ? match->getHunterId() : match->getBountyId();
     return createTestPacket(match->getMatchId(), pid, command, time, asHunter);
@@ -130,7 +122,7 @@ public:
     MockStorage storage;
     Player* player = nullptr;
     MatchManager* matchManager = nullptr;
-    QuickdrawWirelessManager* wirelessManager = nullptr;
+    FakeQuickdrawWirelessManager* wirelessManager = nullptr;
     WirelessManager* deviceWirelessManager = nullptr;
     FakePlatformClock* fakeClock = nullptr;
 
@@ -151,10 +143,15 @@ private:
     void setupManagers() {
         deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         matchManager = new MatchManager();
-        wirelessManager = new QuickdrawWirelessManager();
+        wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->initialize(player, deviceWirelessManager, 100);
         matchManager->initialize(player, &storage, wirelessManager);
-        matchManager->createMatch(getMatchId(), player->getUserID().c_str(), DEFAULT_BOUNTY_ID);
+
+        // Hunter initiates the match through the production path.
+        // FakeQuickdrawWirelessManager captures the SEND_MATCH_ID broadcast;
+        // no ACK is routed back since single-device tests don't need matchIsReady.
+        uint8_t opponentMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+        matchManager->initializeMatch(opponentMac);
         matchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
     }
 
@@ -209,7 +206,7 @@ public:
 
     void hunterSendsToBounty(int command) {
         TestQuickdrawPacket packet = createTestPacketFromMatch(
-            hunterMatchManager->getMatch(), command, true);
+            hunterMatchManager->getCurrentMatch(), command, true);
         uint8_t macAddr[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         bountyWirelessManager->processQuickdrawCommand(
             macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet)
@@ -218,34 +215,11 @@ public:
 
     void bountySendsToHunter(int command) {
         TestQuickdrawPacket packet = createTestPacketFromMatch(
-            bountyMatchManager->getMatch(), command, false);
+            bountyMatchManager->getCurrentMatch(), command, false);
         uint8_t macAddr[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
         hunterWirelessManager->processQuickdrawCommand(
             macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet)
         );
-    }
-
-    void hunterSendsToBounty(int command, const std::string& matchId,
-                            const std::string& hunterId, const std::string& /*bountyId*/) {
-        TestQuickdrawPacket packet = createTestPacket(matchId, hunterId, command, 0, true);
-        uint8_t macAddr[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
-        bountyWirelessManager->processQuickdrawCommand(
-            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet)
-        );
-    }
-
-    void bountySendsToHunter(int command, const std::string& matchId,
-                            const std::string& /*hunterId*/, const std::string& bountyId) {
-        TestQuickdrawPacket packet = createTestPacket(matchId, bountyId, command, 0, false);
-        uint8_t macAddr[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-        hunterWirelessManager->processQuickdrawCommand(
-            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet)
-        );
-    }
-
-    TestQuickdrawPacket createHandshakePacket(int command, const std::string& matchId,
-                                              const std::string& hunterId, const std::string& /*bountyId*/) {
-        return createTestPacket(matchId, hunterId, command, 0, true);
     }
 
     // All members are public for access from standalone test functions
@@ -253,8 +227,8 @@ public:
     Player* bounty = nullptr;
     MatchManager* hunterMatchManager = nullptr;
     MatchManager* bountyMatchManager = nullptr;
-    QuickdrawWirelessManager* hunterWirelessManager = nullptr;
-    QuickdrawWirelessManager* bountyWirelessManager = nullptr;
+    FakeQuickdrawWirelessManager* hunterWirelessManager = nullptr;
+    FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
     WirelessManager* hunterDeviceWirelessManager = nullptr;
     WirelessManager* bountyDeviceWirelessManager = nullptr;
     MockPeerComms hunterPeerComms;
@@ -280,7 +254,7 @@ private:
 
         hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
         hunterMatchManager = new MatchManager();
-        hunterWirelessManager = new QuickdrawWirelessManager();
+        hunterWirelessManager = new FakeQuickdrawWirelessManager();
         hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager, 100);
         hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
     }
@@ -293,14 +267,31 @@ private:
 
         bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
         bountyMatchManager = new MatchManager();
-        bountyWirelessManager = new QuickdrawWirelessManager();
+        bountyWirelessManager = new FakeQuickdrawWirelessManager();
         bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager, 100);
         bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
     }
 
     void setupMatches() {
-        hunterMatchManager->createMatch(getMatchId(), DEFAULT_HUNTER_ID, DEFAULT_BOUNTY_ID);
-        bountyMatchManager->createMatch(getMatchId(), DEFAULT_HUNTER_ID, DEFAULT_BOUNTY_ID);
+        // Wire callbacks so the handshake packets are processed as they arrive.
+        hunterWirelessManager->setPacketReceivedCallback(
+            std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
+        bountyWirelessManager->setPacketReceivedCallback(
+            std::bind(&MatchManager::listenForMatchEvents, bountyMatchManager, std::placeholders::_1));
+
+        // Full production handshake:
+        //   1. Hunter broadcasts SEND_MATCH_ID  → bounty receives, creates match, sends MATCH_ID_ACK
+        //   2. Bounty broadcasts MATCH_ID_ACK   → hunter receives, sets matchIsReady
+        uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+        uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+        hunterMatchManager->initializeMatch(bountyMac);
+        hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
+        bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
+
+        // Clear handshake callbacks; each test sets its own for the draw phase.
+        hunterWirelessManager->clearCallbacks();
+        bountyWirelessManager->clearCallbacks();
+
         hunterMatchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
         bountyMatchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
     }
@@ -398,7 +389,7 @@ inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suit
     suite->processPacket(packet);
     
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
-    EXPECT_EQ(suite->matchManager->getMatch()->getBountyDrawTime(), 350);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 350);
 }
 
 inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suite) {
@@ -413,7 +404,7 @@ inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suit
     suite->processPacket(packet);
     
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
-    EXPECT_EQ(suite->matchManager->getMatch()->getHunterDrawTime(), 200);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 200);
 }
 
 inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) {
@@ -425,7 +416,7 @@ inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) 
     suite->processPacket(packet);
     
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
-    EXPECT_EQ(suite->matchManager->getMatch()->getBountyDrawTime(), 9999);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 9999);
 }
 
 inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* suite) {
@@ -464,7 +455,7 @@ inline void callbackChainPacketToStateFlag(CallbackChainTests* suite) {
     EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
     suite->processPacket(packet);
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
-    EXPECT_EQ(suite->matchManager->getMatch()->getBountyDrawTime(), 180);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 180);
 }
 
 inline void callbackChainButtonPressCalculatesTime(CallbackChainTests* suite) {
@@ -476,7 +467,7 @@ inline void callbackChainButtonPressCalculatesTime(CallbackChainTests* suite) {
     buttonCallback(suite->matchManager);
     
     EXPECT_TRUE(suite->matchManager->getHasPressedButton());
-    EXPECT_EQ(suite->matchManager->getMatch()->getHunterDrawTime(), 275);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 275);
 }
 
 inline void callbackChainButtonMasherPenalty(CallbackChainTests* suite) {
@@ -490,18 +481,19 @@ inline void callbackChainButtonMasherPenalty(CallbackChainTests* suite) {
     auto buttonCallback = suite->matchManager->getDuelButtonPush();
     buttonCallback(suite->matchManager);
     
-    EXPECT_EQ(suite->matchManager->getMatch()->getHunterDrawTime(), 425);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 425);
 }
 
 inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
     suite->fakeClock->advance(150);
-    
-    EXPECT_CALL(suite->peerComms, sendData(_, _, _, _))
-        .Times(1)
-        .WillOnce(Return(1));
-    
+
+    size_t sentBefore = suite->wirelessManager->sentCommands.size();
+
     auto buttonCallback = suite->matchManager->getDuelButtonPush();
     buttonCallback(suite->matchManager);
+
+    ASSERT_GT(suite->wirelessManager->sentCommands.size(), sentBefore);
+    EXPECT_EQ(suite->wirelessManager->sentCommands.back().command, QDCommand::DRAW_RESULT);
 }
 
 // ============================================

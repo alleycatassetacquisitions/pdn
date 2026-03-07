@@ -173,10 +173,37 @@ private:
     PortStatus inputStatus = PortStatus::DISCONNECTED;
 };
 
-// Mock QuickdrawWirelessManager for MatchManager tests
-class MockQuickdrawWirelessManager : public QuickdrawWirelessManager {
+// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
+// Call deliverLastTo() to route the most-recently-captured packet to another manager's
+// processQuickdrawCommand(), exercising the real serialization/deserialization path.
+class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
 public:
-    MockQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
+    FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
+
+    int broadcastPacket(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
+        sentCommands.push_back(command);
+        return 0;
+    }
+
+    void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
+        if (sentCommands.empty()) return;
+        const QuickdrawCommand& cmd = sentCommands.back();
+
+        // Serialize into the same wire format used by the real broadcastPacket.
+        QuickdrawPacket pkt = {};
+        memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
+        memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
+        pkt.isHunter       = cmd.isHunter;
+        pkt.playerDrawTime = cmd.playerDrawTime;
+        pkt.command        = cmd.command;
+
+        recipient->processQuickdrawCommand(
+            senderMac,
+            reinterpret_cast<const uint8_t*>(&pkt),
+            sizeof(pkt));
+    }
+
+    std::vector<QuickdrawCommand> sentCommands;
 };
 
 // Fake light strip for LightManager

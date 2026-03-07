@@ -4,13 +4,6 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 
-struct QuickdrawPacket {
-    char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    char playerId[5];  // 4 chars + null terminator
-    bool isHunter;
-    long playerDrawTime;
-    int command;
-} __attribute__((packed));
 
 QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
 
@@ -39,10 +32,12 @@ int QuickdrawWirelessManager::broadcastPacket(const uint8_t macAddress[6],
 
     qdPacket.command = command.command;
     qdPacket.playerDrawTime = command.playerDrawTime;
+    qdPacket.isHunter = command.isHunter;
 
     memcpy(qdPacket.matchId, command.matchId, IdGenerator::UUID_BUFFER_SIZE);
+    memcpy(qdPacket.playerId, command.playerId, 5);
 
-    LOG_I("QWM", "Sending command %i to %s", command, MacToString(macAddress));
+    LOG_I("QWM", "Sending command %i to %s", command.command, MacToString(macAddress));
     LOG_I("QWM", "Match ID: %s", qdPacket.matchId);
     LOG_I("QWM", "Player Draw Time: %ld", qdPacket.playerDrawTime);
 

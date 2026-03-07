@@ -30,6 +30,7 @@ void MatchManager::clearCurrentMatch() {
         activeDuelState.duelLocalStartTime = 0;
         activeDuelState.gracePeriodExpiredNoResult = false;
         activeDuelState.buttonMasherCount = 0;
+        activeDuelState.matchIsReady = false;
     }
 }
 
@@ -51,35 +52,26 @@ void MatchManager::sendMatchId() {
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
 }
 
-void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac) {
+void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter, uint8_t* opponentMac) {
     // Only allow one active match at a time
     if (activeDuelState.match.has_value()) {
         return;
     }
 
-    activeDuelState.match.emplace(matchId, opponentId, isHunter);
+    // Build the match from our own perspective, then record the opponent's ID.
+    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
+    if (opponentIsHunter) {
+        activeDuelState.match->setHunterId(opponentId);
+    } else {
+        activeDuelState.match->setBountyId(opponentId);
+    }
     memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
+
+    activeDuelState.matchIsReady = true;
+    
     sendMatchAck();
 }
 
-Match* MatchManager::createMatch(const std::string& matchId, const char* hunterId, const char* bountyId) {
-    if (activeDuelState.match.has_value()) {
-        return nullptr;
-    }
-    const char* thisPlayerId = player->isHunter() ? hunterId : bountyId;
-    activeDuelState.match.emplace(matchId.c_str(), thisPlayerId, player->isHunter());
-    activeDuelState.match->setHunterId(hunterId);
-    activeDuelState.match->setBountyId(bountyId);
-    return &*activeDuelState.match;
-}
-
-Match* MatchManager::receiveMatch(const Match& match) {
-    if (activeDuelState.match.has_value()) {
-        return nullptr;
-    }
-    activeDuelState.match.emplace(match);
-    return &*activeDuelState.match;
-}
 
 void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
     activeDuelState.duelLocalStartTime = local_start_time_ms;
@@ -361,18 +353,35 @@ void MatchManager::sendMatchAck() {
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
 }
 
+void MatchManager::sendMatchRoleMismatch() {
+    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ROLE_MISMATCH, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
+    quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+}
+
 void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
 
     if(command.command == QDCommand::SEND_MATCH_ID) {
         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
-        receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
+        if(player->isHunter() == command.isHunter) {
+            // Same role on both sides — not a valid hunter/bounty pairing.
+            sendMatchRoleMismatch();
+            return;
+        } else {
+            receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
+        }
     } else if(command.command == QDCommand::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if(activeDuelState.match.has_value() && strcmp(command.matchId, activeDuelState.match->getMatchId()) == 0) {
             if(player->isHunter()) { activeDuelState.match->setBountyId(command.playerId); }
             else { activeDuelState.match->setHunterId(command.playerId); }
+            activeDuelState.matchIsReady = true;
         }
+    } else if(command.command == QDCommand::MATCH_ROLE_MISMATCH) {
+        LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
+        clearCurrentMatch();
+
+        return;
     } else if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
         
@@ -401,4 +410,8 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 
     QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED, activeDuelState.match->getMatchId(), player->getUserID().c_str(), pityTime, player->isHunter());
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+}
+
+bool MatchManager::isMatchReady() {
+    return activeDuelState.matchIsReady;
 }

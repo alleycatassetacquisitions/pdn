@@ -625,16 +625,16 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 // MATCH MANAGER TESTS
 // ============================================
 
-TEST_F(MatchManagerTestSuite, createsMatchCorrectly) {
-    matchManagerCreatesMatchCorrectly(matchManager, player);
+TEST_F(MatchManagerTestSuite, initializeCreatesMatch) {
+    matchManagerInitializeCreatesMatch(matchManager, player);
 }
 
-TEST_F(MatchManagerTestSuite, preventsMultipleActiveMatches) {
-    matchManagerPreventsMultipleActiveMatches(matchManager);
+TEST_F(MatchManagerTestSuite, initializePreventsDoubleActive) {
+    matchManagerInitializePreventsDoubleActive(matchManager, player);
 }
 
-TEST_F(MatchManagerTestSuite, receiveMatchWorks) {
-    matchManagerReceiveMatchWorks(matchManager);
+TEST_F(MatchManagerTestSuite, bountyReceivesMatchViaHandshake) {
+    matchManagerBountyReceivesMatchViaHandshake(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, hunterWinsWhenFaster) {
@@ -662,27 +662,47 @@ TEST_F(MatchManagerTestSuite, bountyWinsWhenHunterNeverPressed) {
 }
 
 TEST_F(MatchManagerTestSuite, tracksDuelState) {
-    matchManagerTracksDuelState(matchManager);
+    matchManagerTracksDuelState(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, gracePeriodPath) {
-    matchManagerGracePeriodPath(matchManager);
+    matchManagerGracePeriodPath(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, clearMatchResetsState) {
-    matchManagerClearMatchResetsState(matchManager);
+    matchManagerClearMatchResetsState(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, setDrawTimesRequiresActiveMatch) {
-    matchManagerSetDrawTimesRequiresActiveMatch(matchManager);
+    matchManagerSetDrawTimesRequiresActiveMatch(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, duelStartTimeTracking) {
-    matchManagerDuelStartTimeTracking(matchManager);
+    matchManagerDuelStartTimeTracking(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsMasherCount) {
     matchManagerClearCurrentMatchResetsMasherCount(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, matchIsReadyFalseBeforeHandshake) {
+    matchManagerMatchIsReadyFalseBeforeHandshake(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, hunterMatchIsReadyAfterAck) {
+    matchManagerHunterMatchIsReadyAfterAck(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, bountyMatchIsReadyAfterReceivingMatch) {
+    matchManagerBountyMatchIsReadyAfterReceivingMatch(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
+    matchManagerClearMatchResetsMatchIsReadyFlag(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
+    matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
 }
 
 // ============================================
@@ -731,6 +751,14 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
+}
+
+TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
+    idleDoesNotTransitionWithMatchButNotReady(this);
+}
+
+TEST_F(IdleStateTests, transitionsToDuelCountdownWhenMatchIsReady) {
+    idleTransitionsToDuelCountdownWhenMatchIsReady(this);
 }
 
 // ============================================
@@ -1181,6 +1209,8 @@ TEST_F(RDCTests, getPeerMacReturnsMacWhenConnected) {
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleMock(&argc, argv);
+
+    IdGenerator::initialize(42);
 
     if (RUN_ALL_TESTS())
         ;

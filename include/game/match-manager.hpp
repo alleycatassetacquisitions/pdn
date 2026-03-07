@@ -21,6 +21,7 @@
 // Preferences namespace and keys
 
 struct ActiveDuelState {
+    bool matchIsReady = false;
     bool hasReceivedDrawResult = false;
     bool hasPressedButton = false;
     bool gracePeriodExpiredNoResult = false;
@@ -54,6 +55,8 @@ public:
      */
     void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
 
+    bool isMatchReady();
+
     /**
      * Finalizes a match by saving it to storage and removing from active matches
      * @return true if match was found and saved
@@ -79,27 +82,6 @@ public:
      * @return Reference to the optional match
      */
     std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
-
-    /**
-     * Gets a raw pointer to the current active match, nullptr if none.
-     * Prefer getCurrentMatch() in production code; this is provided for
-     * test convenience.
-     */
-    Match* getMatch() { return activeDuelState.match.has_value() ? &*activeDuelState.match : nullptr; }
-
-    /**
-     * Creates a match directly from explicit hunter/bounty IDs, bypassing
-     * the wireless initialization path. Intended for tests and direct setup.
-     * Returns nullptr if a match is already active.
-     */
-    Match* createMatch(const std::string& matchId, const char* hunterId, const char* bountyId);
-
-    /**
-     * Receives a pre-constructed Match object (e.g. deserialized from binary).
-     * Stores it as the active match without triggering a wireless ACK.
-     * Intended for tests and simulation scenarios.
-     */
-    Match* receiveMatch(const Match& match);
 
     /**
      * Converts all stored matches to a JSON array string
@@ -130,10 +112,11 @@ public:
 
     void sendNeverPressed(unsigned long pityTime);
 
-    // Internal state setters — also used directly in tests for white-box setup.
+    // For testing purposes only DO NOT USE IN PRODUCTION
     void setReceivedDrawResult();
     void setReceivedButtonPush();
     void setNeverPressed();
+
 
 private:
 
@@ -167,7 +150,7 @@ private:
 
     void sendMatchAck();
     void sendMatchId();
-
+    void sendMatchRoleMismatch();
 };
 
 

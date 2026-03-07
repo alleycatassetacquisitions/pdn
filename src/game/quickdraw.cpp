@@ -34,7 +34,7 @@ void Quickdraw::populateStateMap() {
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
+    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator);
 
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator);
     Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator);

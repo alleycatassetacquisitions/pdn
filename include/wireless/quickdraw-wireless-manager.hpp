@@ -15,6 +15,16 @@
 #include "mac-functions.hpp"
 #include "device/wireless-manager.hpp"
 
+// Wire format transmitted over ESP-NOW for every quickdraw command.
+// Defined here so tests can construct and inspect packets without duplicating the layout.
+struct QuickdrawPacket {
+    char matchId[37];  // IdGenerator::UUID_BUFFER_SIZE
+    char playerId[5];  // 4 chars + null terminator
+    bool isHunter;
+    long playerDrawTime;
+    int  command;
+} __attribute__((packed));
+
 enum QDCommand {
     // Game Commands
     // HACK = 6,
@@ -25,11 +35,11 @@ enum QDCommand {
     // LOCKDOWN_CONFIRMED = 11,    
     SEND_MATCH_ID = 6,
     MATCH_ID_ACK = 7,
-    DRAW_RESULT = 8,
-    NEVER_PRESSED = 9,
+    MATCH_ROLE_MISMATCH = 8,
+    DRAW_RESULT = 9,
+    NEVER_PRESSED = 10,
     COMMAND_COUNT,  // Always add new commands above this line
     INVALID_COMMAND = 0xFF
-
 };
 
 struct QuickdrawCommand {
@@ -55,7 +65,7 @@ using QDCommandTracker = std::map<int, QuickdrawCommand>;
 class QuickdrawWirelessManager {
 public:
     QuickdrawWirelessManager();
-    ~QuickdrawWirelessManager();
+    virtual ~QuickdrawWirelessManager();
 
     void initialize(Player* player, WirelessManager* wirelessManager, long broadcastCooldown);
 
@@ -63,8 +73,8 @@ public:
 
     void setPacketReceivedCallback(const std::function<void(const QuickdrawCommand&)>& callback);
 
-    int broadcastPacket(const uint8_t* macAddress,
-                       QuickdrawCommand& command);
+    virtual int broadcastPacket(const uint8_t* macAddress,
+                               QuickdrawCommand& command);
 
     void clearCallbacks();
 

@@ -71,3 +71,5 @@ wifi_credentials.ini
 .vscode/extensions.json
 
 callgrind*
+
+.VSCodeCounter/

@@ -13,18 +13,11 @@
 class MatchManagerTestSuite : public testing::Test {
 protected:
     void SetUp() override {
-        // Create MatchManager instance
         matchManager = new MatchManager();
-        
-        // Create a test player
         player = new Player();
-        char playerId[] = "test-player-uuid";
+        char playerId[] = "test";
         player->setUserID(playerId);
-        
-        // Initialize match manager with mocks (4 parameters now)
-        matchManager->initialize(player, &mockStorage, &mockWirelessManager);
-        
-        // Clear any existing match
+        matchManager->initialize(player, &mockStorage, &fakeWirelessManager);
         matchManager->clearCurrentMatch();
     }
 
@@ -34,50 +27,66 @@ protected:
         delete player;
     }
 
+    // Creates a match from the hunter's perspective via initializeMatch().
+    void setupMatchAsHunter() {
+        player->setIsHunter(true);
+        uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+        matchManager->initializeMatch(dummyMac);
+    }
+
+    // Creates a match from the bounty's perspective by synthesizing a
+    // SEND_MATCH_ID command from a fake hunter and feeding it to listenForMatchEvents().
+    void setupMatchAsBounty(const char* matchId = "test-match-id",
+                            const char* hunterId = "hunt") {
+        player->setIsHunter(false);
+        static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+        QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, matchId, hunterId, 0, true);
+        matchManager->listenForMatchEvents(cmd);
+    }
+
     MatchManager* matchManager;
     Player* player;
     MockStorage mockStorage;
-    MockQuickdrawWirelessManager mockWirelessManager;
+    FakeQuickdrawWirelessManager fakeWirelessManager;
 };
 
 // ============================================
-// Match Creation Tests
+// Match Initialization / Handshake Tests
 // ============================================
 
-inline void matchManagerCreatesMatchCorrectly(MatchManager* mm, Player* player) {
-    Match* match = mm->createMatch("match-123", "hunt", "boun");
+inline void matchManagerInitializeCreatesMatch(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
 
-    ASSERT_NE(match, nullptr);
-    EXPECT_STREQ(match->getMatchId(), "match-123");
-    EXPECT_STREQ(match->getHunterId(), "hunt");
-    EXPECT_STREQ(match->getBountyId(), "boun");
-    EXPECT_EQ(match->getHunterDrawTime(), 0);
-    EXPECT_EQ(match->getBountyDrawTime(), 0);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    EXPECT_STREQ(mm->getCurrentMatch()->getHunterId(), player->getUserID().c_str());
+    EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 0);
+    EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 0);
 }
 
-inline void matchManagerPreventsMultipleActiveMatches(MatchManager* mm) {
-    Match* first = mm->createMatch("match-1", "hunter-1", "bounty-1");
-    ASSERT_NE(first, nullptr);
+inline void matchManagerInitializePreventsDoubleActive(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
 
-    // Second create should fail
-    Match* second = mm->createMatch("match-2", "hunter-2", "bounty-2");
-    EXPECT_EQ(second, nullptr);
+    std::string firstId(mm->getCurrentMatch()->getMatchId());
 
-    // Current match should still be the first one
-    EXPECT_STREQ(mm->getMatch()->getMatchId(), "match-1");
+    mm->initializeMatch(dummyMac);  // should be ignored
+    EXPECT_STREQ(mm->getCurrentMatch()->getMatchId(), firstId.c_str());
 }
 
-inline void matchManagerReceiveMatchWorks(MatchManager* mm) {
-    Match incoming("received-match", "hunter-x", "bounty-y");
-    incoming.setHunterDrawTime(100);
-    incoming.setBountyDrawTime(200);
+inline void matchManagerBountyReceivesMatchViaHandshake(MatchManager* mm, Player* player) {
+    player->setIsHunter(false);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "received-match", "hunt", 0, true);
+    mm->listenForMatchEvents(cmd);
 
-    Match* received = mm->receiveMatch(incoming);
-
-    ASSERT_NE(received, nullptr);
-    EXPECT_STREQ(received->getMatchId(), "received-match");
-    EXPECT_EQ(received->getHunterDrawTime(), 100);
-    EXPECT_EQ(received->getBountyDrawTime(), 200);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    EXPECT_STREQ(mm->getCurrentMatch()->getMatchId(), "received-match");
+    EXPECT_STREQ(mm->getCurrentMatch()->getHunterId(), "hunt");
+    EXPECT_STREQ(mm->getCurrentMatch()->getBountyId(), player->getUserID().c_str());
 }
 
 // ============================================
@@ -86,61 +95,63 @@ inline void matchManagerReceiveMatchWorks(MatchManager* mm) {
 
 inline void matchManagerHunterWinsWhenFaster(MatchManager* mm, Player* player) {
     player->setIsHunter(true);
-    
-    Match* match = mm->createMatch("duel-1", player->getUserID().c_str(), "bounty-opponent");
-    match->setHunterDrawTime(200);
-    match->setBountyDrawTime(300);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+    mm->setHunterDrawTime(200);
+    mm->setBountyDrawTime(300);
 
     EXPECT_TRUE(mm->didWin());
 }
 
 inline void matchManagerHunterLosesWhenSlower(MatchManager* mm, Player* player) {
     player->setIsHunter(true);
-    
-    Match* match = mm->createMatch("duel-2", player->getUserID().c_str(), "bounty-opponent");
-    match->setHunterDrawTime(350);
-    match->setBountyDrawTime(200);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+    mm->setHunterDrawTime(350);
+    mm->setBountyDrawTime(200);
 
     EXPECT_FALSE(mm->didWin());
 }
 
 inline void matchManagerBountyWinsWhenFaster(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
-    
-    Match* match = mm->createMatch("duel-3", "hunter-opponent", player->getUserID().c_str());
-    match->setHunterDrawTime(400);
-    match->setBountyDrawTime(250);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-3", "hunt", 0, true);
+    mm->listenForMatchEvents(cmd);
+    mm->setHunterDrawTime(400);
+    mm->setBountyDrawTime(250);
 
     EXPECT_TRUE(mm->didWin());
 }
 
 inline void matchManagerBountyLosesWhenSlower(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
-    
-    Match* match = mm->createMatch("duel-4", "hunter-opponent", player->getUserID().c_str());
-    match->setHunterDrawTime(150);
-    match->setBountyDrawTime(300);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-4", "hunt", 0, true);
+    mm->listenForMatchEvents(cmd);
+    mm->setHunterDrawTime(150);
+    mm->setBountyDrawTime(300);
 
     EXPECT_FALSE(mm->didWin());
 }
 
-// Special case: opponent never pressed (time = 0)
 inline void matchManagerHunterWinsWhenBountyNeverPressed(MatchManager* mm, Player* player) {
     player->setIsHunter(true);
-    
-    Match* match = mm->createMatch("duel-5", player->getUserID().c_str(), "bounty-afk");
-    match->setHunterDrawTime(250);
-    match->setBountyDrawTime(0); // Bounty never pressed
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+    mm->setHunterDrawTime(250);
+    mm->setBountyDrawTime(0);  // bounty never pressed
 
     EXPECT_TRUE(mm->didWin());
 }
 
 inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Player* player) {
     player->setIsHunter(false);
-    
-    Match* match = mm->createMatch("duel-6", "hunter-afk", player->getUserID().c_str());
-    match->setHunterDrawTime(0); // Hunter never pressed
-    match->setBountyDrawTime(300);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-6", "hunt", 0, true);
+    mm->listenForMatchEvents(cmd);
+    mm->setHunterDrawTime(0);  // hunter never pressed
+    mm->setBountyDrawTime(300);
 
     EXPECT_TRUE(mm->didWin());
 }
@@ -149,8 +160,10 @@ inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Playe
 // Match State Tests
 // ============================================
 
-inline void matchManagerTracksDuelState(MatchManager* mm) {
-    mm->createMatch("state-test", "hunter", "bounty");
+inline void matchManagerTracksDuelState(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
 
     EXPECT_FALSE(mm->getHasReceivedDrawResult());
     EXPECT_FALSE(mm->getHasPressedButton());
@@ -158,31 +171,35 @@ inline void matchManagerTracksDuelState(MatchManager* mm) {
 
     mm->setReceivedButtonPush();
     EXPECT_TRUE(mm->getHasPressedButton());
-    EXPECT_FALSE(mm->matchResultsAreIn()); // Still need draw result
+    EXPECT_FALSE(mm->matchResultsAreIn());
 
     mm->setReceivedDrawResult();
     EXPECT_TRUE(mm->getHasReceivedDrawResult());
-    EXPECT_TRUE(mm->matchResultsAreIn()); // Now complete
+    EXPECT_TRUE(mm->matchResultsAreIn());
 }
 
-inline void matchManagerGracePeriodPath(MatchManager* mm) {
-    mm->createMatch("grace-test", "hunter", "bounty");
+inline void matchManagerGracePeriodPath(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
 
     mm->setReceivedButtonPush();
-    mm->setNeverPressed(); // Grace period expired with no opponent result
+    mm->setNeverPressed();
 
-    EXPECT_TRUE(mm->matchResultsAreIn()); // Can proceed via grace period path
+    EXPECT_TRUE(mm->matchResultsAreIn());
 }
 
-inline void matchManagerClearMatchResetsState(MatchManager* mm) {
-    mm->createMatch("clear-test", "hunter", "bounty");
+inline void matchManagerClearMatchResetsState(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
     mm->setReceivedButtonPush();
     mm->setReceivedDrawResult();
     mm->setDuelLocalStartTime(1000);
 
     mm->clearCurrentMatch();
 
-    EXPECT_EQ(mm->getMatch(), nullptr);
+    EXPECT_FALSE(mm->getCurrentMatch().has_value());
     EXPECT_FALSE(mm->getHasReceivedDrawResult());
     EXPECT_FALSE(mm->getHasPressedButton());
 }
@@ -191,25 +208,26 @@ inline void matchManagerClearMatchResetsState(MatchManager* mm) {
 // Draw Time Setting Tests
 // ============================================
 
-inline void matchManagerSetDrawTimesRequiresActiveMatch(MatchManager* mm) {
-    // No active match
+inline void matchManagerSetDrawTimesRequiresActiveMatch(MatchManager* mm, Player* player) {
     EXPECT_FALSE(mm->setHunterDrawTime(100));
     EXPECT_FALSE(mm->setBountyDrawTime(200));
 
-    // With active match
-    mm->createMatch("time-test", "hunter", "bounty");
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
     EXPECT_TRUE(mm->setHunterDrawTime(100));
     EXPECT_TRUE(mm->setBountyDrawTime(200));
 
-    EXPECT_EQ(mm->getMatch()->getHunterDrawTime(), 100);
-    EXPECT_EQ(mm->getMatch()->getBountyDrawTime(), 200);
+    EXPECT_EQ(mm->getCurrentMatch()->getHunterDrawTime(), 100);
+    EXPECT_EQ(mm->getCurrentMatch()->getBountyDrawTime(), 200);
 }
 
-inline void matchManagerDuelStartTimeTracking(MatchManager* mm) {
-    mm->createMatch("start-time-test", "hunter", "bounty");
+inline void matchManagerDuelStartTimeTracking(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
 
     EXPECT_EQ(mm->getDuelLocalStartTime(), 0);
-
     mm->setDuelLocalStartTime(5000);
     EXPECT_EQ(mm->getDuelLocalStartTime(), 5000);
 }
@@ -219,30 +237,87 @@ inline void matchManagerDuelStartTimeTracking(MatchManager* mm) {
 // ============================================
 
 inline void matchManagerClearCurrentMatchResetsMasherCount(MatchManager* mm, Player* player) {
-    // Set up a match so the button masher callback has something to operate on
-    mm->createMatch("masher-test", player->getUserID().c_str(), "bounty-id");
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
 
-    // Invoke the button masher callback 3 times (as if player pressed early 3 times)
     auto masherCallback = mm->getButtonMasher();
     masherCallback(mm);
     masherCallback(mm);
     masherCallback(mm);
 
-    // Clearing the match must also reset the button masher penalty counter
     mm->clearCurrentMatch();
 
-    // Start a fresh match; the masher count must be 0 again so penalty is not carried over
-    mm->createMatch("masher-test-2", player->getUserID().c_str(), "bounty-id");
+    mm->initializeMatch(dummyMac);
 
-    // Press the duel button at t=200ms — penalty should be 0 (no carry-over)
-    mm->setDuelLocalStartTime(0);
-    // We verify indirectly: with no penalty, hunter draw time = elapsed time (no addition)
-    // The getButtonMasher callback records into buttonMasherCount; after clearCurrentMatch it
-    // resets.  We confirm this by checking that the NEW match doesn't start with any penalty
-    // by observing getDuelButtonPush doesn't inflate the time unexpectedly.
-    // (Direct count verification requires white-box access; the key observable is that
-    //  clearCurrentMatch does not crash and the new match starts cleanly.)
-    EXPECT_NE(mm->getMatch(), nullptr);
+    EXPECT_TRUE(mm->getCurrentMatch().has_value());
     mm->clearCurrentMatch();
-    EXPECT_EQ(mm->getMatch(), nullptr);
+    EXPECT_FALSE(mm->getCurrentMatch().has_value());
+}
+
+// ============================================
+// matchIsReady / Handshake Flag Tests
+// ============================================
+
+// Hunter's matchIsReady is false immediately after initializeMatch — ACK not yet received.
+inline void matchManagerMatchIsReadyFalseBeforeHandshake(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    EXPECT_FALSE(mm->isMatchReady());
+}
+
+// Hunter's matchIsReady becomes true once MATCH_ID_ACK arrives with the correct match ID.
+inline void matchManagerHunterMatchIsReadyAfterAck(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+
+    const char* matchId = mm->getCurrentMatch()->getMatchId();
+    QuickdrawCommand ack(dummyMac, QDCommand::MATCH_ID_ACK, matchId, "boun", 0, false);
+    mm->listenForMatchEvents(ack);
+
+    EXPECT_TRUE(mm->isMatchReady());
+}
+
+// Bounty's matchIsReady becomes true immediately upon receiving SEND_MATCH_ID.
+inline void matchManagerBountyMatchIsReadyAfterReceivingMatch(MatchManager* mm, Player* player) {
+    player->setIsHunter(false);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    mm->listenForMatchEvents(cmd);
+
+    EXPECT_TRUE(mm->isMatchReady());
+}
+
+// clearCurrentMatch resets the matchIsReady flag along with all other duel state.
+inline void matchManagerClearMatchResetsMatchIsReadyFlag(MatchManager* mm, Player* player) {
+    player->setIsHunter(false);
+    static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "match-id-abc", "hunt", 0, true);
+    mm->listenForMatchEvents(cmd);
+    ASSERT_TRUE(mm->isMatchReady());
+
+    mm->clearCurrentMatch();
+
+    EXPECT_FALSE(mm->isMatchReady());
+    EXPECT_FALSE(mm->getCurrentMatch().has_value());
+}
+
+// Receiving MATCH_ROLE_MISMATCH clears the initiator's active match and leaves matchIsReady false.
+inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    ASSERT_FALSE(mm->isMatchReady());
+
+    const char* matchId = mm->getCurrentMatch()->getMatchId();
+    QuickdrawCommand mismatch(dummyMac, QDCommand::MATCH_ROLE_MISMATCH, matchId, "hunt2", 0, true);
+    mm->listenForMatchEvents(mismatch);
+
+    EXPECT_FALSE(mm->getCurrentMatch().has_value());
+    EXPECT_FALSE(mm->isMatchReady());
 }

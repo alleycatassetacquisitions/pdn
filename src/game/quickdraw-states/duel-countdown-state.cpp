@@ -35,13 +35,6 @@ void DuelCountdown::onStateMounted(Device *PDN) {
 
     PDN->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);
-
-    if (player->isHunter()) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
-        if (peerMac != nullptr) {
-            matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
-        }
-    }
 }
 
 

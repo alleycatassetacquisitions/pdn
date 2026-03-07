@@ -6,16 +6,14 @@
 #include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager) : ConnectState(remoteDeviceCoordinator, IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 Idle::~Idle() {
     player = nullptr;
     matchManager = nullptr;
-    quickdrawWirelessManager = nullptr;
 }
 
 void Idle::onStateMounted(Device *PDN) {
@@ -23,8 +21,6 @@ void Idle::onStateMounted(Device *PDN) {
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
 
-    quickdrawWirelessManager->clearCallbacks();
-    matchManager->clearCurrentMatch();
     AnimationConfig config;
     
     if(player->isHunter()) {
@@ -60,19 +56,33 @@ void Idle::onStateLoop(Device *PDN) {
         cycleStats(PDN);
         displayIsDirty = false;
     }
+
+    if (isConnected() && player->isHunter() && !matchInitialized) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+        if (peerMac != nullptr) {
+            matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+            matchInitialized = true;
+            matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+        }
+    }
+
+    if(matchInitializationTimer.expired()) {
+        matchInitialized = false;
+        matchManager->clearCurrentMatch();
+    }
 }
 
 void Idle::onStateDismounted(Device *PDN) {
     statsIndex = 0;
+    matchInitializationTimer.invalidate();
+    matchInitialized = false;
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
-    PDN->getSerialManager()->flushSerial();
-    PDN->getSerialManager()->clearCallbacks();  // Clear serial callbacks
 }
 
 bool Idle::transitionToDuelCountdown() {
-    return isConnected();
+    return matchManager->isMatchReady();
 }
 
 void Idle::cycleStats(Device *PDN) {
