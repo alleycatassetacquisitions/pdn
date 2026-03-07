@@ -10,6 +10,7 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
+#include "game/chain-context.hpp"
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -33,4 +34,5 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     RemoteDebugManager* remoteDebugManager;
+    ChainContext chainContext_;
 };

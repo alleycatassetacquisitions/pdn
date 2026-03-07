@@ -36,11 +36,14 @@ void Quickdraw::populateStateMap() {
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator);
 
-    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator);
-    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator);
-    DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator);
-    DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager);
+    ChainDetectionState* chainDetection = new ChainDetectionState(&chainContext_, remoteDeviceCoordinator);
+    SupporterReadyState* supporterReady = new SupporterReadyState(&chainContext_, remoteDeviceCoordinator);
+
+    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, &chainContext_);
+    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, &chainContext_);
+    DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator, &chainContext_);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator, &chainContext_);
+    DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager, &chainContext_);
     
     Win* win = new Win(player);
     Lose* lose = new Lose(player);
@@ -63,7 +66,34 @@ void Quickdraw::populateStateMap() {
     idle->addTransition(
         new StateTransition(
             std::bind(&Idle::transitionToDuelCountdown, idle),
+            chainDetection));
+
+    // --- Chain detection ---
+    chainDetection->addTransition(
+        new StateTransition(
+            std::bind(&ChainDetectionState::isChampionRole, chainDetection),
             duelCountdown));
+
+    chainDetection->addTransition(
+        new StateTransition(
+            std::bind(&ChainDetectionState::isSupporterRole, chainDetection),
+            supporterReady));
+
+    // --- Supporter flow ---
+    supporterReady->addTransition(
+        new StateTransition(
+            std::bind(&SupporterReadyState::transitionToWin, supporterReady),
+            win));
+
+    supporterReady->addTransition(
+        new StateTransition(
+            std::bind(&SupporterReadyState::transitionToLose, supporterReady),
+            lose));
+
+    supporterReady->addTransition(
+        new StateTransition(
+            std::bind(&SupporterReadyState::transitionToIdle, supporterReady),
+            idle));
 
     // --- Duel flow ---
     duelCountdown->addTransition(
@@ -146,6 +176,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
+    stateMap.push_back(chainDetection);
+    stateMap.push_back(supporterReady);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
     stateMap.push_back(duelPushed);

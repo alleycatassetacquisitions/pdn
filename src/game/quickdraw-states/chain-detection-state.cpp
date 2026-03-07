@@ -9,6 +9,7 @@ ChainDetectionState::ChainDetectionState(ChainContext* context, RemoteDeviceCoor
     : State(CHAIN_DETECTION), context_(context), rdc_(rdc) {}
 
 void ChainDetectionState::onStateMounted(Device* PDN) {
+    *context_ = ChainContext{};
     SerialManager* serialManager = PDN->getSerialManager();
 
     // Always register "chain:" handler on OUTPUT_JACK to handle supporter/tail cases
@@ -71,9 +72,9 @@ bool ChainDetectionState::detectionComplete() {
 }
 
 bool ChainDetectionState::isSupporterRole() {
-    return context_->role == ChainRole::SUPPORTER;
+    return context_->detectionComplete && context_->role == ChainRole::SUPPORTER;
 }
 
 bool ChainDetectionState::isChampionRole() {
-    return context_->role == ChainRole::CHAMPION;
+    return context_->detectionComplete && context_->role == ChainRole::CHAMPION;
 }
