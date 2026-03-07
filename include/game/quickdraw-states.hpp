@@ -13,8 +13,9 @@
 #include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
+#include "game/chain-context.hpp"
 
-enum QuickdrawStateId {    
+enum QuickdrawStateId {
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
     IDLE = 8,
@@ -25,7 +26,9 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20
+    UPLOAD_MATCHES = 20,
+    CHAIN_DETECTION = 21,
+    SUPPORTER_READY = 22,
 };
 
 class Sleep : public State {
@@ -304,4 +307,18 @@ private:
     std::string matchesJson;
     bool transitionToSleepState = false;
     bool shouldRetryUpload = false;
+};
+
+class ChainDetectionState : public State {
+public:
+    ChainDetectionState(ChainContext* context, RemoteDeviceCoordinator* rdc);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    bool detectionComplete();
+    bool isSupporterRole();
+    bool isChampionRole();
+private:
+    ChainContext* context_;
+    RemoteDeviceCoordinator* rdc_;
 };

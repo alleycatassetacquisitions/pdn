@@ -17,6 +17,7 @@
 #include "rdc-tests.hpp"
 #include "serial-router-tests.hpp"
 #include "chain-boost-tests.hpp"
+#include "chain-detection-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1237,6 +1238,17 @@ TEST_F(ChainBoostTests, oneSupporterGives30msBoost) { oneSupporterGives30msBoost
 TEST_F(ChainBoostTests, threeSupportersGive65msBoost) { threeSupportersGive65msBoost(this); }
 TEST_F(ChainBoostTests, tenSupportersGive115msBoost) { tenSupportersGive115msBoost(this); }
 TEST_F(ChainBoostTests, moreThanTenSupportersCapsAt115ms) { moreThanTenSupportersCapsAt115ms(this); }
+
+// ============================================
+// CHAIN DETECTION TESTS
+// ============================================
+
+TEST_F(ChainDetectionTests, soloPlayerCompletesImmediately) { soloPlayerCompletesImmediately(this); }
+TEST_F(ChainDetectionTests, championSendsChainMessageOnMount) { championSendsChainMessageOnMount(this); }
+TEST_F(ChainDetectionTests, championReceivesLenSetsChainLength) { championReceivesLenSetsChainLength(this); }
+TEST_F(ChainDetectionTests, tailSupporterReceivesChainSendsLen) { tailSupporterReceivesChainSendsLen(this); }
+TEST_F(ChainDetectionTests, midChainSupporterForwardsChain) { midChainSupporterForwardsChain(this); }
+TEST_F(ChainDetectionTests, midChainSupporterRelaysLen) { midChainSupporterRelaysLen(this); }
 
 // ============================================
 // MAIN
