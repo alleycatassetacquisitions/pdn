@@ -15,6 +15,8 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-context.hpp"
 
+class SerialManager;
+
 enum QuickdrawStateId {
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
@@ -321,4 +323,26 @@ public:
 private:
     ChainContext* context_;
     RemoteDeviceCoordinator* rdc_;
+};
+
+class SupporterReadyState : public State {
+public:
+    SupporterReadyState(ChainContext* context, RemoteDeviceCoordinator* rdc);
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    bool transitionToWin();
+    bool transitionToLose();
+    bool transitionToIdle();
+    bool receivedCountdown();
+    void sendInitialConfirm();
+private:
+    ChainContext* context_;
+    RemoteDeviceCoordinator* rdc_;
+    SerialManager* serialManager_ = nullptr;
+    bool hasPressed_ = false;
+    bool transitionToWin_ = false;
+    bool transitionToLose_ = false;
+    bool transitionToIdle_ = false;
+    bool receivedCountdown_ = false;
 };

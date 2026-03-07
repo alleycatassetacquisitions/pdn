@@ -18,6 +18,7 @@
 #include "serial-router-tests.hpp"
 #include "chain-boost-tests.hpp"
 #include "chain-detection-tests.hpp"
+#include "supporter-ready-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1249,6 +1250,20 @@ TEST_F(ChainDetectionTests, championReceivesLenSetsChainLength) { championReceiv
 TEST_F(ChainDetectionTests, tailSupporterReceivesChainSendsLen) { tailSupporterReceivesChainSendsLen(this); }
 TEST_F(ChainDetectionTests, midChainSupporterForwardsChain) { midChainSupporterForwardsChain(this); }
 TEST_F(ChainDetectionTests, midChainSupporterRelaysLen) { midChainSupporterRelaysLen(this); }
+
+// ============================================
+// SUPPORTER READY TESTS
+// ============================================
+
+TEST_F(SupporterReadyTests, pressButtonSendsConfirm1) { supporterPressButtonSendsConfirm1(this); }
+TEST_F(SupporterReadyTests, receiveConfirmHasPressedAddsOne) { supporterReceivesConfirmHasPressed(this); }
+TEST_F(SupporterReadyTests, receiveConfirmNotPressedRelaysCount) { supporterReceivesConfirmHasNotPressed(this); }
+TEST_F(SupporterReadyTests, receiveEventCountdownSetsFlag) { supporterReceivesEventCountdown(this); }
+TEST_F(SupporterReadyTests, receiveEventDrawRelaysDownstream) { supporterReceivesEventDraw(this); }
+TEST_F(SupporterReadyTests, receiveEventWinSetsFlag) { supporterReceivesEventWinSetsFlag(this); }
+TEST_F(SupporterReadyTests, receiveEventLossSetsFlag) { supporterReceivesEventLossSetsFlag(this); }
+TEST_F(SupporterReadyTests, receiveEventBreakRelaysAndSetsFlag) { supporterReceivesEventBreak(this); }
+TEST_F(SupporterReadyTests, doublePressIgnored) { supporterDoublePressIgnored(this); }
 
 // ============================================
 // MAIN
