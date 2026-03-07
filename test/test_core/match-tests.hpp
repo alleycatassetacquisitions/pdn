@@ -93,8 +93,8 @@ inline void matchBinaryRoundTripPreservesAllFields() {
 
 inline void matchBinarySizeIsCorrect() {
     // Verify the binary size constant matches expected
-    // 3 UUIDs (16 bytes each) + 2 unsigned longs
-    size_t expectedSize = (3 * 16) + (2 * sizeof(unsigned long));
+    // 1 UUID match_id (16 bytes) + 2 player IDs (4 bytes each) + 2 unsigned longs
+    size_t expectedSize = 16 + (2 * PLAYER_ID_BINARY_SIZE) + (2 * sizeof(unsigned long));
     EXPECT_EQ(Match::binarySize(), expectedSize);
 }
 
@@ -107,8 +107,9 @@ inline void matchSetupClearsDrawTimes() {
     match.setHunterDrawTime(500);
     match.setBountyDrawTime(600);
 
-    // Setup should reset draw times
-    match.setupMatch("new-match", "new-hunter", "new-bounty");
+    // Re-creating the match should reset draw times
+    match = Match("new-match", "new-hunter", true);
+    match.setBountyId("new-bounty");
 
     EXPECT_EQ(match.getHunterDrawTime(), 0);
     EXPECT_EQ(match.getBountyDrawTime(), 0);

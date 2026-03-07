@@ -2,12 +2,10 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, QuickdrawWirelessManager* quickdrawWirelessManager) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
 }
 
 DuelCountdown::~DuelCountdown() {
@@ -39,12 +37,11 @@ void DuelCountdown::onStateMounted(Device *PDN) {
     hapticTimer.setTimer(HAPTIC_DURATION);
 
     if (player->isHunter()) {
-        sendMatchId(char *matchId)
-        
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+        if (peerMac != nullptr) {
+            matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+        }
     }
-
-    quickdrawWirelessManager->setPacketReceivedCallback(std::bind(&DuelCountdown::recvMatchId, this, std::placeholders::_1));
-
 }
 
 
@@ -88,6 +85,10 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 
 
 void DuelCountdown::onStateDismounted(Device *PDN) {
+    if (!doBattle) {
+        matchManager->clearCurrentMatch();
+    }
+
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
@@ -109,33 +110,4 @@ bool DuelCountdown::isPrimaryRequired() {
 
 bool DuelCountdown::isAuxRequired() {
     return !player->isHunter();
-}
-
-void DuelCountdown::sendMatchId(char *matchId) {
-    // This function is only called by the hunter
-    if (!player->isHunter()) {
-        return;
-    }
-
-    Match match(matchId, player->getUserID(), NULL);
-    
-    quickdrawWirelessManager->broadcastPacket(
-        remoteDeviceCoordinator->getPortState(SerialIdentifier::OUTPUT_JACK), 
-        QuickdrawCommand::MATCH_ID, 
-        const Match &match);
-}
-
-
-void DuelCountdown::recvMatchId(QuickdrawCommand command) {
-    // if command ACK, it is the hunter
-
-    // if not, it is the bounty
-
-    if (command.command == QDCommand::SEND_MATCH_ID) { 
-        // bounty 
-        matchManager->setCurrentMatch(command.match);
-    }
-    else if (command.command == QDCommand::MATCH_ID_ACK) {
-
-    }
 }

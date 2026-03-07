@@ -20,8 +20,6 @@ Idle::~Idle() {
 
 void Idle::onStateMounted(Device *PDN) {
 
-    PDN->getHaptics()->off();
-
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
 

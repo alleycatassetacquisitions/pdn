@@ -1,5 +1,4 @@
 #include "game/quickdraw-states.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
 
@@ -33,6 +32,11 @@ void DuelPushed::onStateLoop(Device *PDN) {
 
 void DuelPushed::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
+
+    if (!isConnected()) {
+        matchManager->clearCurrentMatch();
+    }
+
     gracePeriodTimer.invalidate();
 }
 

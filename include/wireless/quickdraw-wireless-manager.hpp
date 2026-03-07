@@ -17,55 +17,36 @@
 
 enum QDCommand {
     // Game Commands
-    HACK = 6,
-    HACK_ACK = 7, 
-    HACK_CONFIRMED = 8,
-    LOCKDOWN = 9,
-    LOCKDOWN_ACK = 10,
-    LOCKDOWN_CONFIRMED = 11,    
-    DRAW_RESULT = 12,
-    NEVER_PRESSED = 13,
-    SEND_MATCH_ID = 14,
-    MATCH_ID_ACK = 15,
+    // HACK = 6,
+    // HACK_ACK = 7, 
+    // HACK_CONFIRMED = 8,
+    // LOCKDOWN = 9,
+    // LOCKDOWN_ACK = 10,
+    // LOCKDOWN_CONFIRMED = 11,    
+    SEND_MATCH_ID = 6,
+    MATCH_ID_ACK = 7,
+    DRAW_RESULT = 8,
+    NEVER_PRESSED = 9,
     COMMAND_COUNT,  // Always add new commands above this line
     INVALID_COMMAND = 0xFF
 
 };
 
 struct QuickdrawCommand {
-    uint8_t wifiMacAddr[6];
-    bool wifiMacAddrValid;
+    const uint8_t* wifiMacAddr;
     int command;
-    Match match;
+    char matchId[IdGenerator::UUID_BUFFER_SIZE];
+    char playerId[5];  // 4 chars + null terminator
+    bool isHunter;
+    long playerDrawTime;
 
-    QuickdrawCommand() : wifiMacAddrValid(false), command(0), match() {
-        memset(wifiMacAddr, 0, 6);
-    }
+    QuickdrawCommand(const uint8_t* macAddress, int command, const char* matchId, const char* playerId, long playerDrawTime, bool isHunter)
+        : command(command), playerDrawTime(playerDrawTime), isHunter(isHunter) {
+        this->wifiMacAddr = macAddress;
 
-    QuickdrawCommand(const uint8_t* macAddress, int command, const Match& match)
-        : wifiMacAddrValid(macAddress != nullptr), command(command), match(match) {
-        if (macAddress) {
-            memcpy(wifiMacAddr, macAddress, 6);
-        } else {
-            memset(wifiMacAddr, 0, 6);
-        }
-    }
+        memcpy(this->matchId, matchId, IdGenerator::UUID_BUFFER_SIZE);
 
-    /**
-     * Hot-path constructor. Constructs Match in-place from raw packet fields,
-     * avoiding an intermediate Match object and the resulting copy.
-     * Preconditions mirror Match's 5-arg constructor (full-length IDs required).
-     */
-    QuickdrawCommand(const uint8_t* macAddress, int cmd,
-                     const char* matchId, const char* hunterId, const char* bountyId,
-                     unsigned long hunterTime, unsigned long bountyTime)
-        : wifiMacAddrValid(macAddress != nullptr), command(cmd),
-          match(matchId, hunterId, bountyId, hunterTime, bountyTime) {
-        if (macAddress) {
-            memcpy(wifiMacAddr, macAddress, 6);
-        } else {
-            memset(wifiMacAddr, 0, 6);
-        }
+        memcpy(this->playerId, playerId, 5);
     }
 };
 
@@ -83,8 +64,7 @@ public:
     void setPacketReceivedCallback(const std::function<void(const QuickdrawCommand&)>& callback);
 
     int broadcastPacket(const uint8_t* macAddress,
-                       int command,
-                       const Match& match);
+                       QuickdrawCommand& command);
 
     void clearCallbacks();
 

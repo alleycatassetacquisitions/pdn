@@ -9,10 +9,18 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
     this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
+
+    matchManager->initialize(player, storageManager, quickdrawWirelessManager);
+
+    quickdrawWirelessManager->setPacketReceivedCallback(
+        std::bind(&MatchManager::listenForMatchEvents, matchManager, std::placeholders::_1)
+    );
 }
 
 Quickdraw::~Quickdraw() {
     player = nullptr;
+    remoteDeviceCoordinator = nullptr;
+    quickdrawWirelessManager->clearCallbacks();
     quickdrawWirelessManager = nullptr;
     matchManager = nullptr;
     storageManager = nullptr;
@@ -21,7 +29,6 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
-    matchManager->initialize(player, storageManager, peerComms, quickdrawWirelessManager);
 
     // Sub-state machines for player registration and handshake
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
@@ -30,9 +37,9 @@ void Quickdraw::populateStateMap() {
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
 
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator);
-    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
+    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator);
     DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator, quickdrawWirelessManager);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator);
     DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager);
     
     Win* win = new Win(player);
@@ -86,8 +93,18 @@ void Quickdraw::populateStateMap() {
 
     duelPushed->addTransition(
         new StateTransition(
+            std::bind(&DuelPushed::disconnectedBackToIdle, duelPushed),
+            idle));
+
+    duelPushed->addTransition(
+        new StateTransition(
             std::bind(&DuelPushed::transitionToDuelResult, duelPushed),
             duelResult));
+
+    duelReceivedResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelReceivedResult::disconnectedBackToIdle, duelReceivedResult),
+            idle));
 
     duelReceivedResult->addTransition(
         new StateTransition(

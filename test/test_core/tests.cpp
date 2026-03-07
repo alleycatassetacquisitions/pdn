@@ -681,6 +681,10 @@ TEST_F(MatchManagerTestSuite, duelStartTimeTracking) {
     matchManagerDuelStartTimeTracking(matchManager);
 }
 
+TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsMasherCount) {
+    matchManagerClearCurrentMatchResetsMasherCount(matchManager, player);
+}
+
 // ============================================
 // INTEGRATION TESTS
 // ============================================
@@ -733,36 +737,36 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
 // QUICKDRAW STATE TESTS - HANDSHAKE
 // ============================================
 
-TEST_F(HandshakeStateTests, primaryIdleTransitionsOnMacReceived) {
-    primaryIdleTransitionsOnMacReceived(this);
+TEST_F(HandshakeStateTests, outputIdleTransitionsOnMacReceived) {
+    outputIdleTransitionsOnMacReceived(this);
 }
 
-TEST_F(HandshakeStateTests, primaryIdleIgnoresUnrelatedSerial) {
-    primaryIdleIgnoresUnrelatedSerial(this);
+TEST_F(HandshakeStateTests, outputIdleIgnoresUnrelatedSerial) {
+    outputIdleIgnoresUnrelatedSerial(this);
 }
 
-TEST_F(HandshakeStateTests, primaryIdleClearsCallbackOnDismount) {
-    primaryIdleClearsCallbackOnDismount(this);
+TEST_F(HandshakeStateTests, outputIdleClearsCallbackOnDismount) {
+    outputIdleClearsCallbackOnDismount(this);
 }
 
-TEST_F(HandshakeStateTests, primarySendIdTransitionsOnExchangeIdAck) {
-    primarySendIdTransitionsOnExchangeIdAck(this);
+TEST_F(HandshakeStateTests, outputSendIdTransitionsOnExchangeIdAck) {
+    outputSendIdTransitionsOnExchangeIdAck(this);
 }
 
-TEST_F(HandshakeStateTests, primarySendIdClearsOnDismount) {
-    primarySendIdClearsOnDismount(this);
+TEST_F(HandshakeStateTests, outputSendIdClearsOnDismount) {
+    outputSendIdClearsOnDismount(this);
 }
 
-TEST_F(HandshakeStateTests, auxiliaryIdleTransitionsOnExchangeId) {
-    auxiliaryIdleTransitionsOnExchangeId(this);
+TEST_F(HandshakeStateTests, inputIdleTransitionsOnExchangeId) {
+    inputIdleTransitionsOnExchangeId(this);
 }
 
-TEST_F(HandshakeStateTests, auxiliarySendIdTransitionsOnExchangeIdAck) {
-    auxiliarySendIdTransitionsOnExchangeIdAck(this);
+TEST_F(HandshakeStateTests, inputSendIdTransitionsOnExchangeIdAck) {
+    inputSendIdTransitionsOnExchangeIdAck(this);
 }
 
-TEST_F(HandshakeStateTests, auxiliarySendIdClearsOnDismount) {
-    auxiliarySendIdClearsOnDismount(this);
+TEST_F(HandshakeStateTests, inputSendIdClearsOnDismount) {
+    inputSendIdClearsOnDismount(this);
 }
 
 TEST_F(HandshakeStateTests, handshakeAppOutputJackTimeoutResetsToIdle) {
@@ -944,6 +948,18 @@ TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {
 
 TEST_F(StateCleanupTests, matchManagerClearsDuelState) {
     cleanupMatchManagerClearsDuelState(this);
+}
+
+TEST_F(StateCleanupTests, duelStateClearsCallbacksWhenGoingToDuelReceivedResult) {
+    cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(this);
+}
+
+TEST_F(StateCleanupTests, pushedClearsMatchOnDisconnect) {
+    pushedClearsMatchOnDisconnect(this);
+}
+
+TEST_F(StateCleanupTests, receivedResultClearsMatchOnDisconnect) {
+    receivedResultClearsMatchOnDisconnect(this);
 }
 
 // ============================================
@@ -1144,6 +1160,18 @@ TEST_F(RDCTests, inputPortDisconnectedIndependentOfOutputPort) {
 
 TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
     rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
+}
+
+TEST_F(RDCTests, getPeerMacReturnsNullWhenDisconnected) {
+    rdcGetPeerMacReturnsNullWhenDisconnected(this);
+}
+
+TEST_F(RDCTests, getPeerMacReturnsMacWhenConnecting) {
+    rdcGetPeerMacReturnsMacWhenConnecting(this);
+}
+
+TEST_F(RDCTests, getPeerMacReturnsMacWhenConnected) {
+    rdcGetPeerMacReturnsMacWhenConnected(this);
 }
 
 // ============================================

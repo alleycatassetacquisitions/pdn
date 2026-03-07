@@ -6,36 +6,36 @@
 
 enum HandshakeStateId {
 
-    PRIMARY_IDLE_STATE = 80, // Primary waiting to receive mac from foreign aux port. When mac detected, send id to foreign mac and transition.
-    PRIMARY_SEND_ID_STATE = 81, // Waiting for id from aux, then sends final ack over esp-now to received MAC.
-    PRIMARY_CONNECTED_STATE = 82, // Primary Port receiving hb from foreign aux port. If timeout is reached without hb, sends notify disconnect message to foreign mac.
+    OUTPUT_IDLE_STATE = 80, // Output waiting to receive mac from foreign input port. When mac detected, send id to foreign mac and transition.
+    OUTPUT_SEND_ID_STATE = 81, // Waiting for id from input, then sends final ack over esp-now to received MAC.
+    OUTPUT_CONNECTED_STATE = 82, // Output Port receiving hb from foreign input port. If timeout is reached without hb, sends notify disconnect message to foreign mac.
 
-    AUXILIARY_IDLE_STATE = 83, // Auxiliary emitting mac over serial every 250 ms. Transitions when receiving mac over esp-now from foreign device.
-    AUXILIARY_SEND_ID_STATE = 84, // Auxiliary Port second state. Sends ACK and player id over esp-now to received MAC.
-    AUXILIARY_CONNECTED_STATE = 85 // sends hb over serial every 50 ms. if receive disconnect message, transition to AUXILIARY_IDLE_STATE.
+    INPUT_IDLE_STATE = 83, // Input emitting mac over serial every 250 ms. Transitions when receiving mac over esp-now from foreign device.
+    INPUT_SEND_ID_STATE = 84, // Input Port second state. Sends ACK and player id over esp-now to received MAC.
+    INPUT_CONNECTED_STATE = 85 // sends hb over serial every 50 ms. if receive disconnect message, transition to INPUT_IDLE_STATE.
 };
     
-class PrimaryIdleState : public State {
+class OutputIdleState : public State {
 public:
-    explicit PrimaryIdleState(HandshakeWirelessManager* handshakeWirelessManager);
-    ~PrimaryIdleState();
+    explicit OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~OutputIdleState();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
-    bool transitionToPrimarySendId();
+    bool transitionToOutputSendId();
 
     void onConnectionStarted(std::string remoteMac);
 
 private:
-    bool transitionToPrimarySendIDState = false;
+    bool transitionToOutputSendIdState = false;
     HandshakeWirelessManager* handshakeWirelessManager;
 };
 
-class PrimarySendIdState : public State {
+class OutputSendIdState : public State {
 public:
-    PrimarySendIdState(HandshakeWirelessManager* handshakeWirelessManager);
-    ~PrimarySendIdState();
+    OutputSendIdState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~OutputSendIdState();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
@@ -75,10 +75,10 @@ private:
     bool transitionToIdleState = false;
 };
 
-class AuxiliaryIdleState : public State {
+class InputIdleState : public State {
 public:
-    explicit AuxiliaryIdleState(HandshakeWirelessManager* handshakeWirelessManager);
-    ~AuxiliaryIdleState();
+    explicit InputIdleState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~InputIdleState();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
@@ -94,10 +94,10 @@ private:
     bool transitionToSendIdState = false;
 };
 
-class AuxiliarySendIdState : public State {
+class InputSendIdState : public State {
 public:
-    explicit AuxiliarySendIdState(HandshakeWirelessManager* handshakeWirelessManager);
-    ~AuxiliarySendIdState();
+    explicit InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager);
+    ~InputSendIdState();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;

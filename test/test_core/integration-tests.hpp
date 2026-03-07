@@ -59,13 +59,13 @@ public:
     // Helper: Initialize match manager for hunter's device
     void initializeAsHunterDevice() {
         matchManager->clearCurrentMatch();
-        matchManager->initialize(hunter, &hunterStorage, &hunterPeerComms, &hunterWirelessManager);
+        matchManager->initialize(hunter, &hunterStorage, &hunterWirelessManager);
     }
 
     // Helper: Initialize match manager for bounty's device
     void initializeAsBountyDevice() {
         matchManager->clearCurrentMatch();
-        matchManager->initialize(bounty, &bountyStorage, &bountyPeerComms, &bountyWirelessManager);
+        matchManager->initialize(bounty, &bountyStorage, &bountyWirelessManager);
     }
 
     FakePlatformClock* fakeClock = nullptr;
@@ -75,12 +75,10 @@ public:
     
     // Hunter device mocks
     MockStorage hunterStorage;
-    MockPeerComms hunterPeerComms;
     MockQuickdrawWirelessManager hunterWirelessManager;
     
     // Bounty device mocks
     MockStorage bountyStorage;
-    MockPeerComms bountyPeerComms;
     MockQuickdrawWirelessManager bountyWirelessManager;
 };
 
@@ -103,8 +101,8 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     // Hunter creates the match
     Match* hunterMatch = suite->matchManager->createMatch(
         matchIdStr, 
-        suite->hunter->getUserID(), 
-        suite->bounty->getUserID()
+        suite->hunter->getUserID().c_str(), 
+        suite->bounty->getUserID().c_str()
     );
     ASSERT_NE(hunterMatch, nullptr);
 
@@ -186,8 +184,8 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     
     Match* hunterMatch = suite->matchManager->createMatch(
         matchIdStr, 
-        suite->hunter->getUserID(), 
-        suite->bounty->getUserID()
+        suite->hunter->getUserID().c_str(), 
+        suite->bounty->getUserID().c_str()
     );
     ASSERT_NE(hunterMatch, nullptr);
 
@@ -328,7 +326,7 @@ inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
     
     Match* match = suite->matchManager->createMatch(
         "tie-match-1234-5678-9abc-def012345678", 
-        suite->hunter->getUserID(), 
+        suite->hunter->getUserID().c_str(), 
         "bounty-1234-5678-9abc-def012345678"
     );
     match->setHunterDrawTime(250);
@@ -346,7 +344,7 @@ inline void duelWithOpponentTimeout(DuelIntegrationTestSuite* suite) {
     
     Match* match = suite->matchManager->createMatch(
         "timeout-match-1234-5678-9abc-def01234",
-        suite->hunter->getUserID(), 
+        suite->hunter->getUserID().c_str(), 
         "afk-bounty-1234-5678-9abc-def01234567"
     );
     match->setHunterDrawTime(300);

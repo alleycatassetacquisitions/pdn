@@ -8,6 +8,7 @@
 */
 #pragma once
 
+#include <array>
 #include <optional>
 #include <vector>
 #include <string>
@@ -27,6 +28,11 @@ struct ActiveDuelState {
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
     std::optional<Match> match;
+    std::array<uint8_t, 6> opponentMac = {};
+
+    unsigned long calculateButtonMasherPenalty() {
+        return BUTTON_MASHER_PENALTY_MS * buttonMasherCount;
+    };
 };
 
 class MatchManager {
@@ -34,25 +40,22 @@ public:
 
     MatchManager();
     ~MatchManager();
-    /**
-     * Creates a new active match
-     * @param match_id UUID of the match
-     * @param hunter_id Hunter's UUID
-     * @param bounty_id Bounty's UUID
-     * @return Pointer to the newly created match
-     */
-    Match* createMatch(const std::string& match_id, const std::string& hunter_id, const std::string& bounty_id);
+    
+
+    /*
+     * Initializes a match and initiates ESP-NOW messaging to opponent.
+    */
+    void initializeMatch(uint8_t* opponentMac);
 
     /**
      * Initializes a match received from another player
      * @param match_json JSON string containing match data
      * @return Pointer to the initialized match, nullptr if invalid
      */
-    Match* receiveMatch(const Match& match);
+    void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
 
     /**
      * Finalizes a match by saving it to storage and removing from active matches
-     * @param match_id UUID of the match to finalize
      * @return true if match was found and saved
      */
     bool finalizeMatch();
@@ -62,8 +65,6 @@ public:
 
     void setDuelLocalStartTime(unsigned long local_start_time_ms);
 
-    void setNeverPressed();
-
     bool didWin();
 
     unsigned long getDuelLocalStartTime();
@@ -72,14 +73,33 @@ public:
 
     bool getHasReceivedDrawResult();
     bool getHasPressedButton();
-    void setReceivedDrawResult();
-    void setReceivedButtonPush();
 
     /**
      * Gets the current active match if any
-     * @return Pointer to the active match, nullptr if none
+     * @return Reference to the optional match
      */
-    Match* getCurrentMatch() { return activeDuelState.match ? &*activeDuelState.match : nullptr; }
+    std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
+
+    /**
+     * Gets a raw pointer to the current active match, nullptr if none.
+     * Prefer getCurrentMatch() in production code; this is provided for
+     * test convenience.
+     */
+    Match* getMatch() { return activeDuelState.match.has_value() ? &*activeDuelState.match : nullptr; }
+
+    /**
+     * Creates a match directly from explicit hunter/bounty IDs, bypassing
+     * the wireless initialization path. Intended for tests and direct setup.
+     * Returns nullptr if a match is already active.
+     */
+    Match* createMatch(const std::string& matchId, const char* hunterId, const char* bountyId);
+
+    /**
+     * Receives a pre-constructed Match object (e.g. deserialized from binary).
+     * Stores it as the active match without triggering a wireless ACK.
+     * Intended for tests and simulation scenarios.
+     */
+    Match* receiveMatch(const Match& match);
 
     /**
      * Converts all stored matches to a JSON array string
@@ -100,19 +120,24 @@ public:
 
     void clearCurrentMatch();
 
-    void listenForMatchResults(const QuickdrawCommand& command);
+    void listenForMatchEvents(const QuickdrawCommand& command);
 
-    void initialize(Player* player, StorageInterface* storage, PeerCommsInterface* peerComms, QuickdrawWirelessManager* quickdrawWirelessManager);
+    void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
 
     parameterizedCallbackFunction getDuelButtonPush();
 
     parameterizedCallbackFunction getButtonMasher();
 
-protected:
-    Player* player;
+    void sendNeverPressed(unsigned long pityTime);
 
+    // Internal state setters — also used directly in tests for white-box setup.
+    void setReceivedDrawResult();
+    void setReceivedButtonPush();
+    void setNeverPressed();
 
 private:
+
+    Player* player;
 
     ActiveDuelState activeDuelState;
 
@@ -120,7 +145,6 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    PeerCommsInterface* peerComms;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     /**
      * Appends a match to storage
@@ -140,6 +164,9 @@ private:
      * @return New Match object if successful, nullptr if invalid
      */
     Match* readMatchFromStorage(uint8_t index);
+
+    void sendMatchAck();
+    void sendMatchId();
 
 };
 

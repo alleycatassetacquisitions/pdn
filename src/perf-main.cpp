@@ -206,8 +206,8 @@ int main(int argc, char** argv) {
     StepClock clock;
     SimpleTimer::setPlatformClock(&clock);
 
-    // Seed the ID generator with a fixed value for reproducibility
-    IdGenerator(42).seed(42);
+    // Initialize the ID generator singleton with a fixed seed for reproducibility
+    IdGenerator::initialize(42);
 
     DeviceCtx hunter, bounty;
     hunter.init("hunt", true,  "BB:BB:BB:BB:BB:BB");

@@ -60,7 +60,6 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-IdGenerator* idGenerator = nullptr;
 Player* player = nullptr;
 
 // Game instance
@@ -136,10 +135,9 @@ void setup() {
     // Create core game objects
     pdn = PDN::createPDN(pdnConfig);
     
-    idGenerator = new IdGenerator(clockDriver->milliseconds());
-    idGenerator->seed(clockDriver->milliseconds());
+    IdGenerator::initialize(clockDriver->milliseconds());
     player = new Player();
-    player->setUserID(idGenerator->generateId());
+    player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     
     // Create wireless managers

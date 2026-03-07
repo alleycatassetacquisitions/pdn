@@ -155,12 +155,22 @@ public:
     MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
 };
 
-// Always returns DISCONNECTED — enough for tests that only check the false path
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
-    PortStatus getPortStatus(SerialIdentifier) override {
+    void setPortStatus(SerialIdentifier id, PortStatus status) {
+        if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
+        else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
+    }
+
+    PortStatus getPortStatus(SerialIdentifier id) override {
+        if (id == SerialIdentifier::OUTPUT_JACK) return outputStatus;
+        if (id == SerialIdentifier::INPUT_JACK) return inputStatus;
         return PortStatus::DISCONNECTED;
     }
+
+private:
+    PortStatus outputStatus = PortStatus::DISCONNECTED;
+    PortStatus inputStatus = PortStatus::DISCONNECTED;
 };
 
 // Mock QuickdrawWirelessManager for MatchManager tests

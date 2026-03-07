@@ -4,7 +4,7 @@
 #include "device/device-constants.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
-#include "esp32-hal-log.h"
+#include "device/drivers/logger.hpp"
 #include "state/state-machine.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
@@ -44,12 +44,11 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     outputPortHandshake->onStateLoop(PDN);
 
     if (syncLogTimer.expired()) {
-        PortState output = getPortState(SerialIdentifier::OUTPUT_JACK);
-        PortState input = getPortState(SerialIdentifier::INPUT_JACK);
-
-        LOG_W("RDC", "OUTPUT port: status=%d peers=%u | INPUT port: status=%d peers=%u",
-              static_cast<int>(output.status), static_cast<unsigned>(output.peerMacAddresses.size()),
-              static_cast<int>(input.status), static_cast<unsigned>(input.peerMacAddresses.size()));
+        LOG_W("RDC", "OUTPUT port: status=%d hasPeer=%d | INPUT port: status=%d hasPeer=%d",
+              static_cast<int>(getPortStatus(SerialIdentifier::OUTPUT_JACK)),
+              getPeerMac(SerialIdentifier::OUTPUT_JACK) != nullptr,
+              static_cast<int>(getPortStatus(SerialIdentifier::INPUT_JACK)),
+              getPeerMac(SerialIdentifier::INPUT_JACK) != nullptr);
 
         syncLogTimer.setTimer(100);
     }
@@ -66,19 +65,13 @@ PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
 PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
     std::vector<std::array<uint8_t, 6>> peerAddresses;
 
-    const std::array<uint8_t, 6>* macPeer = handshakeWirelessManager.getMacPeer(port);
+    const Peer* macPeer = handshakeWirelessManager.getMacPeer(port);
     
     if (macPeer != nullptr) {
-        peerAddresses.push_back(*macPeer);
+        peerAddresses.push_back(macPeer->macAddr);
     }
-    
-    PortState ps = { 
-        port, 
-        getPortStatus(port), 
-        peerAddresses  
-    }; 
 
-    return ps;
+    return PortState{ port, getPortStatus(port), peerAddresses };
 }
 
 PortStatus RemoteDeviceCoordinator::mapHandshakeStateToStatus(SerialIdentifier port) {
@@ -91,19 +84,24 @@ PortStatus RemoteDeviceCoordinator::mapHandshakeStateToStatus(SerialIdentifier p
     int stateId = app->getCurrentState()->getStateId();
 
     switch (stateId) {
-        case HandshakeStateId::PRIMARY_CONNECTED_STATE:
-        case HandshakeStateId::AUXILIARY_CONNECTED_STATE:
+        case HandshakeStateId::OUTPUT_CONNECTED_STATE:
+        case HandshakeStateId::INPUT_CONNECTED_STATE:
             return PortStatus::CONNECTED;
 
-        case HandshakeStateId::PRIMARY_SEND_ID_STATE:
-        case HandshakeStateId::AUXILIARY_SEND_ID_STATE:
+        case HandshakeStateId::OUTPUT_SEND_ID_STATE:
+        case HandshakeStateId::INPUT_SEND_ID_STATE:
             return PortStatus::CONNECTING;
 
-        case HandshakeStateId::PRIMARY_IDLE_STATE:
-        case HandshakeStateId::AUXILIARY_IDLE_STATE:
+        case HandshakeStateId::OUTPUT_IDLE_STATE:
+        case HandshakeStateId::INPUT_IDLE_STATE:
         default:
             return PortStatus::DISCONNECTED;
     }
+}
+
+const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier port) const {
+    const Peer* peer = handshakeWirelessManager.getMacPeer(port);
+    return peer ? peer->macAddr.data() : nullptr;
 }
 
 void RemoteDeviceCoordinator::addDaisyChainedPeer(const uint8_t* macAddress) {
