@@ -551,6 +551,165 @@ inline void countdownCleansUpOnDismount(DuelCountdownTests* suite) {
 }
 
 // ============================================
+// DuelCountdown Chain Tests
+// ============================================
+
+// Helper: proxy RDC that reports INPUT_JACK as CONNECTED, delegates serial routing to real RDC
+struct ChainDuelConnectedInputRDC : public RemoteDeviceCoordinator {
+    RemoteDeviceCoordinator* real;
+    PortStatus getPortStatus(SerialIdentifier port) override {
+        if (port == SerialIdentifier::INPUT_JACK) return PortStatus::CONNECTED;
+        return PortStatus::DISCONNECTED;
+    }
+    void registerSerialHandler(const std::string& prefix, SerialIdentifier jack,
+                               std::function<void(const std::string&)> handler) override {
+        real->registerSerialHandler(prefix, jack, handler);
+    }
+    void unregisterSerialHandler(const std::string& prefix, SerialIdentifier jack) override {
+        real->unregisterSerialHandler(prefix, jack);
+    }
+};
+
+// Test 1: Solo player (chainLength=1) countdown starts immediately on mount
+inline void chainCountdownSoloStartsImmediately(DuelCountdownTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    ChainContext ctx;
+    ctx.chainLength = 1;
+    ctx.role = ChainRole::CHAMPION;
+
+    DuelCountdown state(suite->player, suite->matchManager,
+                        &suite->device.fakeRemoteDeviceCoordinator, &ctx);
+    state.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(state.countdownStarted());
+}
+
+// Test 2: Champion with chainLength=4 waits until confirm:3 before starting countdown
+inline void chainCountdownChampionWaitsForAllConfirmations(DuelCountdownTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    ChainContext ctx;
+    ctx.chainLength = 4;
+    ctx.confirmedSupporters = 0;
+    ctx.role = ChainRole::CHAMPION;
+
+    ChainDuelConnectedInputRDC proxyRdc;
+    proxyRdc.real = &suite->device.fakeRemoteDeviceCoordinator;
+
+    DuelCountdown state(suite->player, suite->matchManager, &proxyRdc, &ctx);
+    state.onStateMounted(&suite->device);
+
+    // Not started yet
+    EXPECT_FALSE(state.countdownStarted());
+
+    // Receive confirm:1 -> not yet 3 confirmations
+    suite->device.inputJackSerial.stringCallback("confirm:1");
+    state.onStateLoop(&suite->device);
+    EXPECT_FALSE(state.countdownStarted());
+
+    // Receive confirm:2 -> still not 3
+    suite->device.inputJackSerial.stringCallback("confirm:2");
+    state.onStateLoop(&suite->device);
+    EXPECT_FALSE(state.countdownStarted());
+
+    // Receive confirm:3 -> now 3 supporters confirmed, countdown starts
+    suite->device.inputJackSerial.stringCallback("confirm:3");
+    state.onStateLoop(&suite->device);
+    EXPECT_TRUE(state.countdownStarted());
+
+    state.onStateDismounted(&suite->device);
+}
+
+// Test 3: Champion sends "event:countdown" out INPUT_JACK when countdown starts
+inline void chainCountdownChampionSendsEventCountdown(DuelCountdownTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    ChainContext ctx;
+    ctx.chainLength = 2;
+    ctx.confirmedSupporters = 0;
+    ctx.role = ChainRole::CHAMPION;
+
+    ChainDuelConnectedInputRDC proxyRdc;
+    proxyRdc.real = &suite->device.fakeRemoteDeviceCoordinator;
+
+    DuelCountdown state(suite->player, suite->matchManager, &proxyRdc, &ctx);
+    state.onStateMounted(&suite->device);
+
+    EXPECT_FALSE(state.countdownStarted());
+
+    // Confirm 1 supporter (chainLength-1 = 1)
+    suite->device.inputJackSerial.stringCallback("confirm:1");
+    state.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(state.countdownStarted());
+
+    // Drain the INPUT_JACK serial queue to find "event:countdown"
+    auto& q = suite->device.inputJackSerial.msgQueue;
+    // Skip STRING_START
+    if (!q.empty() && q.front() == STRING_START) q.pop_front();
+    std::string sent;
+    while (!q.empty() && q.front() != STRING_TERM) {
+        sent += q.front();
+        q.pop_front();
+    }
+    EXPECT_EQ(sent, "event:countdown");
+
+    state.onStateDismounted(&suite->device);
+}
+
+// Test 4: Late confirmations during countdown continue to update confirmedSupporters
+inline void chainCountdownCollectsConfirmationsDuringCountdown(DuelCountdownTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    ChainContext ctx;
+    ctx.chainLength = 3;
+    ctx.confirmedSupporters = 0;
+    ctx.role = ChainRole::CHAMPION;
+
+    ChainDuelConnectedInputRDC proxyRdc;
+    proxyRdc.real = &suite->device.fakeRemoteDeviceCoordinator;
+
+    DuelCountdown state(suite->player, suite->matchManager, &proxyRdc, &ctx);
+    state.onStateMounted(&suite->device);
+
+    // Send confirm:2 -> 2 of 2 supporters confirmed -> countdown starts
+    suite->device.inputJackSerial.stringCallback("confirm:2");
+    state.onStateLoop(&suite->device);
+    EXPECT_TRUE(state.countdownStarted());
+    EXPECT_EQ(ctx.confirmedSupporters, 2);
+
+    // Late arrival: confirm:2 arrives again (same count - updates context)
+    suite->device.inputJackSerial.stringCallback("confirm:2");
+    state.onStateLoop(&suite->device);
+    // confirmedSupporters still tracks the latest received count
+    EXPECT_EQ(ctx.confirmedSupporters, 2);
+
+    state.onStateDismounted(&suite->device);
+}
+
+// Test 5: nullptr chainContext behaves like solo (immediate countdown start)
+inline void chainCountdownNullContextStartsImmediately(DuelCountdownTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    DuelCountdown state(suite->player, suite->matchManager,
+                        &suite->device.fakeRemoteDeviceCoordinator, nullptr);
+    state.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(state.countdownStarted());
+}
+
+// ============================================
 // Duel State Tests
 // ============================================
 
@@ -1466,6 +1625,188 @@ inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
     receivedState.onStateDismounted(&suite->device);
 
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+}
+
+// ============================================
+// Chain Boost in Duel and Result States Tests
+// ============================================
+
+// Proxy RDC: reports INPUT_JACK as CONNECTED while routing serial to the real RDC.
+// Defined inline here to avoid redefinition with chain-detection-tests.hpp.
+struct ChainDuelProxyRDC : public RemoteDeviceCoordinator {
+    RemoteDeviceCoordinator* real = nullptr;
+    PortStatus getPortStatus(SerialIdentifier port) override {
+        if (port == SerialIdentifier::INPUT_JACK) return PortStatus::CONNECTED;
+        return PortStatus::DISCONNECTED;
+    }
+    void registerSerialHandler(const std::string& prefix, SerialIdentifier jack,
+                               std::function<void(const std::string&)> handler) override {
+        if (real) real->registerSerialHandler(prefix, jack, handler);
+    }
+    void unregisterSerialHandler(const std::string& prefix, SerialIdentifier jack) override {
+        if (real) real->unregisterSerialHandler(prefix, jack);
+    }
+};
+
+static std::string drainInputJackStr(FakeHWSerialWrapper& serial) {
+    auto& q = serial.msgQueue;
+    if (q.empty()) return "";
+    if (q.front() == STRING_START) q.pop_front();
+    std::string result;
+    while (!q.empty() && q.front() != STRING_TERM) {
+        result += q.front();
+        q.pop_front();
+    }
+    if (!q.empty()) q.pop_front();
+    return result;
+}
+
+// Test 1: Champion (chainLength=3) sends "event:draw" out INPUT_JACK on duel mount
+inline void duelChampionSendsDrawEventOnMount(DuelStateTests* suite) {
+    RemoteDeviceCoordinator realRdc;
+    realRdc.initialize(suite->device.wirelessManager, suite->device.serialManager, &suite->device);
+
+    ChainDuelProxyRDC proxyRdc;
+    proxyRdc.real = &realRdc;
+    suite->device.rdcOverride = &proxyRdc;
+
+    ChainContext ctx;
+    ctx.chainLength = 3;
+    ctx.role = ChainRole::CHAMPION;
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    Duel duelState(suite->player, suite->matchManager, &proxyRdc, &ctx);
+    duelState.onStateMounted(&suite->device);
+
+    std::string sent = drainInputJackStr(suite->device.inputJackSerial);
+    EXPECT_EQ(sent, "event:draw");
+
+    duelState.onStateDismounted(&suite->device);
+    suite->device.rdcOverride = nullptr;
+}
+
+// Test 2: Solo player (chainLength=1) does NOT send "event:draw"
+inline void duelSoloPlayerSkipsDrawEvent(DuelStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    ChainContext ctx;
+    ctx.chainLength = 1;
+    ctx.role = ChainRole::CHAMPION;
+
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, &ctx);
+    duelState.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(suite->device.inputJackSerial.msgQueue.empty());
+
+    duelState.onStateDismounted(&suite->device);
+}
+
+// Test 3: Champion collects late "confirm:" during duel and increments confirmedSupporters
+inline void duelChampionCollectsLateConfirmsDuringDuel(DuelStateTests* suite) {
+    RemoteDeviceCoordinator realRdc;
+    realRdc.initialize(suite->device.wirelessManager, suite->device.serialManager, &suite->device);
+
+    ChainDuelProxyRDC proxyRdc;
+    proxyRdc.real = &realRdc;
+    suite->device.rdcOverride = &proxyRdc;
+
+    ChainContext ctx;
+    ctx.chainLength = 3;
+    ctx.confirmedSupporters = 1;
+    ctx.role = ChainRole::CHAMPION;
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    Duel duelState(suite->player, suite->matchManager, &proxyRdc, &ctx);
+    duelState.onStateMounted(&suite->device);
+
+    suite->device.inputJackSerial.msgQueue.clear();
+
+    // A late confirm arrives from a supporter
+    suite->device.inputJackSerial.stringCallback("confirm:2");
+    EXPECT_EQ(ctx.confirmedSupporters, 2);
+
+    duelState.onStateDismounted(&suite->device);
+    suite->device.rdcOverride = nullptr;
+}
+
+// Test 4: DuelResult applies boost — hunter 300ms, bounty 250ms, 3 supporters → boost=65ms → effective 235ms → win
+inline void duelResultAppliesBoostWin(DuelResultTests* suite) {
+    suite->player->setIsHunter(true);
+
+    ChainContext ctx;
+    ctx.chainLength = 3;
+    ctx.confirmedSupporters = 3;
+    ctx.role = ChainRole::CHAMPION;
+
+    suite->matchManager->createMatch("test-match", suite->player->getUserID().c_str(), "5678");
+    suite->matchManager->setHunterDrawTime(300);
+    suite->matchManager->setBountyDrawTime(250);
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setReceivedDrawResult();
+
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, &ctx);
+    resultState.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(resultState.transitionToWin());
+    EXPECT_FALSE(resultState.transitionToLose());
+}
+
+// Test 5: DuelResult with no chain context (solo) — 300ms vs 250ms → lose
+inline void duelResultNoBoostForSolo(DuelResultTests* suite) {
+    suite->player->setIsHunter(true);
+
+    suite->matchManager->createMatch("test-match", suite->player->getUserID().c_str(), "5678");
+    suite->matchManager->setHunterDrawTime(300);
+    suite->matchManager->setBountyDrawTime(250);
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setReceivedDrawResult();
+
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    resultState.onStateMounted(&suite->device);
+
+    EXPECT_FALSE(resultState.transitionToWin());
+    EXPECT_TRUE(resultState.transitionToLose());
+}
+
+// Test 6: Champion (chainLength=3) sends "event:win" out INPUT_JACK after a win result
+inline void duelResultChampionSendsResultEvent(DuelResultTests* suite) {
+    suite->player->setIsHunter(true);
+
+    RemoteDeviceCoordinator realRdc;
+    realRdc.initialize(suite->device.wirelessManager, suite->device.serialManager, &suite->device);
+
+    ChainDuelProxyRDC proxyRdc;
+    proxyRdc.real = &realRdc;
+    suite->device.rdcOverride = &proxyRdc;
+
+    ChainContext ctx;
+    ctx.chainLength = 3;
+    ctx.confirmedSupporters = 0;
+    ctx.role = ChainRole::CHAMPION;
+
+    suite->matchManager->createMatch("test-match", suite->player->getUserID().c_str(), "5678");
+    suite->matchManager->setHunterDrawTime(200);
+    suite->matchManager->setBountyDrawTime(300);
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setReceivedDrawResult();
+
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, &ctx);
+    resultState.onStateMounted(&suite->device);
+
+    EXPECT_TRUE(resultState.transitionToWin());
+
+    std::string sent = drainInputJackStr(suite->device.inputJackSerial);
+    EXPECT_EQ(sent, "event:win");
+
+    suite->device.rdcOverride = nullptr;
 }
 
 // Test: HandshakeConnectedState transitions to idle on heartbeat timeout

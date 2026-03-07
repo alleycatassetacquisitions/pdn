@@ -3,12 +3,14 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device.hpp"
+#include "device/serial-manager.hpp"
 
 #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainContext* chainContext) : ConnectState(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
+    this->chainContext_ = chainContext;
 }
 
 Duel::~Duel() {
@@ -26,6 +28,15 @@ void Duel::onStateMounted(Device *PDN) {
     auto duelButtonPush = matchManager->getDuelButtonPush();
     PDN->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
     PDN->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+
+    if (chainContext_ && chainContext_->chainLength > 1) {
+        PDN->getSerialManager()->writeString("event:draw", SerialIdentifier::INPUT_JACK);
+        remoteDeviceCoordinator->registerSerialHandler("confirm:", SerialIdentifier::INPUT_JACK,
+            [this](const std::string& msg) {
+                int count = std::stoi(msg.substr(8));
+                chainContext_->confirmedSupporters = count;
+            });
+    }
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 
@@ -94,6 +105,10 @@ void Duel::onStateDismounted(Device *PDN) {
     } else if(transitionToDuelReceivedResultState) {
         PDN->getPrimaryButton()->removeButtonCallbacks();
         PDN->getSecondaryButton()->removeButtonCallbacks();
+    }
+
+    if (chainContext_) {
+        remoteDeviceCoordinator->unregisterSerialHandler("confirm:", SerialIdentifier::INPUT_JACK);
     }
 
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");

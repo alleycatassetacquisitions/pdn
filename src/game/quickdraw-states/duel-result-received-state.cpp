@@ -6,9 +6,10 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
+DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainContext* chainContext) : ConnectState(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
+    this->chainContext_ = chainContext;
 }
 
 DuelReceivedResult::~DuelReceivedResult() {

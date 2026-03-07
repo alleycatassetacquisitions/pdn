@@ -2,8 +2,11 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
+#include "device/serial-manager.hpp"
+#include <string>
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainContext* chainContext)
+    : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN), chainContext_(chainContext) {
     this->player = player;
     this->matchManager = matchManager;
 }
@@ -22,9 +25,6 @@ void DuelCountdown::onStateMounted(Device *PDN) {
 
     PDN->getLightManager()->startAnimation(countdownQueue[currentStepIndex].animationConfig);
 
-    countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
-    currentStepIndex++;
-
     PDN->getPrimaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
         matchManager, ButtonInteraction::CLICK);
@@ -35,10 +35,41 @@ void DuelCountdown::onStateMounted(Device *PDN) {
 
     PDN->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);
+
+    if (player->isHunter()) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+        if (peerMac != nullptr) {
+            matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+        }
+    }
+
+    bool isSolo = (chainContext_ == nullptr || chainContext_->chainLength <= 1);
+
+    if (!isSolo) {
+        remoteDeviceCoordinator->registerSerialHandler("confirm:", SerialIdentifier::INPUT_JACK,
+            [this](const std::string& msg) {
+                int count = std::stoi(msg.substr(8));
+                chainContext_->confirmedSupporters = count;
+            });
+    } else {
+        countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
+        currentStepIndex++;
+        countdownStarted_ = true;
+    }
 }
 
 
 void DuelCountdown::onStateLoop(Device *PDN) {
+    if (!countdownStarted_ && chainContext_ != nullptr &&
+        chainContext_->confirmedSupporters >= chainContext_->chainLength - 1) {
+        countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
+        currentStepIndex++;
+        countdownStarted_ = true;
+        PDN->getSerialManager()->writeString("event:countdown", SerialIdentifier::INPUT_JACK);
+    }
+
+    if (!countdownStarted_) return;
+
     countdownTimer.updateTime();
     hapticTimer.updateTime();
 
@@ -82,8 +113,11 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
         matchManager->clearCurrentMatch();
     }
 
+    remoteDeviceCoordinator->unregisterSerialHandler("confirm:", SerialIdentifier::INPUT_JACK);
+
     doBattle = false;
     currentStepIndex = 0;
+    countdownStarted_ = false;
     countdownTimer.invalidate();
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
@@ -103,4 +137,8 @@ bool DuelCountdown::isPrimaryRequired() {
 
 bool DuelCountdown::isAuxRequired() {
     return !player->isHunter();
+}
+
+bool DuelCountdown::countdownStarted() {
+    return countdownStarted_;
 }

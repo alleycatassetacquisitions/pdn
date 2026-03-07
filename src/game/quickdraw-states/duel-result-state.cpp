@@ -2,14 +2,18 @@
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
+#include "game/chain-boost.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/device.hpp"
+#include "device/serial-manager.hpp"
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT) {
+DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ChainContext* chainContext) : State(QuickdrawStateId::DUEL_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->chainContext_ = chainContext;
 }
 
 DuelResult::~DuelResult() {
@@ -22,9 +26,27 @@ DuelResult::~DuelResult() {
 void DuelResult::onStateMounted(Device *PDN) {
     LOG_I(DUEL_RESULT_TAG, "Duel result state mounted");
 
+    if (chainContext_) {
+        int boost = calculateBoost(chainContext_->confirmedSupporters);
+        if (boost > 0) {
+            Match* match = matchManager->getMatch();
+            if (match) {
+                if (player->isHunter()) {
+                    unsigned long t = match->getHunterDrawTime();
+                    match->setHunterDrawTime(t > (unsigned long)boost ? t - boost : 0);
+                } else {
+                    unsigned long t = match->getBountyDrawTime();
+                    match->setBountyDrawTime(t > (unsigned long)boost ? t - boost : 0);
+                }
+            }
+        }
+    }
+
     player->incrementMatchesPlayed();
 
-    if(matchManager->didWin()) {
+    bool didWin = matchManager->didWin();
+
+    if(didWin) {
         wonBattle = true;
         player->incrementWins();
         player->incrementStreak();
@@ -32,6 +54,11 @@ void DuelResult::onStateMounted(Device *PDN) {
         captured = true;
         player->resetStreak();
         player->incrementLosses();
+    }
+
+    if (chainContext_ && chainContext_->chainLength > 1) {
+        const char* resultEvent = didWin ? "event:win" : "event:loss";
+        PDN->getSerialManager()->writeString(resultEvent, SerialIdentifier::INPUT_JACK);
     }
 
     PDN->getHaptics()->setIntensity(0);

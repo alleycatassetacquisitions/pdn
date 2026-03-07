@@ -829,6 +829,26 @@ TEST_F(DuelCountdownTests, cleansUpOnDismount) {
     countdownCleansUpOnDismount(this);
 }
 
+TEST_F(DuelCountdownTests, chainSoloStartsImmediately) {
+    chainCountdownSoloStartsImmediately(this);
+}
+
+TEST_F(DuelCountdownTests, chainChampionWaitsForAllConfirmations) {
+    chainCountdownChampionWaitsForAllConfirmations(this);
+}
+
+TEST_F(DuelCountdownTests, chainChampionSendsEventCountdown) {
+    chainCountdownChampionSendsEventCountdown(this);
+}
+
+TEST_F(DuelCountdownTests, chainCollectsConfirmationsDuringCountdown) {
+    chainCountdownCollectsConfirmationsDuringCountdown(this);
+}
+
+TEST_F(DuelCountdownTests, chainNullContextStartsImmediately) {
+    chainCountdownNullContextStartsImmediately(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - DUEL SCENARIOS
 // ============================================
@@ -992,6 +1012,34 @@ TEST_F(StateCleanupTests, pushedClearsMatchOnDisconnect) {
 
 TEST_F(StateCleanupTests, receivedResultClearsMatchOnDisconnect) {
     receivedResultClearsMatchOnDisconnect(this);
+}
+
+// ============================================
+// CHAIN BOOST IN DUEL AND RESULT STATES TESTS
+// ============================================
+
+TEST_F(DuelStateTests, championSendsDrawEventOnMount) {
+    duelChampionSendsDrawEventOnMount(this);
+}
+
+TEST_F(DuelStateTests, soloPlayerSkipsDrawEvent) {
+    duelSoloPlayerSkipsDrawEvent(this);
+}
+
+TEST_F(DuelStateTests, championCollectsLateConfirmsDuringDuel) {
+    duelChampionCollectsLateConfirmsDuringDuel(this);
+}
+
+TEST_F(DuelResultTests, appliesBoostWin) {
+    duelResultAppliesBoostWin(this);
+}
+
+TEST_F(DuelResultTests, noBoostForSolo) {
+    duelResultNoBoostForSolo(this);
+}
+
+TEST_F(DuelResultTests, championSendsResultEvent) {
+    duelResultChampionSendsResultEvent(this);
 }
 
 // ============================================
