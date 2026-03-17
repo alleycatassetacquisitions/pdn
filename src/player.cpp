@@ -63,6 +63,7 @@ void Player::setIsHunter(bool isHunter)
 void Player::clearUserID()
 {
   id = "9998";
+  symbol.updateFromUserIdString(id);
 }
 
 bool Player::isHunter() const
@@ -156,6 +157,7 @@ void Player::setFaction(const std::string& faction)
 void Player::setUserID(char* newId)
 {
     id = std::string(newId);
+    symbol.updateFromUserIdString(id);
 }
 
 std::string Player::getUserID() const

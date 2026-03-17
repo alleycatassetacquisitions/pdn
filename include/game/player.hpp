@@ -12,6 +12,7 @@ enum class Allegiance {
     HELIX = 2,
     RESISTANCE = 3
 };
+
 class Player {
 public:
     Player() = default;
