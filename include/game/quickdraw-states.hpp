@@ -91,7 +91,6 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 6;
-    size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;

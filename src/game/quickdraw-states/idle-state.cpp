@@ -58,14 +58,6 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    // Auto-refresh when the posse count changes so the display stays
-    // current without requiring a button press.
-    size_t currentPosseCount = chainDuelManager->getSupporterChainPeers().size();
-    if (currentPosseCount != lastPosseCount) {
-        lastPosseCount = currentPosseCount;
-        displayIsDirty = true;
-    }
-
     if(displayIsDirty) {
         renderStats(PDN);
         displayIsDirty = false;
@@ -130,9 +122,8 @@ void Idle::renderStats(Device *PDN) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
     } else if(statsIndex == 6) {
-        size_t sc = chainDuelManager->getSupporterChainPeers().size();
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse",70, 20);
-        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(sc).c_str(), 88, 40);
+        int glyph_size = 32;
+        PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbolGlyph(), (int)(64 + (64 - glyph_size)/2), (int)(64 - (64 - glyph_size)/2));
     }
 
     PDN->getDisplay()->render();

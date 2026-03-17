@@ -12,7 +12,8 @@ enum class FontMode {
     NUMBER_GLYPH,
     LOADING_GLYPH,
     TEXT_INVERTED_SMALL,
-    TEXT_INVERTED_LARGE
+    TEXT_INVERTED_LARGE,
+    SYMBOL_GLYPH
 };
 
 class Display {

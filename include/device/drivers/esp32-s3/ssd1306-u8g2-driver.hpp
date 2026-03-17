@@ -116,6 +116,11 @@ public:
                 screen.setFontMode(1);
                 screen.setDrawColor(2);
                 break;
+            case FontMode::SYMBOL_GLYPH:
+                screen.setFont(u8g2_font_open_iconic_all_4x_t);
+                screen.setDrawColor(2);
+                screen.setFontMode(1);
+                break;
         }
         return this;
     }

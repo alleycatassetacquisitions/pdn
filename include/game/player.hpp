@@ -12,6 +12,12 @@ enum class Allegiance {
     RESISTANCE = 3
 };
 
+enum class Symbol {
+    SYMBOL_A = 0,
+    SYMBOL_B,
+    SYMBOL_C,
+    NUM_SYMBOLS,    // add new symbols above this line
+};
 class Player {
 public:
     Player() = default;
@@ -65,6 +71,10 @@ public:
 
     int getLosses();
 
+    Symbol getSymbol();
+
+    const char* getSymbolGlyph();
+
     void incrementStreak();
 
     void resetStreak();
@@ -78,6 +88,8 @@ public:
     void addReactionTime(unsigned long reactionTime);
 
 private:
+    void setSymbol();
+
     std::string id = "default";
     std::string name = "";
     std::string allegianceStr = "none";
@@ -96,6 +108,9 @@ private:
     unsigned long totalReactionTime = 0;
 
     Allegiance allegiance = Allegiance::RESISTANCE;
+
+    Symbol symbol;
+    char* symbolGlyph;
     
     bool hunter = true;
 };
