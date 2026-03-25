@@ -9,6 +9,7 @@
 enum class ButtonIdentifier {
     PRIMARY_BUTTON = 0,
     SECONDARY_BUTTON = 1,
+    TERTIARY_BUTTON = 2,
 };
 
 enum class ButtonInteraction {

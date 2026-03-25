@@ -46,9 +46,10 @@ WifiConfig* wifiConfig = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
-SSD1306U8G2Driver* displayDriver = nullptr;
+SSD1309U8G2Driver* displayDriver = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
+Esp32S31ButtonDriver* tertiaryButtonDriver = nullptr;
 WS2812BFastLEDDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
@@ -105,6 +106,7 @@ void setup() {
     displayDriver = new SSD1309U8G2Driver(DISPLAY_DRIVER_NAME);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
+    tertiaryButtonDriver = new Esp32S31ButtonDriver(TERTIARY_BUTTON_DRIVER_NAME, tertiaryButtonPin);
     lightDriver = new WS2812BFastLEDDriver(LIGHT_DRIVER_NAME);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
     serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME);
@@ -121,6 +123,7 @@ void setup() {
         {DISPLAY_DRIVER_NAME, displayDriver},
         {PRIMARY_BUTTON_DRIVER_NAME, primaryButtonDriver},
         {SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonDriver},
+        {TERTIARY_BUTTON_DRIVER_NAME, tertiaryButtonDriver},
         {LIGHT_DRIVER_NAME, lightDriver},
         {HAPTICS_DRIVER_NAME, hapticsDriver},
         {SERIAL_OUT_DRIVER_NAME, serialOutDriver},

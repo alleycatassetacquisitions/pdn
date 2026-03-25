@@ -13,6 +13,7 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     display = static_cast<DisplayDriverInterface*>(driverConfig[DISPLAY_DRIVER_NAME]);
     primary = static_cast<ButtonDriverInterface*>(driverConfig[PRIMARY_BUTTON_DRIVER_NAME]);
     secondary = static_cast<ButtonDriverInterface*>(driverConfig[SECONDARY_BUTTON_DRIVER_NAME]);
+    tertiary = static_cast<ButtonDriverInterface*>(driverConfig[TERTIARY_BUTTON_DRIVER_NAME]);
     LightStrip* lights = static_cast<LightDriverInterface*>(driverConfig[LIGHT_DRIVER_NAME]);
     haptics = static_cast<HapticsMotorDriverInterface*>(driverConfig[HAPTICS_DRIVER_NAME]);
     HWSerialWrapper* serialOut = static_cast<SerialDriverInterface*>(driverConfig[SERIAL_OUT_DRIVER_NAME]);
@@ -68,6 +69,9 @@ Button* PDN::getSecondaryButton() {
     return secondary;
 }
 
+Button* PDN::getTertiaryButton() {
+    return tertiary;
+}
 LightManager* PDN::getLightManager() {
     return lightManager;
 }

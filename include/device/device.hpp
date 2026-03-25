@@ -49,6 +49,7 @@ public:
     virtual Haptics* getHaptics() = 0;
     virtual Button* getPrimaryButton() = 0;
     virtual Button* getSecondaryButton() = 0;
+    virtual Button* getTertiaryButton() = 0;
     virtual LightManager* getLightManager() = 0;
     virtual HttpClientInterface* getHttpClient() = 0;
     virtual PeerCommsInterface* getPeerComms() = 0;

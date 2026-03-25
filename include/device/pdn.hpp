@@ -12,6 +12,7 @@
 const std::string DISPLAY_DRIVER_NAME = "display";
 const std::string PRIMARY_BUTTON_DRIVER_NAME = "primary_button";
 const std::string SECONDARY_BUTTON_DRIVER_NAME = "secondary_button";
+const std::string TERTIARY_BUTTON_DRIVER_NAME = "tertiary_button";
 const std::string LIGHT_DRIVER_NAME = "light";
 const std::string HAPTICS_DRIVER_NAME = "haptics";
 const std::string SERIAL_OUT_DRIVER_NAME = "serial_out";
@@ -43,6 +44,7 @@ public:
     Haptics* getHaptics() override;
     Button* getPrimaryButton() override;
     Button* getSecondaryButton() override;
+    Button* getTertiaryButton() override;
     LightManager* getLightManager() override;
     HttpClientInterface* getHttpClient() override;
     PeerCommsInterface* getPeerComms() override;
@@ -60,6 +62,7 @@ private:
     Haptics* haptics;
     Button* primary;
     Button* secondary;
+    Button* tertiary;
     LightStrip* pdnLights;
     LightManager* lightManager;
     SerialManager* serialManager;
