@@ -12,7 +12,7 @@
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
-#include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
+#include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 
 #include "utils/simple-timer.hpp"
@@ -102,7 +102,7 @@ void setup() {
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Now construct remaining drivers (safe to use logging and timers now)
-    displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME);
+    displayDriver = new SSD1309U8G2Driver(DISPLAY_DRIVER_NAME);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
     lightDriver = new WS2812BFastLEDDriver(LIGHT_DRIVER_NAME);
