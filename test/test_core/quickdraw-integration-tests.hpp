@@ -828,7 +828,7 @@ public:
 
 // Test: EXCHANGE_ID sent by output (OUTPUT) is routed to the input INPUT callback
 inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, 0, SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK);
     bool callbackFired = false;
 
     suite->inputHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
@@ -846,7 +846,7 @@ inline void handshakeCompleteBountyPerspective(HandshakeIntegrationTests* suite)
 
 // Test: EXCHANGE_ID sent by input (INPUT) is routed to the output OUTPUT callback
 inline void handshakeCompleteHunterPerspective(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, 0, SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK);
     bool callbackFired = false;
 
     suite->outputHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
@@ -935,7 +935,7 @@ inline void handshakeIgnoresUnexpectedCommands(HandshakeIntegrationTests* suite)
 
 // Test: Sender MAC is captured in the HandshakeCommand
 inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, 0, SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK);
     suite->inputHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
         receivedCmd = cmd;
     }, SerialIdentifier::INPUT_JACK);
@@ -948,7 +948,7 @@ inline void handshakeSetsOpponentMacAddress(HandshakeIntegrationTests* suite) {
 
 // Test: NOTIFY_DISCONNECT is routed correctly
 inline void handshakeMatchDataPropagatedCorrectly(HandshakeIntegrationTests* suite) {
-    HandshakeCommand receivedCmd(nullptr, -1, SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK);
+    HandshakeCommand receivedCmd(nullptr, -1, 0, SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK);
     suite->inputHWM.setPacketReceivedCallback([&](HandshakeCommand cmd) {
         receivedCmd = cmd;
     }, SerialIdentifier::INPUT_JACK);

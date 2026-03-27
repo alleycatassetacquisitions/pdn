@@ -18,6 +18,7 @@ inline Peer makeTestPeer(const uint8_t* mac, SerialIdentifier sid) {
     Peer p;
     std::copy(mac, mac + 6, p.macAddr.begin());
     p.sid = sid;
+    p.deviceType = DeviceType::PDN;
     return p;
 }
 
@@ -85,13 +86,13 @@ inline void hwmClearCallbacksRemovesAll(HWMUnitTests* suite) {
     suite->hwm.clearCallbacks();
 
     // Deliver a packet targeting INPUT_JACK (sent from OUTPUT_JACK)
-    struct RawPacket { int jack; int command; } __attribute__((packed));
+    struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
     uint8_t dummyMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
-    RawPacket pkt{ static_cast<int>(SerialIdentifier::OUTPUT_JACK), HSCommand::EXCHANGE_ID };
+    RawPacket pkt{ static_cast<int>(SerialIdentifier::OUTPUT_JACK), static_cast<int>(SerialIdentifier::INPUT_JACK), 0, HSCommand::EXCHANGE_ID };
     suite->hwm.processHandshakeCommand(dummyMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 
-    RawPacket pkt2{ static_cast<int>(SerialIdentifier::INPUT_JACK), HSCommand::EXCHANGE_ID };
+    RawPacket pkt2{ static_cast<int>(SerialIdentifier::INPUT_JACK), static_cast<int>(SerialIdentifier::OUTPUT_JACK), 0, HSCommand::EXCHANGE_ID };
     suite->hwm.processHandshakeCommand(dummyMac, reinterpret_cast<const uint8_t*>(&pkt2), sizeof(pkt2));
 
     EXPECT_FALSE(inputFired);
@@ -102,8 +103,8 @@ inline void hwmProcessRejectsNegativeCommand(HWMUnitTests* suite) {
     bool callbackFired = false;
     suite->hwm.setPacketReceivedCallback([&](HandshakeCommand) { callbackFired = true; }, SerialIdentifier::INPUT_JACK);
 
-    struct RawPacket { int jack; int command; } __attribute__((packed));
-    RawPacket pkt{ static_cast<int>(SerialIdentifier::OUTPUT_JACK), -1 };
+    struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
+    RawPacket pkt{ static_cast<int>(SerialIdentifier::OUTPUT_JACK), static_cast<int>(SerialIdentifier::INPUT_JACK), 0, -1 };
     uint8_t dummyMac[6] = {};
 
     int result = suite->hwm.processHandshakeCommand(dummyMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
@@ -137,11 +138,11 @@ public:
         delete fakeClock;
     }
 
-    void deliverPacketViaRDC(int command, SerialIdentifier senderJack) {
+    void deliverPacketViaRDC(int command, SerialIdentifier senderJack, int deviceType = 0) {
         SerialIdentifier receivingJack = (senderJack == SerialIdentifier::OUTPUT_JACK)
             ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
-        struct RawPacket { int sendingJack; int receivingJack; int command; } __attribute__((packed));
-        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), command };
+        struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
+        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), deviceType, command };
         uint8_t dummyMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
         ASSERT_NE(capturedHandler, nullptr);
@@ -163,7 +164,7 @@ inline void rdcBothPortsDisconnectedOnInit(RDCTests* suite) {
 
 inline void rdcOutputPortConnectingAfterMacReceived(RDCTests* suite) {
     // Simulate the foreign INPUT side sending its MAC over the output jack serial line
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
 
     // Sync to process the transition from OutputIdle -> OutputSendId
     suite->rdc.sync(&suite->device);
@@ -173,7 +174,7 @@ inline void rdcOutputPortConnectingAfterMacReceived(RDCTests* suite) {
 
 inline void rdcOutputPortConnectedAfterHandshakeComplete(RDCTests* suite) {
     // Step 1: Output receives MAC over serial -> transitions to OutputSendId
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
 
@@ -195,7 +196,7 @@ inline void rdcPortStateReturnsEmptyPeersWhenDisconnected(RDCTests* suite) {
 }
 
 inline void rdcPortStateReturnsPeerWhenConnecting(RDCTests* suite) {
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
 
     PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
@@ -207,7 +208,7 @@ inline void rdcPortStateReturnsPeerWhenConnecting(RDCTests* suite) {
 
 inline void rdcInputPortDisconnectedIndependentOfOutputPort(RDCTests* suite) {
     // Move output port to CONNECTING
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
 
     // Input port should remain unaffected
@@ -226,7 +227,7 @@ inline void rdcGetPeerMacReturnsNullWhenDisconnected(RDCTests* suite) {
 }
 
 inline void rdcGetPeerMacReturnsMacWhenConnecting(RDCTests* suite) {
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
 
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
@@ -239,7 +240,7 @@ inline void rdcGetPeerMacReturnsMacWhenConnecting(RDCTests* suite) {
 
 inline void rdcGetPeerMacReturnsMacWhenConnected(RDCTests* suite) {
     // Complete the full handshake to reach CONNECTED
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
     suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
     suite->rdc.sync(&suite->device);
@@ -254,9 +255,27 @@ inline void rdcGetPeerMacReturnsMacWhenConnected(RDCTests* suite) {
     EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
 }
 
+// ============================================
+// getPeerDeviceType Tests
+// ============================================
+
+inline void rdcGetPeerDeviceTypeReturnsUnknownWhenDisconnected(RDCTests* suite) {
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::INPUT_JACK), DeviceType::UNKNOWN);
+}
+
+inline void rdcGetPeerDeviceTypeReturnsPDNAfterMacReceived(RDCTests* suite) {
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::INPUT_JACK), DeviceType::UNKNOWN);
+}
+
 inline void rdcConnectedPortDisconnectsOnHeartbeatTimeout(RDCTests* suite) {
     // Complete the output-port handshake
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
     suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
     suite->rdc.sync(&suite->device);

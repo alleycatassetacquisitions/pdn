@@ -168,9 +168,22 @@ public:
         return PortStatus::DISCONNECTED;
     }
 
+    void setPeerDeviceType(SerialIdentifier id, DeviceType type) {
+        if (id == SerialIdentifier::OUTPUT_JACK) outputDeviceType = type;
+        else if (id == SerialIdentifier::INPUT_JACK) inputDeviceType = type;
+    }
+
+    DeviceType getPeerDeviceType(SerialIdentifier id) const override {
+        if (id == SerialIdentifier::OUTPUT_JACK) return outputDeviceType;
+        if (id == SerialIdentifier::INPUT_JACK) return inputDeviceType;
+        return DeviceType::UNKNOWN;
+    }
+
 private:
     PortStatus outputStatus = PortStatus::DISCONNECTED;
     PortStatus inputStatus = PortStatus::DISCONNECTED;
+    DeviceType outputDeviceType = DeviceType::UNKNOWN;
+    DeviceType inputDeviceType = DeviceType::UNKNOWN;
 };
 
 // Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
@@ -254,6 +267,7 @@ public:
     MOCK_METHOD(int, begin, (), (override));
     MOCK_METHOD(void, setDeviceId, (const std::string&), (override));
     MOCK_METHOD(std::string, getDeviceId, (), (override));
+    DeviceType getDeviceType() override { return DeviceType::PDN; }
 
     // Getters return mock instances
     Display* getDisplay() override { return mockDisplay; }

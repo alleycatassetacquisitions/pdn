@@ -13,6 +13,10 @@ public:
         remoteDeviceCoordinator = nullptr;
     }
 
+    const DeviceType getPeerDeviceType(SerialIdentifier port) const {
+        return remoteDeviceCoordinator->getPeerDeviceType(port);
+    }
+
     bool isConnected() {
         return (isPrimaryRequired() && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) == PortStatus::CONNECTED) ||
                (isAuxRequired() && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::CONNECTED);

@@ -12,6 +12,7 @@
 #include "wireless-manager.hpp"
 #include "state/state-types.hpp"
 #include <map>
+#include "device-type.hpp"
 
 class StateMachine;
 
@@ -41,6 +42,8 @@ public:
     virtual void setDeviceId(const std::string& deviceId) = 0;
 
     virtual std::string getDeviceId() = 0;
+
+    virtual DeviceType getDeviceType() = 0;
 
     virtual Display* getDisplay() = 0;
     virtual Haptics* getHaptics() = 0;

@@ -1202,6 +1202,14 @@ TEST_F(RDCTests, getPeerMacReturnsMacWhenConnected) {
     rdcGetPeerMacReturnsMacWhenConnected(this);
 }
 
+TEST_F(RDCTests, getPeerDeviceTypeReturnsUnknownWhenDisconnected) {
+    rdcGetPeerDeviceTypeReturnsUnknownWhenDisconnected(this);
+}
+
+TEST_F(RDCTests, getPeerDeviceTypeReturnsPDNAfterMacReceived) {
+    rdcGetPeerDeviceTypeReturnsPDNAfterMacReceived(this);
+}
+
 // ============================================
 // MAIN
 // ============================================
