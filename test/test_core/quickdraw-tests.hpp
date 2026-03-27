@@ -28,6 +28,7 @@ inline Peer makeHSPeer(const uint8_t* mac, SerialIdentifier sid) {
     Peer p;
     std::copy(mac, mac + 6, p.macAddr.begin());
     p.sid = sid;
+    p.deviceType = DeviceType::PDN;
     return p;
 }
 
@@ -185,11 +186,11 @@ public:
 
     // Simulate a remote device sending a HandshakePacket to this device.
     // receivingJack is the opposite of the sender's jack (packets always travel OUTPUT<->INPUT).
-    void deliverPacket(int command, SerialIdentifier senderJack) {
+    void deliverPacket(int command, SerialIdentifier senderJack, int deviceType = 0) {
         SerialIdentifier receivingJack = (senderJack == SerialIdentifier::OUTPUT_JACK)
             ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
-        struct RawPacket { int sendingJack; int receivingJack; int command; } __attribute__((packed));
-        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), command };
+        struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
+        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), deviceType, command };
         uint8_t dummyMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         handshakeWirelessManager.processHandshakeCommand(dummyMac,
             reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
@@ -207,8 +208,8 @@ inline void outputIdleTransitionsOnMacReceived(HandshakeStateTests* suite) {
 
     EXPECT_FALSE(idleState.transitionToOutputSendId());
 
-    // Simulate INPUT side sending "SEND_MAC:AA:BB:CC:DD:EE:FF" over the output jack serial
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    // Simulate INPUT side sending its MAC+port+deviceType over the output jack serial
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
 
     EXPECT_TRUE(idleState.transitionToOutputSendId());
 
@@ -345,7 +346,7 @@ inline void handshakeAppOutputJackTimeoutResetsToIdle(HandshakeStateTests* suite
     handshakeApp.onStateMounted(&suite->device);
 
     // Advance into PrimarySendId by delivering a MAC string over the output serial
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF");
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     handshakeApp.onStateLoop(&suite->device);
 
     // Handshake timeout not yet reached
@@ -1388,6 +1389,7 @@ public:
         Peer peer;
         std::copy(std::begin(mac), std::end(mac), peer.macAddr.begin());
         peer.sid = SerialIdentifier::OUTPUT_JACK;
+        peer.deviceType = DeviceType::PDN;
         hwm.setMacPeer(SerialIdentifier::OUTPUT_JACK, peer);
     }
 

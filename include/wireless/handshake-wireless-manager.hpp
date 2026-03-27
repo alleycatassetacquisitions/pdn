@@ -13,6 +13,7 @@
 #include "mac-functions.hpp"
 #include "device/wireless-manager.hpp"
 #include "device/serial-manager.hpp"
+#include "device/device-type.hpp"
 
 enum HSCommand {
     EXCHANGE_ID = 0,
@@ -24,19 +25,21 @@ enum HSCommand {
 struct Peer {
     std::array<uint8_t, 6> macAddr;
     SerialIdentifier sid;
+    DeviceType deviceType;
 };
 
 struct HandshakeCommand {
     uint8_t wifiMacAddr[6];
     bool wifiMacAddrValid;
+    int deviceType;
     int command;
     SerialIdentifier sendingJack;
     SerialIdentifier receivingJack;
 
     HandshakeCommand() = delete;
 
-    HandshakeCommand(const uint8_t* macAddress, int command, SerialIdentifier sendingJack, SerialIdentifier receivingJack)
-        : wifiMacAddrValid(macAddress != nullptr), command(command), sendingJack(sendingJack), receivingJack(receivingJack) {
+    HandshakeCommand(const uint8_t* macAddress, int command, int deviceType, SerialIdentifier sendingJack, SerialIdentifier receivingJack)
+        : wifiMacAddrValid(macAddress != nullptr), deviceType(deviceType), command(command), sendingJack(sendingJack), receivingJack(receivingJack) {
         if (macAddress) {
             memcpy(wifiMacAddr, macAddress, 6);
         } else {

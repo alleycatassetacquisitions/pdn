@@ -37,6 +37,7 @@ public:
     void setDeviceId(const std::string& deviceId) override;
 
     std::string getDeviceId() override;
+    DeviceType getDeviceType() override;
 
     Display* getDisplay() override;
     Haptics* getHaptics() override;

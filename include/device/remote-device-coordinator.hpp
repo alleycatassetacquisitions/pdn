@@ -6,6 +6,7 @@
 #include "device/serial-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
+#include "device/device-type.hpp"
 
 class Device;
 class HandshakeApp;
@@ -51,6 +52,8 @@ public:
      * Prefer this over getPortState() when only the MAC address is needed.
      */
     const uint8_t* getPeerMac(SerialIdentifier port) const;
+
+    virtual DeviceType getPeerDeviceType(SerialIdentifier port) const;
 
 private:
     void notifyDisconnect();

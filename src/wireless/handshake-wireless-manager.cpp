@@ -8,14 +8,9 @@
 struct HandshakePacket {
     int sendingJack;
     int receicingJack;
+    int deviceType;
     int command;
 } __attribute__((packed));
-
-// Packets always travel OUTPUT<->INPUT, so the receiving port is always
-// the opposite of the sending port.
-static SerialIdentifier invertJack(SerialIdentifier jack) {
-    return jack == SerialIdentifier::OUTPUT_JACK ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
-}
 
 HandshakeWirelessManager::HandshakeWirelessManager() {}
 
@@ -93,7 +88,7 @@ int HandshakeWirelessManager::processHandshakeCommand(const uint8_t* macAddress,
 
     SerialIdentifier sendingJack = static_cast<SerialIdentifier>(packet->sendingJack);
     SerialIdentifier receivingJack = static_cast<SerialIdentifier>(packet->receicingJack);
-    HandshakeCommand command(macAddress, packet->command, sendingJack, receivingJack);
+    HandshakeCommand command(macAddress, packet->command, packet->deviceType, sendingJack, receivingJack);
 
     auto it = callbacks.find(receivingJack);
     if (it != callbacks.end() && it->second) {

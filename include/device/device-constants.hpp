@@ -45,6 +45,8 @@ const std::string YOU_DEFEATED_ME = "ydm";
 const std::string SERIAL_HEARTBEAT = "hb";
 
 const std::string SEND_MAC_ADDRESS = "smac";
+const char PORT_SEPARATOR = '#';
+const char DEVICE_TYPE_SEPARATOR = 't';
 
 constexpr char STRING_TERM = '\r';
 constexpr char STRING_START = '*';

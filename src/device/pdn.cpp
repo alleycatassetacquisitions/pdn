@@ -40,6 +40,10 @@ std::string PDN::getDeviceId() {
     return deviceId;
 }
 
+DeviceType PDN::getDeviceType() {
+    return DeviceType::PDN;
+}
+
 void PDN::loop() {
     Device::loop();
     lightManager->loop();

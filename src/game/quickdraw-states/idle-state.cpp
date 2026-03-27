@@ -57,12 +57,14 @@ void Idle::onStateLoop(Device *PDN) {
         displayIsDirty = false;
     }
 
-    if (isConnected() && player->isHunter() && !matchInitialized) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
-        if (peerMac != nullptr) {
-            matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
-            matchInitialized = true;
-            matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+    if (isConnected() && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN && player->isHunter()) {
+        if (!matchInitialized) {
+            const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+            if (peerMac != nullptr) {
+                matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+                matchInitialized = true;
+                matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+            }
         }
     }
 
