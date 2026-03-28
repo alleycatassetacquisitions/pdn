@@ -4,19 +4,13 @@
 #include <string>
 #include <iostream>
 #include <cstdint>
+#include "symbol-match/symbol-manager.hpp"
 
 enum class Allegiance {
     ALLEYCAT = 0,
     ENDLINE = 1,
     HELIX = 2,
     RESISTANCE = 3
-};
-
-enum class Symbol {
-    SYMBOL_A = 0,
-    SYMBOL_B,
-    SYMBOL_C,
-    NUM_SYMBOLS,    // add new symbols above this line
 };
 class Player {
 public:
