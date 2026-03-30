@@ -3,11 +3,8 @@
 
 enum class LightIdentifier {
     GLOBAL = 0,
-    DISPLAY_LIGHTS = 1,
-    GRIP_LIGHTS = 2,
-    TRANSMIT_LIGHT = 3,
-    LEFT_LIGHTS = 4,
-    RIGHT_LIGHTS = 5
+    RECESS_LIGHTS = 1,
+    FIN_LIGHTS = 2,
 };
 
 struct LEDColor {
@@ -18,7 +15,7 @@ struct LEDColor {
     constexpr LEDColor(uint8_t r = 0, uint8_t g = 0, uint8_t b = 0) : red(r), green(g), blue(b) {}
 };
 
-// New struct to represent the state of all LEDs
+// Struct to represent the state of all LEDs
 struct LEDState {
     struct SingleLEDState {
         LEDColor color;
@@ -27,38 +24,31 @@ struct LEDState {
         SingleLEDState(LEDColor c, uint8_t b) : color(c), brightness(b) {}
     };
 
-    SingleLEDState leftLights[9];   // 9 LEDs for left side (0-8)
-    SingleLEDState rightLights[9];  // 9 LEDs for right side (0-8)
-    SingleLEDState transmitLight;   // The transmit LED
-    uint32_t timestamp;            // When this state was generated
+    SingleLEDState recessLights[23]; // 23 LEDs for recess strip (0-22)
+    SingleLEDState finLights[9];     // 9 LEDs for fin strip (0-8)
+    uint32_t timestamp;              // When this state was generated
 
     LEDState() : timestamp(0) {}
-    
-    // Helper to set a single LED in the state
-    void setLED(bool isLeft, uint8_t index, const LEDColor& color, uint8_t brightness) {
+
+    void setRecessLight(uint8_t index, const LEDColor& color, uint8_t brightness) {
+        if (index >= 23) return;
+        recessLights[index].color = color;
+        recessLights[index].brightness = brightness;
+    }
+
+    void setFinLight(uint8_t index, const LEDColor& color, uint8_t brightness) {
         if (index >= 9) return;
-        
-        SingleLEDState& led = isLeft ? 
-            leftLights[index] : 
-            rightLights[index];
-            
-        led.color = color;
-        led.brightness = brightness;
+        finLights[index].color = color;
+        finLights[index].brightness = brightness;
     }
 
-    // Helper to set both left and right LEDs
-    void setLEDPair(uint8_t index, const LEDColor& color, uint8_t brightness) {
-        setLED(true, index, color, brightness);
-        setLED(false, index, color, brightness);
-    }
-
-    // Helper to clear all LEDs
     void clear() {
-        for (uint8_t i = 0; i < 9; i++) {
-            leftLights[i] = SingleLEDState();
-            rightLights[i] = SingleLEDState();
+        for (uint8_t i = 0; i < 23; i++) {
+            recessLights[i] = SingleLEDState();
         }
-        transmitLight = SingleLEDState();
+        for (uint8_t i = 0; i < 9; i++) {
+            finLights[i] = SingleLEDState();
+        }
     }
 };
 

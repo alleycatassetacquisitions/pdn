@@ -60,16 +60,17 @@ void PlayerRegistrationState::onStateMounted(Device *PDN) {
     }, this, ButtonInteraction::CLICK);
 
     LOG_I(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
-    if(matchManager->getStoredMatchCount() > 0) {
-        LOG_I(TAG, "Starting transmit breath animation");
-        AnimationConfig config;
-        config.type = AnimationType::TRANSMIT_BREATH;
-        config.loop = true;
-        config.speed = 25;
-        config.initialState = LEDState();
-        config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-        PDN->getLightManager()->startAnimation(config);
+
+    AnimationConfig config;
+    config.type = AnimationType::IDLE;
+    config.loop = true;
+    config.speed = 100;
+    LEDState initialState;
+    for (uint8_t i = 0; i < 9; i++) {
+        initialState.setFinLight(i, LEDColor(0, 0, 255), 255);
     }
+    config.initialState = initialState;
+    PDN->getLightManager()->startAnimation(config);
 }
 
 void PlayerRegistrationState::onStateLoop(Device *PDN) {

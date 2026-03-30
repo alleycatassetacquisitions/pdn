@@ -62,13 +62,13 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
 
     attemptUpload();
 
-    AnimationConfig config;
-    config.type = AnimationType::TRANSMIT_BREATH;
-    config.loop = true;
-    config.speed = 10;
-    config.initialState = LEDState();
-    config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-    PDN->getLightManager()->startAnimation(config);
+    // AnimationConfig config;
+    // config.type = AnimationType::TRANSMIT_BREATH;
+    // config.loop = true;
+    // config.speed = 10;
+    // config.initialState = LEDState();
+    // config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
+    // PDN->getLightManager()->startAnimation(config);
 }
 
 void UploadMatchesState::onStateLoop(Device *PDN) {

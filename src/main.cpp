@@ -161,8 +161,7 @@ void setup() {
     
     pdn->getDisplay()->
     invalidateScreen()->
-        drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
-        drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
+        drawImage(glassesImage)->
         render();
     delay(3000);
 

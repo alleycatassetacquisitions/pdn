@@ -21,24 +21,24 @@ void Idle::onStateMounted(Device *PDN) {
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
 
-    AnimationConfig config;
+    // AnimationConfig config;
     
-    if(player->isHunter()) {
-        config.type = AnimationType::IDLE;
-        config.speed = 16;
-        config.curve = EaseCurve::LINEAR;
-        config.initialState = HUNTER_IDLE_STATE_ALTERNATE;
-        config.loopDelayMs = 0;
-        config.loop = true;
-    } else {
-        config.type = AnimationType::VERTICAL_CHASE;
-        config.speed = 5;
-        config.curve = EaseCurve::ELASTIC;
-        config.initialState = BOUNTY_IDLE_STATE;
-        config.loopDelayMs = 1500;
-        config.loop = true;
-    }
-    PDN->getLightManager()->startAnimation(config);
+    // if(player->isHunter()) {
+    //     config.type = AnimationType::IDLE;
+    //     config.speed = 16;
+    //     config.curve = EaseCurve::LINEAR;
+    //     config.initialState = HUNTER_IDLE_STATE_ALTERNATE;
+    //     config.loopDelayMs = 0;
+    //     config.loop = true;
+    // } else {
+    //     config.type = AnimationType::VERTICAL_CHASE;
+    //     config.speed = 5;
+    //     config.curve = EaseCurve::ELASTIC;
+    //     config.initialState = BOUNTY_IDLE_STATE;
+    //     config.loopDelayMs = 1500;
+    //     config.loop = true;
+    // }
+    // PDN->getLightManager()->startAnimation(config);
 
     parameterizedCallbackFunction cycleStats = [](void *ctx) {
         Idle* idle = (Idle*)ctx;

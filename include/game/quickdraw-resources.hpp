@@ -12,6 +12,8 @@
 
 typedef std::map<ImageType, Image> ImageCollection;
 
+const Image glassesImage = Image(image_glasses, 128, 64, 0, 0);
+
 const ImageCollection alleycatImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},
@@ -158,71 +160,71 @@ const LEDColor bountyIdleLEDColorsAlternate[9] = {
 };
 
 
-const LEDState HUNTER_IDLE_STATE = [](){
-    LEDState state;
-    // Initialize with default values (all black)
-    for (int i = 0; i < 9; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-    }
-    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+// const LEDState HUNTER_IDLE_STATE = [](){
+//     LEDState state;
+//     // Initialize with default values (all black)
+//     for (int i = 0; i < 9; i++) {
+//         state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+//         state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+//     }
+//     state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
     
-    // Set the first 4 LEDs with hunter colors at full brightness
-    for (int i = 0; i < 4; i++) {
-        if (i < 4) {
-            state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
-            state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
-        }
-    }
+//     // Set the first 4 LEDs with hunter colors at full brightness
+//     for (int i = 0; i < 4; i++) {
+//         if (i < 4) {
+//             state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
+//             state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColors[i], 255);
+//         }
+//     }
     
-    return state;
-}();
+//     return state;
+// }();
 
-const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
-    LEDState state;
+// const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
+//     LEDState state;
     
-    // Set the first 4 LEDs with hunter colors at full brightness
-    for (int i = 0; i < 9; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
-        state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
-    }
+//     // Set the first 4 LEDs with hunter colors at full brightness
+//     for (int i = 0; i < 9; i++) {
+//         state.leftLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
+//         state.rightLights[i] = LEDState::SingleLEDState(hunterIdleLEDColorsAlternate[i], 65);
+//     }
     
-    return state;
-}();
+//     return state;
+// }();
 
-// Bounty idle LED state - red/orange gradient
-const LEDState BOUNTY_IDLE_STATE = [](){
-    LEDState state;
-    // Initialize with default values (all black)
-    for (int i = 0; i < 9; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
-    }
-    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+// // Bounty idle LED state - red/orange gradient
+// const LEDState BOUNTY_IDLE_STATE = [](){
+//     LEDState state;
+//     // Initialize with default values (all black)
+//     for (int i = 0; i < 9; i++) {
+//         state.leftLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+//         state.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+//     }
+//     state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
     
-    // Set the first 4 LEDs with bounty colors at full brightness
-    for (int i = 0; i < 4; i++) {
-        if (i < 4) {
-            state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
-            state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
-        }
-    }
+//     // Set the first 4 LEDs with bounty colors at full brightness
+//     for (int i = 0; i < 4; i++) {
+//         if (i < 4) {
+//             state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
+//             state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColors[i], 255);
+//         }
+//     }
     
-    return state;
-}();
+//     return state;
+// }();
 
-const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
-    LEDState state;
+// const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
+//     LEDState state;
     
-    state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
+//     state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
     
-    for (int i = 0; i < 9; i++) { 
-        state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColorsAlternate[i], 65);
-        state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColorsAlternate[i], 65);
-    }
+//     for (int i = 0; i < 9; i++) { 
+//         state.leftLights[i] = LEDState::SingleLEDState(bountyIdleLEDColorsAlternate[i], 65);
+//         state.rightLights[i] = LEDState::SingleLEDState(bountyIdleLEDColorsAlternate[i], 65);
+//     }
     
-    return state;
-}();
+//     return state;
+// }();
 
 // Pre-calculated curve values for smooth transitions (0-255)
 
@@ -352,8 +354,8 @@ static const LEDState COUNTDOWN_THREE_STATE = LEDState();
 static const LEDState COUNTDOWN_TWO_STATE = [](){
     LEDState state;
     for(int i = 3; i < 5; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        // state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        // state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
     }
     return state;
 }();
@@ -361,8 +363,8 @@ static const LEDState COUNTDOWN_TWO_STATE = [](){
 static const LEDState COUNTDOWN_ONE_STATE = [](){
     LEDState state;
     for(int i = 3; i < 7; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        // state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        // state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
     }
     return state;
 }();
@@ -370,8 +372,8 @@ static const LEDState COUNTDOWN_ONE_STATE = [](){
 static const LEDState COUNTDOWN_DUEL_STATE = [](){
     LEDState state;
     for(int i = 3; i < 9; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        // state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
+        // state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
     }
     return state;
 }();

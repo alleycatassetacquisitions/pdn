@@ -8,13 +8,14 @@ constexpr uint8_t ESPNOW_CHANNEL = 6;
 
 constexpr uint8_t primaryButtonPin = 15;
 constexpr uint8_t secondaryButtonPin = 16;
+constexpr uint8_t tertiaryButtonPin = 6;
 constexpr uint8_t motorPin = 17;
 constexpr uint8_t RXr = 41;
 constexpr uint8_t RXt = 40;
 constexpr uint8_t TXt = 39; //MIDDLE BAND ON AUDIO CABLE
 constexpr uint8_t TXr = 38; //TIP OF AUDIO CABLE
-constexpr uint8_t displayLightsPin = 13;
-constexpr uint8_t gripLightsPin = 21;
+constexpr uint8_t recessLightsPin = 13;
+constexpr uint8_t finLightsPin = 21;
 constexpr uint8_t displayCS = 10;
 constexpr uint8_t displayDC = 9;
 constexpr uint8_t displayRST = 14;
@@ -25,8 +26,8 @@ constexpr uint8_t VIBRATION_OFF = 0;
 constexpr uint8_t BRIGHTNESS_MAX = 255;
 constexpr uint8_t BRIGHTNESS_OFF = 0;
 
-constexpr uint8_t numDisplayLights = 13;
-constexpr uint8_t numGripLights = 6;
+constexpr uint8_t numRecessLights = 23;
+constexpr uint8_t numFinLights = 9;
 
 constexpr uint16_t BAUDRATE = 19200;
 

@@ -1,18 +1,18 @@
 #include "device/light-manager.hpp"
 #include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
-#include "device/animation/idle-animation.hpp"
-#include "device/animation/countdown-animation.hpp"
-#include "device/animation/vertical-chase-animation.hpp"
-#include "device/animation/transmit-breath-animation.hpp"
-#include "device/animation/hunter-win-animation.hpp"
-#include "device/animation/bounty-win-animation.hpp"
-#include "device/animation/lose-animation.hpp"
+#include "device/idle-animation.hpp"
+#include "device/countdown-animation.hpp"
+#include "device/vertical-chase-animation.hpp"
+#include "device/transmit-breath-animation.hpp"
+#include "device/hunter-win-animation.hpp"
+#include "device/bounty-win-animation.hpp"
+#include "device/lose-animation.hpp"
 #include <algorithm> // For std::min
 
 static const char* TAG = "LightManager";
 
 LightManager::LightManager(LightStrip& pdnLights)
-    : pdnLights(pdnLights)
+    : lights(pdnLights)
     , currentAnimation(nullptr) {
 }
 
@@ -100,7 +100,7 @@ void LightManager::clear() {
 }
 
 void LightManager::setGlobalBrightness(uint8_t brightness) {
-    pdnLights.setGlobalBrightness(brightness);
+    lights.setGlobalBrightness(brightness);
 }
 
 bool LightManager::isAnimating() const {
@@ -119,45 +119,27 @@ AnimationType LightManager::getCurrentAnimation() const {
     return currentAnimation ? currentAnimation->getType() : AnimationType::IDLE;
 }
 
-void LightManager::mapStateToGripLights(const LEDState& state) {
-    // Map the LEDState to the grip lights array according to the pattern
-    gripLightArray[0] = state.leftLights[2];
-    gripLightArray[1] = state.leftLights[1];
-    gripLightArray[2] = state.leftLights[0];
-    gripLightArray[3] = state.rightLights[0];
-    gripLightArray[4] = state.rightLights[1];
-    gripLightArray[5] = state.rightLights[2];
+void LightManager::mapStateToRecessLights(const LEDState& state) {
+    for (int i = 0; i < 23; i++) {
+        recessLightArray[i] = state.recessLights[i];
+    }
 }
 
-void LightManager::mapStateToDisplayLights(const LEDState& state) {
-    // Map the LEDState to the display lights array according to the pattern
-    displayLightArray[0] = state.leftLights[3];
-    displayLightArray[1] = state.leftLights[4];
-    displayLightArray[2] = state.leftLights[5];
-    displayLightArray[3] = state.leftLights[6];
-    displayLightArray[4] = state.leftLights[7];
-    displayLightArray[5] = state.leftLights[8];
-    displayLightArray[6] = state.rightLights[8];
-    displayLightArray[7] = state.rightLights[7];
-    displayLightArray[8] = state.rightLights[6];
-    displayLightArray[9] = state.rightLights[5];
-    displayLightArray[10] = state.rightLights[4];
-    displayLightArray[11] = state.rightLights[3];
-    displayLightArray[12] = state.transmitLight;
+void LightManager::mapStateToFinLights(const LEDState& state) {
+    for (int i = 0; i < 9; i++) {
+        finLightArray[i] = state.finLights[i];
+    }
 }
 
 void LightManager::applyLEDState(const LEDState& state) {
-    // Extract the grip and display lights from the LEDState
-    mapStateToGripLights(state);
-    mapStateToDisplayLights(state);
+    mapStateToRecessLights(state);
+    mapStateToFinLights(state);
     
-    // Apply the grip lights
-    for (int i = 0; i < 6; i++) {
-        this->pdnLights.setLight(LightIdentifier::GRIP_LIGHTS, i, gripLightArray[i]);
+    for (int i = 0; i < 23; i++) {
+        lights.setLight(LightIdentifier::RECESS_LIGHTS, i, recessLightArray[i]);
     }
     
-    // Apply the display lights
-    for (int i = 0; i < 13; i++) {
-        this->pdnLights.setLight(LightIdentifier::DISPLAY_LIGHTS, i, displayLightArray[i]);
+    for (int i = 0; i < 9; i++) {
+        lights.setLight(LightIdentifier::FIN_LIGHTS, i, finLightArray[i]);
     }
 }

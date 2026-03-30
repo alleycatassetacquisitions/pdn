@@ -47,16 +47,16 @@ protected:
             frameTimer_.setTimer(20);
         }
         
-        // Initialize color from config
-        if (config_.initialState.transmitLight.color.red == 0 &&
-            config_.initialState.transmitLight.color.green == 0 &&
-            config_.initialState.transmitLight.color.blue == 0) {
-            // Default to white if no color specified
-            ledColor_ = LEDColor(255, 255, 255);
-        } else {
-            // Use the color from the initial state
-            ledColor_ = config_.initialState.transmitLight.color;
-        }
+        // // Initialize color from config
+        // if (config_.initialState.transmitLight.color.red == 0 &&
+        //     config_.initialState.transmitLight.color.green == 0 &&
+        //     config_.initialState.transmitLight.color.blue == 0) {
+        //     // Default to white if no color specified
+        //     ledColor_ = LEDColor(255, 255, 255);
+        // } else {
+        //     // Use the color from the initial state
+        //     ledColor_ = config_.initialState.transmitLight.color;
+        // }
         
         // Start with clear state
         currentState_ = config_.initialState;
@@ -65,30 +65,30 @@ protected:
 
     LEDState onAnimate() override {
         // Update breathing progress based on direction
-        if (breathingUp_) {
-            breathProgress_ += 2; // Adjust for desired speed
-            if (breathProgress_ >= 255) {
-                breathProgress_ = 255;
-                breathingUp_ = false;
-            }
-        } else {
-            breathProgress_ -= 2; // Adjust for desired speed
-            if (breathProgress_ <= 0) {
-                breathProgress_ = 0;
-                breathingUp_ = true;
+        // if (breathingUp_) {
+        //     breathProgress_ += 2; // Adjust for desired speed
+        //     if (breathProgress_ >= 255) {
+        //         breathProgress_ = 255;
+        //         breathingUp_ = false;
+        //     }
+        // } else {
+        //     breathProgress_ -= 2; // Adjust for desired speed
+        //     if (breathProgress_ <= 0) {
+        //         breathProgress_ = 0;
+        //         breathingUp_ = true;
                 
-                // If not looping, mark as complete after one full cycle
-                if (!config_.loop) {
-                    isComplete_ = true;
-                }
-            }
-        }
+        //         // If not looping, mark as complete after one full cycle
+        //         if (!config_.loop) {
+        //             isComplete_ = true;
+        //         }
+        //     }
+        // }
         
-        // Get smooth breathing value from ease-in-out curve for a more natural breathing effect
-        uint8_t brightness = getEasingValue(breathProgress_, EaseCurve::EASE_IN_OUT);
+        // // Get smooth breathing value from ease-in-out curve for a more natural breathing effect
+        // uint8_t brightness = getEasingValue(breathProgress_, EaseCurve::EASE_IN_OUT);
         
-        // Set only the transmit light with the calculated brightness
-        currentState_.transmitLight = LEDState::SingleLEDState(ledColor_, brightness);
+        // // Set only the transmit light with the calculated brightness
+        // currentState_.transmitLight = LEDState::SingleLEDState(ledColor_, brightness);
         
         return currentState_;
     }

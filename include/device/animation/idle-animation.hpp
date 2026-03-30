@@ -20,68 +20,68 @@ protected:
         transitionProgress = 0;
         isWaitingForPause_ = false;
         
-        // Store initial colors
-        for (int i = 0; i < 9; i++) {
-            originalColors[i] = config_.initialState.leftLights[i].color;
-        }
+        // // Store initial colors
+        // for (int i = 0; i < 9; i++) {
+        //     originalColors[i] = config_.initialState.leftLights[i].color;
+        // }
         
         pauseTimer_.setTimer(0);
         currentState_ = config_.initialState;
     }
 
     LEDState onAnimate() override {
-        if (isWaitingForPause_) {
-            if (pauseTimer_.expired()) {
-                isWaitingForPause_ = false;
-            } else {
-                return currentState_;
-            }
-        }
+        // if (isWaitingForPause_) {
+        //     if (pauseTimer_.expired()) {
+        //         isWaitingForPause_ = false;
+        //     } else {
+        //         return currentState_;
+        //     }
+        // }
         
-        // Calculate interpolation factor (0.0 to 1.0)
-        const int TRANSITION_STEPS = 30;
-        float interpolationFactor = (float)transitionProgress / TRANSITION_STEPS;
+        // // Calculate interpolation factor (0.0 to 1.0)
+        // const int TRANSITION_STEPS = 30;
+        // float interpolationFactor = (float)transitionProgress / TRANSITION_STEPS;
         
-        // For each LED position
-        for (int i = 0; i < 9; i++) {
-            // Calculate current and next color indices
-            int currentColorIndex = (i + currentOffset) % 9;
-            int nextColorIndex = (i + currentOffset + 1) % 9;
+        // // For each LED position
+        // for (int i = 0; i < 9; i++) {
+        //     // Calculate current and next color indices
+        //     int currentColorIndex = (i + currentOffset) % 9;
+        //     int nextColorIndex = (i + currentOffset + 1) % 9;
             
-            // Get current and next colors
-            LEDColor currentColor = originalColors[currentColorIndex];
-            LEDColor nextColor = originalColors[nextColorIndex];
+        //     // Get current and next colors
+        //     LEDColor currentColor = originalColors[currentColorIndex];
+        //     LEDColor nextColor = originalColors[nextColorIndex];
             
-            // Interpolate between colors
-            uint8_t r = currentColor.red + (uint8_t)(interpolationFactor * (nextColor.red - currentColor.red));
-            uint8_t g = currentColor.green + (uint8_t)(interpolationFactor * (nextColor.green - currentColor.green));
-            uint8_t b = currentColor.blue + (uint8_t)(interpolationFactor * (nextColor.blue - currentColor.blue));
+        //     // Interpolate between colors
+        //     uint8_t r = currentColor.red + (uint8_t)(interpolationFactor * (nextColor.red - currentColor.red));
+        //     uint8_t g = currentColor.green + (uint8_t)(interpolationFactor * (nextColor.green - currentColor.green));
+        //     uint8_t b = currentColor.blue + (uint8_t)(interpolationFactor * (nextColor.blue - currentColor.blue));
             
-            // Set the interpolated color
-            LEDColor interpolatedColor = {r, g, b};
-            if(i > 2) {
-                currentState_.setLEDPair(i, interpolatedColor, (int)(brightness * brightnessRatio));
-            } else {
-                currentState_.setLEDPair(i, interpolatedColor, brightness);
-            }
-        }
+        //     // Set the interpolated color
+        //     LEDColor interpolatedColor = {r, g, b};
+        //     if(i > 2) {
+        //         currentState_.setLEDPair(i, interpolatedColor, (int)(brightness * brightnessRatio));
+        //     } else {
+        //         currentState_.setLEDPair(i, interpolatedColor, brightness);
+        //     }
+        // }
         
-        // Increment transition progress
-        transitionProgress++;
+        // // Increment transition progress
+        // transitionProgress++;
         
-        // When transition is complete, move to next offset
-        if (transitionProgress >= TRANSITION_STEPS) {
-            transitionProgress = 0;
-            currentOffset = (currentOffset + 1) % 9;
+        // // When transition is complete, move to next offset
+        // if (transitionProgress >= TRANSITION_STEPS) {
+        //     transitionProgress = 0;
+        //     currentOffset = (currentOffset + 1) % 9;
             
-            // If we've completed a full cycle and looping is enabled, add a pause
-            if (currentOffset == 0 && config_.loop) {
-                isWaitingForPause_ = true;
-                pauseTimer_.setTimer(config_.loopDelayMs);
-            }
-        }
+        //     // If we've completed a full cycle and looping is enabled, add a pause
+        //     if (currentOffset == 0 && config_.loop) {
+        //         isWaitingForPause_ = true;
+        //         pauseTimer_.setTimer(config_.loopDelayMs);
+        //     }
+        // }
         
-        return currentState_;
+        // return currentState_;
     }
 
 private:

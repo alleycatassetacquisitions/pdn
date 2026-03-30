@@ -27,16 +27,16 @@ protected:
 
         currentState_ = config_.initialState;
 
-        for(int i = 3; i <= 9; i++) {
-            if(i == 9 && currentState_.leftLights[i-1].brightness == 255) {
-                currentLed_ = i;
-            } else if(i < 9 && currentState_.leftLights[i].brightness == 255) {
-                currentLed_ = i;
-            } else if(i < 9 && currentState_.leftLights[i].brightness == 0
-                        && currentState_.leftLights[i-1].brightness == 255) {
-                currentLed_ = i;
-            }
-        }
+        // for(int i = 3; i <= 9; i++) {
+        //     if(i == 9 && currentState_.leftLights[i-1].brightness == 255) {
+        //         currentLed_ = i;
+        //     } else if(i < 9 && currentState_.leftLights[i].brightness == 255) {
+        //         currentLed_ = i;
+        //     } else if(i < 9 && currentState_.leftLights[i].brightness == 0
+        //                 && currentState_.leftLights[i-1].brightness == 255) {
+        //         currentLed_ = i;
+        //     }
+        // }
 
         if(currentLed_ < 9) {
             stopIndex_ = currentLed_ + 2;
@@ -45,49 +45,49 @@ protected:
 
     LEDState onAnimate() override {
         // Clear the current state before updating
-        currentState_.clear();
+        // currentState_.clear();
 
-        // First, set all LED's between 3 and currentLed_ to full brightness
-        for(int i = 3; i < currentLed_; i++) {
-            currentState_.setLEDPair(i, LEDColor(255, 255, 255), 255);
-        }
+        // // First, set all LED's between 3 and currentLed_ to full brightness
+        // for(int i = 3; i < currentLed_; i++) {
+        //     currentState_.setLEDPair(i, LEDColor(255, 255, 255), 255);
+        // }
 
-        if (currentLed_ >= stopIndex_) {
+        // if (currentLed_ >= stopIndex_) {
             
-            // Mark animation as complete
-            isComplete_ = true;
+        //     // Mark animation as complete
+        //     isComplete_ = true;
             
-            return currentState_;
-        }
+        //     return currentState_;
+        // }
 
-        // If we're in the delay period between LEDs
-        if (isWaitingBetweenLeds_) {
-            // Keep previous LEDs at full brightness
+        // // If we're in the delay period between LEDs
+        // if (isWaitingBetweenLeds_) {
+        //     // Keep previous LEDs at full brightness
             
             
-            if (ledDelayTimer_.expired()) {
-                isWaitingBetweenLeds_ = false;
-                currentLed_++;           // Move to next LED
-                fadeProgress_ = 0;       // Reset fade progress for new LED
-            }
+        //     if (ledDelayTimer_.expired()) {
+        //         isWaitingBetweenLeds_ = false;
+        //         currentLed_++;           // Move to next LED
+        //         fadeProgress_ = 0;       // Reset fade progress for new LED
+        //     }
             
-            return currentState_;
-        }
+        //     return currentState_;
+        // }
 
-        // Get smooth fade value from ease-in-out curve
-        uint8_t brightness = getEasingValue(fadeProgress_, EaseCurve::EASE_IN_OUT);
+        // // Get smooth fade value from ease-in-out curve
+        // uint8_t brightness = getEasingValue(fadeProgress_, EaseCurve::EASE_IN_OUT);
 
-        // Set current LED brightness
-        currentState_.setLEDPair(currentLed_, LEDColor(255, 255, 255), brightness);
+        // // Set current LED brightness
+        // currentState_.setLEDPair(currentLed_, LEDColor(255, 255, 255), brightness);
 
-        // Update fade progress
-        fadeProgress_ += 5;  // Adjust this value to control fade speed
+        // // Update fade progress
+        // fadeProgress_ += 5;  // Adjust this value to control fade speed
 
-        // When fade is complete, start delay before next LED
-        if (fadeProgress_ >= 250) {
-            isWaitingBetweenLeds_ = true;
-            ledDelayTimer_.setTimer(config_.loopDelayMs);  // Default 200ms delay between LEDs
-        }
+        // // When fade is complete, start delay before next LED
+        // if (fadeProgress_ >= 250) {
+        //     isWaitingBetweenLeds_ = true;
+        //     ledDelayTimer_.setTimer(config_.loopDelayMs);  // Default 200ms delay between LEDs
+        // }
 
         return currentState_;
     }
