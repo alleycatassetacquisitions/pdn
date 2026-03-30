@@ -26,7 +26,7 @@ constexpr uint8_t VIBRATION_OFF = 0;
 constexpr uint8_t BRIGHTNESS_MAX = 255;
 constexpr uint8_t BRIGHTNESS_OFF = 0;
 
-constexpr uint8_t numRecessLights = 23;
+constexpr uint8_t numRecessLights = 22;
 constexpr uint8_t numFinLights = 9;
 
 constexpr uint16_t BAUDRATE = 19200;

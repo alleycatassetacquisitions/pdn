@@ -73,7 +73,8 @@ enum class AnimationType {
     LOSE,
     HUNTER_WIN,
     BOUNTY_WIN,
-    TRANSMIT_BREATH
+    TRANSMIT_BREATH,
+    MAIN_MENU
 };
 
 enum class EaseCurve {
