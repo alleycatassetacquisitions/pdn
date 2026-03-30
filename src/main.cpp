@@ -19,15 +19,12 @@
 #include "game/player.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
-#include "game/quickdraw.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
-#include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
-#include "game/quickdraw-resources.hpp"
+#include "apps/main-menu/main-menu.hpp"
+#include "apps/main-menu/main-menu-resources.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -64,28 +61,19 @@ Device* pdn = nullptr;
 Player* player = nullptr;
 
 // Game instance
-Quickdraw* game = nullptr;
+MainMenu* mainMenu = nullptr;
 
 // Remote player management
-QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
-RemoteDebugManager* remoteDebugManager = nullptr;
+RemotePlayerManager* remotePlayerManager = nullptr;
 
-void setupEspNow(QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, PeerCommsInterface* peerCommsDriver) {
+void setupEspNow(RemotePlayerManager* remotePlayerManager, PeerCommsInterface* peerCommsDriver) {
     // Register packet handlers
     peerCommsDriver->setPacketHandler(
         PktType::kQuickdrawCommand,
         [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
+            ((RemotePlayerManager*)userArg)->ProcessPlayerInfoPkt(src, data, len);
         },
-        quickdrawWirelessManager
-    );
-    
-    peerCommsDriver->setPacketHandler(
-        PktType::kDebugPacket,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
-        },
-        remoteDebugManager
+        remotePlayerManager
     );
 }
 
@@ -143,33 +131,22 @@ void setup() {
     player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     
-    // Create wireless managers
-    LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
-    quickdrawWirelessManager = new QuickdrawWirelessManager();
-    LOG_I("SETUP", "Creating RemoteDebugManager...");
-    remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
-    
-    // WiFi credentials are compile-time constants from build flags
-    remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
-
-    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
-    
     // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
+    setupEspNow(remotePlayerManager, peerCommsDriver);
     
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+    mainMenu = new MainMenu(pdn, remotePlayerManager);
     
     pdn->getDisplay()->
     invalidateScreen()->
-        drawImage(glassesImage)->
+        drawImage(alleycatLogoImage)->
         render();
     delay(3000);
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
-        {StateId(QUICKDRAW_APP_ID), game}
+        {StateId(MAIN_MENU_APP_ID), mainMenu}
     };
-    pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+    pdn->loadAppConfig(apps, StateId(MAIN_MENU_APP_ID));
 }
 
 void loop() {
