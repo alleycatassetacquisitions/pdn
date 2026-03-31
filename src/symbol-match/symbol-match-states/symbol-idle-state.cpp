@@ -1,4 +1,6 @@
 #include <cstring>
+#include <cstdio>
+#include <functional>
 
 #include "device/remote-device-coordinator.hpp"
 #include "symbol-match/symbol-match-states.hpp"
@@ -40,15 +42,12 @@ void SymbolIdle::onStateMounted(Device *FDN) {
         if (peerMac != nullptr) {
             symbolWirelessManager->setMacPeer(peerMac);
             if (port == SerialIdentifier::OUTPUT_JACK) {
-                // output corresponds to LEFT
                 symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, symbolManager->getSymbol(SymbolPosition::LEFT)->getSymbolId(), port);
             } else if (port == SerialIdentifier::INPUT_JACK) {
-                // input corresponds to RIGHT
                 symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, symbolManager->getSymbol(SymbolPosition::RIGHT)->getSymbolId(), port);
             }
         }
     }
-    
 }
 
 void SymbolIdle::onStateLoop(Device *FDN) {
@@ -122,21 +121,17 @@ void SymbolIdle::onStateDismounted(Device *FDN) {
 void SymbolIdle::renderSymbolScreen(Device *FDN) {
     FDN->getDisplay()->invalidateScreen();
 
-    // render symbol glyphs
     if (symbolManager->isLeftMatched()) {
         FDN->getDisplay()->whiteScreenLeftHalf();
     }
-
     if (symbolManager->isRightMatched()) {
         FDN->getDisplay()->whiteScreenRightHalf();
     }
 
-    // Half-screen fills reset draw color / font mode; SYMBOL_GLYPH uses XOR (draw color 2) + transparent font
     FDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
-
     if (symbolManager->isLeftMatched() || !leftConnected || blinkToggle) {
         FDN->getDisplay()->renderGlyph(symbolManager->getSymbolGlyph(SymbolPosition::LEFT), 24, 40);
-    } 
+    }
 
     if (symbolManager->isRightMatched() || !rightConnected || blinkToggle) {
         FDN->getDisplay()->renderGlyph(symbolManager->getSymbolGlyph(SymbolPosition::RIGHT), 72, 40);
@@ -145,14 +140,12 @@ void SymbolIdle::renderSymbolScreen(Device *FDN) {
     FDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
 
     int timeLeft = symbolManager->getTimeLeftToRefresh();
-    
     int minutes = timeLeft / 60000;
     int seconds = (timeLeft % 60000) / 1000;
 
     char buffer[6];
     snprintf(buffer, sizeof(buffer), "%02d:%02d", minutes, seconds);
     FDN->getDisplay()->drawText(buffer, 40, 64);
-
     FDN->getDisplay()->render();
 }
 

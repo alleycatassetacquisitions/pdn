@@ -26,6 +26,10 @@ const char* SymbolManager::getSymbolGlyph(SymbolPosition position) {
     return symbols[position]->getSymbolGlyph();
 }
 
+void SymbolManager::validateSymbols(const uint8_t* fdnMac) {
+    (void)fdnMac;
+}
+
 SimpleTimer* SymbolManager::getRefreshTimer() {
     return &refreshTimer;
 }
