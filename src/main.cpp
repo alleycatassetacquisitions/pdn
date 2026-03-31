@@ -142,7 +142,7 @@ void setup() {
         render();
     delay(3000);
 
-    // Register state machines with the device and launch Quickdraw
+    // Register state machines with the device and launch Main Menu
     AppConfig apps = {
         {StateId(MAIN_MENU_APP_ID), mainMenu}
     };

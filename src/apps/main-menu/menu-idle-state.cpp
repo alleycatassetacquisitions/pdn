@@ -21,6 +21,14 @@ void MenuIdleState::onStateMounted(Device *PDN) {
     invalidateScreen()->
         drawImage(glassesImage)->
         render();
+
+    AnimationConfig config;
+    config.type = AnimationType::MAIN_MENU;
+    config.speed = 16;
+    config.initialState = menuLightsInitialState;
+    config.loop = true;
+    config.curve = EaseCurve::LINEAR;
+    PDN->getLightManager()->startAnimation(config);
 }
 
 void MenuIdleState::onStateLoop(Device *PDN) {

@@ -81,7 +81,7 @@ protected:
         //     }
         // }
         
-        // return currentState_;
+        return currentState_;
     }
 
 private:

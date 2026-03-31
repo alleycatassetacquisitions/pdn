@@ -12,8 +12,6 @@
 
 typedef std::map<ImageType, Image> ImageCollection;
 
-const Image glassesImage = Image(image_glasses, 128, 64, 0, 0);
-
 const ImageCollection alleycatImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},

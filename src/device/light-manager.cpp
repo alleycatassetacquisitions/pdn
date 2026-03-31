@@ -1,12 +1,13 @@
 #include "device/light-manager.hpp"
 #include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
-#include "device/idle-animation.hpp"
-#include "device/countdown-animation.hpp"
-#include "device/vertical-chase-animation.hpp"
-#include "device/transmit-breath-animation.hpp"
-#include "device/hunter-win-animation.hpp"
-#include "device/bounty-win-animation.hpp"
-#include "device/lose-animation.hpp"
+#include "device/animation/idle-animation.hpp"
+#include "device/animation/countdown-animation.hpp"
+#include "device/animation/vertical-chase-animation.hpp"
+#include "device/animation/transmit-breath-animation.hpp"
+#include "device/animation/hunter-win-animation.hpp"
+#include "device/animation/bounty-win-animation.hpp"
+#include "device/animation/lose-animation.hpp"
+#include "device/animation/main-menu-animation.hpp"
 #include <algorithm> // For std::min
 
 static const char* TAG = "LightManager";
@@ -64,6 +65,9 @@ void LightManager::startAnimation(AnimationConfig config) {
             break;
         case AnimationType::TRANSMIT_BREATH:
             currentAnimation = new TransmitBreathAnimation();
+            break;
+        case AnimationType::MAIN_MENU:
+            currentAnimation = new MainMenuAnimation();
             break;
     }
     

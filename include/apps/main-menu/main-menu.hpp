@@ -13,9 +13,6 @@ public:
     MainMenu(Device* PDN, RemotePlayerManager* remotePlayerManager);
     ~MainMenu();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
     void populateStateMap() override;
 
 private:
