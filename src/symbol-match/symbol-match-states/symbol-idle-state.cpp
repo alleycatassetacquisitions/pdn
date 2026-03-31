@@ -7,13 +7,12 @@ SymbolIdle::SymbolIdle(SymbolManager* symbolManager, RemoteDeviceCoordinator* re
 }
 
 SymbolIdle::~SymbolIdle() {
-    symbolManager = nullptr;
 }
 
 void SymbolIdle::onStateMounted(Device *FDN) {
     refreshTimer.setTimer(refreshInterval);
 
-    renderSymbolGlyphs(FDN);
+    renderSymbolScreen(FDN);
 }
 
 void SymbolIdle::onStateLoop(Device *FDN) {
@@ -37,12 +36,14 @@ void SymbolIdle::renderSymbolScreen(Device *FDN) {
 
     renderSymbolGlyphs(FDN);
     renderTimer(FDN);
+
+    FDN->getDisplay()->render();
 }
 
 void SymbolIdle::renderSymbolGlyphs(Device *FDN) {
     FDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
-    FDN->getDisplay()->renderGlyph(symbolManager->symbolToGlyph(symbolManager->getLeftSymbol()), 24, 40);
-    FDN->getDisplay()->renderGlyph(symbolManager->symbolToGlyph(symbolManager->getRightSymbol()), 72, 40);
+    FDN->getDisplay()->renderGlyph(symbolManager->getSymbolGlyph(SymbolPosition::LEFT), 24, 40);
+    FDN->getDisplay()->renderGlyph(symbolManager->getSymbolGlyph(SymbolPosition::RIGHT), 72, 40);
 }
 
 void SymbolIdle::renderTimer(Device *FDN) {
@@ -56,8 +57,6 @@ void SymbolIdle::renderTimer(Device *FDN) {
     char buffer[6];
     snprintf(buffer, sizeof(buffer), "%02d:%02d", minutes, seconds);
     FDN->getDisplay()->drawText(buffer, 40, 64);
-
-    FDN->getDisplay()->render();
 }
 
 bool SymbolIdle::transitionToSelection() {
@@ -69,5 +68,5 @@ bool SymbolIdle::isPrimaryRequired() {
 }
 
 bool SymbolIdle::isAuxRequired() {
-    return false;
+    return true;
 }

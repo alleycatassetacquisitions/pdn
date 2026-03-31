@@ -7,10 +7,11 @@ SymbolMatch::SymbolMatch(Device* FDN) : StateMachine(SYMBOLMATCH_APP_ID) {
 
 SymbolMatch::~SymbolMatch() {
     remoteDeviceCoordinator = nullptr;
-    symbolManager = nullptr;
+    delete symbolManager;
 }
 
 void SymbolMatch::populateStateMap() {
+
     Selection* selection = new Selection(symbolManager);
     SymbolIdle* idle = new SymbolIdle(symbolManager, remoteDeviceCoordinator);
 

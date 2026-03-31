@@ -1,9 +1,14 @@
+#include "device/drivers/serial-wrapper.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "symbol-match/symbol-manager.hpp"
+#include "symbol-match/symbol-match.hpp"
+#include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
 #include <cstring>
 
@@ -74,6 +79,15 @@ void Idle::onStateLoop(Device *PDN) {
         }
     }
 
+    else if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+        if (peerMac != nullptr) {
+            // initiate symbol match
+
+        }
+    }
+
+
     if(matchInitializationTimer.expired()) {
         matchInitialized = false;
         matchManager->clearCurrentMatch();
@@ -123,7 +137,7 @@ void Idle::renderStats(Device *PDN) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
     } else if(statsIndex == 6) {
         int glyph_size = 32;
-        PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbolGlyph(), (int)(64 + (64 - glyph_size)/2), (int)(64 - (64 - glyph_size)/2));
+        PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), (int)(64 + (64 - glyph_size)/2), (int)(64 - (64 - glyph_size)/2));
     }
 
     PDN->getDisplay()->render();

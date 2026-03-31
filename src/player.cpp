@@ -8,8 +8,7 @@ Player::Player(const std::string& id, Allegiance allegiance, bool isHunter) :
   id(id),
   allegiance(allegiance),
   hunter(isHunter)
-{
-}
+{}
 
 std::string Player::toJson() const {
     // Create a JSON object for player
@@ -157,7 +156,6 @@ void Player::setFaction(const std::string& faction)
 void Player::setUserID(char* newId)
 {
     id = std::string(newId);
-    setSymbol();
 }
 
 std::string Player::getUserID() const
@@ -192,29 +190,8 @@ int Player::getLosses() {
     return losses;
 }
 
-Symbol Player::getSymbol() {
-    return symbol;
-}
-
-const char* Player::getSymbolGlyph() {
-    return symbolGlyph;
-}
-
-void Player::setSymbol() {
-    symbol = static_cast<Symbol>(std::stoi(id) % (int)Symbol::NUM_SYMBOLS);
-
-    switch(symbol) {
-        case Symbol::SYMBOL_A:
-            symbolGlyph = const_cast<char*>("\u0089");
-            break;
-        case Symbol::SYMBOL_B:
-            symbolGlyph = const_cast<char*>("\u0103");
-            break;
-        case Symbol::SYMBOL_C:
-        default:
-            symbolGlyph = const_cast<char*>("\u0107");
-            break;
-    }
+Symbol* Player::getSymbol() {
+    return &symbol;
 }
 
 void Player::incrementStreak() {

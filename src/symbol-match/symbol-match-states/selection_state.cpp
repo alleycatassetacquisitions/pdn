@@ -7,7 +7,6 @@ Selection::Selection(SymbolManager* symbolManager) : State(SELECTION) {
 }
 
 Selection::~Selection() {
-    symbolManager = nullptr;
 }
 
 void Selection::onStateMounted(Device *FDN) {

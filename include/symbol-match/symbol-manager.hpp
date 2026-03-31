@@ -2,12 +2,11 @@
 
 #include <random>
 #include <map>
+#include "symbol-match/symbol.hpp"
 
-enum class Symbol {
-    SYMBOL_A = 0,
-    SYMBOL_B,
-    SYMBOL_C,
-    NUM_SYMBOLS,    // add new symbols above this line
+enum class SymbolPosition {
+    LEFT = 0,
+    RIGHT = 1,
 };
 
 class SymbolManager {
@@ -15,16 +14,10 @@ class SymbolManager {
     SymbolManager();
     ~SymbolManager();
 
+    Symbol* getSymbol(SymbolPosition position);
+    const char* getSymbolGlyph(SymbolPosition position);
     void refreshSymbols();
 
-    Symbol getLeftSymbol();
-    Symbol getRightSymbol();
-
-    const char* symbolToGlyph(Symbol symbol);
-
 private:
-    Symbol leftSymbol;
-    Symbol rightSymbol;
-
-    std::map<Symbol, const char*> symbolGlyphMap;
+    std::map<SymbolPosition, Symbol*> symbols;
 };

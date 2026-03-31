@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 #include <cstdint>
-#include "symbol-match/symbol-manager.hpp"
+#include "symbol-match/symbol.hpp"
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -65,9 +65,7 @@ public:
 
     int getLosses();
 
-    Symbol getSymbol();
-
-    const char* getSymbolGlyph();
+    Symbol* getSymbol();
 
     void incrementStreak();
 
@@ -82,8 +80,6 @@ public:
     void addReactionTime(unsigned long reactionTime);
 
 private:
-    void setSymbol();
-
     std::string id = "default";
     std::string name = "";
     std::string allegianceStr = "none";
@@ -104,7 +100,6 @@ private:
     Allegiance allegiance = Allegiance::RESISTANCE;
 
     Symbol symbol;
-    char* symbolGlyph;
     
     bool hunter = true;
 };

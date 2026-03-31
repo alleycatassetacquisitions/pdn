@@ -1,30 +1,27 @@
 #include "symbol-match/symbol-manager.hpp"
 
 SymbolManager::SymbolManager() {
-    refreshSymbols();
-
-    symbolGlyphMap[Symbol::SYMBOL_A] = "\u0089";
-    symbolGlyphMap[Symbol::SYMBOL_B] = "\u0103";
-    symbolGlyphMap[Symbol::SYMBOL_C] = "\u0107";
+    symbols[SymbolPosition::LEFT] = new Symbol();
+    symbols[SymbolPosition::RIGHT] = new Symbol();
 }
 
 SymbolManager::~SymbolManager() {
-
+    for(auto& symbol : symbols) {
+        delete symbol.second;
+    }
+    symbols.clear();
 }
 
 void SymbolManager::refreshSymbols() {
-    leftSymbol = static_cast<Symbol>(std::rand() % (int)Symbol::NUM_SYMBOLS);
-    rightSymbol = static_cast<Symbol>(std::rand() % (int)Symbol::NUM_SYMBOLS);
+    for(auto& symbol : symbols) {
+        symbol.second->setRandomSymbol();
+    }
 }
 
-Symbol SymbolManager::getLeftSymbol() {
-    return leftSymbol;
+Symbol* SymbolManager::getSymbol(SymbolPosition position) {
+    return symbols[position];
 }
 
-Symbol SymbolManager::getRightSymbol() {
-    return rightSymbol;
-}
-
-const char* SymbolManager::symbolToGlyph(Symbol symbol) {
-    return symbolGlyphMap[symbol];
+const char* SymbolManager::getSymbolGlyph(SymbolPosition position) {
+    return symbols[position]->getSymbolGlyph();
 }

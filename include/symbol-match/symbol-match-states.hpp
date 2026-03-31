@@ -2,6 +2,8 @@
 
 #include "state/connect-state.hpp"
 #include "state/state.hpp"
+#include "symbol-match/symbol-manager.hpp"
+#include "symbol-match/symbol-match.hpp"
 
 enum SymbolMatchStateId {
     SELECTION,
@@ -12,7 +14,7 @@ enum SymbolMatchStateId {
 class Selection : public State {
 public:
     explicit Selection(SymbolManager* symbolManager);
-    ~Selection();
+    ~Selection();   
     void onStateMounted(Device *FDN) override;
     void onStateLoop(Device *FDN) override;
     void onStateDismounted(Device *FDN) override;
@@ -22,7 +24,7 @@ private:
     SymbolManager* symbolManager;
     SimpleTimer bufferTimer;
     bool transitionToIdleState = false;
-    int bufferInterval = 3 * 1000;
+    int bufferInterval = 1 * 1000;
 };
 
 class SymbolIdle : public ConnectState {
@@ -45,6 +47,6 @@ private:
     SimpleTimer refreshTimer;
     bool transitionToSelectionState = false;
     SymbolManager* symbolManager;
-    int refreshInterval = (int)((1.5 * 60) * 1000);
+    int refreshInterval = (int)(5 * 1000);
     int lastTimeRendered = 0;
 };
