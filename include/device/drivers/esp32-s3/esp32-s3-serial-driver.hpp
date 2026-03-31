@@ -12,11 +12,11 @@
 #include <HardwareSerial.h>
 #include <string>
 
-class Esp32s3SerialOut : public SerialDriverInterface {
+class Esp32s3SerialInSecondary : public SerialDriverInterface {
 public:
-    explicit Esp32s3SerialOut(const std::string& name) : SerialDriverInterface(name) {}
+    explicit Esp32s3SerialInSecondary(const std::string& name) : SerialDriverInterface(name) {}
     
-    ~Esp32s3SerialOut() override {
+    ~Esp32s3SerialInSecondary() override {
         stringCallback = nullptr;
     }
 
@@ -28,10 +28,10 @@ public:
         esp_rom_gpio_pad_select_gpio(GPIO_NUM_38);
         esp_rom_gpio_pad_select_gpio(GPIO_NUM_39);
         
-        pinMode(TXt, OUTPUT);
-        pinMode(TXr, INPUT);
+        pinMode(RXt2, OUTPUT);
+        pinMode(RXr2, INPUT);
 
-        Serial1.begin(BAUDRATE, SERIAL_8N1, TXr, TXt, true);
+        Serial1.begin(BAUDRATE, SERIAL_8N1, RXr2, RXt2, true);
         Serial1.setTimeout(100);  // 100ms timeout for readStringUntil
         return 0;
     };
