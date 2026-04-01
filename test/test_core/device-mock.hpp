@@ -271,6 +271,7 @@ public:
     Display* getDisplay() override { return mockDisplay; }
     Button* getPrimaryButton() override { return mockPrimaryButton; }
     Button* getSecondaryButton() override { return mockSecondaryButton; }
+    Button* getTertiaryButton() override { return nullptr; }
     Haptics* getHaptics() override { return mockHaptics; }
     HttpClientInterface* getHttpClient() override { return mockHttpClient; }
     PeerCommsInterface* getPeerComms() override { return mockPeerComms; }
