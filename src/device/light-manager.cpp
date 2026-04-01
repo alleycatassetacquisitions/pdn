@@ -4,8 +4,8 @@
 #include "device/animation/countdown-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
-#include "device/animation/hunter-win-animation.hpp"
-#include "device/animation/bounty-win-animation.hpp"
+// #include "device/animation/hunter-win-animation.hpp"
+// #include "device/animation/bounty-win-animation.hpp"
 #include "device/animation/lose-animation.hpp"
 #include "device/animation/main-menu-animation.hpp"
 #include <algorithm> // For std::min
@@ -58,10 +58,10 @@ void LightManager::startAnimation(AnimationConfig config) {
             currentAnimation = new LoseAnimation();
             break;
         case AnimationType::HUNTER_WIN:
-            currentAnimation = new HunterWinAnimation();
+            // currentAnimation = new HunterWinAnimation();
             break;
         case AnimationType::BOUNTY_WIN:
-            currentAnimation = new BountyWinAnimation();
+            // currentAnimation = new BountyWinAnimation();
             break;
         case AnimationType::TRANSMIT_BREATH:
             currentAnimation = new TransmitBreathAnimation();

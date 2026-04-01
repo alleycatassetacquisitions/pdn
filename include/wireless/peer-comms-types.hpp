@@ -6,7 +6,7 @@
 enum class PktType : uint8_t
 {
     kPlayerInfoBroadcast = 0,
-    kQuickdrawCommand = 1,
+    // kQuickdrawCommand = 1, // QUICKDRAW_REMOVED
     kDebugPacket = 2,
     kHandshakeCommand = 3,
     kNumPacketTypes //Not a real packet type, DO NOT USE

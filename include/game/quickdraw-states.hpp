@@ -1,307 +1,307 @@
-#pragma once
+// #pragma once
 
-#include "game/player.hpp"
-#include "utils/simple-timer.hpp"
-#include "state/state.hpp"
-#include "state/connect-state.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
-#include "wireless/remote-debug-manager.hpp"
-#include "game/match-manager.hpp"
-#include "device/drivers/http-client-interface.hpp"
-#include "game/quickdraw-resources.hpp"
-#include <cstdlib>
-#include <queue>
-#include <string>
-#include "device/remote-device-coordinator.hpp"
+// #include "game/player.hpp"
+// #include "utils/simple-timer.hpp"
+// #include "state/state.hpp"
+// #include "state/connect-state.hpp"
+// #include "wireless/quickdraw-wireless-manager.hpp"
+// #include "wireless/remote-debug-manager.hpp"
+// #include "game/match-manager.hpp"
+// #include "device/drivers/http-client-interface.hpp"
+// #include "game/quickdraw-resources.hpp"
+// #include <cstdlib>
+// #include <queue>
+// #include <string>
+// #include "device/remote-device-coordinator.hpp"
 
-enum QuickdrawStateId {    
-    SLEEP = 6,
-    AWAKEN_SEQUENCE = 7,
-    IDLE = 8,
-    DUEL_COUNTDOWN = 13,
-    DUEL = 14,
-    DUEL_PUSHED = 15,
-    DUEL_RECEIVED_RESULT = 16,
-    DUEL_RESULT = 17,
-    WIN = 18,
-    LOSE = 19,
-    UPLOAD_MATCHES = 20
-};
+// enum QuickdrawStateId {    
+//     SLEEP = 6,
+//     AWAKEN_SEQUENCE = 7,
+//     IDLE = 8,
+//     DUEL_COUNTDOWN = 13,
+//     DUEL = 14,
+//     DUEL_PUSHED = 15,
+//     DUEL_RECEIVED_RESULT = 16,
+//     DUEL_RESULT = 17,
+//     WIN = 18,
+//     LOSE = 19,
+//     UPLOAD_MATCHES = 20
+// };
 
-class Sleep : public State {
-public:
-    explicit Sleep(Player* player);
-    ~Sleep();
+// class Sleep : public State {
+// public:
+//     explicit Sleep(Player* player);
+//     ~Sleep();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToAwakenSequence();
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool transitionToAwakenSequence();
 
-private:
-    bool transitionToAwakenSequenceState = false;
-    SimpleTimer dormantTimer;
-    Player* player;
-    bool breatheUp = true;
-    int ledBrightness = 0;
-    float pwm_val = 0.0;
-    static constexpr int smoothingPoints = 255;
-    static constexpr unsigned long SLEEP_DURATION = 60000UL;
-};
+// private:
+//     bool transitionToAwakenSequenceState = false;
+//     SimpleTimer dormantTimer;
+//     Player* player;
+//     bool breatheUp = true;
+//     int ledBrightness = 0;
+//     float pwm_val = 0.0;
+//     static constexpr int smoothingPoints = 255;
+//     static constexpr unsigned long SLEEP_DURATION = 60000UL;
+// };
 
-class AwakenSequence : public State {
-public:
-    explicit AwakenSequence(Player* player);
-    ~AwakenSequence();
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToIdle();
+// class AwakenSequence : public State {
+// public:
+//     explicit AwakenSequence(Player* player);
+//     ~AwakenSequence();
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool transitionToIdle();
 
-private:
-    static constexpr int AWAKEN_THRESHOLD = 20;
-    SimpleTimer activationSequenceTimer;
-    int activateMotorCount = 0;
-    bool activateMotor = false;
-    const int activationStepDuration = 100;
-    Player* player;
-};
+// private:
+//     static constexpr int AWAKEN_THRESHOLD = 20;
+//     SimpleTimer activationSequenceTimer;
+//     int activateMotorCount = 0;
+//     bool activateMotor = false;
+//     const int activationStepDuration = 100;
+//     Player* player;
+// };
 
-class Idle : public ConnectState {
-public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~Idle();
+// class Idle : public ConnectState {
+// public:
+//     Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+//     ~Idle();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToDuelCountdown();
-    void cycleStats(Device *PDN);
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool transitionToDuelCountdown();
+//     void cycleStats(Device *PDN);
 
-private:
-    Player *player;
-    MatchManager* matchManager;
-    bool matchInitialized = false;
-    bool displayIsDirty = false;
-    int statsIndex = 0;
-    int statsCount = 5;
+// private:
+//     Player *player;
+//     MatchManager* matchManager;
+//     bool matchInitialized = false;
+//     bool displayIsDirty = false;
+//     int statsIndex = 0;
+//     int statsCount = 5;
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
+//     bool isPrimaryRequired() override;
+//     bool isAuxRequired() override;
 
-    SimpleTimer matchInitializationTimer;
-    const int MATCH_INITIALIZATION_TIMEOUT = 1000;
+//     SimpleTimer matchInitializationTimer;
+//     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
 
-    // void serialEventCallbacks(const std::string& message);
-};
+//     // void serialEventCallbacks(const std::string& message);
+// };
 
 
 
-class DuelCountdown : public ConnectState {
-public:
-    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~DuelCountdown();
+// class DuelCountdown : public ConnectState {
+// public:
+//     DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+//     ~DuelCountdown();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool shallWeBattle();
-    bool disconnectedBackToIdle();
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool shallWeBattle();
+//     bool disconnectedBackToIdle();
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
+//     bool isPrimaryRequired() override;
+//     bool isAuxRequired() override;
 
-private:
-    enum class CountdownStep {
-        THREE = 3,
-        TWO = 2,
-        ONE = 1,
-        BATTLE = 0
-    };
+// private:
+//     enum class CountdownStep {
+//         THREE = 3,
+//         TWO = 2,
+//         ONE = 1,
+//         BATTLE = 0
+//     };
 
-    struct CountdownStage {
-        CountdownStage(CountdownStep step, unsigned long countdownTimer) {
-            this->step = step;
-            this->countdownTimer = countdownTimer;
-            this->animationConfig.type = AnimationType::COUNTDOWN;
-            this->animationConfig.loop = false;
-            this->animationConfig.speed = 16;
+//     struct CountdownStage {
+//         CountdownStage(CountdownStep step, unsigned long countdownTimer) {
+//             this->step = step;
+//             this->countdownTimer = countdownTimer;
+//             this->animationConfig.type = AnimationType::COUNTDOWN;
+//             this->animationConfig.loop = false;
+//             this->animationConfig.speed = 16;
 
-            if(step == CountdownStep::THREE) {
-                this->animationConfig.initialState = COUNTDOWN_THREE_STATE;
-            } else if(step == CountdownStep::TWO) {
-                this->animationConfig.initialState = COUNTDOWN_TWO_STATE;
-            } else if(step == CountdownStep::ONE) {
-                this->animationConfig.initialState = COUNTDOWN_ONE_STATE;
-            } else if(step == CountdownStep::BATTLE) {
-                this->animationConfig.initialState = COUNTDOWN_DUEL_STATE;
-            }
-        }
+//             if(step == CountdownStep::THREE) {
+//                 this->animationConfig.initialState = COUNTDOWN_THREE_STATE;
+//             } else if(step == CountdownStep::TWO) {
+//                 this->animationConfig.initialState = COUNTDOWN_TWO_STATE;
+//             } else if(step == CountdownStep::ONE) {
+//                 this->animationConfig.initialState = COUNTDOWN_ONE_STATE;
+//             } else if(step == CountdownStep::BATTLE) {
+//                 this->animationConfig.initialState = COUNTDOWN_DUEL_STATE;
+//             }
+//         }
 
-        CountdownStep step;
-        unsigned long countdownTimer = 0;
-        AnimationConfig animationConfig;
-    };
+//         CountdownStep step;
+//         unsigned long countdownTimer = 0;
+//         AnimationConfig animationConfig;
+//     };
 
-    ImageType getImageIdForStep(CountdownStep step);
+//     ImageType getImageIdForStep(CountdownStep step);
 
-    Player* player;
-    SimpleTimer countdownTimer;
-    SimpleTimer hapticTimer;
-    const int HAPTIC_DURATION = 75;
-    const int HAPTIC_INTENSITY = 255;
-    bool doBattle = false;
-    const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
-    const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
-    const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 2000);
-    const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0);
-    const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
-    int currentStepIndex = 0;
-    MatchManager* matchManager;
-};
+//     Player* player;
+//     SimpleTimer countdownTimer;
+//     SimpleTimer hapticTimer;
+//     const int HAPTIC_DURATION = 75;
+//     const int HAPTIC_INTENSITY = 255;
+//     bool doBattle = false;
+//     const CountdownStage THREE = CountdownStage(CountdownStep::THREE, 2000);
+//     const CountdownStage TWO = CountdownStage(CountdownStep::TWO, 2000);
+//     const CountdownStage ONE = CountdownStage(CountdownStep::ONE, 2000);
+//     const CountdownStage BATTLE = CountdownStage(CountdownStep::BATTLE, 0);
+//     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
+//     int currentStepIndex = 0;
+//     MatchManager* matchManager;
+// };
 
-class Duel : public ConnectState {
-public:
-    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~Duel();
+// class Duel : public ConnectState {
+// public:
+//     Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+//     ~Duel();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToIdle();
-    bool transitionToDuelPushed();
-    bool transitionToDuelReceivedResult();
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool transitionToIdle();
+//     bool transitionToDuelPushed();
+//     bool transitionToDuelReceivedResult();
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
+//     bool isPrimaryRequired() override;
+//     bool isAuxRequired() override;
 
-private:
-    Player* player;
-    MatchManager* matchManager;
-    parameterizedCallbackFunction buttonPress;
-    bool transitionToDuelPushedState = false;
-    bool transitionToDuelReceivedResultState = false;
-    bool transitionToIdleState = false;
-    SimpleTimer duelTimer;
-    const int DUEL_TIMEOUT = 4000;
-};
+// private:
+//     Player* player;
+//     MatchManager* matchManager;
+//     parameterizedCallbackFunction buttonPress;
+//     bool transitionToDuelPushedState = false;
+//     bool transitionToDuelReceivedResultState = false;
+//     bool transitionToIdleState = false;
+//     SimpleTimer duelTimer;
+//     const int DUEL_TIMEOUT = 4000;
+// };
 
-class DuelPushed : public ConnectState {
-public:
-    DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~DuelPushed();
+// class DuelPushed : public ConnectState {
+// public:
+//     DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+//     ~DuelPushed();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool transitionToDuelResult();
+//     bool disconnectedBackToIdle();
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
+//     bool isPrimaryRequired() override;
+//     bool isAuxRequired() override;
 
-private:
-    Player* player;
-    MatchManager* matchManager;
-    SimpleTimer gracePeriodTimer;
-    const int DUEL_RESULT_GRACE_PERIOD = 900;
-};
+// private:
+//     Player* player;
+//     MatchManager* matchManager;
+//     SimpleTimer gracePeriodTimer;
+//     const int DUEL_RESULT_GRACE_PERIOD = 900;
+// };
 
-class DuelReceivedResult : public ConnectState {
-public:
-    DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~DuelReceivedResult();
+// class DuelReceivedResult : public ConnectState {
+// public:
+//     DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+//     ~DuelReceivedResult();
 
-    void onStateMounted(Device *PDN) override;  
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;   
-    bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
+//     void onStateMounted(Device *PDN) override;  
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;   
+//     bool transitionToDuelResult();
+//     bool disconnectedBackToIdle();
 
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
+//     bool isPrimaryRequired() override;
+//     bool isAuxRequired() override;
 
-private:
-    SimpleTimer buttonPushGraceTimer;
-    bool transitionToDuelResultState = false;
-    const int BUTTON_PUSH_GRACE_PERIOD = 750;
-    Player* player;
-    MatchManager* matchManager;
-};
+// private:
+//     SimpleTimer buttonPushGraceTimer;
+//     bool transitionToDuelResultState = false;
+//     const int BUTTON_PUSH_GRACE_PERIOD = 750;
+//     Player* player;
+//     MatchManager* matchManager;
+// };
 
-class DuelResult : public State {
-public:
-    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
-    ~DuelResult();
+// class DuelResult : public State {
+// public:
+//     DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
+//     ~DuelResult();
 
-    void onStateMounted(Device *PDN) override;  
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;   
-    bool transitionToWin();
-    bool transitionToLose();    
+//     void onStateMounted(Device *PDN) override;  
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;   
+//     bool transitionToWin();
+//     bool transitionToLose();    
     
-private:
-    Player* player;
-    MatchManager* matchManager;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
-    bool wonBattle = false;
-    bool captured = false;
-};
+// private:
+//     Player* player;
+//     MatchManager* matchManager;
+//     QuickdrawWirelessManager* quickdrawWirelessManager;
+//     bool wonBattle = false;
+//     bool captured = false;
+// };
 
-class Win : public State {
-public:
-    explicit Win(Player *player);
-    ~Win();
+// class Win : public State {
+// public:
+//     explicit Win(Player *player);
+//     ~Win();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool resetGame();
-    bool isTerminalState() override;
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool resetGame();
+//     bool isTerminalState() override;
 
-private:
-    SimpleTimer winTimer = SimpleTimer();
-    Player *player;
-    bool reset = false;
-};
+// private:
+//     SimpleTimer winTimer = SimpleTimer();
+//     Player *player;
+//     bool reset = false;
+// };
 
-class Lose : public State {
-public:
-    explicit Lose(Player *player);
-    ~Lose();
+// class Lose : public State {
+// public:
+//     explicit Lose(Player *player);
+//     ~Lose();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool resetGame();
-    bool isTerminalState() override;
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool resetGame();
+//     bool isTerminalState() override;
 
-private:
-    SimpleTimer loseTimer = SimpleTimer();
-    Player *player;
-    bool reset = false;
-};
+// private:
+//     SimpleTimer loseTimer = SimpleTimer();
+//     Player *player;
+//     bool reset = false;
+// };
 
-class UploadMatchesState : public State {
-public:
-    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
-    ~UploadMatchesState();
+// class UploadMatchesState : public State {
+// public:
+//     UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+//     ~UploadMatchesState();
     
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    bool transitionToSleep();
-    void showLoadingGlyphs(Device *PDN);
-    void attemptUpload();
+//     void onStateMounted(Device *PDN) override;
+//     void onStateLoop(Device *PDN) override;
+//     void onStateDismounted(Device *PDN) override;
+//     bool transitionToSleep();
+//     void showLoadingGlyphs(Device *PDN);
+//     void attemptUpload();
 
-private:
-    Player* player;
-    WirelessManager* wirelessManager;
-    MatchManager* matchManager;
-    SimpleTimer uploadMatchesTimer;
-    int matchUploadRetryCount = 0;
-    const int UPLOAD_MATCHES_TIMEOUT = 10000;
-    std::string matchesJson;
-    bool transitionToSleepState = false;
-    bool shouldRetryUpload = false;
-};
+// private:
+//     Player* player;
+//     WirelessManager* wirelessManager;
+//     MatchManager* matchManager;
+//     SimpleTimer uploadMatchesTimer;
+//     int matchUploadRetryCount = 0;
+//     const int UPLOAD_MATCHES_TIMEOUT = 10000;
+//     std::string matchesJson;
+//     bool transitionToSleepState = false;
+//     bool shouldRetryUpload = false;
+// };

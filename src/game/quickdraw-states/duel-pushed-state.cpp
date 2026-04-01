@@ -1,57 +1,57 @@
-#include "game/quickdraw-states.hpp"
-#include "game/match-manager.hpp"
-#include "device/device.hpp"
+// #include "game/quickdraw-states.hpp"
+// #include "game/match-manager.hpp"
+// #include "device/device.hpp"
 
-#define DUEL_PUSHED_TAG "DUEL_PUSHED"
+// #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
-DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_PUSHED) {
-    this->player = player;
-    this->matchManager = matchManager;
-}
+// DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_PUSHED) {
+//     this->player = player;
+//     this->matchManager = matchManager;
+// }
 
-DuelPushed::~DuelPushed() {
-    LOG_I(DUEL_PUSHED_TAG, "DuelPushed state destroyed");
-    this->player = nullptr;
-    this->matchManager = nullptr;
-}
+// DuelPushed::~DuelPushed() {
+//     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state destroyed");
+//     this->player = nullptr;
+//     this->matchManager = nullptr;
+// }
 
-void DuelPushed::onStateMounted(Device *PDN) {
-    LOG_I(DUEL_PUSHED_TAG, "DuelPushed state mounted");
+// void DuelPushed::onStateMounted(Device *PDN) {
+//     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state mounted");
     
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+//     PDN->getPrimaryButton()->removeButtonCallbacks();
+//     PDN->getSecondaryButton()->removeButtonCallbacks();
 
-    gracePeriodTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
+//     gracePeriodTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
 
-    PDN->getHaptics()->setIntensity(0);
-}
+//     PDN->getHaptics()->setIntensity(0);
+// }
 
-void DuelPushed::onStateLoop(Device *PDN) {
-    gracePeriodTimer.updateTime();
-}
+// void DuelPushed::onStateLoop(Device *PDN) {
+//     gracePeriodTimer.updateTime();
+// }
 
-void DuelPushed::onStateDismounted(Device *PDN) {
-    LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
+// void DuelPushed::onStateDismounted(Device *PDN) {
+//     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
 
-    if (!isConnected()) {
-        matchManager->clearCurrentMatch();
-    }
+//     if (!isConnected()) {
+//         matchManager->clearCurrentMatch();
+//     }
 
-    gracePeriodTimer.invalidate();
-}
+//     gracePeriodTimer.invalidate();
+// }
 
-bool DuelPushed::isPrimaryRequired() {
-    return player->isHunter();
-}
+// bool DuelPushed::isPrimaryRequired() {
+//     return player->isHunter();
+// }
 
-bool DuelPushed::isAuxRequired() {
-    return !player->isHunter();
-}
+// bool DuelPushed::isAuxRequired() {
+//     return !player->isHunter();
+// }
 
-bool DuelPushed::disconnectedBackToIdle() {
-    return !isConnected();
-}
+// bool DuelPushed::disconnectedBackToIdle() {
+//     return !isConnected();
+// }
 
-bool DuelPushed::transitionToDuelResult() {
-    return matchManager->matchResultsAreIn() || gracePeriodTimer.expired();
-}
+// bool DuelPushed::transitionToDuelResult() {
+//     return matchManager->matchResultsAreIn() || gracePeriodTimer.expired();
+// }

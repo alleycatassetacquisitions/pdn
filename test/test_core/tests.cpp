@@ -10,10 +10,10 @@
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
-#include "match-manager-tests.hpp"
-#include "integration-tests.hpp"
-#include "quickdraw-tests.hpp"
-#include "quickdraw-integration-tests.hpp"
+// #include "match-manager-tests.hpp" // QUICKDRAW_REMOVED
+// #include "integration-tests.hpp" // QUICKDRAW_REMOVED
+// #include "quickdraw-tests.hpp" // QUICKDRAW_REMOVED
+// #include "quickdraw-integration-tests.hpp" // QUICKDRAW_REMOVED
 #include "rdc-tests.hpp"
 
 #if defined(ARDUINO)
@@ -621,6 +621,7 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
     timerWithNullClockHandlesGracefully();
 }
 
+#if 0 // QUICKDRAW_REMOVED
 // ============================================
 // MATCH MANAGER TESTS
 // ============================================
@@ -1129,6 +1130,7 @@ TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
 TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
 }
+#endif // QUICKDRAW_REMOVED
 
 // ============================================
 // HWM UNIT TESTS

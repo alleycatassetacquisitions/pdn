@@ -1,417 +1,417 @@
-#include "game/match-manager.hpp"
-#include <ArduinoJson.h>
-#include "device/drivers/logger.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
-#include "device/device-constants.hpp"
-#include "id-generator.hpp"
-#include <optional>
+// #include "game/match-manager.hpp"
+// #include <ArduinoJson.h>
+// #include "device/drivers/logger.hpp"
+// #include "wireless/quickdraw-wireless-manager.hpp"
+// #include "device/device-constants.hpp"
+// #include "id-generator.hpp"
+// #include <optional>
 
-static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
+// static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
-MatchManager::MatchManager() 
-    : player(nullptr)
-    , storage(nullptr)
-    , quickdrawWirelessManager(nullptr) {
-}
+// MatchManager::MatchManager() 
+//     : player(nullptr)
+//     , storage(nullptr)
+//     , quickdrawWirelessManager(nullptr) {
+// }
 
-MatchManager::~MatchManager() { 
-    quickdrawWirelessManager = nullptr;
-    if (storage) {
-        storage->end();
-    }
-}
+// MatchManager::~MatchManager() { 
+//     quickdrawWirelessManager = nullptr;
+//     if (storage) {
+//         storage->end();
+//     }
+// }
 
-void MatchManager::clearCurrentMatch() {
-    if (activeDuelState.match) {
-        LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
-        activeDuelState.match.reset();
-        activeDuelState.hasReceivedDrawResult = false;
-        activeDuelState.hasPressedButton = false;
-        activeDuelState.duelLocalStartTime = 0;
-        activeDuelState.gracePeriodExpiredNoResult = false;
-        activeDuelState.buttonMasherCount = 0;
-        activeDuelState.matchIsReady = false;
-    }
-}
+// void MatchManager::clearCurrentMatch() {
+//     if (activeDuelState.match) {
+//         LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
+//         activeDuelState.match.reset();
+//         activeDuelState.hasReceivedDrawResult = false;
+//         activeDuelState.hasPressedButton = false;
+//         activeDuelState.duelLocalStartTime = 0;
+//         activeDuelState.gracePeriodExpiredNoResult = false;
+//         activeDuelState.buttonMasherCount = 0;
+//         activeDuelState.matchIsReady = false;
+//     }
+// }
 
-void MatchManager::initializeMatch(uint8_t* opponentMac) {
-    // Only allow one active match at a time
-    if (activeDuelState.match.has_value()) {
-        return;
-    }
+// void MatchManager::initializeMatch(uint8_t* opponentMac) {
+//     // Only allow one active match at a time
+//     if (activeDuelState.match.has_value()) {
+//         return;
+//     }
 
-    char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    memcpy(matchId, IdGenerator::getInstance().generateId(), IdGenerator::UUID_BUFFER_SIZE);
-    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
-    memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
-    sendMatchId();
-}
+//     char matchId[IdGenerator::UUID_BUFFER_SIZE];
+//     memcpy(matchId, IdGenerator::getInstance().generateId(), IdGenerator::UUID_BUFFER_SIZE);
+//     activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
+//     memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
+//     sendMatchId();
+// }
 
-void MatchManager::sendMatchId() {
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::SEND_MATCH_ID, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
-    quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
-}
+// void MatchManager::sendMatchId() {
+//     QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::SEND_MATCH_ID, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
+//     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+// }
 
-void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter, uint8_t* opponentMac) {
-    // Only allow one active match at a time
-    if (activeDuelState.match.has_value()) {
-        return;
-    }
+// void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter, uint8_t* opponentMac) {
+//     // Only allow one active match at a time
+//     if (activeDuelState.match.has_value()) {
+//         return;
+//     }
 
-    // Build the match from our own perspective, then record the opponent's ID.
-    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
-    if (opponentIsHunter) {
-        activeDuelState.match->setHunterId(opponentId);
-    } else {
-        activeDuelState.match->setBountyId(opponentId);
-    }
-    memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
+//     // Build the match from our own perspective, then record the opponent's ID.
+//     activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
+//     if (opponentIsHunter) {
+//         activeDuelState.match->setHunterId(opponentId);
+//     } else {
+//         activeDuelState.match->setBountyId(opponentId);
+//     }
+//     memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
 
-    activeDuelState.matchIsReady = true;
+//     activeDuelState.matchIsReady = true;
     
-    sendMatchAck();
-}
+//     sendMatchAck();
+// }
 
 
-void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
-    activeDuelState.duelLocalStartTime = local_start_time_ms;
-}
+// void MatchManager::setDuelLocalStartTime(unsigned long local_start_time_ms) {
+//     activeDuelState.duelLocalStartTime = local_start_time_ms;
+// }
 
-unsigned long MatchManager::getDuelLocalStartTime() {
-    return activeDuelState.duelLocalStartTime;
-}
+// unsigned long MatchManager::getDuelLocalStartTime() {
+//     return activeDuelState.duelLocalStartTime;
+// }
 
-// //Pretty sure this needs to be refactored. will come back to it.
-bool MatchManager::matchResultsAreIn() {
-    if (!activeDuelState.match) {
-        return false;
-    }
+// // //Pretty sure this needs to be refactored. will come back to it.
+// bool MatchManager::matchResultsAreIn() {
+//     if (!activeDuelState.match) {
+//         return false;
+//     }
        
-    return (activeDuelState.hasReceivedDrawResult && activeDuelState.hasPressedButton)
-    || (activeDuelState.gracePeriodExpiredNoResult && activeDuelState.hasPressedButton);
-}
+//     return (activeDuelState.hasReceivedDrawResult && activeDuelState.hasPressedButton)
+//     || (activeDuelState.gracePeriodExpiredNoResult && activeDuelState.hasPressedButton);
+// }
 
-void MatchManager::setNeverPressed() {
-    activeDuelState.gracePeriodExpiredNoResult = true;
-}
+// void MatchManager::setNeverPressed() {
+//     activeDuelState.gracePeriodExpiredNoResult = true;
+// }
 
-bool MatchManager::didWin() {
-    if (!activeDuelState.match) {
-        return false;
-    }
+// bool MatchManager::didWin() {
+//     if (!activeDuelState.match) {
+//         return false;
+//     }
 
-    if(player->isHunter() && activeDuelState.match->getBountyDrawTime() == 0) {
-        return true;
-    }
+//     if(player->isHunter() && activeDuelState.match->getBountyDrawTime() == 0) {
+//         return true;
+//     }
 
-    if(!player->isHunter() && activeDuelState.match->getHunterDrawTime() == 0) {
-        return true;
-    }
+//     if(!player->isHunter() && activeDuelState.match->getHunterDrawTime() == 0) {
+//         return true;
+//     }
 
     
-    return player->isHunter() ? 
-    activeDuelState.match->getHunterDrawTime() < activeDuelState.match->getBountyDrawTime() :
-    activeDuelState.match->getBountyDrawTime() < activeDuelState.match->getHunterDrawTime();
-}
+//     return player->isHunter() ? 
+//     activeDuelState.match->getHunterDrawTime() < activeDuelState.match->getBountyDrawTime() :
+//     activeDuelState.match->getBountyDrawTime() < activeDuelState.match->getHunterDrawTime();
+// }
 
-bool MatchManager::finalizeMatch() {
-    if (!activeDuelState.match) {
-        LOG_E(MATCH_MANAGER_TAG, "Cannot finalize match - no active match or ID mismatch\n");
-        return false;
-    }
+// bool MatchManager::finalizeMatch() {
+//     if (!activeDuelState.match) {
+//         LOG_E(MATCH_MANAGER_TAG, "Cannot finalize match - no active match or ID mismatch\n");
+//         return false;
+//     }
 
-    std::string match_id = activeDuelState.match->getMatchId();
+//     std::string match_id = activeDuelState.match->getMatchId();
 
-    // Save to storage
-    if (appendMatchToStorage(&*activeDuelState.match)) {
-        // Update stored count
-        updateStoredMatchCount(getStoredMatchCount() + 1);
-        clearCurrentMatch();
-        LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
-        return true;
-    }
+//     // Save to storage
+//     if (appendMatchToStorage(&*activeDuelState.match)) {
+//         // Update stored count
+//         updateStoredMatchCount(getStoredMatchCount() + 1);
+//         clearCurrentMatch();
+//         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
+//         return true;
+//     }
     
-    LOG_E("PDN", "Failed to finalize match %s\n", match_id.c_str());
-    return false;
-}
+//     LOG_E("PDN", "Failed to finalize match %s\n", match_id.c_str());
+//     return false;
+// }
 
-bool MatchManager::getHasReceivedDrawResult() {
-    return activeDuelState.hasReceivedDrawResult;
-}
+// bool MatchManager::getHasReceivedDrawResult() {
+//     return activeDuelState.hasReceivedDrawResult;
+// }
 
-bool MatchManager::getHasPressedButton() {
-    return activeDuelState.hasPressedButton;
-}
+// bool MatchManager::getHasPressedButton() {
+//     return activeDuelState.hasPressedButton;
+// }
 
-void MatchManager::setReceivedDrawResult() {
-    activeDuelState.hasReceivedDrawResult = true;
-}
+// void MatchManager::setReceivedDrawResult() {
+//     activeDuelState.hasReceivedDrawResult = true;
+// }
 
-parameterizedCallbackFunction MatchManager::getDuelButtonPush() {
-    return duelButtonPush;
-}
+// parameterizedCallbackFunction MatchManager::getDuelButtonPush() {
+//     return duelButtonPush;
+// }
 
-void MatchManager::setReceivedButtonPush() {
-    activeDuelState.hasPressedButton = true;
-}
+// void MatchManager::setReceivedButtonPush() {
+//     activeDuelState.hasPressedButton = true;
+// }
 
-bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
-    if (!activeDuelState.match) {
-        return false;
-    }
-    activeDuelState.match->setHunterDrawTime(hunter_time_ms);
-    return true;
-}
+// bool MatchManager::setHunterDrawTime(unsigned long hunter_time_ms) {
+//     if (!activeDuelState.match) {
+//         return false;
+//     }
+//     activeDuelState.match->setHunterDrawTime(hunter_time_ms);
+//     return true;
+// }
 
-bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
-    if (!activeDuelState.match) {
-        return false;
-    }
-    activeDuelState.match->setBountyDrawTime(bounty_time_ms);
-    return true;
-}
+// bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
+//     if (!activeDuelState.match) {
+//         return false;
+//     }
+//     activeDuelState.match->setBountyDrawTime(bounty_time_ms);
+//     return true;
+// }
 
-std::string MatchManager::toJson() {
-    // Create JSON document with an object at the root
-    JsonDocument doc;  // Adjust size based on max matches
+// std::string MatchManager::toJson() {
+//     // Create JSON document with an object at the root
+//     JsonDocument doc;  // Adjust size based on max matches
     
-    // Create a "matches" array within the root object
-    JsonArray matchArray = doc["matches"].to<JsonArray>();
+//     // Create a "matches" array within the root object
+//     JsonArray matchArray = doc["matches"].to<JsonArray>();
 
-    // Read all matches from storage
-    uint8_t count = getStoredMatchCount();
-    for (uint8_t i = 0; i < count; i++) {
-        Match* match = readMatchFromStorage(i);
-        if (match) {
-            // Add match to array
-            std::string matchJson = match->toJson();
-            JsonDocument matchDoc;
-            deserializeJson(matchDoc, matchJson);
-            matchArray.add(matchDoc.as<JsonObject>());
-            delete match;
-        }
-    }
+//     // Read all matches from storage
+//     uint8_t count = getStoredMatchCount();
+//     for (uint8_t i = 0; i < count; i++) {
+//         Match* match = readMatchFromStorage(i);
+//         if (match) {
+//             // Add match to array
+//             std::string matchJson = match->toJson();
+//             JsonDocument matchDoc;
+//             deserializeJson(matchDoc, matchJson);
+//             matchArray.add(matchDoc.as<JsonObject>());
+//             delete match;
+//         }
+//     }
 
-    // Serialize to string
-    std::string output;
-    serializeJson(doc, output);
-    return output;
-}
+//     // Serialize to string
+//     std::string output;
+//     serializeJson(doc, output);
+//     return output;
+// }
 
-void MatchManager::clearStorage() {
-    storage->clear();
-    updateStoredMatchCount(0);
-    LOG_I("PDN", "Cleared match storage\n");
-}
+// void MatchManager::clearStorage() {
+//     storage->clear();
+//     updateStoredMatchCount(0);
+//     LOG_I("PDN", "Cleared match storage\n");
+// }
 
-size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(PREF_COUNT_KEY, 0);
-}
+// size_t MatchManager::getStoredMatchCount() {
+//     return storage->readUChar(PREF_COUNT_KEY, 0);
+// }
 
-bool MatchManager::appendMatchToStorage(const Match* match) {
-    if (!match) return false;
+// bool MatchManager::appendMatchToStorage(const Match* match) {
+//     if (!match) return false;
 
-    uint8_t count = getStoredMatchCount();
-    if (count >= MAX_MATCHES) {
-        LOG_E("PDN", "Cannot save match - storage full\n");
-        return false;
-    }
+//     uint8_t count = getStoredMatchCount();
+//     if (count >= MAX_MATCHES) {
+//         LOG_E("PDN", "Cannot save match - storage full\n");
+//         return false;
+//     }
 
-    // Convert match to JSON for storage
-    std::string matchJson = match->toJson();
+//     // Convert match to JSON for storage
+//     std::string matchJson = match->toJson();
     
-    // Create key for this match
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
+//     // Create key for this match
+//     char key[16];
+//     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
 
-    LOG_W(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
-            key, matchJson.length());
-    LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
+//     LOG_W(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
+//             key, matchJson.length());
+//     LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
     
-    // Try to check if preferences is working
-    if (storage->writeUChar("test_key", 123) != 1) {
-        LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
-    } else {
-        uint8_t test_val = storage->readUChar("test_key", 0);
-        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
-    }
+//     // Try to check if preferences is working
+//     if (storage->writeUChar("test_key", 123) != 1) {
+//         LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
+//     } else {
+//         uint8_t test_val = storage->readUChar("test_key", 0);
+//         LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
+//     }
 
-    // Save match JSON to preferences
-    if (storage->write(key, matchJson) != matchJson.length()) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
-                key, matchJson.length());
+//     // Save match JSON to preferences
+//     if (storage->write(key, matchJson) != matchJson.length()) {
+//         LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
+//                 key, matchJson.length());
         
-        return false;
-    }
+//         return false;
+//     }
 
-    LOG_W(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
-    return true;
-}
+//     LOG_W(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
+//     return true;
+// }
 
-void MatchManager::updateStoredMatchCount(uint8_t count) {
-    if (storage->writeUChar(PREF_COUNT_KEY, count) != 1) {
-        LOG_E("PDN", "Failed to update match count\n");
-    } else {
-        LOG_I("PDN", "Updated stored match count to %d\n", count);
-    }
-}
+// void MatchManager::updateStoredMatchCount(uint8_t count) {
+//     if (storage->writeUChar(PREF_COUNT_KEY, count) != 1) {
+//         LOG_E("PDN", "Failed to update match count\n");
+//     } else {
+//         LOG_I("PDN", "Updated stored match count to %d\n", count);
+//     }
+// }
 
-Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    if (index >= getStoredMatchCount()) {
-        return nullptr;
-    }
+// Match* MatchManager::readMatchFromStorage(uint8_t index) {
+//     if (index >= getStoredMatchCount()) {
+//         return nullptr;
+//     }
 
-    // Create key for this match
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
+//     // Create key for this match
+//     char key[16];
+//     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
     
-    // Read match JSON from preferences
-    std::string matchJson = storage->read(key, "");
-    if (matchJson.empty()) {
-        return nullptr;
-    }
+//     // Read match JSON from preferences
+//     std::string matchJson = storage->read(key, "");
+//     if (matchJson.empty()) {
+//         return nullptr;
+//     }
 
-    // Create and deserialize match
-    Match* match = new Match();
-    match->fromJson(matchJson);
-    return match;
-}
+//     // Create and deserialize match
+//     Match* match = new Match();
+//     match->fromJson(matchJson);
+//     return match;
+// }
 
-parameterizedCallbackFunction MatchManager::getButtonMasher() {
-    return buttonMasher;
-}
+// parameterizedCallbackFunction MatchManager::getButtonMasher() {
+//     return buttonMasher;
+// }
 
-void MatchManager::initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager) {
-    this->player = player;
-    this->storage = storage;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
+// void MatchManager::initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager) {
+//     this->player = player;
+//     this->storage = storage;
+//     this->quickdrawWirelessManager = quickdrawWirelessManager;
 
-    duelButtonPush = [](void *ctx) {
-        if (!ctx) {
-            LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
-            return;
-        }
+//     duelButtonPush = [](void *ctx) {
+//         if (!ctx) {
+//             LOG_E(MATCH_MANAGER_TAG, "Button press handler received null context");
+//             return;
+//         }
 
-        auto* clock = SimpleTimer::getPlatformClock();
-        if (!clock) {
-            LOG_E(MATCH_MANAGER_TAG, "Button press handler called with no platform clock");
-            return;
-        }
-        unsigned long now = clock->milliseconds();
+//         auto* clock = SimpleTimer::getPlatformClock();
+//         if (!clock) {
+//             LOG_E(MATCH_MANAGER_TAG, "Button press handler called with no platform clock");
+//             return;
+//         }
+//         unsigned long now = clock->milliseconds();
 
-        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
-        ActiveDuelState* activeDuelState = &matchManager->activeDuelState;
-        Player *player = matchManager->player;
-        QuickdrawWirelessManager* quickdrawWirelessManager = matchManager->quickdrawWirelessManager;
+//         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+//         ActiveDuelState* activeDuelState = &matchManager->activeDuelState;
+//         Player *player = matchManager->player;
+//         QuickdrawWirelessManager* quickdrawWirelessManager = matchManager->quickdrawWirelessManager;
 
-        if(matchManager->getHasPressedButton()) {
-            LOG_I(MATCH_MANAGER_TAG, "Button already pressed - skipping");
-            return;
-        }
+//         if(matchManager->getHasPressedButton()) {
+//             LOG_I(MATCH_MANAGER_TAG, "Button already pressed - skipping");
+//             return;
+//         }
 
-        if(!matchManager->getCurrentMatch().has_value()) {
-            LOG_E(MATCH_MANAGER_TAG, "No current match - skipping");
-            return;
-        }
+//         if(!matchManager->getCurrentMatch().has_value()) {
+//             LOG_E(MATCH_MANAGER_TAG, "No current match - skipping");
+//             return;
+//         }
 
-        unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
+//         unsigned long reactionTimeMs = now - matchManager->getDuelLocalStartTime();
 
-        if(activeDuelState->buttonMasherCount > 0) {
-            reactionTimeMs = reactionTimeMs + activeDuelState->calculateButtonMasherPenalty();
-        }
+//         if(activeDuelState->buttonMasherCount > 0) {
+//             reactionTimeMs = reactionTimeMs + activeDuelState->calculateButtonMasherPenalty();
+//         }
 
-        LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms for %s", 
-                reactionTimeMs, player->isHunter() ? "Hunter" : "Bounty");
+//         LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms for %s", 
+//                 reactionTimeMs, player->isHunter() ? "Hunter" : "Bounty");
 
-        player->isHunter() ? 
-        matchManager->setHunterDrawTime(reactionTimeMs) 
-        : matchManager->setBountyDrawTime(reactionTimeMs);
+//         player->isHunter() ? 
+//         matchManager->setHunterDrawTime(reactionTimeMs) 
+//         : matchManager->setBountyDrawTime(reactionTimeMs);
 
-        LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
+//         LOG_I(MATCH_MANAGER_TAG, "Stored reaction time in MatchManager");
 
-        LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
-                MacToString(activeDuelState->opponentMac.data()));
+//         LOG_I(MATCH_MANAGER_TAG, "Broadcasting DRAW_RESULT to opponent MAC: %s",
+//                 MacToString(activeDuelState->opponentMac.data()));
 
-        QuickdrawCommand command(activeDuelState->opponentMac.data(), QDCommand::DRAW_RESULT, matchManager->getCurrentMatch()->getMatchId(), player->getUserID().c_str(), reactionTimeMs, player->isHunter());
+//         QuickdrawCommand command(activeDuelState->opponentMac.data(), QDCommand::DRAW_RESULT, matchManager->getCurrentMatch()->getMatchId(), player->getUserID().c_str(), reactionTimeMs, player->isHunter());
 
-        quickdrawWirelessManager->broadcastPacket(activeDuelState->opponentMac.data(), command);
+//         quickdrawWirelessManager->broadcastPacket(activeDuelState->opponentMac.data(), command);
 
-        matchManager->setReceivedButtonPush();
+//         matchManager->setReceivedButtonPush();
         
-        LOG_I(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
-    };
+//         LOG_I(MATCH_MANAGER_TAG, "Reaction time: %lu ms", reactionTimeMs);
+//     };
 
-    buttonMasher = [](void *ctx) {
-        MatchManager* matchManager = static_cast<MatchManager*>(ctx);
-        matchManager->activeDuelState.buttonMasherCount++;
-        LOG_I(MATCH_MANAGER_TAG, "Button masher count: %d", matchManager->activeDuelState.buttonMasherCount);
-    };
-}
+//     buttonMasher = [](void *ctx) {
+//         MatchManager* matchManager = static_cast<MatchManager*>(ctx);
+//         matchManager->activeDuelState.buttonMasherCount++;
+//         LOG_I(MATCH_MANAGER_TAG, "Button masher count: %d", matchManager->activeDuelState.buttonMasherCount);
+//     };
+// }
 
-void MatchManager::sendMatchAck() {
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ID_ACK, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
-    quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
-}
+// void MatchManager::sendMatchAck() {
+//     QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ID_ACK, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
+//     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+// }
 
-void MatchManager::sendMatchRoleMismatch() {
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ROLE_MISMATCH, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
-    quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
-}
+// void MatchManager::sendMatchRoleMismatch() {
+//     QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ROLE_MISMATCH, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
+//     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+// }
 
-void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
-    LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
+// void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
+//     LOG_I(MATCH_MANAGER_TAG, "Received command: %d", command.command);
 
-    if(command.command == QDCommand::SEND_MATCH_ID) {
-        LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
-        if(player->isHunter() == command.isHunter) {
-            // Same role on both sides — not a valid hunter/bounty pairing.
-            sendMatchRoleMismatch();
-            return;
-        } else {
-            receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
-        }
-    } else if(command.command == QDCommand::MATCH_ID_ACK) {
-        LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
-        if(activeDuelState.match.has_value() && strcmp(command.matchId, activeDuelState.match->getMatchId()) == 0) {
-            if(player->isHunter()) { activeDuelState.match->setBountyId(command.playerId); }
-            else { activeDuelState.match->setHunterId(command.playerId); }
-            activeDuelState.matchIsReady = true;
-        }
-    } else if(command.command == QDCommand::MATCH_ROLE_MISMATCH) {
-        LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
-        clearCurrentMatch();
+//     if(command.command == QDCommand::SEND_MATCH_ID) {
+//         LOG_I(MATCH_MANAGER_TAG, "Received SEND_MATCH_ID command from opponent");
+//         if(player->isHunter() == command.isHunter) {
+//             // Same role on both sides — not a valid hunter/bounty pairing.
+//             sendMatchRoleMismatch();
+//             return;
+//         } else {
+//             receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));
+//         }
+//     } else if(command.command == QDCommand::MATCH_ID_ACK) {
+//         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
+//         if(activeDuelState.match.has_value() && strcmp(command.matchId, activeDuelState.match->getMatchId()) == 0) {
+//             if(player->isHunter()) { activeDuelState.match->setBountyId(command.playerId); }
+//             else { activeDuelState.match->setHunterId(command.playerId); }
+//             activeDuelState.matchIsReady = true;
+//         }
+//     } else if(command.command == QDCommand::MATCH_ROLE_MISMATCH) {
+//         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
+//         clearCurrentMatch();
 
-        return;
-    } else if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
-        LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
+//         return;
+//     } else if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
+//         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");
         
-        long opponentTime = command.playerDrawTime;
+//         long opponentTime = command.playerDrawTime;
             
-        LOG_I(MATCH_MANAGER_TAG, "Opponent reaction time: %ld ms", opponentTime);
+//         LOG_I(MATCH_MANAGER_TAG, "Opponent reaction time: %ld ms", opponentTime);
         
-        command.isHunter ? 
-        setHunterDrawTime(opponentTime) 
-        : setBountyDrawTime(opponentTime);
+//         command.isHunter ? 
+//         setHunterDrawTime(opponentTime) 
+//         : setBountyDrawTime(opponentTime);
 
-        setReceivedDrawResult();
-    } else {
-        LOG_W(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
-    }
-}
+//         setReceivedDrawResult();
+//     } else {
+//         LOG_W(MATCH_MANAGER_TAG, "Received unexpected command in Match Manager: %d", command.command);
+//     }
+// }
 
-void MatchManager::sendNeverPressed(unsigned long pityTime) {
-    if (!activeDuelState.match.has_value()) {
-        LOG_E(MATCH_MANAGER_TAG, "Cannot send NEVER_PRESSED - no active match");
-        return;
-    }
+// void MatchManager::sendNeverPressed(unsigned long pityTime) {
+//     if (!activeDuelState.match.has_value()) {
+//         LOG_E(MATCH_MANAGER_TAG, "Cannot send NEVER_PRESSED - no active match");
+//         return;
+//     }
 
-    player->isHunter() ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
-    setNeverPressed();
+//     player->isHunter() ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
+//     setNeverPressed();
 
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED, activeDuelState.match->getMatchId(), player->getUserID().c_str(), pityTime, player->isHunter());
-    quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
-}
+//     QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED, activeDuelState.match->getMatchId(), player->getUserID().c_str(), pityTime, player->isHunter());
+//     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+// }
 
-bool MatchManager::isMatchReady() {
-    return activeDuelState.matchIsReady;
-}
+// bool MatchManager::isMatchReady() {
+//     return activeDuelState.matchIsReady;
+// }

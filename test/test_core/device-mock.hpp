@@ -13,7 +13,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+// #include "wireless/quickdraw-wireless-manager.hpp" // QUICKDRAW_REMOVED
 #include <queue>
 #include <vector>
 
@@ -158,37 +158,35 @@ public:
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
     void setPortStatus(SerialIdentifier id, PortStatus status) {
-        if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
-        else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
+        if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
+        else if (id == SerialIdentifier::INPUT_JACK_SECONDARY) inputSecondaryStatus = status;
     }
 
     PortStatus getPortStatus(SerialIdentifier id) override {
-        if (id == SerialIdentifier::OUTPUT_JACK) return outputStatus;
         if (id == SerialIdentifier::INPUT_JACK) return inputStatus;
+        if (id == SerialIdentifier::INPUT_JACK_SECONDARY) return inputSecondaryStatus;
         return PortStatus::DISCONNECTED;
     }
 
     void setPeerDeviceType(SerialIdentifier id, DeviceType type) {
-        if (id == SerialIdentifier::OUTPUT_JACK) outputDeviceType = type;
-        else if (id == SerialIdentifier::INPUT_JACK) inputDeviceType = type;
+        if (id == SerialIdentifier::INPUT_JACK) inputDeviceType = type;
+        else if (id == SerialIdentifier::INPUT_JACK_SECONDARY) inputSecondaryDeviceType = type;
     }
 
     DeviceType getPeerDeviceType(SerialIdentifier id) const override {
-        if (id == SerialIdentifier::OUTPUT_JACK) return outputDeviceType;
         if (id == SerialIdentifier::INPUT_JACK) return inputDeviceType;
+        if (id == SerialIdentifier::INPUT_JACK_SECONDARY) return inputSecondaryDeviceType;
         return DeviceType::UNKNOWN;
     }
 
 private:
-    PortStatus outputStatus = PortStatus::DISCONNECTED;
     PortStatus inputStatus = PortStatus::DISCONNECTED;
-    DeviceType outputDeviceType = DeviceType::UNKNOWN;
+    PortStatus inputSecondaryStatus = PortStatus::DISCONNECTED;
     DeviceType inputDeviceType = DeviceType::UNKNOWN;
+    DeviceType inputSecondaryDeviceType = DeviceType::UNKNOWN;
 };
 
-// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
-// Call deliverLastTo() to route the most-recently-captured packet to another manager's
-// processQuickdrawCommand(), exercising the real serialization/deserialization path.
+#if 0 // QUICKDRAW_REMOVED
 class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
 public:
     FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
@@ -202,7 +200,6 @@ public:
         if (sentCommands.empty()) return;
         const QuickdrawCommand& cmd = sentCommands.back();
 
-        // Serialize into the same wire format used by the real broadcastPacket.
         QuickdrawPacket pkt = {};
         memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
         memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
@@ -218,6 +215,7 @@ public:
 
     std::vector<QuickdrawCommand> sentCommands;
 };
+#endif // QUICKDRAW_REMOVED
 
 // Fake light strip for LightManager
 class FakeLightStrip : public LightStrip {
@@ -246,7 +244,7 @@ public:
         mockPeerComms = new MockPeerComms();
         mockStorage = new MockStorage();
         lightManager = new LightManager(fakeLightStrip);
-        serialManager = new SerialManager(&outputJackSerial, &inputJackSerial);
+        serialManager = new SerialManager(&inputJackSerial, &inputSecondaryJackSerial);
         wirelessManager = new WirelessManager(mockPeerComms, mockHttpClient);
     }
 
@@ -283,7 +281,7 @@ public:
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override { return &fakeRemoteDeviceCoordinator; }
 
     std::string getHead() {
-        return serialManager->getOutputHead();
+        return serialManager->getInputHead();
     }
 
     // Mock interface instances
@@ -299,7 +297,7 @@ public:
     SerialManager* serialManager;
     WirelessManager* wirelessManager;
 
-    FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
+    FakeHWSerialWrapper inputSecondaryJackSerial;
     FakeRemoteDeviceCoordinator fakeRemoteDeviceCoordinator;
 };

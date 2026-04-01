@@ -1,52 +1,52 @@
-#include "apps/player-registration/player-registration-states.hpp"
-#include "game/player.hpp"
-#include "game/quickdraw-resources.hpp"
-#include "device/drivers/logger.hpp"
-#include "device/device.hpp"
+// #include "apps/player-registration/player-registration-states.hpp"
+// #include "game/player.hpp"
+// #include "game/quickdraw-resources.hpp"
+// #include "device/drivers/logger.hpp"
+// #include "device/device.hpp"
 
-static const char* TAG = "WelcomeMessage";
+// static const char* TAG = "WelcomeMessage";
 
-WelcomeMessage::WelcomeMessage(Player* player) : State(PlayerRegistrationStateId::WELCOME_MESSAGE) {
-    this->player = player;
-}
+// WelcomeMessage::WelcomeMessage(Player* player) : State(PlayerRegistrationStateId::WELCOME_MESSAGE) {
+//     this->player = player;
+// }
 
-WelcomeMessage::~WelcomeMessage() {
-}
+// WelcomeMessage::~WelcomeMessage() {
+// }
 
-void WelcomeMessage::onStateMounted(Device *PDN) {
-    LOG_I(TAG, "WelcomeMessage state mounted");
-    renderWelcomeMessage(PDN);
-    welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+// void WelcomeMessage::onStateMounted(Device *PDN) {
+//     LOG_I(TAG, "WelcomeMessage state mounted");
+//     renderWelcomeMessage(PDN);
+//     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
+//     PDN->getPrimaryButton()->removeButtonCallbacks();
+//     PDN->getSecondaryButton()->removeButtonCallbacks();
 
-} 
+// } 
 
-void WelcomeMessage::onStateLoop(Device *PDN) {
-    welcomeMessageTimer.updateTime();
-    if(welcomeMessageTimer.expired()) {
-        transitionToAwakenSequenceState = true;
-    }
-}
+// void WelcomeMessage::onStateLoop(Device *PDN) {
+//     welcomeMessageTimer.updateTime();
+//     if(welcomeMessageTimer.expired()) {
+//         transitionToAwakenSequenceState = true;
+//     }
+// }
 
-void WelcomeMessage::renderWelcomeMessage(Device *PDN) {
-    PDN->getDisplay()->
-    invalidateScreen()->
-    setGlyphMode(FontMode::TEXT)->
-    drawText("**Alias**", 0, 16)->
-    drawText(player->getName().c_str(), 0, 32)->
-    drawText("*Allegiance*", 0, 48)->
-    drawText(player->getAllegianceString().c_str(), 0, 64)->
-    render();
-}
+// void WelcomeMessage::renderWelcomeMessage(Device *PDN) {
+//     PDN->getDisplay()->
+//     invalidateScreen()->
+//     setGlyphMode(FontMode::TEXT)->
+//     drawText("**Alias**", 0, 16)->
+//     drawText(player->getName().c_str(), 0, 32)->
+//     drawText("*Allegiance*", 0, 48)->
+//     drawText(player->getAllegianceString().c_str(), 0, 64)->
+//     render();
+// }
 
-void WelcomeMessage::onStateDismounted(Device *PDN) {
-    LOG_I(TAG, "WelcomeMessage state dismounted");
-    welcomeMessageTimer.invalidate();
-    transitionToAwakenSequenceState = false;
-}
+// void WelcomeMessage::onStateDismounted(Device *PDN) {
+//     LOG_I(TAG, "WelcomeMessage state dismounted");
+//     welcomeMessageTimer.invalidate();
+//     transitionToAwakenSequenceState = false;
+// }
 
-bool WelcomeMessage::transitionToGameplay() {
-    return transitionToAwakenSequenceState;
-}
+// bool WelcomeMessage::transitionToGameplay() {
+//     return transitionToAwakenSequenceState;
+// }
 

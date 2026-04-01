@@ -1,115 +1,115 @@
-#include "game/quickdraw-states.hpp"
-#include "game/quickdraw-resources.hpp"
-#include "game/match-manager.hpp"
-#include "device/drivers/logger.hpp"
-#include "device/device.hpp"
+// #include "game/quickdraw-states.hpp"
+// #include "game/quickdraw-resources.hpp"
+// #include "game/match-manager.hpp"
+// #include "device/drivers/logger.hpp"
+// #include "device/device.hpp"
 
-#define DUEL_TAG "DUEL_STATE"
+// #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL) {
-    this->player = player;
-    this->matchManager = matchManager;
-}
+// Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL) {
+//     this->player = player;
+//     this->matchManager = matchManager;
+// }
 
-Duel::~Duel() {
-    LOG_I(DUEL_TAG, "Duel state destroyed");
-    this->player = nullptr;
-    this->matchManager = nullptr;
-}
+// Duel::~Duel() {
+//     LOG_I(DUEL_TAG, "Duel state destroyed");
+//     this->player = nullptr;
+//     this->matchManager = nullptr;
+// }
 
-void Duel::onStateMounted(Device *PDN) {
-    LOG_I(DUEL_TAG, "Duel state mounted");
-    matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
+// void Duel::onStateMounted(Device *PDN) {
+//     LOG_I(DUEL_TAG, "Duel state mounted");
+//     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
-    LOG_I(DUEL_TAG, "Setting up button handlers");
+//     LOG_I(DUEL_TAG, "Setting up button handlers");
 
-    auto duelButtonPush = matchManager->getDuelButtonPush();
-    PDN->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+//     auto duelButtonPush = matchManager->getDuelButtonPush();
+//     PDN->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+//     PDN->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
 
-    duelTimer.setTimer(DUEL_TIMEOUT);
+//     duelTimer.setTimer(DUEL_TIMEOUT);
 
-    LOG_I(DUEL_TAG, "Duel timer started for %d ms, duelStartTime: %lu", 
-             DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
+//     LOG_I(DUEL_TAG, "Duel timer started for %d ms, duelStartTime: %lu", 
+//              DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
              
-    PDN->getDisplay()->invalidateScreen()->
-    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
-    drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
-    render();
+//     PDN->getDisplay()->invalidateScreen()->
+//     drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
+//     drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
+//     render();
     
-    LOG_I(DUEL_TAG, "Draw image displayed for allegiance: %d", player->getAllegiance());
+//     LOG_I(DUEL_TAG, "Draw image displayed for allegiance: %d", player->getAllegiance());
 
-    AnimationConfig config;
-    config.type = AnimationType::COUNTDOWN;
-    config.speed = 16;
-    config.loopDelayMs = 0;
-    config.loop = false;
-    config.initialState = COUNTDOWN_DUEL_STATE;
+//     AnimationConfig config;
+//     config.type = AnimationType::COUNTDOWN;
+//     config.speed = 16;
+//     config.loopDelayMs = 0;
+//     config.loop = false;
+//     config.initialState = COUNTDOWN_DUEL_STATE;
     
-    PDN->getLightManager()->startAnimation(config);
+//     PDN->getLightManager()->startAnimation(config);
 
-    PDN->getHaptics()->setIntensity(175);
-}
+//     PDN->getHaptics()->setIntensity(175);
+// }
 
-void Duel::onStateLoop(Device *PDN) {
-    duelTimer.updateTime();
+// void Duel::onStateLoop(Device *PDN) {
+//     duelTimer.updateTime();
 
-    if(matchManager->getHasReceivedDrawResult()) {
-        transitionToDuelReceivedResultState = true;
-        return;
-    } else if(matchManager->getHasPressedButton()) {
-        transitionToDuelPushedState = true;
-        return;
-    }
+//     if(matchManager->getHasReceivedDrawResult()) {
+//         transitionToDuelReceivedResultState = true;
+//         return;
+//     } else if(matchManager->getHasPressedButton()) {
+//         transitionToDuelPushedState = true;
+//         return;
+//     }
     
-    if(duelTimer.expired() || !isConnected()) {
-        transitionToIdleState = true;
-    }
-}
+//     if(duelTimer.expired() || !isConnected()) {
+//         transitionToIdleState = true;
+//     }
+// }
 
-bool Duel::transitionToIdle() {
-    return transitionToIdleState;
-}
+// bool Duel::transitionToIdle() {
+//     return transitionToIdleState;
+// }
 
-bool Duel::transitionToDuelPushed() {
-    if (transitionToDuelPushedState) {
-        LOG_I(DUEL_TAG, "Transitioning to duel pushed state");
-    }
-    return transitionToDuelPushedState;
-}
+// bool Duel::transitionToDuelPushed() {
+//     if (transitionToDuelPushedState) {
+//         LOG_I(DUEL_TAG, "Transitioning to duel pushed state");
+//     }
+//     return transitionToDuelPushedState;
+// }
 
-bool Duel::transitionToDuelReceivedResult() {
-    if (transitionToDuelReceivedResultState) {
-        LOG_I(DUEL_TAG, "Transitioning to duel result state");
-    }
-    return transitionToDuelReceivedResultState;
-}
+// bool Duel::transitionToDuelReceivedResult() {
+//     if (transitionToDuelReceivedResultState) {
+//         LOG_I(DUEL_TAG, "Transitioning to duel result state");
+//     }
+//     return transitionToDuelReceivedResultState;
+// }
 
-void Duel::onStateDismounted(Device *PDN) {
-    if(transitionToIdleState) {
-        PDN->getHaptics()->off();
-        matchManager->clearCurrentMatch();
-        PDN->getPrimaryButton()->removeButtonCallbacks();
-        PDN->getSecondaryButton()->removeButtonCallbacks();
-    } else if(transitionToDuelReceivedResultState) {
-        PDN->getPrimaryButton()->removeButtonCallbacks();
-        PDN->getSecondaryButton()->removeButtonCallbacks();
-    }
+// void Duel::onStateDismounted(Device *PDN) {
+//     if(transitionToIdleState) {
+//         PDN->getHaptics()->off();
+//         matchManager->clearCurrentMatch();
+//         PDN->getPrimaryButton()->removeButtonCallbacks();
+//         PDN->getSecondaryButton()->removeButtonCallbacks();
+//     } else if(transitionToDuelReceivedResultState) {
+//         PDN->getPrimaryButton()->removeButtonCallbacks();
+//         PDN->getSecondaryButton()->removeButtonCallbacks();
+//     }
 
-    LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
+//     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
     
-    duelTimer.invalidate();
-    LOG_I(DUEL_TAG, "Duel timer invalidated");
+//     duelTimer.invalidate();
+//     LOG_I(DUEL_TAG, "Duel timer invalidated");
 
-    transitionToDuelReceivedResultState = false;
-    transitionToIdleState = false;
-    transitionToDuelPushedState = false;
-}
+//     transitionToDuelReceivedResultState = false;
+//     transitionToIdleState = false;
+//     transitionToDuelPushedState = false;
+// }
 
-bool Duel::isPrimaryRequired() {
-    return player->isHunter();
-}
+// bool Duel::isPrimaryRequired() {
+//     return player->isHunter();
+// }
 
-bool Duel::isAuxRequired() {
-    return !player->isHunter();
-}
+// bool Duel::isAuxRequired() {
+//     return !player->isHunter();
+// }

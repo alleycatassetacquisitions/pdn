@@ -1,130 +1,130 @@
-#include "apps/player-registration/player-registration-states.hpp"
-#include "device/device.hpp"
-#include "game/quickdraw-resources.hpp"
-#include "game/quickdraw-requests.hpp"
-#include "device/drivers/logger.hpp"
+// #include "apps/player-registration/player-registration-states.hpp"
+// #include "device/device.hpp"
+// #include "game/quickdraw-resources.hpp"
+// #include "game/quickdraw-requests.hpp"
+// #include "device/drivers/logger.hpp"
 
-static const char* TAG = "PlayerRegistrationState";
+// static const char* TAG = "PlayerRegistrationState";
 
-PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : State(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
-    LOG_I(TAG, "Initializing PlayerRegistrationState");
-    this->player = player;
-    this->matchManager = matchManager;
-}
+// PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : State(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
+//     LOG_I(TAG, "Initializing PlayerRegistrationState");
+//     this->player = player;
+//     this->matchManager = matchManager;
+// }
 
-PlayerRegistrationState::~PlayerRegistrationState() {
-    player = nullptr;
-    LOG_I(TAG, "Destroying PlayerRegistrationState");
-}
+// PlayerRegistrationState::~PlayerRegistrationState() {
+//     player = nullptr;
+//     LOG_I(TAG, "Destroying PlayerRegistrationState");
+// }
 
-void PlayerRegistrationState::onStateMounted(Device *PDN) {
-    LOG_I(TAG, "State mounted - Starting player registration");
+// void PlayerRegistrationState::onStateMounted(Device *PDN) {
+//     LOG_I(TAG, "State mounted - Starting player registration");
 
-    PDN->getDisplay()->invalidateScreen()->
-    setGlyphMode(FontMode::TEXT)->
-    drawText("Pairing Code", 8, 16)->
-    setGlyphMode(FontMode::NUMBER_GLYPH)->
-    renderGlyph(digitGlyphs[0], 20, 40)->
-    render();
+//     PDN->getDisplay()->invalidateScreen()->
+//     setGlyphMode(FontMode::TEXT)->
+//     drawText("Pairing Code", 8, 16)->
+//     setGlyphMode(FontMode::NUMBER_GLYPH)->
+//     renderGlyph(digitGlyphs[0], 20, 40)->
+//     render();
 
-    PDN->getPrimaryButton()->setButtonPress( 
-    [](void *ctx) {
-        PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
-        playerRegistration->currentDigit++;
-        if(playerRegistration->currentDigit > 9) {
-            playerRegistration->currentDigit = 0;
-        }
-        playerRegistration->shouldRender = true;
-    }, this, ButtonInteraction::CLICK);
+//     PDN->getPrimaryButton()->setButtonPress( 
+//     [](void *ctx) {
+//         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
+//         playerRegistration->currentDigit++;
+//         if(playerRegistration->currentDigit > 9) {
+//             playerRegistration->currentDigit = 0;
+//         }
+//         playerRegistration->shouldRender = true;
+//     }, this, ButtonInteraction::CLICK);
 
-    PDN->getSecondaryButton()->setButtonPress( 
-    [](void *ctx) {
-        PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
-        playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
+//     PDN->getSecondaryButton()->setButtonPress( 
+//     [](void *ctx) {
+//         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
+//         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
 
-        playerRegistration->currentDigitIndex++;
-        playerRegistration->currentDigit = 0;
-        if(playerRegistration->currentDigitIndex >= playerRegistration->DIGIT_COUNT) {
-            char playerId[5];
-            snprintf(playerId, sizeof(playerId), "%d%d%d%d", 
-                    playerRegistration->inputId[0],
-                    playerRegistration->inputId[1],
-                    playerRegistration->inputId[2],
-                    playerRegistration->inputId[3]);
-            LOG_I(TAG, "Player registration complete - ID: %s", playerId);
-            playerRegistration->player->setUserID(playerId);
-            playerRegistration->transitionToUserFetchState = true;
-        } else {
-            playerRegistration->shouldRender = true;
-        }
-    }, this, ButtonInteraction::CLICK);
+//         playerRegistration->currentDigitIndex++;
+//         playerRegistration->currentDigit = 0;
+//         if(playerRegistration->currentDigitIndex >= playerRegistration->DIGIT_COUNT) {
+//             char playerId[5];
+//             snprintf(playerId, sizeof(playerId), "%d%d%d%d", 
+//                     playerRegistration->inputId[0],
+//                     playerRegistration->inputId[1],
+//                     playerRegistration->inputId[2],
+//                     playerRegistration->inputId[3]);
+//             LOG_I(TAG, "Player registration complete - ID: %s", playerId);
+//             playerRegistration->player->setUserID(playerId);
+//             playerRegistration->transitionToUserFetchState = true;
+//         } else {
+//             playerRegistration->shouldRender = true;
+//         }
+//     }, this, ButtonInteraction::CLICK);
 
-    LOG_I(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
+//     LOG_I(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
 
-    AnimationConfig config;
-    config.type = AnimationType::IDLE;
-    config.loop = true;
-    config.speed = 100;
-    LEDState initialState;
-    for (uint8_t i = 0; i < 9; i++) {
-        initialState.setFinLight(i, LEDColor(0, 0, 255), 255);
-    }
-    config.initialState = initialState;
-    PDN->getLightManager()->startAnimation(config);
-}
+//     AnimationConfig config;
+//     config.type = AnimationType::IDLE;
+//     config.loop = true;
+//     config.speed = 100;
+//     LEDState initialState;
+//     for (uint8_t i = 0; i < 9; i++) {
+//         initialState.setFinLight(i, LEDColor(0, 0, 255), 255);
+//     }
+//     config.initialState = initialState;
+//     PDN->getLightManager()->startAnimation(config);
+// }
 
-void PlayerRegistrationState::onStateLoop(Device *PDN) {
-    if(shouldRender) {
-        if(currentDigitIndex == 0) {
-            PDN->getDisplay()->invalidateScreen()->
-            setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 8, 16)->
-            setGlyphMode(FontMode::NUMBER_GLYPH)->
-            renderGlyph(digitGlyphs[currentDigit], 20, 40)->
-            render();
-        } else if(currentDigitIndex == 1) {
-            PDN->getDisplay()->invalidateScreen()->
-            setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 8, 16)->
-            setGlyphMode(FontMode::NUMBER_GLYPH)->
-            renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
-            renderGlyph(digitGlyphs[currentDigit], 44, 40)->
-            render();
-        } else if(currentDigitIndex == 2) {
-            PDN->getDisplay()->invalidateScreen()->
-            setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 8, 16)->
-            setGlyphMode(FontMode::NUMBER_GLYPH)->
-            renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
-            renderGlyph(digitGlyphs[inputId[1]], 44, 40)->
-            renderGlyph(digitGlyphs[currentDigit], 68, 40)->
-            render();
-        } else if(currentDigitIndex == 3) {
-            PDN->getDisplay()->invalidateScreen()->
-            setGlyphMode(FontMode::TEXT)->
-            drawText("Pairing Code", 8, 16)->
-            setGlyphMode(FontMode::NUMBER_GLYPH)->
-            renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
-            renderGlyph(digitGlyphs[inputId[1]], 44, 40)->
-            renderGlyph(digitGlyphs[inputId[2]], 68, 40)->
-            renderGlyph(digitGlyphs[currentDigit], 92, 40)->
-            render();
-        }
-        shouldRender = false;
-    }
-}
+// void PlayerRegistrationState::onStateLoop(Device *PDN) {
+//     if(shouldRender) {
+//         if(currentDigitIndex == 0) {
+//             PDN->getDisplay()->invalidateScreen()->
+//             setGlyphMode(FontMode::TEXT)->
+//             drawText("Pairing Code", 8, 16)->
+//             setGlyphMode(FontMode::NUMBER_GLYPH)->
+//             renderGlyph(digitGlyphs[currentDigit], 20, 40)->
+//             render();
+//         } else if(currentDigitIndex == 1) {
+//             PDN->getDisplay()->invalidateScreen()->
+//             setGlyphMode(FontMode::TEXT)->
+//             drawText("Pairing Code", 8, 16)->
+//             setGlyphMode(FontMode::NUMBER_GLYPH)->
+//             renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
+//             renderGlyph(digitGlyphs[currentDigit], 44, 40)->
+//             render();
+//         } else if(currentDigitIndex == 2) {
+//             PDN->getDisplay()->invalidateScreen()->
+//             setGlyphMode(FontMode::TEXT)->
+//             drawText("Pairing Code", 8, 16)->
+//             setGlyphMode(FontMode::NUMBER_GLYPH)->
+//             renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
+//             renderGlyph(digitGlyphs[inputId[1]], 44, 40)->
+//             renderGlyph(digitGlyphs[currentDigit], 68, 40)->
+//             render();
+//         } else if(currentDigitIndex == 3) {
+//             PDN->getDisplay()->invalidateScreen()->
+//             setGlyphMode(FontMode::TEXT)->
+//             drawText("Pairing Code", 8, 16)->
+//             setGlyphMode(FontMode::NUMBER_GLYPH)->
+//             renderGlyph(digitGlyphs[inputId[0]], 20, 40)->
+//             renderGlyph(digitGlyphs[inputId[1]], 44, 40)->
+//             renderGlyph(digitGlyphs[inputId[2]], 68, 40)->
+//             renderGlyph(digitGlyphs[currentDigit], 92, 40)->
+//             render();
+//         }
+//         shouldRender = false;
+//     }
+// }
 
-void PlayerRegistrationState::onStateDismounted(Device *PDN) {
-    LOG_I(TAG, "State dismounted - Cleaning up");
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
-    currentDigitIndex = 0;
-    currentDigit = 0;
-    transitionToUserFetchState = false;
-    PDN->getLightManager()->stopAnimation();
-}
+// void PlayerRegistrationState::onStateDismounted(Device *PDN) {
+//     LOG_I(TAG, "State dismounted - Cleaning up");
+//     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+//     PDN->getPrimaryButton()->removeButtonCallbacks();
+//     PDN->getSecondaryButton()->removeButtonCallbacks();
+//     currentDigitIndex = 0;
+//     currentDigit = 0;
+//     transitionToUserFetchState = false;
+//     PDN->getLightManager()->stopAnimation();
+// }
 
-bool PlayerRegistrationState::transitionToUserFetch() {
-    return transitionToUserFetchState;
-}
+// bool PlayerRegistrationState::transitionToUserFetch() {
+//     return transitionToUserFetchState;
+// }

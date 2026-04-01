@@ -67,9 +67,8 @@ MainMenu* mainMenu = nullptr;
 RemotePlayerManager* remotePlayerManager = nullptr;
 
 void setupEspNow(RemotePlayerManager* remotePlayerManager, PeerCommsInterface* peerCommsDriver) {
-    // Register packet handlers
     peerCommsDriver->setPacketHandler(
-        PktType::kQuickdrawCommand,
+        PktType::kPlayerInfoBroadcast,
         [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
             ((RemotePlayerManager*)userArg)->ProcessPlayerInfoPkt(src, data, len);
         },
