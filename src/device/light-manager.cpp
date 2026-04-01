@@ -1,5 +1,5 @@
 #include "device/light-manager.hpp"
-#include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
+#include "device/animation/animation-resources.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/countdown-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"

@@ -18,16 +18,12 @@ public:
     }
 
     bool isConnected() {
-        return (isPrimaryRequired() && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) == PortStatus::CONNECTED) ||
-               (isAuxRequired() && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::CONNECTED);
+        return (isJackRequired(SerialIdentifier::INPUT_JACK) && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::CONNECTED) ||
+               (isJackRequired(SerialIdentifier::INPUT_JACK_SECONDARY) && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::CONNECTED);
     }
 
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
-    virtual bool isPrimaryRequired() = 0;
-    virtual bool isAuxRequired() = 0;
-
-private:
-    
+    virtual bool isJackRequired(SerialIdentifier jack) = 0;
 };
