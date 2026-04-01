@@ -49,8 +49,8 @@ struct DeviceInstance {
     NativeButtonDriver* secondaryButtonDriver;
     NativeLightStripDriver* lightDriver;
     NativeHapticsDriver* hapticsDriver;
-    NativeSerialDriver* serialOutDriver;
     NativeSerialDriver* serialInDriver;
+    NativeSerialDriver* serialInSecondaryDriver;
     NativeHttpClientDriver* httpClientDriver;
     NativePeerCommsDriver* peerCommsDriver;
     NativePrefsDriver* storageDriver;
@@ -75,8 +75,8 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     instance.secondaryButtonDriver = new NativeButtonDriver(SECONDARY_BUTTON_DRIVER_NAME + suffix, 1);
     instance.lightDriver = new NativeLightStripDriver(LIGHT_DRIVER_NAME + suffix);
     instance.hapticsDriver = new NativeHapticsDriver(HAPTICS_DRIVER_NAME + suffix, 0);
-    instance.serialOutDriver = new NativeSerialDriver(SERIAL_OUT_DRIVER_NAME + suffix);
     instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
+    instance.serialInSecondaryDriver = new NativeSerialDriver(SERIAL_IN_SECONDARY_DRIVER_NAME + suffix);
     instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
     instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
     instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
@@ -88,8 +88,8 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
         {SECONDARY_BUTTON_DRIVER_NAME, instance.secondaryButtonDriver},
         {LIGHT_DRIVER_NAME, instance.lightDriver},
         {HAPTICS_DRIVER_NAME, instance.hapticsDriver},
-        {SERIAL_OUT_DRIVER_NAME, instance.serialOutDriver},
         {SERIAL_IN_DRIVER_NAME, instance.serialInDriver},
+        {SERIAL_IN_SECONDARY_DRIVER_NAME, instance.serialInSecondaryDriver},
         {HTTP_CLIENT_DRIVER_NAME, instance.httpClientDriver},
         {PEER_COMMS_DRIVER_NAME, instance.peerCommsDriver},
         {PLATFORM_CLOCK_DRIVER_NAME, instance.clockDriver},

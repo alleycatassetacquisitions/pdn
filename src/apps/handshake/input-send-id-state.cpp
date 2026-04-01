@@ -3,8 +3,9 @@
 
 #define TAG "INPUT_SEND_ID_STATE"
 
-InputSendIdState::InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager) : State(HandshakeStateId::INPUT_SEND_ID_STATE) {
+InputSendIdState::InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack) : State(HandshakeStateId::INPUT_SEND_ID_STATE) {
     this->handshakeWirelessManager = handshakeWirelessManager;
+    this->jack = jack;
 }
 
 InputSendIdState::~InputSendIdState() {
@@ -16,9 +17,9 @@ InputSendIdState::~InputSendIdState() {
 void InputSendIdState::onStateMounted(Device *PDN) {
     handshakeWirelessManager->setPacketReceivedCallback(
         std::bind(&InputSendIdState::onHandshakeCommandReceived, this, std::placeholders::_1),
-        SerialIdentifier::INPUT_JACK);
+        jack);
 
-    handshakeWirelessManager->sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+    handshakeWirelessManager->sendPacket(HSCommand::EXCHANGE_ID, jack);
 }
 
 void InputSendIdState::onHandshakeCommandReceived(HandshakeCommand command) {
@@ -31,7 +32,7 @@ void InputSendIdState::onStateLoop(Device *PDN) {}
 
 void InputSendIdState::onStateDismounted(Device *PDN) {
     transitionToConnectedState = false;
-    handshakeWirelessManager->clearCallback(SerialIdentifier::INPUT_JACK);
+    handshakeWirelessManager->clearCallback(jack);
 }
 
 

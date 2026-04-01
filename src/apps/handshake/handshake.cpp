@@ -18,15 +18,7 @@ void HandshakeApp::onStateMounted(Device *PDN) {
 void HandshakeApp::onStateLoop(Device *PDN) {
     StateMachine::onStateLoop(PDN);
 
-    const int sendIdStateId = (jack == SerialIdentifier::OUTPUT_JACK)
-        ? HandshakeStateId::OUTPUT_SEND_ID_STATE
-        : HandshakeStateId::INPUT_SEND_ID_STATE;
-
-    const int connectedStateId = (jack == SerialIdentifier::OUTPUT_JACK)
-        ? HandshakeStateId::OUTPUT_CONNECTED_STATE
-        : HandshakeStateId::INPUT_CONNECTED_STATE;
-
-    if (currentState->getStateId() == sendIdStateId) {
+    if (currentState->getStateId() == HandshakeStateId::INPUT_SEND_ID_STATE) {
         if (handshakeTimer.expired()) {
             resetApp(PDN);
         } else if (!handshakeTimer.isRunning()) {
@@ -34,7 +26,7 @@ void HandshakeApp::onStateLoop(Device *PDN) {
         }
     }
 
-    if (currentState->getStateId() == connectedStateId) {
+    if (currentState->getStateId() == HandshakeStateId::INPUT_CONNECTED_STATE) {
         handshakeTimer.invalidate();
     }
 }
@@ -45,11 +37,7 @@ void HandshakeApp::onStateDismounted(Device *PDN) {
 }
 
 void HandshakeApp::populateStateMap() {
-    if (jack == SerialIdentifier::OUTPUT_JACK) {
-        createOutputJackStateMap();
-    } else {
-        createInputJackStateMap();
-    }
+    createStateMap();
 }
 
 void HandshakeApp::resetApp(Device *PDN) {
@@ -59,48 +47,25 @@ void HandshakeApp::resetApp(Device *PDN) {
     handshakeTimer.invalidate();
 }
 
-void HandshakeApp::createOutputJackStateMap() {
-    OutputIdleState* outputIdleState = new OutputIdleState(handshakeWirelessManager);
-    OutputSendIdState* outputSendIdState = new OutputSendIdState(handshakeWirelessManager);
-    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK, HandshakeStateId::OUTPUT_CONNECTED_STATE);
+void HandshakeApp::createStateMap() {
+    InputIdleState* idleState = new InputIdleState(handshakeWirelessManager, jack);
+    InputSendIdState* sendIdState = new InputSendIdState(handshakeWirelessManager, jack);
+    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, jack, HandshakeStateId::INPUT_CONNECTED_STATE);
 
-    outputIdleState->addTransition(
+    idleState->addTransition(
         new StateTransition(
-            std::bind(&OutputIdleState::transitionToOutputSendId, outputIdleState),
-            outputSendIdState));
-    outputSendIdState->addTransition(
+            std::bind(&InputIdleState::transitionToSendId, idleState),
+            sendIdState));
+    sendIdState->addTransition(
         new StateTransition(
-            std::bind(&OutputSendIdState::transitionToConnected, outputSendIdState),
+            std::bind(&InputSendIdState::transitionToConnected, sendIdState),
             connectedState));
     connectedState->addTransition(
         new StateTransition(
             std::bind(&HandshakeConnectedState::transitionToIdle, connectedState),
-            outputIdleState));
+            idleState));
 
-    stateMap.push_back(outputIdleState);
-    stateMap.push_back(outputSendIdState);
-    stateMap.push_back(connectedState);
-}
-
-void HandshakeApp::createInputJackStateMap() {
-    InputIdleState* inputIdleState = new InputIdleState(handshakeWirelessManager);
-    InputSendIdState* inputSendIdState = new InputSendIdState(handshakeWirelessManager);
-    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, SerialIdentifier::INPUT_JACK, HandshakeStateId::INPUT_CONNECTED_STATE);
-
-    inputIdleState->addTransition(
-        new StateTransition(
-            std::bind(&InputIdleState::transitionToSendId, inputIdleState),
-            inputSendIdState));
-    inputSendIdState->addTransition(
-        new StateTransition(
-            std::bind(&InputSendIdState::transitionToConnected, inputSendIdState),
-            connectedState));
-    connectedState->addTransition(
-        new StateTransition(
-            std::bind(&HandshakeConnectedState::transitionToIdle, connectedState),
-            inputIdleState));
-
-    stateMap.push_back(inputIdleState);
-    stateMap.push_back(inputSendIdState);
+    stateMap.push_back(idleState);
+    stateMap.push_back(sendIdState);
     stateMap.push_back(connectedState);
 }

@@ -16,8 +16,8 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     tertiary = static_cast<ButtonDriverInterface*>(driverConfig[TERTIARY_BUTTON_DRIVER_NAME]);
     LightStrip* lights = static_cast<LightDriverInterface*>(driverConfig[LIGHT_DRIVER_NAME]);
     haptics = static_cast<HapticsMotorDriverInterface*>(driverConfig[HAPTICS_DRIVER_NAME]);
-    HWSerialWrapper* serialOut = static_cast<SerialDriverInterface*>(driverConfig[SERIAL_OUT_DRIVER_NAME]);
     HWSerialWrapper* serialIn = static_cast<SerialDriverInterface*>(driverConfig[SERIAL_IN_DRIVER_NAME]);
+    HWSerialWrapper* serialInSecondary = static_cast<SerialDriverInterface*>(driverConfig[SERIAL_IN_SECONDARY_DRIVER_NAME]);
     httpClient = static_cast<HttpClientDriverInterface*>(driverConfig[HTTP_CLIENT_DRIVER_NAME]);
     peerComms = static_cast<PeerCommsDriverInterface*>(driverConfig[PEER_COMMS_DRIVER_NAME]);
     platformClock = static_cast<PlatformClockDriverInterface*>(driverConfig[PLATFORM_CLOCK_DRIVER_NAME]);
@@ -25,7 +25,7 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     storage = static_cast<StorageDriverInterface*>(driverConfig[STORAGE_DRIVER_NAME]);
 
     lightManager = new LightManager(*lights);
-    serialManager = new SerialManager(serialOut, serialIn);
+    serialManager = new SerialManager(serialIn, serialInSecondary);
     wirelessManager = new WirelessManager(peerComms, httpClient);
     remoteDeviceCoordinator = new RemoteDeviceCoordinator();
 }

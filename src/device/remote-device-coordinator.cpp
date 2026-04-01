@@ -13,7 +13,7 @@ RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(Ha
 
 RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     delete inputPortHandshake;
-    delete outputPortHandshake;
+    delete inputSecondaryPortHandshake;
 }
 
 
@@ -23,10 +23,10 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     handshakeWirelessManager.initialize(wirelessManager);
 
     inputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
-    outputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK);
+    inputSecondaryPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK_SECONDARY);
 
     inputPortHandshake->initialize(PDN);
-    outputPortHandshake->initialize(PDN);
+    inputSecondaryPortHandshake->initialize(PDN);
 
     syncLogTimer.setTimer(0);
 
@@ -41,14 +41,14 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
     inputPortHandshake->onStateLoop(PDN);
-    outputPortHandshake->onStateLoop(PDN);
+    inputSecondaryPortHandshake->onStateLoop(PDN);
 
     if (syncLogTimer.expired()) {
-        LOG_W("RDC", "OUTPUT port: status=%d hasPeer=%d | INPUT port: status=%d hasPeer=%d",
-              static_cast<int>(getPortStatus(SerialIdentifier::OUTPUT_JACK)),
-              getPeerMac(SerialIdentifier::OUTPUT_JACK) != nullptr,
+        LOG_W("RDC", "INPUT port: status=%d hasPeer=%d | INPUT_SECONDARY port: status=%d hasPeer=%d",
               static_cast<int>(getPortStatus(SerialIdentifier::INPUT_JACK)),
-              getPeerMac(SerialIdentifier::INPUT_JACK) != nullptr);
+              getPeerMac(SerialIdentifier::INPUT_JACK) != nullptr,
+              static_cast<int>(getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY)),
+              getPeerMac(SerialIdentifier::INPUT_JACK_SECONDARY) != nullptr);
 
         syncLogTimer.setTimer(100);
     }
@@ -80,24 +80,19 @@ DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier port) con
 }
 
 PortStatus RemoteDeviceCoordinator::mapHandshakeStateToStatus(SerialIdentifier port) {
-    HandshakeApp* app = (port == SerialIdentifier::INPUT_JACK) ? inputPortHandshake : outputPortHandshake;
+    HandshakeApp* app = (port == SerialIdentifier::INPUT_JACK_SECONDARY) ? inputSecondaryPortHandshake : inputPortHandshake;
 
     if (!app || !app->getCurrentState()) {
         return PortStatus::DISCONNECTED;
     }
 
-    int stateId = app->getCurrentState()->getStateId();
-
-    switch (stateId) {
-        case HandshakeStateId::OUTPUT_CONNECTED_STATE:
+    switch (app->getCurrentState()->getStateId()) {
         case HandshakeStateId::INPUT_CONNECTED_STATE:
             return PortStatus::CONNECTED;
 
-        case HandshakeStateId::OUTPUT_SEND_ID_STATE:
         case HandshakeStateId::INPUT_SEND_ID_STATE:
             return PortStatus::CONNECTING;
 
-        case HandshakeStateId::OUTPUT_IDLE_STATE:
         case HandshakeStateId::INPUT_IDLE_STATE:
         default:
             return PortStatus::DISCONNECTED;

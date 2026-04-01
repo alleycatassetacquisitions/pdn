@@ -49,8 +49,8 @@ Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* tertiaryButtonDriver = nullptr;
 WS2812BFastLEDDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
-Esp32s3SerialInSecondary* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
+Esp32s3SerialInSecondary* serialInSecondaryDriver = nullptr;
 Esp32S3HttpClient* httpClientDriver = nullptr;
 EspNowManager* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
@@ -97,8 +97,8 @@ void setup() {
     tertiaryButtonDriver = new Esp32S31ButtonDriver(TERTIARY_BUTTON_DRIVER_NAME, tertiaryButtonPin);
     lightDriver = new WS2812BFastLEDDriver(LIGHT_DRIVER_NAME);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
-    serialOutDriver = new Esp32s3SerialInSecondary(SERIAL_OUT_DRIVER_NAME);
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME);
+    serialInSecondaryDriver = new Esp32s3SerialInSecondary(SERIAL_IN_SECONDARY_DRIVER_NAME);
     
     // WiFi credentials are compile-time constants from build flags
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
@@ -114,8 +114,8 @@ void setup() {
         {TERTIARY_BUTTON_DRIVER_NAME, tertiaryButtonDriver},
         {LIGHT_DRIVER_NAME, lightDriver},
         {HAPTICS_DRIVER_NAME, hapticsDriver},
-        {SERIAL_OUT_DRIVER_NAME, serialOutDriver},
         {SERIAL_IN_DRIVER_NAME, serialInDriver},
+        {SERIAL_IN_SECONDARY_DRIVER_NAME, serialInSecondaryDriver},
         {HTTP_CLIENT_DRIVER_NAME, httpClientDriver},
         {PEER_COMMS_DRIVER_NAME, peerCommsDriver},
         {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},

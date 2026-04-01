@@ -11,24 +11,24 @@
 
 class SerialManager {
 public:
-    SerialManager(HWSerialWrapper* outputJack, HWSerialWrapper* inputJack)
-        : outputJack(outputJack), inputJack(inputJack) {}
+    SerialManager(HWSerialWrapper* inputJack, HWSerialWrapper* inputSecondaryJack)
+        : inputJack(inputJack), inputSecondaryJack(inputSecondaryJack) {}
 
     ~SerialManager() = default;
-
-    HWSerialWrapper* getOutputJack() { return outputJack; }
-    void setOutputJack(HWSerialWrapper* jack) { outputJack = jack; }
 
     HWSerialWrapper* getInputJack() { return inputJack; }
     void setInputJack(HWSerialWrapper* jack) { inputJack = jack; }
 
-    void writeString(const std::string& msg, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    HWSerialWrapper* getInputSecondaryJack() { return inputSecondaryJack; }
+    void setInputSecondaryJack(HWSerialWrapper* jack) { inputSecondaryJack = jack; }
+
+    void writeString(const std::string& msg, SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         HWSerialWrapper* hw = getJack(jack);
         hw->print(STRING_START);
         hw->println(msg);
     }
 
-    std::string readString(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    std::string readString(SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         std::string& head = getHead(jack);
         std::string return_me = head;
         head = "";
@@ -49,7 +49,7 @@ public:
         return return_me;
     }
 
-    std::string* peekComms(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    std::string* peekComms(SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         std::string& head = getHead(jack);
         if (head.empty()) {
             head = readString(jack);
@@ -57,46 +57,49 @@ public:
         return &head;
     }
 
-    bool commsAvailable(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    bool commsAvailable(SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         return getJack(jack)->available() > 0;
     }
 
-    int getSerialWriteQueueSize(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    int getSerialWriteQueueSize(SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         return TRANSMIT_QUEUE_MAX_SIZE - getJack(jack)->availableForWrite();
     }
 
-    void setOnStringReceivedCallback(const std::function<void(std::string)>& callback, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    void setOnStringReceivedCallback(const std::function<void(std::string)>& callback, SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         getJack(jack)->setStringCallback(callback);
     }
 
-    void clearCallback(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+    void clearCallback(SerialIdentifier jack = SerialIdentifier::INPUT_JACK) {
         getJack(jack)->setStringCallback(nullptr);
     }
 
     void clearCallbacks() {
-        outputJack->setStringCallback(nullptr);
         inputJack->setStringCallback(nullptr);
+        inputSecondaryJack->setStringCallback(nullptr);
     }
 
     void flushSerial() {
-        outputJack->flush();
         inputJack->flush();
+        inputSecondaryJack->flush();
     }
 
-    std::string getOutputHead() const { return outputHead; }
+    std::string getInputHead() const { return inputHead; }
 
 private:
     HWSerialWrapper* getJack(SerialIdentifier jack) {
-        return jack == SerialIdentifier::OUTPUT_JACK ? outputJack : inputJack;
+        if (jack == SerialIdentifier::INPUT_JACK) return inputJack;
+        if (jack == SerialIdentifier::INPUT_JACK_SECONDARY) return inputSecondaryJack;
+        return nullptr;
     }
 
     std::string& getHead(SerialIdentifier jack) {
-        return jack == SerialIdentifier::OUTPUT_JACK ? outputHead : inputHead;
+        if (jack == SerialIdentifier::INPUT_JACK_SECONDARY) return inputSecondaryHead;
+        return inputHead;
     }
 
-    HWSerialWrapper* outputJack;
     HWSerialWrapper* inputJack;
+    HWSerialWrapper* inputSecondaryJack;
 
-    std::string outputHead = "";
     std::string inputHead = "";
+    std::string inputSecondaryHead = "";
 };

@@ -19,8 +19,7 @@ public:
     void populateStateMap() override;
 
 private:
-    void createOutputJackStateMap();
-    void createInputJackStateMap();
+    void createStateMap();
 
     void resetApp(Device *PDN);
 

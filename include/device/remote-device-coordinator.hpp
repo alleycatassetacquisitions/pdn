@@ -78,7 +78,7 @@ private:
     HandshakeWirelessManager handshakeWirelessManager;
 
     HandshakeApp* inputPortHandshake = nullptr;
-    HandshakeApp* outputPortHandshake = nullptr;
+    HandshakeApp* inputSecondaryPortHandshake = nullptr;
 
     SimpleTimer syncLogTimer;
 };
