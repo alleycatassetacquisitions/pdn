@@ -76,6 +76,7 @@ public:
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool transitionToDuelCountdown();
+    bool transitionToFDNInterface();
     void cycleStats(Device *PDN);
 
 private:
@@ -85,6 +86,7 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 5;
+    bool transitionToFDN = false;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;

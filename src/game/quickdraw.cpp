@@ -1,5 +1,6 @@
 #include "../../include/game/quickdraw.hpp"
 
+
 Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(QUICKDRAW_APP_ID) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -32,6 +33,7 @@ void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    FDNConnect* fdnConnect = new FDNConnect(player, remoteDeviceCoordinator, fdnConnectWirelessManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator);

@@ -10,6 +10,7 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
+#include "apps/fdn-connect/fdn-connect.hpp"
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
