@@ -8,11 +8,6 @@
 #include "device-mock.hpp"
 #include "state/state-machine.hpp"
 
-// Test app IDs - using StateId type for compatibility
-const StateId APP_ONE(100);
-const StateId APP_TWO(200);
-const StateId APP_THREE(300);
-
 // Simple mock state for MockStateMachine
 class MockState : public State {
 public:
@@ -32,20 +27,13 @@ public:
         // Already populated in constructor
     }
     
-    // Track lifecycle calls
     int mountedCount = 0;
     int loopCount = 0;
     int dismountedCount = 0;
-    int pausedCount = 0;
-    int resumedCount = 0;
-    
-    bool wasPaused = false;
     
     void onStateMounted(Device *PDN) override {
         mountedCount++;
         launched = true;
-        // Call parent to properly initialize the state machine
-        // This will call initialize() which sets currentState
         if (mountedCount == 1) {
             StateMachine::onStateMounted(PDN);
         }
@@ -59,23 +47,7 @@ public:
         dismountedCount++;
     }
     
-    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        pausedCount++;
-        wasPaused = true;
-        // Call parent to set the base class's paused flag
-        return StateMachine::onStatePaused(PDN);
-    }
-    
-    void onStateResumed(Device *PDN, Snapshot* snapshot) override {
-        resumedCount++;
-        wasPaused = false;
-        // Call parent to clear the base class's paused flag
-        StateMachine::onStateResumed(PDN, snapshot);
-    }
-    
-    // Expose protected members for testing
     bool hasLaunchedPublic() const { return launched; }
-    bool isPausedPublic() const { return isPaused(); }
     
 private:
     bool launched = false;
@@ -84,21 +56,12 @@ private:
 class DeviceTestSuite : public ::testing::Test {
 public:
     MockDevice* device;
-    MockStateMachine* appOne;
-    MockStateMachine* appTwo;
-    MockStateMachine* appThree;
     
     void SetUp() override {
         device = new MockDevice();
-        appOne = new MockStateMachine(APP_ONE.id);
-        appTwo = new MockStateMachine(APP_TWO.id);
-        appThree = new MockStateMachine(APP_THREE.id);
     }
     
     void TearDown() override {
-        delete appOne;
-        delete appTwo;
-        delete appThree;
         delete device;
     }
 };

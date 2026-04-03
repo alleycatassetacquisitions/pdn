@@ -30,6 +30,7 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
+#include "apps/app-manager.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 
 // Global running flag for signal handling
@@ -111,11 +112,10 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     // Create game
     instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr);
 
-    // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
         {StateId(QUICKDRAW_APP_ID), instance.game}
     };
-    instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+    instance.pdn->setAppManager(new AppManager(instance.pdn, apps));
     
     return instance;
 }

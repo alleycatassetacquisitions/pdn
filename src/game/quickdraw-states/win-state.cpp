@@ -45,7 +45,3 @@ void Win::onStateDismounted(Device *PDN) {
 bool Win::resetGame() {
     return reset;
 }
-
-bool Win::isTerminalState() {
-    return true;
-}

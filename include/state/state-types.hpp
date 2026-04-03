@@ -1,15 +1,5 @@
 #pragma once
 
-#include <memory>
-
-/*
- * Snapshots are implemented per state. The struct is defined by a state and utilized
- * when a state is paused, and passed back to the state in the onStateResume method.
- */
-struct Snapshot {
-    virtual ~Snapshot() = default;
-};
-
 //StateId is a simple wrapper in case we eventually need to add more data to identify a state.
 struct StateId {
 

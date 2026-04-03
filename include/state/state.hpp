@@ -95,23 +95,12 @@ public:
         // Override in derived classes
     }
 
-    virtual std::unique_ptr<Snapshot> onStatePaused(Device *PDN) {
-        return nullptr;
-    }
-
-    virtual void onStateResumed(Device *PDN, Snapshot* snapshot) {
-    }
-
     virtual void onStateLoop(Device *PDN) {
         // Override in derived classes
     }
 
     virtual void onStateDismounted(Device *PDN) {
         // Override in derived classes
-    }
-
-    virtual bool isTerminalState() {
-        return false;
     }
 
 protected:

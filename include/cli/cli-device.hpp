@@ -22,6 +22,7 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
+#include "apps/app-manager.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
@@ -204,11 +205,10 @@ public:
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
 
-        // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
             {StateId(QUICKDRAW_APP_ID), instance.game}
         };
-        instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+        instance.pdn->setAppManager(new AppManager(instance.pdn, apps));
         
         // Skip PlayerRegistration state and go directly to FetchUserDataState
         // This prevents the registration flow from overwriting the player ID

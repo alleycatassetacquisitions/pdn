@@ -28,6 +28,7 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "apps/app-manager.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -163,11 +164,10 @@ void setup() {
         render();
     delay(3000);
 
-    // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
         {StateId(QUICKDRAW_APP_ID), game}
     };
-    pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+    pdn->setAppManager(new AppManager(pdn, apps));
 }
 
 void loop() {
