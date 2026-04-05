@@ -6,14 +6,16 @@
 #include "game/player.hpp"
 #include "device/device.hpp"
 
+constexpr int FDN_CONNECT_APP_ID = 3;
+
 class FDNConnect : public StateMachine {
 public:
     FDNConnect(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, FDNConnectWirelessManager* fdnConnectWirelessManager);
-
+    ~FDNConnect();
     void populateStateMap() override;
 
 private:
     Player *player;
-    Device *PDN;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
     FDNConnectWirelessManager* fdnConnectWirelessManager;
 };

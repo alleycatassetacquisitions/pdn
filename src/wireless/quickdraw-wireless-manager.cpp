@@ -5,16 +5,15 @@
 #include "device/drivers/peer-comms-interface.hpp"
 
 
-QuickdrawWirelessManager::QuickdrawWirelessManager() : broadcastTimer() {}
+QuickdrawWirelessManager::QuickdrawWirelessManager() {}
 
 QuickdrawWirelessManager::~QuickdrawWirelessManager() {
     player = nullptr;
     wirelessManager = nullptr;
 }
 
-void QuickdrawWirelessManager::initialize(Player *player, WirelessManager* wirelessManager, long broadcastDelay) {
+void QuickdrawWirelessManager::initialize(Player *player, WirelessManager* wirelessManager) {
     this->player = player;
-    this->broadcastDelay = broadcastDelay;
     this->wirelessManager = wirelessManager;
 }
 
@@ -53,7 +52,7 @@ int QuickdrawWirelessManager::processQuickdrawCommand(const uint8_t *macAddress,
     const size_t dataLen) {
 
     if(dataLen != sizeof(QuickdrawPacket)) {
-        LOG_E("RPM", "Unexpected packet len for PlayerInfoPkt. Got %lu but expected %lu\n",
+        LOG_E("QDWM", "Unexpected packet len for QuickdrawPacket. Got %lu but expected %lu\n",
                       dataLen, sizeof(QuickdrawPacket));
 
         return -1;

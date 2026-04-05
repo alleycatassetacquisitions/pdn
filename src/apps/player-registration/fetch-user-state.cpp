@@ -3,21 +3,18 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
-#include "wireless/remote-debug-manager.hpp"
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager) : State(PlayerRegistrationStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : State(PlayerRegistrationStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->wirelessManager = wirelessManager;
-    this->remoteDebugManager = remoteDebugManager;
     this->matchManager = matchManager;
 }   
 
 FetchUserDataState::~FetchUserDataState() {
     LOG_I(TAG, "Destroying FetchUserDataState");
-    remoteDebugManager = nullptr;
     wirelessManager = nullptr;
     player = nullptr;
 }   
@@ -41,11 +38,6 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
         player->setName("Nesting Bot");
         player->setFaction("Hunter");
         transitionToWelcomeMessageState = true;
-        fetchTimer.invalidate();
-        isFetchingUserData = false;
-    } else if(player->getUserID() == BROADCAST_WIFI) { 
-        remoteDebugManager->BroadcastDebugPacket();
-        transitionToPlayerRegistrationState = true;
         fetchTimer.invalidate();
         isFetchingUserData = false;
     } else if(matchManager->getStoredMatchCount() > 0) {

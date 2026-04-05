@@ -65,29 +65,6 @@ Player* player = nullptr;
 // Game instance
 Quickdraw* game = nullptr;
 
-// Remote player management
-QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
-RemoteDebugManager* remoteDebugManager = nullptr;
-
-void setupEspNow(QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, PeerCommsInterface* peerCommsDriver) {
-    // Register packet handlers
-    peerCommsDriver->setPacketHandler(
-        PktType::kQuickdrawCommand,
-        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-        },
-        quickdrawWirelessManager
-    );
-    
-    peerCommsDriver->setPacketHandler(
-        PktType::kDebugPacket,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
-        },
-        remoteDebugManager
-    );
-}
-
 void setup() {
     Serial.begin(115200);
     while (!Serial) delay(100);
@@ -139,22 +116,8 @@ void setup() {
     player = new Player();
     player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
-    
-    // Create wireless managers
-    LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
-    quickdrawWirelessManager = new QuickdrawWirelessManager();
-    LOG_I("SETUP", "Creating RemoteDebugManager...");
-    remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
-    
-    // WiFi credentials are compile-time constants from build flags
-    remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
-    
-    // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
-    
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+    game = new Quickdraw(player, pdn);
     
     pdn->getDisplay()->
     invalidateScreen()->

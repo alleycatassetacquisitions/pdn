@@ -1,15 +1,34 @@
 #include "../../include/game/quickdraw.hpp"
 
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(QUICKDRAW_APP_ID) {
     this->player = player;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
-    this->remoteDebugManager = remoteDebugManager;
+    this->quickdrawWirelessManager = new QuickdrawWirelessManager();
+    this->fdnConnectWirelessManager = new FDNConnectWirelessManager();
     this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
     this->peerComms = PDN->getPeerComms();
     this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
+
+    fdnConnectWirelessManager->initialize(wirelessManager);
+    quickdrawWirelessManager->initialize(player, wirelessManager);
+
+    peerComms->setPacketHandler(
+        PktType::kQuickdrawCommand,
+        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
+        },
+        quickdrawWirelessManager
+    );
+
+    peerComms->setPacketHandler(
+        PktType::kFDNConnectCommand,
+        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+            ((FDNConnectWirelessManager*)userArg)->processFDNConnectCommand(src, data, len);
+        },
+        fdnConnectWirelessManager
+    );
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
 
@@ -32,7 +51,7 @@ Quickdraw::~Quickdraw() {
 void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
-    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager);
     FDNConnect* fdnConnect = new FDNConnect(player, remoteDeviceCoordinator, fdnConnectWirelessManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
@@ -66,6 +85,11 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&Idle::transitionToDuelCountdown, idle),
             duelCountdown));
+
+    idle->addTransition(
+        new StateTransition(
+            std::bind(&Idle::transitionToFDNInterface, idle),
+            fdnConnect));
 
     // --- Duel flow ---
     duelCountdown->addTransition(
@@ -148,6 +172,7 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
+    stateMap.push_back(fdnConnect);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
     stateMap.push_back(duelPushed);

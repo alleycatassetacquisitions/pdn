@@ -1,23 +1,21 @@
 #include "apps/player-registration/player-registration.hpp"
 
-PlayerRegistrationApp::PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager)
+PlayerRegistrationApp::PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager)
     : StateMachine(PLAYER_REGISTRATION_APP_ID) {
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->matchManager = matchManager;
-    this->remoteDebugManager = remoteDebugManager;
 }
 
 PlayerRegistrationApp::~PlayerRegistrationApp() {
     player = nullptr;
     wirelessManager = nullptr;
     matchManager = nullptr;
-    remoteDebugManager = nullptr;
 }
 
 void PlayerRegistrationApp::populateStateMap() {
     PlayerRegistrationState* playerRegistration = new PlayerRegistrationState(player, matchManager);
-    FetchUserDataState* fetchUserDataState = new FetchUserDataState(player, wirelessManager, remoteDebugManager, matchManager);
+    FetchUserDataState* fetchUserDataState = new FetchUserDataState(player, wirelessManager, matchManager);
     ConfirmOfflineState* confirmOffline = new ConfirmOfflineState(player);
     ChooseRoleState* chooseRole = new ChooseRoleState(player);
     WelcomeMessage* welcomeMessageState = new WelcomeMessage(player);

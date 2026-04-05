@@ -40,7 +40,7 @@ private:
 
 class FetchUserDataState : public State {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager);
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -54,7 +54,6 @@ public:
     void onStateDismounted(Device *PDN) override;
     
 private:
-    RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;

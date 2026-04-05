@@ -12,7 +12,7 @@ constexpr int PLAYER_REGISTRATION_APP_ID = 0;
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
+    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
     ~PlayerRegistrationApp();
 
     void populateStateMap() override;
@@ -23,6 +23,5 @@ public:
 private:
     Player* player;
     WirelessManager* wirelessManager;
-    RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
 };

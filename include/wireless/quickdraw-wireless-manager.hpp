@@ -67,7 +67,7 @@ public:
     QuickdrawWirelessManager();
     virtual ~QuickdrawWirelessManager();
 
-    void initialize(Player* player, WirelessManager* wirelessManager, long broadcastCooldown);
+    void initialize(Player* player, WirelessManager* wirelessManager);
 
     int processQuickdrawCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
@@ -84,10 +84,4 @@ private:
     std::function<void(const QuickdrawCommand&)> packetReceivedCallback;
 
     Player* player;
-
-    QDCommandTracker commandTracker;
-
-    SimpleTimer broadcastTimer;
-
-    long broadcastDelay;
 };
