@@ -27,6 +27,7 @@ void Sleep::onStateMounted(Device *PDN) {
         render();
 
     dormantTimer.setTimer(SLEEP_DURATION);
+    transitionToAwakenSequenceState = false;
 }
 
 void Sleep::onStateLoop(Device *PDN) {

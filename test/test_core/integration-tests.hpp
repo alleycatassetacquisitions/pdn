@@ -265,9 +265,12 @@ inline void duelWithOpponentTimeout(DuelIntegrationTestSuite* suite) {
     suite->performHandshake();
 
     suite->hunterMatchManager->setHunterDrawTime(300);
-    suite->hunterMatchManager->setBountyDrawTime(0);  // opponent never pressed
     suite->hunterMatchManager->setReceivedButtonPush();
-    suite->hunterMatchManager->setNeverPressed();
+    // Opponent (bounty) sends NEVER_PRESSED
+    uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+    QuickdrawCommand neverPressed(bountyMac, QDCommand::NEVER_PRESSED,
+        suite->hunterMatchManager->getCurrentMatch()->getMatchId(), "boun", 5000, false);
+    suite->hunterMatchManager->listenForMatchEvents(neverPressed);
 
     EXPECT_TRUE(suite->hunterMatchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->hunterMatchManager->didWin());

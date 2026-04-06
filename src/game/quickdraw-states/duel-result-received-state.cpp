@@ -34,7 +34,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
 
     buttonPushGraceTimer.updateTime();
 
-    if(buttonPushGraceTimer.expired()) {
+    if(buttonPushGraceTimer.expired() && !matchManager->getHasPressedButton()) {
         LOG_I(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
 
         unsigned long pityTime = SimpleTimer::getPlatformClock()->milliseconds() - matchManager->getDuelLocalStartTime();
@@ -48,7 +48,7 @@ void DuelReceivedResult::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
 
     if (!isConnected()) {
-        matchManager->clearCurrentMatch();
+        matchManager->clearCurrentMatch("recv-result-dc");
     }
 
     transitionToDuelResultState = false;

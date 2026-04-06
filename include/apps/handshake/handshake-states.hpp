@@ -47,6 +47,8 @@ public:
 private:
     HandshakeWirelessManager* handshakeWirelessManager;
     bool transitionToConnectionSuccessfulState = false;
+    SimpleTimer retryTimer;
+    static constexpr int RETRY_INTERVAL_MS = 500;
 };
 
 class HandshakeConnectedState : public State {
@@ -60,7 +62,7 @@ public:
     bool transitionToIdle();
 
     void heartbeatMonitorStringCallback(const std::string& message);
-    void listenForNotifyDisconnectCommand(HandshakeCommand command);
+    void listenForHandshakeCommand(HandshakeCommand command);
 
 private:
     HandshakeWirelessManager* handshakeWirelessManager;
@@ -109,4 +111,6 @@ public:
 private:
     HandshakeWirelessManager* handshakeWirelessManager;
     bool transitionToConnectedState = false;
+    SimpleTimer retryTimer;
+    static constexpr int RETRY_INTERVAL_MS = 500;
 };

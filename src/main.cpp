@@ -155,7 +155,7 @@ void setup() {
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, peerCommsDriver);
     
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager);
-    
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

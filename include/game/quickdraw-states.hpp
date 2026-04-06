@@ -10,11 +10,16 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <cstdlib>
+#include <functional>
 #include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
+#include "wireless/team-packet.hpp"
 
-enum QuickdrawStateId {    
+class Quickdraw;
+#include "device/drivers/peer-comms-interface.hpp"
+
+enum QuickdrawStateId {
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
     IDLE = 8,
@@ -25,7 +30,8 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20
+    UPLOAD_MATCHES = 20,
+    SUPPORTER_READY = 21
 };
 
 class Sleep : public State {
@@ -69,7 +75,9 @@ private:
 
 class Idle : public ConnectState {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
+         std::function<int()> getSupporterCount, std::function<void()> clearChainState,
+         std::function<bool()> isInviteRejected);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
@@ -81,10 +89,12 @@ public:
 private:
     Player *player;
     MatchManager* matchManager;
+    std::function<int()> getSupporterCount_;
+    std::function<void()> clearChainState_;
+    std::function<bool()> isInviteRejected_;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
-    int statsCount = 5;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -92,7 +102,9 @@ private:
     SimpleTimer matchInitializationTimer;
     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
 
-    // void serialEventCallbacks(const std::string& message);
+    SimpleTimer inviteRetryTimer_;
+    static constexpr int INVITE_RETRY_MS = 2000;
+    int lastSupporterCount_ = 0;
 };
 
 
@@ -304,4 +316,50 @@ private:
     std::string matchesJson;
     bool transitionToSleepState = false;
     bool shouldRetryUpload = false;
+};
+
+class SupporterReady : public ConnectState {
+public:
+    SupporterReady(Player* player, RemoteDeviceCoordinator* rdc, Quickdraw* quickdraw);
+    ~SupporterReady();
+
+    void onStateMounted(Device* PDN) override;
+    void onStateLoop(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
+    bool transitionToWin();
+    bool transitionToLose();
+    bool transitionToIdle();
+
+    void setChampionMac(const uint8_t* mac) { memcpy(championMac_, mac, 6); }
+    void setChampionName(const char* name) { strncpy(championName_, name, CHAMPION_NAME_MAX - 1); championName_[CHAMPION_NAME_MAX - 1] = '\0'; }
+    void setPosition(uint8_t pos) { position_ = pos; }
+    void setChampionIsHunter(bool h) { championIsHunter_ = h; }
+    void handleGameEvent(GameEventType evt);
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
+private:
+    static void onButtonPressed(void* ctx);
+    void renderDisplay(const char* status);
+
+    Player* player_;
+    Quickdraw* quickdraw_;
+    Device* device_ = nullptr;
+    PeerCommsInterface* peerComms_ = nullptr;
+    uint8_t championMac_[6] = {};
+    char championName_[CHAMPION_NAME_MAX] = {};
+    uint8_t position_ = 0;
+    bool championIsHunter_ = false;
+    bool transitionToWin_ = false;
+    bool transitionToLose_ = false;
+    bool transitionToIdle_ = false;
+    bool hasConfirmed_ = false;
+    bool duelActive_ = false;
+    bool downstreamInvited_ = false;
+    bool registered_ = false;
+    SimpleTimer retryTimer_;
+    SimpleTimer safetyTimeout_;
+    static constexpr int RETRY_MS = 2000;
+    static constexpr unsigned long SAFETY_TIMEOUT_MS = 300000;
 };

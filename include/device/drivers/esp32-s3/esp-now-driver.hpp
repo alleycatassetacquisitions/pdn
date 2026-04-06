@@ -82,6 +82,13 @@ public:
             return;
         }
 
+        // Drain the send queue — callbacks will never fire after deinit
+        while (!m_sendQueue.empty()) {
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+        }
+        m_curRetries = 0;
+
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
 
@@ -260,6 +267,8 @@ private:
 
     // Actually initializes ESP-NOW - must be called after WiFi is configured
     int initializeEspNow() {
+        esp_read_mac(macAddress_, ESP_MAC_WIFI_STA);
+
         // Initialize ESP-NOW
         esp_err_t err = esp_now_init();
         if(err != ESP_OK)
@@ -320,6 +329,12 @@ private:
     //ESP-NOW callbacks
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         EspNowManager* manager = EspNowManager::GetInstance();
+
+        // Drop packets not addressed to us or broadcast
+        if (memcmp(esp_now_info->des_addr, PEER_BROADCAST_ADDR, 6) != 0 &&
+            memcmp(esp_now_info->des_addr, manager->macAddress_, 6) != 0) {
+            return;
+        }
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,

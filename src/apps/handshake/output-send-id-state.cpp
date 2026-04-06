@@ -16,6 +16,7 @@ void OutputSendIdState::onStateMounted(Device *PDN) {
     handshakeWirelessManager->setPacketReceivedCallback(std::bind(&OutputSendIdState::onHandshakeCommandReceived, this, std::placeholders::_1), SerialIdentifier::OUTPUT_JACK);
 
     handshakeWirelessManager->sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+    retryTimer.setTimer(RETRY_INTERVAL_MS);
 }
 
 void OutputSendIdState::onHandshakeCommandReceived(HandshakeCommand command) {
@@ -25,12 +26,18 @@ void OutputSendIdState::onHandshakeCommandReceived(HandshakeCommand command) {
     }
 }
 
-
-void OutputSendIdState::onStateLoop(Device *PDN) {}
+void OutputSendIdState::onStateLoop(Device *PDN) {
+    retryTimer.updateTime();
+    if (retryTimer.expired()) {
+        handshakeWirelessManager->sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+        retryTimer.setTimer(RETRY_INTERVAL_MS);
+    }
+}
 
 void OutputSendIdState::onStateDismounted(Device *PDN) {
     LOG_I(TAG, "State dismounted");
     transitionToConnectionSuccessfulState = false;
+    retryTimer.invalidate();
     handshakeWirelessManager->clearCallback(SerialIdentifier::OUTPUT_JACK);
 }
 

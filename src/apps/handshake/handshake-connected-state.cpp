@@ -1,6 +1,7 @@
 #include "apps/handshake/handshake-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
+#include "device/device-type.hpp"
 
 HandshakeConnectedState::HandshakeConnectedState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack, int stateId)
     : State(stateId), jack(jack) {
@@ -15,7 +16,7 @@ void HandshakeConnectedState::onStateMounted(Device *PDN) {
     PDN->getSerialManager()->setOnStringReceivedCallback(
         std::bind(&HandshakeConnectedState::heartbeatMonitorStringCallback, this, std::placeholders::_1), jack);
     handshakeWirelessManager->setPacketReceivedCallback(
-        std::bind(&HandshakeConnectedState::listenForNotifyDisconnectCommand, this, std::placeholders::_1), jack);
+        std::bind(&HandshakeConnectedState::listenForHandshakeCommand, this, std::placeholders::_1), jack);
 
     emitHeartbeatTimer.setTimer(emitHeartbeatInterval);
     heartbeatMonitorTimer.setTimer(firstHeartbeatTimeout);
@@ -50,9 +51,15 @@ void HandshakeConnectedState::heartbeatMonitorStringCallback(const std::string& 
     }
 }
 
-void HandshakeConnectedState::listenForNotifyDisconnectCommand(HandshakeCommand command) {
+void HandshakeConnectedState::listenForHandshakeCommand(HandshakeCommand command) {
     if (command.command == HSCommand::NOTIFY_DISCONNECT) {
         transitionToIdleState = true;
+    } else if (command.command == HSCommand::EXCHANGE_ID) {
+        Peer peer;
+        memcpy(peer.macAddr.data(), command.wifiMacAddr, 6);
+        peer.sid = command.sendingJack;
+        peer.deviceType = static_cast<DeviceType>(command.deviceType);
+        handshakeWirelessManager->setMacPeer(jack, peer);
     }
 }
 

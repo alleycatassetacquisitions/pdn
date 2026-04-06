@@ -140,7 +140,10 @@ inline void matchManagerHunterWinsWhenBountyNeverPressed(MatchManager* mm, Playe
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(dummyMac);
     mm->setHunterDrawTime(250);
-    mm->setBountyDrawTime(0);  // bounty never pressed
+    mm->setReceivedButtonPush();
+    // Opponent (bounty) sends NEVER_PRESSED
+    QuickdrawCommand neverPressed(dummyMac, QDCommand::NEVER_PRESSED, mm->getCurrentMatch()->getMatchId(), "boun", 5000, false);
+    mm->listenForMatchEvents(neverPressed);
 
     EXPECT_TRUE(mm->didWin());
 }
@@ -150,8 +153,11 @@ inline void matchManagerBountyWinsWhenHunterNeverPressed(MatchManager* mm, Playe
     static const uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     QuickdrawCommand cmd(dummyMac, QDCommand::SEND_MATCH_ID, "duel-6", "hunt", 0, true);
     mm->listenForMatchEvents(cmd);
-    mm->setHunterDrawTime(0);  // hunter never pressed
     mm->setBountyDrawTime(300);
+    mm->setReceivedButtonPush();
+    // Opponent (hunter) sends NEVER_PRESSED
+    QuickdrawCommand neverPressed(dummyMac, QDCommand::NEVER_PRESSED, "duel-6", "hunt", 5000, true);
+    mm->listenForMatchEvents(neverPressed);
 
     EXPECT_TRUE(mm->didWin());
 }
@@ -184,7 +190,9 @@ inline void matchManagerGracePeriodPath(MatchManager* mm, Player* player) {
     mm->initializeMatch(dummyMac);
 
     mm->setReceivedButtonPush();
-    mm->setNeverPressed();
+    // Opponent sends NEVER_PRESSED
+    QuickdrawCommand neverPressed(dummyMac, QDCommand::NEVER_PRESSED, mm->getCurrentMatch()->getMatchId(), "boun", 5000, false);
+    mm->listenForMatchEvents(neverPressed);
 
     EXPECT_TRUE(mm->matchResultsAreIn());
 }

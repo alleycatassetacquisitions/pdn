@@ -25,6 +25,7 @@ struct ActiveDuelState {
     bool hasReceivedDrawResult = false;
     bool hasPressedButton = false;
     bool gracePeriodExpiredNoResult = false;
+    bool opponentNeverPressed = false;
     unsigned long duelLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -100,7 +101,11 @@ public:
      */
     size_t getStoredMatchCount();
 
-    void clearCurrentMatch();
+    void clearCurrentMatch(const char* caller = nullptr);
+
+    void setBoost(int boostMs);
+    int getBoost() const { return boostMs_; }
+    void setOpponentNeverPressed() { activeDuelState.opponentNeverPressed = true; }
 
     void listenForMatchEvents(const QuickdrawCommand& command);
 
@@ -121,6 +126,7 @@ public:
 private:
 
     Player* player;
+    int boostMs_ = 0;
 
     ActiveDuelState activeDuelState;
 

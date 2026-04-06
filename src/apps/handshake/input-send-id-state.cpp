@@ -19,6 +19,7 @@ void InputSendIdState::onStateMounted(Device *PDN) {
         SerialIdentifier::INPUT_JACK);
 
     handshakeWirelessManager->sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+    retryTimer.setTimer(RETRY_INTERVAL_MS);
 }
 
 void InputSendIdState::onHandshakeCommandReceived(HandshakeCommand command) {
@@ -27,10 +28,17 @@ void InputSendIdState::onHandshakeCommandReceived(HandshakeCommand command) {
     }
 }
 
-void InputSendIdState::onStateLoop(Device *PDN) {}
+void InputSendIdState::onStateLoop(Device *PDN) {
+    retryTimer.updateTime();
+    if (retryTimer.expired()) {
+        handshakeWirelessManager->sendPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+        retryTimer.setTimer(RETRY_INTERVAL_MS);
+    }
+}
 
 void InputSendIdState::onStateDismounted(Device *PDN) {
     transitionToConnectedState = false;
+    retryTimer.invalidate();
     handshakeWirelessManager->clearCallback(SerialIdentifier::INPUT_JACK);
 }
 

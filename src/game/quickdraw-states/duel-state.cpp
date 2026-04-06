@@ -88,7 +88,7 @@ bool Duel::transitionToDuelReceivedResult() {
 void Duel::onStateDismounted(Device *PDN) {
     if(transitionToIdleState) {
         PDN->getHaptics()->off();
-        matchManager->clearCurrentMatch();
+        matchManager->clearCurrentMatch("duel-state");
         PDN->getPrimaryButton()->removeButtonCallbacks();
         PDN->getSecondaryButton()->removeButtonCallbacks();
     } else if(transitionToDuelReceivedResultState) {

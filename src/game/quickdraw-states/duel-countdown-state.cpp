@@ -79,9 +79,10 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 
 void DuelCountdown::onStateDismounted(Device *PDN) {
     if (!doBattle) {
-        matchManager->clearCurrentMatch();
+        matchManager->clearCurrentMatch("countdown-dismount");
     }
 
+    PDN->getHaptics()->setIntensity(0);
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();

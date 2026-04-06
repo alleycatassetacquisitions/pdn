@@ -60,7 +60,6 @@ int HandshakeWirelessManager::sendPacket(int command, SerialIdentifier jack) {
     hsPacket.command = command;
     hsPacket.sendingJack = static_cast<int>(jack);
     hsPacket.receicingJack = static_cast<int>(it->second.sid);
-
     LOG_I("HWM", "Sending command %i to port %i", command, static_cast<int>(jack));
 
     return wirelessManager->sendEspNowData(

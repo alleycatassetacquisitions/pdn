@@ -34,7 +34,7 @@ void DuelPushed::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
 
     if (!isConnected()) {
-        matchManager->clearCurrentMatch();
+        matchManager->clearCurrentMatch("pushed-dc");
     }
 
     gracePeriodTimer.invalidate();
@@ -53,5 +53,10 @@ bool DuelPushed::disconnectedBackToIdle() {
 }
 
 bool DuelPushed::transitionToDuelResult() {
-    return matchManager->matchResultsAreIn() || gracePeriodTimer.expired();
+    if (matchManager->matchResultsAreIn()) return true;
+    if (gracePeriodTimer.expired()) {
+        matchManager->setOpponentNeverPressed();
+        return true;
+    }
+    return false;
 }

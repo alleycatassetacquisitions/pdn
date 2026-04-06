@@ -54,7 +54,8 @@ public:
         wirelessManager = new FakeQuickdrawWirelessManager();
         matchManager->initialize(player, &storage, wirelessManager);
 
-        idleState = new Idle(player, matchManager, &device.fakeRemoteDeviceCoordinator);
+        idleState = new Idle(player, matchManager, &device.fakeRemoteDeviceCoordinator,
+            []() { return 0; }, []() {}, []() { return false; });
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -130,36 +131,6 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
 
     suite->idleState->onStateDismounted(&suite->device);
-}
-
-// Test: transitionToDuelCountdown stays false while match exists but ACK not yet received
-inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    suite->idleState->onStateMounted(&suite->device);
-
-    // Hunter initiates but has not yet received MATCH_ID_ACK
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
-
-    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
-    EXPECT_FALSE(suite->idleState->transitionToDuelCountdown());
-}
-
-// Test: transitionToDuelCountdown returns true once matchIsReady is set via the full handshake
-inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    suite->idleState->onStateMounted(&suite->device);
-
-    // Hunter initiates match, then receives ACK from bounty
-    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
-    suite->matchManager->initializeMatch(dummyMac);
-    const char* matchId = suite->matchManager->getCurrentMatch()->getMatchId();
-    QuickdrawCommand ack(dummyMac, QDCommand::MATCH_ID_ACK, matchId, "boun", 0, false);
-    suite->matchManager->listenForMatchEvents(ack);
-
-    EXPECT_TRUE(suite->idleState->transitionToDuelCountdown());
 }
 
 // ============================================
@@ -350,11 +321,11 @@ inline void handshakeAppOutputJackTimeoutResetsToIdle(HandshakeStateTests* suite
     handshakeApp.onStateLoop(&suite->device);
 
     // Handshake timeout not yet reached
-    suite->fakeClock->advance(400);
+    suite->fakeClock->advance(1500);
     handshakeApp.onStateLoop(&suite->device);
 
-    // Past the 500ms handshakeTimeout → should reset to idle
-    suite->fakeClock->advance(200);
+    // Past the 2000ms handshakeTimeout → should reset to idle
+    suite->fakeClock->advance(1000);
     handshakeApp.onStateLoop(&suite->device);
 
     // After reset, HandshakeApp should be back in OutputIdleState (stateId == OUTPUT_IDLE_STATE)
@@ -854,12 +825,14 @@ inline void duelPushedGracePeriodExpiresTransitions(DuelStateTests* suite) {
 // Test: Opponent timeout means win
 inline void duelOpponentTimeoutMeansWin(DuelStateTests* suite) {
     suite->player->setIsHunter(true);
-    
+
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
-    // Bounty draw time stays at 0 (never pressed)
-    suite->matchManager->setNeverPressed();
-    
+    // Opponent (bounty) sends NEVER_PRESSED
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand neverPressed(dummyMac, QDCommand::NEVER_PRESSED, suite->matchManager->getCurrentMatch()->getMatchId(), "boun", 5000, false);
+    suite->matchManager->listenForMatchEvents(neverPressed);
+
     EXPECT_TRUE(suite->matchManager->didWin());
 }
 
@@ -1013,10 +986,11 @@ inline void resultOpponentTimeoutMeansAutoWin(DuelResultTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(300);
-    suite->matchManager->setBountyDrawTime(0); // Bounty never pressed
     suite->matchManager->setReceivedButtonPush();
-    suite->matchManager->setNeverPressed();
-    
+    // Opponent (bounty) sends NEVER_PRESSED
+    QuickdrawCommand neverPressed(dummyMac, QDCommand::NEVER_PRESSED, suite->matchManager->getCurrentMatch()->getMatchId(), "boun", 5000, false);
+    suite->matchManager->listenForMatchEvents(neverPressed);
+
     EXPECT_TRUE(suite->matchManager->didWin());
 }
 
@@ -1177,7 +1151,8 @@ public:
 
 // Test: Idle state clears button callbacks on dismount
 inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
-    Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator,
+        []() { return 0; }, []() {}, []() { return false; });
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);

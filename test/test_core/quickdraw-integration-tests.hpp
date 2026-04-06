@@ -88,7 +88,9 @@ public:
         cleanupClock();
     }
 
-    virtual std::string getMatchId() const { return "test-match-uuid-1234567890"; }
+    std::string getActiveMatchId() const {
+        return matchManager->getCurrentMatch()->getMatchId();
+    }
 
     virtual void setupDefaultMockExpectations() {
         ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
@@ -96,18 +98,19 @@ public:
 
     // Creates a packet as if sent by the local player's opponent.
     TestQuickdrawPacket createPacket(int command, long hunterTime = 0, long bountyTime = 0) {
+        std::string mid = getActiveMatchId();
         if (player->isHunter()) {
             // Opponent is the bounty: send bountyTime with isHunter=false
-            return createTestPacket(getMatchId(), DEFAULT_BOUNTY_ID, command, bountyTime, false);
+            return createTestPacket(mid, DEFAULT_BOUNTY_ID, command, bountyTime, false);
         } else {
             // Opponent is the hunter: send hunterTime with isHunter=true
-            return createTestPacket(getMatchId(), DEFAULT_HUNTER_ID, command, hunterTime, true);
+            return createTestPacket(mid, DEFAULT_HUNTER_ID, command, hunterTime, true);
         }
     }
 
     void processPacket(const TestQuickdrawPacket& packet, 
                       const uint8_t macAddr[6] = nullptr) {
-        uint8_t defaultMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+        uint8_t defaultMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
         const uint8_t* mac = macAddr ? macAddr : defaultMac;
         wirelessManager->processQuickdrawCommand(
             mac,
@@ -197,7 +200,9 @@ public:
         cleanupClock();
     }
 
-    virtual std::string getMatchId() const { return "two-device-match-id-123456"; }
+    std::string getHunterActiveMatchId() const {
+        return hunterMatchManager->getCurrentMatch()->getMatchId();
+    }
 
     virtual void setupDefaultMockExpectations() {
         ON_CALL(hunterPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
@@ -326,8 +331,6 @@ private:
 // ============================================
 
 class PacketParsingTests : public SingleDeviceTestFixture {
-public:
-    std::string getMatchId() const override { return "test-match-uuid-1234567890"; }
 };
 
 inline void packetParsingDrawResultInvokesCallback(PacketParsingTests* suite) {
@@ -434,8 +437,6 @@ inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* s
 
 class CallbackChainTests : public SingleDeviceTestFixture {
 public:
-    std::string getMatchId() const override { return "callback-test-match-id-12345"; }
-
     void setupDefaultMockExpectations() override {
         SingleDeviceTestFixture::setupDefaultMockExpectations();
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -502,8 +503,6 @@ inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
 
 class StateFlowIntegrationTests : public SingleDeviceTestFixture {
 public:
-    std::string getMatchId() const override { return "flow-test-match-id-1234567890"; }
-
     void setupDefaultMockExpectations() override {
         SingleDeviceTestFixture::setupDefaultMockExpectations();
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -703,8 +702,6 @@ inline void stateFlowDuelToLose(StateFlowIntegrationTests* suite) {
 // ============================================
 
 class TwoDeviceSimulationTests : public TwoDeviceTestFixture {
-public:
-    std::string getMatchId() const override { return "two-device-match-id-123456"; }
 };
 
 inline void twoDeviceHunterPressesFirstBothAgree(TwoDeviceSimulationTests* suite) {
@@ -780,7 +777,7 @@ inline void twoDeviceCloseRaceCorrectWinner(TwoDeviceSimulationTests* suite) {
 // simulating an output (OUTPUT_JACK) device and an input (INPUT_JACK) device.
 class HandshakeIntegrationTests : public testing::Test {
 public:
-    struct RawHSPacket { int sendingJack; int receivingJack; int command; } __attribute__((packed));
+    struct RawHSPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
 
     void SetUp() override {
         ON_CALL(outputPeerComms, sendData(_, _, _, _))
@@ -926,6 +923,7 @@ inline void handshakeIgnoresUnexpectedCommands(HandshakeIntegrationTests* suite)
     HandshakeIntegrationTests::RawHSPacket pkt{
         static_cast<int>(SerialIdentifier::OUTPUT_JACK),
         static_cast<int>(SerialIdentifier::INPUT_JACK),
+        0,
         HSCommand::HS_COMMAND_COUNT  // one past the valid range
     };
     suite->deliverRawToInput(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));

@@ -179,11 +179,26 @@ public:
         return DeviceType::UNKNOWN;
     }
 
+    void setPeerMac(SerialIdentifier id, const uint8_t* mac) {
+        if (id == SerialIdentifier::OUTPUT_JACK) { memcpy(outputMac, mac, 6); hasOutputMac = true; }
+        else if (id == SerialIdentifier::INPUT_JACK) { memcpy(inputMac, mac, 6); hasInputMac = true; }
+    }
+
+    const uint8_t* getPeerMac(SerialIdentifier id) const override {
+        if (id == SerialIdentifier::OUTPUT_JACK) return hasOutputMac ? outputMac : nullptr;
+        if (id == SerialIdentifier::INPUT_JACK) return hasInputMac ? inputMac : nullptr;
+        return nullptr;
+    }
+
 private:
     PortStatus outputStatus = PortStatus::DISCONNECTED;
     PortStatus inputStatus = PortStatus::DISCONNECTED;
     DeviceType outputDeviceType = DeviceType::UNKNOWN;
     DeviceType inputDeviceType = DeviceType::UNKNOWN;
+    uint8_t outputMac[6] = {};
+    uint8_t inputMac[6] = {};
+    bool hasOutputMac = false;
+    bool hasInputMac = false;
 };
 
 // Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
