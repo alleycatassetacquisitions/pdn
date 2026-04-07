@@ -8,6 +8,9 @@
 enum SymbolMatchStateId {
     SELECTION,
     SYMBOL_IDLE,
+    LEFT_CONNECTED,
+    RIGHT_CONNECTED,
+    BOTH_CONNECTED,
     MATCH_SUCCESS,
 };
 
@@ -35,18 +38,114 @@ public:
     void onStateLoop(Device *FDN) override;
     void onStateDismounted(Device *FDN) override;
     bool transitionToSelection();
+    bool transitionToLeftConnected();
+    bool transitionToRightConnected();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
 
 private:
     void renderSymbolScreen(Device *FDN);
-    void renderSymbolGlyphs(Device *FDN);
-    void renderTimer(Device *FDN);
 
-    SimpleTimer refreshTimer;
     bool transitionToSelectionState = false;
+    bool transitionToLeftConnectedState = false;
+    bool transitionToRightConnectedState = false;
+ 
     SymbolManager* symbolManager;
-    int refreshInterval = (int)(5 * 1000);
     int lastTimeRendered = 0;
+};
+
+class LeftConnected : public ConnectState {
+public:
+    explicit LeftConnected(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    ~LeftConnected();
+    void onStateMounted(Device *FDN) override;
+    void onStateLoop(Device *FDN) override;
+    void onStateDismounted(Device *FDN) override;
+    bool transitionToSymbolIdle();
+    bool transitionToBothConnected();
+    bool transitionToSelection();
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
+private:
+    void renderSymbolScreen(Device *FDN);
+
+    SymbolManager* symbolManager;
+
+    bool transitionToSelectionState = false;
+    bool transitionToSymbolIdleState = false;
+    bool transitionToBothConnectedState = false;
+
+    int lastTimeRendered = 0;
+    bool toggleBlink = false;
+};
+
+class RightConnected : public ConnectState {
+public:
+    explicit RightConnected(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    ~RightConnected();
+    void onStateMounted(Device *FDN) override;
+    void onStateLoop(Device *FDN) override;
+    void onStateDismounted(Device *FDN) override;
+    bool transitionToSymbolIdle();
+    bool transitionToBothConnected();
+    bool transitionToSelection();
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
+private:
+    SymbolManager* symbolManager;
+    void renderSymbolScreen(Device *FDN);
+    bool transitionToSelectionState = false;
+    bool transitionToSymbolIdleState = false;
+    bool transitionToBothConnectedState = false;
+
+    int lastTimeRendered = 0;
+    bool toggleBlink = false;
+    int debounce = 0;
+};
+
+class BothConnected : public ConnectState {
+public:
+    explicit BothConnected(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    ~BothConnected();
+    void onStateMounted(Device *FDN) override;
+    void onStateLoop(Device *FDN) override;
+    void onStateDismounted(Device *FDN) override;
+    bool transitionToSelection();
+    bool transitionToMatchSuccess();
+    bool transitionToLeftConnected();
+    bool transitionToRightConnected();
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
+private:
+    SymbolManager* symbolManager;
+    void renderSymbolScreen(Device *FDN);
+    bool transitionToSelectionState = false;
+    bool transitionToLeftConnectedState = false;
+    bool transitionToRightConnectedState = false;
+    bool transitionToMatchSuccessState = false;
+
+    int lastTimeRendered = 0;
+    bool toggleBlink = false;
+};
+
+class MatchSuccess : public State {
+public:
+    explicit MatchSuccess(SymbolManager* symbolManager);
+    ~MatchSuccess();
+    void onStateMounted(Device *FDN) override;
+    void onStateLoop(Device *FDN) override;
+    void onStateDismounted(Device *FDN) override;
+    bool transitionToSelection();
+
+private:
+    SymbolManager* symbolManager;
+
+    bool transitionToSelectionState = false;
 };
