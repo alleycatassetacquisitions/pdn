@@ -8,6 +8,7 @@
 // #include "device/animation/bounty-win-animation.hpp"
 #include "device/animation/lose-animation.hpp"
 #include "device/animation/main-menu-animation.hpp"
+#include "device/animation/player-detected-animation.hpp"
 #include <algorithm> // For std::min
 
 static const char* TAG = "LightManager";
@@ -68,6 +69,9 @@ void LightManager::startAnimation(AnimationConfig config) {
             break;
         case AnimationType::MAIN_MENU:
             currentAnimation = new MainMenuAnimation();
+            break;
+        case AnimationType::PLAYER_DETECTED:
+            currentAnimation = new PlayerDetectedAnimation();
             break;
     }
     

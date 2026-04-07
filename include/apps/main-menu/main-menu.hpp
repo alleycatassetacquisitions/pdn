@@ -8,6 +8,10 @@
 
 constexpr int MAIN_MENU_APP_ID = 1;
 
+enum MainMenuStateId {
+    MAIN_MENU = 0,
+};
+
 class MainMenu : public StateMachine {
 public:
     MainMenu(Device* PDN, RemotePlayerManager* remotePlayerManager);

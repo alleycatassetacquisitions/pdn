@@ -13,7 +13,6 @@ MainMenu::~MainMenu() {
 }
 
 void MainMenu::populateStateMap() {
-    MenuIdleState* menuIdleState = new MenuIdleState(remotePlayerManager, remoteDeviceCoordinator);
+    
 
-    stateMap.push_back(menuIdleState);
 }

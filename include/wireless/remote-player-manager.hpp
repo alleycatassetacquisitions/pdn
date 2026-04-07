@@ -22,6 +22,9 @@ public:
 
     int ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const uint8_t* data, const size_t dataLen);
 
+    int getLastRssi() const;
+    int getRemotePlayerCount() const;
+
 protected:
     int BroadcastPlayerInfo();
     PeerCommsInterface* peerComms;
@@ -30,5 +33,6 @@ protected:
     unsigned long remotePlayerTTL;
     unsigned long broadcastInterval;
     unsigned long lastBroadcastTime;
+    int lastRssi = 0;
 
 };

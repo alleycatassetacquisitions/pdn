@@ -120,8 +120,19 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     if(remotePlayer != remotePlayers.end())
     {
         remotePlayer->lastSeenTime = SimpleTimer::getPlatformClock()->milliseconds();
-        // remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
-        // LOG_D("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
     }
+
+    lastRssi = remotePlayer->rssi;
+    
     return 0;
+}
+
+int RemotePlayerManager::getLastRssi() const
+{
+    return lastRssi;
+}
+
+int RemotePlayerManager::getRemotePlayerCount() const
+{
+    return static_cast<int>(remotePlayers.size());
 }
