@@ -4,10 +4,10 @@
 #define TAG "FDN_CWM"
 
 struct FdnConnectPacket {
-    int command;
+    uint8_t command;
     char playerId[PLAYER_ID_BUFFER_SIZE];
     uint8_t sequence[FDN_HACK_SEQUENCE_LENGTH];
-    int buttonValue;
+    uint8_t buttonValue;
 } __attribute__((packed));
 
 FDNConnectWirelessManager::FDNConnectWirelessManager() {}
@@ -73,7 +73,7 @@ int FDNConnectWirelessManager::processPacket(const uint8_t* senderMac, const uin
 
     const FdnConnectPacket* pkt = reinterpret_cast<const FdnConnectPacket*>(data);
 
-    if (pkt->command < 0 || pkt->command >= FDN_CONNECT_CMD_COUNT) {
+    if (pkt->command >= FDN_CONNECT_CMD_COUNT) {
         LOG_E(TAG, "Invalid command %d, dropping", pkt->command);
         return -1;
     }

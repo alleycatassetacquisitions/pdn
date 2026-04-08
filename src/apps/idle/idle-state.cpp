@@ -30,9 +30,8 @@ void IdleState::onStateMounted(Device* PDN) {
     LOG_I(TAG, "Mounted");
 
     PDN->getLightManager()->clear();
-    initialPlayerCount = remotePlayerManager->getRemotePlayerCount();
+    remotePlayerManager->consumePacketReceived(); // clear any stale flag from previous state
     connectionResolved = false;
-    contentReady = false;
 
     fdnConnectWirelessManager->setConnectCallback(
         [this](const std::string& playerId, const uint8_t* senderMac) {
@@ -44,28 +43,19 @@ void IdleState::onStateMounted(Device* PDN) {
     );
 
     uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
-    glyphTimer.setTimer(GLYPH_LOADING_DURATION_MS);
-    showLoadingGlyphs(PDN);
 }
 
 void IdleState::onStateLoop(Device* PDN) {
     remotePlayerManager->Update();
 
-    if (isInGlyphLoadingPhase(PDN, glyphTimer)) return;
-
-    if (!contentReady) {
-        PDN->getDisplay()->invalidateScreen()->drawImage(glassesImage)->render();
-        contentReady = true;
-    }
+    PDN->getDisplay()->invalidateScreen()->drawImage(glassesImage)->render();
 }
 
 void IdleState::onStateDismounted(Device* PDN) {
     LOG_I(TAG, "Dismounted");
     fdnConnectWirelessManager->clearCallbacks();
-    glyphTimer.invalidate();
     uploadTimer.invalidate();
     connectionResolved = false;
-    contentReady = false;
 }
 
 bool IdleState::isJackRequired(SerialIdentifier jack) {
@@ -73,7 +63,7 @@ bool IdleState::isJackRequired(SerialIdentifier jack) {
 }
 
 bool IdleState::transitionToPlayerDetected() {
-    return remotePlayerManager->getRemotePlayerCount() > initialPlayerCount;
+    return remotePlayerManager->consumePacketReceived();
 }
 
 bool IdleState::transitionToConnectionDetected() {

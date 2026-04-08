@@ -24,6 +24,7 @@ public:
     virtual PeerCommsState getPeerCommsState() = 0;
     virtual void connect() = 0;
     virtual void disconnect() = 0;
+    virtual int getRssiForPeer(const uint8_t* macAddr) = 0;
 
 protected:
 

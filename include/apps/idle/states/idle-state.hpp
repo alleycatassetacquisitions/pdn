@@ -39,9 +39,7 @@ private:
 
     std::function<void(const std::string&, const uint8_t*)> connectionHandler;
 
-    SimpleTimer glyphTimer;
     SimpleTimer uploadTimer;
-    bool contentReady = false;
     bool connectionResolved = false;
     int initialPlayerCount = 0;
 

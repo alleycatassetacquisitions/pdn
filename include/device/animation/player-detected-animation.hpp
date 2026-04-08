@@ -17,10 +17,13 @@ public:
 
 protected:
     void onInit() override {
-        brightness_   = config_.initialState.recessLights[0].brightness;
-        currentState_ = config_.initialState;
-        finOffset_    = 0;
-        finState_     = FinState::SCROLLING;
+        targetBrightness_ = config_.initialState.recessLights[0].brightness;
+        brightness_        = 0;
+        brightnessRampTimer_.setTimer(BRIGHTNESS_RAMP_MS);
+        if (config_.durationMs > 0) totalTimer_.setTimer(config_.durationMs);
+        currentState_      = config_.initialState;
+        finOffset_         = 0;
+        finState_          = FinState::SCROLLING;
 
         const uint16_t stagger = 511 / MAX_SPARKLES;
         for (uint8_t i = 0; i < MAX_SPARKLES; i++) {
@@ -31,12 +34,38 @@ protected:
     }
 
     LEDState onAnimate() override {
+        updateRampedBrightness();
         animateRecessLights();
         animateFinLights();
         return currentState_;
     }
 
 private:
+    void updateRampedBrightness() {
+        // Ramp up over the first BRIGHTNESS_RAMP_MS
+        if (!brightnessRampTimer_.expired()) {
+            brightness_ = static_cast<uint8_t>(
+                (static_cast<uint32_t>(targetBrightness_) * brightnessRampTimer_.getElapsedTime())
+                / BRIGHTNESS_RAMP_MS);
+            return;
+        }
+
+        brightness_ = targetBrightness_;
+
+        // Ramp down over the last BRIGHTNESS_RAMP_MS if a duration was set
+        if (config_.durationMs > 0) {
+            unsigned long elapsed   = totalTimer_.getElapsedTime();
+            unsigned long rampStart = config_.durationMs - BRIGHTNESS_RAMP_MS;
+            if (elapsed >= rampStart) {
+                unsigned long rampElapsed = elapsed - rampStart;
+                unsigned long remaining   = (rampElapsed < BRIGHTNESS_RAMP_MS)
+                                            ? (BRIGHTNESS_RAMP_MS - rampElapsed) : 0;
+                brightness_ = static_cast<uint8_t>(
+                    (static_cast<uint32_t>(targetBrightness_) * remaining) / BRIGHTNESS_RAMP_MS);
+            }
+        }
+    }
+
     void animateRecessLights() {
         for (uint8_t i = 0; i < NUM_RECESS_LIGHTS; i++) {
             currentState_.setRecessLight(i, mainMenuRecessColors[i], brightness_);
@@ -105,6 +134,7 @@ private:
     static constexpr uint8_t  FIN_STEP          = 50;
     static constexpr uint16_t FIN_CYCLE         = NUM_FIN_PALETTE * 256;
     static constexpr uint16_t FIN_PAUSE_MS      = 2000;
+    static constexpr uint32_t BRIGHTNESS_RAMP_MS = 2000;
 
     enum class FinState { SCROLLING, PAUSING };
 
@@ -114,9 +144,12 @@ private:
         uint16_t progress  = 0;
     };
 
-    uint8_t     brightness_ = 87;
+    uint8_t     brightness_       = 0;
+    uint8_t     targetBrightness_ = 0;
+    SimpleTimer brightnessRampTimer_;
+    SimpleTimer totalTimer_;
     Sparkle     sparkles_[MAX_SPARKLES];
-    uint16_t    finOffset_ = 0;
-    FinState    finState_  = FinState::SCROLLING;
-    SimpleTimer finPauseTimer_;
+    uint16_t      finOffset_ = 0;
+    FinState      finState_  = FinState::SCROLLING;
+    SimpleTimer   finPauseTimer_;
 };

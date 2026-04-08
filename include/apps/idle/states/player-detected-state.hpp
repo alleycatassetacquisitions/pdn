@@ -50,13 +50,13 @@ private:
 
     std::function<void(const std::string&, const uint8_t*)> connectionHandler;
 
-    SimpleTimer glyphTimer;
     SimpleTimer playerDetectedTimer;
-    bool contentReady = false;
+    SimpleTimer glyphTimer;
+    bool contentReady      = false;
     bool connectionResolved = false;
     const PlayerDetectionConfig* activeConfig = nullptr;
 
-    const PlayerDetectionConfig WEAK   = { PlayerDetectedStrength::WEAK,   500,  80  };
-    const PlayerDetectionConfig MEDIUM = { PlayerDetectedStrength::MEDIUM, 1500, 150 };
-    const PlayerDetectionConfig STRONG = { PlayerDetectedStrength::STRONG, 3000, 255 };
+    const PlayerDetectionConfig WEAK   = { PlayerDetectedStrength::WEAK,   2500,  80 };
+    const PlayerDetectionConfig MEDIUM = { PlayerDetectedStrength::MEDIUM, 2500, 150 };
+    const PlayerDetectionConfig STRONG = { PlayerDetectedStrength::STRONG, 5000, 255 };
 };

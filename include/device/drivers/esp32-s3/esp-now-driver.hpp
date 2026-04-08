@@ -205,11 +205,10 @@ public:
         return 0;
     }
 
-    int GetRssiForPeer(const uint8_t* macAddr) {
+    int getRssiForPeer(const uint8_t* macAddr) override {
         uint64_t macAddr64 = MacToUInt64(macAddr);
-        if(m_rssiTracker.count(macAddr64) > 0)
-            return m_rssiTracker[macAddr64];
-        return -1;
+        auto it = m_rssiTracker.find(macAddr64);
+        return (it != m_rssiTracker.end()) ? it->second : 0;
     }
 
     // Public methods for ESP-NOW callback handling 
@@ -248,14 +247,7 @@ private:
         m_maxRetries(5),
         m_curRetries(0)
     {
-
-        wifi_promiscuous_filter_t filter = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
-        esp_wifi_set_promiscuous_filter(&filter);
-        esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
-        esp_wifi_set_promiscuous(true);
-        // ESP-NOW initialization happens in connect() -> initializeEspNow()
-        // after WiFi has been set up
+        // Promiscuous setup deferred to initializeEspNow() so it runs after WiFi.mode()
     }
 
     // Actually initializes ESP-NOW - must be called after WiFi is configured
@@ -290,6 +282,14 @@ private:
             LOG_E("ENC", "ESPNOW Error registering broadcast peer: 0x%X\n", err);
             return err;
         }
+
+        // Register promiscuous callback here, after WiFi.mode() has been called,
+        // so the setting isn't cleared by subsequent WiFi configuration.
+        wifi_promiscuous_filter_t filter = {
+            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
+        esp_wifi_set_promiscuous_filter(&filter);
+        esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
+        esp_wifi_set_promiscuous(true);
 
         LOG_I("ENC", "ESPNOW initialization complete");
 

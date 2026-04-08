@@ -1,26 +1,31 @@
 #pragma once
 
 #include "device/device.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "state/state-machine.hpp"
+#include "wireless/fdn-connect-wireless-manager.hpp"
+#include "apps/hacking/hacked-players-manager.hpp"
 
 constexpr int HACKING_APP_ID = 3;
 
 enum HackingStateId {
-    CONNECTION_DETECTED = 0,
-    HACKING_HINT = 1,
-    HACKING_INPUT = 2,
+    HACKING_HINT  = 0,
+    HACKING_INPUT = 1,
+    HACK_SUCCESS  = 2,
+    HACK_LOCKOUT  = 3,
 };
 
 class Hacking : public StateMachine {
 public:
-    Hacking(Device* PDN);
+    Hacking(FDNConnectWirelessManager* fdnConnectWirelessManager,
+            HackedPlayersManager* hackedPlayersManager,
+            RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~Hacking();
 
-    void onStateMounted(Device* PDN) override;
-    void onStateLoop(Device* PDN) override;
-    void onStateDismounted(Device* PDN) override;
     void populateStateMap() override;
 
 private:
-
+    FDNConnectWirelessManager* fdnConnectWirelessManager;
+    HackedPlayersManager* hackedPlayersManager;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
 };

@@ -30,15 +30,13 @@ void PlayerDetectedState::setConnectionHandler(
 
 void PlayerDetectedState::onStateMounted(Device* PDN) {
     int rssi = remotePlayerManager->getLastRssi();
-    if (rssi > -50)      activeConfig = &STRONG;
-    else if (rssi > -70) activeConfig = &MEDIUM;
+    if (rssi > STRONG_RSSI_THRESHOLD)      activeConfig = &STRONG;
+    else if (rssi > MEDIUM_RSSI_THRESHOLD) activeConfig = &MEDIUM;
     else                 activeConfig = &WEAK;
 
     LOG_I(TAG, "Mounted — rssi %d, strength %d, timeout %dms", rssi, (int)activeConfig->strength, activeConfig->timeout);
 
-    PDN->getLightManager()->setGlobalBrightness(activeConfig->intensity);
     connectionResolved = false;
-    contentReady = false;
 
     fdnConnectWirelessManager->setConnectCallback(
         [this](const std::string& playerId, const uint8_t* senderMac) {
@@ -49,27 +47,21 @@ void PlayerDetectedState::onStateMounted(Device* PDN) {
         }
     );
 
-    glyphTimer.setTimer(GLYPH_LOADING_DURATION_MS);
-    showLoadingGlyphs(PDN);
-}
+    PDN->
+    getDisplay()->
+    invalidateScreen()->
+    drawImage(glassesImage)->
+    render();
 
-void PlayerDetectedState::onStateLoop(Device* PDN) {
-    remotePlayerManager->Update();
+    LEDState initialState;
+    for (uint8_t i = 0; i < 23; i++) {
+        initialState.setRecessLight(i, LEDColor(), activeConfig->intensity);
+    }
+    for (uint8_t i = 0; i < 9; i++) {
+        initialState.setFinLight(i, LEDColor(), activeConfig->intensity);
+    }
 
-    if (isInGlyphLoadingPhase(PDN, glyphTimer)) return;
-
-    if (!contentReady) {
-        PDN->getDisplay()->invalidateScreen()->render();
-
-        LEDState initialState;
-        for (uint8_t i = 0; i < 23; i++) {
-            initialState.setRecessLight(i, LEDColor(), activeConfig->intensity);
-        }
-        for (uint8_t i = 0; i < 9; i++) {
-            initialState.setFinLight(i, LEDColor(), activeConfig->intensity);
-        }
-
-        uint8_t frameSpeed = static_cast<uint8_t>(std::max(8, (255 - activeConfig->intensity) / 7));
+    uint8_t frameSpeed = static_cast<uint8_t>(std::max(8, (255 - activeConfig->intensity) / 7));
 
         AnimationConfig cfg;
         cfg.type         = AnimationType::PLAYER_DETECTED;
@@ -77,21 +69,23 @@ void PlayerDetectedState::onStateLoop(Device* PDN) {
         cfg.speed        = frameSpeed;
         cfg.curve        = EaseCurve::EASE_IN_OUT;
         cfg.initialState = initialState;
+        cfg.durationMs   = static_cast<uint32_t>(activeConfig->timeout);
         PDN->getLightManager()->startAnimation(cfg);
 
-        playerDetectedTimer.setTimer(activeConfig->timeout);
-        contentReady = true;
-    }
+    playerDetectedTimer.setTimer(activeConfig->timeout);
+}
+
+void PlayerDetectedState::onStateLoop(Device* PDN) {
+    remotePlayerManager->Update();
+
 }
 
 void PlayerDetectedState::onStateDismounted(Device* PDN) {
     LOG_I(TAG, "Dismounted");
     fdnConnectWirelessManager->clearCallbacks();
     PDN->getLightManager()->stopAnimation();
-    glyphTimer.invalidate();
     playerDetectedTimer.invalidate();
     connectionResolved = false;
-    contentReady = false;
     activeConfig = nullptr;
 }
 

@@ -13,7 +13,7 @@ inline void showLoadingGlyphs(Device* PDN) {
     constexpr int SCREEN_WIDTH  = 128;
     constexpr int SCREEN_HEIGHT = 64;
     constexpr int GLYPHS_PER_ROW = SCREEN_WIDTH / GLYPH_SIZE;
-    constexpr int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE) / GLYPH_SIZE;
+    constexpr int GLYPHS_PER_COL = 11;
 
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->setGlyphMode(FontMode::LOADING_GLYPH);
@@ -22,7 +22,7 @@ inline void showLoadingGlyphs(Device* PDN) {
         for (int col = 0; col < GLYPHS_PER_ROW; col++) {
             if (rand() % 100 < 50) {
                 int x = col * GLYPH_SIZE;
-                int y = GLYPH_SIZE + (row * GLYPH_SIZE);
+                int y = row * GLYPH_SIZE;
                 PDN->getDisplay()->renderGlyph(loadingGlyphs[rand() % 8], x, y);
             }
         }

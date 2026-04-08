@@ -5,6 +5,7 @@
 #include "utils/simple-timer.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
+#include "device/drivers/serial-wrapper.hpp"
 #include "game/player.hpp"
 #include "device/device.hpp"
 
@@ -18,6 +19,8 @@ public:
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
+
+    bool isJackRequired(SerialIdentifier jack) override;
 
 private:
     const char* MAIN_MENU_MESSAGE[2] = {"MAIN", "MENU"};

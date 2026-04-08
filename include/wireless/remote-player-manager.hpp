@@ -25,6 +25,8 @@ public:
     int getLastRssi() const;
     int getRemotePlayerCount() const;
 
+    bool consumePacketReceived();
+
 protected:
     int BroadcastPlayerInfo();
     PeerCommsInterface* peerComms;
@@ -34,5 +36,6 @@ protected:
     unsigned long broadcastInterval;
     unsigned long lastBroadcastTime;
     int lastRssi = 0;
+    bool packetReceived = false;
 
 };
