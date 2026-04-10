@@ -142,6 +142,7 @@ public:
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
+    MOCK_METHOD(int, getRssiForPeer, (const uint8_t*), (override));
 };
 
 class MockStorage : public StorageInterface {

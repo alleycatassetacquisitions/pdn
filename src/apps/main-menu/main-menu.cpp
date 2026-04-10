@@ -15,5 +15,9 @@ MainMenu::~MainMenu() {
 
 void MainMenu::populateStateMap() {
     auto* mainMenuState = new MainMenuState(remoteDeviceCoordinator);
+
+    mainMenuState->addAppTransition(
+        std::bind(&MainMenuState::transitionToIdle, mainMenuState), StateId(IDLE_APP_ID));
+
     stateMap.push_back(mainMenuState); // [0] MAIN_MENU
 }

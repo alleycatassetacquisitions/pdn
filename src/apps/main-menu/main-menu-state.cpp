@@ -27,3 +27,7 @@ void MainMenuState::onStateDismounted(Device* PDN) {
 bool MainMenuState::isJackRequired(SerialIdentifier jack) {
     return jack == SerialIdentifier::INPUT_JACK || jack == SerialIdentifier::INPUT_JACK_SECONDARY;
 }
+
+bool MainMenuState::transitionToIdle() {
+    return !isConnected();
+}
