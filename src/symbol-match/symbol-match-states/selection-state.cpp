@@ -5,11 +5,15 @@
 
 static const char* TAG = "SymbolMatch";
 
-Selection::Selection(SymbolManager* symbolManager) : State(SELECTION) {
+Selection::Selection(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                        SymbolWirelessManager* symbolWirelessManager) : ConnectState(remoteDeviceCoordinator, SELECTION) {
     this->symbolManager = symbolManager;
+    this->symbolWirelessManager = symbolWirelessManager;
 }
 
 Selection::~Selection() {
+    symbolManager = nullptr;
+    symbolWirelessManager = nullptr;
 }
 
 void Selection::onStateMounted(Device *FDN) {
@@ -17,6 +21,16 @@ void Selection::onStateMounted(Device *FDN) {
     symbolManager->getRefreshTimer()->invalidate();
     symbolManager->refreshSymbols();
     bufferTimer.setTimer(bufferInterval);
+
+    // Send SYMBOLS_REFRESHED to all known peers
+    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
+        if (peerMac != nullptr) {
+            symbolWirelessManager->setMacPeer(peerMac);
+            symbolWirelessManager->sendPacket(SMCommand::SYMBOLS_REFRESHED, SymbolId::SYMBOL_A, port);
+        }
+    }
+
 }
 
 void Selection::onStateLoop(Device *FDN) {
@@ -41,4 +55,12 @@ void Selection::onStateDismounted(Device *FDN) {
 
 bool Selection::transitionToIdle() {
     return transitionToIdleState;
+}
+
+bool Selection::isPrimaryRequired() {
+    return true;
+}
+
+bool Selection::isAuxRequired() {
+    return true;
 }

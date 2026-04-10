@@ -32,7 +32,8 @@ enum QuickdrawStateId {
     LOSE = 19,
     UPLOAD_MATCHES = 20,
     SUPPORTER_READY = 21,
-    SYMBOL = 22
+    SYMBOL = 22,
+    SYMBOL_MATCHED = 23,
 };
 
 class Sleep : public State {
@@ -367,7 +368,7 @@ private:
 
 class SymbolState : public ConnectState {
 public:
-    SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    SymbolState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
     ~SymbolState();
 
     void onStateMounted(Device *PDN) override;
@@ -378,10 +379,12 @@ public:
     bool isAuxRequired() override;
 
     bool transitionToIdle();
+    bool transitionToSymbolMatched();
 
 private:
     Player* player;
     SymbolWirelessManager* symbolWirelessManager;
+    Device* mountedPdn = nullptr;
 
     uint8_t* fdnMac = nullptr;
     /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
@@ -403,8 +406,38 @@ private:
     SymbolId fdnSymbol;
 
     bool transitionToIdleState = false;
+    bool transitionToSymbolMatchedState = false;
 
     bool symbolSent = false;
 
     bool matchReady = false;
+};
+
+class SymbolMatched : public ConnectState {
+public:
+    SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    ~SymbolMatched();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
+    bool transitionToSymbol();
+
+private:
+    Player* player;
+    SymbolWirelessManager* symbolWirelessManager;
+
+    void renderSymbolScreen(Device *PDN);
+
+    bool transitionToSymbolState = false;
+    bool toggleBlink = true;
+
+    SimpleTimer blinkTimer;
+    const int BLINK_INTERVAL = 0.2 * 1000;
+
+    void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };

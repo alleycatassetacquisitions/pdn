@@ -25,8 +25,6 @@ void SymbolIdle::onStateMounted(Device *FDN) {
 
     renderSymbolScreen(FDN);
 
-    transitionToRightConnectedState = false;
-
     symbolWirelessManager->setPacketReceivedCallback(std::bind(&SymbolIdle::onSymbolMatchCommandReceived, this, std::placeholders::_1));
 
     parameterizedCallbackFunction refreshSymbols = [](void *ctx) {
@@ -35,6 +33,22 @@ void SymbolIdle::onStateMounted(Device *FDN) {
     };
 
     FDN->getSecondaryButton()->setButtonPress(refreshSymbols, this, ButtonInteraction::CLICK);
+
+    // Send SYMBOLS_REFRESHED to all known peers
+    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
+        if (peerMac != nullptr) {
+            symbolWirelessManager->setMacPeer(peerMac);
+            if (port == SerialIdentifier::OUTPUT_JACK) {
+                // output corresponds to LEFT
+                symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, symbolManager->getSymbol(SymbolPosition::LEFT)->getSymbolId(), port);
+            } else if (port == SerialIdentifier::INPUT_JACK) {
+                // input corresponds to RIGHT
+                symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, symbolManager->getSymbol(SymbolPosition::RIGHT)->getSymbolId(), port);
+            }
+        }
+    }
+    
 }
 
 void SymbolIdle::onStateLoop(Device *FDN) {
@@ -94,8 +108,6 @@ void SymbolIdle::onStateLoop(Device *FDN) {
 
 void SymbolIdle::onStateDismounted(Device *FDN) {
     transitionToSelectionState = false;
-    transitionToLeftConnectedState = false;
-    transitionToRightConnectedState = false;
     LOG_W(TAG, "SymbolIdle dismounted");
 
     mountedFdn = nullptr;
@@ -164,12 +176,8 @@ bool SymbolIdle::transitionToSelection() {
     return transitionToSelectionState;
 }
 
-bool SymbolIdle::transitionToLeftConnected() {
-    return transitionToLeftConnectedState;
-}
-
-bool SymbolIdle::transitionToRightConnected() {
-    return transitionToRightConnectedState;
+bool SymbolIdle::transitionToMatchSuccess() {
+    return symbolManager->isLeftMatched() && symbolManager->isRightMatched();
 }
 
 bool SymbolIdle::isPrimaryRequired() {

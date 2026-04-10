@@ -186,7 +186,8 @@ void Quickdraw::populateStateMap() {
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
-    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolState* symbol = new SymbolState(player, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
 
     // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(
@@ -302,6 +303,16 @@ void Quickdraw::populateStateMap() {
             std::bind(&SymbolState::transitionToIdle, symbol),
             idle));
 
+    symbol->addTransition(
+        new StateTransition(
+            std::bind(&SymbolState::transitionToSymbolMatched, symbol),
+            symbolMatched));
+    
+    symbolMatched->addTransition(
+        new StateTransition(
+            std::bind(&SymbolMatched::transitionToSymbol, symbolMatched),
+            symbol));
+
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
@@ -316,4 +327,5 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
     stateMap.push_back(symbol);
+    stateMap.push_back(symbolMatched);
 }

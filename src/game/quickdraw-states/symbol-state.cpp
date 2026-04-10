@@ -5,7 +5,7 @@
 
 static const char* TAG = "SymbolState";
 
-SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState(remoteDeviceCoordinator, SYMBOL) {
+SymbolState::SymbolState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState(remoteDeviceCoordinator, SYMBOL) {
     this->player = player;
     this->symbolWirelessManager = symbolWirelessManager;
 }
@@ -17,6 +17,13 @@ SymbolState::~SymbolState() {
 
 void SymbolState::onStateMounted(Device *PDN) {
     LOG_W(TAG, "mounted");
+    mountedPdn = PDN;
+    transitionToIdleState = false;
+    transitionToSymbolMatchedState = false;
+    matchReady = false;
+    symbolSent = false;
+    toggleSymbol = true;
+
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
         fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
     } else if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
@@ -75,21 +82,26 @@ void SymbolState::onStateLoop(Device *PDN) {
 
 void SymbolState::onStateDismounted(Device *PDN) {
     LOG_W(TAG, "dismounted");
+    const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolMatchedState;
+    mountedPdn = nullptr;
     fdnMac = nullptr;
     transitionToIdleState = false;
+    transitionToSymbolMatchedState = false;
     symbolSent = false;
     bufferTimer.invalidate();
     if (renderTimer.isRunning()) {
         renderTimer.invalidate();
     }
 
-    bufferTimer.setTimer(BUFFER_TIMEOUT);
-    while (!bufferTimer.expired()) {
-        if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-            renderLoadingScreen(PDN->getDisplay());
+    if (showRefreshScreen) {
+        bufferTimer.setTimer(BUFFER_TIMEOUT);
+        while (!bufferTimer.expired()) {
+            if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
+                renderLoadingScreen(PDN->getDisplay());
+            }
         }
+        bufferTimer.invalidate();
     }
-    bufferTimer.invalidate();
 
     symbolWirelessManager->clearCallback();
 
@@ -151,11 +163,30 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
    
 
         LOG_W(TAG, "Received symbol: %d", static_cast<int>(fdnSymbol));
+    } else if (command.command == SMCommand::SYMBOLS_REFRESHED) {
+        symbolSent = false;
+        matchReady = false;
+        toggleSymbol = true;
+        transitionToSymbolMatchedState = false;
+
+        // Force an immediate redraw back to the blinking symbol.
+        renderTimer.invalidate();
+        bufferTimer.invalidate();
+        if (mountedPdn != nullptr) {
+            advanceSymbolRender(mountedPdn);
+            renderTimer.setTimer(RENDER_TIMEOUT);
+        }
+    } else if (command.command == SMCommand::SYMBOL_MATCH_SUCCESS) {
+        transitionToSymbolMatchedState = true;
     }
 }
 
 bool SymbolState::transitionToIdle() {
     return transitionToIdleState;
+}
+
+bool SymbolState::transitionToSymbolMatched() {
+    return transitionToSymbolMatchedState;
 }
 
 bool SymbolState::isPrimaryRequired() {

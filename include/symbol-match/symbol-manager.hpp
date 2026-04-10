@@ -34,7 +34,7 @@ private:
     std::map<SymbolPosition, Symbol*> symbols;
 
     SimpleTimer refreshTimer;
-    int refreshInterval = (int)(10 * 60 * 1000);
+    int refreshInterval = (int)(30 * 1000);
 
     bool leftMatched = false;
     bool rightMatched = false;
