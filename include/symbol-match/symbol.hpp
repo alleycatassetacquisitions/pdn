@@ -7,6 +7,8 @@ enum class SymbolId {
     SYMBOL_A = 0,
     SYMBOL_B,
     SYMBOL_C,
+    SYMBOL_D,
+    SYMBOL_E,
     NUM_SYMBOLS
 };
 
