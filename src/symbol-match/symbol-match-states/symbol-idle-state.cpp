@@ -42,8 +42,10 @@ void SymbolIdle::onStateMounted(Device *FDN) {
         if (peerMac != nullptr) {
             symbolWirelessManager->setMacPeer(peerMac);
             if (port == SerialIdentifier::OUTPUT_JACK) {
+                // output corresponds to LEFT
                 symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, symbolManager->getSymbol(SymbolPosition::LEFT)->getSymbolId(), port);
             } else if (port == SerialIdentifier::INPUT_JACK) {
+                // input corresponds to RIGHT
                 symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, symbolManager->getSymbol(SymbolPosition::RIGHT)->getSymbolId(), port);
             }
         }

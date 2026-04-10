@@ -4,7 +4,8 @@
 #include "state/state-machine.hpp"
 #include "symbol-match-states.hpp"
 #include "symbol-match/symbol-manager.hpp"
-#include "wireless/symbol-wireless-manager.hpp"
+
+class SymbolWirelessManager;
 
 class SymbolWirelessManager;
 

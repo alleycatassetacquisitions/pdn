@@ -29,7 +29,7 @@ void Idle::onStateMounted(Device *PDN) {
     PDN->getWirelessManager()->enablePeerCommsMode();
 
     AnimationConfig config;
-    
+
     if(player->isHunter()) {
         config.type = AnimationType::IDLE;
         config.speed = 16;
@@ -121,7 +121,7 @@ void Idle::renderStats(Device *PDN) {
     if(statsIndex == 0) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);
-    } else if(statsIndex == 1) {        
+    } else if(statsIndex == 1) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getStreak()).c_str(), 88, 40);
     } else if(statsIndex == 2) {

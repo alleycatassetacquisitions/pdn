@@ -191,6 +191,7 @@ bool SymbolState::transitionToIdle() {
 bool SymbolState::transitionToSymbolMatched() {
     return transitionToSymbolMatchedState;
 }
+
 bool SymbolState::isPrimaryRequired() {
     return true;
 }
