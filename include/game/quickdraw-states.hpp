@@ -5,12 +5,14 @@
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdlib>
 #include <queue>
 #include <string>
@@ -29,7 +31,8 @@ enum QuickdrawStateId {
     WIN = 18,
     LOSE = 19,
     UPLOAD_MATCHES = 20,
-    SUPPORTER_READY = 21
+    SUPPORTER_READY = 21,
+    SYMBOL = 22
 };
 
 class Sleep : public State {
@@ -82,6 +85,7 @@ public:
     bool transitionToDuelCountdown();
     bool transitionToSupporterReady();
     void renderStats(Device *PDN);
+    bool transitionToSymbol();
 
 private:
     Player *player;
@@ -97,6 +101,8 @@ private:
 
     SimpleTimer matchInitializationTimer;
     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
+
+    bool transitionToSymbolState = false;
 
     // void serialEventCallbacks(const std::string& message);
 };
@@ -357,4 +363,48 @@ private:
     std::string matchesJson;
     bool transitionToSleepState = false;
     bool shouldRetryUpload = false;
+};
+
+class SymbolState : public ConnectState {
+public:
+    SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    ~SymbolState();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+
+    bool transitionToIdle();
+
+private:
+    Player* player;
+    SymbolWirelessManager* symbolWirelessManager;
+
+    uint8_t* fdnMac = nullptr;
+    /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
+    SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
+
+    SimpleTimer renderTimer;
+    const int RENDER_TIMEOUT = 500;
+
+    SimpleTimer bufferTimer;
+    const int BUFFER_TIMEOUT = 500;
+    
+    void renderSymbolScreen(Device *PDN);
+    void advanceSymbolRender(Device* PDN);
+    void sendSymbolToFDN();
+    void onSymbolMatchCommandReceived(SymbolMatchCommand command);
+
+    bool toggleSymbol = true;
+
+    SymbolId fdnSymbol;
+
+    bool transitionToIdleState = false;
+
+    bool symbolSent = false;
+
+    bool matchReady = false;
 };

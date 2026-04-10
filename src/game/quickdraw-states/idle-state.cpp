@@ -68,25 +68,24 @@ void Idle::onStateLoop(Device *PDN) {
         displayIsDirty = false;
     }
 
-    if (chainDuelManager->canInitiateMatch() && isConnected() && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN) {
-        if (!matchInitialized) {
-            const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
-            if (peerMac != nullptr) {
-                matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
-                matchInitialized = true;
-                matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+    if (isConnected()) {
+        if (chainDuelManager->canInitiateMatch()
+            && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN
+            && player->isHunter()) {
+            if (!matchInitialized) {
+                const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+                if (peerMac != nullptr) {
+                    matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+                    matchInitialized = true;
+                    matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+                }
             }
         }
-    }
-
-    else if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
-        if (peerMac != nullptr) {
-            // initiate symbol match
-
+        else if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN 
+                || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
+            transitionToSymbolState = true;
         }
     }
-
 
     if(matchInitializationTimer.expired()) {
         matchInitialized = false;
@@ -101,6 +100,7 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
+    transitionToSymbolState = false;
 }
 
 bool Idle::transitionToDuelCountdown() {
@@ -149,4 +149,8 @@ bool Idle::isPrimaryRequired() {
 
 bool Idle::isAuxRequired() {
     return !player->isHunter();
+}
+
+bool Idle::transitionToSymbol() {
+    return transitionToSymbolState;
 }

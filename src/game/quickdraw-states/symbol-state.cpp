@@ -1,0 +1,167 @@
+#include "game/quickdraw-states.hpp"
+#include "device/device.hpp"
+#include "device/drivers/logger.hpp"
+
+
+static const char* TAG = "SymbolState";
+
+SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState(remoteDeviceCoordinator, SYMBOL) {
+    this->player = player;
+    this->symbolWirelessManager = symbolWirelessManager;
+}
+
+SymbolState::~SymbolState() {
+    this->player = nullptr;
+    this->symbolWirelessManager = nullptr;
+}
+
+void SymbolState::onStateMounted(Device *PDN) {
+    LOG_W(TAG, "mounted");
+    if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
+        fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
+    } else if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
+        fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::INPUT_JACK));
+    }
+
+    if (fdnMac != nullptr) {
+        bufferTimer.setTimer(BUFFER_TIMEOUT);
+        symbolWirelessManager->setMacPeer(fdnMac);
+    } else {
+        transitionToIdleState = true;
+    }
+
+    parameterizedCallbackFunction sendSymbolToFDN = [](void *ctx) {
+        SymbolState* symbolState = (SymbolState*)ctx;
+        symbolState->sendSymbolToFDN();
+    };
+
+    PDN->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
+
+
+    symbolWirelessManager->setPacketReceivedCallback(std::bind(&SymbolState::onSymbolMatchCommandReceived, this, std::placeholders::_1));
+    
+}
+
+void SymbolState::onStateLoop(Device *PDN) {
+    if (symbolSent) {
+        // sendSymbolToFDN();
+        advanceSymbolRender(PDN);
+        renderTimer.invalidate();
+    } 
+
+    // Buffer animation must not block the main loop — handshake/sync needs to run every tick.
+    if (bufferTimer.isRunning()) {
+        if (bufferTimer.expired()) {
+            bufferTimer.invalidate();
+            advanceSymbolRender(PDN);
+        } else {
+            if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
+                renderLoadingScreen(PDN->getDisplay());
+            }
+            return;
+        }
+    }
+
+    if (renderTimer.expired()) {
+        advanceSymbolRender(PDN);
+    }
+
+    // if device is not connected to an FDN, transition to idle
+    if (!(remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
+        || remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
+        transitionToIdleState = true;
+    }
+}
+
+void SymbolState::onStateDismounted(Device *PDN) {
+    LOG_W(TAG, "dismounted");
+    fdnMac = nullptr;
+    transitionToIdleState = false;
+    symbolSent = false;
+    bufferTimer.invalidate();
+    if (renderTimer.isRunning()) {
+        renderTimer.invalidate();
+    }
+
+    bufferTimer.setTimer(BUFFER_TIMEOUT);
+    while (!bufferTimer.expired()) {
+        if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
+            renderLoadingScreen(PDN->getDisplay());
+        }
+    }
+    bufferTimer.invalidate();
+
+    symbolWirelessManager->clearCallback();
+
+    matchReady = false;
+}
+
+void SymbolState::renderSymbolScreen(Device *PDN) {
+    
+    
+}
+
+void SymbolState::advanceSymbolRender(Device* PDN) {
+    LOG_W(TAG, "advanceSymbolRender: symbolSent=%d, toggleSymbol=%d", symbolSent, toggleSymbol);
+    if (!symbolSent) {
+        if (toggleSymbol) {
+            PDN->getDisplay()->invalidateScreen();
+            PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+
+            PDN->getDisplay()->render();
+        } else {
+            PDN->getDisplay()->invalidateScreen();
+            PDN->getDisplay()->render();
+        }
+        toggleSymbol = !toggleSymbol;
+        renderTimer.setTimer(RENDER_TIMEOUT);
+    } else {
+        PDN->getDisplay()->invalidateScreen();
+        PDN->getDisplay()->whiteScreen();
+        PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+
+        PDN->getDisplay()->render();
+        symbolSent = false;
+    }
+}
+
+void SymbolState::sendSymbolToFDN() {
+    if (matchReady) {
+        symbolSent = true;
+        symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, player->getSymbol()->getSymbolId(), pdnJackToFdn);
+    } else {
+        // trigger rejection behavior
+    }
+}
+
+void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
+
+    if (command.command == SMCommand::SEND_SYMBOL) {
+        fdnSymbol = command.symbolId;
+        pdnJackToFdn = command.serialPort;
+
+
+        if (fdnSymbol == player->getSymbol()->getSymbolId()) {
+            matchReady = true;
+        }
+        LOG_W(TAG, "Comparison: fdnSymbol=%d, playerSymbol=%d, matchReady=%d", 
+              static_cast<int>(fdnSymbol), 
+              static_cast<int>(player->getSymbol()->getSymbolId()), 
+              matchReady ? 1 : 0);
+   
+
+        LOG_W(TAG, "Received symbol: %d", static_cast<int>(fdnSymbol));
+    }
+}
+
+bool SymbolState::transitionToIdle() {
+    return transitionToIdleState;
+}
+
+bool SymbolState::isPrimaryRequired() {
+    return true;
+}
+
+bool SymbolState::isAuxRequired() {
+    return true;
+}

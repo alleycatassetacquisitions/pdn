@@ -4,6 +4,7 @@
 #include "state/state.hpp"
 #include "symbol-match/symbol-manager.hpp"
 #include "symbol-match/symbol-match.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 
 enum SymbolMatchStateId {
     SELECTION,
@@ -32,7 +33,8 @@ private:
 
 class SymbolIdle : public ConnectState {
 public:
-    explicit SymbolIdle(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    explicit SymbolIdle(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                        SymbolWirelessManager* symbolWirelessManager);
     ~SymbolIdle();
     void onStateMounted(Device *FDN) override;
     void onStateLoop(Device *FDN) override;
@@ -46,95 +48,24 @@ public:
 
 private:
     void renderSymbolScreen(Device *FDN);
+    void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 
     bool transitionToSelectionState = false;
     bool transitionToLeftConnectedState = false;
     bool transitionToRightConnectedState = false;
  
     SymbolManager* symbolManager;
+    SymbolWirelessManager* symbolWirelessManager;
+    /// Set while SYMBOL_IDLE is active; used when ESP-NOW callbacks need the display.
+    Device* mountedFdn = nullptr;
     int lastTimeRendered = 0;
+
+    bool leftConnected = false;
+    bool rightConnected = false;
+    bool blinkToggle = true;
+    bool symbolSentLeft = false;
+    bool symbolSentRight = false;
 };
-
-class LeftConnected : public ConnectState {
-public:
-    explicit LeftConnected(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~LeftConnected();
-    void onStateMounted(Device *FDN) override;
-    void onStateLoop(Device *FDN) override;
-    void onStateDismounted(Device *FDN) override;
-    bool transitionToSymbolIdle();
-    bool transitionToBothConnected();
-    bool transitionToSelection();
-
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
-
-private:
-    void renderSymbolScreen(Device *FDN);
-
-    SymbolManager* symbolManager;
-
-    bool transitionToSelectionState = false;
-    bool transitionToSymbolIdleState = false;
-    bool transitionToBothConnectedState = false;
-
-    int lastTimeRendered = 0;
-    bool toggleBlink = false;
-};
-
-class RightConnected : public ConnectState {
-public:
-    explicit RightConnected(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~RightConnected();
-    void onStateMounted(Device *FDN) override;
-    void onStateLoop(Device *FDN) override;
-    void onStateDismounted(Device *FDN) override;
-    bool transitionToSymbolIdle();
-    bool transitionToBothConnected();
-    bool transitionToSelection();
-
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
-
-private:
-    SymbolManager* symbolManager;
-    void renderSymbolScreen(Device *FDN);
-    bool transitionToSelectionState = false;
-    bool transitionToSymbolIdleState = false;
-    bool transitionToBothConnectedState = false;
-
-    int lastTimeRendered = 0;
-    bool toggleBlink = false;
-    int debounce = 0;
-};
-
-class BothConnected : public ConnectState {
-public:
-    explicit BothConnected(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
-    ~BothConnected();
-    void onStateMounted(Device *FDN) override;
-    void onStateLoop(Device *FDN) override;
-    void onStateDismounted(Device *FDN) override;
-    bool transitionToSelection();
-    bool transitionToMatchSuccess();
-    bool transitionToLeftConnected();
-    bool transitionToRightConnected();
-
-    bool isPrimaryRequired() override;
-    bool isAuxRequired() override;
-
-private:
-    SymbolManager* symbolManager;
-    void renderSymbolScreen(Device *FDN);
-    bool transitionToSelectionState = false;
-    bool transitionToLeftConnectedState = false;
-    bool transitionToRightConnectedState = false;
-    bool transitionToMatchSuccessState = false;
-
-    int lastTimeRendered = 0;
-    bool toggleBlink = false;
-};
-
 class MatchSuccess : public State {
 public:
     explicit MatchSuccess(SymbolManager* symbolManager);

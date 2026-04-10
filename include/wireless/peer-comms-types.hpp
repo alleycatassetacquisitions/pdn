@@ -16,6 +16,7 @@ enum class PktType : uint8_t
     kRoleAnnounce = 8,
     kRoleAnnounceAck = 9,
     kChainGameEventAck = 10,
+    kSymbolMatchCommand = 11,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 

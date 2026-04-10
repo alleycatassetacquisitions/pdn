@@ -2,9 +2,10 @@
 #include "wireless/peer-comms-types.hpp"
 #include "device/drivers/logger.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
     this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
@@ -154,6 +155,7 @@ Quickdraw::~Quickdraw() {
     quickdrawWirelessManager->clearCallbacks();
     quickdrawWirelessManager = nullptr;
     delete matchManager;
+    symbolWirelessManager = nullptr;
     matchManager = nullptr;
     delete chainDuelManager;
     chainDuelManager = nullptr;
@@ -183,6 +185,8 @@ void Quickdraw::populateStateMap() {
     
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+
+    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
 
     // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(
@@ -288,6 +292,16 @@ void Quickdraw::populateStateMap() {
             std::bind(&Sleep::transitionToAwakenSequence, sleep),
             awakenSequence));
 
+    idle->addTransition(
+        new StateTransition(
+            std::bind(&Idle::transitionToSymbol, idle),
+            symbol));
+    
+    symbol->addTransition(
+        new StateTransition(
+            std::bind(&SymbolState::transitionToIdle, symbol),
+            idle));
+
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
@@ -301,4 +315,5 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(lose);
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
+    stateMap.push_back(symbol);
 }

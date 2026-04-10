@@ -38,6 +38,12 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
+    virtual Display* whiteScreen() = 0;
+
+    virtual Display* whiteScreenLeftHalf() = 0;
+
+    virtual Display* whiteScreenRightHalf() = 0;
+
 private:
     Cursor cursor_;
 };

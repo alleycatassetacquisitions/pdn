@@ -125,6 +125,28 @@ public:
         return this;
     }
 
+    Display* whiteScreen() override {
+        screen.clearBuffer();
+        screen.setFontMode(0);
+        screen.setDrawColor(1);
+        screen.drawBox(0, 0, screen.getDisplayWidth(), screen.getDisplayHeight());
+        return this;
+    }
+
+    Display* whiteScreenLeftHalf() override {
+        screen.setFontMode(0);
+        screen.setDrawColor(1);
+        screen.drawBox(0, 0, screen.getDisplayWidth() / 2, screen.getDisplayHeight());
+        return this;
+    }
+
+    Display* whiteScreenRightHalf() override {
+        screen.setFontMode(0);
+        screen.setDrawColor(1);
+        screen.drawBox(screen.getDisplayWidth() / 2, 0, screen.getDisplayWidth() / 2, screen.getDisplayHeight());
+        return this;
+    }
+
 private:
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI screen;
 };
