@@ -5,8 +5,7 @@
 #include "state/state-machine.hpp"
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
-
-constexpr int HACKING_APP_ID = 3;
+#include "apps/app-ids.hpp"
 
 enum HackingStateId {
     HACKING_HINT  = 0,

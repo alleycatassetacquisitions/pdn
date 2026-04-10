@@ -28,6 +28,11 @@ void FDNConnectWirelessManager::setPeer(const uint8_t* macAddr) {
 void FDNConnectWirelessManager::clearPeer() {
     peerMac.fill(0);
     hasPeer = false;
+    peerPlayerId.clear();
+}
+
+const std::string& FDNConnectWirelessManager::getPeerPlayerId() const {
+    return peerPlayerId;
 }
 
 int FDNConnectWirelessManager::sendHackSequence(const ButtonIdentifier* sequence) {
@@ -80,9 +85,10 @@ int FDNConnectWirelessManager::processPacket(const uint8_t* senderMac, const uin
 
     switch (pkt->command) {
         case PDN_CONNECT:
+            peerPlayerId = std::string(pkt->playerId);
             LOG_I(TAG, "PDN connected, player ID: %s", pkt->playerId);
             if (connectCallback) {
-                connectCallback(std::string(pkt->playerId), senderMac);
+                connectCallback(peerPlayerId, senderMac);
             }
             break;
 

@@ -5,8 +5,7 @@
 #include "device/device.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
-
-constexpr int MAIN_MENU_APP_ID = 1;
+#include "apps/app-ids.hpp"
 
 enum MainMenuStateId {
     MAIN_MENU = 0,

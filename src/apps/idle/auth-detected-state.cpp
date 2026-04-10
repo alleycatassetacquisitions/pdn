@@ -1,15 +1,18 @@
 #include "apps/idle/states/auth-detected-state.hpp"
-#include "apps/main-menu/main-menu.hpp"
 #include "device/drivers/logger.hpp"
 #include "apps/idle/idle.hpp"
 #include "utils/display-utils.hpp"
 
 #define TAG "AUTH_DETECTED"
 
-AuthDetectedState::AuthDetectedState(RemoteDeviceCoordinator* remoteDeviceCoordinator)
-    : ConnectState(remoteDeviceCoordinator, IdleStateId::AUTHORIZED_PDN) {}
+AuthDetectedState::AuthDetectedState(RemoteDeviceCoordinator* remoteDeviceCoordinator, FDNConnectWirelessManager* fdnConnectWirelessManager)
+    : ConnectState(remoteDeviceCoordinator, IdleStateId::AUTHORIZED_PDN) {
+    this->fdnConnectWirelessManager = fdnConnectWirelessManager;
+}
 
-AuthDetectedState::~AuthDetectedState() {}
+AuthDetectedState::~AuthDetectedState() {
+    fdnConnectWirelessManager = nullptr;
+}
 
 void AuthDetectedState::onStateMounted(Device* PDN) {
     LOG_I(TAG, "Mounted — authorized player, switching to main menu");
@@ -26,16 +29,15 @@ void AuthDetectedState::onStateLoop(Device* PDN) {
     if (!contentReady) {
         PDN->getDisplay()
             ->invalidateScreen()
-            ->drawText(AUTH_MESSAGE[0], 16, 28)
-            ->drawText(AUTH_MESSAGE[1], 16, 44)
+            ->drawText(AUTH_MESSAGE[0], centeredTextX(AUTH_MESSAGE[0]), 20)
+            ->drawText(AUTH_MESSAGE[1], centeredTextX(AUTH_MESSAGE[1]), 36)
+            ->drawText(fdnConnectWirelessManager->getPeerPlayerId().c_str(), centeredTextX(fdnConnectWirelessManager->getPeerPlayerId().c_str()), 52)
             ->render();
         switchTimer.setTimer(SWITCH_DELAY_MS);
         contentReady = true;
     }
 
-    if (switchTimer.expired()) {
-        PDN->setActiveApp(StateId(MAIN_MENU_APP_ID));
-    }
+    // App-level transition to main menu is handled via AppTransition in idle.cpp
 }
 
 void AuthDetectedState::onStateDismounted(Device* PDN) {
@@ -46,4 +48,12 @@ void AuthDetectedState::onStateDismounted(Device* PDN) {
 
 bool AuthDetectedState::isJackRequired(SerialIdentifier jack) {
     return jack == SerialIdentifier::INPUT_JACK || jack == SerialIdentifier::INPUT_JACK_SECONDARY;
+}
+
+bool AuthDetectedState::transitionToIdle() {
+    return !isConnected();
+}
+
+bool AuthDetectedState::transitionToMainMenu() {
+    return contentReady && switchTimer.expired();
 }

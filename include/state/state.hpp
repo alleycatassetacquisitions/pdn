@@ -89,6 +89,17 @@ public:
         return nullptr;
     }
 
+    void addAppTransition(std::function<bool()> condition, StateId targetAppId) {
+        appTransitions.push_back({std::move(condition), targetAppId});
+    }
+
+    StateId checkAppTransitions() const {
+        for (const auto& t : appTransitions) {
+            if (t.condition()) return t.targetAppId;
+        }
+        return StateId(-1);
+    }
+
     int getStateId() const { return name.id; }
 
     virtual void onStateMounted(Device *PDN) {
@@ -118,5 +129,11 @@ protected:
     std::vector<StateTransition *> transitions;
 
 private:
+    struct AppTransitionEntry {
+        std::function<bool()> condition;
+        StateId targetAppId;
+    };
+    std::vector<AppTransitionEntry> appTransitions;
+
     StateId name;
 };

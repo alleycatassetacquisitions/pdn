@@ -29,6 +29,8 @@ public:
     void setPeer(const uint8_t* macAddr);
     void clearPeer();
 
+    const std::string& getPeerPlayerId() const;
+
     int sendHackSequence(const ButtonIdentifier* sequence);
 
     void setConnectCallback(std::function<void(const std::string& playerId, const uint8_t* senderMac)> callback);
@@ -41,6 +43,7 @@ private:
     WirelessManager* wirelessManager = nullptr;
     std::array<uint8_t, 6> peerMac{};
     bool hasPeer = false;
+    std::string peerPlayerId;
 
     std::function<void(const std::string&, const uint8_t*)> connectCallback;
 

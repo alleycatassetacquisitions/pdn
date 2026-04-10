@@ -1,5 +1,4 @@
 #include "apps/idle/states/unauthorized-detected-state.hpp"
-#include "apps/hacking/hacking.hpp"
 #include "device/drivers/logger.hpp"
 #include "apps/idle/idle.hpp"
 #include "utils/display-utils.hpp"
@@ -24,16 +23,14 @@ void UnauthorizedDetectedState::onStateLoop(Device* PDN) {
     if (!contentReady) {
         PDN->getDisplay()
             ->invalidateScreen()
-            ->drawText(UNAUTHORIZED_MESSAGE[0], 16, 28)
-            ->drawText(UNAUTHORIZED_MESSAGE[1], 16, 44)
+            ->drawText(ACCESS_DENIED_MESSAGE[0], centeredTextX(ACCESS_DENIED_MESSAGE[0]), 28)
+            ->drawText(ACCESS_DENIED_MESSAGE[1], centeredTextX(ACCESS_DENIED_MESSAGE[1]), 44)
             ->render();
         switchTimer.setTimer(SWITCH_DELAY_MS);
         contentReady = true;
     }
 
-    if (switchTimer.expired()) {
-        PDN->setActiveApp(StateId(HACKING_APP_ID));
-    }
+    // App-level transition to hacking is handled via AppTransition in idle.cpp
 }
 
 void UnauthorizedDetectedState::onStateDismounted(Device* PDN) {
@@ -44,4 +41,12 @@ void UnauthorizedDetectedState::onStateDismounted(Device* PDN) {
 
 bool UnauthorizedDetectedState::isJackRequired(SerialIdentifier jack) {
     return jack == SerialIdentifier::INPUT_JACK || jack == SerialIdentifier::INPUT_JACK_SECONDARY;
+}
+
+bool UnauthorizedDetectedState::transitionToIdle() {
+    return !isConnected();
+}
+
+bool UnauthorizedDetectedState::transitionToHacking() {
+    return contentReady && switchTimer.expired();
 }

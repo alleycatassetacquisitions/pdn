@@ -30,7 +30,7 @@ void Idle::populateStateMap() {
         remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
     auto* playerDetectedState = new PlayerDetectedState(
         remotePlayerManager, hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
-    auto* authDetectedState        = new AuthDetectedState(remoteDeviceCoordinator);
+    auto* authDetectedState        = new AuthDetectedState(remoteDeviceCoordinator, fdnConnectWirelessManager);
     auto* unauthorizedDetectedState = new UnauthorizedDetectedState(remoteDeviceCoordinator);
     auto* connectionDetectedState  = new ConnectionDetectedState(
         hackedPlayersManager, fdnConnectWirelessManager, remoteDeviceCoordinator);
@@ -59,18 +59,29 @@ void Idle::populateStateMap() {
     playerDetectedState->addTransition(new StateTransition(
         std::bind(&PlayerDetectedState::transitionToConnectionDetected, playerDetectedState), connectionDetectedState));
 
-    // ConnectionDetectedState transitions
+    // ConnectionDetectedState transitions (disconnect has priority over auth/unauth routing)
+    connectionDetectedState->addTransition(new StateTransition(
+        std::bind(&ConnectionDetectedState::transitionToIdle, connectionDetectedState), idleState));
     connectionDetectedState->addTransition(new StateTransition(
         std::bind(&ConnectionDetectedState::transitionToAuth, connectionDetectedState), authDetectedState));
     connectionDetectedState->addTransition(new StateTransition(
         std::bind(&ConnectionDetectedState::transitionToUnauthorized, connectionDetectedState), unauthorizedDetectedState));
 
+    // AuthDetectedState transitions (disconnect back to idle; app switch to main menu)
+    authDetectedState->addTransition(new StateTransition(
+        std::bind(&AuthDetectedState::transitionToIdle, authDetectedState), idleState));
+    authDetectedState->addAppTransition(
+        std::bind(&AuthDetectedState::transitionToMainMenu, authDetectedState), StateId(MAIN_MENU_APP_ID));
+
+    // UnauthorizedDetectedState transitions (disconnect back to idle; app switch to hacking)
+    unauthorizedDetectedState->addTransition(new StateTransition(
+        std::bind(&UnauthorizedDetectedState::transitionToIdle, unauthorizedDetectedState), idleState));
+    unauthorizedDetectedState->addAppTransition(
+        std::bind(&UnauthorizedDetectedState::transitionToHacking, unauthorizedDetectedState), StateId(HACKING_APP_ID));
+
     // UploadPendingHacksState transitions
     uploadPendingState->addTransition(new StateTransition(
         std::bind(&UploadPendingHacksState::transitionToIdle, uploadPendingState), idleState));
-
-    // AuthDetectedState and UnauthorizedDetectedState are terminal within this app —
-    // they switch apps directly and have no outgoing StateTransitions.
 
     stateMap.push_back(idleState);                 // [0] IDLE
     stateMap.push_back(playerDetectedState);        // [1] PLAYER_DETECTED

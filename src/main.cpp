@@ -29,6 +29,7 @@
 #include "apps/idle/idle.hpp"
 #include "apps/hacking/hacking.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
+#include "fdn-constants.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -61,7 +62,7 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-Player* player = nullptr;
+Player player = FDN_PLAYER;
 
 // Managers
 RemotePlayerManager* remotePlayerManager = nullptr;
@@ -122,13 +123,11 @@ void setup() {
     pdn = PDN::createPDN(pdnConfig);
 
     IdGenerator::initialize(clockDriver->milliseconds());
-    player = new Player();
-    player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
 
     // Construct managers after pdn->begin()
     remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
-    remotePlayerManager->StartBroadcastingPlayerInfo(player, PLAYER_BROADCAST_INTERVAL_MS);
+    remotePlayerManager->StartBroadcastingPlayerInfo(&player, PLAYER_BROADCAST_INTERVAL_MS);
 
     fdnConnectWirelessManager = new FDNConnectWirelessManager();
     fdnConnectWirelessManager->initialize(pdn->getWirelessManager());

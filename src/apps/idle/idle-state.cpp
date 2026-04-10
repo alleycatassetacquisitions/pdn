@@ -32,6 +32,7 @@ void IdleState::onStateMounted(Device* PDN) {
     PDN->getLightManager()->clear();
     remotePlayerManager->consumePacketReceived(); // clear any stale flag from previous state
     connectionResolved = false;
+    wasConnected       = false;
 
     fdnConnectWirelessManager->setConnectCallback(
         [this](const std::string& playerId, const uint8_t* senderMac) {
@@ -49,6 +50,12 @@ void IdleState::onStateLoop(Device* PDN) {
     remotePlayerManager->Update();
 
     PDN->getDisplay()->invalidateScreen()->drawImage(glassesImage)->render();
+
+    bool nowConnected = isConnected();
+    if (nowConnected && !wasConnected) {
+        connectionResolved = true;
+    }
+    wasConnected = nowConnected;
 }
 
 void IdleState::onStateDismounted(Device* PDN) {

@@ -42,16 +42,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
 void RemoteDeviceCoordinator::sync(Device* PDN) {
     inputPortHandshake->onStateLoop(PDN);
     inputSecondaryPortHandshake->onStateLoop(PDN);
-
-    if (syncLogTimer.expired()) {
-        LOG_W("RDC", "INPUT port: status=%d hasPeer=%d | INPUT_SECONDARY port: status=%d hasPeer=%d",
-              static_cast<int>(getPortStatus(SerialIdentifier::INPUT_JACK)),
-              getPeerMac(SerialIdentifier::INPUT_JACK) != nullptr,
-              static_cast<int>(getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY)),
-              getPeerMac(SerialIdentifier::INPUT_JACK_SECONDARY) != nullptr);
-
-        syncLogTimer.setTimer(100);
-    }
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {

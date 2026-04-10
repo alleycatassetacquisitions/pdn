@@ -59,3 +59,7 @@ bool ConnectionDetectedState::transitionToAuth() {
 bool ConnectionDetectedState::transitionToUnauthorized() {
     return contentReady && !wasHacked;
 }
+
+bool ConnectionDetectedState::transitionToIdle() {
+    return !isConnected();
+}

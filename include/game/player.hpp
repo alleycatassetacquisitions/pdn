@@ -5,6 +5,9 @@
 #include <iostream>
 #include <cstdint>
 
+constexpr size_t PLAYER_ID_LENGTH = 4;
+constexpr size_t PLAYER_ID_BUFFER_SIZE = PLAYER_ID_LENGTH + 1;
+
 enum class Allegiance {
     ALLEYCAT = 0,
     ENDLINE = 1,

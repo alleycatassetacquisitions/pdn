@@ -54,7 +54,6 @@ public:
     
     /**
      * Skip to a specific state by index, bypassing intermediate states.
-     * Useful for testing scenarios where you want to start at a later state.
      * @param stateIndex The index in stateMap to skip to
      * @return true if successful, false if index out of range
      */
@@ -91,39 +90,39 @@ public:
         return currentState;
     }
 
+    // First mount: populate stateMap and start at state 0.
+    // Re-entry (after onStateDismounted + onStateMounted again): restart at state 0
+    // without re-populating, so stateMap is built only once.
     void onStateMounted(Device *PDN) override {
-        initialize(PDN);
-    }
-
-    /*
-     * onStatePaused and onStateResume should be overridden in derived classes if the
-     * state machine itself needs to hold onto any data beyond the current state's snapshot.
-     */
-    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        currentSnapshot = currentState->onStatePaused(PDN);
-        currentState->onStateDismounted(PDN);
-        paused = true;
-        return nullptr;
-    }
-
-    void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
-        currentState->onStateMounted(PDN);
-        currentState->onStateResumed(PDN, currentSnapshot.get());
-        currentSnapshot = nullptr;
-        paused = false;
+        if (!launched) {
+            initialize(PDN);
+        } else {
+            currentState = stateMap[0];
+            currentState->onStateMounted(PDN);
+        }
     }
 
     void onStateLoop(Device *PDN) override {
         currentState->onStateLoop(PDN);
+
+        // In-app state transitions (includes disconnect handling) take priority.
         checkStateTransitions();
         if (stateChangeReady) {
             commitState(PDN);
+            return;
+        }
+
+        // App-level transitions (cross-app switches) checked second.
+        StateId nextApp = currentState->checkAppTransitions();
+        if (nextApp.id >= 0) {
+            PDN->setActiveApp(nextApp);
         }
     }
 
     void onStateDismounted(Device *PDN) override {
-        currentState->onStateDismounted(PDN);
-        currentSnapshot = nullptr;
+        if (currentState) {
+            currentState->onStateDismounted(PDN);
+        }
         currentState = nullptr;
         stateChangeReady = false;
         newState = nullptr;
@@ -131,10 +130,6 @@ public:
 
     bool hasLaunched() const {
         return launched;
-    }
-
-    bool isPaused() const {
-        return paused;
     }
 
 protected:
@@ -147,8 +142,5 @@ protected:
     State *currentState = nullptr;
 
 private:
-    std::unique_ptr<Snapshot> currentSnapshot;
-
     bool launched = false;
-    bool paused = false;
 };

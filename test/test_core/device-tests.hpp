@@ -24,31 +24,22 @@ public:
 class MockStateMachine : public StateMachine {
 public:
     explicit MockStateMachine(int appId) : StateMachine(appId) {
-        // Initialize with a dummy state so currentState is not nullptr
+        // Pre-populate stateMap so initialize() doesn't need to
         stateMap.push_back(new MockState());
     }
     
     void populateStateMap() override {
-        // Already populated in constructor
+        // Already populated in constructor; guard prevents double-population
     }
     
     // Track lifecycle calls
-    int mountedCount = 0;
-    int loopCount = 0;
+    int mountedCount    = 0;
+    int loopCount       = 0;
     int dismountedCount = 0;
-    int pausedCount = 0;
-    int resumedCount = 0;
-    
-    bool wasPaused = false;
     
     void onStateMounted(Device *PDN) override {
         mountedCount++;
-        launched = true;
-        // Call parent to properly initialize the state machine
-        // This will call initialize() which sets currentState
-        if (mountedCount == 1) {
-            StateMachine::onStateMounted(PDN);
-        }
+        StateMachine::onStateMounted(PDN);
     }
     
     void onStateLoop(Device *PDN) override {
@@ -57,28 +48,10 @@ public:
     
     void onStateDismounted(Device *PDN) override {
         dismountedCount++;
+        StateMachine::onStateDismounted(PDN);
     }
-    
-    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        pausedCount++;
-        wasPaused = true;
-        // Call parent to set the base class's paused flag
-        return StateMachine::onStatePaused(PDN);
-    }
-    
-    void onStateResumed(Device *PDN, Snapshot* snapshot) override {
-        resumedCount++;
-        wasPaused = false;
-        // Call parent to clear the base class's paused flag
-        StateMachine::onStateResumed(PDN, snapshot);
-    }
-    
-    // Expose protected members for testing
-    bool hasLaunchedPublic() const { return launched; }
-    bool isPausedPublic() const { return isPaused(); }
-    
-private:
-    bool launched = false;
+
+    bool hasLaunchedPublic() const { return hasLaunched(); }
 };
 
 class DeviceTestSuite : public ::testing::Test {
@@ -102,4 +75,3 @@ public:
         delete device;
     }
 };
-

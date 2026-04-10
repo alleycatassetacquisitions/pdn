@@ -21,7 +21,11 @@ public:
 
     bool isJackRequired(SerialIdentifier jack) override;
 
+    bool shouldTransitionToIdle();
+
 private:
     FDNConnectWirelessManager* fdnConnectWirelessManager;
     HackedPlayersManager* hackedPlayersManager;
+
+    bool transitionToIdle = false;
 };

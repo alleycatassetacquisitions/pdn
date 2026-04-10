@@ -12,4 +12,5 @@ public:
     virtual void end() = 0;
     virtual uint8_t readUChar(const std::string& key, uint8_t defaultValue) = 0;
     virtual size_t writeUChar(const std::string& key, uint8_t value) = 0;
+    virtual bool isKey(const std::string& key) = 0;
 };

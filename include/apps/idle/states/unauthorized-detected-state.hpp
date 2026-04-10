@@ -16,13 +16,14 @@ public:
     void onStateDismounted(Device* PDN) override;
 
     bool isJackRequired(SerialIdentifier jack) override;
+    bool transitionToIdle();
+    bool transitionToHacking();
 
 private:
     SimpleTimer glyphTimer;
     SimpleTimer switchTimer;
     bool contentReady = false;
-    static constexpr int SWITCH_DELAY_MS = 500;
+    static constexpr int SWITCH_DELAY_MS = 5000;
 
-    const char* UNAUTHORIZED_MESSAGE[2] = {"UNAUTHORIZED", "PDN"};
     const char* ACCESS_DENIED_MESSAGE[2] = {"ACCESS", "DENIED"};
 };

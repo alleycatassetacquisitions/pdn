@@ -2,14 +2,14 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
-#include "id-generator.hpp"
+#include "game/player.hpp"
 #include "utils/simple-timer.hpp"
 
 #define DEBUG_REMOTE_PLAYER_MANAGER 0
 
 struct PlayerInfoPkt
 {
-    char id[IdGenerator::UUID_BUFFER_SIZE];  // UUID string + null terminator
+    char id[PLAYER_ID_BUFFER_SIZE];
     Allegiance allegiance;
     uint8_t hunter;
 } __attribute__((packed));
@@ -44,8 +44,8 @@ void RemotePlayerManager::Update()
 int RemotePlayerManager::BroadcastPlayerInfo()
 {
     PlayerInfoPkt broadcastPkt;
-    strncpy(broadcastPkt.id, localPlayerInfo->getUserID().c_str(), IdGenerator::UUID_STRING_LENGTH);
-    broadcastPkt.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null termination
+    strncpy(broadcastPkt.id, localPlayerInfo->getUserID().c_str(), PLAYER_ID_LENGTH);
+    broadcastPkt.id[PLAYER_ID_LENGTH] = '\0';
     broadcastPkt.allegiance = localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = localPlayerInfo->isHunter();
 

@@ -37,6 +37,7 @@ void PlayerDetectedState::onStateMounted(Device* PDN) {
     LOG_I(TAG, "Mounted — rssi %d, strength %d, timeout %dms", rssi, (int)activeConfig->strength, activeConfig->timeout);
 
     connectionResolved = false;
+    wasConnected       = false;
 
     fdnConnectWirelessManager->setConnectCallback(
         [this](const std::string& playerId, const uint8_t* senderMac) {
@@ -78,6 +79,11 @@ void PlayerDetectedState::onStateMounted(Device* PDN) {
 void PlayerDetectedState::onStateLoop(Device* PDN) {
     remotePlayerManager->Update();
 
+    bool nowConnected = isConnected();
+    if (nowConnected && !wasConnected) {
+        connectionResolved = true;
+    }
+    wasConnected = nowConnected;
 }
 
 void PlayerDetectedState::onStateDismounted(Device* PDN) {

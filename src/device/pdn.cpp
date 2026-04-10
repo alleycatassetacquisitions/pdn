@@ -42,7 +42,7 @@ std::string PDN::getDeviceId() {
 }
 
 DeviceType PDN::getDeviceType() {
-    return DeviceType::PDN;
+    return DeviceType::FDN;
 }
 
 void PDN::loop() {

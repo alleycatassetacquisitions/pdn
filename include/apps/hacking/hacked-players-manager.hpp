@@ -24,9 +24,9 @@ public:
     std::vector<std::string> getPendingUploads() const;
 
 private:
-    static constexpr const char* PENDING_KEY = "pnd";
 
     StorageInterface* storage;
+    mutable std::vector<std::string> pendingCache;
 
     void addToPending(const std::string& playerId);
     void removeFromPending(const std::string& playerId);

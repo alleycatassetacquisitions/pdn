@@ -27,6 +27,7 @@ public:
 
     bool transitionToAuth();
     bool transitionToUnauthorized();
+    bool transitionToIdle();
 
 private:
     HackedPlayersManager* hackedPlayersManager;

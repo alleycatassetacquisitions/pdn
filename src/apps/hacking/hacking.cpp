@@ -17,5 +17,9 @@ Hacking::~Hacking() {}
 void Hacking::populateStateMap() {
     auto* showHintState = new HackingShowHintState(
         fdnConnectWirelessManager, hackedPlayersManager, remoteDeviceCoordinator);
+
+        showHintState->addAppTransition(
+            std::bind(&HackingShowHintState::shouldTransitionToIdle, showHintState), StateId(IDLE_APP_ID));
+
     stateMap.push_back(showHintState); // [0] HACKING_HINT
 }

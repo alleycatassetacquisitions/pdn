@@ -52,8 +52,9 @@ private:
 
     SimpleTimer playerDetectedTimer;
     SimpleTimer glyphTimer;
-    bool contentReady      = false;
+    bool contentReady       = false;
     bool connectionResolved = false;
+    bool wasConnected       = false;
     const PlayerDetectionConfig* activeConfig = nullptr;
 
     const PlayerDetectionConfig WEAK   = { PlayerDetectedStrength::WEAK,   2500,  80 };

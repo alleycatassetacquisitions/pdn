@@ -281,29 +281,27 @@ TEST_F(DeviceTestSuite, setActiveAppSwitchesToNewApp) {
     
     device->loadAppConfig(std::move(config), APP_ONE);
     
-    // Switch to app two
     device->setActiveApp(APP_TWO);
     
-    ASSERT_EQ(appOne->pausedCount, 1);
+    ASSERT_EQ(appOne->dismountedCount, 1);
     ASSERT_EQ(appTwo->mountedCount, 1);
 }
 
-TEST_F(DeviceTestSuite, setActiveAppPausesCurrentApp) {
+TEST_F(DeviceTestSuite, setActiveAppDismountsCurrentApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
     
     device->loadAppConfig(std::move(config), APP_ONE);
     
-    ASSERT_EQ(appOne->pausedCount, 0);
+    ASSERT_EQ(appOne->dismountedCount, 0);
     
     device->setActiveApp(APP_TWO);
     
-    ASSERT_EQ(appOne->pausedCount, 1);
-    ASSERT_TRUE(appOne->wasPaused);
+    ASSERT_EQ(appOne->dismountedCount, 1);
 }
 
-TEST_F(DeviceTestSuite, setActiveAppMountsNewAppIfNotPreviouslyLaunched) {
+TEST_F(DeviceTestSuite, setActiveAppMountsNewApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
@@ -312,25 +310,20 @@ TEST_F(DeviceTestSuite, setActiveAppMountsNewAppIfNotPreviouslyLaunched) {
     device->setActiveApp(APP_TWO);
     
     ASSERT_EQ(appTwo->mountedCount, 1);
-    ASSERT_EQ(appTwo->resumedCount, 0);
 }
 
-TEST_F(DeviceTestSuite, setActiveAppResumesIfPreviouslyPaused) {
+TEST_F(DeviceTestSuite, setActiveAppRestartsAtFirstStateOnReentry) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
     
     device->loadAppConfig(std::move(config), APP_ONE);
     
-    // Switch to app two
     device->setActiveApp(APP_TWO);
-    
-    // Switch back to app one
     device->setActiveApp(APP_ONE);
     
-    // App one should be resumed, not mounted again
-    ASSERT_EQ(appOne->mountedCount, 1); // Only initial mount
-    ASSERT_EQ(appOne->resumedCount, 1);  // Resume on switch back
+    // App one should be re-mounted fresh (count == 2: initial + re-entry)
+    ASSERT_EQ(appOne->mountedCount, 2);
 }
 
 TEST_F(DeviceTestSuite, setActiveAppLoopCallsNewApp) {
@@ -370,19 +363,19 @@ TEST_F(DeviceTestSuite, appLifecycleSequenceCorrect) {
     device->loop();
     ASSERT_EQ(appOne->loopCount, 2);
     
-    // Switch to app two
+    // Switch to app two — app one dismounted, app two mounted
     device->setActiveApp(APP_TWO);
-    ASSERT_EQ(appOne->pausedCount, 1);
+    ASSERT_EQ(appOne->dismountedCount, 1);
     ASSERT_EQ(appTwo->mountedCount, 1);
     
     // Run some loops on app two
     device->loop();
     ASSERT_EQ(appTwo->loopCount, 1);
     
-    // Switch back to app one
+    // Switch back to app one — app two dismounted, app one re-mounted
     device->setActiveApp(APP_ONE);
-    ASSERT_EQ(appTwo->pausedCount, 1);
-    ASSERT_EQ(appOne->resumedCount, 1);
+    ASSERT_EQ(appTwo->dismountedCount, 1);
+    ASSERT_EQ(appOne->mountedCount, 2);
     
     // Continue loops on app one
     device->loop();
@@ -397,54 +390,46 @@ TEST_F(DeviceTestSuite, multipleAppSwitchesWorkCorrectly) {
     
     device->loadAppConfig(std::move(config), APP_ONE);
     
-    // APP_ONE -> APP_TWO
+    // APP_ONE -> APP_TWO (first mount)
     device->setActiveApp(APP_TWO);
     ASSERT_EQ(appTwo->mountedCount, 1);
     
-    // APP_TWO -> APP_THREE
+    // APP_TWO -> APP_THREE (first mount)
     device->setActiveApp(APP_THREE);
     ASSERT_EQ(appThree->mountedCount, 1);
     
-    // APP_THREE -> APP_ONE (resume)
+    // APP_THREE -> APP_ONE (re-entry mount)
     device->setActiveApp(APP_ONE);
-    ASSERT_EQ(appOne->resumedCount, 1);
+    ASSERT_EQ(appOne->mountedCount, 2);
     
-    // APP_ONE -> APP_TWO (resume)
+    // APP_ONE -> APP_TWO (re-entry mount)
     device->setActiveApp(APP_TWO);
-    ASSERT_EQ(appTwo->resumedCount, 1);
+    ASSERT_EQ(appTwo->mountedCount, 2);
 }
 
-TEST_F(DeviceTestSuite, pausedAppPreservesState) {
+TEST_F(DeviceTestSuite, switchedAwayAppStopsReceivingLoops) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
     
     device->loadAppConfig(std::move(config), APP_ONE);
     
-    // Run some loops to build state
     device->loop();
     device->loop();
     device->loop();
-    int loopsBeforePause = appOne->loopCount;
+    int loopsBeforeSwitch = appOne->loopCount;
     
-    // Switch away
     device->setActiveApp(APP_TWO);
     
-    // Run loops on app two
+    // Loops while on app two should not reach app one
     device->loop();
     device->loop();
+    ASSERT_EQ(appOne->loopCount, loopsBeforeSwitch);
     
-    // App one's loop count should not have changed
-    ASSERT_EQ(appOne->loopCount, loopsBeforePause);
-    
-    // Switch back
+    // After switching back, app one continues accumulating loops
     device->setActiveApp(APP_ONE);
-    
-    // Continue loops
     device->loop();
-    
-    // Loop count should continue from where it left off
-    ASSERT_EQ(appOne->loopCount, loopsBeforePause + 1);
+    ASSERT_EQ(appOne->loopCount, loopsBeforeSwitch + 1);
 }
 
 TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {

@@ -1,10 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include "game/player.hpp"
 
 constexpr uint8_t FDN_BOX_ID = 0;
-constexpr size_t PLAYER_ID_LENGTH = 4;
-constexpr size_t PLAYER_ID_BUFFER_SIZE = PLAYER_ID_LENGTH + 1; // 4 digits + null terminator
 
 constexpr int STRONG_RSSI_THRESHOLD = -30;
 constexpr int MEDIUM_RSSI_THRESHOLD = -50;
+
+inline const std::string PLAYER_ID = std::string(PLAYER_ID_LENGTH - std::to_string(FDN_BOX_ID).length(), '0') + std::to_string(FDN_BOX_ID);
+inline Player FDN_PLAYER = Player(PLAYER_ID, Allegiance::ALLEYCAT, false);

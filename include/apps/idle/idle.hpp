@@ -5,8 +5,7 @@
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
-
-constexpr int IDLE_APP_ID = 4;
+#include "apps/app-ids.hpp"
 
 enum IdleStateId {
     IDLE = 0,

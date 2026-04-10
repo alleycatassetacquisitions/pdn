@@ -5,8 +5,7 @@
 #include "game/player.hpp"
 #include "device/device.hpp"
 #include "device/serial-manager.hpp"
-
-constexpr int HANDSHAKE_APP_ID = 2;
+#include "apps/app-ids.hpp"
 
 class HandshakeApp : public StateMachine {
 public:

@@ -1,4 +1,5 @@
 #include "apps/hacking/hacked-players-manager.hpp"
+#include <algorithm>
 #include <sstream>
 
 HackedPlayersManager::HackedPlayersManager(StorageInterface* storage)
@@ -23,32 +24,15 @@ bool HackedPlayersManager::hasPlayerHacked(const std::string& playerId) const {
 }
 
 std::vector<std::string> HackedPlayersManager::getPendingUploads() const {
-    std::string raw = storage->read(PENDING_KEY, "");
-    std::vector<std::string> result;
-    if (raw.empty()) return result;
-
-    std::istringstream stream(raw);
-    std::string id;
-    while (std::getline(stream, id, ',')) {
-        if (!id.empty()) result.push_back(id);
-    }
-    return result;
+    return pendingCache;
 }
 
 void HackedPlayersManager::addToPending(const std::string& playerId) {
-    std::string current = storage->read(PENDING_KEY, "");
-    if (!current.empty()) current += ',';
-    current += playerId;
-    storage->write(PENDING_KEY, current);
+    pendingCache.push_back(playerId);
 }
 
 void HackedPlayersManager::removeFromPending(const std::string& playerId) {
-    std::vector<std::string> pending = getPendingUploads();
-    std::string updated;
-    for (const auto& id : pending) {
-        if (id == playerId) continue;
-        if (!updated.empty()) updated += ',';
-        updated += id;
-    }
-    storage->write(PENDING_KEY, updated);
+    pendingCache.erase(
+        std::remove(pendingCache.begin(), pendingCache.end(), playerId),
+        pendingCache.end());
 }

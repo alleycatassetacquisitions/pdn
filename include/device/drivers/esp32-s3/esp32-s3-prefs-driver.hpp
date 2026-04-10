@@ -52,6 +52,10 @@ public:
         return prefs.putUChar(key.c_str(), value);
     }
 
+    bool isKey(const std::string& key) override {
+        return prefs.isKey(key.c_str());
+    }
+
 private:
     Preferences prefs;
     std::string prefsName;

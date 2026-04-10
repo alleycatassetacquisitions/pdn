@@ -41,7 +41,8 @@ private:
 
     SimpleTimer uploadTimer;
     bool connectionResolved = false;
-    int initialPlayerCount = 0;
+    bool wasConnected       = false;
+    int initialPlayerCount  = 0;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 };
