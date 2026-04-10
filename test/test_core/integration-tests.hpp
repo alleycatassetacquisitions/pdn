@@ -38,14 +38,14 @@ public:
         bounty->setIsHunter(false);
 
         hunterWirelessManager = new FakeQuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, nullptr, 0);
+        hunterWirelessManager->initialize(hunter, nullptr);
         hunterMatchManager = new MatchManager();
         hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
         hunterWirelessManager->setPacketReceivedCallback(
             std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
 
         bountyWirelessManager = new FakeQuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, nullptr, 0);
+        bountyWirelessManager->initialize(bounty, nullptr);
         bountyMatchManager = new MatchManager();
         bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
         bountyWirelessManager->setPacketReceivedCallback(

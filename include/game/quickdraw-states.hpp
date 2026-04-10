@@ -6,6 +6,7 @@
 #include "state/connect-state.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
+#include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -69,7 +70,7 @@ private:
 
 class Idle : public ConnectState {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, RemotePlayerManager* remotePlayerManager);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
@@ -82,6 +83,7 @@ public:
 private:
     Player *player;
     MatchManager* matchManager;
+    RemotePlayerManager* remotePlayerManager;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
@@ -93,8 +95,6 @@ private:
 
     SimpleTimer matchInitializationTimer;
     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
-
-    // void serialEventCallbacks(const std::string& message);
 };
 
 

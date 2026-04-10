@@ -18,8 +18,8 @@
 // Wire format transmitted over ESP-NOW for every quickdraw command.
 // Defined here so tests can construct and inspect packets without duplicating the layout.
 struct QuickdrawPacket {
-    char matchId[37];  // IdGenerator::UUID_BUFFER_SIZE
-    char playerId[5];  // 4 chars + null terminator
+    char matchId[IdGenerator::UUID_BUFFER_SIZE];
+    char playerId[PLAYER_ID_BUFFER_SIZE];
     bool isHunter;
     long playerDrawTime;
     int  command;
@@ -46,7 +46,7 @@ struct QuickdrawCommand {
     const uint8_t* wifiMacAddr;
     int command;
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    char playerId[5];  // 4 chars + null terminator
+    char playerId[PLAYER_ID_BUFFER_SIZE];
     bool isHunter;
     long playerDrawTime;
 

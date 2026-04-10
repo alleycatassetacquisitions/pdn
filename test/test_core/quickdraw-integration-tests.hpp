@@ -144,7 +144,7 @@ private:
         deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
         matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, deviceWirelessManager, 100);
+        wirelessManager->initialize(player, deviceWirelessManager);
         matchManager->initialize(player, &storage, wirelessManager);
 
         // Hunter initiates the match through the production path.
@@ -255,7 +255,7 @@ private:
         hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
         hunterMatchManager = new MatchManager();
         hunterWirelessManager = new FakeQuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager, 100);
+        hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager);
         hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
     }
 
@@ -268,7 +268,7 @@ private:
         bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
         bountyMatchManager = new MatchManager();
         bountyWirelessManager = new FakeQuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager, 100);
+        bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager);
         bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
     }
 

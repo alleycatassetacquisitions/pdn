@@ -9,11 +9,11 @@ Match::Match(const char* mid, const char* player_id, bool isHunter)
     memcpy(match_id, mid, IdGenerator::UUID_BUFFER_SIZE - 1);
     match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
     if(isHunter) {
-        memcpy(hunter, player_id, 4);
-        hunter[4] = '\0';
+        memcpy(hunter, player_id, PLAYER_ID_SIZE);
+        hunter[PLAYER_ID_SIZE] = '\0';
     } else {
-        memcpy(bounty, player_id, 4);
-        bounty[4] = '\0';
+        memcpy(bounty, player_id, PLAYER_ID_SIZE);
+        bounty[PLAYER_ID_SIZE] = '\0';
     }
 }
 
@@ -26,13 +26,13 @@ Match::Match(){
 }
 
 void Match::setHunterId(const char* hunter_id) {
-    memcpy(hunter, hunter_id, 4);
-    hunter[4] = '\0';
+    memcpy(hunter, hunter_id, PLAYER_ID_SIZE);
+    hunter[PLAYER_ID_SIZE] = '\0';
 }
 
 void Match::setBountyId(const char* bounty_id) {
-    memcpy(bounty, bounty_id, 4);
-    bounty[4] = '\0';
+    memcpy(bounty, bounty_id, PLAYER_ID_SIZE);
+    bounty[PLAYER_ID_SIZE] = '\0';
 }
 
 void Match::setHunterDrawTime(unsigned long timeMs) {
@@ -80,13 +80,13 @@ void Match::fromJson(const std::string &json) {
         }
         if (doc[JSON_KEY_HUNTER_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_HUNTER_ID].as<const char*>();
-            strncpy(hunter, v ? v : "", 4);
-            hunter[4] = '\0';
+            strncpy(hunter, v ? v : "", PLAYER_ID_SIZE);
+            hunter[PLAYER_ID_SIZE] = '\0';
         }
         if (doc[JSON_KEY_BOUNTY_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_BOUNTY_ID].as<const char*>();
-            strncpy(bounty, v ? v : "", 4);
-            bounty[4] = '\0';
+            strncpy(bounty, v ? v : "", PLAYER_ID_SIZE);
+            bounty[PLAYER_ID_SIZE] = '\0';
         }
         if (doc[JSON_KEY_HUNTER_TIME].is<unsigned long>()) {
             hunter_draw_time_ms = doc[JSON_KEY_HUNTER_TIME].as<unsigned long>();

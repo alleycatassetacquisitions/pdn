@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <cstring>  // For memcpy
 #include <string>
@@ -13,7 +15,12 @@ public:
 
     void Update();
 
+    void setLocalPlayer(Player* playerInfo);
+
     void StartBroadcastingPlayerInfo(Player* playerInfo, unsigned long broadcastIntervalMillis);
+
+    // Send player info directly to a specific peer (e.g. in response to an FDN ping).
+    void sendPlayerInfoTo(const uint8_t destMac[6]);
     
     void SetRemotePlayerTTL(unsigned long ttl);
     unsigned long GetRemotePlayerTTL();

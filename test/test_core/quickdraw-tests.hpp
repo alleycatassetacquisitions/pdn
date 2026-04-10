@@ -54,7 +54,7 @@ public:
         wirelessManager = new FakeQuickdrawWirelessManager();
         matchManager->initialize(player, &storage, wirelessManager);
 
-        idleState = new Idle(player, matchManager, &device.fakeRemoteDeviceCoordinator);
+        idleState = new Idle(player, matchManager, &device.fakeRemoteDeviceCoordinator, nullptr);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -380,7 +380,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
+        wirelessManager->initialize(player, device.wirelessManager);
         matchManager->initialize(player, &storage, wirelessManager);
 
         countdownState = new DuelCountdown(player, matchManager, &device.fakeRemoteDeviceCoordinator);
@@ -568,7 +568,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
+        wirelessManager->initialize(player, device.wirelessManager);
         matchManager->initialize(player, &storage, wirelessManager);
 
         // Create a match for testing via the production wireless path
@@ -937,7 +937,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
+        wirelessManager->initialize(player, device.wirelessManager);
         matchManager->initialize(player, &storage, wirelessManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -1144,7 +1144,7 @@ public:
 
         matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
+        wirelessManager->initialize(player, device.wirelessManager);
         matchManager->initialize(player, &storage, wirelessManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -1177,7 +1177,7 @@ public:
 
 // Test: Idle state clears button callbacks on dismount
 inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
-    Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, nullptr);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);

@@ -6,9 +6,10 @@
 #include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, RemotePlayerManager* remotePlayerManager) : ConnectState(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
+    this->remotePlayerManager = remotePlayerManager;
 }
 
 Idle::~Idle() {
@@ -17,6 +18,16 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(Device *PDN) {
+    RemotePlayerManager* rpm = remotePlayerManager;
+    PDN->getPeerComms()->setPacketHandler(
+        PktType::kPlayerInfoBroadcast,
+        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+            RemotePlayerManager* mgr = static_cast<RemotePlayerManager*>(userArg);
+            mgr->ProcessPlayerInfoPkt(src, data, len);
+            mgr->sendPlayerInfoTo(src);
+        },
+        rpm
+    );
 
     // Switch to ESP-NOW mode for peer-to-peer communication
     PDN->getWirelessManager()->enablePeerCommsMode();
@@ -79,6 +90,7 @@ void Idle::onStateLoop(Device *PDN) {
 }
 
 void Idle::onStateDismounted(Device *PDN) {
+    PDN->getPeerComms()->clearPacketHandler(PktType::kPlayerInfoBroadcast);
     statsIndex = 0;
     matchInitializationTimer.invalidate();
     matchInitialized = false;

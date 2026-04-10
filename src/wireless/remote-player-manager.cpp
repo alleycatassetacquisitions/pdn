@@ -9,7 +9,7 @@
 
 struct PlayerInfoPkt
 {
-    char id[IdGenerator::UUID_BUFFER_SIZE];  // UUID string + null terminator
+    char id[PLAYER_ID_BUFFER_SIZE];  // 4 digit string + null terminator
     Allegiance allegiance;
     uint8_t hunter;
 } __attribute__((packed));
@@ -44,8 +44,8 @@ void RemotePlayerManager::Update()
 int RemotePlayerManager::BroadcastPlayerInfo()
 {
     PlayerInfoPkt broadcastPkt;
-    strncpy(broadcastPkt.id, localPlayerInfo->getUserID().c_str(), IdGenerator::UUID_STRING_LENGTH);
-    broadcastPkt.id[IdGenerator::UUID_STRING_LENGTH] = '\0';  // Ensure null termination
+    strncpy(broadcastPkt.id, localPlayerInfo->getUserID().c_str(), PLAYER_ID_SIZE);
+    broadcastPkt.id[PLAYER_ID_SIZE] = '\0';
     broadcastPkt.allegiance = localPlayerInfo->getAllegiance();
     broadcastPkt.hunter = localPlayerInfo->isHunter();
 
@@ -65,11 +65,30 @@ int RemotePlayerManager::BroadcastPlayerInfo()
     return ret;
 }
 
+void RemotePlayerManager::setLocalPlayer(Player* playerInfo)
+{
+    localPlayerInfo = playerInfo;
+}
+
 void RemotePlayerManager::StartBroadcastingPlayerInfo(Player *playerInfo, unsigned long broadcastIntervalMillis)
 {
     localPlayerInfo = playerInfo;
     broadcastInterval = broadcastIntervalMillis;
     BroadcastPlayerInfo();
+}
+
+void RemotePlayerManager::sendPlayerInfoTo(const uint8_t destMac[6])
+{
+    if (localPlayerInfo == nullptr) return;
+
+    PlayerInfoPkt pkt;
+    strncpy(pkt.id, localPlayerInfo->getUserID().c_str(), PLAYER_ID_SIZE);
+    pkt.id[PLAYER_ID_SIZE] = '\0';
+    pkt.allegiance = localPlayerInfo->getAllegiance();
+    pkt.hunter     = localPlayerInfo->isHunter();
+
+    peerComms->sendData(destMac, PktType::kPlayerInfoBroadcast,
+                        reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
 void RemotePlayerManager::SetRemotePlayerTTL(unsigned long ttl)

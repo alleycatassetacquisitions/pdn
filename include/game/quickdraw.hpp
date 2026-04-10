@@ -12,6 +12,7 @@
 #include "apps/fdn-connect/fdn-connect-wireless-manager.hpp"
 #include "apps/fdn-connect/fdn-connect.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/remote-player-manager.hpp"
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -35,4 +36,5 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     FDNConnectWirelessManager* fdnConnectWirelessManager;
+    RemotePlayerManager* remotePlayerManager;
 };

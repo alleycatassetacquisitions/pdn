@@ -1,26 +1,24 @@
 #pragma once
 
 #include "device/wireless-manager.hpp"
+#include "device/drivers/button.hpp"
+#include "apps/fdn-connect/fdn-constants.hpp"
+#include "game/player.hpp"
 #include <functional>
+#include <cstdint>
 
-
-struct FDNConnectPacket {
-    int command;
+struct FdnConnectPacket {
+    uint8_t command;
+    char    playerId[PLAYER_ID_BUFFER_SIZE];
+    uint8_t sequence[FDN_HACK_SEQUENCE_LENGTH];
+    uint8_t buttonValue;
 } __attribute__((packed));
 
-enum FDNCommand {
-    CONNECT = 0,
-    DISCONNECT = 1,
+enum FdnConnectCmd : uint8_t {
+    PDN_CONNECT        = 0,
+    SEND_HACK_SEQUENCE = 1,
+    BUTTON_PRESS       = 2,
 };
-
-struct FDNConnectCommand {
-    int command;
-
-    FDNConnectCommand(int command) : command(command) {}
-};
-
-
-
 
 class FDNConnectWirelessManager {
 public:
@@ -29,13 +27,20 @@ public:
 
     void initialize(WirelessManager* wirelessManager);
 
-    void setPacketReceivedCallback(const std::function<void(const FDNConnectCommand&)>& callback);
-    int broadcastPacket(const uint8_t macAddress[6], FDNConnectCommand& command);
+    // PDN → FDN: announce jack insertion with the player's 4-digit ID
+    int sendPdnConnect(const uint8_t macAddress[6], const char playerId[PLAYER_ID_BUFFER_SIZE]);
+
+    // PDN → FDN: send one button press during the hacking sequence
+    int sendButtonPress(const uint8_t macAddress[6], ButtonIdentifier button);
+
+    // FDN → PDN: register handler for SEND_HACK_SEQUENCE
+    void setHackSequenceCallback(const std::function<void(const uint8_t sequence[FDN_HACK_SEQUENCE_LENGTH])>& callback);
+
     void clearCallbacks();
 
-    int processFDNConnectCommand(const uint8_t* src, const uint8_t* data, const size_t len);
+    int processFDNConnectCommand(const uint8_t* src, const uint8_t* data, size_t len);
 
 private:
-    WirelessManager* wirelessManager;
-    std::function<void(const FDNConnectCommand&)> packetReceivedCallback;
+    WirelessManager* wirelessManager = nullptr;
+    std::function<void(const uint8_t sequence[FDN_HACK_SEQUENCE_LENGTH])> hackSequenceCallback;
 };

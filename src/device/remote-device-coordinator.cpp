@@ -28,8 +28,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     inputPortHandshake->initialize(PDN);
     outputPortHandshake->initialize(PDN);
 
-    syncLogTimer.setTimer(0);
-
     wirelessManager->setEspNowPacketHandler(
         PktType::kHandshakeCommand, 
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -42,16 +40,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
 void RemoteDeviceCoordinator::sync(Device* PDN) {
     inputPortHandshake->onStateLoop(PDN);
     outputPortHandshake->onStateLoop(PDN);
-
-    if (syncLogTimer.expired()) {
-        LOG_W("RDC", "OUTPUT port: status=%d hasPeer=%d | INPUT port: status=%d hasPeer=%d",
-              static_cast<int>(getPortStatus(SerialIdentifier::OUTPUT_JACK)),
-              getPeerMac(SerialIdentifier::OUTPUT_JACK) != nullptr,
-              static_cast<int>(getPortStatus(SerialIdentifier::INPUT_JACK)),
-              getPeerMac(SerialIdentifier::INPUT_JACK) != nullptr);
-
-        syncLogTimer.setTimer(100);
-    }
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {

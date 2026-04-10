@@ -5,6 +5,9 @@
 #include <iostream>
 #include <cstdint>
 
+constexpr uint8_t PLAYER_ID_SIZE = 4;
+constexpr uint8_t PLAYER_ID_BUFFER_SIZE = PLAYER_ID_SIZE + 1;  // 4-digit ID + null terminator
+
 enum class Allegiance {
     ALLEYCAT = 0,
     ENDLINE = 1,

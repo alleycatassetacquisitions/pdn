@@ -22,7 +22,6 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
 
@@ -89,7 +88,6 @@ struct DeviceInstance {
     PDN* pdn = nullptr;
     Player* player = nullptr;
     Quickdraw* game = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
@@ -187,22 +185,8 @@ public:
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
         
-        // Create QuickdrawWirelessManager (required by game states even when mocking)
-        instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
-        instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
-        
-        // Register ESP-NOW packet handlers (similar to setupEspNow in main.cpp)
-        // This is required for devices to actually receive and process ESP-NOW packets
-        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
-            PktType::kQuickdrawCommand,
-            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-                ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-            },
-            instance.quickdrawWirelessManager
-        );
-        
-        // Create game (no remote debug manager for now)
-        instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
+        // Create game
+        instance.game = new Quickdraw(instance.player, instance.pdn);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
@@ -238,7 +222,6 @@ public:
         MockHttpServer::getInstance().removePlayer(device.deviceId);
         
         delete device.game;
-        delete device.quickdrawWirelessManager;
         delete device.player;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted

@@ -79,6 +79,4 @@ private:
 
     HandshakeApp* inputPortHandshake = nullptr;
     HandshakeApp* outputPortHandshake = nullptr;
-
-    SimpleTimer syncLogTimer;
 };

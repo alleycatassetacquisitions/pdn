@@ -5,6 +5,8 @@ Quickdraw::Quickdraw(Player* player, Device* PDN): StateMachine(QUICKDRAW_APP_ID
     this->player = player;
     this->quickdrawWirelessManager = new QuickdrawWirelessManager();
     this->fdnConnectWirelessManager = new FDNConnectWirelessManager();
+    this->remotePlayerManager = new RemotePlayerManager(PDN->getPeerComms());
+    remotePlayerManager->setLocalPlayer(player);
     this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
     this->storageManager = PDN->getStorage();
@@ -45,8 +47,10 @@ Quickdraw::~Quickdraw() {
     matchManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
+    remotePlayerManager = nullptr;
     matches.clear();
 }
+
 
 void Quickdraw::populateStateMap() {
 
@@ -55,7 +59,7 @@ void Quickdraw::populateStateMap() {
     FDNConnect* fdnConnect = new FDNConnect(player, remoteDeviceCoordinator, fdnConnectWirelessManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator);
+    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, remotePlayerManager);
 
     DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator);
     Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator);
@@ -90,6 +94,11 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&Idle::transitionToFDNInterface, idle),
             fdnConnect));
+
+    fdnConnect->addTransition(
+        new StateTransition(
+            std::bind(&FDNConnect::returnToIdle, fdnConnect),
+            idle));
 
     // --- Duel flow ---
     duelCountdown->addTransition(

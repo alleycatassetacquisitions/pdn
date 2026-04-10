@@ -2,6 +2,7 @@
 
 #include <string>
 #include "../../include/id-generator.hpp"
+#include "game/player.hpp"
 
 // Player ID is stored as 4 raw bytes (no UUID encoding needed)
 constexpr size_t PLAYER_ID_BINARY_SIZE = 4;
@@ -93,8 +94,8 @@ public:
 
 private:
     char match_id[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char hunter[5] = {};
-    char bounty[5] = {};
+    char hunter[PLAYER_ID_BUFFER_SIZE] = {};
+    char bounty[PLAYER_ID_BUFFER_SIZE] = {};
     unsigned long hunter_draw_time_ms = 0;
     unsigned long bounty_draw_time_ms = 0;
 };

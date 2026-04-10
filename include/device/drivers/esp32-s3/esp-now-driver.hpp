@@ -249,11 +249,13 @@ private:
         m_curRetries(0)
     {
 
+#if PDN_ENABLE_RSSI_TRACKING
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
         esp_wifi_set_promiscuous_filter(&filter);
         esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
         esp_wifi_set_promiscuous(true);
+#endif
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
         // after WiFi has been set up
     }

@@ -1,47 +1,56 @@
 #include "apps/fdn-connect/fdn-connect-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include <cstring>
 
+FDNConnectWirelessManager::FDNConnectWirelessManager() {}
 
+FDNConnectWirelessManager::~FDNConnectWirelessManager() {}
 
-FDNConnectWirelessManager::FDNConnectWirelessManager() {
+void FDNConnectWirelessManager::initialize(WirelessManager* wm) {
+    this->wirelessManager = wm;
 }
 
-FDNConnectWirelessManager::~FDNConnectWirelessManager() {
-
+int FDNConnectWirelessManager::sendPdnConnect(const uint8_t macAddress[6], const char playerId[PLAYER_ID_BUFFER_SIZE]) {
+    FdnConnectPacket pkt = {};
+    pkt.command = PDN_CONNECT;
+    strncpy(pkt.playerId, playerId, PLAYER_ID_BUFFER_SIZE - 1);
+    pkt.playerId[PLAYER_ID_BUFFER_SIZE - 1] = '\0';
+    return wirelessManager->sendEspNowData(macAddress, PktType::kFDNConnectCommand, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
-void FDNConnectWirelessManager::initialize(WirelessManager* wirelessManager) {
-    this->wirelessManager = wirelessManager;
+int FDNConnectWirelessManager::sendButtonPress(const uint8_t macAddress[6], ButtonIdentifier button) {
+    FdnConnectPacket pkt = {};
+    pkt.command     = BUTTON_PRESS;
+    pkt.buttonValue = static_cast<uint8_t>(button);
+    return wirelessManager->sendEspNowData(macAddress, PktType::kFDNConnectCommand, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
-void FDNConnectWirelessManager::setPacketReceivedCallback(const std::function<void(const FDNConnectCommand&)>& callback) {
-    this->packetReceivedCallback = callback;
+void FDNConnectWirelessManager::setHackSequenceCallback(const std::function<void(const uint8_t sequence[FDN_HACK_SEQUENCE_LENGTH])>& callback) {
+    hackSequenceCallback = callback;
 }
 
 void FDNConnectWirelessManager::clearCallbacks() {
-    packetReceivedCallback = nullptr;
+    hackSequenceCallback = nullptr;
 }
 
-int FDNConnectWirelessManager::broadcastPacket(const uint8_t macAddress[6], FDNConnectCommand& command) {
-    FDNConnectPacket fdnConnectPacket = FDNConnectPacket();
-    fdnConnectPacket.command = command.command;
-    return wirelessManager->sendEspNowData(macAddress, PktType::kFDNConnectCommand, reinterpret_cast<const uint8_t*>(&fdnConnectPacket), sizeof(fdnConnectPacket));
-}
-
-int FDNConnectWirelessManager::processFDNConnectCommand(const uint8_t* src, const uint8_t* data, const size_t len) {
-    
-    if(len != sizeof(FDNConnectPacket)) {
-        LOG_E("FDNConnectWirelessManager", "Unexpected packet length for FDNConnectPacket. Got %lu but expected %lu", len, sizeof(FDNConnectPacket));
+int FDNConnectWirelessManager::processFDNConnectCommand(const uint8_t* src, const uint8_t* data, size_t len) {
+    if (len != sizeof(FdnConnectPacket)) {
+        LOG_E("FDNConnectWirelessManager", "Unexpected packet length. Got %lu, expected %lu", len, sizeof(FdnConnectPacket));
         return -1;
     }
 
-    const FDNConnectPacket* fdnConnectPacket = reinterpret_cast<const FDNConnectPacket*>(data);
+    const FdnConnectPacket* pkt = reinterpret_cast<const FdnConnectPacket*>(data);
 
-    FDNConnectCommand fdnConnectCommand(fdnConnectPacket->command);
-
-    if(packetReceivedCallback) {
-        packetReceivedCallback(fdnConnectCommand);
+    switch (static_cast<FdnConnectCmd>(pkt->command)) {
+        case SEND_HACK_SEQUENCE:
+            if (hackSequenceCallback) {
+                hackSequenceCallback(pkt->sequence);
+            }
+            break;
+        default:
+            LOG_W("FDNConnectWirelessManager", "Unhandled FDN command: %d", pkt->command);
+            break;
     }
-    
+
     return 0;
 }
