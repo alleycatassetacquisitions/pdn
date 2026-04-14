@@ -23,6 +23,7 @@
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
 
@@ -91,6 +92,7 @@ struct DeviceInstance {
     Player* player = nullptr;
     Quickdraw* game = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
+    SymbolWirelessManager* symbolWirelessManager = nullptr;
     
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
@@ -201,9 +203,24 @@ public:
             },
             instance.quickdrawWirelessManager
         );
+
+        instance.symbolWirelessManager = new SymbolWirelessManager();
+        instance.symbolWirelessManager->initialize(instance.pdn->getWirelessManager());
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kSymbolMatchCommand,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+                ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(src, data, len);
+            },
+            instance.symbolWirelessManager
+        );
         
         // Create game (no remote debug manager for now)
-        instance.game = new Quickdraw(instance.player, instance.pdn, instance.quickdrawWirelessManager, nullptr);
+        instance.game = new Quickdraw(
+            instance.player,
+            instance.pdn,
+            instance.quickdrawWirelessManager,
+            nullptr,
+            instance.symbolWirelessManager);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
@@ -236,6 +253,7 @@ public:
         
         delete device.game;
         delete device.quickdrawWirelessManager;
+        delete device.symbolWirelessManager;
         delete device.player;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
