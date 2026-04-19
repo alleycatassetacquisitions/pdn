@@ -392,9 +392,14 @@ void MatchManager::sendMatchAck() {
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
 }
 
-void MatchManager::sendMatchRoleMismatch() {
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ROLE_MISMATCH, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
-    quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+// Send the mismatch notification using the INCOMING command's identifiers.
+// This path fires BEFORE activeDuelState.match is populated (receiveMatch has
+// not run), so we cannot read matchId/opponentMac from activeDuelState — the
+// optional is empty and opponentMac is zero/stale. Echo the sender's data
+// instead so the rejection actually reaches them.
+void MatchManager::sendMatchRoleMismatch(const QuickdrawCommand& incoming) {
+    QuickdrawCommand reply(incoming.wifiMacAddr, QDCommand::MATCH_ROLE_MISMATCH, incoming.matchId, player->getUserID().c_str(), 0, player->isHunter());
+    quickdrawWirelessManager->broadcastPacket(incoming.wifiMacAddr, reply);
 }
 
 bool MatchManager::isFromActiveMatchOpponent(const QuickdrawCommand& command) const {
@@ -417,7 +422,7 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
         }
         if(player->isHunter() == command.isHunter) {
             // Same role on both sides — not a valid hunter/bounty pairing.
-            sendMatchRoleMismatch();
+            sendMatchRoleMismatch(command);
             return;
         } else {
             receiveMatch(command.matchId, command.playerId, command.isHunter, const_cast<uint8_t*>(command.wifiMacAddr));

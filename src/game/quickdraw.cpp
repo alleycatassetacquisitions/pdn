@@ -33,6 +33,13 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         this
     );
     wirelessManager->setEspNowPacketHandler(
+        PktType::kChainGameEventAck,
+        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<Quickdraw*>(ctx)->onChainGameEventAckPacket(macAddress, data, dataLen);
+        },
+        this
+    );
+    wirelessManager->setEspNowPacketHandler(
         PktType::kChainConfirm,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
             static_cast<Quickdraw*>(ctx)->onChainConfirmPacket(macAddress, data, dataLen);
@@ -109,12 +116,29 @@ void Quickdraw::onStateLoop(Device *PDN) {
 
 void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (dataLen != sizeof(ChainGameEventPayload)) return;
-    if (!supporterReadyState) return;
-    if (currentState == nullptr || currentState->getStateId() != SUPPORTER_READY) return;
     if (!chainDuelManager || !chainDuelManager->isKnownGameEventSender(fromMac)) return;
 
     const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
-    supporterReadyState->onChainGameEventReceived(payload->event_type, fromMac);
+
+    // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
+    if (supporterReadyState != nullptr && currentState != nullptr
+        && currentState->getStateId() == SUPPORTER_READY) {
+        supporterReadyState->onChainGameEventReceived(payload->event_type, fromMac);
+    }
+
+    // ACK regardless of whether we were in SupporterReady. Not ACKing after
+    // leaving the state would let the champion keep retrying a WIN/LOSS we
+    // already received and can't act on. seqId=0 is the sentinel for
+    // fire-and-forget events (COUNTDOWN/DRAW) and must not be ACKed.
+    if (payload->seqId != 0) {
+        chainDuelManager->sendGameEventAck(fromMac, payload->seqId);
+    }
+}
+
+void Quickdraw::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (dataLen != sizeof(ChainGameEventAckPayload) || !chainDuelManager) return;
+    const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
+    chainDuelManager->onChainGameEventAckReceived(fromMac, payload->seqId);
 }
 
 void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {

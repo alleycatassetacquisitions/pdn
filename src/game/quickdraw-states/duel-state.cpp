@@ -23,7 +23,7 @@ void Duel::onStateMounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Duel state mounted");
 
     // Arm the supporter chain for confirmations during the draw window.
-    chainDuelManager->broadcastGameEvent(ChainGameEventType::DRAW);
+    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
 
     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 

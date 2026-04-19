@@ -1410,6 +1410,22 @@ TEST_F(ChainDuelManagerTests, roleAnnounceFromOppositeRoleOpponentIgnoresChampio
     cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChampionMac(this);
 }
 
+TEST_F(ChainDuelManagerTests, gameEventCountdownIsFireAndForget) {
+    cdmGameEventCountdownIsFireAndForget(this);
+}
+
+TEST_F(ChainDuelManagerTests, gameEventWinIsTrackedAndRetried) {
+    cdmGameEventWinIsTrackedAndRetried(this);
+}
+
+TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) {
+    cdmGameEventAckClearsPending(this);
+}
+
+TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) {
+    cdmGameEventAbandonsAfterMax(this);
+}
+
 // ============================================
 // CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
 // ============================================

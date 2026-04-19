@@ -18,7 +18,7 @@ Win::~Win() {
 
 void Win::onStateMounted(Device *PDN) {
     // Propagate the outcome to the supporter chain (no-op for non-champion).
-    chainDuelManager->broadcastGameEvent(ChainGameEventType::WIN);
+    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::WIN);
 
     PDN->getHaptics()->setIntensity(VIBRATION_OFF);
 

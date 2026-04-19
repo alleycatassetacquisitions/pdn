@@ -20,7 +20,7 @@ DuelCountdown::~DuelCountdown() {
 void DuelCountdown::onStateMounted(Device *PDN) {
     // If this device is a champion, tell its supporter chain that the
     // duel is starting so they can arm their confirmation window.
-    chainDuelManager->broadcastGameEvent(ChainGameEventType::COUNTDOWN);
+    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
 
     PDN->getDisplay()->
     invalidateScreen()->
@@ -90,7 +90,7 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
         // Countdown aborted (opponent unplugged). Tell supporters to disarm
         // so they don't stay stuck on "PRESS".
         if (chainDuelManager != nullptr) {
-            chainDuelManager->broadcastGameEvent(ChainGameEventType::DRAW);
+            chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
         }
     }
 

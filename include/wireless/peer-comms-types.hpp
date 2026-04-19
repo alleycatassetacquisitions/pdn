@@ -15,6 +15,7 @@ enum class PktType : uint8_t
     kChainConfirm = 7,
     kRoleAnnounce = 8,
     kRoleAnnounceAck = 9,
+    kChainGameEventAck = 10,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 
@@ -41,6 +42,11 @@ struct RoleAnnouncePayload
 } __attribute__((packed));
 
 struct RoleAnnounceAckPayload
+{
+    uint8_t seqId;
+} __attribute__((packed));
+
+struct ChainGameEventAckPayload
 {
     uint8_t seqId;
 } __attribute__((packed));

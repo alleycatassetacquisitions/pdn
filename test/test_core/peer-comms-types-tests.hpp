@@ -72,11 +72,12 @@ inline void packetTypeEnumHasCorrectValues() {
     EXPECT_EQ(static_cast<uint8_t>(PktType::kChainConfirm), 7);
     EXPECT_EQ(static_cast<uint8_t>(PktType::kRoleAnnounce), 8);
     EXPECT_EQ(static_cast<uint8_t>(PktType::kRoleAnnounceAck), 9);
+    EXPECT_EQ(static_cast<uint8_t>(PktType::kChainGameEventAck), 10);
 }
 
 inline void numPacketTypesIsSequentialAfterAck() {
-    // kNumPacketTypes should be 10 (one after kRoleAnnounceAck which is 9)
-    EXPECT_EQ(static_cast<uint8_t>(PktType::kNumPacketTypes), 10);
+    // kNumPacketTypes should be 11 (one after kChainGameEventAck which is 10)
+    EXPECT_EQ(static_cast<uint8_t>(PktType::kNumPacketTypes), 11);
 }
 
 inline void roleAnnouncePayloadFieldsAligned() {

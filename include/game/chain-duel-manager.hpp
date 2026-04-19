@@ -18,8 +18,13 @@ enum class ChainGameEventType : uint8_t {
     LOSS = 3,
 };
 
+// seqId = 0 is a sentinel meaning "no ACK expected, no retry". Used for
+// COUNTDOWN and DRAW which are time-critical and must not arrive late.
+// WIN and LOSS use a nonzero seqId and are retransmitted until ACKed or
+// the retry budget is exhausted.
 struct ChainGameEventPayload {
     uint8_t event_type;
+    uint8_t seqId;
 } __attribute__((packed));
 
 class ChainDuelManager {
@@ -33,8 +38,17 @@ public:
     bool canInitiateMatch() const;
     std::vector<std::array<uint8_t, 6>> getSupporterChainPeers() const;
 
-    void broadcastGameEvent(ChainGameEventType eventType);
+    void sendGameEventToSupporters(ChainGameEventType eventType);
     void sendConfirm();
+
+    // Supporter-side: ACK a received WIN/LOSS game event back to the
+    // champion so it stops retransmitting. Called from Quickdraw's packet
+    // handler when the incoming payload has seqId != 0.
+    void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
+
+    // Champion-side: called when a supporter's ACK arrives. Clears the
+    // matching pending game event so retransmission stops.
+    void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     bool isKnownGameEventSender(const uint8_t* fromMac) const;
     void onConfirmReceived(
@@ -114,4 +128,18 @@ private:
     static constexpr uint8_t kMaxRetries = 3;
 
     uint8_t nextRoleAnnounceSeqId_ = 1;
+
+    // Champion-side pending WIN/LOSS game events awaiting per-supporter
+    // ACKs. Keyed by target MAC; one pending entry per supporter at a
+    // time. Size bounded by chain length (kMaxChainPeersPerPort = 18 in
+    // RDC, so ≤18 entries in practice).
+    struct PendingGameEvent {
+        std::array<uint8_t, 6> targetMac;
+        uint8_t seqId;
+        uint8_t eventType;
+        uint8_t retries;
+        SimpleTimer timer;
+    };
+    std::vector<PendingGameEvent> pendingGameEvents_;
+    uint8_t nextGameEventSeqId_ = 1;
 };

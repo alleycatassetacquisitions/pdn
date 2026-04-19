@@ -27,6 +27,7 @@ public:
     // current state if it's SupporterReady (for game events) or to the
     // MatchManager/champion-side confirm tracker (for confirms).
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);

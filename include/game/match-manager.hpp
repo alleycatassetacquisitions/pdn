@@ -183,7 +183,7 @@ private:
 
     void sendMatchAck();
     void sendMatchId();
-    void sendMatchRoleMismatch();
+    void sendMatchRoleMismatch(const QuickdrawCommand& incoming);
 };
 
 

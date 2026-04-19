@@ -17,7 +17,7 @@ Lose::~Lose() {
 }
 
 void Lose::onStateMounted(Device *PDN) {
-    chainDuelManager->broadcastGameEvent(ChainGameEventType::LOSS);
+    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::LOSS);
 
     PDN->getDisplay()->invalidateScreen()
         ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOSE));

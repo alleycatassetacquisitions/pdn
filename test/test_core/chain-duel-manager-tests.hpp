@@ -894,3 +894,125 @@ inline void chainDuelReconfigRecovers(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(s1.getChampionMac(), suite->localMac, 6), 0);
 }
 
+// COUNTDOWN is fire-and-forget: seqId must be 0 and no retry must fire.
+inline void cdmGameEventCountdownIsFireAndForget(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+
+    int countdownSends = 0;
+    uint8_t seqId = 0xAB;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t* data, const size_t) {
+            ChainGameEventPayload p; memcpy(&p, data, sizeof(p));
+            if (p.event_type == (uint8_t)ChainGameEventType::COUNTDOWN) {
+                seqId = p.seqId;
+                countdownSends++;
+            }
+            return 1;
+        });
+    cdm.sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
+    EXPECT_EQ(countdownSends, 1);
+    EXPECT_EQ(seqId, 0u);  // fire-and-forget sentinel
+
+    // sync() after timeout must not retransmit a COUNTDOWN.
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, _)).Times(0);
+    suite->fakeClock->advance(1000);
+    cdm.sync();
+}
+
+// WIN is tracked: seqId != 0, pending registered, retransmit fires on timer.
+inline void cdmGameEventWinIsTrackedAndRetried(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+
+    int supporterSends = 0;
+    uint8_t winSeqId = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) {
+                ChainGameEventPayload p; memcpy(&p, data, sizeof(p));
+                if (p.event_type == (uint8_t)ChainGameEventType::WIN) {
+                    winSeqId = p.seqId;
+                    supporterSends++;
+                }
+            }
+            return 1;
+        });
+
+    cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
+    EXPECT_EQ(supporterSends, 1);
+    ASSERT_NE(winSeqId, 0u);
+
+    // Advance past first timeout (100ms), sync() should retransmit once.
+    suite->fakeClock->advance(150);
+    cdm.sync();
+    EXPECT_EQ(supporterSends, 2);
+}
+
+// ACK clears pending: no further retransmits after a matching ACK.
+inline void cdmGameEventAckClearsPending(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+
+    uint8_t winSeqId = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) {
+                ChainGameEventPayload p; memcpy(&p, data, sizeof(p));
+                if (p.event_type == (uint8_t)ChainGameEventType::LOSS) winSeqId = p.seqId;
+            }
+            return 1;
+        });
+
+    cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
+    ASSERT_NE(winSeqId, 0u);
+
+    cdm.onChainGameEventAckReceived(suite->supporterMac, winSeqId);
+
+    // After ACK, sync past timeout must not retransmit.
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, _)).Times(0);
+    suite->fakeClock->advance(1000);
+    cdm.sync();
+}
+
+// After kMaxRetries with no ACK, pending is abandoned — no further sends.
+inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+
+    int supporterSends = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) supporterSends++;
+            return 1;
+        });
+
+    cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
+    ASSERT_EQ(supporterSends, 1);
+
+    // kMaxRetries = 3. Advance past each exponential backoff window (100, 200,
+    // 400, 800ms). Use 1000ms to cover the largest.
+    for (int i = 0; i < 3; i++) {
+        suite->fakeClock->advance(1000);
+        cdm.sync();
+    }
+    EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
+
+    // After abandon, further sync must not retransmit.
+    suite->fakeClock->advance(1000);
+    cdm.sync();
+    EXPECT_EQ(supporterSends, 4);
+
+    EXPECT_EQ(cdm.getRetryStats().abandons, 1u);
+}
+
