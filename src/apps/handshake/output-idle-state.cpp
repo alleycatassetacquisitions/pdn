@@ -52,7 +52,10 @@ void OutputIdleState::onConnectionStarted(std::string remoteMac) {
         std::copy(macBytes, macBytes + 6, peer.macAddr.begin());
         peer.sid = serialPort;
         peer.deviceType = static_cast<DeviceType>(deviceType);
-        handshakeWirelessManager->setMacPeer(SerialIdentifier::OUTPUT_JACK, peer);
+        if (!handshakeWirelessManager->setMacPeer(SerialIdentifier::OUTPUT_JACK, peer)) {
+            LOG_W(TAG, "Rejecting handshake from self-MAC (loopback or spoof): %s", mac.c_str());
+            return;
+        }
         LOG_I(TAG, "Connection started with remote MAC: %s on port: %d", mac.c_str(), portNumber);
         transitionToOutputSendIdState = true;
     }

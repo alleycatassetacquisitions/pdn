@@ -504,11 +504,7 @@ private:
         m_curRetries = 0;
     }
 
-    //ESP-NOW requires peers to be registered but there's a limit,
-    //so we'll need to unregister least recently used peer if we
-    //hit the limit. This function will ensure a peer is registered.
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
-        //Peer already registered
         if(esp_now_is_peer_exist(mac_addr))
             return 0;
 
@@ -516,25 +512,23 @@ private:
         esp_now_get_peer_num(&num_peers);
         if(num_peers.total_num > 19)
         {
-            //We need to remove one, for now just remove a random peer
-            esp_now_peer_info_t rand_peer;
-            esp_now_fetch_peer(false, &rand_peer);
-
-            esp_now_del_peer(rand_peer.peer_addr);
+            LOG_W("ENC", "ESP-NOW peer table full (20/20); cannot add new peer. "
+                          "RDC should have evicted unused peers first.");
+            return -1;
         }
 
         esp_now_peer_info_t new_peer = {};
         memcpy(new_peer.peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
-        new_peer.channel = 0;  // 0 = current channel
-        new_peer.ifidx = WIFI_IF_STA;  // Use STA interface
+        new_peer.channel = 0;
+        new_peer.ifidx = WIFI_IF_STA;
         new_peer.encrypt = false;
-        
+
         esp_err_t err = esp_now_add_peer(&new_peer);
         if (err != ESP_OK) {
             LOG_E("ENC", "Failed to add peer: 0x%X", err);
             return -1;
         }
-        
+
         LOG_I("ENC", "Added peer: %02X:%02X:%02X:%02X:%02X:%02X",
               mac_addr[0], mac_addr[1], mac_addr[2],
               mac_addr[3], mac_addr[4], mac_addr[5]);
@@ -571,6 +565,19 @@ private:
 
     void removePeer(uint8_t* macAddr) override {
         esp_now_del_peer(macAddr);
+    }
+
+    int addEspNowPeer(const uint8_t* macAddr) override {
+        return EnsurePeerIsRegistered(macAddr);
+    }
+
+    int removeEspNowPeer(const uint8_t* macAddr) override {
+        esp_err_t err = esp_now_del_peer(macAddr);
+        if (err != ESP_OK && err != ESP_ERR_ESPNOW_NOT_FOUND) {
+            LOG_W("ENC", "Failed to remove peer: 0x%X", err);
+            return -1;
+        }
+        return 0;
     }
 
     PeerCommsState peerCommsState = PeerCommsState::DISCONNECTED;

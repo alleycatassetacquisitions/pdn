@@ -1,4 +1,6 @@
 #include "../../include/game/quickdraw.hpp"
+#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/logger.hpp"
 
 Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(QUICKDRAW_APP_ID) {
     this->player = player;
@@ -10,11 +12,116 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->peerComms = PDN->getPeerComms();
     this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
+    this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
+
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
+    matchManager->setBoostProvider([this]() -> unsigned long {
+        return chainDuelManager ? chainDuelManager->getBoostMs() : 0;
+    });
+    matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
 
     quickdrawWirelessManager->setPacketReceivedCallback(
         std::bind(&MatchManager::listenForMatchEvents, matchManager, std::placeholders::_1)
     );
+
+    // Chain game event + confirm wireless packet handlers.
+    wirelessManager->setEspNowPacketHandler(
+        PktType::kChainGameEvent,
+        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<Quickdraw*>(ctx)->onChainGameEventPacket(macAddress, data, dataLen);
+        },
+        this
+    );
+    wirelessManager->setEspNowPacketHandler(
+        PktType::kChainConfirm,
+        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<Quickdraw*>(ctx)->onChainConfirmPacket(macAddress, data, dataLen);
+        },
+        this
+    );
+    wirelessManager->setEspNowPacketHandler(
+        PktType::kRoleAnnounce,
+        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<Quickdraw*>(ctx)->onRoleAnnouncePacket(macAddress, data, dataLen);
+        },
+        this
+    );
+    wirelessManager->setEspNowPacketHandler(
+        PktType::kRoleAnnounceAck,
+        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<Quickdraw*>(ctx)->onRoleAnnounceAckPacket(macAddress, data, dataLen);
+        },
+        this
+    );
+
+    // Clear boost/confirmed-supporters when the supporter chain drains to
+    // empty while a duel is still running. Without this, a champion keeps
+    // a boost from supporters that have since unplugged.
+    remoteDeviceCoordinator->setChainChangeCallback([this]() {
+        onChainStateChanged();
+    });
+}
+
+void Quickdraw::onChainStateChanged() {
+    if (chainDuelManager) {
+        chainDuelManager->onChainStateChanged();
+    }
+}
+
+void Quickdraw::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (dataLen != sizeof(RoleAnnouncePayload) || !chainDuelManager) return;
+    const RoleAnnouncePayload* payload = reinterpret_cast<const RoleAnnouncePayload*>(data);
+    chainDuelManager->onRoleAnnounceReceived(
+        fromMac, payload->role, payload->championMac, payload->seqId);
+}
+
+void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (dataLen != sizeof(RoleAnnounceAckPayload) || !chainDuelManager) return;
+    const RoleAnnounceAckPayload* payload = reinterpret_cast<const RoleAnnounceAckPayload*>(data);
+    chainDuelManager->onRoleAnnounceAckReceived(fromMac, payload->seqId);
+}
+
+void Quickdraw::onStateLoop(Device *PDN) {
+    if (chainDuelManager) chainDuelManager->sync();
+
+    if (!statsLogTimer_.isRunning()) {
+        statsLogTimer_.setTimer(kStatsLogIntervalMs);
+    } else if (statsLogTimer_.expired()) {
+        if (remoteDeviceCoordinator != nullptr && chainDuelManager != nullptr) {
+            auto r = remoteDeviceCoordinator->getRetryStats();
+            auto c = chainDuelManager->getRetryStats();
+            unsigned long rMean = r.ackCount ? (r.ackLatencyMsSum / r.ackCount) : 0;
+            unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
+            // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2
+            // which strips info-level calls.
+            LOG_W("STATS",
+                "RDC s=%u r=%u ab=%u ack=%u/%lums | CDM s=%u r=%u ab=%u ack=%u/%lums",
+                (unsigned)r.sends, (unsigned)r.retries, (unsigned)r.abandons,
+                (unsigned)r.ackCount, rMean,
+                (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
+                (unsigned)c.ackCount, cMean);
+        }
+        statsLogTimer_.setTimer(kStatsLogIntervalMs);
+    }
+
+    StateMachine::onStateLoop(PDN);
+}
+
+void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (dataLen != sizeof(ChainGameEventPayload)) return;
+    if (!supporterReadyState) return;
+    if (currentState == nullptr || currentState->getStateId() != SUPPORTER_READY) return;
+    if (!chainDuelManager || !chainDuelManager->isKnownGameEventSender(fromMac)) return;
+
+    const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
+    supporterReadyState->onChainGameEventReceived(payload->event_type, fromMac);
+}
+
+void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+    if (dataLen != sizeof(ChainConfirmPayload)) return;
+    if (!chainDuelManager) return;
+    const ChainConfirmPayload* payload = reinterpret_cast<const ChainConfirmPayload*>(data);
+    chainDuelManager->onConfirmReceived(fromMac, payload->originatorMac, payload->seqId);
 }
 
 Quickdraw::~Quickdraw() {
@@ -22,7 +129,10 @@ Quickdraw::~Quickdraw() {
     remoteDeviceCoordinator = nullptr;
     quickdrawWirelessManager->clearCallbacks();
     quickdrawWirelessManager = nullptr;
+    delete matchManager;
     matchManager = nullptr;
+    delete chainDuelManager;
+    chainDuelManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
@@ -34,16 +144,18 @@ void Quickdraw::populateStateMap() {
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator);
+    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
 
-    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator);
-    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator);
+    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
+    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
     DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator);
     DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator);
     DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager);
+    SupporterReady* supporterReady = new SupporterReady(player, remoteDeviceCoordinator, chainDuelManager);
+    this->supporterReadyState = supporterReady;
     
-    Win* win = new Win(player);
-    Lose* lose = new Lose(player);
+    Win* win = new Win(player, chainDuelManager, matchManager);
+    Lose* lose = new Lose(player, chainDuelManager, matchManager);
     
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
@@ -64,6 +176,16 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&Idle::transitionToDuelCountdown, idle),
             duelCountdown));
+
+    idle->addTransition(
+        new StateTransition(
+            std::bind(&Idle::transitionToSupporterReady, idle),
+            supporterReady));
+
+    supporterReady->addTransition(
+        new StateTransition(
+            std::bind(&SupporterReady::transitionToIdle, supporterReady),
+            idle));
 
     // --- Duel flow ---
     duelCountdown->addTransition(

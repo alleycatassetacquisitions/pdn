@@ -1,11 +1,14 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "game/chain-duel-manager.hpp"
 #include "device/device.hpp"
+#include "device/drivers/logger.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
+    this->chainDuelManager = chainDuelManager;
 }
 
 DuelCountdown::~DuelCountdown() {
@@ -15,6 +18,10 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(Device *PDN) {
+    // If this device is a champion, tell its supporter chain that the
+    // duel is starting so they can arm their confirmation window.
+    chainDuelManager->broadcastGameEvent(ChainGameEventType::COUNTDOWN);
+
     PDN->getDisplay()->
     invalidateScreen()->
     drawImage(getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
@@ -80,6 +87,11 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 void DuelCountdown::onStateDismounted(Device *PDN) {
     if (!doBattle) {
         matchManager->clearCurrentMatch();
+        // Countdown aborted (opponent unplugged). Tell supporters to disarm
+        // so they don't stay stuck on "PRESS".
+        if (chainDuelManager != nullptr) {
+            chainDuelManager->broadcastGameEvent(ChainGameEventType::DRAW);
+        }
     }
 
     doBattle = false;

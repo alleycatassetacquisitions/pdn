@@ -2,13 +2,15 @@
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
+#include "game/chain-duel-manager.hpp"
 #include "device/drivers/logger.hpp"
-#include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
+#include <cstring>
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
+    this->chainDuelManager = chainDuelManager;
 }
 
 Idle::~Idle() {
@@ -42,6 +44,10 @@ void Idle::onStateMounted(Device *PDN) {
 
     parameterizedCallbackFunction cycleStats = [](void *ctx) {
         Idle* idle = (Idle*)ctx;
+        idle->statsIndex++;
+        if (idle->statsIndex > idle->statsCount) {
+            idle->statsIndex = 0;
+        }
         idle->displayIsDirty = true;
     };
 
@@ -52,12 +58,20 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
+    // Auto-refresh when the posse count changes so the display stays
+    // current without requiring a button press.
+    size_t currentPosseCount = chainDuelManager->getSupporterChainPeers().size();
+    if (currentPosseCount != lastPosseCount) {
+        lastPosseCount = currentPosseCount;
+        displayIsDirty = true;
+    }
+
     if(displayIsDirty) {
-        cycleStats(PDN);
+        renderStats(PDN);
         displayIsDirty = false;
     }
 
-    if (isConnected() && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN && player->isHunter()) {
+    if (chainDuelManager->canInitiateMatch() && isConnected() && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN) {
         if (!matchInitialized) {
             const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
             if (peerMac != nullptr) {
@@ -87,7 +101,13 @@ bool Idle::transitionToDuelCountdown() {
     return matchManager->isMatchReady();
 }
 
-void Idle::cycleStats(Device *PDN) {
+bool Idle::transitionToSupporterReady() {
+    // A supporter is a device whose opponent-jack peer is same role.
+    // This means the chain extends upstream toward the champion.
+    return chainDuelManager->isSupporter();
+}
+
+void Idle::renderStats(Device *PDN) {
     PDN->getDisplay()->invalidateScreen();
     PDN->getDisplay()->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->render();
 
@@ -109,14 +129,13 @@ void Idle::cycleStats(Device *PDN) {
     } else if(statsIndex == 5) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
+    } else if(statsIndex == 6) {
+        size_t sc = chainDuelManager->getSupporterChainPeers().size();
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse",70, 20);
+        PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(sc).c_str(), 88, 40);
     }
 
     PDN->getDisplay()->render();
-
-    statsIndex++;
-    if(statsIndex > statsCount) {
-        statsIndex = 0;
-    }
 }
 
 bool Idle::isPrimaryRequired() {

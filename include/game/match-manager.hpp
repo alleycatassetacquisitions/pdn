@@ -9,10 +9,12 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <optional>
 #include <vector>
 #include <string>
 #include "device/drivers/button.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
@@ -20,11 +22,19 @@
 
 // Preferences namespace and keys
 
+struct LastMatchDisplay {
+    unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
+    unsigned long opponentTimeMs = 0;
+    unsigned long boostMs = 0;        // boost applied at own button press
+    bool hasData = false;
+};
+
 struct ActiveDuelState {
     bool matchIsReady = false;
     bool hasReceivedDrawResult = false;
     bool hasPressedButton = false;
     bool gracePeriodExpiredNoResult = false;
+    bool opponentNeverPressed = false;
     unsigned long duelLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
@@ -102,6 +112,15 @@ public:
 
     void clearCurrentMatch();
 
+    void setBoostProvider(std::function<unsigned long()> provider);
+
+    const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay_; }
+
+    // Required for SEND_MATCH_ID to be accepted: sender MAC must match one
+    // of the RDC's direct-peer MACs (cable-established neighbor). If unset,
+    // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
+    void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
+
     void listenForMatchEvents(const QuickdrawCommand& command);
 
     void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
@@ -116,13 +135,18 @@ public:
     void setReceivedDrawResult();
     void setReceivedButtonPush();
     void setNeverPressed();
+    void setOpponentNeverPressed() { activeDuelState.opponentNeverPressed = true; }
 
 
 private:
 
     Player* player;
 
+    std::function<unsigned long()> boostProvider_;
+    RemoteDeviceCoordinator* rdc_ = nullptr;
+
     ActiveDuelState activeDuelState;
+    LastMatchDisplay lastMatchDisplay_;
 
     parameterizedCallbackFunction duelButtonPush;
     parameterizedCallbackFunction buttonMasher;
@@ -147,6 +171,15 @@ private:
      * @return New Match object if successful, nullptr if invalid
      */
     Match* readMatchFromStorage(uint8_t index);
+
+    // Returns true when `command` belongs to the currently-active match and
+    // was sent by that match's opponent. All post-handshake duel commands
+    // (MATCH_ID_ACK, MATCH_ROLE_MISMATCH, DRAW_RESULT, NEVER_PRESSED) must
+    // pass this gate before mutating match state — otherwise any neighbor
+    // in ESP-NOW range could forge a result for a match they're not in.
+    // SEND_MATCH_ID is intentionally exempt: it's the packet that
+    // establishes the peering in the first place.
+    bool isFromActiveMatchOpponent(const QuickdrawCommand& command) const;
 
     void sendMatchAck();
     void sendMatchId();

@@ -41,6 +41,7 @@ public:
         hunterWirelessManager->initialize(hunter, nullptr, 0);
         hunterMatchManager = new MatchManager();
         hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
+        hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
         hunterWirelessManager->setPacketReceivedCallback(
             std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
 
@@ -48,6 +49,7 @@ public:
         bountyWirelessManager->initialize(bounty, nullptr, 0);
         bountyMatchManager = new MatchManager();
         bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
+        bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
         bountyWirelessManager->setPacketReceivedCallback(
             std::bind(&MatchManager::listenForMatchEvents, bountyMatchManager, std::placeholders::_1));
     }
@@ -70,6 +72,8 @@ public:
     void performHandshake() {
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+        hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
+        bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
         hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
         bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
@@ -84,6 +88,8 @@ public:
     FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
     NiceMock<MockStorage> hunterStorage;
     NiceMock<MockStorage> bountyStorage;
+    FakeRemoteDeviceCoordinator hunterFakeRdc;
+    FakeRemoteDeviceCoordinator bountyFakeRdc;
 };
 
 // ============================================
@@ -265,9 +271,8 @@ inline void duelWithOpponentTimeout(DuelIntegrationTestSuite* suite) {
     suite->performHandshake();
 
     suite->hunterMatchManager->setHunterDrawTime(300);
-    suite->hunterMatchManager->setBountyDrawTime(0);  // opponent never pressed
     suite->hunterMatchManager->setReceivedButtonPush();
-    suite->hunterMatchManager->setNeverPressed();
+    suite->hunterMatchManager->setOpponentNeverPressed();
 
     EXPECT_TRUE(suite->hunterMatchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->hunterMatchManager->didWin());

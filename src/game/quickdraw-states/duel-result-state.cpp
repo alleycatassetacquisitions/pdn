@@ -36,14 +36,6 @@ void DuelResult::onStateMounted(Device *PDN) {
 
     PDN->getHaptics()->setIntensity(0);
 
-    // Store reaction time before finalizing match
-    if(player->isHunter()) {
-        player->addReactionTime(matchManager->getCurrentMatch()->getHunterDrawTime());
-    } else {
-        player->addReactionTime(matchManager->getCurrentMatch()->getBountyDrawTime());
-    }
-
-    // Now it's safe to finalize the match, which might clear the current match
     matchManager->finalizeMatch();
 
     PDN->getDisplay()->invalidateScreen()->render();
@@ -63,8 +55,6 @@ void DuelResult::onStateDismounted(Device *PDN) {
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
 
-    quickdrawWirelessManager->clearCallbacks();
-             
     wonBattle = false;
     captured = false;
     PDN->getLightManager()->stopAnimation();

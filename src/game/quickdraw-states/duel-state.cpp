@@ -1,14 +1,16 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
+#include "game/chain-duel-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device.hpp"
 
 #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
+    this->chainDuelManager = chainDuelManager;
 }
 
 Duel::~Duel() {
@@ -19,6 +21,10 @@ Duel::~Duel() {
 
 void Duel::onStateMounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Duel state mounted");
+
+    // Arm the supporter chain for confirmations during the draw window.
+    chainDuelManager->broadcastGameEvent(ChainGameEventType::DRAW);
+
     matchManager->setDuelLocalStartTime(SimpleTimer::getPlatformClock()->milliseconds());
 
     LOG_I(DUEL_TAG, "Setting up button handlers");

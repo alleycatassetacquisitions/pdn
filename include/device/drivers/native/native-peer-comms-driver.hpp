@@ -97,6 +97,16 @@ public:
         // This is a no-op but could track "known peers" if needed
     }
 
+    int addEspNowPeer(const uint8_t* macAddr) override {
+        (void)macAddr;
+        return 0;
+    }
+
+    int removeEspNowPeer(const uint8_t* macAddr) override {
+        (void)macAddr;
+        return 0;
+    }
+
     /**
      * Called by the broker to deliver a packet to this peer.
      */

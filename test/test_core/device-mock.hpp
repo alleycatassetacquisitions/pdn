@@ -138,6 +138,8 @@ public:
     MOCK_METHOD(const uint8_t*, getGlobalBroadcastAddress, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
     MOCK_METHOD(void, removePeer, (uint8_t*), (override));
+    MOCK_METHOD(int, addEspNowPeer, (const uint8_t*), (override));
+    MOCK_METHOD(int, removeEspNowPeer, (const uint8_t*), (override));
     MOCK_METHOD(void, connect, (), (override));
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
@@ -179,11 +181,33 @@ public:
         return DeviceType::UNKNOWN;
     }
 
+    // Stubbable direct peer MACs — tests that exercise peer-MAC gating set
+    // these; getPeerMac returns a pointer into the stored array or nullptr.
+    void setPeerMac(SerialIdentifier id, const uint8_t* mac) {
+        if (id == SerialIdentifier::OUTPUT_JACK) {
+            outputPeerSet = (mac != nullptr);
+            if (mac) memcpy(outputPeerMac, mac, 6);
+        } else if (id == SerialIdentifier::INPUT_JACK) {
+            inputPeerSet = (mac != nullptr);
+            if (mac) memcpy(inputPeerMac, mac, 6);
+        }
+    }
+
+    const uint8_t* getPeerMac(SerialIdentifier id) const override {
+        if (id == SerialIdentifier::OUTPUT_JACK && outputPeerSet) return outputPeerMac;
+        if (id == SerialIdentifier::INPUT_JACK && inputPeerSet) return inputPeerMac;
+        return nullptr;
+    }
+
 private:
     PortStatus outputStatus = PortStatus::DISCONNECTED;
     PortStatus inputStatus = PortStatus::DISCONNECTED;
     DeviceType outputDeviceType = DeviceType::UNKNOWN;
     DeviceType inputDeviceType = DeviceType::UNKNOWN;
+    uint8_t outputPeerMac[6] = {};
+    uint8_t inputPeerMac[6] = {};
+    bool outputPeerSet = false;
+    bool inputPeerSet = false;
 };
 
 // Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.

@@ -164,8 +164,8 @@ int main(int argc, char** argv) {
     NativeClockDriver* globalClock = new NativeClockDriver("global_clock");
     NativeLoggerDriver* globalLogger = new NativeLoggerDriver("global_logger");
     
-    // Suppress logger output during prompt phase
-    globalLogger->setSuppressOutput(true);
+    // Suppress logger output unless file-logging is requested
+    globalLogger->setSuppressOutput(getenv("PDN_CLI_LOG_FILE") == nullptr);
     
     // Set up global platform abstractions
     g_logger = globalLogger;

@@ -59,6 +59,7 @@ inline const char* getStateName(int stateId) {
         case 18: return "Win";
         case 19: return "Lose";
         case 20: return "UploadMatches";
+        case 21: return "PosseReady";
         default: return "Unknown";
     }
 }
@@ -135,7 +136,7 @@ public:
         std::string suffix = "_" + std::to_string(deviceIndex);
         
         instance.loggerDriver = new NativeLoggerDriver(LOGGER_DRIVER_NAME + suffix);
-        instance.loggerDriver->setSuppressOutput(true);  // Suppress direct output - displayed in UI
+        instance.loggerDriver->setSuppressOutput(getenv("PDN_CLI_LOG_FILE") == nullptr);
         instance.clockDriver = new NativeClockDriver(PLATFORM_CLOCK_DRIVER_NAME + suffix);
         instance.displayDriver = new NativeDisplayDriver(DISPLAY_DRIVER_NAME + suffix);
         instance.primaryButtonDriver = new NativeButtonDriver(PRIMARY_BUTTON_DRIVER_NAME + suffix, 0);
@@ -210,15 +211,11 @@ public:
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
         
-        // Skip PlayerRegistration state and go directly to FetchUserDataState
-        // This prevents the registration flow from overwriting the player ID
-        // After refactoring: PlayerRegistrationApp is at index 0, we need to skip its internal state
-        // Get the PlayerRegistrationApp (index 0) and skip to its FetchUserDataState (internal index 1)
-        State* prAppState = instance.game->getCurrentState();
-        if (prAppState && prAppState->getStateId() == PLAYER_REGISTRATION_APP_ID) {
-            PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(prAppState);
-            prApp->skipToState(instance.pdn, 1);  // Skip to FetchUserDataState within the app
-        }
+        // Skip entire registration flow — jump past PlayerRegistrationApp
+        // directly to the first gameplay state (AwakenSequence, index 1 in
+        // Quickdraw's state map). The player is already configured with ID,
+        // role, and allegiance from DeviceFactory.
+        instance.game->skipToState(instance.pdn, 1);
         
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
