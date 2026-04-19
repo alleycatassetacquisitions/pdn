@@ -18,8 +18,12 @@ public:
     }
 
     bool isConnected() {
-        return (isPrimaryRequired() && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) == PortStatus::CONNECTED) ||
-               (isAuxRequired() && remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::CONNECTED);
+        auto connectedOrChain = [this](SerialIdentifier jack) {
+            PortStatus s = remoteDeviceCoordinator->getPortStatus(jack);
+            return s == PortStatus::CONNECTED || s == PortStatus::DAISY_CHAINED;
+        };
+        return (isPrimaryRequired() && connectedOrChain(SerialIdentifier::OUTPUT_JACK)) ||
+               (isAuxRequired() && connectedOrChain(SerialIdentifier::INPUT_JACK));
     }
 
 protected:

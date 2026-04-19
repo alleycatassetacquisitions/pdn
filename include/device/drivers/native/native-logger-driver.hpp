@@ -103,9 +103,16 @@ public:
 
         // Only print if not suppressed
         if (!suppressOutput_) {
-            printf("%s[%6lld][%s][%s:%d][%s] %s\033[0m\n", 
-                   colorCode, (long long)elapsed, levelStr, filename, line, tag, msgBuffer);
-            fflush(stdout);
+            FILE* out = stderr;
+            static FILE* debugFile = nullptr;
+            if (debugFile == nullptr) {
+                const char* path = getenv("PDN_CLI_LOG_FILE");
+                if (path && *path) debugFile = fopen(path, "w");
+            }
+            if (debugFile) out = debugFile;
+            fprintf(out, "[%6lld][%s][%s:%d][%s] %s\n",
+                    (long long)elapsed, levelStr, filename, line, tag, msgBuffer);
+            fflush(out);
         }
     }
 

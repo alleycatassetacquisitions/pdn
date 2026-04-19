@@ -43,7 +43,10 @@ void InputIdleState::onHandshakeCommandReceived(HandshakeCommand command) {
         memcpy(peer.macAddr.data(), command.wifiMacAddr, 6);
         peer.sid = command.sendingJack;
         peer.deviceType = static_cast<DeviceType>(command.deviceType);
-        handshakeWirelessManager->setMacPeer(SerialIdentifier::INPUT_JACK, peer);
+        if (!handshakeWirelessManager->setMacPeer(SerialIdentifier::INPUT_JACK, peer)) {
+            LOG_W(TAG, "Rejecting EXCHANGE_ID from self-MAC (loopback or spoof)");
+            return;
+        }
         transitionToSendIdState = true;
     }
 }

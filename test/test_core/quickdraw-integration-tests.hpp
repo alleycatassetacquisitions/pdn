@@ -88,7 +88,14 @@ public:
         cleanupClock();
     }
 
-    virtual std::string getMatchId() const { return "test-match-uuid-1234567890"; }
+    // Returns the real match id assigned by initializeMatch(). Tests that
+    // build packets via createPacket use this, so listenForMatchEvents'
+    // matchId check against the active match succeeds.
+    virtual std::string getMatchId() const {
+        return matchManager && matchManager->getCurrentMatch().has_value()
+            ? matchManager->getCurrentMatch()->getMatchId()
+            : std::string("");
+    }
 
     virtual void setupDefaultMockExpectations() {
         ON_CALL(peerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
@@ -124,6 +131,7 @@ public:
     MatchManager* matchManager = nullptr;
     FakeQuickdrawWirelessManager* wirelessManager = nullptr;
     WirelessManager* deviceWirelessManager = nullptr;
+    FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock = nullptr;
 
 private:
@@ -146,11 +154,21 @@ private:
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->initialize(player, deviceWirelessManager, 100);
         matchManager->initialize(player, &storage, wirelessManager);
+        // Stub the RDC with the opponent MAC this fixture uses so the
+        // SEND_MATCH_ID gate in listenForMatchEvents passes for delivered packets.
+        {
+            uint8_t stubMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+            fakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, stubMac);
+            fakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, stubMac);
+            matchManager->setRemoteDeviceCoordinator(&fakeRdc);
+        }
 
         // Hunter initiates the match through the production path.
         // FakeQuickdrawWirelessManager captures the SEND_MATCH_ID broadcast;
         // no ACK is routed back since single-device tests don't need matchIsReady.
-        uint8_t opponentMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+        // Opponent MAC must match what processPacket delivers from, so
+        // listenForMatchEvents' source-MAC gate accepts the packet.
+        uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         matchManager->initializeMatch(opponentMac);
         matchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
     }
@@ -237,6 +255,8 @@ public:
     MockHttpClient bountyHttpClient;
     MockStorage hunterStorage;
     MockStorage bountyStorage;
+    FakeRemoteDeviceCoordinator hunterFakeRdc;
+    FakeRemoteDeviceCoordinator bountyFakeRdc;
     FakePlatformClock* fakeClock = nullptr;
 
 private:
@@ -257,6 +277,7 @@ private:
         hunterWirelessManager = new FakeQuickdrawWirelessManager();
         hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager, 100);
         hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
+        hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
     }
 
     void setupBounty() {
@@ -270,6 +291,7 @@ private:
         bountyWirelessManager = new FakeQuickdrawWirelessManager();
         bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager, 100);
         bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
+        bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
     }
 
     void setupMatches() {
@@ -284,6 +306,10 @@ private:
         //   2. Bounty broadcasts MATCH_ID_ACK   → hunter receives, sets matchIsReady
         uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
         uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+        // Stub each side's RDC direct peer with the other side's MAC so the
+        // SEND_MATCH_ID gate accepts the delivered packets.
+        hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
+        bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
         hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
         bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
@@ -327,7 +353,6 @@ private:
 
 class PacketParsingTests : public SingleDeviceTestFixture {
 public:
-    std::string getMatchId() const override { return "test-match-uuid-1234567890"; }
 };
 
 inline void packetParsingDrawResultInvokesCallback(PacketParsingTests* suite) {
@@ -421,7 +446,8 @@ inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) 
 
 inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* suite) {
     static const char kMatchId[37] = "000000000000000000000000000000000000";
-    QuickdrawCommand cmd(nullptr, QDCommand::SEND_MATCH_ID, kMatchId, "test", 0, true);
+    uint8_t strangerMac[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
+    QuickdrawCommand cmd(strangerMac, QDCommand::SEND_MATCH_ID, kMatchId, "test", 0, true);
     
     suite->matchManager->listenForMatchEvents(cmd);
     
@@ -434,8 +460,6 @@ inline void listenForMatchResultsIgnoresUnexpectedCommands(PacketParsingTests* s
 
 class CallbackChainTests : public SingleDeviceTestFixture {
 public:
-    std::string getMatchId() const override { return "callback-test-match-id-12345"; }
-
     void setupDefaultMockExpectations() override {
         SingleDeviceTestFixture::setupDefaultMockExpectations();
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -502,7 +526,15 @@ inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
 
 class StateFlowIntegrationTests : public SingleDeviceTestFixture {
 public:
-    std::string getMatchId() const override { return "flow-test-match-id-1234567890"; }
+    void SetUp() override {
+        SingleDeviceTestFixture::SetUp();
+        chainDuelManager = new ChainDuelManager(player, deviceWirelessManager, &device.fakeRemoteDeviceCoordinator);
+    }
+
+    void TearDown() override {
+        delete chainDuelManager;
+        SingleDeviceTestFixture::TearDown();
+    }
 
     void setupDefaultMockExpectations() override {
         SingleDeviceTestFixture::setupDefaultMockExpectations();
@@ -515,6 +547,7 @@ public:
     }
 
     MockDevice device;
+    ChainDuelManager* chainDuelManager = nullptr;
 };
 
 inline void stateFlowDutPressesFirstWins(StateFlowIntegrationTests* suite) {
@@ -522,7 +555,7 @@ inline void stateFlowDutPressesFirstWins(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     suite->fakeClock->advance(150);
@@ -554,7 +587,7 @@ inline void stateFlowDutReceivesFirstLoses(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     suite->wirelessManager->setPacketReceivedCallback(
@@ -585,7 +618,7 @@ inline void stateFlowDutNeverPressesLoses(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     suite->wirelessManager->setPacketReceivedCallback(
@@ -609,7 +642,7 @@ inline void stateFlowOpponentNeverRespondsWins(StateFlowIntegrationTests* suite)
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     // DUT presses quickly
@@ -633,7 +666,7 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     suite->fakeClock->advance(100);
@@ -664,7 +697,7 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     suite->fakeClock->advance(300);

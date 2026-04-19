@@ -51,11 +51,74 @@ public:
      * Returns a pointer to the peer's MAC address for the given port, or nullptr if no peer is connected.
      * Prefer this over getPortState() when only the MAC address is needed.
      */
-    const uint8_t* getPeerMac(SerialIdentifier port) const;
+    virtual const uint8_t* getPeerMac(SerialIdentifier port) const;
 
     virtual DeviceType getPeerDeviceType(SerialIdentifier port) const;
 
+    // Returns true iff `mac` matches the direct peer on either jack.
+    virtual bool isDirectPeer(const uint8_t* mac) const;
+
+    /**
+     * Called when a chain announcement is received from a direct peer.
+     * Replaces the port's daisy-chained peer list with the announced list,
+     * filtering out self-MAC and the direct peer.
+     */
+    void onChainAnnouncementReceived(
+        const uint8_t* fromMac,
+        SerialIdentifier port,
+        const std::vector<std::array<uint8_t, 6>>& announcedPeers);
+
+    void setChainChangeCallback(std::function<void()> callback);
+
+    void processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+
+    using AnnouncementEmitCallback = std::function<void(const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers)>;
+    void setAnnouncementEmitCallback(AnnouncementEmitCallback callback);
+
+    void processChainAnnouncementAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+
+    void registerPeer(const uint8_t* macAddress);
+    void unregisterPeer(const uint8_t* macAddress);
+
+    // Retry / reliability observability. Cumulative since boot. For hardware
+    // validation tuning of ackTimeoutMs_ and maxRetries_ against the real
+    // deployment. ackLatencyMs / ackCount give mean RTT; abandons / (sends +
+    // retries) gives loss rate at the chain-announcement layer.
+    struct RetryStats {
+        uint32_t sends = 0;
+        uint32_t retries = 0;
+        uint32_t abandons = 0;
+        uint32_t ackLatencyMsSum = 0;
+        uint32_t ackCount = 0;
+    };
+    RetryStats getRetryStats() const { return retryStats_; }
+
 private:
+    RetryStats retryStats_;
+    std::array<std::vector<std::array<uint8_t, 6>>, 2> daisyChainedByPort_;
+    std::array<bool, 2> previousDirectPeerPresent_ = {false, false};
+    uint8_t nextAnnouncementId_ = 1;
+
+    struct PendingAnnouncement {
+        bool active = false;
+        uint8_t announcementId = 0;
+        uint8_t retries = 0;
+        std::vector<std::array<uint8_t, 6>> peers;
+        SimpleTimer timer;
+    };
+    std::array<PendingAnnouncement, 2> pendingByPort_;
+    static constexpr unsigned long ackTimeoutMs_ = 100;
+    static constexpr uint8_t maxRetries_ = 3;
+    // ESP-NOW peer-table capacity is 20 on ESP32-S3. Reserve margin for the
+    // direct peer on each jack, the champion registration on supporters, and
+    // brief transient registrations during chain reconfig.
+    static constexpr size_t kMaxChainPeersPerPort = 18;
+
+    void emitAnnouncementVia(SerialIdentifier viaPort, const std::vector<std::array<uint8_t, 6>>& peers);
+    std::vector<std::array<uint8_t, 6>> peersReachableVia(SerialIdentifier port);
+
+    size_t portIndex(SerialIdentifier port) const;
+
     void notifyDisconnect();
     void notifyConnect();
     void notifyDaisyChained();
@@ -67,18 +130,16 @@ private:
      */
     PortStatus mapHandshakeStateToStatus(SerialIdentifier port);
 
-    void addDaisyChainedPeer(const uint8_t* macAddress);
-    void removeDaisyChainedPeer(const uint8_t* macAddress);
-
-    void registerPeer(const uint8_t* macAddress);
-    void unregisterPeer(const uint8_t* macAddress);
+    void addDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress);
+    void removeDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress);
 
     SerialManager* serialManager = nullptr;
+    WirelessManager* wirelessManager_ = nullptr;
+    std::function<void()> chainChangeCallback_;
+    AnnouncementEmitCallback announcementEmitCallback_;
 
     HandshakeWirelessManager handshakeWirelessManager;
 
     HandshakeApp* inputPortHandshake = nullptr;
     HandshakeApp* outputPortHandshake = nullptr;
-
-    SimpleTimer syncLogTimer;
 };

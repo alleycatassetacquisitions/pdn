@@ -24,6 +24,15 @@ using ::testing::SaveArg;
 using ::testing::NiceMock;
 using ::testing::DoAll;
 
+// Stubs a fixture's RDC to accept the conventional test MAC as a direct peer
+// so MatchManager's SEND_MATCH_ID gate passes. Called once per fixture SetUp.
+inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) {
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, dummyMac);
+    device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::OUTPUT_JACK, dummyMac);
+    mm->setRemoteDeviceCoordinator(&device.fakeRemoteDeviceCoordinator);
+}
+
 inline Peer makeHSPeer(const uint8_t* mac, SerialIdentifier sid) {
     Peer p;
     std::copy(mac, mac + 6, p.macAddr.begin());
@@ -53,8 +62,10 @@ public:
         matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
         matchManager->initialize(player, &storage, wirelessManager);
+        wireFixtureRdcForMatchManager(device, matchManager);
 
-        idleState = new Idle(player, matchManager, &device.fakeRemoteDeviceCoordinator);
+        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
+        idleState = new Idle(player, matchManager, &device.fakeRemoteDeviceCoordinator, chainDuelManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -64,6 +75,7 @@ public:
 
     void TearDown() override {
         delete idleState;
+        delete chainDuelManager;
         delete matchManager;
         delete wirelessManager;
         delete player;
@@ -77,6 +89,7 @@ public:
     FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
     Idle* idleState;
     FakePlatformClock* fakeClock;
 };
@@ -382,8 +395,10 @@ public:
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, wirelessManager);
+        wireFixtureRdcForMatchManager(device, matchManager);
 
-        countdownState = new DuelCountdown(player, matchManager, &device.fakeRemoteDeviceCoordinator);
+        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
+        countdownState = new DuelCountdown(player, matchManager, &device.fakeRemoteDeviceCoordinator, chainDuelManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -391,6 +406,7 @@ public:
 
     void TearDown() override {
         delete countdownState;
+        delete chainDuelManager;
         delete matchManager;
         delete wirelessManager;
         delete player;
@@ -408,6 +424,7 @@ public:
     FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
     DuelCountdown* countdownState;
     FakePlatformClock* fakeClock;
 };
@@ -570,6 +587,9 @@ public:
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, wirelessManager);
+        wireFixtureRdcForMatchManager(device, matchManager);
+
+        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         // Create a match for testing via the production wireless path
         uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -582,6 +602,7 @@ public:
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
+        delete chainDuelManager;
         delete matchManager;
         delete wirelessManager;
         delete player;
@@ -595,6 +616,7 @@ public:
     FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
     FakePlatformClock* fakeClock;
 };
 
@@ -608,7 +630,7 @@ inline void duelButtonPressTransitionsToDuelPushed(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     // Initially should not transition
@@ -629,7 +651,7 @@ inline void duelButtonPressCalculatesReactionTime(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     // Advance 250ms (simulating reaction time)
@@ -648,7 +670,7 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
     // First, simulate button mashing during countdown
-    DuelCountdown countdownState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    DuelCountdown countdownState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     parameterizedCallbackFunction masherCallback = nullptr;
     void* masherCtx = nullptr;
@@ -676,7 +698,7 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     countdownState.onStateDismounted(&suite->device);
     
     // Now start the duel
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     duelState.onStateMounted(&suite->device);
@@ -700,7 +722,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
 
     size_t sentBefore = suite->wirelessManager->sentCommands.size();
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(200);
@@ -757,7 +779,7 @@ inline void duelReceivedResultTransitionsToDuelReceivedResult(DuelStateTests* su
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     // Simulate receiving opponent's result before pressing button
@@ -819,7 +841,7 @@ inline void duelTimeoutTransitionsToIdle(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     duelState.onStateMounted(&suite->device);
     
     // Initially should not timeout
@@ -854,12 +876,11 @@ inline void duelPushedGracePeriodExpiresTransitions(DuelStateTests* suite) {
 // Test: Opponent timeout means win
 inline void duelOpponentTimeoutMeansWin(DuelStateTests* suite) {
     suite->player->setIsHunter(true);
-    
+
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setHunterDrawTime(200);
-    // Bounty draw time stays at 0 (never pressed)
-    suite->matchManager->setNeverPressed();
-    
+    suite->matchManager->setOpponentNeverPressed();
+
     EXPECT_TRUE(suite->matchManager->didWin());
 }
 
@@ -939,6 +960,7 @@ public:
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, wirelessManager);
+        wireFixtureRdcForMatchManager(device, matchManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -981,8 +1003,9 @@ inline void resultHunterWinsWithFasterTime(DuelResultTests* suite) {
 // Test: Bounty wins with faster time
 inline void resultBountyWinsWithFasterTime(DuelResultTests* suite) {
     suite->player->setIsHunter(false);
-    // Simulate hunter sending SEND_MATCH_ID; this bounty receives and creates the match
-    uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+    // Simulate hunter sending SEND_MATCH_ID; this bounty receives and creates the match.
+    // Use the fixture's stubbed RDC peer MAC so the SEND_MATCH_ID gate accepts it.
+    uint8_t hunterMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     QuickdrawCommand sendMatchCmd(hunterMac, QDCommand::SEND_MATCH_ID, "test-match-id-000000000000000", "5678", 0, true);
     suite->matchManager->listenForMatchEvents(sendMatchCmd);
     suite->matchManager->setHunterDrawTime(250);
@@ -1013,10 +1036,9 @@ inline void resultOpponentTimeoutMeansAutoWin(DuelResultTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setHunterDrawTime(300);
-    suite->matchManager->setBountyDrawTime(0); // Bounty never pressed
     suite->matchManager->setReceivedButtonPush();
-    suite->matchManager->setNeverPressed();
-    
+    suite->matchManager->setOpponentNeverPressed();
+
     EXPECT_TRUE(suite->matchManager->didWin());
 }
 
@@ -1146,6 +1168,9 @@ public:
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->initialize(player, device.wirelessManager, 100);
         matchManager->initialize(player, &storage, wirelessManager);
+        wireFixtureRdcForMatchManager(device, matchManager);
+
+        chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
@@ -1159,6 +1184,7 @@ public:
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
+        delete chainDuelManager;
         delete matchManager;
         delete wirelessManager;
         delete player;
@@ -1172,12 +1198,13 @@ public:
     FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
     FakePlatformClock* fakeClock;
 };
 
 // Test: Idle state clears button callbacks on dismount
 inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
-    Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1192,7 +1219,7 @@ inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
 
 // Test: Countdown state clears button callbacks on dismount
 inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
-    DuelCountdown countdownState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    DuelCountdown countdownState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1211,7 +1238,7 @@ inline void cleanupDuelStateDoesNotClearCallbacksOnDismount(StateCleanupTests* s
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1253,7 +1280,7 @@ inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1279,7 +1306,7 @@ inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
 
 // Test: Countdown state invalidates timer on dismount
 inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
-    DuelCountdown countdownState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    DuelCountdown countdownState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1412,7 +1439,7 @@ inline void cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(StateCl
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1468,6 +1495,54 @@ inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
     receivedState.onStateDismounted(&suite->device);
 
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+}
+
+// ============================================
+// Quickdraw lifecycle — exercises ctor + dtor so the native_asan env
+// catches leaks in the members Quickdraw owns (matchManager, chainDuelManager).
+// Pre-fix: ~Quickdraw just nulled the pointers, leaking ~100 bytes per device.
+// Post-fix: deletes are issued and ASAN passes clean.
+// ============================================
+
+class QuickdrawLifecycleTests : public testing::Test {
+public:
+    void SetUp() override {
+        fakeClock = new FakePlatformClock();
+        SimpleTimer::setPlatformClock(fakeClock);
+        fakeClock->setTime(1000);
+
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
+
+        player = new Player();
+        char playerId[] = "life";
+        player->setUserID(playerId);
+
+        qwm = new FakeQuickdrawWirelessManager();
+    }
+
+    void TearDown() override {
+        delete qwm;
+        delete player;
+        SimpleTimer::setPlatformClock(nullptr);
+        delete fakeClock;
+    }
+
+    MockDevice device;
+    FakePlatformClock* fakeClock;
+    Player* player;
+    FakeQuickdrawWirelessManager* qwm;
+    uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+};
+
+// Create + destroy many Quickdraw instances; under ASAN (env:native_asan) a
+// leak in ~Quickdraw's ownership of matchManager / chainDuelManager would be
+// reported. Without ASAN this still catches crashes in the lifecycle path.
+inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
+    for (int i = 0; i < 5; i++) {
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr);
+        delete qd;
+    }
 }
 
 // Test: HandshakeConnectedState transitions to idle on heartbeat timeout

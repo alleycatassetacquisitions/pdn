@@ -20,6 +20,8 @@ public:
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
     virtual uint8_t* getMacAddress() = 0;
     virtual void removePeer(uint8_t* macAddr) = 0;
+    virtual int addEspNowPeer(const uint8_t* macAddr) = 0;
+    virtual int removeEspNowPeer(const uint8_t* macAddr) = 0;
     virtual void setPeerCommsState(PeerCommsState state) = 0;
     virtual PeerCommsState getPeerCommsState() = 0;
     virtual void connect() = 0;

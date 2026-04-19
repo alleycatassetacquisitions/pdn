@@ -9,12 +9,15 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include <array>
+#include <atomic>
 #include <cstdlib>
 #include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
+#include "game/chain-duel-manager.hpp"
 
-enum QuickdrawStateId {    
+enum QuickdrawStateId {
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
     IDLE = 8,
@@ -25,7 +28,8 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20
+    UPLOAD_MATCHES = 20,
+    SUPPORTER_READY = 21
 };
 
 class Sleep : public State {
@@ -69,22 +73,25 @@ private:
 
 class Idle : public ConnectState {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~Idle();
 
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
     bool transitionToDuelCountdown();
-    void cycleStats(Device *PDN);
+    bool transitionToSupporterReady();
+    void renderStats(Device *PDN);
 
 private:
     Player *player;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
     bool matchInitialized = false;
     bool displayIsDirty = false;
     int statsIndex = 0;
-    int statsCount = 5;
+    int statsCount = 6;
+    size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -95,11 +102,52 @@ private:
     // void serialEventCallbacks(const std::string& message);
 };
 
+class SupporterReady : public ConnectState {
+public:
+    SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    ~SupporterReady();
+
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool transitionToIdle();
+
+    // Called by Quickdraw's chain-game-event packet handler.
+    void onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac);
+
+public:
+    // Button callback in onStateMounted uses these via `this` capture.
+    // Atomic because the ESP-NOW packet callback (WiFi task on hardware) and
+    // the button press / state-loop callbacks (main task) read and write them
+    // concurrently.
+    Player *player;
+    std::atomic<bool> buttonArmed{false};
+    std::atomic<bool> hasConfirmed{false};
+    std::atomic<bool> displayIsDirty{true};
+    std::atomic<bool> ledsAreDirty{true};
+    std::atomic<int> lastResult{0};
+    // resultClearTimer is touched only by onStateLoop (main task). The
+    // packet handler (WiFi task) communicates via the atomic lastResult;
+    // onStateLoop detects transitions and manages the timer here.
+    SimpleTimer resultClearTimer;
+    Device *cachedPDN = nullptr;
+
+    void startLEDs(Device *PDN, bool armed, bool confirmed);
+
+private:
+    ChainDuelManager* chainDuelManager;
+    bool transitionToIdleFlag = false;
+    int lastProcessedResult_ = 0;  // main-task-only; mirrors lastResult
+
+    bool isPrimaryRequired() override;
+    bool isAuxRequired() override;
+};
+
 
 
 class DuelCountdown : public ConnectState {
 public:
-    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~DuelCountdown();
 
     void onStateMounted(Device *PDN) override;
@@ -158,11 +206,12 @@ private:
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
 };
 
 class Duel : public ConnectState {
 public:
-    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~Duel();
 
     void onStateMounted(Device *PDN) override;
@@ -178,6 +227,7 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager;
     parameterizedCallbackFunction buttonPress;
     bool transitionToDuelPushedState = false;
     bool transitionToDuelReceivedResultState = false;
@@ -250,7 +300,7 @@ private:
 
 class Win : public State {
 public:
-    explicit Win(Player *player);
+    Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
     ~Win();
 
     void onStateMounted(Device *PDN) override;
@@ -262,12 +312,14 @@ public:
 private:
     SimpleTimer winTimer = SimpleTimer();
     Player *player;
+    ChainDuelManager* chainDuelManager;
+    MatchManager* matchManager;
     bool reset = false;
 };
 
 class Lose : public State {
 public:
-    explicit Lose(Player *player);
+    Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
     ~Lose();
 
     void onStateMounted(Device *PDN) override;
@@ -279,6 +331,8 @@ public:
 private:
     SimpleTimer loseTimer = SimpleTimer();
     Player *player;
+    ChainDuelManager* chainDuelManager;
+    MatchManager* matchManager;
     bool reset = false;
 };
 

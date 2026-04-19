@@ -22,8 +22,8 @@ const ImageCollection alleycatImageCollection = {
 {ImageType::COUNTDOWN_TWO, Image(image_alley_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_alley_count1, 128, 64, 0, 0)},
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_alley_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_alley_loser, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_alley_victor, 64, 64, 64, 0)},
+{ImageType::LOSE, Image(image_alley_loser, 64, 64, 64, 0)},
 };
 
 const ImageCollection helixImageCollection = {
@@ -36,8 +36,8 @@ const ImageCollection helixImageCollection = {
 {ImageType::COUNTDOWN_TWO, Image(image_helix_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_helix_count1, 128, 64, 0, 0)},
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_helix_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_helix_loser, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_helix_victor, 64, 64, 64, 0)},
+{ImageType::LOSE, Image(image_helix_loser, 64, 64, 64, 0)},
 };
 
 const ImageCollection endlineImageCollection = {
@@ -50,8 +50,8 @@ const ImageCollection endlineImageCollection = {
 {ImageType::COUNTDOWN_TWO, Image(image_endline_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_endline_count1, 128, 64, 0, 0)},
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_endline_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_endline_loser, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_endline_victor, 64, 64, 64, 0)},
+{ImageType::LOSE, Image(image_endline_loser, 64, 64, 64, 0)},
 };
 
 const ImageCollection resistanceImageCollection = {
@@ -64,8 +64,8 @@ const ImageCollection resistanceImageCollection = {
 {ImageType::COUNTDOWN_TWO, Image(image_resistance_count2, 128, 64, 0, 0)},
 {ImageType::COUNTDOWN_ONE, Image(image_resistance_count1, 128, 64, 0, 0)},
 {ImageType::DRAW, Image(image_draw, 128, 64, 64, 0)},
-{ImageType::WIN, Image(image_resistance_victor, 128, 64, 0, 0)},
-{ImageType::LOSE, Image(image_resistance_loser, 128, 64, 0, 0)},
+{ImageType::WIN, Image(image_resistance_victor, 64, 64, 64, 0)},
+{ImageType::LOSE, Image(image_resistance_loser, 64, 64, 64, 0)},
 };
 
 // Equivalent LEDColor palettes (derived from FastLED HTML colors in crgb.h):

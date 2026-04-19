@@ -907,6 +907,15 @@ public:
         g_logger = globalLogger_;
         SimpleTimer::setPlatformClock(globalClock_);
         device_ = cli::DeviceFactory::createDevice(0, true);
+
+        // The CLI factory skips past PlayerRegistrationApp directly to gameplay.
+        // These tests exercise the registration flow (HTTP fetch transitions,
+        // reboot semantics), so push the device back to PR app's FetchUserData.
+        device_.game->skipToState(device_.pdn, 0);
+        State* state = device_.game->getCurrentState();
+        if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
+            static_cast<PlayerRegistrationApp*>(state)->skipToState(device_.pdn, 1);
+        }
     }
 
     void TearDown() override {

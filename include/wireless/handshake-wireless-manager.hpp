@@ -65,7 +65,10 @@ public:
 
     void clearCallbacks();
 
-    void setMacPeer(SerialIdentifier jack, Peer peer);
+    // Registers a direct peer on a jack. Returns false if the peer's MAC
+    // equals our own (self-loopback or spoofing) — the peer is not stored
+    // and the caller must not proceed with the handshake.
+    bool setMacPeer(SerialIdentifier jack, Peer peer);
 
     void removeMacPeer(SerialIdentifier jack);
 

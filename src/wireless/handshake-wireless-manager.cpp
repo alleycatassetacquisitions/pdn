@@ -34,8 +34,19 @@ void HandshakeWirelessManager::clearCallbacks() {
     callbacks.clear();
 }
 
-void HandshakeWirelessManager::setMacPeer(SerialIdentifier jack, Peer peer) {
+bool HandshakeWirelessManager::setMacPeer(SerialIdentifier jack, Peer peer) {
+    // Reject self-MAC: a peer claiming to be us (via SEND_MAC_ADDRESS serial
+    // or EXCHANGE_ID wireless) could be a self-loopback or a neighbor
+    // spoofing our MAC. Never register as a direct peer — violates spec
+    // invariant DirectPeerIsNeverSelf.
+    if (wirelessManager != nullptr) {
+        const uint8_t* selfMac = wirelessManager->getMacAddress();
+        if (selfMac != nullptr && memcmp(peer.macAddr.data(), selfMac, 6) == 0) {
+            return false;
+        }
+    }
     macPeers[jack] = peer;
+    return true;
 }
 
 void HandshakeWirelessManager::removeMacPeer(SerialIdentifier jack) {
