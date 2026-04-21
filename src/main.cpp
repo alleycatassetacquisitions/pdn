@@ -25,6 +25,7 @@
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
@@ -68,6 +69,7 @@ Quickdraw* game = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
+SymbolWirelessManager* symbolWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 
@@ -157,6 +159,8 @@ void setup() {
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
     quickdrawWirelessManager = new QuickdrawWirelessManager();
+    LOG_I("SETUP", "Creating SymbolWirelessManager...");
+    symbolWirelessManager = new SymbolWirelessManager();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     LOG_I("SETUP", "Creating SymbolWirelessManager...");

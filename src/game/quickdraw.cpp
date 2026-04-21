@@ -1,5 +1,6 @@
 #include "../../include/game/quickdraw.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
 
 Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
@@ -61,6 +62,17 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         },
         this
     );
+
+    if (symbolWirelessManager) {
+        symbolWirelessManager->initialize(wirelessManager);
+        wirelessManager->setEspNowPacketHandler(
+            PktType::kSymbolMatchCommand,
+            [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+                static_cast<SymbolWirelessManager*>(ctx)->processSymbolMatchCommand(macAddress, data, dataLen);
+            },
+            symbolWirelessManager
+        );
+    }
 
     // Clear boost/confirmed-supporters when the supporter chain drains to
     // empty while a duel is still running. Without this, a champion keeps
@@ -186,7 +198,7 @@ void Quickdraw::populateStateMap() {
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
 
-    SymbolState* symbol = new SymbolState(player, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
     SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
 
     // --- Transitions from PlayerRegistration app ---

@@ -368,7 +368,7 @@ private:
 
 class SymbolState : public ConnectState {
 public:
-    SymbolState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
     ~SymbolState();
 
     void onStateMounted(Device *PDN) override;
@@ -383,6 +383,7 @@ public:
 
 private:
     Player* player;
+    MatchManager* matchManager;
     SymbolWirelessManager* symbolWirelessManager;
     Device* mountedPdn = nullptr;
 

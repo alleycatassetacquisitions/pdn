@@ -81,10 +81,11 @@ void Idle::onStateLoop(Device *PDN) {
                 }
             }
         }
-        else if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN 
-                || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
-            transitionToSymbolState = true;
-        }
+    }
+
+    if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
+        || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
+        transitionToSymbolState = true;
     }
 
     if(matchInitializationTimer.expired()) {

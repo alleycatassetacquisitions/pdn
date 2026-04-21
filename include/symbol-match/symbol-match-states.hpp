@@ -65,6 +65,7 @@ private:
     bool symbolSentLeft = false;
     bool symbolSentRight = false;
 };
+
 class MatchSuccess : public ConnectState {
 public:
     explicit MatchSuccess(SymbolManager* symbolManager, RemoteDeviceCoordinator* remoteDeviceCoordinator,
