@@ -19,6 +19,7 @@
 #include "chain-duel-manager-tests.hpp"
 #include "chain-duel-multi-device-fixture.hpp"
 #include "peer-comms-types-tests.hpp"
+#include "match-manager-concurrent.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -775,6 +776,14 @@ TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
 
 TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
+}
+
+// ============================================
+// MATCH MANAGER CONCURRENCY TESTS (TSan)
+// ============================================
+
+TEST(MatchManagerConcurrent, driverExecSerializesMatchManagerAccess) {
+    matchManagerConcurrentDriverVsReader();
 }
 
 // ============================================

@@ -45,7 +45,20 @@ public:
     // === PEER COMMS INTERFACE === //
 
     void exec() override {
-        // ESP-NOW uses interrupt-driven callbacks, no polling needed
+        std::queue<DeferredPacket> pending;
+        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        std::swap(pending, recvQueue_);
+        xSemaphoreGive(recvMutex_);
+
+        while (!pending.empty()) {
+            auto& pkt = pending.front();
+            PacketCallback cb = m_pktHandlerCallbacks[(int)pkt.type].first;
+            if (cb) {
+                cb(pkt.srcMac, pkt.data.data(), pkt.data.size(),
+                   m_pktHandlerCallbacks[(int)pkt.type].second);
+            }
+            pending.pop();
+        }
     }
 
     void connect() override {
@@ -228,6 +241,12 @@ private:
     static EspNowManager* instance;
 
     // Struct definitions must come before methods that use them
+    struct DeferredPacket {
+        PktType type;
+        uint8_t srcMac[6];
+        std::vector<uint8_t> data;
+    };
+
     struct DataSendBuffer
     {
         uint8_t dstMac[6];
@@ -246,7 +265,8 @@ private:
         PeerCommsDriverInterface(name),
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
         m_maxRetries(5),
-        m_curRetries(0)
+        m_curRetries(0),
+        recvMutex_(xSemaphoreCreateMutex())
     {
 
         wifi_promiscuous_filter_t filter = {
@@ -536,10 +556,12 @@ private:
         return 0;
     }
 
+    SemaphoreHandle_t recvMutex_;
+    std::queue<DeferredPacket> recvQueue_;
+
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
 
-    //Handle received packet of a certain type
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)
         {
@@ -547,11 +569,14 @@ private:
             return;
         }
 
-        PacketCallback callback = m_pktHandlerCallbacks[(int)packetType].first;
-        if(callback)
-        {
-            callback(srcMacAddr, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
-        }
+        DeferredPacket pkt;
+        pkt.type = packetType;
+        memcpy(pkt.srcMac, srcMacAddr, 6);
+        pkt.data.assign(pktData, pktData + pktLen);
+
+        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        recvQueue_.push(std::move(pkt));
+        xSemaphoreGive(recvMutex_);
     }
 
     uint8_t* getMacAddress() override {
