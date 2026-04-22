@@ -1,4 +1,4 @@
-#include "symbol-match/symbol.hpp"
+#include "symbol.hpp"
 #include <string>
 
 Symbol::Symbol() {

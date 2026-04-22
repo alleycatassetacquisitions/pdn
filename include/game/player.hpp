@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 #include <cstdint>
-#include "symbol-match/symbol.hpp"
+#include "symbol.hpp"
 
 enum class Allegiance {
     ALLEYCAT = 0,
