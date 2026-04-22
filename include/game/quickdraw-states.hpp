@@ -33,7 +33,7 @@ enum QuickdrawStateId {
     UPLOAD_MATCHES = 20,
     SUPPORTER_READY = 21,
     SYMBOL = 22,
-    SYMBOL_MATCHED = 23,
+    SYMBOL_MATCHED = 23
 };
 
 class Sleep : public State {
@@ -96,6 +96,7 @@ private:
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 7;
+    size_t lastPosseCount = 0;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -427,6 +428,7 @@ public:
     bool isAuxRequired() override;
 
     bool transitionToSymbol();
+    bool transitionToIdle();
 
 private:
     Player* player;
@@ -435,10 +437,14 @@ private:
     void renderSymbolScreen(Device *PDN);
 
     bool transitionToSymbolState = false;
+    bool transitionToIdleState = false;
     bool toggleBlink = true;
+    bool holdSteadySymbol = false;
 
     SimpleTimer blinkTimer;
     const int BLINK_INTERVAL = 0.2 * 1000;
+    SimpleTimer successTimer;
+    const int SUCCESS_TIMEOUT = 3 * 1000;
 
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };

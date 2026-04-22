@@ -1,4 +1,5 @@
 #include "wireless/symbol-wireless-manager.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
 #include <cstring>
@@ -7,14 +8,16 @@ static const char* SWM_TAG = "SWM";
 
 SymbolWirelessManager::SymbolWirelessManager() {
     std::memset(macPeer, 0, sizeof(macPeer));
+    remoteDeviceCoordinator = nullptr;
 }
 
 SymbolWirelessManager::~SymbolWirelessManager() {
     wirelessManager = nullptr;
 }
 
-void SymbolWirelessManager::initialize(WirelessManager* wirelessManager) {
+void SymbolWirelessManager::initialize(WirelessManager* wirelessManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) {
     this->wirelessManager = wirelessManager;
+    this->remoteDeviceCoordinator = remoteDeviceCoordinator;
 }
 
 void SymbolWirelessManager::setMacPeer(const uint8_t* macAddress) {
@@ -25,10 +28,9 @@ int SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIden
     SymbolMatchPacket packet{};
     packet.command = command;
     packet.symbolId = symbolId;
-    packet.serialPort = static_cast<int>(serialPort);
 
     LOG_W(SWM_TAG,
-          "TX symbol command %d to %s (symbolId=%d, serialPort=%d)",
+          "TX symbol command %d to %s (symbolId=%d, targetPort=%d)",
           command,
           MacToString(macPeer),
           static_cast<int>(symbolId),
@@ -50,26 +52,53 @@ int SymbolWirelessManager::processSymbolMatchCommand(const uint8_t* macAddress, 
     const SymbolMatchPacket* packet = reinterpret_cast<const SymbolMatchPacket*>(data);
 
     LOG_W(SWM_TAG,
-          "RX symbol command %d from %s (symbolId=%d, serialPort=%d)",
+          "RX symbol command %d from %s (symbolId=%d)",
           packet->command,
           MacToString(macAddress),
-          static_cast<int>(packet->symbolId),
-          packet->serialPort);
+          static_cast<int>(packet->symbolId));
 
-    SerialIdentifier port = static_cast<SerialIdentifier>(packet->serialPort);
-    SymbolMatchCommand command(macAddress, packet->command, packet->symbolId, port);
+    if (remoteDeviceCoordinator == nullptr) {
+        LOG_E(SWM_TAG, "RemoteDeviceCoordinator unavailable, dropping symbol packet");
+        return -1;
+    }
 
-    if (packetReceivedCallback) {
-        packetReceivedCallback(command);
+    SerialIdentifier resolvedPort = SerialIdentifier::OUTPUT_JACK;
+    bool portResolved = false;
+
+    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+        PortState portState = remoteDeviceCoordinator->getPortState(port);
+        for (const auto& peerMac : portState.peerMacAddresses) {
+            if (macAddress != nullptr && std::memcmp(peerMac.data(), macAddress, 6) == 0) {
+                resolvedPort = port;
+                portResolved = true;
+                break;
+            }
+        }
+
+        if (portResolved) {
+            break;
+        }
+    }
+
+    if (!portResolved) {
+        LOG_W(SWM_TAG, "No matching input port for symbol packet from %s", macAddress ? MacToString(macAddress) : "(null)");
+        return -1;
+    }
+
+    SymbolMatchCommand command(macAddress, packet->command, packet->symbolId);
+
+    auto callbackIt = packetReceivedCallbacks.find(resolvedPort);
+    if (callbackIt != packetReceivedCallbacks.end() && callbackIt->second) {
+        callbackIt->second(command);
     }
 
     return 1;
 }
 
-void SymbolWirelessManager::setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback) {
-    packetReceivedCallback = callback;
+void SymbolWirelessManager::setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port) {
+    packetReceivedCallbacks[port] = callback;
 }
 
 void SymbolWirelessManager::clearCallback() {
-    packetReceivedCallback = nullptr;
+    packetReceivedCallbacks.clear();
 }

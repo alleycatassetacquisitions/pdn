@@ -1,3 +1,4 @@
+
 #include "../../include/game/quickdraw.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
@@ -64,7 +65,7 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     );
 
     if (symbolWirelessManager) {
-        symbolWirelessManager->initialize(wirelessManager);
+        symbolWirelessManager->initialize(wirelessManager, remoteDeviceCoordinator);
         wirelessManager->setEspNowPacketHandler(
             PktType::kSymbolMatchCommand,
             [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -164,11 +165,13 @@ void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data
 Quickdraw::~Quickdraw() {
     player = nullptr;
     remoteDeviceCoordinator = nullptr;
-    quickdrawWirelessManager->clearCallbacks();
+    if (quickdrawWirelessManager) {
+        quickdrawWirelessManager->clearCallbacks();
+    }
     quickdrawWirelessManager = nullptr;
     delete matchManager;
-    symbolWirelessManager = nullptr;
     matchManager = nullptr;
+    symbolWirelessManager = nullptr;
     delete chainDuelManager;
     chainDuelManager = nullptr;
     storageManager = nullptr;
@@ -325,10 +328,16 @@ void Quickdraw::populateStateMap() {
             std::bind(&SymbolMatched::transitionToSymbol, symbolMatched),
             symbol));
 
+    symbolMatched->addTransition(
+        new StateTransition(
+            std::bind(&SymbolMatched::transitionToIdle, symbolMatched),
+            idle));
+
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
+    stateMap.push_back(supporterReady);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
     stateMap.push_back(duelPushed);

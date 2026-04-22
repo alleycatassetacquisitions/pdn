@@ -205,7 +205,9 @@ public:
         );
 
         instance.symbolWirelessManager = new SymbolWirelessManager();
-        instance.symbolWirelessManager->initialize(instance.pdn->getWirelessManager());
+        instance.symbolWirelessManager->initialize(
+            instance.pdn->getWirelessManager(),
+            instance.pdn->getRemoteDeviceCoordinator());
         instance.pdn->getWirelessManager()->setEspNowPacketHandler(
             PktType::kSymbolMatchCommand,
             [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {

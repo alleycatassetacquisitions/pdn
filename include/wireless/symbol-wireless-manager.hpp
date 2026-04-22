@@ -2,16 +2,17 @@
 
 #include <cstring>
 #include <functional>
+#include <map>
 
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/wireless-manager.hpp"
 #include "symbol-match/symbol.hpp"
 
+class RemoteDeviceCoordinator;
+
 struct SymbolMatchPacket {
     int command;
     SymbolId symbolId;
-    /// Sender's serial jack toward the peer (SerialIdentifier as int for packing).
-    int serialPort;
 } __attribute__((packed));
 
 enum SMCommand {
@@ -28,12 +29,11 @@ struct SymbolMatchCommand {
     bool wifiMacAddrValid;
     int command;
     SymbolId symbolId;
-    SerialIdentifier serialPort;
 
     SymbolMatchCommand() = delete;
 
-    SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId, SerialIdentifier serialPort)
-        : wifiMacAddrValid(macAddress != nullptr), command(command), symbolId(symbolId), serialPort(serialPort) {
+    SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId)
+        : wifiMacAddrValid(macAddress != nullptr), command(command), symbolId(symbolId) {
         if (macAddress) {
             memcpy(wifiMacAddr, macAddress, 6);
         } else {
@@ -47,7 +47,7 @@ public:
     SymbolWirelessManager();
     ~SymbolWirelessManager();
 
-    void initialize(WirelessManager* wirelessManager);
+    void initialize(WirelessManager* wirelessManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
     int processSymbolMatchCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
 
@@ -55,14 +55,14 @@ public:
 
     void setMacPeer(const uint8_t* macAddress);
 
-    void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback);
+    void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port);
 
     void clearCallback();
 
 private:
     WirelessManager* wirelessManager;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
     uint8_t macPeer[6];
 
-    std::function<void(const SymbolMatchCommand&)> packetReceivedCallback;
-
+    std::map<SerialIdentifier, std::function<void(const SymbolMatchCommand&)>> packetReceivedCallbacks;
 };

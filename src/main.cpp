@@ -25,7 +25,6 @@
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
@@ -71,7 +70,6 @@ Quickdraw* game = nullptr;
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
-SymbolWirelessManager* symbolWirelessManager = nullptr;
 
 void setupEspNow(
     QuickdrawWirelessManager* quickdrawWirelessManager,
@@ -163,14 +161,12 @@ void setup() {
     symbolWirelessManager = new SymbolWirelessManager();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
-    LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager();
     
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
     quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
-    symbolWirelessManager->initialize(pdn->getWirelessManager());
+    symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
     
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);

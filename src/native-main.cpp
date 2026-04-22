@@ -110,7 +110,9 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     // In a full implementation, we'd need per-device wireless managers
     instance.wirelessManager = nullptr;
     instance.symbolWirelessManager = new SymbolWirelessManager();
-    instance.symbolWirelessManager->initialize(instance.pdn->getWirelessManager());
+    instance.symbolWirelessManager->initialize(
+        instance.pdn->getWirelessManager(),
+        instance.pdn->getRemoteDeviceCoordinator());
     
     // Create game
     instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr, instance.symbolWirelessManager);

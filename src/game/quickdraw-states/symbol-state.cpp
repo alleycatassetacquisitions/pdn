@@ -29,8 +29,6 @@ void SymbolState::onStateMounted(Device *PDN) {
 
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
         fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
-    } else if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
-        fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::INPUT_JACK));
     }
 
     if (fdnMac != nullptr) {
@@ -48,7 +46,9 @@ void SymbolState::onStateMounted(Device *PDN) {
     PDN->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
 
 
-    symbolWirelessManager->setPacketReceivedCallback(std::bind(&SymbolState::onSymbolMatchCommandReceived, this, std::placeholders::_1));
+    symbolWirelessManager->setPacketReceivedCallback(
+        std::bind(&SymbolState::onSymbolMatchCommandReceived, this, std::placeholders::_1),
+        SerialIdentifier::OUTPUT_JACK);
     
 }
 
@@ -77,8 +77,7 @@ void SymbolState::onStateLoop(Device *PDN) {
     }
 
     // if device is not connected to an FDN, transition to idle
-    if (!(remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
-        || remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
+    if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) != DeviceType::FDN) {
         transitionToIdleState = true;
     }
 }
@@ -143,7 +142,10 @@ void SymbolState::advanceSymbolRender(Device* PDN) {
 void SymbolState::sendSymbolToFDN() {
     if (matchReady) {
         symbolSent = true;
-        symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL, player->getSymbol()->getSymbolId(), pdnJackToFdn);
+        symbolWirelessManager->sendPacket(
+            SMCommand::SEND_SYMBOL,
+            player->getSymbol()->getSymbolId(),
+            SerialIdentifier::OUTPUT_JACK);
     } else {
         // trigger rejection behavior
     }
@@ -153,9 +155,6 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
 
     if (command.command == SMCommand::SEND_SYMBOL) {
         fdnSymbol = command.symbolId;
-        pdnJackToFdn = command.serialPort;
-
-
         if (fdnSymbol == player->getSymbol()->getSymbolId()) {
             matchReady = true;
         }
