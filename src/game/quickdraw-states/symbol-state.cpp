@@ -1,3 +1,4 @@
+#include "device/device-constants.hpp"
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
@@ -25,6 +26,7 @@ void SymbolState::onStateMounted(Device *PDN) {
     transitionToSymbolMatchedState = false;
     matchReady = false;
     symbolSent = false;
+    hapticPulseActive = false;
     toggleSymbol = true;
 
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
@@ -45,19 +47,44 @@ void SymbolState::onStateMounted(Device *PDN) {
 
     PDN->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
 
-
     symbolWirelessManager->setPacketReceivedCallback(
         std::bind(&SymbolState::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
+
+    PDN->getLightManager()->stopAnimation();
+
+    LEDState allWhite;
+    for (int i = 0; i < 9; ++i) {
+        allWhite.leftLights[i]  = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+        allWhite.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+    }
+    allWhite.transmitLight = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+
+    cfg.type = AnimationType::IDLE;
+    cfg.loop = true;
+    cfg.speed = 60000;
+    cfg.initialState = allWhite;
     
 }
 
 void SymbolState::onStateLoop(Device *PDN) {
     if (symbolSent) {
+        if (!hapticPulseActive) {
+            PDN->getHaptics()->setIntensity(VIBRATION_MAX);
+            hapticPulseTimer.setTimer(HAPTIC_PULSE_DURATION);
+            hapticPulseActive = true;
+        }
+
         // sendSymbolToFDN();
         advanceSymbolRender(PDN);
         renderTimer.invalidate();
-    } 
+    }
+
+    if (hapticPulseActive && hapticPulseTimer.expired()) {
+        PDN->getHaptics()->off();
+        hapticPulseTimer.invalidate();
+        hapticPulseActive = false;
+    }
 
     // Buffer animation must not block the main loop — handshake/sync needs to run every tick.
     if (bufferTimer.isRunning()) {
@@ -90,7 +117,10 @@ void SymbolState::onStateDismounted(Device *PDN) {
     transitionToIdleState = false;
     transitionToSymbolMatchedState = false;
     symbolSent = false;
+    hapticPulseActive = false;
     bufferTimer.invalidate();
+    hapticPulseTimer.invalidate();
+    PDN->getHaptics()->off();
     if (renderTimer.isRunning()) {
         renderTimer.invalidate();
     }
@@ -108,6 +138,9 @@ void SymbolState::onStateDismounted(Device *PDN) {
     symbolWirelessManager->clearCallback();
 
     matchReady = false;
+
+    PDN->getLightManager()->stopAnimation();
+    PDN->getLightManager()->clear();
 }
 
 void SymbolState::renderSymbolScreen(Device *PDN) {
@@ -123,9 +156,13 @@ void SymbolState::advanceSymbolRender(Device* PDN) {
             PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
 
             PDN->getDisplay()->render();
+
+            PDN->getLightManager()->startAnimation(cfg);
         } else {
             PDN->getDisplay()->invalidateScreen();
             PDN->getDisplay()->render();
+
+            PDN->getLightManager()->stopAnimation();
         }
         toggleSymbol = !toggleSymbol;
         renderTimer.setTimer(RENDER_TIMEOUT);
@@ -136,6 +173,8 @@ void SymbolState::advanceSymbolRender(Device* PDN) {
 
         PDN->getDisplay()->render();
         symbolSent = false;
+
+        PDN->getLightManager()->startAnimation(cfg);
     }
 }
 

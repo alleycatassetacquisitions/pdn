@@ -1,5 +1,6 @@
+#include <FastLED.h>
+
 #include "game/quickdraw-states.hpp"
-#include "game/match-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 
@@ -27,6 +28,14 @@ void SymbolMatched::onStateMounted(Device *PDN) {
     symbolWirelessManager->setPacketReceivedCallback(
         std::bind(&SymbolMatched::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
+
+    cfg.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
+    cfg.loop = true;
+    cfg.speed = 16;
+    cfg.initialState = LEDState();
+    cfg.loopDelayMs = 0;
+
+    PDN->getLightManager()->startAnimation(cfg);
 }
 
 void SymbolMatched::onStateLoop(Device *PDN) {
@@ -43,6 +52,7 @@ void SymbolMatched::onStateLoop(Device *PDN) {
 
         if (successTimer.expired()) {
             holdSteadySymbol = true;
+            PDN->getHaptics()->off();
             PDN->getDisplay()->invalidateScreen();
             PDN->getDisplay()->whiteScreen();
             PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
@@ -63,6 +73,14 @@ void SymbolMatched::onStateDismounted(Device *PDN) {
     holdSteadySymbol = false;
     blinkTimer.invalidate();
     successTimer.invalidate();
+
+
+    PDN->getLightManager()->stopAnimation();
+    PDN->getLightManager()->clear();
+    PDN->getHaptics()->off();
+    // clear() updates the FastLED buffer; show() normally runs in the light driver's
+    // exec() on a timer. This loop blocks the main loop, so push pixels now before loading UI.
+    FastLED.show();
 
     if (showRefreshScreen) {
         SimpleTimer bufferTimer;
@@ -93,6 +111,9 @@ void SymbolMatched::renderSymbolScreen(Device *PDN) {
     PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
     if (toggleBlink) {
         PDN->getDisplay()->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+        PDN->getHaptics()->setIntensity(VIBRATION_MAX);
+    } else {
+        PDN->getHaptics()->off();
     }
     PDN->getDisplay()->render();
     toggleBlink = !toggleBlink;

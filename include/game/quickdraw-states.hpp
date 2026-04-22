@@ -397,6 +397,8 @@ private:
 
     SimpleTimer bufferTimer;
     const int BUFFER_TIMEOUT = 500;
+    SimpleTimer hapticPulseTimer;
+    const int HAPTIC_PULSE_DURATION = 100;
     
     void renderSymbolScreen(Device *PDN);
     void advanceSymbolRender(Device* PDN);
@@ -411,8 +413,11 @@ private:
     bool transitionToSymbolMatchedState = false;
 
     bool symbolSent = false;
+    bool hapticPulseActive = false;
 
     bool matchReady = false;
+
+    AnimationConfig cfg{};
 };
 
 class SymbolMatched : public ConnectState {
@@ -442,9 +447,11 @@ private:
     bool holdSteadySymbol = false;
 
     SimpleTimer blinkTimer;
-    const int BLINK_INTERVAL = 0.2 * 1000;
+    const int BLINK_INTERVAL = 0.15 * 1000;
     SimpleTimer successTimer;
     const int SUCCESS_TIMEOUT = 3 * 1000;
 
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
+
+    AnimationConfig cfg{};
 };
