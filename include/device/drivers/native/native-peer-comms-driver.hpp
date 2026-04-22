@@ -4,6 +4,8 @@
 #include "device/drivers/native/native-peer-broker.hpp"
 #include <map>
 #include <deque>
+#include <mutex>
+#include <queue>
 #include <vector>
 #include <cstring>
 
@@ -34,7 +36,21 @@ public:
     }
 
     void exec() override {
-        // Packet delivery handled by broker calling receivePacket directly
+        std::queue<DeferredPacket> pending;
+        {
+            std::lock_guard<std::mutex> lock(recvMutex_);
+            std::swap(pending, recvQueue_);
+        }
+
+        while (!pending.empty()) {
+            auto& pkt = pending.front();
+            auto it = handlers_.find(pkt.type);
+            if (it != handlers_.end()) {
+                it->second.callback(pkt.srcMac, pkt.data.data(),
+                                    pkt.data.size(), it->second.context);
+            }
+            pending.pop();
+        }
     }
 
     void connect() override {
@@ -109,15 +125,14 @@ public:
 
     /**
      * Called by the broker to deliver a packet to this peer.
+     * Enqueues the packet for processing on the next exec() call.
      */
     void receivePacket(const uint8_t* srcMac, PktType packetType, 
                        const uint8_t* data, size_t length) {
-        // Only process packets when connected
         if (peerCommsState_ != PeerCommsState::CONNECTED) {
             return;
         }
-        
-        // Track received packet
+
         PacketHistoryEntry entry;
         entry.isSent = false;
         entry.srcMac = macToString(srcMac);
@@ -125,11 +140,14 @@ public:
         entry.packetType = packetType;
         entry.length = length;
         addToHistory(entry);
-        
-        auto it = handlers_.find(packetType);
-        if (it != handlers_.end()) {
-            it->second.callback(srcMac, data, length, it->second.context);
-        }
+
+        DeferredPacket pkt;
+        pkt.type = packetType;
+        memcpy(pkt.srcMac, srcMac, 6);
+        pkt.data.assign(data, data + length);
+
+        std::lock_guard<std::mutex> lock(recvMutex_);
+        recvQueue_.push(std::move(pkt));
     }
 
     /**
@@ -163,7 +181,15 @@ private:
         void* context;
     };
 
+    struct DeferredPacket {
+        PktType type;
+        uint8_t srcMac[6];
+        std::vector<uint8_t> data;
+    };
+
     std::map<PktType, HandlerEntry> handlers_;
+    std::mutex recvMutex_;
+    std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];
     PeerCommsState peerCommsState_ = PeerCommsState::DISCONNECTED;
     std::deque<PacketHistoryEntry> packetHistory_;

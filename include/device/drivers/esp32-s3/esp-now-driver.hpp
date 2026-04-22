@@ -45,7 +45,20 @@ public:
     // === PEER COMMS INTERFACE === //
 
     void exec() override {
-        // ESP-NOW uses interrupt-driven callbacks, no polling needed
+        std::queue<DeferredPacket> pending;
+        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        std::swap(pending, recvQueue_);
+        xSemaphoreGive(recvMutex_);
+
+        while (!pending.empty()) {
+            auto& pkt = pending.front();
+            PacketCallback cb = m_pktHandlerCallbacks[(int)pkt.type].first;
+            if (cb) {
+                cb(pkt.srcMac, pkt.data.data(), pkt.data.size(),
+                   m_pktHandlerCallbacks[(int)pkt.type].second);
+            }
+            pending.pop();
+        }
     }
 
     void connect() override {
@@ -139,8 +152,7 @@ public:
             bytesLeft -= thisBuffer;
         }
 
-        //Before we start filling the send queue, see if we'll need to start
-        //sending afterwards
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
         bool willNeedToStartSend = m_sendQueue.empty();
 
         //Build up each packet
@@ -172,8 +184,8 @@ public:
 
             bytesLeft -= thisBuffer;
         }
+        xSemaphoreGive(sendMutex_);
 
-        //Check if this is the first packet in the queue
         if(willNeedToStartSend)
         {
             SendFrontPkt();
@@ -228,6 +240,12 @@ private:
     static EspNowManager* instance;
 
     // Struct definitions must come before methods that use them
+    struct DeferredPacket {
+        PktType type;
+        uint8_t srcMac[6];
+        std::vector<uint8_t> data;
+    };
+
     struct DataSendBuffer
     {
         uint8_t dstMac[6];
@@ -246,7 +264,9 @@ private:
         PeerCommsDriverInterface(name),
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
         m_maxRetries(5),
-        m_curRetries(0)
+        m_curRetries(0),
+        recvMutex_(xSemaphoreCreateMutex()),
+        sendMutex_(xSemaphoreCreateMutex())
     {
 
         wifi_promiscuous_filter_t filter = {
@@ -458,17 +478,20 @@ private:
             }
         }
 
-        if(!manager->m_sendQueue.empty())
-        {
-            //TODO: Catch error and do reporting and push to next pkt
-            manager->SendFrontPkt();
-        }
+        //TODO: Catch error and do reporting and push to next pkt
+        manager->SendFrontPkt();
     }
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        if(m_sendQueue.empty()) {
+            xSemaphoreGive(sendMutex_);
+            return 0;
+        }
         auto buffer = m_sendQueue.front();
-        
+        xSemaphoreGive(sendMutex_);
+
         //If this is the first packet in cluster, make sure the peer is registered
         auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
         if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
@@ -486,8 +509,7 @@ private:
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
                     //TODO: Pop all packets in the current cluster?
                     MoveToNextSendPkt();
-                    if(!m_sendQueue.empty())
-                        SendFrontPkt();
+                    SendFrontPkt();
                     //TODO: Return correct error code
                     return -1;
                 }
@@ -499,8 +521,10 @@ private:
 
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
         free(m_sendQueue.front().ptr);
         m_sendQueue.pop();
+        xSemaphoreGive(sendMutex_);
         m_curRetries = 0;
     }
 
@@ -536,10 +560,14 @@ private:
         return 0;
     }
 
+    SemaphoreHandle_t recvMutex_;
+    std::queue<DeferredPacket> recvQueue_;
+
+    SemaphoreHandle_t sendMutex_;
+
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
 
-    //Handle received packet of a certain type
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)
         {
@@ -547,11 +575,14 @@ private:
             return;
         }
 
-        PacketCallback callback = m_pktHandlerCallbacks[(int)packetType].first;
-        if(callback)
-        {
-            callback(srcMacAddr, pktData, pktLen, m_pktHandlerCallbacks[(int)packetType].second);
-        }
+        DeferredPacket pkt;
+        pkt.type = packetType;
+        memcpy(pkt.srcMac, srcMacAddr, 6);
+        pkt.data.assign(pktData, pktData + pktLen);
+
+        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        recvQueue_.push(std::move(pkt));
+        xSemaphoreGive(recvMutex_);
     }
 
     uint8_t* getMacAddress() override {
