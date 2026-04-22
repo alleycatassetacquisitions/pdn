@@ -402,12 +402,18 @@ void RemoteDeviceCoordinator::removeDaisyChainedPeer(SerialIdentifier port, cons
         if (memcmp(it->data(), macAddress, 6) == 0) {
             chain.erase(it);
             // Free the ESP-NOW peer slot unless the same MAC is still
-            // daisy-chained on the OTHER port (ring-topology remnant).
+            // daisy-chained on the OTHER port (ring-topology remnant) or
+            // is the direct handshake peer on either jack. Without the
+            // direct-peer check, a ring-break chain-announcement diff that
+            // drops a MAC from one port's daisy list would remove the
+            // live peer from the ESP-NOW table even while its cable is
+            // still handshaking on the other jack.
             SerialIdentifier otherPort = (port == SerialIdentifier::INPUT_JACK)
                 ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
             for (const auto& m : daisyChainedByPort_[portIndex(otherPort)]) {
                 if (memcmp(m.data(), macAddress, 6) == 0) return;
             }
+            if (isDirectPeer(macAddress)) return;
             unregisterPeer(macAddress);
             return;
         }

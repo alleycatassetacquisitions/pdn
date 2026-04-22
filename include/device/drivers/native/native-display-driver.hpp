@@ -194,6 +194,20 @@ public:
         decodeXBMToBuffer(image.rawImage, image.width, image.height, x, y);
         return this;
     }
+
+    int getTextWidth(const char* text) override {
+        if (text == nullptr) return 0;
+        // Native font is 5px glyphs + 1px spacing. See FONT_5X7 table above.
+        size_t glyphs = 0;
+        for (const char* p = text; *p != '\0'; ++p) {
+            if ((static_cast<unsigned char>(*p) & 0xC0) != 0x80) {
+                ++glyphs;
+            }
+        }
+        return glyphs * 6;
+    }
+
+    int getWidth() override { return WIDTH; }
     
     // CLI access methods
     const std::string& getLastText() const { return lastText_; }

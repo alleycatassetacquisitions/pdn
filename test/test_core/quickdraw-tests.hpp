@@ -1052,7 +1052,7 @@ inline void resultWinTransitionsToWinState(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_TRUE(resultState.transitionToWin());
@@ -1069,7 +1069,7 @@ inline void resultLoseTransitionsToLoseState(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_FALSE(resultState.transitionToWin());
@@ -1090,7 +1090,7 @@ inline void resultPlayerStatsUpdatedOnWin(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_EQ(suite->player->getWins(), initialWins + 1);
@@ -1116,7 +1116,7 @@ inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_EQ(suite->player->getLosses(), initialLosses + 1);
@@ -1141,7 +1141,7 @@ inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     // Match should be finalized (saved to storage)
@@ -1353,7 +1353,7 @@ inline void cleanupDuelResultClearsWirelessCallbacks(StateCleanupTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     // Dismount should clear state

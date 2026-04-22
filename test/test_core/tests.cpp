@@ -19,6 +19,8 @@
 #include "chain-duel-manager-tests.hpp"
 #include "chain-duel-multi-device-fixture.hpp"
 #include "peer-comms-types-tests.hpp"
+#include "shootout-manager-tests.hpp"
+#include "match-manager-concurrent.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -80,6 +82,18 @@ TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadFieldsAligned) {
 
 TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadFieldsAligned) {
     roleAnnounceAckPayloadFieldsAligned();
+}
+
+TEST_F(PeerCommsTypesTestSuite, shootoutAckPayloadHasCorrectSize) {
+    shootoutAckPayloadHasCorrectSize();
+}
+
+TEST_F(PeerCommsTypesTestSuite, shootoutCmdEnumHasExpectedValues) {
+    shootoutCmdEnumHasExpectedValues();
+}
+
+TEST_F(PeerCommsTypesTestSuite, packetTypeEnumIncludesShootoutSlots) {
+    packetTypeEnumIncludesShootoutSlots();
 }
 
 // ============================================
@@ -778,6 +792,14 @@ TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
 }
 
 // ============================================
+// MATCH MANAGER CONCURRENCY TESTS (TSan)
+// ============================================
+
+TEST(MatchManagerConcurrent, driverExecSerializesMatchManagerAccess) {
+    matchManagerConcurrentDriverVsReader();
+}
+
+// ============================================
 // INTEGRATION TESTS
 // ============================================
 
@@ -1437,6 +1459,44 @@ TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChampion) {
 TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChampion) {
     cdmMultiDeviceConfirmDeliveredToChampion(this);
 }
+
+TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceFullTournament) {
+    shootoutFourDeviceFullTournament(this);
+}
+TEST_F(ChainDuelMultiDeviceFixture, shootoutEightDeviceFullTournament) {
+    shootoutEightDeviceFullTournament(this);
+}
+TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
+    shootoutFourDeviceConsensusAndMatchStart(this);
+}
+
+// ============================================
+// SHOOTOUT MANAGER TESTS
+// ============================================
+
+TEST_F(ShootoutManagerTests, coordinatorIsLowestMacAmongConfirmed) { coordinatorIsLowestMacAmongConfirmed(this); }
+TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
+TEST_F(ShootoutManagerTests, localConfirmIsRecordedAndBroadcast) { localConfirmIsRecordedAndBroadcast(this); }
+TEST_F(ShootoutManagerTests, receivingAllConfirmsAdvancesToBracketReveal) { receivingAllConfirmsAdvancesToBracketReveal(this); }
+TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { confirmRebroadcastsEverySecondDuringProposal(this); }
+TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
+TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
+TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
+TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
+TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
+TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
+TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
+TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
+TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
+TEST_F(ShootoutManagerTests, peerLostActiveDuelistOpponentWins) { peerLostActiveDuelistOpponentWins(this); }
+TEST_F(ShootoutManagerTests, peerLostSpectatorMarksForfeit) { peerLostSpectatorMarksForfeit(this); }
+TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) { finalMatchResultTriggersTournamentEnd(this); }
+TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) { startProposalClearsAllPriorTournamentState(this); }
+TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) { tournamentEndRetriesUntilAcked(this); }
+TEST_F(ShootoutManagerTests, matchResultRetriesUntilAcked) { matchResultRetriesUntilAcked(this); }
+TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) { duplicateMatchResultDoesNotDoubleAdvance(this); }
+TEST_F(ShootoutManagerTests, confirmRecordsPeerName) { confirmRecordsPeerName(this); }
+TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) { isHunterRestoredAfterTournament(this); }
 
 // ============================================
 // MAIN

@@ -37,6 +37,16 @@ public:
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
 
+    // Pixel width of the given text in the current font/glyph mode.
+    virtual int getTextWidth(const char* text) = 0;
+
+    virtual int getWidth() = 0;
+
+    Display* drawCenteredText(const char* text, int y) {
+        drawText(text, (getWidth() - getTextWidth(text)) / 2, y);
+        return this;
+    }
+
 private:
     Cursor cursor_;
 };

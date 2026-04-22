@@ -15,6 +15,7 @@
 #include "device-type.hpp"
 
 class StateMachine;
+class ShootoutManager;
 
 using AppConfig = std::map<StateId, StateMachine*>;
 
@@ -57,6 +58,12 @@ public:
     virtual SerialManager* getSerialManager() = 0;
     virtual RemoteDeviceCoordinator* getRemoteDeviceCoordinator() = 0;
 
+    // ShootoutManager is owned by Quickdraw and injected after construction.
+    // Stored as a bare pointer on the base so every Device subclass exposes
+    // the same accessor without touching each override.
+    void setShootoutManager(ShootoutManager* shootoutManager) { shootoutManager_ = shootoutManager; }
+    ShootoutManager* getShootoutManager() const { return shootoutManager_; }
+
 protected:
     explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {
         driverManager.initialize();
@@ -66,4 +73,5 @@ private:
     DriverManager driverManager;
     AppConfig appConfig;
     StateId currentAppId;
+    ShootoutManager* shootoutManager_ = nullptr;
 };

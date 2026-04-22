@@ -16,6 +16,7 @@
 #include <string>
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
+#include "game/shootout-manager.hpp"
 
 enum QuickdrawStateId {
     SLEEP = 6,
@@ -29,7 +30,13 @@ enum QuickdrawStateId {
     WIN = 18,
     LOSE = 19,
     UPLOAD_MATCHES = 20,
-    SUPPORTER_READY = 21
+    SUPPORTER_READY = 21,
+    SHOOTOUT_PROPOSAL = 22,
+    SHOOTOUT_BRACKET_REVEAL = 23,
+    SHOOTOUT_SPECTATOR = 24,
+    SHOOTOUT_ELIMINATED = 25,
+    SHOOTOUT_FINAL_STANDINGS = 26,
+    SHOOTOUT_ABORTED = 27,
 };
 
 class Sleep : public State {
@@ -281,21 +288,25 @@ private:
 
 class DuelResult : public State {
 public:
-    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager);
+    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager);
     ~DuelResult();
 
-    void onStateMounted(Device *PDN) override;  
+    void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;   
+    void onStateDismounted(Device *PDN) override;
     bool transitionToWin();
-    bool transitionToLose();    
-    
+    bool transitionToLose();
+    bool transitionToShootoutSpectator();
+    bool transitionToShootoutEliminated();
+
 private:
     Player* player;
     MatchManager* matchManager;
     QuickdrawWirelessManager* quickdrawWirelessManager;
+    ShootoutManager* shootoutManager;
     bool wonBattle = false;
     bool captured = false;
+    bool reportedShootoutWin = false;
 };
 
 class Win : public State {
@@ -340,7 +351,7 @@ class UploadMatchesState : public State {
 public:
     UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
     ~UploadMatchesState();
-    
+
     void onStateMounted(Device *PDN) override;
     void onStateLoop(Device *PDN) override;
     void onStateDismounted(Device *PDN) override;
@@ -358,4 +369,110 @@ private:
     std::string matchesJson;
     bool transitionToSleepState = false;
     bool shouldRetryUpload = false;
+};
+
+class ShootoutProposal : public State {
+public:
+    ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool transitionToBracketReveal();
+    bool transitionToIdle();
+
+private:
+    ShootoutManager* shootout_;
+    ChainDuelManager* chainDuelManager_;
+    bool shouldGoToReveal_ = false;
+    bool shouldGoToIdle_ = false;
+};
+
+class ShootoutBracketReveal : public State {
+public:
+    ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool transitionToDuelCountdown();
+    bool transitionToSpectator();
+    bool transitionToAborted();
+    bool transitionToIdle();
+
+private:
+    ShootoutManager* shootout_;
+    ChainDuelManager* chainDuelManager_;
+    bool shouldGoToDuelCountdown_ = false;
+    bool shouldGoToSpectator_ = false;
+    bool shouldGoToAborted_ = false;
+    bool shouldGoToIdle_ = false;
+};
+
+class ShootoutSpectator : public State {
+public:
+    explicit ShootoutSpectator(ShootoutManager* shootout);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool transitionToDuelCountdown();
+    bool transitionToFinalStandings();
+    bool transitionToAborted();
+
+private:
+    ShootoutManager* shootout_;
+    bool shouldGoToDuelCountdown_ = false;
+    bool shouldGoToFinalStandings_ = false;
+    bool shouldGoToAborted_ = false;
+    std::array<uint8_t, 6> lastDisplayedA_{};
+    std::array<uint8_t, 6> lastDisplayedB_{};
+};
+
+class ShootoutEliminated : public State {
+public:
+    explicit ShootoutEliminated(ShootoutManager* shootout);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool transitionToFinalStandings();
+    bool transitionToAborted();
+
+private:
+    ShootoutManager* shootout_;
+    bool shouldGoToFinalStandings_ = false;
+    bool shouldGoToAborted_ = false;
+};
+
+class ShootoutFinalStandings : public State {
+public:
+    ShootoutFinalStandings(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+    bool isTerminalState() override;
+
+    bool transitionToSleep();
+
+private:
+    ShootoutManager* shootout_;
+    ChainDuelManager* chainDuelManager_;
+    bool shouldGoToSleep_ = false;
+};
+
+class ShootoutAborted : public State {
+public:
+    explicit ShootoutAborted(ShootoutManager* shootout);
+    void onStateMounted(Device *PDN) override;
+    void onStateLoop(Device *PDN) override;
+    void onStateDismounted(Device *PDN) override;
+
+    bool transitionToIdle();
+
+private:
+    ShootoutManager* shootout_;
+    SimpleTimer displayTimer_;
+    bool shouldGoToIdle_ = false;
+    static constexpr unsigned long ABORTED_DISPLAY_MS = 2000;
 };

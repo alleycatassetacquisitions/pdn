@@ -81,6 +81,13 @@ public:
         return this;
     }
 
+    int getTextWidth(const char* text) override {
+        if (text == nullptr) return 0;
+        return static_cast<int>(screen.getUTF8Width(text));
+    }
+
+    int getWidth() override { return 128; }
+
     void reset() {
         screen.clearBuffer();
         screen.clearDisplay();

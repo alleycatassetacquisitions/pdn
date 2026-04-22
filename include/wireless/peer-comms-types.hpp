@@ -16,6 +16,8 @@ enum class PktType : uint8_t
     kRoleAnnounce = 8,
     kRoleAnnounceAck = 9,
     kChainGameEventAck = 10,
+    kShootoutCommand = 11,
+    kShootoutCommandAck = 12,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 
@@ -49,4 +51,28 @@ struct RoleAnnounceAckPayload
 struct ChainGameEventAckPayload
 {
     uint8_t seqId;
+} __attribute__((packed));
+
+enum class ShootoutCmd : uint8_t
+{
+    CONFIRM = 0,
+    BRACKET = 1,
+    MATCH_START = 2,
+    MATCH_RESULT = 3,
+    TOURNAMENT_END = 4,
+    PEER_LOST = 5,
+    ABORT = 6,
+};
+
+struct ShootoutPacket
+{
+    ShootoutCmd cmd;
+    uint8_t     seqId;   // nonzero for reliable commands; 0 = no ack expected
+    uint8_t     payload[];
+} __attribute__((packed));
+
+struct ShootoutAckPayload
+{
+    ShootoutCmd cmd;
+    uint8_t     seqId;
 } __attribute__((packed));

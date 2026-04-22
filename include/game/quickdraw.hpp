@@ -11,6 +11,8 @@
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/chain-duel-manager.hpp"
+#include "game/shootout-manager.hpp"
+#include <memory>
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -31,6 +33,8 @@ public:
     void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onStateLoop(Device *PDN) override;
 
 private:
@@ -48,6 +52,7 @@ private:
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
+    std::unique_ptr<ShootoutManager> shootoutManager_;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing

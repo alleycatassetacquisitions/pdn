@@ -679,7 +679,7 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 100, 200);
     suite->processPacket(packet);
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     
     // Allow display methods to be called (don't require specific calls)
     ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
@@ -710,7 +710,7 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 300, 150);
     suite->processPacket(packet);
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     
     // Allow display methods to be called (don't require specific calls)
     ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))

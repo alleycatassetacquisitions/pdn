@@ -20,6 +20,8 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/drivers/storage-interface.hpp"
 
+class ShootoutManager;
+
 // Preferences namespace and keys
 
 struct LastMatchDisplay {
@@ -64,6 +66,12 @@ public:
      * @return Pointer to the initialized match, nullptr if invalid
      */
     void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
+
+    // Shootout mode: prime a match without the SEND_MATCH_ID handshake.
+    // Both duelists call this independently on MATCH_START with the same
+    // derived match ID. Assumes hunter-vs-bounty pairing (same-role
+    // Shootout matches are out of MVP scope).
+    void initializeShootoutMatch(const char* matchId, uint8_t* opponentMac);
 
     bool isMatchReady();
 
@@ -121,6 +129,11 @@ public:
     // SEND_MATCH_ID is refused — no match initiation from an unknown MAC.
     void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
 
+    // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
+    // so same-role duels in the bracket proceed. Injected by Quickdraw after
+    // both managers are built.
+    void setShootoutManager(ShootoutManager* shootoutManager);
+
     void listenForMatchEvents(const QuickdrawCommand& command);
 
     void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
@@ -144,6 +157,7 @@ private:
 
     std::function<unsigned long()> boostProvider_;
     RemoteDeviceCoordinator* rdc_ = nullptr;
+    ShootoutManager* shootoutManager_ = nullptr;
 
     ActiveDuelState activeDuelState;
     LastMatchDisplay lastMatchDisplay_;
@@ -184,6 +198,10 @@ private:
     void sendMatchAck();
     void sendMatchId();
     void sendMatchRoleMismatch(const QuickdrawCommand& incoming);
+
+    // Emplace match with given id/opponent. Common path for both the
+    // cable-handshake init and the Shootout MATCH_START init.
+    void primeMatch(const char* matchId, const uint8_t* opponentMac);
 };
 
 

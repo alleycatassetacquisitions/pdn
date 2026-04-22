@@ -6,10 +6,11 @@
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager) : State(QuickdrawStateId::DUEL_RESULT) {
+DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager) : State(QuickdrawStateId::DUEL_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->shootoutManager = shootoutManager;
 }
 
 DuelResult::~DuelResult() {
@@ -17,6 +18,7 @@ DuelResult::~DuelResult() {
     this->player = nullptr;
     this->matchManager = nullptr;
     this->quickdrawWirelessManager = nullptr;
+    this->shootoutManager = nullptr;
 }
 
 void DuelResult::onStateMounted(Device *PDN) {
@@ -57,10 +59,13 @@ void DuelResult::onStateDismounted(Device *PDN) {
 
     wonBattle = false;
     captured = false;
+    // State instance is reused across matches — must reset per-match latch.
+    reportedShootoutWin = false;
     PDN->getLightManager()->stopAnimation();
 }
 
 bool DuelResult::transitionToWin() {
+    if (shootoutManager && shootoutManager->active()) return false;
     if (wonBattle) {
         LOG_I(DUEL_RESULT_TAG, "Transitioning to win state");
     }
@@ -68,8 +73,24 @@ bool DuelResult::transitionToWin() {
 }
 
 bool DuelResult::transitionToLose() {
+    if (shootoutManager && shootoutManager->active()) return false;
     if (captured) {
         LOG_I(DUEL_RESULT_TAG, "Transitioning to lose state");
     }
     return captured;
+}
+
+bool DuelResult::transitionToShootoutSpectator() {
+    if (!shootoutManager || !shootoutManager->active()) return false;
+    if (!wonBattle) return false;
+    if (!reportedShootoutWin) {
+        shootoutManager->reportLocalWin();
+        reportedShootoutWin = true;
+    }
+    return true;
+}
+
+bool DuelResult::transitionToShootoutEliminated() {
+    if (!shootoutManager || !shootoutManager->active()) return false;
+    return !wonBattle;
 }

@@ -76,8 +76,8 @@ inline void packetTypeEnumHasCorrectValues() {
 }
 
 inline void numPacketTypesIsSequentialAfterAck() {
-    // kNumPacketTypes should be 11 (one after kChainGameEventAck which is 10)
-    EXPECT_EQ(static_cast<uint8_t>(PktType::kNumPacketTypes), 11);
+    // kNumPacketTypes should be 13 (one after kShootoutCommandAck which is 12)
+    EXPECT_EQ(static_cast<uint8_t>(PktType::kNumPacketTypes), 13);
 }
 
 inline void roleAnnouncePayloadFieldsAligned() {
@@ -96,4 +96,27 @@ inline void roleAnnouncePayloadFieldsAligned() {
 inline void roleAnnounceAckPayloadFieldsAligned() {
     // Offset of seqId field should be 0
     EXPECT_EQ(offsetof(RoleAnnounceAckPayload, seqId), 0);
+}
+
+inline void shootoutAckPayloadHasCorrectSize() {
+    // cmd (1) + seqId (1) = 2 bytes
+    EXPECT_EQ(sizeof(ShootoutAckPayload), 2);
+    EXPECT_EQ(offsetof(ShootoutAckPayload, cmd), 0);
+    EXPECT_EQ(offsetof(ShootoutAckPayload, seqId), 1);
+}
+
+inline void shootoutCmdEnumHasExpectedValues() {
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::CONFIRM), 0);
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::BRACKET), 1);
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::MATCH_START), 2);
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::MATCH_RESULT), 3);
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::TOURNAMENT_END), 4);
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::PEER_LOST), 5);
+    EXPECT_EQ(static_cast<uint8_t>(ShootoutCmd::ABORT), 6);
+}
+
+inline void packetTypeEnumIncludesShootoutSlots() {
+    EXPECT_EQ(static_cast<uint8_t>(PktType::kShootoutCommand), 11);
+    EXPECT_EQ(static_cast<uint8_t>(PktType::kShootoutCommandAck), 12);
+    EXPECT_EQ(static_cast<uint8_t>(PktType::kNumPacketTypes), 13);
 }

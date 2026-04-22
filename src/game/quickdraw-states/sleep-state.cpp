@@ -26,6 +26,10 @@ void Sleep::onStateMounted(Device *PDN) {
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
         render();
 
+    // Reset every mount — the flag persisted across dismount, so re-entering
+    // Sleep after a prior cycle would fire the transition on the first loop
+    // tick before the new dormantTimer ever ran.
+    transitionToAwakenSequenceState = false;
     dormantTimer.setTimer(SLEEP_DURATION);
 }
 
