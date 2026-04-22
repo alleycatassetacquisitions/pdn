@@ -50,6 +50,10 @@ public:
 
     void setUserID(char *newId);
 
+    /// Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
+    /// the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
+    void applyRngSeedFromUserId();
+
     std::string getUserID() const;
 
     void clearUserID();

@@ -1,6 +1,7 @@
 #include "game/player.hpp"
 #include <memory>
 #include <cstring>
+#include <cstdlib>
 #include <ArduinoJson.h>
 #include "wireless/mac-functions.hpp"
 
@@ -158,6 +159,13 @@ void Player::setUserID(char* newId)
 {
     id = std::string(newId);
     symbol.updateFromUserIdString(id);
+}
+
+void Player::applyRngSeedFromUserId()
+{
+    const unsigned int seed = static_cast<unsigned int>(std::strtoul(id.c_str(), nullptr, 10));
+    std::srand(seed);
+    symbol.setRandomSymbol();
 }
 
 std::string Player::getUserID() const

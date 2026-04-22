@@ -153,7 +153,6 @@ void setup() {
     player = new Player();
     player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
-    
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
     quickdrawWirelessManager = new QuickdrawWirelessManager();
