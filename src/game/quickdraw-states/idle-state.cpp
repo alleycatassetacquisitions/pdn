@@ -88,6 +88,11 @@ void Idle::onStateLoop(Device *PDN) {
         transitionToSymbolState = true;
     }
 
+    if (!matchInitialized && (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
+    || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
+        transitionToSymbolState = true;
+    }
+
     if(matchInitializationTimer.expired()) {
         matchInitialized = false;
         matchManager->clearCurrentMatch();
