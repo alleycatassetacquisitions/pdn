@@ -62,7 +62,7 @@ void SymbolState::onStateMounted(Device *PDN) {
 
     cfg.type = AnimationType::IDLE;
     cfg.loop = true;
-    cfg.speed = 60000;
+    cfg.speed = 255;  // AnimationConfig::speed is uint8_t
     cfg.initialState = allWhite;
     
 }
