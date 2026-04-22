@@ -143,6 +143,22 @@ void SymbolState::onStateDismounted(Device *PDN) {
     PDN->getLightManager()->clear();
 }
 
+bool SymbolState::isPrimaryRequired() {
+    return true;
+}
+
+bool SymbolState::isAuxRequired() {
+    return true;
+}
+
+bool SymbolState::transitionToIdle() {
+    return transitionToIdleState;
+}
+
+bool SymbolState::transitionToSymbolMatched() {
+    return transitionToSymbolMatchedState;
+}
+
 void SymbolState::renderSymbolScreen(Device *PDN) {
     
     
@@ -220,20 +236,4 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
     } else if (command.command == SMCommand::SYMBOL_MATCH_SUCCESS) {
         transitionToSymbolMatchedState = true;
     }
-}
-
-bool SymbolState::transitionToIdle() {
-    return transitionToIdleState;
-}
-
-bool SymbolState::transitionToSymbolMatched() {
-    return transitionToSymbolMatchedState;
-}
-
-bool SymbolState::isPrimaryRequired() {
-    return true;
-}
-
-bool SymbolState::isAuxRequired() {
-    return true;
 }

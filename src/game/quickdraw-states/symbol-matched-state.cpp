@@ -97,6 +97,14 @@ void SymbolMatched::onStateDismounted(Device *PDN) {
     symbolWirelessManager->clearCallback();
 }
 
+bool SymbolMatched::isPrimaryRequired() {
+    return true;
+}
+
+bool SymbolMatched::isAuxRequired() {
+    return true;
+}
+
 bool SymbolMatched::transitionToSymbol() {
     return transitionToSymbolState;
 }
@@ -123,12 +131,4 @@ void SymbolMatched::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
     if (command.command == SMCommand::SYMBOLS_REFRESHED) {
         transitionToSymbolState = true;
     }
-}
-
-bool SymbolMatched::isPrimaryRequired() {
-    return true;
-}
-
-bool SymbolMatched::isAuxRequired() {
-    return true;
 }

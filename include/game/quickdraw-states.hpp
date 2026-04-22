@@ -387,37 +387,31 @@ private:
     MatchManager* matchManager;
     SymbolWirelessManager* symbolWirelessManager;
     Device* mountedPdn = nullptr;
-
     uint8_t* fdnMac = nullptr;
     /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
     SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
+    SymbolId fdnSymbol;
 
     SimpleTimer renderTimer;
     const int RENDER_TIMEOUT = 500;
-
     SimpleTimer bufferTimer;
     const int BUFFER_TIMEOUT = 500;
     SimpleTimer hapticPulseTimer;
     const int HAPTIC_PULSE_DURATION = 100;
-    
+
+    bool toggleSymbol = true;
+    bool symbolSent = false;
+    bool hapticPulseActive = false;
+    bool matchReady = false;
+    bool transitionToIdleState = false;
+    bool transitionToSymbolMatchedState = false;
+
+    AnimationConfig cfg{};
+
     void renderSymbolScreen(Device *PDN);
     void advanceSymbolRender(Device* PDN);
     void sendSymbolToFDN();
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
-
-    bool toggleSymbol = true;
-
-    SymbolId fdnSymbol;
-
-    bool transitionToIdleState = false;
-    bool transitionToSymbolMatchedState = false;
-
-    bool symbolSent = false;
-    bool hapticPulseActive = false;
-
-    bool matchReady = false;
-
-    AnimationConfig cfg{};
 };
 
 class SymbolMatched : public ConnectState {
@@ -439,8 +433,6 @@ private:
     Player* player;
     SymbolWirelessManager* symbolWirelessManager;
 
-    void renderSymbolScreen(Device *PDN);
-
     bool transitionToSymbolState = false;
     bool transitionToIdleState = false;
     bool toggleBlink = true;
@@ -451,7 +443,8 @@ private:
     SimpleTimer successTimer;
     const int SUCCESS_TIMEOUT = 3 * 1000;
 
-    void onSymbolMatchCommandReceived(SymbolMatchCommand command);
-
     AnimationConfig cfg{};
+
+    void renderSymbolScreen(Device *PDN);
+    void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };
