@@ -152,8 +152,7 @@ public:
             bytesLeft -= thisBuffer;
         }
 
-        //Before we start filling the send queue, see if we'll need to start
-        //sending afterwards
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
         bool willNeedToStartSend = m_sendQueue.empty();
 
         //Build up each packet
@@ -185,8 +184,8 @@ public:
 
             bytesLeft -= thisBuffer;
         }
+        xSemaphoreGive(sendMutex_);
 
-        //Check if this is the first packet in the queue
         if(willNeedToStartSend)
         {
             SendFrontPkt();
@@ -266,7 +265,8 @@ private:
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
         m_maxRetries(5),
         m_curRetries(0),
-        recvMutex_(xSemaphoreCreateMutex())
+        recvMutex_(xSemaphoreCreateMutex()),
+        sendMutex_(xSemaphoreCreateMutex())
     {
 
         wifi_promiscuous_filter_t filter = {
@@ -478,17 +478,20 @@ private:
             }
         }
 
-        if(!manager->m_sendQueue.empty())
-        {
-            //TODO: Catch error and do reporting and push to next pkt
-            manager->SendFrontPkt();
-        }
+        //TODO: Catch error and do reporting and push to next pkt
+        manager->SendFrontPkt();
     }
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        if(m_sendQueue.empty()) {
+            xSemaphoreGive(sendMutex_);
+            return 0;
+        }
         auto buffer = m_sendQueue.front();
-        
+        xSemaphoreGive(sendMutex_);
+
         //If this is the first packet in cluster, make sure the peer is registered
         auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
         if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
@@ -506,8 +509,7 @@ private:
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
                     //TODO: Pop all packets in the current cluster?
                     MoveToNextSendPkt();
-                    if(!m_sendQueue.empty())
-                        SendFrontPkt();
+                    SendFrontPkt();
                     //TODO: Return correct error code
                     return -1;
                 }
@@ -519,8 +521,10 @@ private:
 
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
         free(m_sendQueue.front().ptr);
         m_sendQueue.pop();
+        xSemaphoreGive(sendMutex_);
         m_curRetries = 0;
     }
 
@@ -558,6 +562,8 @@ private:
 
     SemaphoreHandle_t recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
+
+    SemaphoreHandle_t sendMutex_;
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
