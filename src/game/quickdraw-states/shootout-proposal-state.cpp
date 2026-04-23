@@ -27,8 +27,14 @@ void ShootoutProposal::onStateLoop(Device *PDN) {
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
     if (p == ShootoutManager::Phase::IDLE || p == ShootoutManager::Phase::ABORTED) shouldGoToIdle_ = true;
     if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
-        shootout_->resetToIdle();
-        shouldGoToIdle_ = true;
+        if (!loopBreakDebounceTimer_.isRunning()) {
+            loopBreakDebounceTimer_.setTimer(kLoopBreakDebounceMs);
+        } else if (loopBreakDebounceTimer_.expired()) {
+            shootout_->resetToIdle();
+            shouldGoToIdle_ = true;
+        }
+    } else {
+        loopBreakDebounceTimer_.invalidate();
     }
 }
 
@@ -37,6 +43,7 @@ void ShootoutProposal::onStateDismounted(Device *PDN) {
     PDN->getSecondaryButton()->removeButtonCallbacks();
     shouldGoToReveal_ = false;
     shouldGoToIdle_ = false;
+    loopBreakDebounceTimer_.invalidate();
 }
 
 bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }

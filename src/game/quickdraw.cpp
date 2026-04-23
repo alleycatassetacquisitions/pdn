@@ -87,12 +87,26 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     remoteDeviceCoordinator->setChainChangeCallback([this]() {
         onChainStateChanged();
     });
+
+    // Direct-peer drop: the disconnected device must announce its loss;
+    // remote peers won't broadcast PEER_LOST on its behalf because they only
+    // see the chain shrink, not who pulled the cable.
+    remoteDeviceCoordinator->setPeerLostCallback([this](const uint8_t* lostMac) {
+        if (shootoutManager_ && shootoutManager_->active()) {
+            shootoutManager_->onLocalRDCDisconnect(lostMac);
+        }
+    });
 }
 
 void Quickdraw::onChainStateChanged() {
     if (chainDuelManager) {
         chainDuelManager->onChainStateChanged();
     }
+    // Shootout learns about peer drops via setPeerLostCallback (direct cable
+    // drops on this device's jacks) plus gossiped PEER_LOST packets from peers
+    // that experienced a direct drop. Wiring the chain-state diff here too
+    // would misfire on transient daisy-chain announcement updates that don't
+    // represent real drops.
 }
 
 void Quickdraw::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
@@ -170,6 +184,11 @@ void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data
 
 void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (!shootoutManager_ || dataLen < 2) return;
+    // Reject out-of-range cmd bytes before the cast. Without this, a corrupted
+    // or truncated packet yields an undefined enum value that the switch
+    // silently no-ops on — but the cast is technically UB for values outside
+    // the enum's declared range.
+    if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
     const uint8_t* payload = data + 2;
@@ -185,6 +204,9 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
         case ShootoutCmd::BRACKET: {
             if (payloadLen < 1) break;
             uint8_t count = payload[0];
+            // Clamp against a sane upper bound. A bit-flipped 255 would
+            // allocate 1.5KB and copy attacker-controlled bytes into a vector.
+            if (count > ShootoutManager::kMaxBracketSize) break;
             if (payloadLen < 1 + 6 * static_cast<size_t>(count)) break;
             std::vector<std::array<uint8_t, 6>> bracket;
             bracket.reserve(count);
@@ -218,6 +240,7 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
 
 void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (!shootoutManager_ || dataLen < 2) return;
+    if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
     switch (cmd) {

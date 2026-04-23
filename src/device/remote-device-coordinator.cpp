@@ -146,6 +146,9 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
                 // Forward: tell other side that nothing is reachable through changed_port
                 emitAnnouncementVia(otherPort, {});
             }
+            if (peerLostCallback_) {
+                peerLostCallback_(previousDirectPeerMac_[portIndex(port)].data());
+            }
             notifyDisconnect();
         }
 
@@ -171,6 +174,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         }
 
         previousDirectPeerPresent_[portIndex(port)] = nowPresent;
+        if (nowPresent) previousDirectPeerMac_[portIndex(port)] = directPeer->macAddr;
     }
 
     // Retransmit any unacked pending announcements past the ack timeout.
@@ -323,6 +327,10 @@ std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::peersReachableVia(S
 
 void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
     chainChangeCallback_ = callback;
+}
+
+void RemoteDeviceCoordinator::setPeerLostCallback(std::function<void(const uint8_t*)> callback) {
+    peerLostCallback_ = callback;
 }
 
 void RemoteDeviceCoordinator::setAnnouncementEmitCallback(AnnouncementEmitCallback callback) {

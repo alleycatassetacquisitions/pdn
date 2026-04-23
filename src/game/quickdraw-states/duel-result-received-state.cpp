@@ -62,7 +62,7 @@ bool DuelReceivedResult::transitionToDuelResult() {
 }
 
 bool DuelReceivedResult::disconnectedBackToIdle() {
-    return !isConnected();
+    return isPersistentlyDisconnected();
 }
 
 bool DuelReceivedResult::isPrimaryRequired() {

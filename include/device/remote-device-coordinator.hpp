@@ -70,6 +70,13 @@ public:
 
     void setChainChangeCallback(std::function<void()> callback);
 
+    // Fired with the lost MAC when a DIRECT peer disconnects (cable pulled on
+    // this device's jack). Chain-change notifications don't carry identity, so
+    // Shootout needs this targeted signal to broadcast PEER_LOST for the right
+    // MAC. Not fired for daisy-chained peer drops — those reach us via remote
+    // announcements rather than local disconnect events.
+    void setPeerLostCallback(std::function<void(const uint8_t*)> callback);
+
     void processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     using AnnouncementEmitCallback = std::function<void(const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers)>;
@@ -97,6 +104,7 @@ private:
     RetryStats retryStats_;
     std::array<std::vector<std::array<uint8_t, 6>>, 2> daisyChainedByPort_;
     std::array<bool, 2> previousDirectPeerPresent_ = {false, false};
+    std::array<std::array<uint8_t, 6>, 2> previousDirectPeerMac_ = {{{}, {}}};
     uint8_t nextAnnouncementId_ = 1;
 
     struct PendingAnnouncement {
@@ -136,6 +144,7 @@ private:
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager_ = nullptr;
     std::function<void()> chainChangeCallback_;
+    std::function<void(const uint8_t*)> peerLostCallback_;
     AnnouncementEmitCallback announcementEmitCallback_;
 
     HandshakeWirelessManager handshakeWirelessManager;

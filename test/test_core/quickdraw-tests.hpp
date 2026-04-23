@@ -1477,6 +1477,83 @@ inline void pushedClearsMatchOnDisconnect(StateCleanupTests* suite) {
 }
 
 // Test: DuelReceivedResult clears match when disconnected on dismount
+// Connection blip during a duel countdown must not abort the match: a single
+// !isConnected() tick triggered by a cable nudge previously sent the duelist
+// straight to Idle. In a shootout match this orphans the duelist (Idle's
+// auto-trigger to ShootoutProposal is gated on !shootout->active(), which is
+// false mid-match), and the spectators wait forever for a MATCH_RESULT that
+// will never arrive.
+inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    DuelCountdown countdown(suite->player, suite->matchManager,
+                            &suite->device.fakeRemoteDeviceCoordinator,
+                            suite->chainDuelManager);
+
+    // Single-tick blip: should be absorbed by the debounce.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(countdown.disconnectedBackToIdle());
+
+    // Recovery within the window clears the timer.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(countdown.disconnectedBackToIdle());
+
+    // Persistent loss past the debounce window: now the abort fires.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(countdown.disconnectedBackToIdle());  // start debounce
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(countdown.disconnectedBackToIdle());
+}
+
+// Same debounce contract on DuelPushed (between BATTLE press and result
+// arrival). A blip here threw away the duel before the grace period could
+// resolve it.
+inline void duelPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    DuelPushed pushed(suite->player, suite->matchManager,
+                      &suite->device.fakeRemoteDeviceCoordinator);
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(pushed.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(pushed.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(pushed.disconnectedBackToIdle());
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(pushed.disconnectedBackToIdle());
+}
+
+// Same debounce contract on DuelReceivedResult.
+inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* suite) {
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    DuelReceivedResult received(suite->player, suite->matchManager,
+                                &suite->device.fakeRemoteDeviceCoordinator);
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(received.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(received.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(received.disconnectedBackToIdle());
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(received.disconnectedBackToIdle());
+}
+
 inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);

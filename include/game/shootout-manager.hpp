@@ -106,6 +106,10 @@ public:
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
     static constexpr unsigned long kMatchWatchdogMs = 10000;
+    // Absolute upper bound on bracket size. RDC peer-table capacity and
+    // kMaxChainPeersPerPort=18 cap real hardware tournaments well below this;
+    // value is a packet-validation clamp to reject malformed BRACKET packets.
+    static constexpr uint8_t kMaxBracketSize = 32;
 
 private:
     struct BracketPending {

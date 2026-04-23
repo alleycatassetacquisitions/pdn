@@ -1084,6 +1084,18 @@ TEST_F(StateCleanupTests, receivedResultClearsMatchOnDisconnect) {
     receivedResultClearsMatchOnDisconnect(this);
 }
 
+TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
+    countdownDebouncesTransientDisconnect(this);
+}
+
+TEST_F(StateCleanupTests, duelPushedDebouncesTransientDisconnect) {
+    duelPushedDebouncesTransientDisconnect(this);
+}
+
+TEST_F(StateCleanupTests, duelReceivedResultDebouncesTransientDisconnect) {
+    duelReceivedResultDebouncesTransientDisconnect(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================
@@ -1312,6 +1324,10 @@ TEST_F(RDCTests, directPeerDropEmitsAnnouncement) {
     rdcDirectPeerDropEmitsAnnouncement(this);
 }
 
+TEST_F(RDCTests, directPeerDropFiresPeerLostCallbackWithMac) {
+    rdcDirectPeerDropFiresPeerLostCallbackWithMac(this);
+}
+
 TEST_F(RDCTests, chainAnnouncementPacketHandlerUpdatesDaisyChain) {
     rdcChainAnnouncementPacketHandlerUpdatesDaisyChain(this);
 }
@@ -1497,6 +1513,9 @@ TEST_F(ShootoutManagerTests, matchResultRetriesUntilAcked) { matchResultRetriesU
 TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) { duplicateMatchResultDoesNotDoubleAdvance(this); }
 TEST_F(ShootoutManagerTests, confirmRecordsPeerName) { confirmRecordsPeerName(this); }
 TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) { isHunterRestoredAfterTournament(this); }
+TEST_F(ShootoutManagerTests, localRDCDisconnectIsIdempotent) { localRDCDisconnectIsIdempotent(this); }
+TEST_F(ShootoutManagerTests, shootoutProposalDebouncesTransientLoopBreak) { shootoutProposalDebouncesTransientLoopBreak(this); }
+TEST_F(ShootoutManagerTests, shootoutBracketRevealDebouncesTransientLoopBreak) { shootoutBracketRevealDebouncesTransientLoopBreak(this); }
 
 // ============================================
 // MAIN

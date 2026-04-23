@@ -28,8 +28,14 @@ void ShootoutBracketReveal::onStateLoop(Device *PDN) {
     }
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
     if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
-        shootout_->resetToIdle();
-        shouldGoToIdle_ = true;
+        if (!loopBreakDebounceTimer_.isRunning()) {
+            loopBreakDebounceTimer_.setTimer(kLoopBreakDebounceMs);
+        } else if (loopBreakDebounceTimer_.expired()) {
+            shootout_->resetToIdle();
+            shouldGoToIdle_ = true;
+        }
+    } else {
+        loopBreakDebounceTimer_.invalidate();
     }
 }
 
@@ -38,6 +44,7 @@ void ShootoutBracketReveal::onStateDismounted(Device *PDN) {
     shouldGoToSpectator_ = false;
     shouldGoToAborted_ = false;
     shouldGoToIdle_ = false;
+    loopBreakDebounceTimer_.invalidate();
 }
 
 bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }

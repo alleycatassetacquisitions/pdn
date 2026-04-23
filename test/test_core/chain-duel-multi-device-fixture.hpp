@@ -138,6 +138,15 @@ public:
             node->rdc->setChainChangeCallback([cdmRaw]() {
                 cdmRaw->onChainStateChanged();
             });
+            // NB: production wires setPeerLostCallback to forward direct-peer
+            // drops into ShootoutManager::onLocalRDCDisconnect (see Quickdraw
+            // ctor). Not mirrored here because the fixture lacks a serial
+            // heartbeat simulator: large advanceClock() calls cause the
+            // HandshakeConnectedState heartbeat monitor (150ms) to expire, the
+            // peer to be removed, and peerLostCallback to fire spuriously.
+            // ShootoutManagerTests.localRDCDisconnectIsIdempotent and
+            // RDCTests.directPeerDropFiresPeerLostCallbackWithMac cover the
+            // wired path at the appropriate level.
 
             nodes.push_back(std::move(node));
         }

@@ -196,6 +196,16 @@ void ShootoutManager::confirmLocal() {
 
 void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name) {
     if (phase_ != Phase::PROPOSAL) return;
+    // Reject CONFIRMs from devices outside the current loop. Without this gate
+    // a stray CONFIRM permanently appends to names_ (O(n) insert, never GC'd
+    // except via resetToIdle) and inflates confirmedSet_ / the coord-election
+    // set with non-participants.
+    auto members = getLoopMembers();
+    bool inLoop = false;
+    for (const auto& m : members) {
+        if (memcmp(m.data(), fromMac, 6) == 0) { inLoop = true; break; }
+    }
+    if (!inLoop) return;
     recordName(fromMac, name);
     bool added = !hasConfirmed(fromMac);
     if (added) {
@@ -358,16 +368,26 @@ bool ShootoutManager::retryBracketForPeer(BracketPending& p) {
 void ShootoutManager::abortTournament() {
     if (phase_ == Phase::ABORTED) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase_));
-    phase_ = Phase::ABORTED;
-    bracketPendingAcks_.clear();
 
-    // Best-effort: peers that miss ABORT will observe RDC disconnect or their
-    // own retry exhaustion and reach ABORTED independently.
+    // Broadcast FIRST — resetToIdle clears bracket_/confirmedSet_ which we
+    // need as the target list. Best-effort; peers that miss ABORT observe RDC
+    // disconnect or retry exhaustion independently.
     uint8_t packet[2];
     packet[0] = static_cast<uint8_t>(ShootoutCmd::ABORT);
     packet[1] = 0;
     const auto& targets = bracket_.empty() ? confirmedSet_ : bracket_;
     sendToPeers(targets, packet, sizeof(packet));
+
+    // Full cleanup, then re-establish ABORTED so ShootoutAborted can display.
+    // Previously only cleared bracketPendingAcks_; confirmedSet_, eliminated_,
+    // forfeited_, names_, lastObserved*SeqId_, and originalIsHunter_ survived
+    // until ShootoutAborted's state-dismount called resetToIdle. That worked
+    // only because the state machine always reached dismount — any future
+    // path to ABORTED that skipped the state would leak state across
+    // tournaments and (worst case) leave player_->isHunter() permanently
+    // flipped.
+    resetToIdle();
+    phase_ = Phase::ABORTED;
 }
 
 void ShootoutManager::sendLocalConfirm() {
@@ -526,6 +546,12 @@ bool ShootoutManager::isEliminatedOrForfeited(const uint8_t* mac) const {
 void ShootoutManager::onLocalRDCDisconnect(const uint8_t* lostMac) {
     LOG_W(TAG, "onLocalRDCDisconnect %s phase=%d",
           MacToString(lostMac), static_cast<int>(phase_));
+    // Idempotency guard: RDC may fire peerLostCallback AND chainChangeCallback
+    // for the same drop. Skip the broadcast if we've already processed the
+    // peer's loss (eliminated/forfeited from a prior call, or tournament has
+    // since aborted/ended).
+    if (phase_ == Phase::IDLE || phase_ == Phase::ABORTED || phase_ == Phase::ENDED) return;
+    if (isEliminatedOrForfeited(lostMac)) return;
     uint8_t packet[8];
     packet[0] = static_cast<uint8_t>(ShootoutCmd::PEER_LOST);
     packet[1] = 0;
@@ -794,9 +820,11 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seq
 
 void ShootoutManager::onAbortReceived() {
     if (phase_ == Phase::ABORTED || phase_ == Phase::IDLE) return;
+    // Symmetric with abortTournament: full cleanup, then re-establish ABORTED
+    // so ShootoutAborted can display. Guards against future paths that reach
+    // ABORTED without going through the state-dismount restore.
+    resetToIdle();
     phase_ = Phase::ABORTED;
-    bracketPendingAcks_.clear();
-    matchStartPendingAcks_.clear();
 }
 
 std::vector<std::array<uint8_t, 6>> ShootoutManager::buildLoopMemberSet() const {

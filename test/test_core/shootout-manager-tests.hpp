@@ -7,7 +7,21 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/shootout-manager.hpp"
 #include "game/chain-duel-manager.hpp"
+#include "game/quickdraw-states.hpp"
 #include "game/player.hpp"
+
+// Stand-in CDM that ignores RDC entirely; isLoop() returns whatever the test
+// last poked. Used by ShootoutProposal/BracketReveal debounce tests so they
+// don't have to stand up the full handshake stack to flip loop state.
+class FakeChainDuelManager : public ChainDuelManager {
+public:
+    FakeChainDuelManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)
+        : ChainDuelManager(p, wm, rdc) {}
+    bool isLoop() const override { return isLoop_; }
+    void setIsLoop(bool v) { isLoop_ = v; }
+private:
+    bool isLoop_ = true;
+};
 
 class ShootoutManagerTests : public testing::Test {
 public:
@@ -721,4 +735,143 @@ inline void isHunterRestoredAfterTournament(ShootoutManagerTests* suite) {
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
     suite->shootout->resetToIdle();
     EXPECT_EQ(suite->player.isHunter(), originalIsHunter);
+}
+
+// onLocalRDCDisconnect is idempotent: when the same MAC is reported lost twice
+// (e.g. RDC fires peerLostCallback AND chainChangeCallback for the same drop),
+// the second call must not broadcast a duplicate PEER_LOST.
+inline void localRDCDisconnectIsIdempotent(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};  // coord
+    std::array<uint8_t, 6> me    = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> a     = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> b     = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> c     = {0x04, 0, 0, 0, 0, 0};  // will drop
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+
+    suite->shootout->setLoopMembersForTest({me, a, b, c});
+    suite->shootout->startProposal();
+    for (auto& m : std::vector<std::array<uint8_t,6>>{me, a, b, c}) {
+        suite->shootout->onConfirmReceived(m.data());
+    }
+    uint8_t bSeq = suite->shootout->getLastBracketSeqId();
+    for (const auto& m : suite->shootout->getBracket()) {
+        if (memcmp(m.data(), me.data(), 6) != 0) {
+            suite->shootout->onBracketAckReceived(m.data(), bSeq);
+        }
+    }
+    suite->fakeClock->advance(6000);
+    suite->shootout->sync();  // start match 0
+
+    // Pick a non-duelist for the drop.
+    auto pair = suite->shootout->getCurrentMatchPair();
+    std::array<uint8_t, 6> dropping{};
+    bool found = false;
+    for (const auto& m : suite->shootout->getBracket()) {
+        if (memcmp(m.data(), pair.first.data(), 6) != 0 &&
+            memcmp(m.data(), pair.second.data(), 6) != 0 &&
+            memcmp(m.data(), me.data(), 6) != 0) {
+            dropping = m;
+            found = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found);
+
+    std::atomic<int> sendCount{0};
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, testing::_, testing::_, testing::_))
+        .Times(testing::AnyNumber())
+        .WillRepeatedly([&sendCount](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            sendCount++; return 1;
+        });
+
+    suite->shootout->onLocalRDCDisconnect(dropping.data());
+    int afterFirst = sendCount.load();
+    EXPECT_TRUE(suite->shootout->isForfeited(dropping.data()));
+    EXPECT_GT(afterFirst, 0);
+
+    suite->shootout->onLocalRDCDisconnect(dropping.data());
+    EXPECT_EQ(sendCount.load(), afterFirst) << "duplicate disconnect should not re-broadcast";
+}
+
+// ShootoutProposal must NOT exit to Idle on a single-tick !isLoop() blip —
+// cable nudges flicker isLoop() for one loop iteration, and the original code
+// wiped tournament state on every tick that read false. Debounce requires the
+// loss to persist for kLoopBreakDebounceMs before treating it as a real break.
+inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    FakeChainDuelManager fakeCdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    fakeCdm.setIsLoop(true);
+    suite->shootout->setLoopMembersForTest({{0x01,0,0,0,0,0}, {0x02,0,0,0,0,0}});
+    suite->shootout->startProposal();
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+
+    ShootoutProposal state(suite->shootout.get(), &fakeCdm);
+
+    // Single-tick blip: phase must remain PROPOSAL.
+    fakeCdm.setIsLoop(false);
+    state.onStateLoop(nullptr);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+    EXPECT_FALSE(state.transitionToIdle());
+
+    // Loop returns within debounce window — debounce cleared, phase intact.
+    fakeCdm.setIsLoop(true);
+    state.onStateLoop(nullptr);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+    EXPECT_FALSE(state.transitionToIdle());
+
+    // Persistent loss past the debounce window — now reset to IDLE fires.
+    fakeCdm.setIsLoop(false);
+    state.onStateLoop(nullptr);  // start debounce
+    suite->fakeClock->advance(2000);  // well past any reasonable debounce window
+    state.onStateLoop(nullptr);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
+    EXPECT_TRUE(state.transitionToIdle());
+}
+
+// Same debounce contract on ShootoutBracketReveal (tournament state is more
+// expensive to wipe here — bracket and pendingAcks vanish too).
+inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    FakeChainDuelManager fakeCdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    fakeCdm.setIsLoop(true);
+    std::vector<std::array<uint8_t, 6>> members = {
+        {0x01,0,0,0,0,0}, {0x02,0,0,0,0,0}, {0x03,0,0,0,0,0}
+    };
+    suite->shootout->setLoopMembersForTest(members);
+    suite->shootout->startProposal();
+    for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+
+    ShootoutBracketReveal state(suite->shootout.get(), &fakeCdm);
+
+    fakeCdm.setIsLoop(false);
+    state.onStateLoop(nullptr);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_FALSE(state.transitionToIdle());
+
+    fakeCdm.setIsLoop(true);
+    state.onStateLoop(nullptr);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_FALSE(state.transitionToIdle());
+
+    fakeCdm.setIsLoop(false);
+    state.onStateLoop(nullptr);
+    suite->fakeClock->advance(2000);
+    state.onStateLoop(nullptr);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
+    EXPECT_TRUE(state.transitionToIdle());
 }

@@ -371,6 +371,13 @@ private:
     bool shouldRetryUpload = false;
 };
 
+// Debounce window before treating !isLoop() as a real loop break. Cable nudges
+// and chain-announcement gaps flicker isLoop() for one or two ticks; resetting
+// the tournament on a single false reading wipes state every time someone
+// jiggles a connector. 500ms covers the worst observed RDC re-evaluation pause
+// without making real disconnects feel sticky.
+static constexpr unsigned long kLoopBreakDebounceMs = 500;
+
 class ShootoutProposal : public State {
 public:
     ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
@@ -386,6 +393,7 @@ private:
     ChainDuelManager* chainDuelManager_;
     bool shouldGoToReveal_ = false;
     bool shouldGoToIdle_ = false;
+    SimpleTimer loopBreakDebounceTimer_;
 };
 
 class ShootoutBracketReveal : public State {
@@ -407,6 +415,7 @@ private:
     bool shouldGoToSpectator_ = false;
     bool shouldGoToAborted_ = false;
     bool shouldGoToIdle_ = false;
+    SimpleTimer loopBreakDebounceTimer_;
 };
 
 class ShootoutSpectator : public State {
