@@ -12,6 +12,9 @@
 
 class MatchManager;
 
+// Prefix for shootout-generated match IDs; flags ephemeral (non-persisted) matches.
+inline constexpr char kShootoutMatchIdPrefix[] = "SHT-";
+
 class ShootoutManager {
 public:
     enum class Phase : uint8_t {
@@ -88,7 +91,6 @@ public:
 
     void onLocalRDCDisconnect(const uint8_t* lostMac);
     void onPeerLostReceived(const uint8_t* lostMac);
-    bool isForfeited(const uint8_t* mac) const;
     uint8_t getLastMatchStartSeqId() const;
 
     void onTournamentEndReceived(const uint8_t* winner, uint8_t seqId);
@@ -176,6 +178,10 @@ private:
     static std::array<uint8_t, 6> lowestMacIn(
         const std::vector<std::array<uint8_t, 6>>& set);
 
+    // Stable post-bracket-formation. Used in place of lowestMacIn(bracket_)
+    // which would otherwise rescan the bracket on every ack path.
+    std::array<uint8_t, 6> coordinatorMac_{};
+
     std::array<uint8_t, 6> opponentMac_{};
     void sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac);
 
@@ -193,9 +199,9 @@ private:
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated_;
-    std::vector<std::array<uint8_t, 6>> forfeited_;
     bool isActiveDuelist(const uint8_t* mac) const;
-    bool isEliminatedOrForfeited(const uint8_t* mac) const;
+    bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
+    bool reportedLocalWin_ = false;
     uint8_t lastMatchResultSeqId_ = 0;
     // Per-command last-observed seqId for ESP-NOW link-layer dedup.
     uint8_t lastObservedBracketSeqId_ = 0;

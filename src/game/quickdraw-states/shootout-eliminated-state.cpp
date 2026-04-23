@@ -7,6 +7,7 @@ ShootoutEliminated::ShootoutEliminated(ShootoutManager* shootout)
 void ShootoutEliminated::onStateMounted(Device *PDN) {
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
+    PDN->getLightManager()->stopAnimation();
     auto* d = PDN->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText("OUT", 20);

@@ -7,6 +7,7 @@ ShootoutFinalStandings::ShootoutFinalStandings(ShootoutManager* shootout, ChainD
     : State(SHOOTOUT_FINAL_STANDINGS), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
 
 void ShootoutFinalStandings::onStateMounted(Device *PDN) {
+    PDN->getLightManager()->stopAnimation();
     auto winner = shootout_->getTournamentWinner();
     const uint8_t* selfMac = PDN->getWirelessManager()->getMacAddress();
     bool iWon = selfMac && memcmp(winner.data(), selfMac, 6) == 0;

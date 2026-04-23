@@ -7,6 +7,7 @@
 #include "device/drivers/logger.hpp"
 #include "state/state-machine.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
+#include "wireless/mac-functions.hpp"
 #include "wireless/peer-comms-types.hpp"
 
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
@@ -135,8 +136,9 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     // Detect direct peer registration transitions and emit chain announcements.
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
         const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
+        auto& prev = previousDirectPeer_[portIndex(port)];
         bool nowPresent = (directPeer != nullptr);
-        bool wasPresent = previousDirectPeerPresent_[portIndex(port)];
+        bool wasPresent = prev.has_value();
 
         if (!nowPresent && wasPresent) {
             SerialIdentifier otherPort = (port == SerialIdentifier::INPUT_JACK)
@@ -147,7 +149,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
                 emitAnnouncementVia(otherPort, {});
             }
             if (peerLostCallback_) {
-                peerLostCallback_(previousDirectPeerMac_[portIndex(port)].data());
+                peerLostCallback_(prev->data());
             }
             notifyDisconnect();
         }
@@ -173,8 +175,8 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             notifyConnect();
         }
 
-        previousDirectPeerPresent_[portIndex(port)] = nowPresent;
-        if (nowPresent) previousDirectPeerMac_[portIndex(port)] = directPeer->macAddr;
+        prev = nowPresent ? std::optional<std::array<uint8_t, 6>>{directPeer->macAddr}
+                          : std::nullopt;
     }
 
     // Retransmit any unacked pending announcements past the ack timeout.
@@ -208,7 +210,6 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             }
         }
     }
-
 }
 
 size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
@@ -385,6 +386,17 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
         const uint8_t* peer = getPeerMac(port);
         if (peer && memcmp(peer, mac, 6) == 0) return true;
+    }
+    return false;
+}
+
+bool RemoteDeviceCoordinator::canReachPeer(const uint8_t* mac) const {
+    if (!mac) return false;
+    if (isDirectPeer(mac)) return true;
+    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
+        for (const auto& daisy : daisyChainedByPort_[portIndex(port)]) {
+            if (memcmp(daisy.data(), mac, 6) == 0) return true;
+        }
     }
     return false;
 }

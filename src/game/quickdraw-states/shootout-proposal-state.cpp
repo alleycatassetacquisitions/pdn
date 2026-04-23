@@ -25,16 +25,12 @@ void ShootoutProposal::onStateLoop(Device *PDN) {
     shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
-    if (p == ShootoutManager::Phase::IDLE || p == ShootoutManager::Phase::ABORTED) shouldGoToIdle_ = true;
-    if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
-        if (!loopBreakDebounceTimer_.isRunning()) {
-            loopBreakDebounceTimer_.setTimer(kLoopBreakDebounceMs);
-        } else if (loopBreakDebounceTimer_.expired()) {
-            shootout_->resetToIdle();
-            shouldGoToIdle_ = true;
-        }
-    } else {
-        loopBreakDebounceTimer_.invalidate();
+    if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
+    if (p == ShootoutManager::Phase::IDLE) shouldGoToIdle_ = true;
+    bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
+    if (loopBreakDebounce_.heldFor(loopBroken, kLoopBreakDebounceMs)) {
+        shootout_->resetToIdle();
+        shouldGoToIdle_ = true;
     }
 }
 
@@ -43,8 +39,10 @@ void ShootoutProposal::onStateDismounted(Device *PDN) {
     PDN->getSecondaryButton()->removeButtonCallbacks();
     shouldGoToReveal_ = false;
     shouldGoToIdle_ = false;
-    loopBreakDebounceTimer_.invalidate();
+    shouldGoToAborted_ = false;
+    loopBreakDebounce_.reset();
 }
 
 bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }
 bool ShootoutProposal::transitionToIdle() { return shouldGoToIdle_; }
+bool ShootoutProposal::transitionToAborted() { return shouldGoToAborted_; }

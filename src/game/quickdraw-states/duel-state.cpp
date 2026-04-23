@@ -2,15 +2,17 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
 #include "game/chain-duel-manager.hpp"
+#include "game/shootout-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/device.hpp"
 
 #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState(remoteDeviceCoordinator, DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager) : ConnectState(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
     this->chainDuelManager = chainDuelManager;
+    this->shootoutManager = shootoutManager;
 }
 
 Duel::~Duel() {
@@ -68,9 +70,21 @@ void Duel::onStateLoop(Device *PDN) {
         return;
     }
     
-    if(duelTimer.expired() || !isConnected()) {
+    if (!duelTimer.expired() && isConnected()) return;
+
+    bool shootoutTimeout = duelTimer.expired() && shootoutManager && shootoutManager->active();
+    if (!shootoutTimeout) {
         transitionToIdleState = true;
+        return;
     }
+
+    // Shootout timeout: hunter forfeits, bounty wins.
+    if (player->isHunter()) {
+        transitionToShootoutEliminatedState = true;
+        return;
+    }
+    shootoutManager->reportLocalWin();
+    transitionToShootoutSpectatorState = true;
 }
 
 bool Duel::transitionToIdle() {
@@ -91,8 +105,17 @@ bool Duel::transitionToDuelReceivedResult() {
     return transitionToDuelReceivedResultState;
 }
 
+bool Duel::transitionToShootoutSpectator() {
+    return transitionToShootoutSpectatorState;
+}
+
+bool Duel::transitionToShootoutEliminated() {
+    return transitionToShootoutEliminatedState;
+}
+
 void Duel::onStateDismounted(Device *PDN) {
-    if(transitionToIdleState) {
+    if(transitionToIdleState || transitionToShootoutSpectatorState
+       || transitionToShootoutEliminatedState) {
         PDN->getHaptics()->off();
         matchManager->clearCurrentMatch();
         PDN->getPrimaryButton()->removeButtonCallbacks();
@@ -103,13 +126,15 @@ void Duel::onStateDismounted(Device *PDN) {
     }
 
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
-    
+
     duelTimer.invalidate();
     LOG_I(DUEL_TAG, "Duel timer invalidated");
 
     transitionToDuelReceivedResultState = false;
     transitionToIdleState = false;
     transitionToDuelPushedState = false;
+    transitionToShootoutSpectatorState = false;
+    transitionToShootoutEliminatedState = false;
 }
 
 bool Duel::isPrimaryRequired() {

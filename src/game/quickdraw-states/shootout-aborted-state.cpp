@@ -5,6 +5,7 @@ ShootoutAborted::ShootoutAborted(ShootoutManager* shootout)
     : State(SHOOTOUT_ABORTED), shootout_(shootout) {}
 
 void ShootoutAborted::onStateMounted(Device *PDN) {
+    PDN->getLightManager()->stopAnimation();
     displayTimer_.setTimer(ABORTED_DISPLAY_MS);
     auto* d = PDN->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);

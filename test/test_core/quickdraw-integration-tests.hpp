@@ -555,7 +555,7 @@ inline void stateFlowDutPressesFirstWins(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     suite->fakeClock->advance(150);
@@ -587,7 +587,7 @@ inline void stateFlowDutReceivesFirstLoses(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     suite->wirelessManager->setPacketReceivedCallback(
@@ -618,7 +618,7 @@ inline void stateFlowDutNeverPressesLoses(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     suite->wirelessManager->setPacketReceivedCallback(
@@ -642,7 +642,7 @@ inline void stateFlowOpponentNeverRespondsWins(StateFlowIntegrationTests* suite)
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // DUT presses quickly
@@ -666,7 +666,7 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     suite->fakeClock->advance(100);
@@ -697,7 +697,7 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     suite->fakeClock->advance(300);

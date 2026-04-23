@@ -59,8 +59,6 @@ void DuelResult::onStateDismounted(Device *PDN) {
 
     wonBattle = false;
     captured = false;
-    // State instance is reused across matches — must reset per-match latch.
-    reportedShootoutWin = false;
     PDN->getLightManager()->stopAnimation();
 }
 
@@ -83,10 +81,7 @@ bool DuelResult::transitionToLose() {
 bool DuelResult::transitionToShootoutSpectator() {
     if (!shootoutManager || !shootoutManager->active()) return false;
     if (!wonBattle) return false;
-    if (!reportedShootoutWin) {
-        shootoutManager->reportLocalWin();
-        reportedShootoutWin = true;
-    }
+    shootoutManager->reportLocalWin();
     return true;
 }
 

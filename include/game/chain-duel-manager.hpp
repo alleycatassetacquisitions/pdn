@@ -34,8 +34,6 @@ public:
 
     bool isChampion() const;
     bool isSupporter() const;
-    // Virtual so state-class tests can substitute a fake CDM that returns a
-    // settable isLoop value without standing up the full RDC + handshake stack.
     virtual bool isLoop() const;
     bool canInitiateMatch() const;
     std::vector<std::array<uint8_t, 6>> getSupporterChainPeers() const;

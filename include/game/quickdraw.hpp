@@ -12,7 +12,7 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include <memory>
+#include "wireless/symbol-wireless-manager.hpp"
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -20,7 +20,7 @@ constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager);
+    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -49,10 +49,11 @@ private:
     PeerCommsInterface* peerComms;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     QuickdrawWirelessManager* quickdrawWirelessManager;
+    SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
-    std::unique_ptr<ShootoutManager> shootoutManager_;
+    ShootoutManager* shootoutManager_ = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing
@@ -60,4 +61,7 @@ private:
     // by scripts/chain_status.sh (prefix: "STATS").
     SimpleTimer statsLogTimer_;
     static constexpr unsigned long kStatsLogIntervalMs = 5000;
+
+    // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
+    bool lastIsLoop_ = false;
 };

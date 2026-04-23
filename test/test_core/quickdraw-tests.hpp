@@ -630,7 +630,7 @@ inline void duelButtonPressTransitionsToDuelPushed(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Initially should not transition
@@ -651,7 +651,7 @@ inline void duelButtonPressCalculatesReactionTime(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Advance 250ms (simulating reaction time)
@@ -698,7 +698,7 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     countdownState.onStateDismounted(&suite->device);
     
     // Now start the duel
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     duelState.onStateMounted(&suite->device);
@@ -722,7 +722,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
 
     size_t sentBefore = suite->wirelessManager->sentCommands.size();
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(200);
@@ -779,7 +779,7 @@ inline void duelReceivedResultTransitionsToDuelReceivedResult(DuelStateTests* su
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Simulate receiving opponent's result before pressing button
@@ -841,7 +841,7 @@ inline void duelTimeoutTransitionsToIdle(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Initially should not timeout
@@ -1238,7 +1238,7 @@ inline void cleanupDuelStateDoesNotClearCallbacksOnDismount(StateCleanupTests* s
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1280,7 +1280,7 @@ inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1439,7 +1439,7 @@ inline void cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(StateCl
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1617,7 +1617,7 @@ public:
 // reported. Without ASAN this still catches crashes in the lifecycle path.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr);
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
         delete qd;
     }
 }
@@ -1629,8 +1629,8 @@ inline void connectionSuccessfulTransitionsAfterThreshold(ConnectionSuccessfulTe
 
     EXPECT_FALSE(connectedState.transitionToIdle());
 
-    // Advance past the firstHeartbeatTimeout (400ms)
-    suite->fakeClock->advance(500);
+    // Advance past the firstHeartbeatTimeout (2000ms)
+    suite->fakeClock->advance(2100);
     connectedState.onStateLoop(&suite->device);
 
     EXPECT_TRUE(connectedState.transitionToIdle());

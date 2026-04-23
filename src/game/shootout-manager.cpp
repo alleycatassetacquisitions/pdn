@@ -12,12 +12,13 @@
 #define TAG "SHT"
 
 namespace {
-constexpr unsigned long kAckBackoffMs[] = {100, 200, 400, 800, 1600};
+// Indexed by retry count. Table length matches kMaxShootoutAckRetries.
+constexpr unsigned long kAckBackoffMs[] = {100, 200, 400};
 
 void deriveShootoutMatchId(int matchIndex, char* out, size_t outSize) {
     // Deterministic ID so both duelists prime MatchManager with the same
     // value without a SEND_MATCH_ID handshake.
-    snprintf(out, outSize, "SHT-%032d", matchIndex);
+    snprintf(out, outSize, "%s%032d", kShootoutMatchIdPrefix, matchIndex);
 }
 }
 
@@ -144,7 +145,7 @@ void ShootoutManager::resetToIdle() {
     tournamentEndPendingAcks_.clear();
     matchResultPendingAcks_.clear();
     eliminated_.clear();
-    forfeited_.clear();
+    reportedLocalWin_ = false;
     names_.clear();
     lastObservedBracketSeqId_ = 0;
     lastObservedMatchStartSeqId_ = 0;
@@ -154,6 +155,7 @@ void ShootoutManager::resetToIdle() {
     memset(opponentMac_.data(), 0, 6);
     memset(currentDuelistA_.data(), 0, 6);
     memset(currentDuelistB_.data(), 0, 6);
+    memset(coordinatorMac_.data(), 0, 6);
     if (originalIsHunter_ && player_) {
         player_->setIsHunter(*originalIsHunter_);
     }
@@ -196,16 +198,17 @@ void ShootoutManager::confirmLocal() {
 
 void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name) {
     if (phase_ != Phase::PROPOSAL) return;
-    // Reject CONFIRMs from devices outside the current loop. Without this gate
-    // a stray CONFIRM permanently appends to names_ (O(n) insert, never GC'd
-    // except via resetToIdle) and inflates confirmedSet_ / the coord-election
-    // set with non-participants.
-    auto members = getLoopMembers();
-    bool inLoop = false;
-    for (const auto& m : members) {
-        if (memcmp(m.data(), fromMac, 6) == 0) { inLoop = true; break; }
+    // Fast path: already-confirmed peers bypass the loop-membership scan (this
+    // is the common case during 1Hz rebroadcasts — the gate only needs to
+    // block first-time stray CONFIRMs from outside the ring).
+    if (!hasConfirmed(fromMac)) {
+        auto members = getLoopMembers();
+        bool inLoop = false;
+        for (const auto& m : members) {
+            if (memcmp(m.data(), fromMac, 6) == 0) { inLoop = true; break; }
+        }
+        if (!inLoop) return;
     }
-    if (!inLoop) return;
     recordName(fromMac, name);
     bool added = !hasConfirmed(fromMac);
     if (added) {
@@ -265,18 +268,20 @@ bool ShootoutManager::allMembersConfirmed() const {
 }
 
 std::array<uint8_t, 6> ShootoutManager::getCoordinatorMac() const {
+    if (!bracket_.empty()) return coordinatorMac_;
     return lowestMacIn(confirmedSet_);
 }
 
 bool ShootoutManager::isCoordinator() const {
     const uint8_t* selfMac = wirelessManager_->getMacAddress();
     if (selfMac == nullptr) return false;
-    auto coord = lowestMacIn(confirmedSet_);
+    auto coord = getCoordinatorMac();
     return memcmp(coord.data(), selfMac, 6) == 0;
 }
 
 void ShootoutManager::generateBracket() {
     bracket_ = confirmedSet_;
+    coordinatorMac_ = lowestMacIn(bracket_);
     // std::random_device is deterministic under newlib on ESP32, so seed
     // from platform clock XOR self-MAC to get real variation.
     unsigned long seed = 0;
@@ -369,23 +374,13 @@ void ShootoutManager::abortTournament() {
     if (phase_ == Phase::ABORTED) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase_));
 
-    // Broadcast FIRST — resetToIdle clears bracket_/confirmedSet_ which we
-    // need as the target list. Best-effort; peers that miss ABORT observe RDC
-    // disconnect or retry exhaustion independently.
+    // Broadcast before resetToIdle clears bracket_/confirmedSet_.
     uint8_t packet[2];
     packet[0] = static_cast<uint8_t>(ShootoutCmd::ABORT);
     packet[1] = 0;
     const auto& targets = bracket_.empty() ? confirmedSet_ : bracket_;
     sendToPeers(targets, packet, sizeof(packet));
 
-    // Full cleanup, then re-establish ABORTED so ShootoutAborted can display.
-    // Previously only cleared bracketPendingAcks_; confirmedSet_, eliminated_,
-    // forfeited_, names_, lastObserved*SeqId_, and originalIsHunter_ survived
-    // until ShootoutAborted's state-dismount called resetToIdle. That worked
-    // only because the state machine always reached dismount — any future
-    // path to ABORTED that skipped the state would leak state across
-    // tournaments and (worst case) leave player_->isHunter() permanently
-    // flipped.
     resetToIdle();
     phase_ = Phase::ABORTED;
 }
@@ -508,10 +503,12 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
     const uint8_t* selfMac = wirelessManager_->getMacAddress();
     const auto& a = currentRound_[matchIndex * 2];
     const auto& b = currentRound_[matchIndex * 2 + 1];
+    bool sameMatch = isSameMatch(matchIndex, a.data(), b.data());
     currentDuelistA_ = a;
     currentDuelistB_ = b;
     currentMatchIndex_ = matchIndex;
-    if (isLocalDuelist() && selfMac != nullptr) {
+    if (!sameMatch) reportedLocalWin_ = false;
+    if (!sameMatch && isLocalDuelist() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
         memcpy(opponentMac_.data(), opp, 6);
         primeMatchManagerForMatch();
@@ -525,6 +522,13 @@ void ShootoutManager::onMatchStartAckReceived(const uint8_t* fromMac, uint8_t se
     eraseFromPending(matchStartPendingAcks_, fromMac);
 }
 
+bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
+    return matchIndex == currentMatchIndex_
+        && phase_ == Phase::MATCH_IN_PROGRESS
+        && memcmp(currentDuelistA_.data(), a, 6) == 0
+        && memcmp(currentDuelistB_.data(), b, 6) == 0;
+}
+
 bool ShootoutManager::isActiveDuelist(const uint8_t* mac) const {
     if (currentMatchIndex_ < 0) return false;
     auto pair = getCurrentMatchPair();
@@ -532,26 +536,11 @@ bool ShootoutManager::isActiveDuelist(const uint8_t* mac) const {
            memcmp(pair.second.data(), mac, 6) == 0;
 }
 
-bool ShootoutManager::isForfeited(const uint8_t* mac) const {
-    for (const auto& m : forfeited_) {
-        if (memcmp(m.data(), mac, 6) == 0) return true;
-    }
-    return false;
-}
-
-bool ShootoutManager::isEliminatedOrForfeited(const uint8_t* mac) const {
-    return isEliminated(mac) || isForfeited(mac);
-}
-
 void ShootoutManager::onLocalRDCDisconnect(const uint8_t* lostMac) {
     LOG_W(TAG, "onLocalRDCDisconnect %s phase=%d",
           MacToString(lostMac), static_cast<int>(phase_));
-    // Idempotency guard: RDC may fire peerLostCallback AND chainChangeCallback
-    // for the same drop. Skip the broadcast if we've already processed the
-    // peer's loss (eliminated/forfeited from a prior call, or tournament has
-    // since aborted/ended).
     if (phase_ == Phase::IDLE || phase_ == Phase::ABORTED || phase_ == Phase::ENDED) return;
-    if (isEliminatedOrForfeited(lostMac)) return;
+    if (rdc_ && rdc_->canReachPeer(lostMac)) return;
     uint8_t packet[8];
     packet[0] = static_cast<uint8_t>(ShootoutCmd::PEER_LOST);
     packet[1] = 0;
@@ -565,34 +554,8 @@ void ShootoutManager::onPeerLostReceived(const uint8_t* lostMac) {
     LOG_W(TAG, "onPeerLostReceived %s phase=%d",
           MacToString(lostMac), static_cast<int>(phase_));
     if (phase_ == Phase::IDLE || phase_ == Phase::ABORTED || phase_ == Phase::ENDED) return;
-
-    auto coord = getCoordinatorMac();
-    if (memcmp(coord.data(), lostMac, 6) == 0) {
-        LOG_W(TAG, "coordinator lost -> abortTournament");
-        abortTournament();
-        return;
-    }
-
-    if (isEliminatedOrForfeited(lostMac)) return;
-
-    if (phase_ == Phase::MATCH_IN_PROGRESS && isActiveDuelist(lostMac)) {
-        auto pair = getCurrentMatchPair();
-        const uint8_t* selfMac = wirelessManager_->getMacAddress();
-        const uint8_t* winner = (memcmp(pair.first.data(), lostMac, 6) == 0)
-            ? pair.second.data() : pair.first.data();
-        applyMatchResult(winner, lostMac);
-        if (selfMac != nullptr && memcmp(winner, selfMac, 6) == 0) {
-            sendMatchResultToPeers(winner, lostMac,
-                                 static_cast<uint8_t>(currentMatchIndex_));
-        }
-        if (isCoordinator()) maybeStartNextMatch();
-        return;
-    }
-
-    // Non-eliminated spectator: mark forfeited.
-    std::array<uint8_t, 6> mac;
-    memcpy(mac.data(), lostMac, 6);
-    forfeited_.push_back(mac);
+    if (rdc_ && rdc_->canReachPeer(lostMac)) return;
+    abortTournament();
 }
 
 void ShootoutManager::maybeStartNextMatch() {
@@ -607,46 +570,27 @@ void ShootoutManager::maybeStartNextMatch() {
     inMaybeStartNextMatch_ = true;
     struct Guard { bool& f; ~Guard() { f = false; } } guard{inMaybeStartNextMatch_};
 
-    while (true) {
-        currentMatchIndex_++;
-        int pairEnd = currentMatchIndex_ * 2 + 1;
-        if (pairEnd >= (int)currentRound_.size()) {
-            std::vector<std::array<uint8_t, 6>> survivors;
-            for (const auto& m : currentRound_) {
-                if (!isEliminatedOrForfeited(m.data())) survivors.push_back(m);
-            }
-            if (survivors.size() <= 1) {
-                auto winner = survivors.empty()
-                    ? findLastRemaining()
-                    : survivors[0];
-                sendTournamentEndToPeers(winner.data());
-                return;
-            }
-            LOG_W(TAG, "advancing round: %zu survivors -> %zu",
-                  currentRound_.size(), survivors.size());
-            currentRound_ = survivors;
-            currentMatchIndex_ = 0;
-            pairEnd = 1;
+    currentMatchIndex_++;
+    int pairEnd = currentMatchIndex_ * 2 + 1;
+    if (pairEnd >= (int)currentRound_.size()) {
+        std::vector<std::array<uint8_t, 6>> survivors;
+        for (const auto& m : currentRound_) {
+            if (!isEliminated(m.data())) survivors.push_back(m);
         }
-        const auto& a = currentRound_[currentMatchIndex_ * 2];
-        const auto& b = currentRound_[currentMatchIndex_ * 2 + 1];
-        bool aForfeit = isForfeited(a.data());
-        bool bForfeit = isForfeited(b.data());
-        if (aForfeit && bForfeit) continue;
-        if (aForfeit) {
-            sendMatchResultToPeers(b.data(), a.data(), static_cast<uint8_t>(currentMatchIndex_));
-            applyMatchResult(b.data(), a.data());
-            continue;
+        if (survivors.size() <= 1) {
+            auto winner = survivors.empty()
+                ? findLastRemaining()
+                : survivors[0];
+            sendTournamentEndToPeers(winner.data());
+            return;
         }
-        if (bForfeit) {
-            sendMatchResultToPeers(a.data(), b.data(), static_cast<uint8_t>(currentMatchIndex_));
-            applyMatchResult(a.data(), b.data());
-            continue;
-        }
-        sendMatchStartToPeers(currentMatchIndex_);
-        phase_ = Phase::MATCH_IN_PROGRESS;
-        return;
+        LOG_W(TAG, "advancing round: %zu survivors -> %zu",
+              currentRound_.size(), survivors.size());
+        currentRound_ = survivors;
+        currentMatchIndex_ = 0;
     }
+    sendMatchStartToPeers(currentMatchIndex_);
+    phase_ = Phase::MATCH_IN_PROGRESS;
 }
 
 std::array<uint8_t, 6> ShootoutManager::lowestMacIn(
@@ -669,36 +613,38 @@ void ShootoutManager::onBracketReceived(
     lastObservedBracketSeqId_ = seqId;
     bracket_ = bracket;
     currentRound_ = bracket;
+    coordinatorMac_ = lowestMacIn(bracket_);
     phase_ = Phase::BRACKET_REVEAL;
     bracketRevealTimer_.setTimer(kBracketRevealMs);
-    auto coord = lowestMacIn(bracket);
-    sendShootoutAck(ShootoutCmd::BRACKET, seqId, coord.data());
+    sendShootoutAck(ShootoutCmd::BRACKET, seqId, coordinatorMac_.data());
 }
 
 void ShootoutManager::onMatchStartReceived(
     const uint8_t* duelistA, const uint8_t* duelistB,
     uint8_t matchIndex, uint8_t seqId) {
-    // Coordinator broadcasts MATCH_START to others; it should never
-    // receive its own. Guard is symmetric with onBracketReceived.
     if (isCoordinator()) return;
     if (seqId != 0 && seqId == lastObservedMatchStartSeqId_) {
-        auto coord = lowestMacIn(bracket_);
-        sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coord.data());
+        sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac_.data());
         return;
     }
+    bool sameMatch = isSameMatch(matchIndex, duelistA, duelistB);
     lastObservedMatchStartSeqId_ = seqId;
+    if (sameMatch) {
+        sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac_.data());
+        return;
+    }
     currentMatchIndex_ = matchIndex;
     memcpy(currentDuelistA_.data(), duelistA, 6);
     memcpy(currentDuelistB_.data(), duelistB, 6);
     phase_ = Phase::MATCH_IN_PROGRESS;
+    reportedLocalWin_ = false;
     const uint8_t* selfMac = wirelessManager_->getMacAddress();
     if (isLocalDuelist() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, duelistA, 6) == 0) ? duelistB : duelistA;
         memcpy(opponentMac_.data(), opp, 6);
         primeMatchManagerForMatch();
     }
-    auto coord = lowestMacIn(bracket_);
-    sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coord.data());
+    sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac_.data());
 }
 
 void ShootoutManager::sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint8_t* toMac) {
@@ -749,6 +695,8 @@ void ShootoutManager::sendMatchResultToPeers(
 void ShootoutManager::reportLocalWin() {
     const uint8_t* selfMac = wirelessManager_->getMacAddress();
     if (selfMac == nullptr) return;
+    if (reportedLocalWin_) return;
+    reportedLocalWin_ = true;
     LOG_W(TAG, "reportLocalWin matchIndex=%d", currentMatchIndex_);
     sendMatchResultToPeers(selfMac, opponentMac_.data(), static_cast<uint8_t>(currentMatchIndex_));
     applyMatchResult(selfMac, opponentMac_.data());
@@ -781,7 +729,7 @@ size_t ShootoutManager::getMatchResultPendingAckCount() const {
 
 std::array<uint8_t, 6> ShootoutManager::findLastRemaining() const {
     for (const auto& m : bracket_) {
-        if (!isEliminatedOrForfeited(m.data())) return m;
+        if (!isEliminated(m.data())) return m;
     }
     return {};
 }
@@ -820,9 +768,6 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seq
 
 void ShootoutManager::onAbortReceived() {
     if (phase_ == Phase::ABORTED || phase_ == Phase::IDLE) return;
-    // Symmetric with abortTournament: full cleanup, then re-establish ABORTED
-    // so ShootoutAborted can display. Guards against future paths that reach
-    // ABORTED without going through the state-dismount restore.
     resetToIdle();
     phase_ = Phase::ABORTED;
 }

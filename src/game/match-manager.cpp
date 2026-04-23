@@ -168,6 +168,12 @@ bool MatchManager::finalizeMatch() {
 
     std::string match_id = activeDuelState.match->getMatchId();
 
+    // Shootout matches are local-ephemeral: no save, no upload.
+    if (match_id.rfind(kShootoutMatchIdPrefix, 0) == 0) {
+        clearCurrentMatch();
+        return true;
+    }
+
     // Save to storage
     if (appendMatchToStorage(&*activeDuelState.match)) {
         // Update stored count
@@ -176,7 +182,7 @@ bool MatchManager::finalizeMatch() {
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
         return true;
     }
-    
+
     LOG_E("PDN", "Failed to finalize match %s\n", match_id.c_str());
     return false;
 }

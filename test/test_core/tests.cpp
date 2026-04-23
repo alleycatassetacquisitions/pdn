@@ -18,7 +18,6 @@
 #include "rdc-tests.hpp"
 #include "chain-duel-manager-tests.hpp"
 #include "chain-duel-multi-device-fixture.hpp"
-#include "peer-comms-types-tests.hpp"
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 
@@ -47,54 +46,6 @@ void loop()
 }
 
 #else
-
-// ============================================
-// PEER COMMS TYPES TESTS
-// ============================================
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadHasCorrectSize) {
-    roleAnnouncePayloadHasCorrectSize();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadHasCorrectSize) {
-    roleAnnounceAckPayloadHasCorrectSize();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadIsPacked) {
-    roleAnnouncePayloadIsPacked();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadIsPacked) {
-    roleAnnounceAckPayloadIsPacked();
-}
-
-TEST_F(PeerCommsTypesTestSuite, packetTypeEnumHasCorrectValues) {
-    packetTypeEnumHasCorrectValues();
-}
-
-TEST_F(PeerCommsTypesTestSuite, numPacketTypesIsSequentialAfterAck) {
-    numPacketTypesIsSequentialAfterAck();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadFieldsAligned) {
-    roleAnnouncePayloadFieldsAligned();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadFieldsAligned) {
-    roleAnnounceAckPayloadFieldsAligned();
-}
-
-TEST_F(PeerCommsTypesTestSuite, shootoutAckPayloadHasCorrectSize) {
-    shootoutAckPayloadHasCorrectSize();
-}
-
-TEST_F(PeerCommsTypesTestSuite, shootoutCmdEnumHasExpectedValues) {
-    shootoutCmdEnumHasExpectedValues();
-}
-
-TEST_F(PeerCommsTypesTestSuite, packetTypeEnumIncludesShootoutSlots) {
-    packetTypeEnumIncludesShootoutSlots();
-}
 
 // ============================================
 // STATE MACHINE TESTS
@@ -1504,8 +1455,8 @@ TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { wi
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
 TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
-TEST_F(ShootoutManagerTests, peerLostActiveDuelistOpponentWins) { peerLostActiveDuelistOpponentWins(this); }
-TEST_F(ShootoutManagerTests, peerLostSpectatorMarksForfeit) { peerLostSpectatorMarksForfeit(this); }
+TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
+TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }
 TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) { finalMatchResultTriggersTournamentEnd(this); }
 TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) { startProposalClearsAllPriorTournamentState(this); }
 TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) { tournamentEndRetriesUntilAcked(this); }

@@ -7,6 +7,7 @@
 #include <map>
 #include "images-raw.hpp"
 #include "image.hpp"
+#include "device/drivers/display.hpp"
 #include "device/drivers/light-interface.hpp"
 #include "game/player.hpp"
 
@@ -346,6 +347,32 @@ static const char* loadingGlyphs[] = {
     "\u2636",
     "\u2637"
 };
+
+static void renderLoadingScreen(Display* display) {
+    const int GLYPH_SIZE = 14;
+    const int SCREEN_WIDTH = 128;
+    const int SCREEN_HEIGHT = 64;
+
+    const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
+    const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);
+
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::LOADING_GLYPH);
+
+    for (int row = 0; row < GLYPHS_PER_COL; row++) {
+        for (int col = 0; col < GLYPHS_PER_ROW; col++) {
+            if (rand() % 100 < 50) {
+                int x = col * GLYPH_SIZE;
+                int y = 14 + (row * GLYPH_SIZE);
+                int randomIndex = rand() % 8;
+                const char* glyph = loadingGlyphs[randomIndex];
+                display->renderGlyph(glyph, x, y);
+            }
+        }
+    }
+
+    display->render();
+}
 
 static const LEDState COUNTDOWN_THREE_STATE = LEDState();
 

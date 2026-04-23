@@ -10,19 +10,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/player.hpp"
 
-// Stand-in CDM that ignores RDC entirely; isLoop() returns whatever the test
-// last poked. Used by ShootoutProposal/BracketReveal debounce tests so they
-// don't have to stand up the full handshake stack to flip loop state.
-class FakeChainDuelManager : public ChainDuelManager {
-public:
-    FakeChainDuelManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)
-        : ChainDuelManager(p, wm, rdc) {}
-    bool isLoop() const override { return isLoop_; }
-    void setIsLoop(bool v) { isLoop_ = v; }
-private:
-    bool isLoop_ = true;
-};
-
 class ShootoutManagerTests : public testing::Test {
 public:
     void SetUp() override {
@@ -36,13 +23,15 @@ public:
         ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(localMac));
 
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
-        cdm = std::make_unique<ChainDuelManager>(&player, device.wirelessManager, &rdc);
-        shootout = std::make_unique<ShootoutManager>(&player, device.wirelessManager, &rdc, cdm.get());
+        cdm = new ChainDuelManager(&player, device.wirelessManager, &rdc);
+        shootout = new ShootoutManager(&player, device.wirelessManager, &rdc, cdm);
     }
 
     void TearDown() override {
-        shootout.reset();
-        cdm.reset();
+        delete shootout;
+        shootout = nullptr;
+        delete cdm;
+        cdm = nullptr;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
@@ -50,8 +39,8 @@ public:
     MockDevice device;
     RemoteDeviceCoordinator rdc;
     Player player{"TEST", Allegiance::RESISTANCE, true};
-    std::unique_ptr<ChainDuelManager> cdm;
-    std::unique_ptr<ShootoutManager> shootout;
+    ChainDuelManager* cdm = nullptr;
+    ShootoutManager* shootout = nullptr;
     FakePlatformClock* fakeClock = nullptr;
     uint8_t localMac[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
 };
@@ -385,7 +374,7 @@ inline void peerLostCoordinatorAborts(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
-inline void peerLostActiveDuelistOpponentWins(ShootoutManagerTests* suite) {
+inline void peerLostActiveDuelistAborts(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me    = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
@@ -402,11 +391,10 @@ inline void peerLostActiveDuelistOpponentWins(ShootoutManagerTests* suite) {
     suite->shootout->onBracketReceived({me, other, coord}, 1);
     suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 2);
     suite->shootout->onPeerLostReceived(other.data());
-    EXPECT_TRUE(suite->shootout->isEliminated(other.data()));
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BETWEEN_MATCHES);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
-inline void peerLostSpectatorMarksForfeit(ShootoutManagerTests* suite) {
+inline void peerLostSpectatorAborts(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};  // coord
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> a = {0x02, 0, 0, 0, 0, 0};
@@ -447,9 +435,7 @@ inline void peerLostSpectatorMarksForfeit(ShootoutManagerTests* suite) {
         }
     }
     suite->shootout->onPeerLostReceived(spectator.data());
-    EXPECT_TRUE(suite->shootout->isForfeited(spectator.data()));
-    // Current match unaffected
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
 inline void finalMatchResultTriggersTournamentEnd(ShootoutManagerTests* suite) {
@@ -788,7 +774,7 @@ inline void localRDCDisconnectIsIdempotent(ShootoutManagerTests* suite) {
 
     suite->shootout->onLocalRDCDisconnect(dropping.data());
     int afterFirst = sendCount.load();
-    EXPECT_TRUE(suite->shootout->isForfeited(dropping.data()));
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
     EXPECT_GT(afterFirst, 0);
 
     suite->shootout->onLocalRDCDisconnect(dropping.data());
@@ -813,7 +799,7 @@ inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* su
     suite->shootout->startProposal();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 
-    ShootoutProposal state(suite->shootout.get(), &fakeCdm);
+    ShootoutProposal state(suite->shootout, &fakeCdm);
 
     // Single-tick blip: phase must remain PROPOSAL.
     fakeCdm.setIsLoop(false);
@@ -856,7 +842,7 @@ inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTest
     for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
 
-    ShootoutBracketReveal state(suite->shootout.get(), &fakeCdm);
+    ShootoutBracketReveal state(suite->shootout, &fakeCdm);
 
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);

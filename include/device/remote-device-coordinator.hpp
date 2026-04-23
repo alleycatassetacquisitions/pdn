@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include "device/serial-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
@@ -58,6 +59,9 @@ public:
     // Returns true iff `mac` matches the direct peer on either jack.
     virtual bool isDirectPeer(const uint8_t* mac) const;
 
+    // Reachable via either jack (direct peer or daisy-chained).
+    virtual bool canReachPeer(const uint8_t* mac) const;
+
     /**
      * Called when a chain announcement is received from a direct peer.
      * Replaces the port's daisy-chained peer list with the announced list,
@@ -70,11 +74,7 @@ public:
 
     void setChainChangeCallback(std::function<void()> callback);
 
-    // Fired with the lost MAC when a DIRECT peer disconnects (cable pulled on
-    // this device's jack). Chain-change notifications don't carry identity, so
-    // Shootout needs this targeted signal to broadcast PEER_LOST for the right
-    // MAC. Not fired for daisy-chained peer drops — those reach us via remote
-    // announcements rather than local disconnect events.
+    // Direct peer drops only; daisy-chained drops arrive via chain announcements.
     void setPeerLostCallback(std::function<void(const uint8_t*)> callback);
 
     void processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
@@ -103,8 +103,7 @@ public:
 private:
     RetryStats retryStats_;
     std::array<std::vector<std::array<uint8_t, 6>>, 2> daisyChainedByPort_;
-    std::array<bool, 2> previousDirectPeerPresent_ = {false, false};
-    std::array<std::array<uint8_t, 6>, 2> previousDirectPeerMac_ = {{{}, {}}};
+    std::array<std::optional<std::array<uint8_t, 6>>, 2> previousDirectPeer_;
     uint8_t nextAnnouncementId_ = 1;
 
     struct PendingAnnouncement {

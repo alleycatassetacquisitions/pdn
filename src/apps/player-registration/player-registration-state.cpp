@@ -53,6 +53,7 @@ void PlayerRegistrationState::onStateMounted(Device *PDN) {
                     playerRegistration->inputId[3]);
             LOG_I(TAG, "Player registration complete - ID: %s", playerId);
             playerRegistration->player->setUserID(playerId);
+            playerRegistration->player->applyRngSeedFromUserId();
             playerRegistration->transitionToUserFetchState = true;
         } else {
             playerRegistration->shouldRender = true;

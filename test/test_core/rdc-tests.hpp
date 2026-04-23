@@ -137,8 +137,8 @@ inline void rdcConnectedPortDisconnectsOnHeartbeatTimeout(RDCTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
 
-    // Let the heartbeat monitor timeout expire (firstHeartbeatTimeout = 400ms)
-    suite->fakeClock->advance(500);
+    // Let the heartbeat monitor timeout expire (firstHeartbeatTimeout = 2000ms)
+    suite->fakeClock->advance(2100);
     suite->rdc.sync(&suite->device);
 
     // After timeout, the connected state should transition back to idle
@@ -468,7 +468,7 @@ inline void rdcDisconnectWipesDaisyChainedPeers(RDCTests* suite) {
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DAISY_CHAINED);
 
     // Heartbeat monitor timeout expires → handshake drops → port disconnects
-    suite->fakeClock->advance(500);
+    suite->fakeClock->advance(2100);
     suite->rdc.sync(&suite->device);
     suite->rdc.sync(&suite->device);
 

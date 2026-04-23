@@ -22,6 +22,7 @@ static void drawSpectatorScreen(Device* PDN, ShootoutManager* shootout,
 void ShootoutSpectator::onStateMounted(Device *PDN) {
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
+    PDN->getLightManager()->stopAnimation();
     auto pair = shootout_->getCurrentMatchPair();
     lastDisplayedA_ = pair.first;
     lastDisplayedB_ = pair.second;

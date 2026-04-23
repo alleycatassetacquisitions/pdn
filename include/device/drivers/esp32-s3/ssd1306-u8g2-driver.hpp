@@ -123,7 +123,34 @@ public:
                 screen.setFontMode(1);
                 screen.setDrawColor(2);
                 break;
+            case FontMode::SYMBOL_GLYPH:
+                screen.setFont(u8g2_font_open_iconic_all_4x_t);
+                screen.setDrawColor(2);
+                screen.setFontMode(1);
+                break;
         }
+        return this;
+    }
+
+    Display* whiteScreen() override {
+        screen.clearBuffer();
+        screen.setFontMode(0);
+        screen.setDrawColor(1);
+        screen.drawBox(0, 0, screen.getDisplayWidth(), screen.getDisplayHeight());
+        return this;
+    }
+
+    Display* whiteScreenLeftHalf() override {
+        screen.setFontMode(0);
+        screen.setDrawColor(1);
+        screen.drawBox(0, 0, screen.getDisplayWidth() / 2, screen.getDisplayHeight());
+        return this;
+    }
+
+    Display* whiteScreenRightHalf() override {
+        screen.setFontMode(0);
+        screen.setDrawColor(1);
+        screen.drawBox(screen.getDisplayWidth() / 2, 0, screen.getDisplayWidth() / 2, screen.getDisplayHeight());
         return this;
     }
 
