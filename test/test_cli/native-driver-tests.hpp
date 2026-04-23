@@ -202,13 +202,15 @@ void peerCommsHandlerRegistration(NativePeerCommsDriverTestSuite* suite) {
     uint8_t srcMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     uint8_t data[] = {0x01};
     suite->driver_->receivePacket(srcMac, PktType::kQuickdrawCommand, data, 1);
-    
+    suite->driver_->exec();  // Drain queue to invoke handler
+
     ASSERT_TRUE(handlerCalled);
     
     // Clear handler
     handlerCalled = false;
     suite->driver_->clearPacketHandler(PktType::kQuickdrawCommand);
     suite->driver_->receivePacket(srcMac, PktType::kQuickdrawCommand, data, 1);
+    suite->driver_->exec();  // Drain queue — cleared handler must not fire
     ASSERT_FALSE(handlerCalled);  // Should not be called after clear
 }
 

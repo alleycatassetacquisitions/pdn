@@ -131,9 +131,10 @@ void peerBrokerUnicastDelivery(NativePeerBrokerTestSuite* suite) {
     suite->peerA_->sendData(suite->peerB_->getMacAddress(), PktType::kQuickdrawCommand,
                            testData, sizeof(testData));
     
-    // Deliver pending packets (broker is asynchronous)
+    // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
-    
+    suite->peerB_->exec();
+
     ASSERT_EQ(suite->receivedPackets_, 1);
 }
 
@@ -150,9 +151,11 @@ void peerBrokerBroadcastExcludesSender(NativePeerBrokerTestSuite* suite) {
     uint8_t testData[] = {0x01};
     suite->peerA_->sendData(broadcastMac, PktType::kQuickdrawCommand, testData, 1);
     
-    // Deliver pending packets (broker is asynchronous)
+    // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
-    
+    suite->peerA_->exec();
+    suite->peerB_->exec();
+
     // B should receive, but A should not receive its own broadcast
     ASSERT_GE(suite->receivedPackets_, 1);
 }
@@ -169,9 +172,10 @@ void peerBrokerPeerRegistration(NativePeerBrokerTestSuite* suite) {
     suite->peerA_->sendData(suite->peerB_->getMacAddress(), PktType::kQuickdrawCommand,
                            testData, sizeof(testData));
     
-    // Deliver pending packets (broker is asynchronous)
+    // Deliver pending packets, then drain the receiving driver's queue
     suite->broker_->deliverPackets();
-    
+    suite->peerB_->exec();
+
     ASSERT_EQ(suite->receivedPackets_, 1);
 }
 
