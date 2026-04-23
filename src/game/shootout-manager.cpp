@@ -666,6 +666,12 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
         memcpy(mac.data(), loser, 6);
         eliminated_.push_back(mac);
     }
+    // Restore pre-tournament role at each match boundary. primeMatchManagerForMatch
+    // re-applies the per-match override on the next match start if this device is a
+    // duelist again. Prevents role from staying flipped when the tournament ends.
+    if (originalIsHunter_ && player_) {
+        player_->setIsHunter(*originalIsHunter_);
+    }
     phase_ = Phase::BETWEEN_MATCHES;
     matchStartWatchdog_.invalidate();
 }
