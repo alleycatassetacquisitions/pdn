@@ -1,9 +1,14 @@
+#include "device/drivers/serial-wrapper.hpp"
+#include "device/remote-device-coordinator.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "symbol-match/symbol-manager.hpp"
+#include "symbol-match/symbol-match.hpp"
+#include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
 #include <cstring>
 
@@ -24,7 +29,7 @@ void Idle::onStateMounted(Device *PDN) {
     PDN->getWirelessManager()->enablePeerCommsMode();
 
     AnimationConfig config;
-    
+
     if(player->isHunter()) {
         config.type = AnimationType::IDLE;
         config.speed = 16;
@@ -58,28 +63,29 @@ void Idle::onStateMounted(Device *PDN) {
 }
 
 void Idle::onStateLoop(Device *PDN) {
-    // Auto-refresh when the posse count changes so the display stays
-    // current without requiring a button press.
-    size_t currentPosseCount = chainDuelManager->getSupporterChainPeers().size();
-    if (currentPosseCount != lastPosseCount) {
-        lastPosseCount = currentPosseCount;
-        displayIsDirty = true;
-    }
-
     if(displayIsDirty) {
         renderStats(PDN);
         displayIsDirty = false;
     }
 
-    if (chainDuelManager->canInitiateMatch() && isConnected() && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN) {
-        if (!matchInitialized) {
-            const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
-            if (peerMac != nullptr) {
-                matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
-                matchInitialized = true;
-                matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+    if (isConnected()) {
+        if (chainDuelManager->canInitiateMatch()
+            && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN
+            && player->isHunter()) {
+            if (!matchInitialized) {
+                const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+                if (peerMac != nullptr) {
+                    matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
+                    matchInitialized = true;
+                    matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
+                }
             }
         }
+    }
+
+    if (!matchInitialized && (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
+    || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
+        transitionToSymbolState = true;
     }
 
     if(matchInitializationTimer.expired()) {
@@ -95,6 +101,7 @@ void Idle::onStateDismounted(Device *PDN) {
     PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
+    transitionToSymbolState = false;
 }
 
 bool Idle::transitionToDuelCountdown() {
@@ -114,7 +121,7 @@ void Idle::renderStats(Device *PDN) {
     if(statsIndex == 0) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Wins",74, 20);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getWins()).c_str(), 88, 40);
-    } else if(statsIndex == 1) {        
+    } else if(statsIndex == 1) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Streak",70, 20);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getStreak()).c_str(), 88, 40);
     } else if(statsIndex == 2) {
@@ -129,10 +136,13 @@ void Idle::renderStats(Device *PDN) {
     } else if(statsIndex == 5) {
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
-    } else if(statsIndex == 6) {
+    } else if (statsIndex == 6) {
         size_t sc = chainDuelManager->getSupporterChainPeers().size();
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse",70, 20);
         PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(sc).c_str(), 88, 40);
+    } else if (statsIndex == 7) {
+        int glyph_size = 32;
+        PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), (int)(64 + (64 - glyph_size)/2), (int)(64 - (64 - glyph_size)/2));
     }
 
     PDN->getDisplay()->render();
@@ -144,4 +154,8 @@ bool Idle::isPrimaryRequired() {
 
 bool Idle::isAuxRequired() {
     return !player->isHunter();
+}
+
+bool Idle::transitionToSymbol() {
+    return transitionToSymbolState;
 }

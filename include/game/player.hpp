@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <cstdint>
+#include "symbol.hpp"
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -49,6 +50,10 @@ public:
 
     void setUserID(char *newId);
 
+    /// Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
+    /// the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
+    void applyRngSeedFromUserId();
+
     std::string getUserID() const;
 
     void clearUserID();
@@ -64,6 +69,8 @@ public:
     int getWins();
 
     int getLosses();
+
+    Symbol* getSymbol();
 
     void incrementStreak();
 
@@ -96,6 +103,8 @@ private:
     unsigned long totalReactionTime = 0;
 
     Allegiance allegiance = Allegiance::RESISTANCE;
+
+    Symbol symbol;
     
     bool hunter = true;
 };

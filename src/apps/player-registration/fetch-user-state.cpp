@@ -132,29 +132,7 @@ void FetchUserDataState::fetchUserData() {
 }
 
 void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
-    const int GLYPH_SIZE = 14;
-    const int SCREEN_WIDTH = 128;
-    const int SCREEN_HEIGHT = 64;
-    
-    const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
-    const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);
-    
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::LOADING_GLYPH);
-    
-    for (int row = 0; row < GLYPHS_PER_COL; row++) {
-        for (int col = 0; col < GLYPHS_PER_ROW; col++) {
-            if(rand() % 100 < 50) {
-                int x = col * GLYPH_SIZE;
-                int y = 14 + (row * GLYPH_SIZE);
-                int randomIndex = rand() % 8;
-                const char* glyph = loadingGlyphs[randomIndex];
-                PDN->getDisplay()->renderGlyph(glyph, x, y);
-            }
-        }
-    }
-    
-    PDN->getDisplay()->render();
+    renderLoadingScreen(PDN->getDisplay());
 }  
 
 bool FetchUserDataState::transitionToWelcomeMessage() {

@@ -204,7 +204,6 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             }
         }
     }
-
 }
 
 size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {

@@ -1,0 +1,68 @@
+#pragma once
+
+#include <cstring>
+#include <functional>
+#include <map>
+
+#include "device/drivers/serial-wrapper.hpp"
+#include "device/wireless-manager.hpp"
+#include "symbol.hpp"
+
+class RemoteDeviceCoordinator;
+
+struct SymbolMatchPacket {
+    int command;
+    SymbolId symbolId;
+} __attribute__((packed));
+
+enum SMCommand {
+    SEND_SYMBOL = 0,
+    SYMBOL_MATCH_SUCCESS = 1,
+    SYMBOLS_REFRESHED = 2,
+    SM_COMMAND_COUNT,  // Always add new commands above this line
+    SM_INVALID_COMMAND = 0xFF
+};
+
+
+struct SymbolMatchCommand {
+    uint8_t wifiMacAddr[6];
+    bool wifiMacAddrValid;
+    int command;
+    SymbolId symbolId;
+
+    SymbolMatchCommand() = delete;
+
+    SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId)
+        : wifiMacAddrValid(macAddress != nullptr), command(command), symbolId(symbolId) {
+        if (macAddress) {
+            memcpy(wifiMacAddr, macAddress, 6);
+        } else {
+            memset(wifiMacAddr, 0, 6);
+        }
+    }
+};
+
+class SymbolWirelessManager {
+public:
+    SymbolWirelessManager();
+    ~SymbolWirelessManager();
+
+    void initialize(WirelessManager* wirelessManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+
+    int processSymbolMatchCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen);
+
+    int sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort);
+
+    void setMacPeer(const uint8_t* macAddress);
+
+    void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port);
+
+    void clearCallback();
+
+private:
+    WirelessManager* wirelessManager;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
+    uint8_t macPeer[6];
+
+    std::map<SerialIdentifier, std::function<void(const SymbolMatchCommand&)>> packetReceivedCallbacks;
+};

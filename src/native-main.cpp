@@ -31,6 +31,7 @@
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 
 // Global running flag for signal handling
 std::atomic<bool> running{true};
@@ -60,6 +61,7 @@ struct DeviceInstance {
     Player* player;
     Quickdraw* game;
     QuickdrawWirelessManager* wirelessManager;
+    SymbolWirelessManager* symbolWirelessManager;
 };
 
 DeviceInstance createDeviceInstance(int deviceIndex) {
@@ -107,9 +109,13 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     // Note: QuickdrawWirelessManager is a singleton, so we skip it for now
     // In a full implementation, we'd need per-device wireless managers
     instance.wirelessManager = nullptr;
+    instance.symbolWirelessManager = new SymbolWirelessManager();
+    instance.symbolWirelessManager->initialize(
+        instance.pdn->getWirelessManager(),
+        instance.pdn->getRemoteDeviceCoordinator());
     
     // Create game
-    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr);
+    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr, instance.symbolWirelessManager);
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
@@ -247,6 +253,7 @@ int main(int argc, char** argv) {
     // Clean up devices
     for (auto& device : devices) {
         delete device.game;
+        delete device.symbolWirelessManager;
         delete device.player;
         delete device.pdn;
     }

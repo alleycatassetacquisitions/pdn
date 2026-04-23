@@ -1,10 +1,13 @@
+
 #include "../../include/game/quickdraw.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
+    this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
     this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
@@ -60,6 +63,17 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         },
         this
     );
+
+    if (symbolWirelessManager) {
+        symbolWirelessManager->initialize(wirelessManager, remoteDeviceCoordinator);
+        wirelessManager->setEspNowPacketHandler(
+            PktType::kSymbolMatchCommand,
+            [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+                static_cast<SymbolWirelessManager*>(ctx)->processSymbolMatchCommand(macAddress, data, dataLen);
+            },
+            symbolWirelessManager
+        );
+    }
 
     // Clear boost/confirmed-supporters when the supporter chain drains to
     // empty while a duel is still running. Without this, a champion keeps
@@ -151,10 +165,13 @@ void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data
 Quickdraw::~Quickdraw() {
     player = nullptr;
     remoteDeviceCoordinator = nullptr;
-    quickdrawWirelessManager->clearCallbacks();
+    if (quickdrawWirelessManager) {
+        quickdrawWirelessManager->clearCallbacks();
+    }
     quickdrawWirelessManager = nullptr;
     delete matchManager;
     matchManager = nullptr;
+    symbolWirelessManager = nullptr;
     delete chainDuelManager;
     chainDuelManager = nullptr;
     storageManager = nullptr;
@@ -183,6 +200,9 @@ void Quickdraw::populateStateMap() {
     
     Sleep* sleep = new Sleep(player);
     UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+
+    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
 
     // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(
@@ -288,10 +308,36 @@ void Quickdraw::populateStateMap() {
             std::bind(&Sleep::transitionToAwakenSequence, sleep),
             awakenSequence));
 
+    idle->addTransition(
+        new StateTransition(
+            std::bind(&Idle::transitionToSymbol, idle),
+            symbol));
+    
+    symbol->addTransition(
+        new StateTransition(
+            std::bind(&SymbolState::transitionToIdle, symbol),
+            idle));
+
+    symbol->addTransition(
+        new StateTransition(
+            std::bind(&SymbolState::transitionToSymbolMatched, symbol),
+            symbolMatched));
+    
+    symbolMatched->addTransition(
+        new StateTransition(
+            std::bind(&SymbolMatched::transitionToSymbol, symbolMatched),
+            symbol));
+
+    symbolMatched->addTransition(
+        new StateTransition(
+            std::bind(&SymbolMatched::transitionToIdle, symbolMatched),
+            idle));
+
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
+    stateMap.push_back(supporterReady);
     stateMap.push_back(duelCountdown);
     stateMap.push_back(duel);
     stateMap.push_back(duelPushed);
@@ -301,4 +347,6 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(lose);
     stateMap.push_back(uploadMatches);
     stateMap.push_back(sleep);
+    stateMap.push_back(symbol);
+    stateMap.push_back(symbolMatched);
 }

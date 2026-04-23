@@ -194,6 +194,21 @@ public:
         decodeXBMToBuffer(image.rawImage, image.width, image.height, x, y);
         return this;
     }
+
+    Display* whiteScreen() override {
+        fillRect(0, 0, WIDTH, HEIGHT);
+        return this;
+    }
+
+    Display* whiteScreenLeftHalf() override {
+        fillRect(0, 0, WIDTH / 2, HEIGHT);
+        return this;
+    }
+
+    Display* whiteScreenRightHalf() override {
+        fillRect(WIDTH / 2, 0, WIDTH / 2, HEIGHT);
+        return this;
+    }
     
     // CLI access methods
     const std::string& getLastText() const { return lastText_; }
@@ -206,6 +221,7 @@ public:
             case FontMode::LOADING_GLYPH: return "LOADING";
             case FontMode::TEXT_INVERTED_SMALL: return "INV_SM";
             case FontMode::TEXT_INVERTED_LARGE: return "INV_LG";
+            case FontMode::SYMBOL_GLYPH: return "SYMBOL";
             default: return "?";
         }
     }
@@ -365,6 +381,16 @@ private:
         for (int j = y; j < y + h && j < HEIGHT; j++) {
             setPixel(x, j, true);
             setPixel(x + w - 1, j, true);
+        }
+    }
+
+    void fillRect(int x, int y, int w, int h) {
+        const int xEnd = x + w;
+        const int yEnd = y + h;
+        for (int j = y; j < yEnd; j++) {
+            for (int i = x; i < xEnd; i++) {
+                setPixel(i, j, true);
+            }
         }
     }
     

@@ -1,6 +1,7 @@
 #include "game/player.hpp"
 #include <memory>
 #include <cstring>
+#include <cstdlib>
 #include <ArduinoJson.h>
 #include "wireless/mac-functions.hpp"
 
@@ -8,8 +9,7 @@ Player::Player(const std::string& id, Allegiance allegiance, bool isHunter) :
   id(id),
   allegiance(allegiance),
   hunter(isHunter)
-{
-}
+{}
 
 std::string Player::toJson() const {
     // Create a JSON object for player
@@ -64,6 +64,7 @@ void Player::setIsHunter(bool isHunter)
 void Player::clearUserID()
 {
   id = "9998";
+  symbol.updateFromUserIdString(id);
 }
 
 bool Player::isHunter() const
@@ -156,7 +157,15 @@ void Player::setFaction(const std::string& faction)
 
 void Player::setUserID(char* newId)
 {
-  id = std::string(newId);
+    id = std::string(newId);
+    symbol.updateFromUserIdString(id);
+}
+
+void Player::applyRngSeedFromUserId()
+{
+    const unsigned int seed = static_cast<unsigned int>(std::strtoul(id.c_str(), nullptr, 10));
+    std::srand(seed);
+    symbol.setRandomSymbol();
 }
 
 std::string Player::getUserID() const
@@ -189,6 +198,10 @@ int Player::getWins() {
 
 int Player::getLosses() {
     return losses;
+}
+
+Symbol* Player::getSymbol() {
+    return &symbol;
 }
 
 void Player::incrementStreak() {

@@ -12,7 +12,8 @@ enum class FontMode {
     NUMBER_GLYPH,
     LOADING_GLYPH,
     TEXT_INVERTED_SMALL,
-    TEXT_INVERTED_LARGE
+    TEXT_INVERTED_LARGE,
+    SYMBOL_GLYPH
 };
 
 class Display {
@@ -36,6 +37,12 @@ public:
     virtual Display* drawImage(Image image) = 0;
 
     virtual Display* drawImage(Image image, int xStart, int yStart) = 0;
+
+    virtual Display* whiteScreen() = 0;
+
+    virtual Display* whiteScreenLeftHalf() = 0;
+
+    virtual Display* whiteScreenRightHalf() = 0;
 
 private:
     Cursor cursor_;
