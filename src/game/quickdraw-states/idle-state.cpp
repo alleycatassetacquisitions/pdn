@@ -83,11 +83,6 @@ void Idle::onStateLoop(Device *PDN) {
         }
     }
 
-    if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
-        || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN) {
-        transitionToSymbolState = true;
-    }
-
     if (!matchInitialized && (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
     || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
         transitionToSymbolState = true;
