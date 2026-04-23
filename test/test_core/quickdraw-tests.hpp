@@ -1540,7 +1540,7 @@ public:
 // reported. Without ASAN this still catches crashes in the lifecycle path.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr);
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
         delete qd;
     }
 }

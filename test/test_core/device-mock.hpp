@@ -97,6 +97,9 @@ public:
     MOCK_METHOD(Display*, drawText, (const char*, int, int), (override));
     MOCK_METHOD(Display*, drawImage, (Image), (override));
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
+    MOCK_METHOD(Display*, whiteScreen, (), (override));
+    MOCK_METHOD(Display*, whiteScreenLeftHalf, (), (override));
+    MOCK_METHOD(Display*, whiteScreenRightHalf, (), (override));
 };
 
 class MockButton : public Button {

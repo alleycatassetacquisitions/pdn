@@ -1,5 +1,3 @@
-#include <FastLED.h>
-
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
@@ -78,9 +76,6 @@ void SymbolMatched::onStateDismounted(Device *PDN) {
     PDN->getLightManager()->stopAnimation();
     PDN->getLightManager()->clear();
     PDN->getHaptics()->off();
-    // clear() updates the FastLED buffer; show() normally runs in the light driver's
-    // exec() on a timer. This loop blocks the main loop, so push pixels now before loading UI.
-    FastLED.show();
 
     if (showRefreshScreen) {
         SimpleTimer bufferTimer;
