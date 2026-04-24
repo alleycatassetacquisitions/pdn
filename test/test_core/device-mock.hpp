@@ -14,6 +14,7 @@
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
+#include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
 
@@ -97,6 +98,8 @@ public:
     MOCK_METHOD(Display*, drawText, (const char*, int, int), (override));
     MOCK_METHOD(Display*, drawImage, (Image), (override));
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
+    MOCK_METHOD(int, getTextWidth, (const char*), (override));
+    MOCK_METHOD(int, getWidth, (), (override));
     MOCK_METHOD(Display*, whiteScreen, (), (override));
     MOCK_METHOD(Display*, whiteScreenLeftHalf, (), (override));
     MOCK_METHOD(Display*, whiteScreenRightHalf, (), (override));
@@ -211,6 +214,18 @@ private:
     uint8_t inputPeerMac[6] = {};
     bool outputPeerSet = false;
     bool inputPeerSet = false;
+};
+
+// Stand-in CDM for tests that flip isLoop() without standing up the full
+// handshake stack. Used by ShootoutProposal/BracketReveal debounce tests.
+class FakeChainDuelManager : public ChainDuelManager {
+public:
+    FakeChainDuelManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)
+        : ChainDuelManager(p, wm, rdc) {}
+    bool isLoop() const override { return isLoop_; }
+    void setIsLoop(bool v) { isLoop_ = v; }
+private:
+    bool isLoop_ = true;
 };
 
 // Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.

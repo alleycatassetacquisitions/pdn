@@ -5,6 +5,8 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
 #include "game/chain-duel-manager.hpp"
+#include "game/shootout-manager.hpp"
+#include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 #include "symbol-match/symbol-manager.hpp"
 #include "symbol-match/symbol-match.hpp"
@@ -68,7 +70,9 @@ void Idle::onStateLoop(Device *PDN) {
         displayIsDirty = false;
     }
 
-    if (isConnected()) {
+    ShootoutManager* shMgr = PDN->getShootoutManager();
+    bool shootoutActive = shMgr && shMgr->active();
+    if (!shootoutActive && isConnected()) {
         if (chainDuelManager->canInitiateMatch()
             && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN
             && player->isHunter()) {

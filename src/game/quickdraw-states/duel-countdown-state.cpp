@@ -106,7 +106,7 @@ bool DuelCountdown::shallWeBattle() {
 }
 
 bool DuelCountdown::disconnectedBackToIdle() {
-    return !isConnected();
+    return isPersistentlyDisconnected();
 }
 
 bool DuelCountdown::isPrimaryRequired() {

@@ -137,8 +137,8 @@ inline void rdcConnectedPortDisconnectsOnHeartbeatTimeout(RDCTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
 
-    // Let the heartbeat monitor timeout expire (firstHeartbeatTimeout = 400ms)
-    suite->fakeClock->advance(500);
+    // Let the heartbeat monitor timeout expire (firstHeartbeatTimeout = 2000ms)
+    suite->fakeClock->advance(2100);
     suite->rdc.sync(&suite->device);
 
     // After timeout, the connected state should transition back to idle
@@ -220,6 +220,37 @@ inline void rdcDirectPeerDropEmitsAnnouncement(RDCTests* suite) {
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
 
     EXPECT_GT(emitCount, 0);
+}
+
+inline void rdcDirectPeerDropFiresPeerLostCallbackWithMac(RDCTests* suite) {
+    // Bring up both ports (same setup as rdcDirectPeerDropEmitsAnnouncement —
+    // handshake requires a bidirectional exchange to reach CONNECTED).
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
+    suite->rdc.sync(&suite->device);
+    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+
+    // Hook callback AFTER bring-up so only the disconnect fires it.
+    std::array<uint8_t, 6> capturedMac{};
+    int firedCount = 0;
+    suite->rdc.setPeerLostCallback([&](const uint8_t* lostMac) {
+        memcpy(capturedMac.data(), lostMac, 6);
+        firedCount++;
+    });
+
+    // Drop OUTPUT.
+    suite->deliverPacketViaRDC(HSCommand::NOTIFY_DISCONNECT, SerialIdentifier::INPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+
+    EXPECT_EQ(firedCount, 1);
+    std::array<uint8_t, 6> expected = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    EXPECT_EQ(capturedMac, expected);
 }
 
 inline void rdcAnnouncementAbandonedAfterMaxRetries(RDCTests* suite) {
@@ -437,7 +468,7 @@ inline void rdcDisconnectWipesDaisyChainedPeers(RDCTests* suite) {
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DAISY_CHAINED);
 
     // Heartbeat monitor timeout expires → handshake drops → port disconnects
-    suite->fakeClock->advance(500);
+    suite->fakeClock->advance(2100);
     suite->rdc.sync(&suite->device);
     suite->rdc.sync(&suite->device);
 

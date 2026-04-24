@@ -49,7 +49,7 @@ bool DuelPushed::isAuxRequired() {
 }
 
 bool DuelPushed::disconnectedBackToIdle() {
-    return !isConnected();
+    return isPersistentlyDisconnected();
 }
 
 bool DuelPushed::transitionToDuelResult() {

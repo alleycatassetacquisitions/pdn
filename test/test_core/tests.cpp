@@ -18,7 +18,7 @@
 #include "rdc-tests.hpp"
 #include "chain-duel-manager-tests.hpp"
 #include "chain-duel-multi-device-fixture.hpp"
-#include "peer-comms-types-tests.hpp"
+#include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 
 #if defined(ARDUINO)
@@ -46,42 +46,6 @@ void loop()
 }
 
 #else
-
-// ============================================
-// PEER COMMS TYPES TESTS
-// ============================================
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadHasCorrectSize) {
-    roleAnnouncePayloadHasCorrectSize();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadHasCorrectSize) {
-    roleAnnounceAckPayloadHasCorrectSize();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadIsPacked) {
-    roleAnnouncePayloadIsPacked();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadIsPacked) {
-    roleAnnounceAckPayloadIsPacked();
-}
-
-TEST_F(PeerCommsTypesTestSuite, packetTypeEnumHasCorrectValues) {
-    packetTypeEnumHasCorrectValues();
-}
-
-TEST_F(PeerCommsTypesTestSuite, numPacketTypesIsSequentialAfterAck) {
-    numPacketTypesIsSequentialAfterAck();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnouncePayloadFieldsAligned) {
-    roleAnnouncePayloadFieldsAligned();
-}
-
-TEST_F(PeerCommsTypesTestSuite, roleAnnounceAckPayloadFieldsAligned) {
-    roleAnnounceAckPayloadFieldsAligned();
-}
 
 // ============================================
 // STATE MACHINE TESTS
@@ -1071,6 +1035,18 @@ TEST_F(StateCleanupTests, receivedResultClearsMatchOnDisconnect) {
     receivedResultClearsMatchOnDisconnect(this);
 }
 
+TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
+    countdownDebouncesTransientDisconnect(this);
+}
+
+TEST_F(StateCleanupTests, duelPushedDebouncesTransientDisconnect) {
+    duelPushedDebouncesTransientDisconnect(this);
+}
+
+TEST_F(StateCleanupTests, duelReceivedResultDebouncesTransientDisconnect) {
+    duelReceivedResultDebouncesTransientDisconnect(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================
@@ -1299,6 +1275,10 @@ TEST_F(RDCTests, directPeerDropEmitsAnnouncement) {
     rdcDirectPeerDropEmitsAnnouncement(this);
 }
 
+TEST_F(RDCTests, directPeerDropFiresPeerLostCallbackWithMac) {
+    rdcDirectPeerDropFiresPeerLostCallbackWithMac(this);
+}
+
 TEST_F(RDCTests, chainAnnouncementPacketHandlerUpdatesDaisyChain) {
     rdcChainAnnouncementPacketHandlerUpdatesDaisyChain(this);
 }
@@ -1446,6 +1426,47 @@ TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChampion) {
 TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChampion) {
     cdmMultiDeviceConfirmDeliveredToChampion(this);
 }
+
+TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceFullTournament) {
+    shootoutFourDeviceFullTournament(this);
+}
+TEST_F(ChainDuelMultiDeviceFixture, shootoutEightDeviceFullTournament) {
+    shootoutEightDeviceFullTournament(this);
+}
+TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
+    shootoutFourDeviceConsensusAndMatchStart(this);
+}
+
+// ============================================
+// SHOOTOUT MANAGER TESTS
+// ============================================
+
+TEST_F(ShootoutManagerTests, coordinatorIsLowestMacAmongConfirmed) { coordinatorIsLowestMacAmongConfirmed(this); }
+TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
+TEST_F(ShootoutManagerTests, localConfirmIsRecordedAndBroadcast) { localConfirmIsRecordedAndBroadcast(this); }
+TEST_F(ShootoutManagerTests, receivingAllConfirmsAdvancesToBracketReveal) { receivingAllConfirmsAdvancesToBracketReveal(this); }
+TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { confirmRebroadcastsEverySecondDuringProposal(this); }
+TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
+TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
+TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
+TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
+TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
+TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
+TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
+TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
+TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
+TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
+TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }
+TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) { finalMatchResultTriggersTournamentEnd(this); }
+TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) { startProposalClearsAllPriorTournamentState(this); }
+TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) { tournamentEndRetriesUntilAcked(this); }
+TEST_F(ShootoutManagerTests, matchResultRetriesUntilAcked) { matchResultRetriesUntilAcked(this); }
+TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) { duplicateMatchResultDoesNotDoubleAdvance(this); }
+TEST_F(ShootoutManagerTests, confirmRecordsPeerName) { confirmRecordsPeerName(this); }
+TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) { isHunterRestoredAfterTournament(this); }
+TEST_F(ShootoutManagerTests, localRDCDisconnectIsIdempotent) { localRDCDisconnectIsIdempotent(this); }
+TEST_F(ShootoutManagerTests, shootoutProposalDebouncesTransientLoopBreak) { shootoutProposalDebouncesTransientLoopBreak(this); }
+TEST_F(ShootoutManagerTests, shootoutBracketRevealDebouncesTransientLoopBreak) { shootoutBracketRevealDebouncesTransientLoopBreak(this); }
 
 // ============================================
 // MAIN

@@ -132,8 +132,9 @@ std::vector<cli::DeviceInstance> createDevices(int count) {
     printf("\033[0m");
     
     for (int i = 0; i < count; i++) {
-        // Alternate roles: even indices are hunters, odd are bounties
-        bool isHunter = (i % 2 == 0);
+        // All hunters so SerialCableBroker uses PRIMARY→AUXILIARY cabling
+        // uniformly; alternating roles would double-book PRIMARY jacks.
+        bool isHunter = true;
         devices.push_back(cli::DeviceFactory::createDevice(i, isHunter));
         
         printf("  Device %s: %s\n", 

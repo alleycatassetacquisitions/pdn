@@ -61,6 +61,12 @@ inline const char* getStateName(int stateId) {
         case 19: return "Lose";
         case 20: return "UploadMatches";
         case 21: return "PosseReady";
+        case 22: return "ShootoutProposal";
+        case 23: return "ShootoutBracketReveal";
+        case 24: return "ShootoutSpectator";
+        case 25: return "ShootoutEliminated";
+        case 26: return "ShootoutFinalStandings";
+        case 27: return "ShootoutAborted";
         default: return "Unknown";
     }
 }

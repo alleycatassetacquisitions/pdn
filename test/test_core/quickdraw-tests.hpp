@@ -630,7 +630,7 @@ inline void duelButtonPressTransitionsToDuelPushed(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Initially should not transition
@@ -651,7 +651,7 @@ inline void duelButtonPressCalculatesReactionTime(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Advance 250ms (simulating reaction time)
@@ -698,7 +698,7 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     countdownState.onStateDismounted(&suite->device);
     
     // Now start the duel
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     duelState.onStateMounted(&suite->device);
@@ -722,7 +722,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
 
     size_t sentBefore = suite->wirelessManager->sentCommands.size();
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
 
     suite->fakeClock->advance(200);
@@ -779,7 +779,7 @@ inline void duelReceivedResultTransitionsToDuelReceivedResult(DuelStateTests* su
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Simulate receiving opponent's result before pressing button
@@ -841,7 +841,7 @@ inline void duelTimeoutTransitionsToIdle(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     duelState.onStateMounted(&suite->device);
     
     // Initially should not timeout
@@ -1052,7 +1052,7 @@ inline void resultWinTransitionsToWinState(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_TRUE(resultState.transitionToWin());
@@ -1069,7 +1069,7 @@ inline void resultLoseTransitionsToLoseState(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_FALSE(resultState.transitionToWin());
@@ -1090,7 +1090,7 @@ inline void resultPlayerStatsUpdatedOnWin(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_EQ(suite->player->getWins(), initialWins + 1);
@@ -1116,7 +1116,7 @@ inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     EXPECT_EQ(suite->player->getLosses(), initialLosses + 1);
@@ -1141,7 +1141,7 @@ inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     // Match should be finalized (saved to storage)
@@ -1238,7 +1238,7 @@ inline void cleanupDuelStateDoesNotClearCallbacksOnDismount(StateCleanupTests* s
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1280,7 +1280,7 @@ inline void cleanupDuelStateInvalidatesTimer(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1353,7 +1353,7 @@ inline void cleanupDuelResultClearsWirelessCallbacks(StateCleanupTests* suite) {
     suite->matchManager->setReceivedButtonPush();
     suite->matchManager->setReceivedDrawResult();
     
-    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager);
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, nullptr);
     resultState.onStateMounted(&suite->device);
     
     // Dismount should clear state
@@ -1439,7 +1439,7 @@ inline void cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(StateCl
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
-    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
+    Duel duelState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager, nullptr);
 
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -1477,6 +1477,83 @@ inline void pushedClearsMatchOnDisconnect(StateCleanupTests* suite) {
 }
 
 // Test: DuelReceivedResult clears match when disconnected on dismount
+// Connection blip during a duel countdown must not abort the match: a single
+// !isConnected() tick triggered by a cable nudge previously sent the duelist
+// straight to Idle. In a shootout match this orphans the duelist (Idle's
+// auto-trigger to ShootoutProposal is gated on !shootout->active(), which is
+// false mid-match), and the spectators wait forever for a MATCH_RESULT that
+// will never arrive.
+inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    DuelCountdown countdown(suite->player, suite->matchManager,
+                            &suite->device.fakeRemoteDeviceCoordinator,
+                            suite->chainDuelManager);
+
+    // Single-tick blip: should be absorbed by the debounce.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(countdown.disconnectedBackToIdle());
+
+    // Recovery within the window clears the timer.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(countdown.disconnectedBackToIdle());
+
+    // Persistent loss past the debounce window: now the abort fires.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(countdown.disconnectedBackToIdle());  // start debounce
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(countdown.disconnectedBackToIdle());
+}
+
+// Same debounce contract on DuelPushed (between BATTLE press and result
+// arrival). A blip here threw away the duel before the grace period could
+// resolve it.
+inline void duelPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    DuelPushed pushed(suite->player, suite->matchManager,
+                      &suite->device.fakeRemoteDeviceCoordinator);
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(pushed.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(pushed.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(pushed.disconnectedBackToIdle());
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(pushed.disconnectedBackToIdle());
+}
+
+// Same debounce contract on DuelReceivedResult.
+inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* suite) {
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    DuelReceivedResult received(suite->player, suite->matchManager,
+                                &suite->device.fakeRemoteDeviceCoordinator);
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(received.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(received.disconnectedBackToIdle());
+
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(received.disconnectedBackToIdle());
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(received.disconnectedBackToIdle());
+}
+
 inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
@@ -1552,8 +1629,8 @@ inline void connectionSuccessfulTransitionsAfterThreshold(ConnectionSuccessfulTe
 
     EXPECT_FALSE(connectedState.transitionToIdle());
 
-    // Advance past the firstHeartbeatTimeout (400ms)
-    suite->fakeClock->advance(500);
+    // Advance past the firstHeartbeatTimeout (2000ms)
+    suite->fakeClock->advance(2100);
     connectedState.onStateLoop(&suite->device);
 
     EXPECT_TRUE(connectedState.transitionToIdle());

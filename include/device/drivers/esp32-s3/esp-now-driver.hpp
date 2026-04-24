@@ -522,8 +522,10 @@ private:
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
         xSemaphoreTake(sendMutex_, portMAX_DELAY);
-        free(m_sendQueue.front().ptr);
-        m_sendQueue.pop();
+        if (!m_sendQueue.empty()) {
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+        }
         xSemaphoreGive(sendMutex_);
         m_curRetries = 0;
     }

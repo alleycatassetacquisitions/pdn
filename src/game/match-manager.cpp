@@ -3,6 +3,7 @@
 #include "device/drivers/logger.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/device-constants.hpp"
+#include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <optional>
 
@@ -29,6 +30,10 @@ void MatchManager::setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc) {
     rdc_ = rdc;
 }
 
+void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
+    shootoutManager_ = shootoutManager;
+}
+
 void MatchManager::clearCurrentMatch() {
     if (activeDuelState.match) {
         LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
@@ -43,25 +48,39 @@ void MatchManager::clearCurrentMatch() {
     }
 }
 
+void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac) {
+    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
+    memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
+}
+
 void MatchManager::initializeMatch(uint8_t* opponentMac) {
-    // Only allow one active match at a time
     if (activeDuelState.match.has_value()) {
         return;
     }
 
     auto* clock = SimpleTimer::getPlatformClock();
-    LOG_W(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
+    LOG_D(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
 
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     memcpy(matchId, IdGenerator::getInstance().generateId(), IdGenerator::UUID_BUFFER_SIZE);
-    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
-    memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
+    primeMatch(matchId, opponentMac);
     sendMatchId();
 }
 
 void MatchManager::sendMatchId() {
     QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::SEND_MATCH_ID, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
+}
+
+void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponentMac) {
+    if (activeDuelState.match.has_value()) return;
+
+    auto* clock = SimpleTimer::getPlatformClock();
+    LOG_D(MATCH_MANAGER_TAG, "TIMING initializeShootoutMatch T=%lu",
+          clock ? clock->milliseconds() : 0UL);
+
+    primeMatch(matchId, opponentMac);
+    activeDuelState.matchIsReady = true;
 }
 
 void MatchManager::receiveMatch(const char* matchId, const char* opponentId, bool opponentIsHunter, uint8_t* opponentMac) {
@@ -80,7 +99,7 @@ void MatchManager::receiveMatch(const char* matchId, const char* opponentId, boo
     memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
 
     auto* clock = SimpleTimer::getPlatformClock();
-    LOG_W(MATCH_MANAGER_TAG, "TIMING receiveMatch-ready T=%lu", clock ? clock->milliseconds() : 0UL);
+    LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ready T=%lu", clock ? clock->milliseconds() : 0UL);
 
     activeDuelState.matchIsReady = true;
 
@@ -149,6 +168,12 @@ bool MatchManager::finalizeMatch() {
 
     std::string match_id = activeDuelState.match->getMatchId();
 
+    // Shootout matches are local-ephemeral: no save, no upload.
+    if (match_id.rfind(kShootoutMatchIdPrefix, 0) == 0) {
+        clearCurrentMatch();
+        return true;
+    }
+
     // Save to storage
     if (appendMatchToStorage(&*activeDuelState.match)) {
         // Update stored count
@@ -157,7 +182,7 @@ bool MatchManager::finalizeMatch() {
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
         return true;
     }
-    
+
     LOG_E("PDN", "Failed to finalize match %s\n", match_id.c_str());
     return false;
 }
@@ -420,8 +445,10 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
             LOG_W(MATCH_MANAGER_TAG, "Rejecting SEND_MATCH_ID: sender not an RDC direct peer");
             return;
         }
-        if(player->isHunter() == command.isHunter) {
+        bool shootoutActive = shootoutManager_ && shootoutManager_->active();
+        if(!shootoutActive && player->isHunter() == command.isHunter) {
             // Same role on both sides — not a valid hunter/bounty pairing.
+            // Shootout brackets intentionally allow same-role duels.
             sendMatchRoleMismatch(command);
             return;
         } else {
@@ -433,7 +460,7 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
         if(player->isHunter()) { activeDuelState.match->setBountyId(command.playerId); }
         else { activeDuelState.match->setHunterId(command.playerId); }
         auto* clock = SimpleTimer::getPlatformClock();
-        LOG_W(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
+        LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
         activeDuelState.matchIsReady = true;
     } else if(command.command == QDCommand::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");

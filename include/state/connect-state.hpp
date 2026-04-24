@@ -2,6 +2,7 @@
 
 #include "state/state.hpp"
 #include "device/remote-device-coordinator.hpp"
+#include "utils/debounced-condition.hpp"
 
 class ConnectState : public State {
 public:
@@ -26,6 +27,10 @@ public:
                (isAuxRequired() && connectedOrChain(SerialIdentifier::INPUT_JACK));
     }
 
+    bool isPersistentlyDisconnected() {
+        return disconnectDebounce_.heldFor(!isConnected(), kDisconnectDebounceMs);
+    }
+
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
@@ -33,5 +38,6 @@ protected:
     virtual bool isAuxRequired() = 0;
 
 private:
-    
+    static constexpr unsigned long kDisconnectDebounceMs = 500;
+    DebouncedCondition disconnectDebounce_;
 };

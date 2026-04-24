@@ -7,6 +7,7 @@
 #include "device/drivers/logger.hpp"
 #include "state/state-machine.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
+#include "wireless/mac-functions.hpp"
 #include "wireless/peer-comms-types.hpp"
 
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
@@ -135,8 +136,9 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     // Detect direct peer registration transitions and emit chain announcements.
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
         const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
+        auto& prev = previousDirectPeer_[portIndex(port)];
         bool nowPresent = (directPeer != nullptr);
-        bool wasPresent = previousDirectPeerPresent_[portIndex(port)];
+        bool wasPresent = prev.has_value();
 
         if (!nowPresent && wasPresent) {
             SerialIdentifier otherPort = (port == SerialIdentifier::INPUT_JACK)
@@ -145,6 +147,9 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             if (otherDirect != nullptr) {
                 // Forward: tell other side that nothing is reachable through changed_port
                 emitAnnouncementVia(otherPort, {});
+            }
+            if (peerLostCallback_) {
+                peerLostCallback_(prev->data());
             }
             notifyDisconnect();
         }
@@ -170,7 +175,8 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             notifyConnect();
         }
 
-        previousDirectPeerPresent_[portIndex(port)] = nowPresent;
+        prev = nowPresent ? std::optional<std::array<uint8_t, 6>>{directPeer->macAddr}
+                          : std::nullopt;
     }
 
     // Retransmit any unacked pending announcements past the ack timeout.
@@ -324,6 +330,10 @@ void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callb
     chainChangeCallback_ = callback;
 }
 
+void RemoteDeviceCoordinator::setPeerLostCallback(std::function<void(const uint8_t*)> callback) {
+    peerLostCallback_ = callback;
+}
+
 void RemoteDeviceCoordinator::setAnnouncementEmitCallback(AnnouncementEmitCallback callback) {
     announcementEmitCallback_ = callback;
 }
@@ -380,6 +390,17 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     return false;
 }
 
+bool RemoteDeviceCoordinator::canReachPeer(const uint8_t* mac) const {
+    if (!mac) return false;
+    if (isDirectPeer(mac)) return true;
+    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
+        for (const auto& daisy : daisyChainedByPort_[portIndex(port)]) {
+            if (memcmp(daisy.data(), mac, 6) == 0) return true;
+        }
+    }
+    return false;
+}
+
 void RemoteDeviceCoordinator::addDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress) {
     std::array<uint8_t, 6> mac;
     memcpy(mac.data(), macAddress, 6);
@@ -401,12 +422,18 @@ void RemoteDeviceCoordinator::removeDaisyChainedPeer(SerialIdentifier port, cons
         if (memcmp(it->data(), macAddress, 6) == 0) {
             chain.erase(it);
             // Free the ESP-NOW peer slot unless the same MAC is still
-            // daisy-chained on the OTHER port (ring-topology remnant).
+            // daisy-chained on the OTHER port (ring-topology remnant) or
+            // is the direct handshake peer on either jack. Without the
+            // direct-peer check, a ring-break chain-announcement diff that
+            // drops a MAC from one port's daisy list would remove the
+            // live peer from the ESP-NOW table even while its cable is
+            // still handshaking on the other jack.
             SerialIdentifier otherPort = (port == SerialIdentifier::INPUT_JACK)
                 ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
             for (const auto& m : daisyChainedByPort_[portIndex(otherPort)]) {
                 if (memcmp(m.data(), macAddress, 6) == 0) return;
             }
+            if (isDirectPeer(macAddress)) return;
             unregisterPeer(macAddress);
             return;
         }
