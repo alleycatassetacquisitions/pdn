@@ -33,16 +33,6 @@ constexpr uint16_t BAUDRATE = 19200;
 
 constexpr unsigned long DUEL_NO_RESULT_TIME = 123456789;
 
-// COMMANDS
-const std::string BOUNTY_BATTLE_MESSAGE = "bbm";
-const std::string HUNTER_BATTLE_MESSAGE = "hbm";
-const std::string BOUNTY_SHAKE = "bs";
-const std::string HUNTER_SHAKE = "hs";
-const std::string HUNTER_HANDSHAKE_FINAL_ACK = "hhfa";
-const std::string BOUNTY_HANDSHAKE_FINAL_ACK = "bhfa";
-const std::string ZAP = "zap";
-const std::string YOU_DEFEATED_ME = "ydm";
-
 const std::string SERIAL_HEARTBEAT = "hb";
 
 const std::string SEND_MAC_ADDRESS = "smac";
