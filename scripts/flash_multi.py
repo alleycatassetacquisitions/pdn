@@ -50,7 +50,8 @@ def list_com_ports_with_pyserial():
 
     ports = []
     for p in serial.tools.list_ports.comports():
-        port_name = p.device.upper()
+        # Don't .upper(): /dev paths on Linux/macOS are case-sensitive.
+        port_name = p.device
         desc = p.description.upper() if p.description else ""
         ports.append((port_name, desc, p.vid, p.pid))
     return ports
@@ -73,6 +74,7 @@ def test_esp32_on_port(port_name):
             result = subprocess.run(
                 [sys.executable, "-m", "esptool", "--port", port_name, subcmd],
                 capture_output=True, text=True, timeout=2,
+                encoding="utf-8", errors="replace",
             )
             if result.returncode == 0 and "ESP32" in result.stdout:
                 out = result.stdout
