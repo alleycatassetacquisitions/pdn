@@ -21,6 +21,12 @@ Before contributing, please ensure that you follow these steps:
 
 3. **Join Our Community**: [Join us on Discord!](https://discord.gg/6XGTCbKkUy)
 
+### Architecture in Practice
+
+- **`AppConfig` only contains Quickdraw.** Chain Duel, Shootout, and Symbol-Match are sub-states of Quickdraw, not sibling apps. See `Quickdraw::populateStateMap()`.
+- **RDC owns physical-connection detection on serial.** A `HandshakeApp` per jack (`src/apps/handshake/`) exchanges MAC + `DeviceType`. Use `getPeerMac()` / `getPeerDeviceType()`; don't write your own serial protocol.
+- **`SerialManager` callbacks are single-slot per jack, owned by RDC.** `setOnStringReceivedCallback()` overwrites. Calling it from game code breaks the handshake; use ESP-NOW for application messages.
+
 ### Contribution Workflow
 
 1. **Propose Your Contribution**: Submit a brief outline of your contribution idea or feature request via GitHub issues.
