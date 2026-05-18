@@ -23,7 +23,6 @@ void ShootoutFinalStandings::onStateMounted(Device *PDN) {
 }
 
 void ShootoutFinalStandings::onStateLoop(Device *PDN) {
-    if (shootout_) shootout_->sync();
     if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
         shouldGoToSleep_ = true;
     }

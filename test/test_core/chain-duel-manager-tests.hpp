@@ -32,11 +32,6 @@ public:
             .WillByDefault(testing::DoAll(
                 testing::SaveArg<1>(&capturedChainHandler),
                 testing::SaveArg<2>(&capturedChainCtx)));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kChainAnnouncementAck), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedAckHandler),
-                testing::SaveArg<2>(&capturedAckCtx)));
-
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
     }
 
@@ -105,8 +100,6 @@ public:
     void* capturedCtx = nullptr;
     PeerCommsInterface::PacketCallback capturedChainHandler = nullptr;
     void* capturedChainCtx = nullptr;
-    PeerCommsInterface::PacketCallback capturedAckHandler = nullptr;
-    void* capturedAckCtx = nullptr;
     uint8_t localMac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     uint8_t supporterMac[6] = {0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11};
@@ -240,7 +233,7 @@ inline void cdmSendConfirmTargetsChampionMac(ChainDuelManagerTests* suite) {
     // Seed championMac via announce.
     uint8_t champion[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
@@ -268,7 +261,7 @@ inline void cdmSendConfirmIncrementsSeqId(ChainDuelManagerTests* suite) {
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     uint8_t champion[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
@@ -315,12 +308,13 @@ inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     bool ackSent = false;
     bool peerRegistered = false;
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, sizeof(RoleAnnounceAckPayload)))
+                sendData(_, PktType::kAck, _, sizeof(AckPayload)))
         .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
             ackSent = true;
             EXPECT_EQ(memcmp(mac, suite->opponentMac, 6), 0);
-            RoleAnnounceAckPayload p;
+            AckPayload p;
             memcpy(&p, data, sizeof(p));
+            EXPECT_EQ(p.originalType, static_cast<uint8_t>(PktType::kRoleAnnounce));
             EXPECT_EQ(p.seqId, 7u);
             return 1;
         });
@@ -347,7 +341,7 @@ inline void cdmRoleAnnounceNoCascadeIfChampionUnchanged(ChainDuelManagerTests* s
     uint8_t championMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     // First receive triggers a cascade broadcast (championMac is new); may send to
     // both jacks so we allow any number >= 1.
@@ -378,7 +372,7 @@ inline void cdmBroadcastRoleAndChampionSends(ChainDuelManagerTests* suite) {
     uint8_t champion[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     // Allow implicit broadcast triggered inside onRoleAnnounceReceived.
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
@@ -416,7 +410,7 @@ inline void cdmAckClearsPending(ChainDuelManagerTests* suite) {
     uint8_t champion[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     // Allow implicit broadcast triggered inside onRoleAnnounceReceived.
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
@@ -436,8 +430,13 @@ inline void cdmAckClearsPending(ChainDuelManagerTests* suite) {
     cdm.broadcastRoleAndChampion();
     ASSERT_NE(seqId, 0u);
 
-    // Ack with matching seqId clears pending.
-    cdm.onRoleAnnounceAckReceived(suite->supporterMac, seqId);
+    // Ack with matching seqId clears pending. Routed through the production
+    // dispatcher: ESP-NOW kAck packets land in Resender::processIncomingAck.
+    {
+        AckPayload ack{static_cast<uint8_t>(PktType::kRoleAnnounce), 0, seqId};
+        Resender::processIncomingAck(suite->supporterMac,
+            reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    }
 
     // Subsequent sync() after timeout must not emit any further role announces.
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -454,7 +453,7 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
     uint8_t champion[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
@@ -474,7 +473,11 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
 
     // Forged ack: right seqId, wrong source MAC. Must be ignored.
     uint8_t forgedMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00};
-    cdm.onRoleAnnounceAckReceived(forgedMac, seqId);
+    {
+        AckPayload ack{static_cast<uint8_t>(PktType::kRoleAnnounce), 0, seqId};
+        Resender::processIncomingAck(forgedMac,
+            reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    }
 
     // sync() after timeout must still retransmit to supporterMac.
     int retransmits = 0;
@@ -497,7 +500,7 @@ inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
     uint8_t champion[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     // Allow implicit broadcast triggered inside onRoleAnnounceReceived.
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
@@ -539,7 +542,7 @@ inline void cdmRetryStatsRecordsLifecycle(ChainDuelManagerTests* suite) {
     uint8_t champion[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
 
     uint8_t seqId = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -556,7 +559,11 @@ inline void cdmRetryStatsRecordsLifecycle(ChainDuelManagerTests* suite) {
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
     ASSERT_NE(seqId, 0u);
     suite->fakeClock->advance(50);
-    cdm.onRoleAnnounceAckReceived(suite->supporterMac, seqId);
+    {
+        AckPayload ack{static_cast<uint8_t>(PktType::kRoleAnnounce), 0, seqId};
+        Resender::processIncomingAck(suite->supporterMac,
+            reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    }
 
     auto s1 = cdm.getRetryStats();
     EXPECT_GE(s1.sends, 1u);
@@ -600,7 +607,7 @@ inline void cdmSupporterKeepsUpstreamChampionMacAfterTransition(ChainDuelManager
 
     uint8_t champion[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
@@ -668,7 +675,7 @@ inline void chainDuelThreeDeviceConfirm(ChainDuelManagerTests* suite) {
     std::vector<std::array<uint8_t, 6>> s1Cascade;
     RoleAnnouncePayload s1CascadePayload{};
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
@@ -751,7 +758,7 @@ inline void cdmBroadcastToOpponentJackPopulatesRemoteRole(ChainDuelManagerTests*
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
 
     // Capture any kRoleAnnounce sent to the opponent-jack direct peer (opponentMac).
     bool sentToOpponent = false;
@@ -814,7 +821,7 @@ inline void cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(ChainDuelManagerT
     uint8_t realChampion[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, realChampion, 1);
@@ -844,7 +851,7 @@ inline void cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChampionMac(ChainDuelM
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     cdm.onChainStateChanged();
     ASSERT_NE(cdm.getChampionMac(), nullptr);
     EXPECT_EQ(memcmp(cdm.getChampionMac(), selfMacArr, 6), 0);
@@ -871,7 +878,7 @@ inline void chainDuelReconfigRecovers(ChainDuelManagerTests* suite) {
     s1.setPeerRole(SerialIdentifier::INPUT_JACK, true);
 
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kAck, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kHandshakeCommand, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
@@ -974,7 +981,11 @@ inline void cdmGameEventAckClearsPending(ChainDuelManagerTests* suite) {
     cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
     ASSERT_NE(winSeqId, 0u);
 
-    cdm.onChainGameEventAckReceived(suite->supporterMac, winSeqId);
+    {
+        AckPayload ack{static_cast<uint8_t>(PktType::kChainGameEvent), 0, winSeqId};
+        Resender::processIncomingAck(suite->supporterMac,
+            reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    }
 
     // After ACK, sync past timeout must not retransmit.
     EXPECT_CALL(*suite->device.mockPeerComms,
@@ -1014,5 +1025,61 @@ inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
     EXPECT_EQ(supporterSends, 4);
 
     EXPECT_EQ(cdm.getRetryStats().abandons, 1u);
+}
+
+
+// When two Resenders hold pending entries with the same (type, target, seqId),
+// an incoming ack must clear only the owner, not the squatter.
+inline void resenderAckRoutesToOwnerNotBroadcast(ChainDuelManagerTests* suite) {
+    constexpr PktType kTestType = PktType::kSymbolMatchCommand;
+    ASSERT_EQ(Resender::ownerOf(kTestType), nullptr);
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, kTestType, _, _)).WillRepeatedly(Return(1));
+
+    Resender owner(suite->device.wirelessManager);
+    Resender squatter(suite->device.wirelessManager);
+    uint8_t target[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    uint8_t payload = 0;
+    const uint8_t kSeqId = 7;
+
+    owner.send(target, kTestType, kSeqId, &payload, sizeof(payload));
+    ASSERT_EQ(Resender::ownerOf(kTestType), &owner);
+
+    squatter.send(target, kTestType, kSeqId, &payload, sizeof(payload));
+    ASSERT_EQ(owner.pendingCount(kTestType), 1u);
+    ASSERT_EQ(squatter.pendingCount(kTestType), 1u);
+
+    AckPayload ack{static_cast<uint8_t>(kTestType), 0, kSeqId};
+    Resender::processIncomingAck(target,
+        reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+
+    // Owner clears (ownership routing); squatter's pending survives.
+    EXPECT_EQ(owner.pendingCount(kTestType), 0u);
+    EXPECT_EQ(squatter.pendingCount(kTestType), 1u);
+}
+
+inline void resenderDetectsCoOwnershipViolation(ChainDuelManagerTests* suite) {
+    constexpr PktType kTestType = PktType::kSymbolMatchCommand;
+    ASSERT_EQ(Resender::ownerOf(kTestType), nullptr);
+
+    uint32_t baselineViolations = Resender::getOwnershipViolationCount();
+
+    Resender r1(suite->device.wirelessManager);
+    Resender r2(suite->device.wirelessManager);
+    uint8_t target[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    uint8_t payload = 42;
+
+    // First claimant: no violation.
+    r1.send(target, kTestType, 1, &payload, sizeof(payload));
+    EXPECT_EQ(Resender::getOwnershipViolationCount(), baselineViolations);
+
+    // r1 can send again under the same type without flagging itself.
+    r1.send(target, kTestType, 2, &payload, sizeof(payload));
+    EXPECT_EQ(Resender::getOwnershipViolationCount(), baselineViolations);
+
+    // r2 sending under r1's type triggers exactly one violation.
+    r2.send(target, kTestType, 3, &payload, sizeof(payload));
+    EXPECT_EQ(Resender::getOwnershipViolationCount(), baselineViolations + 1);
 }
 

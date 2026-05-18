@@ -9,6 +9,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "wireless/resender.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 
 enum class ChainGameEventType : uint8_t {
@@ -30,7 +31,7 @@ struct ChainGameEventPayload {
 class ChainDuelManager {
 public:
     ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
-    virtual ~ChainDuelManager() = default;
+    virtual ~ChainDuelManager() { delete resender_; }
 
     bool isChampion() const;
     bool isSupporter() const;
@@ -45,10 +46,6 @@ public:
     // champion so it stops retransmitting. Called from Quickdraw's packet
     // handler when the incoming payload has seqId != 0.
     void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
-
-    // Champion-side: called when a supporter's ACK arrives. Clears the
-    // matching pending game event so retransmission stops.
-    void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     bool isKnownGameEventSender(const uint8_t* fromMac) const;
     void onConfirmReceived(
@@ -70,26 +67,22 @@ public:
         uint8_t role,
         const uint8_t* championMac,
         uint8_t seqId);
-    void onRoleAnnounceAckReceived(const uint8_t* fromMac, uint8_t seqId);
     void broadcastRoleAndChampion();
     void sendRoleToOpponentJack();
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
 
-    // Retry observability for the role-announce channel. Mirrors
-    // RemoteDeviceCoordinator::RetryStats semantics.
-    struct RetryStats {
-        uint32_t sends = 0;
-        uint32_t retries = 0;
-        uint32_t abandons = 0;
-        uint32_t ackLatencyMsSum = 0;
-        uint32_t ackCount = 0;
-    };
-    RetryStats getRetryStats() const { return retryStats_; }
+    using RetryStats = Resender::Stats;
+    RetryStats getRetryStats() const {
+        return resender_ ? resender_->getStats() : RetryStats{};
+    }
+    RetryStats getRetryStats(PktType type) const {
+        return resender_ ? resender_->getStats(type) : RetryStats{};
+    }
 
 private:
-    RetryStats retryStats_;
+    Resender* resender_ = nullptr;
     Player* player_;
     WirelessManager* wirelessManager_;
     RemoteDeviceCoordinator* rdc_;
@@ -114,32 +107,6 @@ private:
     std::optional<std::array<uint8_t, 6>> lastAnnouncedSupporterJackMac_;
     std::optional<std::array<uint8_t, 6>> lastAnnouncedOpponentJackMac_;
 
-    struct PendingRoleAnnounce {
-        bool active = false;
-        uint8_t seqId = 0;
-        uint8_t retries = 0;
-        std::array<uint8_t, 6> championMac;
-        uint8_t role;
-        std::array<uint8_t, 6> targetMac;
-        SimpleTimer timer;
-    };
-    PendingRoleAnnounce pending_;
-    static constexpr unsigned long kAckTimeoutMs = 100;
-    static constexpr uint8_t kMaxRetries = 3;
-
     uint8_t nextRoleAnnounceSeqId_ = 1;
-
-    // Champion-side pending WIN/LOSS game events awaiting per-supporter
-    // ACKs. Keyed by target MAC; one pending entry per supporter at a
-    // time. Size bounded by chain length (kMaxChainPeersPerPort = 18 in
-    // RDC, so ≤18 entries in practice).
-    struct PendingGameEvent {
-        std::array<uint8_t, 6> targetMac;
-        uint8_t seqId;
-        uint8_t eventType;
-        uint8_t retries;
-        SimpleTimer timer;
-    };
-    std::vector<PendingGameEvent> pendingGameEvents_;
     uint8_t nextGameEventSeqId_ = 1;
 };

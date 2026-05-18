@@ -5,6 +5,7 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/wireless-manager.hpp"
 #include "state/state-machine.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "wireless/mac-functions.hpp"
@@ -15,12 +16,23 @@ RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(Ha
 RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     delete inputPortHandshake;
     delete outputPortHandshake;
+    delete resender_;
 }
 
 
 void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, SerialManager* serialManager, Device* PDN) {
     this->serialManager = serialManager;
     this->wirelessManager_ = wirelessManager;
+
+    resender_ = new Resender(wirelessManager);
+    resender_->setAbandonCallback(
+        [](PktType type, uint8_t /*subType*/, uint8_t seqId, const uint8_t* target) {
+            if (type != PktType::kChainAnnouncement) return;
+            LOG_W("RDC",
+                "kChainAnnouncement abandoned: target=%02X:%02X:%02X:%02X:%02X:%02X id=%u",
+                target[0], target[1], target[2], target[3], target[4], target[5],
+                (unsigned)seqId);
+        });
 
     handshakeWirelessManager.initialize(wirelessManager);
 
@@ -38,16 +50,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         &handshakeWirelessManager
     );
 
-    announcementEmitCallback_ = [this](const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers) {
-        std::vector<uint8_t> buf;
-        buf.push_back(announcementId);
-        buf.push_back(static_cast<uint8_t>(peers.size()));
-        for (const auto& mac : peers) {
-            buf.insert(buf.end(), mac.begin(), mac.end());
-        }
-        wirelessManager_->sendEspNowData(toMac, PktType::kChainAnnouncement, buf.data(), buf.size());
-    };
-
     wirelessManager->setEspNowPacketHandler(
         PktType::kChainAnnouncement,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -55,33 +57,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         },
         this
     );
-
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainAnnouncementAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<RemoteDeviceCoordinator*>(ctx)->processChainAnnouncementAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
-}
-
-void RemoteDeviceCoordinator::processChainAnnouncementAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen < 1) return;
-    uint8_t ackedId = data[0];
-
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-        const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
-        if (directPeer == nullptr || memcmp(directPeer->macAddr.data(), fromMac, 6) != 0) continue;
-
-        PendingAnnouncement& pending = pendingByPort_[portIndex(port)];
-        if (pending.active && pending.announcementId == ackedId) {
-            retryStats_.ackLatencyMsSum += pending.timer.getElapsedTime();
-            retryStats_.ackCount++;
-            pending.active = false;
-            pending.timer.invalidate();
-            return;
-        }
-    }
 }
 
 void RemoteDeviceCoordinator::processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
@@ -117,7 +92,8 @@ void RemoteDeviceCoordinator::processChainAnnouncementPacket(const uint8_t* from
 
     onChainAnnouncementReceived(fromMac, port, peers);
 
-    wirelessManager_->sendEspNowData(fromMac, PktType::kChainAnnouncementAck, &announcementId, 1);
+    Resender::sendAck(wirelessManager_, fromMac, PktType::kChainAnnouncement,
+                      portIndex(port), announcementId);
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
@@ -141,6 +117,11 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         bool wasPresent = prev.has_value();
 
         if (!nowPresent && wasPresent) {
+            // Cancel pending so we don't burn retries against a dead MAC.
+            if (resender_) {
+                resender_->cancel(PktType::kChainAnnouncement,
+                                  portIndex(port), prev->data());
+            }
             SerialIdentifier otherPort = (port == SerialIdentifier::INPUT_JACK)
                 ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
             const Peer* otherDirect = handshakeWirelessManager.getMacPeer(otherPort);
@@ -179,40 +160,10 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
                           : std::nullopt;
     }
 
-    // Retransmit any unacked pending announcements past the ack timeout.
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-        PendingAnnouncement& pending = pendingByPort_[portIndex(port)];
-        if (pending.active && pending.timer.expired()) {
-            const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
-            if (directPeer != nullptr && announcementEmitCallback_ && pending.retries < maxRetries_) {
-                announcementEmitCallback_(directPeer->macAddr.data(), pending.announcementId, pending.peers);
-                pending.retries++;
-                // Exponential backoff between retransmits: 200, 400, 800ms
-                // (maxRetries_=3). Gives the async driver queue time to drain
-                // between retries instead of layering new sends on top of
-                // in-flight ones.
-                pending.timer.setTimer(ackTimeoutMs_ << pending.retries);
-                retryStats_.retries++;
-            } else {
-                if (pending.retries >= maxRetries_ && directPeer != nullptr) {
-                    const uint8_t* t = directPeer->macAddr.data();
-                    LOG_W("RDC",
-                        "kChainAnnouncement abandoned after %u retries: target=%02X:%02X:%02X:%02X:%02X:%02X id=%u",
-                        (unsigned)maxRetries_,
-                        t[0], t[1], t[2], t[3], t[4], t[5],
-                        (unsigned)pending.announcementId);
-                    retryStats_.abandons++;
-                }
-                pending.active = false;
-                pending.retries = 0;
-                pending.peers.clear();
-                pending.timer.invalidate();
-            }
-        }
-    }
+    if (resender_) resender_->sync();
 }
 
-size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
+uint8_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
     return port == SerialIdentifier::INPUT_JACK ? 0 : 1;
 }
 
@@ -298,20 +249,21 @@ void RemoteDeviceCoordinator::onChainAnnouncementReceived(
 
 void RemoteDeviceCoordinator::emitAnnouncementVia(SerialIdentifier viaPort, const std::vector<std::array<uint8_t, 6>>& peers) {
     const Peer* directPeer = handshakeWirelessManager.getMacPeer(viaPort);
-    if (directPeer == nullptr || !announcementEmitCallback_) return;
+    if (directPeer == nullptr || resender_ == nullptr) return;
 
     uint8_t id = nextAnnouncementId_++;
     if (nextAnnouncementId_ == 0) nextAnnouncementId_ = 1;  // skip 0 sentinel
 
-    PendingAnnouncement& pending = pendingByPort_[portIndex(viaPort)];
-    pending.active = true;
-    pending.announcementId = id;
-    pending.retries = 0;
-    pending.peers = peers;
-    pending.timer.setTimer(ackTimeoutMs_);
-    retryStats_.sends++;
-
-    announcementEmitCallback_(directPeer->macAddr.data(), id, peers);
+    // Wire format: [id(1)][count(1)][mac(6)]*count
+    std::vector<uint8_t> buf;
+    buf.reserve(2 + peers.size() * 6);
+    buf.push_back(id);
+    buf.push_back(static_cast<uint8_t>(peers.size()));
+    for (const auto& mac : peers) {
+        buf.insert(buf.end(), mac.begin(), mac.end());
+    }
+    resender_->send(directPeer->macAddr.data(), PktType::kChainAnnouncement,
+                    portIndex(viaPort), id, buf.data(), buf.size());
 }
 
 std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::peersReachableVia(SerialIdentifier port) {
@@ -332,10 +284,6 @@ void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callb
 
 void RemoteDeviceCoordinator::setPeerLostCallback(std::function<void(const uint8_t*)> callback) {
     peerLostCallback_ = callback;
-}
-
-void RemoteDeviceCoordinator::setAnnouncementEmitCallback(AnnouncementEmitCallback callback) {
-    announcementEmitCallback_ = callback;
 }
 
 DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier port) const {

@@ -9,6 +9,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/resender.hpp"
 
 class MatchManager;
 
@@ -31,7 +32,7 @@ public:
                     WirelessManager* wirelessManager,
                     RemoteDeviceCoordinator* rdc,
                     ChainDuelManager* cdm);
-    ~ShootoutManager() = default;
+    ~ShootoutManager() { delete resender_; }
 
     // Optional MatchManager injection. When set, Shootout primes the
     // MatchManager with the duelist pair on each MATCH_START so duel
@@ -51,8 +52,8 @@ public:
     void startProposal();
     void confirmLocal();
     void sync();
-    // Fixed on-wire name length for CONFIRM payloads. Local Player names are
-    // null-padded/truncated to this size.
+    // CONFIRM payloads carry a fixed-size name field; longer names are
+    // truncated, shorter ones null-padded.
     static constexpr size_t kNameLength = 12;
     void onConfirmReceived(const uint8_t* fromMac, const char* name = nullptr);
     // Returns the display name for a MAC: the name announced during CONFIRM
@@ -100,6 +101,9 @@ public:
     void onAbortReceived();
     std::array<uint8_t, 6> getTournamentWinner() const;
 
+    // Idempotent on ABORTED/ENDED phases.
+    void abortTournament();
+
     // Reset all tournament state back to IDLE phase so a subsequent loop
     // closure triggers a fresh proposal. Called when the physical ring is
     // broken after TOURNAMENT_END or ABORTED.
@@ -107,24 +111,22 @@ public:
 
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
-    static constexpr unsigned long kMatchWatchdogMs = 10000;
     // Absolute upper bound on bracket size. RDC peer-table capacity and
     // kMaxChainPeersPerPort=18 cap real hardware tournaments well below this;
     // value is a packet-validation clamp to reject malformed BRACKET packets.
     static constexpr uint8_t kMaxBracketSize = 32;
 
 private:
-    struct BracketPending {
-        std::array<uint8_t, 6> peer;
-        uint8_t retries = 0;
-        SimpleTimer timer;
-    };
-
     struct NameEntry {
         std::array<uint8_t, 6> mac;
         std::string name;
     };
 
+    Resender* resender_ = nullptr;
+    // Set when Resender abandons BRACKET, MATCH_START, or MATCH_RESULT.
+    // Deferred so abortTournament's pending-list mutations don't run inside
+    // the Resender::sync() callback chain.
+    bool tournamentAbortPending_ = false;
     Player* player_;
     WirelessManager* wirelessManager_;
     RemoteDeviceCoordinator* rdc_;
@@ -137,11 +139,6 @@ private:
     uint8_t nextSeqId();
     void sendToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
                      const uint8_t* packet, size_t len);
-    void sendReliablyToPeers(std::vector<BracketPending>& pending,
-                             const std::vector<std::array<uint8_t, 6>>& peers,
-                             const uint8_t* packet, size_t len);
-    static void eraseFromPending(std::vector<BracketPending>& pending,
-                                 const uint8_t* fromMac);
 
     std::vector<std::array<uint8_t, 6>> testLoopMembers_;
     bool testLoopMembersOverride_ = false;
@@ -164,16 +161,14 @@ private:
 
     SimpleTimer confirmRebroadcastTimer_;
 
-    std::vector<BracketPending> bracketPendingAcks_;
     uint8_t lastBracketSeqId_ = 0;
     uint8_t nextShootoutSeqId_ = 1;
-    static constexpr uint8_t kMaxShootoutAckRetries = 3;
 
     void sendBracketToPeers();
-    // Returns true iff the retry budget is exhausted for this peer and the
-    // caller should abort the tournament after exiting its iteration.
-    bool retryBracketForPeer(BracketPending& p);
-    void abortTournament();
+
+    void sendShootoutCommandReliably(ShootoutCmd cmd, uint8_t seqId,
+                                     const std::vector<std::array<uint8_t, 6>>& peers,
+                                     const uint8_t* packet, size_t len);
     std::vector<uint8_t> buildBracketPacket() const;
     static std::array<uint8_t, 6> lowestMacIn(
         const std::vector<std::array<uint8_t, 6>>& set);
@@ -192,7 +187,6 @@ private:
     std::array<uint8_t, 6> currentDuelistB_{};
     uint8_t lastMatchStartSeqId_ = 0;
     SimpleTimer bracketRevealTimer_;
-    std::vector<BracketPending> matchStartPendingAcks_;
     void maybeStartNextMatch();
     bool inMaybeStartNextMatch_ = false;
     void sendMatchStartToPeers(int matchIndex);
@@ -207,10 +201,8 @@ private:
     uint8_t lastObservedBracketSeqId_ = 0;
     uint8_t lastObservedMatchStartSeqId_ = 0;
     uint8_t lastObservedTournamentEndSeqId_ = 0;
-    SimpleTimer matchStartWatchdog_;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                               uint8_t matchIndex);
-    std::vector<BracketPending> matchResultPendingAcks_;
     // Cached so sync() can rebuild the packet for retry. Senders aren't
     // always the coordinator, so a per-sender cache is required.
     struct LastMatchResult {
@@ -224,8 +216,6 @@ private:
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;
 
-    static unsigned long ackTimeoutForRetry(uint8_t retries);
-
     std::array<uint8_t, 6> tournamentWinner_{};
     uint8_t lastTournamentEndSeqId_ = 0;
 
@@ -234,6 +224,5 @@ private:
     // into the post-tournament duel.
     std::optional<bool> originalIsHunter_;
     void sendTournamentEndToPeers(const uint8_t* winner);
-    std::vector<BracketPending> tournamentEndPendingAcks_;
     std::array<uint8_t, 6> findLastRemaining() const;
 };

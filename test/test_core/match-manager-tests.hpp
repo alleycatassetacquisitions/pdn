@@ -65,10 +65,6 @@ public:
     FakePlatformClock* fakeClock;
 };
 
-// ============================================
-// Boost (chain duel support)
-// ============================================
-
 inline void matchManagerSetBoostStoresValue(MatchManager* mm, Player* player) {
     mm->setBoostProvider([]() -> unsigned long { return 75; });
 }
@@ -226,10 +222,6 @@ inline void matchManagerTracksDuelState(MatchManager* mm, Player* player) {
     EXPECT_TRUE(mm->matchResultsAreIn());
 }
 
-// ============================================
-// Spoof rejection — packet-source authentication on duel commands
-// ============================================
-//
 // Commands that mutate an active match must only be accepted from the
 // match's established opponent (right MAC + right matchId). A neighbor
 // device forging results for someone else's duel must be ignored.
@@ -304,24 +296,75 @@ inline void matchManagerGracePeriodPath(MatchManager* mm, Player* player) {
     EXPECT_TRUE(mm->matchResultsAreIn());
 }
 
-// Regression guard for the both-timed-out deadlock: if our grace expired and
-// the opponent's NEVER_PRESSED packet dropped, we previously stayed stuck
-// because no clause in matchResultsAreIn fired. The deadlock-escape clause
-// `|| gracePeriodExpiredNoResult` must let us finalize from our own state.
+// If our grace expired and the opponent's NEVER_PRESSED never arrived, we
+// must still finalize from our own state alone. Otherwise both devices
+// deadlock waiting for each other.
 inline void matchManagerGraceExpiredAloneFinalizes(MatchManager* mm, Player* player) {
     player->setIsHunter(true);
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     mm->initializeMatch(dummyMac);
 
-    // Simulate: grace expired on our side (setNeverPressed sets the flag),
-    // but the opponent's NEVER_PRESSED never arrived (so neither
-    // hasReceivedDrawResult nor opponentNeverPressed is set), and we never
-    // pressed (hasPressedButton stays false).
+    // Grace expired on our side; opponent's NEVER_PRESSED dropped; we never
+    // pressed. Only the gracePeriodExpiredNoResult clause can unstick this.
     mm->setNeverPressed();
 
-    // Pre-fix: all three clauses in matchResultsAreIn returned false → stuck.
-    // Post-fix: the 4th escape clause (gracePeriodExpiredNoResult alone) fires.
     EXPECT_TRUE(mm->matchResultsAreIn());
+}
+
+// Voided matches expose the voided flag on the Match object so the upload
+// payload carries it; the server uses this to detect packet-loss patterns.
+inline void matchManagerVoidedDuelPersistsWithFlag(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(dummyMac);
+
+    mm->setReceivedButtonPush();
+    mm->voidCurrentMatch();
+
+    EXPECT_TRUE(mm->isVoided());
+    EXPECT_TRUE(mm->matchResultsAreIn());
+    EXPECT_FALSE(mm->didWin());
+
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    EXPECT_TRUE(mm->getCurrentMatch()->isVoided());
+
+    std::string json = mm->getCurrentMatch()->toJson();
+    EXPECT_NE(json.find("\"voided\":true"), std::string::npos);
+    EXPECT_NE(json.find("\"winner_is_hunter\""), std::string::npos);
+}
+
+// The non-presser locally knows they lose. A NEVER_PRESSED abandon
+// must preserve that loss instead of overwriting with void.
+inline void matchManagerNeverPressedAbandonPreservesLoss(MatchManager* mm, Player* player) {
+    player->setIsHunter(false);  // bounty — the non-presser
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    QuickdrawCommand sendMatchId(opponentMac, QDCommand::SEND_MATCH_ID,
+                                  "test-match-abandon-np", "hunt", 0, true);
+    mm->listenForMatchEvents(sendMatchId);
+
+    mm->setNeverPressed();
+    mm->onReliableSendAbandoned(QDCommand::NEVER_PRESSED);
+
+    EXPECT_FALSE(mm->isVoided());
+    EXPECT_TRUE(mm->matchResultsAreIn());
+    EXPECT_FALSE(mm->didWin());
+}
+
+// A DRAW_RESULT abandon means we pressed but the opponent never learned
+// our time, so we can't compute against their unknown state. Void.
+inline void matchManagerDrawResultAbandonVoids(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeMatch(opponentMac);
+    mm->setReceivedButtonPush();
+
+    mm->onReliableSendAbandoned(QDCommand::DRAW_RESULT);
+
+    EXPECT_TRUE(mm->isVoided());
+    EXPECT_TRUE(mm->matchResultsAreIn());
+    EXPECT_FALSE(mm->didWin());
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    EXPECT_TRUE(mm->getCurrentMatch()->isVoided());
 }
 
 inline void matchManagerClearMatchResetsState(MatchManager* mm, Player* player) {

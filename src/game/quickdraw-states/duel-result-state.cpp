@@ -24,6 +24,15 @@ DuelResult::~DuelResult() {
 void DuelResult::onStateMounted(Device *PDN) {
     LOG_I(DUEL_RESULT_TAG, "Duel result state mounted");
 
+    if (matchManager->isVoided()) {
+        LOG_W(DUEL_RESULT_TAG, "Match voided; routing to Idle");
+        voided = true;
+        matchManager->finalizeMatch();
+        PDN->getHaptics()->setIntensity(0);
+        PDN->getDisplay()->invalidateScreen()->render();
+        return;
+    }
+
     player->incrementMatchesPlayed();
 
     if(matchManager->didWin()) {
@@ -59,7 +68,26 @@ void DuelResult::onStateDismounted(Device *PDN) {
 
     wonBattle = false;
     captured = false;
+    voided = false;
     PDN->getLightManager()->stopAnimation();
+}
+
+bool DuelResult::transitionToIdleOnVoid() {
+    if (shootoutManager && shootoutManager->active()) return false;
+    return voided;
+}
+
+bool DuelResult::transitionToShootoutAbortOnVoid() {
+    if (!shootoutManager || !voided) return false;
+    // Only abort while the tournament is still in flight. ENDED/ABORTED are
+    // terminal phases whose UI must not be clobbered by a late-arriving void.
+    auto phase = shootoutManager->getPhase();
+    if (phase == ShootoutManager::Phase::IDLE
+        || phase == ShootoutManager::Phase::ENDED
+        || phase == ShootoutManager::Phase::ABORTED) return false;
+    LOG_W(DUEL_RESULT_TAG, "Voided shootout duel; aborting tournament");
+    shootoutManager->abortTournament();
+    return true;
 }
 
 bool DuelResult::transitionToWin() {

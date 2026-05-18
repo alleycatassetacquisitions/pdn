@@ -42,10 +42,10 @@ int SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIden
 int SymbolWirelessManager::processSymbolMatchCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen) {
 
     if (dataLen != sizeof(SymbolMatchPacket)) {
-        LOG_E(SWM_TAG, "RX symbol pkt bad len: got %u expected %u from %s",
+        LOG_E(SWM_TAG, "SymbolMatchPacket size mismatch from %s: got %u, expected %u (possible firmware mismatch)",
+              macAddress ? MacToString(macAddress) : "(null)",
               static_cast<unsigned>(dataLen),
-              static_cast<unsigned>(sizeof(SymbolMatchPacket)),
-              macAddress ? MacToString(macAddress) : "(null)");
+              static_cast<unsigned>(sizeof(SymbolMatchPacket)));
         return -1;
     }
 

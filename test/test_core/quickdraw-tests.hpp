@@ -865,11 +865,11 @@ inline void duelPushedGracePeriodExpiresTransitions(DuelStateTests* suite) {
     
     DuelPushed pushedState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator);
     pushedState.onStateMounted(&suite->device);
-    
-    // Advance past grace period (900ms)
-    suite->fakeClock->advance(1000);
+
+    // Advance past DUEL_RESULT_GRACE_PERIOD (1700ms).
+    suite->fakeClock->advance(1800);
     pushedState.onStateLoop(&suite->device);
-    
+
     EXPECT_TRUE(pushedState.transitionToDuelResult());
 }
 
@@ -998,6 +998,53 @@ inline void resultHunterWinsWithFasterTime(DuelResultTests* suite) {
     suite->matchManager->setReceivedDrawResult();
     
     EXPECT_TRUE(suite->matchManager->didWin());
+}
+
+// A voided duel inside an active shootout must abort the tournament. The
+// Idle path is the wrong terminal because neither duelist broadcasts a
+// MATCH_RESULT, so the bracket cannot advance.
+inline void voidedDuelInShootoutAbortsTournament(DuelResultTests* suite) {
+    ChainDuelManager cdm(suite->player, suite->device.wirelessManager,
+                         &suite->device.fakeRemoteDeviceCoordinator);
+    ShootoutManager shootout(suite->player, suite->device.wirelessManager,
+                             &suite->device.fakeRemoteDeviceCoordinator, &cdm);
+
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    shootout.setLoopMembersForTest({
+        {0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}
+    });
+    shootout.startProposal();
+    ASSERT_TRUE(shootout.active());
+
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->matchManager->initializeMatch(dummyMac);
+    suite->matchManager->voidCurrentMatch();
+    ASSERT_TRUE(suite->matchManager->isVoided());
+
+    DuelResult resultState(suite->player, suite->matchManager, suite->wirelessManager, &shootout);
+    resultState.onStateMounted(&suite->device);
+
+    // Wire transitions in populateStateMap order. checkTransitions walks
+    // them in registration order and returns the first match; abort must
+    // precede eliminated since both predicates fire on a voided duel.
+    State shAborted(QuickdrawStateId::SHOOTOUT_ABORTED);
+    State shEliminated(QuickdrawStateId::SHOOTOUT_ELIMINATED);
+    State idle(QuickdrawStateId::IDLE);
+    resultState.addTransition(new StateTransition(
+        std::bind(&DuelResult::transitionToShootoutAbortOnVoid, &resultState),
+        &shAborted));
+    resultState.addTransition(new StateTransition(
+        std::bind(&DuelResult::transitionToIdleOnVoid, &resultState),
+        &idle));
+    resultState.addTransition(new StateTransition(
+        std::bind(&DuelResult::transitionToShootoutEliminated, &resultState),
+        &shEliminated));
+
+    State* next = resultState.checkTransitions();
+    EXPECT_EQ(next, &shAborted);
+    EXPECT_EQ(shootout.getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
 // Test: Bounty wins with faster time
@@ -1476,12 +1523,10 @@ inline void pushedClearsMatchOnDisconnect(StateCleanupTests* suite) {
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
 }
 
-// Test: DuelReceivedResult clears match when disconnected on dismount
-// Connection blip during a duel countdown must not abort the match: a single
-// !isConnected() tick triggered by a cable nudge previously sent the duelist
-// straight to Idle. In a shootout match this orphans the duelist (Idle's
-// auto-trigger to ShootoutProposal is gated on !shootout->active(), which is
-// false mid-match), and the spectators wait forever for a MATCH_RESULT that
+// A single !isConnected() tick from a cable nudge must not abort a duel
+// mid-countdown. In a shootout match that would orphan the duelist (Idle's
+// auto-trigger to ShootoutProposal is gated on !shootout->active(), false
+// mid-match) and leave spectators waiting forever for a MATCH_RESULT that
 // will never arrive.
 inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
@@ -1574,13 +1619,8 @@ inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
 }
 
-// ============================================
-// Quickdraw lifecycle — exercises ctor + dtor so the native_asan env
-// catches leaks in the members Quickdraw owns (matchManager, chainDuelManager).
-// Pre-fix: ~Quickdraw just nulled the pointers, leaking ~100 bytes per device.
-// Post-fix: deletes are issued and ASAN passes clean.
-// ============================================
-
+// Exercises Quickdraw ctor + dtor under native_asan so leaks in owned
+// members (matchManager, chainDuelManager) surface in CI.
 class QuickdrawLifecycleTests : public testing::Test {
 public:
     void SetUp() override {

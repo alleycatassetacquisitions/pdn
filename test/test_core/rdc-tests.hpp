@@ -39,7 +39,7 @@ public:
             .WillByDefault(testing::DoAll(
                 testing::SaveArg<1>(&capturedChainHandler),
                 testing::SaveArg<2>(&capturedChainCtx)));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kChainAnnouncementAck), _, _))
+        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kAck), _, _))
             .WillByDefault(testing::DoAll(
                 testing::SaveArg<1>(&capturedAckHandler),
                 testing::SaveArg<2>(&capturedAckCtx)));
@@ -146,10 +146,6 @@ inline void rdcConnectedPortDisconnectsOnHeartbeatTimeout(RDCTests* suite) {
     EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
 }
 
-// ============================================
-// Daisy chain tracking
-// ============================================
-
 inline void rdcDuplicateAnnouncementDoesNotFireCallback(RDCTests* suite) {
     suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
     suite->rdc.sync(&suite->device);
@@ -179,10 +175,14 @@ inline void rdcDirectPeerRegistrationEmitsBackwardAnnouncement(RDCTests* suite) 
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
 
-    // Hook callback BEFORE bringing up INPUT port
+    // Hook mock-peer-comms BEFORE bringing up INPUT port. Count chain
+    // announcements emitted to any target.
     int emitCount = 0;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t*, uint8_t, const std::vector<std::array<uint8_t, 6>>&) { emitCount++; });
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(_, PktType::kChainAnnouncement, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&]() { emitCount++; }),
+            Return(1)));
 
     // Bring up INPUT port — this should emit BOTH forward (to OUTPUT's peer)
     // AND backward (to the new INPUT peer about OUTPUT's chain)
@@ -207,10 +207,14 @@ inline void rdcDirectPeerDropEmitsAnnouncement(RDCTests* suite) {
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
 
-    // Hook callback AFTER both ports are up so registration emits don't pollute the count
+    // Hook mock-peer-comms AFTER both ports are up so registration emits don't
+    // pollute the count.
     int emitCount = 0;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t*, uint8_t, const std::vector<std::array<uint8_t, 6>>&) { emitCount++; });
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(_, PktType::kChainAnnouncement, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&]() { emitCount++; }),
+            Return(1)));
 
     // Drop OUTPUT only — deliver NOTIFY_DISCONNECT to OUTPUT (sender = INPUT_JACK on the peer)
     suite->deliverPacketViaRDC(HSCommand::NOTIFY_DISCONNECT, SerialIdentifier::INPUT_JACK);
@@ -295,7 +299,6 @@ inline void rdcAckedAnnouncementDoesNotRetransmit(RDCTests* suite) {
                 sentAnnouncementIds.push_back(data[0]);
             })),
             Return(1)));
-    ASSERT_NE(suite->capturedAckHandler, nullptr);
 
     // Bring up both ports → emits, pending state set
     suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
@@ -309,10 +312,15 @@ inline void rdcAckedAnnouncementDoesNotRetransmit(RDCTests* suite) {
 
     ASSERT_GE(sentAnnouncementIds.size(), 1u);  // at least one emit happened
 
-    // Deliver ACK for the most recent pending (the latest id per port is what's active)
+    // Deliver ACKs via Resender::processIncomingAck. Matching uses
+    // (type, target, seqId), so subType need not match.
     uint8_t fromMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     for (uint8_t id : sentAnnouncementIds) {
-        suite->capturedAckHandler(fromMac, &id, 1, suite->capturedAckCtx);
+        AckPayload ack{static_cast<uint8_t>(PktType::kChainAnnouncement), 0, id};
+        Resender::processIncomingAck(
+            fromMac,
+            reinterpret_cast<const uint8_t*>(&ack),
+            sizeof(ack));
     }
 
     sentAnnouncementIds.clear();
@@ -362,14 +370,17 @@ inline void rdcMidChainEmitsForwardAndBackward(RDCTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
 
-    // Track all emissions
+    // Track all emissions via mock-peer-comms (captures the dst MAC argument).
     std::vector<std::array<uint8_t, 6>> emittedTos;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t* toMac, uint8_t, const std::vector<std::array<uint8_t, 6>>&) {
-            std::array<uint8_t, 6> mac;
-            std::copy(toMac, toMac + 6, mac.begin());
-            emittedTos.push_back(mac);
-        });
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(_, PktType::kChainAnnouncement, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::WithArg<0>(testing::Invoke([&](const uint8_t* dst) {
+                std::array<uint8_t, 6> mac;
+                std::copy(dst, dst + 6, mac.begin());
+                emittedTos.push_back(mac);
+            })),
+            Return(1)));
 
     // Receive an announcement on OUTPUT
     uint8_t outputDirectMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -391,8 +402,11 @@ inline void rdcDoesNotEmitWhenOtherPortDisconnected(RDCTests* suite) {
     suite->rdc.sync(&suite->device);
 
     int emitCount = 0;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t*, uint8_t, const std::vector<std::array<uint8_t, 6>>&) { emitCount++; });
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(_, PktType::kChainAnnouncement, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&]() { emitCount++; }),
+            Return(1)));
 
     uint8_t outputDirectPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     std::vector<std::array<uint8_t, 6>> incoming = {

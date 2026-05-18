@@ -17,7 +17,6 @@ void ShootoutEliminated::onStateMounted(Device *PDN) {
 }
 
 void ShootoutEliminated::onStateLoop(Device *PDN) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::ENDED) shouldGoToFinalStandings_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;

@@ -10,18 +10,21 @@ enum class PktType : uint8_t
     kDebugPacket = 2,
     kHandshakeCommand = 3,
     kChainAnnouncement = 4,
-    kChainAnnouncementAck = 5,
-    kChainGameEvent = 6,
-    kChainConfirm = 7,
-    kRoleAnnounce = 8,
-    kRoleAnnounceAck = 9,
-    kChainGameEventAck = 10,
-    kShootoutCommand = 11,
-    kShootoutCommandAck = 12,
-    kSymbolMatchCommand = 13,
-    kFdnConnect = 14,
+    kChainGameEvent = 5,
+    kChainConfirm = 6,
+    kRoleAnnounce = 7,
+    kShootoutCommand = 8,
+    kSymbolMatchCommand = 9,
+    kAck = 10,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
+
+struct AckPayload
+{
+    uint8_t originalType;
+    uint8_t subType;
+    uint8_t seqId;
+} __attribute__((packed));
 
 struct DataPktHdr
 {
@@ -45,16 +48,6 @@ struct RoleAnnouncePayload
     uint8_t seqId;
 } __attribute__((packed));
 
-struct RoleAnnounceAckPayload
-{
-    uint8_t seqId;
-} __attribute__((packed));
-
-struct ChainGameEventAckPayload
-{
-    uint8_t seqId;
-} __attribute__((packed));
-
 enum class ShootoutCmd : uint8_t
 {
     CONFIRM = 0,
@@ -71,10 +64,4 @@ struct ShootoutPacket
     ShootoutCmd cmd;
     uint8_t     seqId;   // nonzero for reliable commands; 0 = no ack expected
     uint8_t     payload[];
-} __attribute__((packed));
-
-struct ShootoutAckPayload
-{
-    ShootoutCmd cmd;
-    uint8_t     seqId;
 } __attribute__((packed));

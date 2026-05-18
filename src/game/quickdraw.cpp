@@ -32,18 +32,16 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         std::bind(&MatchManager::listenForMatchEvents, matchManager, std::placeholders::_1)
     );
 
+    quickdrawWirelessManager->setAbandonCallback(
+        [this](int command, const uint8_t* /*targetMac*/) {
+            if (matchManager) matchManager->onReliableSendAbandoned(command);
+        });
+
     // Chain game event + confirm wireless packet handlers.
     wirelessManager->setEspNowPacketHandler(
         PktType::kChainGameEvent,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
             static_cast<Quickdraw*>(ctx)->onChainGameEventPacket(macAddress, data, dataLen);
-        },
-        this
-    );
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEventAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onChainGameEventAckPacket(macAddress, data, dataLen);
         },
         this
     );
@@ -62,27 +60,12 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         this
     );
     wirelessManager->setEspNowPacketHandler(
-        PktType::kRoleAnnounceAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onRoleAnnounceAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
-    wirelessManager->setEspNowPacketHandler(
         PktType::kShootoutCommand,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
             static_cast<Quickdraw*>(ctx)->onShootoutCommandPacket(macAddress, data, dataLen);
         },
         this
     );
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommandAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onShootoutCommandAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
-
     if (symbolWirelessManager) {
         symbolWirelessManager->initialize(wirelessManager, remoteDeviceCoordinator);
         wirelessManager->setEspNowPacketHandler(
@@ -117,20 +100,24 @@ void Quickdraw::onChainStateChanged() {
 }
 
 void Quickdraw::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(RoleAnnouncePayload) || !chainDuelManager) return;
+    if (!chainDuelManager) return;
+    if (dataLen != sizeof(RoleAnnouncePayload)) {
+        LOG_E("QD", "RoleAnnouncePayload size mismatch: got %u, expected %u (possible firmware mismatch)",
+              (unsigned)dataLen, (unsigned)sizeof(RoleAnnouncePayload));
+        return;
+    }
     const RoleAnnouncePayload* payload = reinterpret_cast<const RoleAnnouncePayload*>(data);
     chainDuelManager->onRoleAnnounceReceived(
         fromMac, payload->role, payload->championMac, payload->seqId);
 }
 
-void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(RoleAnnounceAckPayload) || !chainDuelManager) return;
-    const RoleAnnounceAckPayload* payload = reinterpret_cast<const RoleAnnounceAckPayload*>(data);
-    chainDuelManager->onRoleAnnounceAckReceived(fromMac, payload->seqId);
-}
-
 void Quickdraw::onStateLoop(Device *PDN) {
     if (chainDuelManager) chainDuelManager->sync();
+    if (quickdrawWirelessManager) quickdrawWirelessManager->sync();
+    // Shootout sync runs every tick so MATCH_START / MATCH_RESULT retries
+    // and abandon-driven tournament aborts stay within the ~700ms budget
+    // regardless of which Quickdraw sub-state is active.
+    if (shootoutManager_) shootoutManager_->sync();
 
     if (chainDuelManager) {
         bool loopNow = chainDuelManager->isLoop();
@@ -164,7 +151,11 @@ void Quickdraw::onStateLoop(Device *PDN) {
 }
 
 void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainGameEventPayload)) return;
+    if (dataLen != sizeof(ChainGameEventPayload)) {
+        LOG_E("QD", "ChainGameEventPayload size mismatch: got %u, expected %u (possible firmware mismatch)",
+              (unsigned)dataLen, (unsigned)sizeof(ChainGameEventPayload));
+        return;
+    }
     if (!chainDuelManager || !chainDuelManager->isKnownGameEventSender(fromMac)) return;
 
     const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
@@ -184,14 +175,12 @@ void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* da
     }
 }
 
-void Quickdraw::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainGameEventAckPayload) || !chainDuelManager) return;
-    const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
-    chainDuelManager->onChainGameEventAckReceived(fromMac, payload->seqId);
-}
-
 void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainConfirmPayload)) return;
+    if (dataLen != sizeof(ChainConfirmPayload)) {
+        LOG_E("QD", "ChainConfirmPayload size mismatch: got %u, expected %u (possible firmware mismatch)",
+              (unsigned)dataLen, (unsigned)sizeof(ChainConfirmPayload));
+        return;
+    }
     if (!chainDuelManager) return;
     const ChainConfirmPayload* payload = reinterpret_cast<const ChainConfirmPayload*>(data);
     chainDuelManager->onConfirmReceived(fromMac, payload->originatorMac, payload->seqId);
@@ -243,29 +232,6 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
             break;
         case ShootoutCmd::ABORT:
             shootoutManager_->onAbortReceived();
-            break;
-    }
-}
-
-void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager_ || dataLen < 2) return;
-    if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-    ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-    uint8_t seqId = data[1];
-    switch (cmd) {
-        case ShootoutCmd::BRACKET:
-            shootoutManager_->onBracketAckReceived(fromMac, seqId);
-            break;
-        case ShootoutCmd::MATCH_START:
-            shootoutManager_->onMatchStartAckReceived(fromMac, seqId);
-            break;
-        case ShootoutCmd::MATCH_RESULT:
-            shootoutManager_->onMatchResultAckReceived(fromMac, seqId);
-            break;
-        case ShootoutCmd::TOURNAMENT_END:
-            shootoutManager_->onTournamentEndAckReceived(fromMac, seqId);
-            break;
-        default:
             break;
     }
 }
@@ -453,6 +419,20 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&DuelReceivedResult::transitionToDuelResult, duelReceivedResult),
             duelResult));
+
+    // Order matters: the void/abort/idle group must precede win/lose so
+    // voided matches never trip them. The two void paths are mutually
+    // exclusive — the abort predicate fires only when shootout is active,
+    // the Idle predicate only when it isn't.
+    duelResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelResult::transitionToShootoutAbortOnVoid, duelResult),
+            shAborted));
+
+    duelResult->addTransition(
+        new StateTransition(
+            std::bind(&DuelResult::transitionToIdleOnVoid, duelResult),
+            idle));
 
     duelResult->addTransition(
         new StateTransition(

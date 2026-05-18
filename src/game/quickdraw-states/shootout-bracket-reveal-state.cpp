@@ -17,7 +17,6 @@ void ShootoutBracketReveal::onStateMounted(Device *PDN) {
 }
 
 void ShootoutBracketReveal::onStateLoop(Device *PDN) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
         if (shootout_->isLocalDuelist()) {

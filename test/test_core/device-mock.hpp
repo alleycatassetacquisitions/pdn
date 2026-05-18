@@ -240,6 +240,12 @@ public:
         return 0;
     }
 
+    int broadcastReliable(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
+        // Funnels into sentCommands like broadcastPacket so test assertions are uniform.
+        sentCommands.push_back(command);
+        return 0;
+    }
+
     void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
         if (sentCommands.empty()) return;
         const QuickdrawCommand& cmd = sentCommands.back();
@@ -251,6 +257,7 @@ public:
         pkt.isHunter       = cmd.isHunter;
         pkt.playerDrawTime = cmd.playerDrawTime;
         pkt.command        = cmd.command;
+        pkt.seqId          = cmd.seqId;
 
         recipient->processQuickdrawCommand(
             senderMac,

@@ -34,15 +34,15 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
 
     buttonPushGraceTimer.updateTime();
 
-    if(buttonPushGraceTimer.expired()) {
+    if(buttonPushGraceTimer.expired() && !neverPressedSent_) {
         LOG_I(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
 
         unsigned long pityTime = SimpleTimer::getPlatformClock()->milliseconds() - matchManager->getDuelLocalStartTime();
 
         matchManager->sendNeverPressed(pityTime);
-        transitionToDuelResultState = true;
+        neverPressedSent_ = true;
     }
-}   
+}
 
 void DuelReceivedResult::onStateDismounted(Device *PDN) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
@@ -51,14 +51,14 @@ void DuelReceivedResult::onStateDismounted(Device *PDN) {
         matchManager->clearCurrentMatch();
     }
 
-    transitionToDuelResultState = false;
+    neverPressedSent_ = false;
     PDN->getPrimaryButton()->removeButtonCallbacks();
     PDN->getSecondaryButton()->removeButtonCallbacks();
     buttonPushGraceTimer.invalidate();
 }
 
 bool DuelReceivedResult::transitionToDuelResult() {
-    return matchManager->matchResultsAreIn() || transitionToDuelResultState;
+    return matchManager->matchResultsAreIn();
 }
 
 bool DuelReceivedResult::disconnectedBackToIdle() {

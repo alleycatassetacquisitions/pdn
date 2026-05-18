@@ -86,10 +86,9 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
 {
     if(dataLen != sizeof(PlayerInfoPkt))
     {
-        LOG_E("RPM", "Unexpected packet len for PlayerInfoPkt. Got %lu but expected %lu\n",
+        LOG_E("RPM", "PlayerInfoPkt size mismatch: got %lu, expected %lu (possible firmware mismatch)",
                       dataLen,
                       sizeof(PlayerInfoPkt));
-        //TODO: Return correct error code
         return -1;
     }
 

@@ -40,6 +40,7 @@
 #include "game/player.hpp"
 #include "wireless/peer-comms-types.hpp"
 #include "wireless/mac-functions.hpp"
+#include "wireless/resender.hpp"
 
 using ::testing::_;
 using ::testing::Return;
@@ -59,20 +60,16 @@ struct MultiDeviceNode {
     void* handshakeCtx = nullptr;
     PeerCommsInterface::PacketCallback chainHandler = nullptr;
     void* chainCtx = nullptr;
-    PeerCommsInterface::PacketCallback chainAckHandler = nullptr;
-    void* chainAckCtx = nullptr;
     PeerCommsInterface::PacketCallback roleAnnounceHandler = nullptr;
     void* roleAnnounceCtx = nullptr;
-    PeerCommsInterface::PacketCallback roleAnnounceAckHandler = nullptr;
-    void* roleAnnounceAckCtx = nullptr;
     PeerCommsInterface::PacketCallback chainConfirmHandler = nullptr;
     void* chainConfirmCtx = nullptr;
     PeerCommsInterface::PacketCallback chainGameEventHandler = nullptr;
     void* chainGameEventCtx = nullptr;
     PeerCommsInterface::PacketCallback shootoutHandler = nullptr;
     void* shootoutCtx = nullptr;
-    PeerCommsInterface::PacketCallback shootoutAckHandler = nullptr;
-    void* shootoutAckCtx = nullptr;
+    PeerCommsInterface::PacketCallback ackHandler = nullptr;  // unified kAck
+    void* ackCtx = nullptr;
 
     uint8_t mac[6] = {};
 };
@@ -297,13 +294,11 @@ protected:
         switch (p.type) {
             case PktType::kHandshakeCommand:     handler = target.handshakeHandler;        ctx = target.handshakeCtx; break;
             case PktType::kChainAnnouncement:    handler = target.chainHandler;            ctx = target.chainCtx; break;
-            case PktType::kChainAnnouncementAck: handler = target.chainAckHandler;         ctx = target.chainAckCtx; break;
             case PktType::kRoleAnnounce:         handler = target.roleAnnounceHandler;     ctx = target.roleAnnounceCtx; break;
-            case PktType::kRoleAnnounceAck:      handler = target.roleAnnounceAckHandler;  ctx = target.roleAnnounceAckCtx; break;
             case PktType::kChainConfirm:         handler = target.chainConfirmHandler;     ctx = target.chainConfirmCtx; break;
             case PktType::kChainGameEvent:       handler = target.chainGameEventHandler;   ctx = target.chainGameEventCtx; break;
             case PktType::kShootoutCommand:      handler = target.shootoutHandler;         ctx = target.shootoutCtx; break;
-            case PktType::kShootoutCommandAck:   handler = target.shootoutAckHandler;      ctx = target.shootoutAckCtx; break;
+            case PktType::kAck:                  handler = target.ackHandler;              ctx = target.ackCtx; break;
             default: return;
         }
         if (!handler) return;
@@ -342,17 +337,9 @@ protected:
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.chainHandler = cb; n.chainCtx = ctx;
             });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainAnnouncementAck), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.chainAckHandler = cb; n.chainAckCtx = ctx;
-            });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.roleAnnounceHandler = cb; n.roleAnnounceCtx = ctx;
-            });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounceAck), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.roleAnnounceAckHandler = cb; n.roleAnnounceAckCtx = ctx;
             });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainConfirm), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
@@ -366,9 +353,9 @@ protected:
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.shootoutHandler = cb; n.shootoutCtx = ctx;
             });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kShootoutCommandAck), _, _))
+        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kAck), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.shootoutAckHandler = cb; n.shootoutAckCtx = ctx;
+                n.ackHandler = cb; n.ackCtx = ctx;
             });
     }
 
@@ -389,13 +376,11 @@ protected:
             cdm);
 
         n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kRoleAnnounceAck,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(RoleAnnounceAckPayload)) return;
-                const RoleAnnounceAckPayload* p = reinterpret_cast<const RoleAnnounceAckPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onRoleAnnounceAckReceived(fromMac, p->seqId);
+            PktType::kAck,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* /*ctx*/) {
+                Resender::processIncomingAck(src, data, len);
             },
-            cdm);
+            nullptr);
 
         n.device->wirelessManager->setEspNowPacketHandler(
             PktType::kChainConfirm,
@@ -472,28 +457,10 @@ protected:
             },
             mgr);
 
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kShootoutCommandAck,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                auto* m = static_cast<ShootoutManager*>(ctx);
-                if (dataLen < 2) return;
-                ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-                uint8_t seqId = data[1];
-                switch (cmd) {
-                    case ShootoutCmd::BRACKET:         m->onBracketAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::MATCH_START:     m->onMatchStartAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::TOURNAMENT_END:  m->onTournamentEndAckReceived(fromMac, seqId); break;
-                    default: break;
-                }
-            },
-            mgr);
+        // Shootout acks ride on the unified kAck handler from wireChainEventHandlers.
     }
 
 };
-
-// ============================================================================
-// Tests exercising the multi-device fixture.
-// ============================================================================
 
 // H-H-H linear chain: device 0 is champion (OUTPUT tail), devices 1 and 2 are
 // supporters whose championMac caches device 0's MAC after the role-announce

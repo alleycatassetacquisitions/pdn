@@ -85,7 +85,7 @@ int HandshakeWirelessManager::processHandshakeCommand(const uint8_t* macAddress,
     const size_t dataLen) {
 
     if (dataLen != sizeof(HandshakePacket)) {
-        LOG_E("HWM", "Unexpected packet len for HandshakePacket. Got %lu but expected %lu\n",
+        LOG_E("HWM", "HandshakePacket size mismatch: got %lu, expected %lu (possible firmware mismatch)",
                       dataLen, sizeof(HandshakePacket));
         return -1;
     }

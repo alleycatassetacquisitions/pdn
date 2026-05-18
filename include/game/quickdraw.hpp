@@ -25,16 +25,12 @@ public:
 
     void populateStateMap() override;
 
-    // Static entry points for ESP-NOW packet handlers. Route to the
-    // current state if it's SupporterReady (for game events) or to the
-    // MatchManager/champion-side confirm tracker (for confirms).
+    // ESP-NOW packet handlers. Acks for these PktTypes ride on the unified
+    // kAck (Resender::processIncomingAck) and don't need per-type entry points.
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onStateLoop(Device *PDN) override;
 
 private:

@@ -22,7 +22,6 @@ void ShootoutProposal::onStateMounted(Device *PDN) {
 }
 
 void ShootoutProposal::onStateLoop(Device *PDN) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
