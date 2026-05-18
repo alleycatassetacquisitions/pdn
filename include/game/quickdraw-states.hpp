@@ -279,7 +279,12 @@ private:
     Player* player;
     MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
-    const int DUEL_RESULT_GRACE_PERIOD = 900;
+    // Sized to cover the opponent's worst-case NEVER_PRESSED delivery:
+    // their 750ms button-push grace + Resender retry budget (100+200+400 ms)
+    // plus margin. Below this, A's grace expires before B's NEVER_PRESSED
+    // can land and the duel gets voided on A's side even when B's local
+    // outcome (didn't press → loses) is unambiguous.
+    const int DUEL_RESULT_GRACE_PERIOD = 1700;
 };
 
 class DuelReceivedResult : public ConnectState {
@@ -298,7 +303,7 @@ public:
 
 private:
     SimpleTimer buttonPushGraceTimer;
-    bool transitionToDuelResultState = false;
+    bool neverPressedSent_ = false;
     const int BUTTON_PUSH_GRACE_PERIOD = 750;
     Player* player;
     MatchManager* matchManager;
@@ -319,6 +324,12 @@ public:
     // bracket advances exactly once per match.
     bool transitionToShootoutSpectator();
     bool transitionToShootoutEliminated();
+    // Voided duels (reliable-send abandoned, or receiver-side grace expired
+    // without result) skip win/lose entirely and return to Idle.
+    bool transitionToIdleOnVoid();
+    // Voiding inside a shootout aborts the tournament: neither duelist can
+    // broadcast a MATCH_RESULT, so the bracket cannot advance.
+    bool transitionToShootoutAbortOnVoid();
 
 private:
     Player* player;
@@ -327,6 +338,7 @@ private:
     ShootoutManager* shootoutManager;
     bool wonBattle = false;
     bool captured = false;
+    bool voided = false;
 };
 
 class Win : public State {

@@ -144,6 +144,16 @@ public:
 
     void sendNeverPressed(unsigned long pityTime);
 
+    void voidCurrentMatch();
+    bool isVoided() const {
+        return activeDuelState.match.has_value() && activeDuelState.match->isVoided();
+    }
+
+    // DRAW_RESULT exhaustion: opponent never learned our time, so void.
+    // NEVER_PRESSED exhaustion: local non-presser already has
+    // gracePeriodExpiredNoResult set; no-op preserves the local loss.
+    void onReliableSendAbandoned(int command);
+
     // For testing purposes only DO NOT USE IN PRODUCTION
     void setReceivedDrawResult();
     void setReceivedButtonPush();

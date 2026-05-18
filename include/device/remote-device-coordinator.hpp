@@ -7,6 +7,7 @@
 #include "device/serial-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
+#include "wireless/resender.hpp"
 #include "device/device-type.hpp"
 
 class Device;
@@ -79,43 +80,21 @@ public:
 
     void processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
-    using AnnouncementEmitCallback = std::function<void(const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers)>;
-    void setAnnouncementEmitCallback(AnnouncementEmitCallback callback);
-
-    void processChainAnnouncementAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-
     void registerPeer(const uint8_t* macAddress);
     void unregisterPeer(const uint8_t* macAddress);
 
-    // Retry / reliability observability. Cumulative since boot. For hardware
-    // validation tuning of ackTimeoutMs_ and maxRetries_ against the real
-    // deployment. ackLatencyMs / ackCount give mean RTT; abandons / (sends +
-    // retries) gives loss rate at the chain-announcement layer.
-    struct RetryStats {
-        uint32_t sends = 0;
-        uint32_t retries = 0;
-        uint32_t abandons = 0;
-        uint32_t ackLatencyMsSum = 0;
-        uint32_t ackCount = 0;
-    };
-    RetryStats getRetryStats() const { return retryStats_; }
+    using RetryStats = Resender::Stats;
+    RetryStats getRetryStats() const {
+        return resender_ ? resender_->getStats(PktType::kChainAnnouncement)
+                         : RetryStats{};
+    }
 
 private:
-    RetryStats retryStats_;
+    Resender* resender_ = nullptr;
     std::array<std::vector<std::array<uint8_t, 6>>, 2> daisyChainedByPort_;
     std::array<std::optional<std::array<uint8_t, 6>>, 2> previousDirectPeer_;
     uint8_t nextAnnouncementId_ = 1;
 
-    struct PendingAnnouncement {
-        bool active = false;
-        uint8_t announcementId = 0;
-        uint8_t retries = 0;
-        std::vector<std::array<uint8_t, 6>> peers;
-        SimpleTimer timer;
-    };
-    std::array<PendingAnnouncement, 2> pendingByPort_;
-    static constexpr unsigned long ackTimeoutMs_ = 100;
-    static constexpr uint8_t maxRetries_ = 3;
     // ESP-NOW peer-table capacity is 20 on ESP32-S3. Reserve margin for the
     // direct peer on each jack, the champion registration on supporters, and
     // brief transient registrations during chain reconfig.
@@ -124,7 +103,7 @@ private:
     void emitAnnouncementVia(SerialIdentifier viaPort, const std::vector<std::array<uint8_t, 6>>& peers);
     std::vector<std::array<uint8_t, 6>> peersReachableVia(SerialIdentifier port);
 
-    size_t portIndex(SerialIdentifier port) const;
+    uint8_t portIndex(SerialIdentifier port) const;
 
     void notifyDisconnect();
     void notifyConnect();
@@ -144,7 +123,6 @@ private:
     WirelessManager* wirelessManager_ = nullptr;
     std::function<void()> chainChangeCallback_;
     std::function<void(const uint8_t*)> peerLostCallback_;
-    AnnouncementEmitCallback announcementEmitCallback_;
 
     HandshakeWirelessManager handshakeWirelessManager;
 

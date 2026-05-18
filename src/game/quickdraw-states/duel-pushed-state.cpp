@@ -28,6 +28,15 @@ void DuelPushed::onStateMounted(Device *PDN) {
 
 void DuelPushed::onStateLoop(Device *PDN) {
     gracePeriodTimer.updateTime();
+
+    // Grace ran out with no result; void to avoid resolving against a
+    // default-zero opponent time. Narrow asymmetric window remains: if our
+    // grace expires before the opponent's reliable response arrives, we void
+    // while they may persist a real outcome. Server-side match_id dedup
+    // catches it; local Player stats can diverge by one match.
+    if (gracePeriodTimer.expired() && !matchManager->matchResultsAreIn()) {
+        matchManager->voidCurrentMatch();
+    }
 }
 
 void DuelPushed::onStateDismounted(Device *PDN) {

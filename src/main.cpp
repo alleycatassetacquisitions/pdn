@@ -29,6 +29,7 @@
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "wireless/resender.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -83,6 +84,15 @@ void setupEspNow(
             ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
         },
         quickdrawWirelessManager
+    );
+
+    // Unified ack: one handler routes acks to whichever Resender owns the entry.
+    peerCommsDriver->setPacketHandler(
+        PktType::kAck,
+        [](const uint8_t* src, const uint8_t* data, const size_t len, void* /*userArg*/) {
+            Resender::processIncomingAck(src, data, len);
+        },
+        nullptr
     );
     
     peerCommsDriver->setPacketHandler(

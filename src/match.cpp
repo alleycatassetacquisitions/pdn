@@ -23,6 +23,7 @@ Match::Match(){
     bounty[0]   = '\0';
     hunter_draw_time_ms = 0;
     bounty_draw_time_ms = 0;
+    voided = false;
 }
 
 void Match::setHunterId(const char* hunter_id) {
@@ -59,6 +60,7 @@ std::string Match::toJson() const
     matchObj[JSON_KEY_WINNER_IS_HUNTER] = hunter_draw_time_ms < bounty_draw_time_ms;
     matchObj[JSON_KEY_HUNTER_TIME] = hunter_draw_time_ms;
     matchObj[JSON_KEY_BOUNTY_TIME] = bounty_draw_time_ms;
+    matchObj[JSON_KEY_VOIDED] = voided;
 
     std::string json;
     serializeJson(matchObj, json);
@@ -94,71 +96,11 @@ void Match::fromJson(const std::string &json) {
         if (doc[JSON_KEY_BOUNTY_TIME].is<unsigned long>()) {
             bounty_draw_time_ms = doc[JSON_KEY_BOUNTY_TIME].as<unsigned long>();
         }
+        if (doc[JSON_KEY_VOIDED].is<bool>()) {
+            voided = doc[JSON_KEY_VOIDED].as<bool>();
+        }
     } else {
         // LOG_E("Match", "Failed to parse JSON: %s", error.c_str());
     }
 }
 
-size_t Match::serialize(uint8_t* buffer) const {
-    size_t currentPos = 0;
-    uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
-    uint8_t playerIdBytes[PLAYER_ID_BINARY_SIZE];
-
-    // Serialize match_id
-    IdGenerator::uuidStringToBytes(match_id, uuidBytes);
-    memcpy(buffer + currentPos, uuidBytes, IdGenerator::UUID_BINARY_SIZE);
-    currentPos += IdGenerator::UUID_BINARY_SIZE;
-
-    // Serialize hunter id (4 raw bytes)
-    memcpy(playerIdBytes, hunter, PLAYER_ID_BINARY_SIZE);
-    memcpy(buffer + currentPos, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    currentPos += PLAYER_ID_BINARY_SIZE;
-
-    // Serialize bounty id (4 raw bytes)
-    memcpy(playerIdBytes, bounty, PLAYER_ID_BINARY_SIZE);
-    memcpy(buffer + currentPos, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    currentPos += PLAYER_ID_BINARY_SIZE;
-
-    // Serialize draw times
-    memcpy(buffer + currentPos, &hunter_draw_time_ms, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
-    memcpy(buffer + currentPos, &bounty_draw_time_ms, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
-
-    return currentPos;
-}
-
-size_t Match::deserialize(const uint8_t* buffer) {
-    size_t currentPos = 0;
-    uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
-    uint8_t playerIdBytes[PLAYER_ID_BINARY_SIZE];
-
-    // Deserialize match_id
-    memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
-    {
-        std::string tmp = IdGenerator::uuidBytesToString(uuidBytes);
-        strncpy(match_id, tmp.c_str(), IdGenerator::UUID_BUFFER_SIZE - 1);
-        match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
-    }
-    currentPos += IdGenerator::UUID_BINARY_SIZE;
-
-    // Deserialize hunter id (4 raw bytes)
-    memcpy(playerIdBytes, buffer + currentPos, PLAYER_ID_BINARY_SIZE);
-    memcpy(hunter, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    hunter[PLAYER_ID_BINARY_SIZE] = '\0';
-    currentPos += PLAYER_ID_BINARY_SIZE;
-
-    // Deserialize bounty id (4 raw bytes)
-    memcpy(playerIdBytes, buffer + currentPos, PLAYER_ID_BINARY_SIZE);
-    memcpy(bounty, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    bounty[PLAYER_ID_BINARY_SIZE] = '\0';
-    currentPos += PLAYER_ID_BINARY_SIZE;
-
-    // Deserialize draw times
-    memcpy(&hunter_draw_time_ms, buffer + currentPos, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
-    memcpy(&bounty_draw_time_ms, buffer + currentPos, sizeof(unsigned long));
-    currentPos += sizeof(unsigned long);
-
-    return currentPos;
-}

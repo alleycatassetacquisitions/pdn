@@ -25,6 +25,7 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/peer-comms-types.hpp"
+#include "wireless/resender.hpp"
 #include "apps/player-registration/player-registration.hpp"
 
 // CLI components
@@ -67,6 +68,8 @@ inline const char* getStateName(int stateId) {
         case 25: return "ShootoutEliminated";
         case 26: return "ShootoutFinalStandings";
         case 27: return "ShootoutAborted";
+        case 28: return "Symbol";
+        case 29: return "SymbolMatched";
         default: return "Unknown";
     }
 }
@@ -208,6 +211,14 @@ public:
                 ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
             },
             instance.quickdrawWirelessManager
+        );
+
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kAck,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* /*userArg*/) {
+                Resender::processIncomingAck(src, data, len);
+            },
+            nullptr
         );
 
         instance.symbolWirelessManager = new SymbolWirelessManager();

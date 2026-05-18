@@ -530,14 +530,6 @@ TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
     matchJsonContainsWinnerFlag();
 }
 
-TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
-    matchBinaryRoundTripPreservesAllFields();
-}
-
-TEST_F(MatchTestSuite, binarySizeIsCorrect) {
-    matchBinarySizeIsCorrect();
-}
-
 TEST_F(MatchTestSuite, setupClearsDrawTimes) {
     matchSetupClearsDrawTimes();
 }
@@ -686,6 +678,18 @@ TEST_F(MatchManagerTestSuite, graceExpiredAloneFinalizes) {
     matchManagerGraceExpiredAloneFinalizes(matchManager, player);
 }
 
+TEST_F(MatchManagerTestSuite, voidedDuelPersistsWithFlag) {
+    matchManagerVoidedDuelPersistsWithFlag(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, neverPressedAbandonPreservesLoss) {
+    matchManagerNeverPressedAbandonPreservesLoss(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, drawResultAbandonVoids) {
+    matchManagerDrawResultAbandonVoids(matchManager, player);
+}
+
 TEST_F(MatchManagerTestSuite, rejectsNeverPressedFromStranger) {
     matchManagerRejectsNeverPressedFromStranger(matchManager, player);
 }
@@ -742,10 +746,6 @@ TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
 }
 
-// ============================================
-// MATCH MANAGER CONCURRENCY TESTS (TSan)
-// ============================================
-
 TEST(MatchManagerConcurrent, driverExecSerializesMatchManagerAccess) {
     matchManagerConcurrentDriverVsReader();
 }
@@ -760,10 +760,6 @@ TEST_F(DuelIntegrationTestSuite, completeDuelFlowHunterWins) {
 
 TEST_F(DuelIntegrationTestSuite, completeDuelFlowBountyWins) {
     completeDuelFlowBountyWins(this);
-}
-
-TEST_F(DuelIntegrationTestSuite, matchSerializationRoundTrip) {
-    matchSerializationRoundTrip();
 }
 
 TEST_F(DuelIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
@@ -945,6 +941,10 @@ TEST_F(DuelStateTests, neverPressedMeansLose) {
 
 TEST_F(DuelResultTests, hunterWinsWithFasterTime) {
     resultHunterWinsWithFasterTime(this);
+}
+
+TEST_F(DuelResultTests, voidedDuelInShootoutAbortsTournament) {
+    voidedDuelInShootoutAbortsTournament(this);
 }
 
 TEST_F(DuelResultTests, bountyWinsWithFasterTime) {
@@ -1191,9 +1191,6 @@ TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
 }
 
-// ============================================
-// HWM UNIT TESTS
-// ============================================
 
 TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) {
     hwmGetMacPeerReturnsNullWhenNotSet(this);
@@ -1291,9 +1288,6 @@ TEST_F(RDCTests, announcementAbandonedAfterMaxRetries) {
     rdcAnnouncementAbandonedAfterMaxRetries(this);
 }
 
-// ============================================
-// CHAIN DUEL MANAGER TESTS
-// ============================================
 
 TEST_F(ChainDuelManagerTests, roleDerivationWithChampionTopology) {
     cdmRoleDerivationWithChampionTopology(this);
@@ -1415,9 +1409,14 @@ TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) {
     cdmGameEventAbandonsAfterMax(this);
 }
 
-// ============================================
-// CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
-// ============================================
+TEST_F(ChainDuelManagerTests, resenderDetectsCoOwnershipViolation) {
+    resenderDetectsCoOwnershipViolation(this);
+}
+
+TEST_F(ChainDuelManagerTests, resenderAckRoutesToOwnerNotBroadcast) {
+    resenderAckRoutesToOwnerNotBroadcast(this);
+}
+
 
 TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChampion) {
     cdmMultiDeviceChainFormsAndElectsChampion(this);
@@ -1437,9 +1436,6 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
     shootoutFourDeviceConsensusAndMatchStart(this);
 }
 
-// ============================================
-// SHOOTOUT MANAGER TESTS
-// ============================================
 
 TEST_F(ShootoutManagerTests, coordinatorIsLowestMacAmongConfirmed) { coordinatorIsLowestMacAmongConfirmed(this); }
 TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
@@ -1449,11 +1445,14 @@ TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { con
 TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
 TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
 TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
+TEST_F(ShootoutManagerTests, matchStartAbandonAbortsTournament) { matchStartAbandonAbortsTournament(this); }
+TEST_F(ShootoutManagerTests, matchResultAbandonAbortsTournament) { matchResultAbandonAbortsTournament(this); }
+TEST_F(ShootoutManagerTests, matchResultAbandonAfterTournamentEndStaysEnded) { matchResultAbandonAfterTournamentEndStaysEnded(this); }
+TEST_F(ShootoutManagerTests, abortReceivedAfterTournamentEndStaysEnded) { abortReceivedAfterTournamentEndStaysEnded(this); }
 TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
-TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }
