@@ -36,6 +36,11 @@ class DriverManager {
         driverConfig.clear();
     }
 
+    DriverInterface* getDriver(const std::string& name) {
+        auto it = driverConfig.find(name);
+        return (it != driverConfig.end()) ? it->second : nullptr;
+    }
+
 private:
     DriverConfig driverConfig;
 };

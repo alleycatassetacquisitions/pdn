@@ -3,6 +3,10 @@
 #include <string>
 #include "drivers/display.hpp"
 #include "drivers/button.hpp"
+#include "drivers/haptics.hpp"
+#include "drivers/http-client-interface.hpp"
+#include "drivers/peer-comms-interface.hpp"
+#include "drivers/storage-interface.hpp"
 #include "drivers/light-interface.hpp"
 #include "serial-manager.hpp"
 #include "light-manager.hpp"
@@ -13,15 +17,14 @@
 #include "state/state-types.hpp"
 #include <map>
 #include "device-type.hpp"
+#include "driver-names.hpp"
 
 class StateMachine;
-class ShootoutManager;
 
 using AppConfig = std::map<StateId, StateMachine*>;
 
 class Device {
 public:
-    // Delete copy and move operations (Rule of 5)
     Device(const Device&) = delete;
     Device& operator=(const Device&) = delete;
     Device(Device&&) = delete;
@@ -41,28 +44,36 @@ public:
     virtual void loop();
 
     virtual void setDeviceId(const std::string& deviceId) = 0;
-
     virtual std::string getDeviceId() = 0;
-
     virtual DeviceType getDeviceType() = 0;
 
-    virtual Display* getDisplay() = 0;
-    virtual Haptics* getHaptics() = 0;
-    virtual Button* getPrimaryButton() = 0;
-    virtual Button* getSecondaryButton() = 0;
-    virtual LightManager* getLightManager() = 0;
-    virtual HttpClientInterface* getHttpClient() = 0;
-    virtual PeerCommsInterface* getPeerComms() = 0;
-    virtual StorageInterface* getStorage() = 0;
-    virtual WirelessManager* getWirelessManager() = 0;
-    virtual SerialManager* getSerialManager() = 0;
-    virtual RemoteDeviceCoordinator* getRemoteDeviceCoordinator() = 0;
+    // Peripheral accessors with default implementations backed by DriverManager.
+    // Subclasses no longer need to override these — they register drivers by name.
+    // Virtual so mock subclasses in tests can still inject fakes directly.
+    virtual Display*             getDisplay()         { return getPeripheral<Display>(DISPLAY_DRIVER_NAME); }
+    virtual Haptics*             getHaptics()         { return getPeripheral<Haptics>(HAPTICS_DRIVER_NAME); }
+    virtual Button*              getPrimaryButton()   { return getPeripheral<Button>(PRIMARY_BUTTON_DRIVER_NAME); }
+    virtual Button*              getSecondaryButton() { return getPeripheral<Button>(SECONDARY_BUTTON_DRIVER_NAME); }
+    virtual HttpClientInterface* getHttpClient()      { return getPeripheral<HttpClientInterface>(HTTP_CLIENT_DRIVER_NAME); }
+    virtual PeerCommsInterface*  getPeerComms()       { return getPeripheral<PeerCommsInterface>(PEER_COMMS_DRIVER_NAME); }
+    virtual StorageInterface*    getStorage()         { return getPeripheral<StorageInterface>(STORAGE_DRIVER_NAME); }
 
-    // ShootoutManager is owned by Quickdraw and injected after construction.
-    // Stored as a bare pointer on the base so every Device subclass exposes
-    // the same accessor without touching each override.
-    void setShootoutManager(ShootoutManager* shootoutManager) { shootoutManager_ = shootoutManager; }
-    ShootoutManager* getShootoutManager() const { return shootoutManager_; }
+    // Manager accessors — these wrap higher-level objects constructed by subclasses
+    // from multiple drivers and cannot be resolved purely by name lookup.
+    virtual LightManager*             getLightManager() = 0;
+    virtual WirelessManager*          getWirelessManager() = 0;
+    virtual SerialManager*            getSerialManager() = 0;
+    virtual RemoteDeviceCoordinator*  getRemoteDeviceCoordinator() = 0;
+
+    // Generic driver accessor — useful for device-specific peripherals not
+    // covered by the standard convenience wrappers (e.g. FDN tertiary button).
+    // Uses abstractSelf() on each combined driver interface to perform the
+    // sibling-base cross-cast at compile time, avoiding dynamic_cast/RTTI.
+    template<typename T>
+    T* getPeripheral(const std::string& name) {
+        DriverInterface* targetDriver = driverManager.getDriver(name);
+        return targetDriver ? static_cast<T*>(targetDriver->abstractSelf()) : nullptr;
+    }
 
 protected:
     explicit Device(const DriverConfig& deviceConfig) : driverManager(deviceConfig) {
@@ -73,5 +84,4 @@ private:
     DriverManager driverManager;
     AppConfig appConfig;
     StateId currentAppId;
-    ShootoutManager* shootoutManager_ = nullptr;
 };

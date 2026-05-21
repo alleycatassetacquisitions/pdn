@@ -34,6 +34,10 @@ void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
     shootoutManager_ = shootoutManager;
 }
 
+ShootoutManager* MatchManager::getShootoutManager() const {
+    return shootoutManager_;
+}
+
 void MatchManager::clearCurrentMatch() {
     if (activeDuelState.match) {
         LOG_I(MATCH_MANAGER_TAG, "Clearing current match");

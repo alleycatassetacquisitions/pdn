@@ -19,7 +19,6 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
     this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
     this->shootoutManager_->setMatchManager(matchManager);
-    PDN->setShootoutManager(shootoutManager_);
     matchManager->setShootoutManager(shootoutManager_);
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);

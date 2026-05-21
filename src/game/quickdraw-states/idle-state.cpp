@@ -70,7 +70,7 @@ void Idle::onStateLoop(Device *PDN) {
         displayIsDirty = false;
     }
 
-    ShootoutManager* shMgr = PDN->getShootoutManager();
+    ShootoutManager* shMgr = matchManager->getShootoutManager();
     bool shootoutActive = shMgr && shMgr->active();
     if (!shootoutActive && isConnected()) {
         if (chainDuelManager->canInitiateMatch()
