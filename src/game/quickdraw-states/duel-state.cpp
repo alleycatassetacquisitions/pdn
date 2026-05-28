@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/countdown-animation.hpp"
 #include "game/match-manager.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
@@ -54,7 +55,7 @@ void Duel::onStateMounted(Device *PDN) {
     config.loop = false;
     config.initialState = COUNTDOWN_DUEL_STATE;
     
-    PDN->getLightManager()->startAnimation(config);
+    PDN->getLightManager()->startAnimation(new CountdownAnimation(), config);
 
     PDN->getHaptics()->setIntensity(175);
 }

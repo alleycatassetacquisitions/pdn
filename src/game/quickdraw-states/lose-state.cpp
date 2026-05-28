@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/lose-animation.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
@@ -55,7 +56,7 @@ void Lose::onStateMounted(Device *PDN) {
     config.initialState = LEDState();
     config.loopDelayMs = 0;
 
-    PDN->getLightManager()->startAnimation(config);
+    PDN->getLightManager()->startAnimation(new LoseAnimation(), config);
 }
 
 void Lose::onStateLoop(Device *PDN) {

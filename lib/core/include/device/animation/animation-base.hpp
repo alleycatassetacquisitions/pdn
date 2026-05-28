@@ -1,10 +1,7 @@
 #pragma once
 
 #include "device/drivers/light-interface.hpp"
-// TODO(refactor): Easing curve lookup tables (LINEAR_CURVE etc.) should be extracted
-// from quickdraw-resources.hpp into lib/core/include/utils/easing-curves.hpp so that
-// animation-base does not depend on PDN-specific game resources.
-// #include "game/quickdraw-resources.hpp"
+#include "utils/easing-curves.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm> // For std::min
 
@@ -72,10 +69,15 @@ protected:
     // Returns the updated state (which is also stored in currentState_)
     virtual LEDState onAnimate() = 0;
     
-    // TODO(refactor): Replace stub with lookup-table implementation once easing curves
-    // are moved to lib/core/include/utils/easing-curves.hpp.
     uint8_t getEasingValue(uint8_t progress, EaseCurve curve) const override {
-        return std::min(progress, (uint8_t)255);
+        progress = std::min(progress, (uint8_t)255);
+        switch (curve) {
+            case EaseCurve::LINEAR:     return LINEAR_CURVE[progress];
+            case EaseCurve::EASE_IN_OUT: return EASE_IN_OUT_CURVE[progress];
+            case EaseCurve::EASE_OUT:   return EASE_OUT_CURVE[progress];
+            case EaseCurve::ELASTIC:    return ELASTIC_CURVE[progress];
+            default:                    return LINEAR_CURVE[progress];
+        }
     }
     
     // Interpolate between two colors based on progress (t is 0-255)

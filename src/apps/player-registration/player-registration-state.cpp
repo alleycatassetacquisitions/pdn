@@ -1,6 +1,7 @@
 #include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/transmit-breath-animation.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
 
@@ -69,7 +70,7 @@ void PlayerRegistrationState::onStateMounted(Device *PDN) {
         config.speed = 25;
         config.initialState = LEDState();
         config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-        PDN->getLightManager()->startAnimation(config);
+        PDN->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
     }
 }
 

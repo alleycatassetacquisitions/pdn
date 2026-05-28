@@ -1,6 +1,7 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/countdown-animation.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
@@ -27,7 +28,7 @@ void DuelCountdown::onStateMounted(Device *PDN) {
     drawImage(getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
     render();
 
-    PDN->getLightManager()->startAnimation(countdownQueue[currentStepIndex].animationConfig);
+    PDN->getLightManager()->startAnimation(new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
 
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
@@ -64,7 +65,7 @@ void DuelCountdown::onStateLoop(Device *PDN) {
             drawImage(getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
             render();
 
-            PDN->getLightManager()->startAnimation(countdownQueue[currentStepIndex].animationConfig);
+            PDN->getLightManager()->startAnimation(new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
 
             countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
             currentStepIndex++;

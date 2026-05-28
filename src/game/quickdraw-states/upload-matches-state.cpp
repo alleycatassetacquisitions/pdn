@@ -2,6 +2,7 @@
 #include "device/device.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/transmit-breath-animation.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "UploadMatchesState";
@@ -68,7 +69,7 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
     config.speed = 10;
     config.initialState = LEDState();
     config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-    PDN->getLightManager()->startAnimation(config);
+    PDN->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
 }
 
 void UploadMatchesState::onStateLoop(Device *PDN) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "animation-base.hpp"
+#include "device/animation/animation-base.hpp"
 #include "utils/simple-timer.hpp"
 #include <algorithm>
 #include <random>

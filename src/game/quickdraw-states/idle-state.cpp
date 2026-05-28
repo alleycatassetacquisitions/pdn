@@ -8,6 +8,8 @@
 #include "game/shootout-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/animation/idle-animation.hpp"
+#include "device/animation/vertical-chase-animation.hpp"
 #include "symbol-match/symbol-manager.hpp"
 #include "symbol-match/symbol-match.hpp"
 #include "wireless/mac-functions.hpp"
@@ -32,7 +34,9 @@ void Idle::onStateMounted(Device *PDN) {
 
     AnimationConfig config;
 
+    AnimationBase* animation;
     if(player->isHunter()) {
+        animation = new IdleAnimation();
         config.type = AnimationType::IDLE;
         config.speed = 16;
         config.curve = EaseCurve::LINEAR;
@@ -40,6 +44,7 @@ void Idle::onStateMounted(Device *PDN) {
         config.loopDelayMs = 0;
         config.loop = true;
     } else {
+        animation = new VerticalChaseAnimation();
         config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 5;
         config.curve = EaseCurve::ELASTIC;
@@ -47,7 +52,7 @@ void Idle::onStateMounted(Device *PDN) {
         config.loopDelayMs = 1500;
         config.loop = true;
     }
-    PDN->getLightManager()->startAnimation(config);
+    PDN->getLightManager()->startAnimation(animation, config);
 
     parameterizedCallbackFunction cycleStats = [](void *ctx) {
         Idle* idle = (Idle*)ctx;

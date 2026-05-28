@@ -1,5 +1,7 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/hunter-win-animation.hpp"
+#include "device/animation/bounty-win-animation.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
@@ -51,6 +53,9 @@ void Win::onStateMounted(Device *PDN) {
 
     winTimer.setTimer(8000);
 
+    AnimationBase* animation = player->isHunter()
+        ? (AnimationBase*)new HunterWinAnimation()
+        : (AnimationBase*)new BountyWinAnimation();
     AnimationConfig config;
     config.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
     config.loop = true;
@@ -58,7 +63,7 @@ void Win::onStateMounted(Device *PDN) {
     config.initialState = LEDState();
     config.loopDelayMs = 0;
 
-    PDN->getLightManager()->startAnimation(config);
+    PDN->getLightManager()->startAnimation(animation, config);
 }
 
 void Win::onStateLoop(Device *PDN) {

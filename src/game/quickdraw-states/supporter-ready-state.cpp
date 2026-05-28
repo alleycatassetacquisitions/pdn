@@ -1,6 +1,8 @@
 #include "game/quickdraw-states.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/idle-animation.hpp"
+#include "device/animation/vertical-chase-animation.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 #include <cstring>
@@ -18,8 +20,10 @@ SupporterReady::~SupporterReady() {
 }
 
 void SupporterReady::startLEDs(Device *PDN, bool armed, bool confirmed) {
+    AnimationBase* animation;
     AnimationConfig config;
     if (confirmed) {
+        animation = new IdleAnimation();
         config.type = AnimationType::IDLE;
         config.speed = 20;
         config.curve = EaseCurve::LINEAR;
@@ -27,6 +31,7 @@ void SupporterReady::startLEDs(Device *PDN, bool armed, bool confirmed) {
         config.loop = true;
         config.loopDelayMs = 0;
     } else if (armed) {
+        animation = new VerticalChaseAnimation();
         config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 12;
         config.curve = EaseCurve::EASE_IN_OUT;
@@ -34,6 +39,7 @@ void SupporterReady::startLEDs(Device *PDN, bool armed, bool confirmed) {
         config.loop = true;
         config.loopDelayMs = 0;
     } else {
+        animation = new VerticalChaseAnimation();
         config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 3;
         config.curve = EaseCurve::EASE_OUT;
@@ -46,7 +52,7 @@ void SupporterReady::startLEDs(Device *PDN, bool armed, bool confirmed) {
         }
         config.initialState = state;
     }
-    PDN->getLightManager()->startAnimation(config);
+    PDN->getLightManager()->startAnimation(animation, config);
 }
 
 void SupporterReady::onStateMounted(Device *PDN) {

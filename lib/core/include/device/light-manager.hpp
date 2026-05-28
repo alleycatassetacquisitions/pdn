@@ -17,6 +17,7 @@
 
 #include "utils/simple-timer.hpp"
 #include "drivers/light-interface.hpp"
+#include "device/animation/animation-base.hpp"
 
 class LightManager {
 public:
@@ -27,7 +28,7 @@ public:
     void loop();
     
     // Animation control
-    void startAnimation(AnimationConfig config);
+    void startAnimation(AnimationBase* animation, AnimationConfig config);
     void stopAnimation();
     void pauseAnimation();
     void resumeAnimation();

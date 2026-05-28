@@ -1,6 +1,7 @@
 #include "device/device-constants.hpp"
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
+#include "device/animation/idle-animation.hpp"
 #include "device/drivers/logger.hpp"
 #include <functional>
 
@@ -173,7 +174,7 @@ void SymbolState::advanceSymbolRender(Device* PDN) {
 
             PDN->getDisplay()->render();
 
-            PDN->getLightManager()->startAnimation(cfg);
+            PDN->getLightManager()->startAnimation(new IdleAnimation(), cfg);
         } else {
             PDN->getDisplay()->invalidateScreen();
             PDN->getDisplay()->render();
@@ -190,7 +191,7 @@ void SymbolState::advanceSymbolRender(Device* PDN) {
         PDN->getDisplay()->render();
         symbolSent = false;
 
-        PDN->getLightManager()->startAnimation(cfg);
+        PDN->getLightManager()->startAnimation(new IdleAnimation(), cfg);
     }
 }
 

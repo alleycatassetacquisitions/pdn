@@ -1,6 +1,8 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/animation/hunter-win-animation.hpp"
+#include "device/animation/bounty-win-animation.hpp"
 
 static const char* TAG = "SymbolMatched";
 
@@ -27,13 +29,16 @@ void SymbolMatched::onStateMounted(Device *PDN) {
         std::bind(&SymbolMatched::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
 
+    AnimationBase* animation = player->isHunter()
+        ? (AnimationBase*)new HunterWinAnimation()
+        : (AnimationBase*)new BountyWinAnimation();
     cfg.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
     cfg.loop = true;
     cfg.speed = 16;
     cfg.initialState = LEDState();
     cfg.loopDelayMs = 0;
 
-    PDN->getLightManager()->startAnimation(cfg);
+    PDN->getLightManager()->startAnimation(animation, cfg);
 }
 
 void SymbolMatched::onStateLoop(Device *PDN) {
