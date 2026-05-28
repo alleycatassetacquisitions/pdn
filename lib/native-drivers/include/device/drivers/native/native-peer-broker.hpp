@@ -7,7 +7,7 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 
 // Forward declaration
 class NativePeerCommsDriver;

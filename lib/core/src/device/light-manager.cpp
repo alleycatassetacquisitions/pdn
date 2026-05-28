@@ -1,12 +1,15 @@
 #include "device/light-manager.hpp"
-#include "game/quickdraw-resources.hpp"  // For easing curve lookup tables
-#include "device/animation/idle-animation.hpp"
-#include "device/animation/countdown-animation.hpp"
-#include "device/animation/vertical-chase-animation.hpp"
-#include "device/animation/transmit-breath-animation.hpp"
-#include "device/animation/hunter-win-animation.hpp"
-#include "device/animation/bounty-win-animation.hpp"
-#include "device/animation/lose-animation.hpp"
+// TODO(refactor): LightManager should accept animations via a registration/factory
+// mechanism rather than hard-coding PDN-specific types. These includes and the
+// switch below must be moved to src/pdn/ in a follow-up commit.
+// #include "game/quickdraw-resources.hpp"
+// #include "device/animation/idle-animation.hpp"
+// #include "device/animation/countdown-animation.hpp"
+// #include "device/animation/vertical-chase-animation.hpp"
+// #include "device/animation/transmit-breath-animation.hpp"
+// #include "device/animation/hunter-win-animation.hpp"
+// #include "device/animation/bounty-win-animation.hpp"
+// #include "device/animation/lose-animation.hpp"
 #include <algorithm> // For std::min
 
 static const char* TAG = "LightManager";
@@ -39,33 +42,18 @@ void LightManager::startAnimation(AnimationConfig config) {
         currentAnimation = nullptr;
     }
     
-    // Create the appropriate animation based on type
-    switch (config.type) {
-        case AnimationType::IDLE:
-            currentAnimation = new IdleAnimation();
-            break;
-        case AnimationType::VERTICAL_CHASE:
-            currentAnimation = new VerticalChaseAnimation();
-            break;
-        case AnimationType::DEVICE_CONNECTED:
-            // TODO: Implement other animation types
-            break;
-        case AnimationType::COUNTDOWN:
-            currentAnimation = new CountdownAnimation();
-            break;
-        case AnimationType::LOSE:
-            currentAnimation = new LoseAnimation();
-            break;
-        case AnimationType::HUNTER_WIN:
-            currentAnimation = new HunterWinAnimation();
-            break;
-        case AnimationType::BOUNTY_WIN:
-            currentAnimation = new BountyWinAnimation();
-            break;
-        case AnimationType::TRANSMIT_BREATH:
-            currentAnimation = new TransmitBreathAnimation();
-            break;
-    }
+    // TODO(refactor): Animation instantiation belongs in PDN once LightManager
+    // accepts a factory/registry. See includes commented out above.
+    // switch (config.type) {
+    //     case AnimationType::IDLE:            currentAnimation = new IdleAnimation(); break;
+    //     case AnimationType::VERTICAL_CHASE:  currentAnimation = new VerticalChaseAnimation(); break;
+    //     case AnimationType::DEVICE_CONNECTED: break;
+    //     case AnimationType::COUNTDOWN:       currentAnimation = new CountdownAnimation(); break;
+    //     case AnimationType::LOSE:            currentAnimation = new LoseAnimation(); break;
+    //     case AnimationType::HUNTER_WIN:      currentAnimation = new HunterWinAnimation(); break;
+    //     case AnimationType::BOUNTY_WIN:      currentAnimation = new BountyWinAnimation(); break;
+    //     case AnimationType::TRANSMIT_BREATH: currentAnimation = new TransmitBreathAnimation(); break;
+    // }
     
     // Initialize the animation if created
     if (currentAnimation) {

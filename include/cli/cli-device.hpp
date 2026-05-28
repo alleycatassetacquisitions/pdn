@@ -24,7 +24,7 @@
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
 
 // CLI components

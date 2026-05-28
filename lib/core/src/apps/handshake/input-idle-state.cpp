@@ -1,6 +1,6 @@
 #include "apps/handshake/handshake-states.hpp"
 #include "device/device.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/device-type.hpp"
 

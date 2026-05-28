@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <functional>
-#include "wireless/peer-comms-types.hpp"
+#include "peer-comms-types.hpp"
 
 enum class PeerCommsState {
     CONNECTED,

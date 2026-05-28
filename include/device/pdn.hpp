@@ -1,6 +1,6 @@
 #pragma once
 
-#include "device.hpp"
+#include "device/device.hpp"
 #include "device/light-manager.hpp"
 #include "device/serial-manager.hpp"
 

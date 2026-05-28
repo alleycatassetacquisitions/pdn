@@ -9,7 +9,7 @@
 #include "cli/cli-terminal.hpp"
 #include "cli/cli-device.hpp"
 #include "cli/cli-serial-broker.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
 
 namespace cli {

@@ -8,7 +8,7 @@
 #include "game/player.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "device/wireless-manager.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 
 enum class ChainGameEventType : uint8_t {

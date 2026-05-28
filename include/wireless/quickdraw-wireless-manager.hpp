@@ -12,7 +12,7 @@
 #include "game/player.hpp"
 #include "game/match.hpp"
 #include "id-generator.hpp"
-#include "mac-functions.hpp"
+#include "wireless/mac-functions.hpp"
 #include "device/wireless-manager.hpp"
 
 // Wire format transmitted over ESP-NOW for every quickdraw command.

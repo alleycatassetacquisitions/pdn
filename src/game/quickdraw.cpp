@@ -1,5 +1,5 @@
 #include "../../include/game/quickdraw.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include <array>

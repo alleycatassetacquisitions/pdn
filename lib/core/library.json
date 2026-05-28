@@ -1,0 +1,5 @@
+{
+  "name": "core",
+  "version": "1.0.0",
+  "description": "Cross-platform device base, state machine, drivers interfaces, and shared utilities"
+}

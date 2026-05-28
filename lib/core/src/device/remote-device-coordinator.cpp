@@ -1,14 +1,14 @@
 #include "device/remote-device-coordinator.hpp"
 #include "apps/handshake/handshake-states.hpp"
 #include "apps/handshake/handshake.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
 #include "device/drivers/logger.hpp"
 #include "state/state-machine.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "wireless/mac-functions.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
 

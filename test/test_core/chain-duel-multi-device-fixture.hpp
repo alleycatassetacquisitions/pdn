@@ -38,7 +38,7 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "wireless/mac-functions.hpp"
 
 using ::testing::_;
