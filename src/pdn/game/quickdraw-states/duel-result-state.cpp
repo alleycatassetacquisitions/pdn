@@ -6,7 +6,7 @@
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager) : State(QuickdrawStateId::DUEL_RESULT) {
+DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager) : TypedState<PDN>(QuickdrawStateId::DUEL_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
@@ -21,7 +21,7 @@ DuelResult::~DuelResult() {
     this->shootoutManager = nullptr;
 }
 
-void DuelResult::onStateMounted(Device *PDN) {
+void DuelResult::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_TAG, "Duel result state mounted");
 
     player->incrementMatchesPlayed();
@@ -36,30 +36,30 @@ void DuelResult::onStateMounted(Device *PDN) {
         player->incrementLosses();
     }
 
-    PDN->getHaptics()->setIntensity(0);
+    pdn->getHaptics()->setIntensity(0);
 
     matchManager->finalizeMatch();
 
-    PDN->getDisplay()->invalidateScreen()->render();
+    pdn->getDisplay()->invalidateScreen()->render();
 }
 
-void DuelResult::onStateLoop(Device *PDN) {
+void DuelResult::onStateLoop(PDN* pdn) {
     // No loop processing needed for result state
 }
 
-void DuelResult::onStateDismounted(Device *PDN) {
+void DuelResult::onStateDismounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_TAG, "Duel result state dismounted - Cleaning up");
     
     // Log state before reset
     LOG_I(DUEL_RESULT_TAG, "State before reset - wonBattle: %d, captured: %d",
              wonBattle, captured);
 
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
 
     wonBattle = false;
     captured = false;
-    PDN->getLightManager()->stopAnimation();
+    pdn->getLightManager()->stopAnimation();
 }
 
 bool DuelResult::transitionToWin() {

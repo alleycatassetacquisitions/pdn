@@ -2,13 +2,13 @@
 #include "device/device.hpp"
 
 ShootoutBracketReveal::ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : State(SHOOTOUT_BRACKET_REVEAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+    : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
 
-void ShootoutBracketReveal::onStateMounted(Device *PDN) {
+void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
     // Clear stale button callbacks left by ShootoutProposal.
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
-    auto* d = PDN->getDisplay();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
+    auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText("BRACKET", 20);
     d->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
@@ -16,7 +16,7 @@ void ShootoutBracketReveal::onStateMounted(Device *PDN) {
     d->render();
 }
 
-void ShootoutBracketReveal::onStateLoop(Device *PDN) {
+void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
     shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
@@ -34,7 +34,7 @@ void ShootoutBracketReveal::onStateLoop(Device *PDN) {
     }
 }
 
-void ShootoutBracketReveal::onStateDismounted(Device *PDN) {
+void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
     shouldGoToDuelCountdown_ = false;
     shouldGoToSpectator_ = false;
     shouldGoToAborted_ = false;

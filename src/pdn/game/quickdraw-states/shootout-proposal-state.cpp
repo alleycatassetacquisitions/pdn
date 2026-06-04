@@ -2,11 +2,11 @@
 #include "device/device.hpp"
 
 ShootoutProposal::ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : State(SHOOTOUT_PROPOSAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+    : TypedState<PDN>(SHOOTOUT_PROPOSAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
 
-void ShootoutProposal::onStateMounted(Device *PDN) {
+void ShootoutProposal::onStateMounted(PDN* pdn) {
     shootout_->startProposal();
-    auto* d = PDN->getDisplay();
+    auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText("SHOOTOUT", 15);
     d->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
@@ -17,11 +17,11 @@ void ShootoutProposal::onStateMounted(Device *PDN) {
     parameterizedCallbackFunction confirmCb = [](void *ctx) {
         static_cast<ShootoutProposal*>(ctx)->shootout_->confirmLocal();
     };
-    PDN->getPrimaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
+    pdn->getPrimaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
+    pdn->getSecondaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
 }
 
-void ShootoutProposal::onStateLoop(Device *PDN) {
+void ShootoutProposal::onStateLoop(PDN* pdn) {
     shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
@@ -34,9 +34,9 @@ void ShootoutProposal::onStateLoop(Device *PDN) {
     }
 }
 
-void ShootoutProposal::onStateDismounted(Device *PDN) {
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+void ShootoutProposal::onStateDismounted(PDN* pdn) {
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
     shouldGoToReveal_ = false;
     shouldGoToIdle_ = false;
     shouldGoToAborted_ = false;

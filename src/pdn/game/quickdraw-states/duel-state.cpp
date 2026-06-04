@@ -9,7 +9,7 @@
 
 #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager) : ConnectState(remoteDeviceCoordinator, DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
     this->chainDuelManager = chainDuelManager;
@@ -22,7 +22,7 @@ Duel::~Duel() {
     this->matchManager = nullptr;
 }
 
-void Duel::onStateMounted(Device *PDN) {
+void Duel::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_TAG, "Duel state mounted");
 
     // Arm the supporter chain for confirmations during the draw window.
@@ -33,15 +33,15 @@ void Duel::onStateMounted(Device *PDN) {
     LOG_I(DUEL_TAG, "Setting up button handlers");
 
     auto duelButtonPush = matchManager->getDuelButtonPush();
-    PDN->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
 
     duelTimer.setTimer(DUEL_TIMEOUT);
 
     LOG_I(DUEL_TAG, "Duel timer started for %d ms, duelStartTime: %lu", 
              DUEL_TIMEOUT, matchManager->getDuelLocalStartTime());
              
-    PDN->getDisplay()->invalidateScreen()->
+    pdn->getDisplay()->invalidateScreen()->
     drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE))->
     drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::DRAW))->
     render();
@@ -55,12 +55,12 @@ void Duel::onStateMounted(Device *PDN) {
     config.loop = false;
     config.initialState = COUNTDOWN_DUEL_STATE;
     
-    PDN->getLightManager()->startAnimation(new CountdownAnimation(), config);
+    pdn->getLightManager()->startAnimation(new CountdownAnimation(), config);
 
-    PDN->getHaptics()->setIntensity(175);
+    pdn->getHaptics()->setIntensity(175);
 }
 
-void Duel::onStateLoop(Device *PDN) {
+void Duel::onStateLoop(PDN* pdn) {
     duelTimer.updateTime();
 
     if(matchManager->getHasReceivedDrawResult()) {
@@ -114,16 +114,16 @@ bool Duel::transitionToShootoutEliminated() {
     return transitionToShootoutEliminatedState;
 }
 
-void Duel::onStateDismounted(Device *PDN) {
+void Duel::onStateDismounted(PDN* pdn) {
     if(transitionToIdleState || transitionToShootoutSpectatorState
        || transitionToShootoutEliminatedState) {
-        PDN->getHaptics()->off();
+        pdn->getHaptics()->off();
         matchManager->clearCurrentMatch();
-        PDN->getPrimaryButton()->removeButtonCallbacks();
-        PDN->getSecondaryButton()->removeButtonCallbacks();
+        pdn->getPrimaryButton()->removeButtonCallbacks();
+        pdn->getSecondaryButton()->removeButtonCallbacks();
     } else if(transitionToDuelReceivedResultState) {
-        PDN->getPrimaryButton()->removeButtonCallbacks();
-        PDN->getSecondaryButton()->removeButtonCallbacks();
+        pdn->getPrimaryButton()->removeButtonCallbacks();
+        pdn->getSecondaryButton()->removeButtonCallbacks();
     }
 
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");

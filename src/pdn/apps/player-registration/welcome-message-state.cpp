@@ -6,31 +6,31 @@
 
 static const char* TAG = "WelcomeMessage";
 
-WelcomeMessage::WelcomeMessage(Player* player) : State(PlayerRegistrationStateId::WELCOME_MESSAGE) {
+WelcomeMessage::WelcomeMessage(Player* player) : TypedState<PDN>(PlayerRegistrationStateId::WELCOME_MESSAGE) {
     this->player = player;
 }
 
 WelcomeMessage::~WelcomeMessage() {
 }
 
-void WelcomeMessage::onStateMounted(Device *PDN) {
+void WelcomeMessage::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "WelcomeMessage state mounted");
-    renderWelcomeMessage(PDN);
+    renderWelcomeMessage(pdn);
     welcomeMessageTimer.setTimer(WELCOME_MESSAGE_TIMEOUT);
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
 
 } 
 
-void WelcomeMessage::onStateLoop(Device *PDN) {
+void WelcomeMessage::onStateLoop(PDN* pdn) {
     welcomeMessageTimer.updateTime();
     if(welcomeMessageTimer.expired()) {
         transitionToAwakenSequenceState = true;
     }
 }
 
-void WelcomeMessage::renderWelcomeMessage(Device *PDN) {
-    PDN->getDisplay()->
+void WelcomeMessage::renderWelcomeMessage(PDN* pdn) {
+    pdn->getDisplay()->
     invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
     drawText("**Alias**", 0, 16)->
@@ -40,7 +40,7 @@ void WelcomeMessage::renderWelcomeMessage(Device *PDN) {
     render();
 }
 
-void WelcomeMessage::onStateDismounted(Device *PDN) {
+void WelcomeMessage::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "WelcomeMessage state dismounted");
     welcomeMessageTimer.invalidate();
     transitionToAwakenSequenceState = false;

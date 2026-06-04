@@ -10,7 +10,7 @@
 #define TAG "SupporterReady"
 
 SupporterReady::SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager)
-    : ConnectState(remoteDeviceCoordinator, SUPPORTER_READY) {
+    : TypedConnectState<PDN>(remoteDeviceCoordinator, SUPPORTER_READY) {
     this->player = player;
     this->chainDuelManager = chainDuelManager;
 }
@@ -19,7 +19,7 @@ SupporterReady::~SupporterReady() {
     player = nullptr;
 }
 
-void SupporterReady::startLEDs(Device *PDN, bool armed, bool confirmed) {
+void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
     AnimationBase* animation;
     AnimationConfig config;
     if (confirmed) {
@@ -52,10 +52,10 @@ void SupporterReady::startLEDs(Device *PDN, bool armed, bool confirmed) {
         }
         config.initialState = state;
     }
-    PDN->getLightManager()->startAnimation(animation, config);
+    pdn->getLightManager()->startAnimation(animation, config);
 }
 
-void SupporterReady::onStateMounted(Device *PDN) {
+void SupporterReady::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "SupporterReady mounted");
     transitionToIdleFlag = false;
     buttonArmed = false;
@@ -75,12 +75,12 @@ void SupporterReady::onStateMounted(Device *PDN) {
         self->displayIsDirty = true;
         self->ledsAreDirty = true;
     };
-    PDN->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
-    cachedPDN = PDN;
+    pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
+    pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
+    cachedPDN = pdn;
 }
 
-void SupporterReady::onStateLoop(Device *PDN) {
+void SupporterReady::onStateLoop(PDN* pdn) {
     if (chainDuelManager == nullptr || !chainDuelManager->isSupporter()) {
         transitionToIdleFlag = true;
     }
@@ -109,44 +109,44 @@ void SupporterReady::onStateLoop(Device *PDN) {
     }
 
     if (ledsAreDirty) {
-        startLEDs(PDN, buttonArmed, hasConfirmed);
+        startLEDs(pdn, buttonArmed, hasConfirmed);
         ledsAreDirty = false;
     }
 
     if (displayIsDirty) {
         if (lastResult != 0) {
-            PDN->getDisplay()->invalidateScreen()
+            pdn->getDisplay()->invalidateScreen()
                 ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE));
-            PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(hasConfirmed ? "Posse" : "Missed", 70, 20);
-            PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)
+            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)
                 ->drawText(lastResult > 0 ? "Won" : "Lost", 70, 40);
         } else {
-            PDN->getDisplay()->invalidateScreen()
+            pdn->getDisplay()->invalidateScreen()
                 ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::IDLE));
             if (hasConfirmed) {
-                PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Locked", 74, 24);
-                PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText("In", 88, 42);
+                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Locked", 74, 24);
+                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText("In", 88, 42);
             } else {
-                PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse", 70, 20);
-                PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(buttonArmed ? "PRESS" : "Ready", 68, 40);
+                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse", 70, 20);
+                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(buttonArmed ? "PRESS" : "Ready", 68, 40);
             }
         }
-        PDN->getDisplay()->render();
+        pdn->getDisplay()->render();
         displayIsDirty = false;
     }
 }
 
-void SupporterReady::onStateDismounted(Device *PDN) {
+void SupporterReady::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "SupporterReady dismounted");
     transitionToIdleFlag = false;
     buttonArmed = false;
     hasConfirmed = false;
     cachedPDN = nullptr;
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
-    PDN->getLightManager()->stopAnimation();
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getLightManager()->stopAnimation();
+    pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
 }
 
 // Runs on the ESP-NOW WiFi task on hardware. Touch only atomic fields here;

@@ -4,16 +4,16 @@
 #include <cstring>
 
 ShootoutFinalStandings::ShootoutFinalStandings(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : State(SHOOTOUT_FINAL_STANDINGS), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+    : TypedState<PDN>(SHOOTOUT_FINAL_STANDINGS), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
 
-void ShootoutFinalStandings::onStateMounted(Device *PDN) {
-    PDN->getLightManager()->stopAnimation();
+void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
+    pdn->getLightManager()->stopAnimation();
     auto winner = shootout_->getTournamentWinner();
-    const uint8_t* selfMac = PDN->getWirelessManager()->getMacAddress();
+    const uint8_t* selfMac = pdn->getWirelessManager()->getMacAddress();
     bool iWon = selfMac && memcmp(winner.data(), selfMac, 6) == 0;
     std::string winnerName = shootout_->getNameForMac(winner.data());
     const char* header = iWon ? "VICTORY" : "DEFEAT";
-    auto* d = PDN->getDisplay();
+    auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText(header, 20);
     d->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
@@ -22,14 +22,14 @@ void ShootoutFinalStandings::onStateMounted(Device *PDN) {
     d->render();
 }
 
-void ShootoutFinalStandings::onStateLoop(Device *PDN) {
+void ShootoutFinalStandings::onStateLoop(PDN* pdn) {
     if (shootout_) shootout_->sync();
     if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
         shouldGoToSleep_ = true;
     }
 }
 
-void ShootoutFinalStandings::onStateDismounted(Device *PDN) {
+void ShootoutFinalStandings::onStateDismounted(PDN* pdn) {
     // Reset Shootout state so the next loop closure triggers a fresh
     // proposal. Without this, phase_ stays ENDED and shootoutManager->active()
     // returns true, blocking the Idle→ShootoutProposal transition.

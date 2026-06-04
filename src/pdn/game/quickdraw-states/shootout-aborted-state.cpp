@@ -2,24 +2,24 @@
 #include "device/device.hpp"
 
 ShootoutAborted::ShootoutAborted(ShootoutManager* shootout)
-    : State(SHOOTOUT_ABORTED), shootout_(shootout) {}
+    : TypedState<PDN>(SHOOTOUT_ABORTED), shootout_(shootout) {}
 
-void ShootoutAborted::onStateMounted(Device *PDN) {
-    PDN->getLightManager()->stopAnimation();
+void ShootoutAborted::onStateMounted(PDN* pdn) {
+    pdn->getLightManager()->stopAnimation();
     displayTimer_.setTimer(ABORTED_DISPLAY_MS);
-    auto* d = PDN->getDisplay();
+    auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText("ABORTED", 30);
     d->render();
 }
 
-void ShootoutAborted::onStateLoop(Device *PDN) {
+void ShootoutAborted::onStateLoop(PDN* pdn) {
     if (displayTimer_.expired()) {
         shouldGoToIdle_ = true;
     }
 }
 
-void ShootoutAborted::onStateDismounted(Device *PDN) {
+void ShootoutAborted::onStateDismounted(PDN* pdn) {
     if (shootout_) shootout_->resetToIdle();
     displayTimer_.invalidate();
     shouldGoToIdle_ = false;

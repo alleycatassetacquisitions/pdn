@@ -4,13 +4,13 @@
 #include <cstring>
 
 ShootoutSpectator::ShootoutSpectator(ShootoutManager* shootout)
-    : State(SHOOTOUT_SPECTATOR), shootout_(shootout) {}
+    : TypedState<PDN>(SHOOTOUT_SPECTATOR), shootout_(shootout) {}
 
-static void drawSpectatorScreen(Device* PDN, ShootoutManager* shootout,
+static void drawSpectatorScreen(PDN* pdn, ShootoutManager* shootout,
                                 const std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>& pair) {
     std::string nameA = shootout->getNameForMac(pair.first.data());
     std::string nameB = shootout->getNameForMac(pair.second.data());
-    auto* d = PDN->getDisplay();
+    auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
     d->drawCenteredText("WATCHING", 5);
     d->drawCenteredText(nameA.c_str(), 25);
@@ -19,17 +19,17 @@ static void drawSpectatorScreen(Device* PDN, ShootoutManager* shootout,
     d->render();
 }
 
-void ShootoutSpectator::onStateMounted(Device *PDN) {
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
-    PDN->getLightManager()->stopAnimation();
+void ShootoutSpectator::onStateMounted(PDN* pdn) {
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getLightManager()->stopAnimation();
     auto pair = shootout_->getCurrentMatchPair();
     lastDisplayedA_ = pair.first;
     lastDisplayedB_ = pair.second;
-    drawSpectatorScreen(PDN, shootout_, pair);
+    drawSpectatorScreen(pdn, shootout_, pair);
 }
 
-void ShootoutSpectator::onStateLoop(Device *PDN) {
+void ShootoutSpectator::onStateLoop(PDN* pdn) {
     shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS && shootout_->isLocalDuelist()) {
@@ -43,11 +43,11 @@ void ShootoutSpectator::onStateLoop(Device *PDN) {
         memcmp(pair.second.data(), lastDisplayedB_.data(), 6) != 0) {
         lastDisplayedA_ = pair.first;
         lastDisplayedB_ = pair.second;
-        drawSpectatorScreen(PDN, shootout_, pair);
+        drawSpectatorScreen(pdn, shootout_, pair);
     }
 }
 
-void ShootoutSpectator::onStateDismounted(Device *PDN) {
+void ShootoutSpectator::onStateDismounted(PDN* pdn) {
     shouldGoToDuelCountdown_ = false;
     shouldGoToFinalStandings_ = false;
     shouldGoToAborted_ = false;

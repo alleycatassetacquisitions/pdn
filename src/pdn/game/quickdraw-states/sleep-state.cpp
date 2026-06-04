@@ -11,7 +11,7 @@
 
 using namespace std;
 
-Sleep::Sleep(Player* player) : State(SLEEP) {
+Sleep::Sleep(Player* player) : TypedState<PDN>(SLEEP) {
     this->player = player;
 }
 
@@ -19,8 +19,8 @@ Sleep::~Sleep() {
     this->player = nullptr;
 }
 
-void Sleep::onStateMounted(Device *PDN) {
-    PDN->getDisplay()->
+void Sleep::onStateMounted(PDN* pdn) {
+    pdn->getDisplay()->
         invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_RIGHT))->
@@ -33,7 +33,7 @@ void Sleep::onStateMounted(Device *PDN) {
     dormantTimer.setTimer(SLEEP_DURATION);
 }
 
-void Sleep::onStateLoop(Device *PDN) {
+void Sleep::onStateLoop(PDN* pdn) {
 
     dormantTimer.updateTime();
 
@@ -66,7 +66,7 @@ void Sleep::onStateLoop(Device *PDN) {
     */
 }
 
-void Sleep::onStateDismounted(Device *PDN) {
+void Sleep::onStateDismounted(PDN* pdn) {
     dormantTimer.invalidate();
 }
 

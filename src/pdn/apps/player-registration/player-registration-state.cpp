@@ -7,7 +7,7 @@
 
 static const char* TAG = "PlayerRegistrationState";
 
-PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : State(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
+PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : TypedState<PDN>(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
     LOG_I(TAG, "Initializing PlayerRegistrationState");
     this->player = player;
     this->matchManager = matchManager;
@@ -18,17 +18,17 @@ PlayerRegistrationState::~PlayerRegistrationState() {
     LOG_I(TAG, "Destroying PlayerRegistrationState");
 }
 
-void PlayerRegistrationState::onStateMounted(Device *PDN) {
+void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting player registration");
 
-    PDN->getDisplay()->invalidateScreen()->
+    pdn->getDisplay()->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
     drawText("Pairing Code", 8, 16)->
     setGlyphMode(FontMode::NUMBER_GLYPH)->
     renderGlyph(digitGlyphs[0], 20, 40)->
     render();
 
-    PDN->getPrimaryButton()->setButtonPress( 
+    pdn->getPrimaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
         playerRegistration->currentDigit++;
@@ -38,7 +38,7 @@ void PlayerRegistrationState::onStateMounted(Device *PDN) {
         playerRegistration->shouldRender = true;
     }, this, ButtonInteraction::CLICK);
 
-    PDN->getSecondaryButton()->setButtonPress( 
+    pdn->getSecondaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
@@ -70,21 +70,21 @@ void PlayerRegistrationState::onStateMounted(Device *PDN) {
         config.speed = 25;
         config.initialState = LEDState();
         config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-        PDN->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
+        pdn->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
     }
 }
 
-void PlayerRegistrationState::onStateLoop(Device *PDN) {
+void PlayerRegistrationState::onStateLoop(PDN* pdn) {
     if(shouldRender) {
         if(currentDigitIndex == 0) {
-            PDN->getDisplay()->invalidateScreen()->
+            pdn->getDisplay()->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
             renderGlyph(digitGlyphs[currentDigit], 20, 40)->
             render();
         } else if(currentDigitIndex == 1) {
-            PDN->getDisplay()->invalidateScreen()->
+            pdn->getDisplay()->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
@@ -92,7 +92,7 @@ void PlayerRegistrationState::onStateLoop(Device *PDN) {
             renderGlyph(digitGlyphs[currentDigit], 44, 40)->
             render();
         } else if(currentDigitIndex == 2) {
-            PDN->getDisplay()->invalidateScreen()->
+            pdn->getDisplay()->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
@@ -101,7 +101,7 @@ void PlayerRegistrationState::onStateLoop(Device *PDN) {
             renderGlyph(digitGlyphs[currentDigit], 68, 40)->
             render();
         } else if(currentDigitIndex == 3) {
-            PDN->getDisplay()->invalidateScreen()->
+            pdn->getDisplay()->invalidateScreen()->
             setGlyphMode(FontMode::TEXT)->
             drawText("Pairing Code", 8, 16)->
             setGlyphMode(FontMode::NUMBER_GLYPH)->
@@ -115,15 +115,15 @@ void PlayerRegistrationState::onStateLoop(Device *PDN) {
     }
 }
 
-void PlayerRegistrationState::onStateDismounted(Device *PDN) {
+void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted - Cleaning up");
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
-    PDN->getLightManager()->stopAnimation();
+    pdn->getLightManager()->stopAnimation();
 }
 
 bool PlayerRegistrationState::transitionToUserFetch() {

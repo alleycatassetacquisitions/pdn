@@ -1,5 +1,6 @@
 #pragma once
 
+#include "device/pdn.hpp"
 #include "state/state.hpp"
 #include "game/player.hpp"
 #include "game/match-manager.hpp"
@@ -17,14 +18,14 @@ enum PlayerRegistrationStateId {
     WELCOME_MESSAGE = 5,
 };
 
-class PlayerRegistrationState : public State {
+class PlayerRegistrationState : public TypedState<PDN> {
 public:
     PlayerRegistrationState(Player* player, MatchManager* matchManager);
     ~PlayerRegistrationState();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToUserFetch();
 
 private:
@@ -38,7 +39,7 @@ private:
     int inputId[DIGIT_COUNT] = {0, 0, 0, 0};
 };
 
-class FetchUserDataState : public State {
+class FetchUserDataState : public TypedState<PDN> {
 public:
     FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager);
     ~FetchUserDataState();
@@ -48,10 +49,10 @@ public:
     bool transitionToPlayerRegistration();
     void fetchUserData();
     void uploadMatches();
-    void showLoadingGlyphs(Device *PDN);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void showLoadingGlyphs(PDN* pdn);
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     
 private:
     RemoteDebugManager* remoteDebugManager;
@@ -69,17 +70,17 @@ private:
     const int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 
-class ConfirmOfflineState : public State {
+class ConfirmOfflineState : public TypedState<PDN> {
 public:
     explicit ConfirmOfflineState(Player* player);
     ~ConfirmOfflineState();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToChooseRole();
     bool transitionToPlayerRegistration();
-    void renderUi(Device *PDN);
+    void renderUi(PDN* pdn);
     int getDigitGlyphForIDIndex(int index);
 
 private:
@@ -98,16 +99,16 @@ private:
     parameterizedCallbackFunction cancelCallback;
 };
 
-class ChooseRoleState : public State {
+class ChooseRoleState : public TypedState<PDN> {
 public:
     explicit ChooseRoleState(Player* player);
     ~ChooseRoleState();
     
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToWelcomeMessage();
-    void renderUi(Device *PDN);
+    void renderUi(PDN* pdn);
 
 private:
     Player* player;
@@ -116,15 +117,15 @@ private:
     bool hunterSelected = true;
 };
 
-class WelcomeMessage : public State {
+class WelcomeMessage : public TypedState<PDN> {
 public:
     explicit WelcomeMessage(Player* player);
     ~WelcomeMessage();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
-    void renderWelcomeMessage(Device *PDN);
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
+    void renderWelcomeMessage(PDN* pdn);
     bool transitionToGameplay();
 
 private:

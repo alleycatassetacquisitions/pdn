@@ -4,7 +4,7 @@
 
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
-DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_PUSHED) {
+DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL_PUSHED) {
     this->player = player;
     this->matchManager = matchManager;
 }
@@ -15,22 +15,22 @@ DuelPushed::~DuelPushed() {
     this->matchManager = nullptr;
 }
 
-void DuelPushed::onStateMounted(Device *PDN) {
+void DuelPushed::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state mounted");
     
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
 
     gracePeriodTimer.setTimer(DUEL_RESULT_GRACE_PERIOD);
 
-    PDN->getHaptics()->setIntensity(0);
+    pdn->getHaptics()->setIntensity(0);
 }
 
-void DuelPushed::onStateLoop(Device *PDN) {
+void DuelPushed::onStateLoop(PDN* pdn) {
     gracePeriodTimer.updateTime();
 }
 
-void DuelPushed::onStateDismounted(Device *PDN) {
+void DuelPushed::onStateDismounted(PDN* pdn) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
 
     if (!isConnected()) {

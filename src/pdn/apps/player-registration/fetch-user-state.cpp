@@ -7,7 +7,7 @@
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager) : State(PlayerRegistrationStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager) : TypedState<PDN>(PlayerRegistrationStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->wirelessManager = wirelessManager;
@@ -22,9 +22,9 @@ FetchUserDataState::~FetchUserDataState() {
     player = nullptr;
 }   
 
-void FetchUserDataState::onStateMounted(Device *PDN) {
+void FetchUserDataState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting user data fetch");
-    showLoadingGlyphs(PDN);
+    showLoadingGlyphs(pdn);
     isFetchingUserData = true;
     
     LOG_I(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
@@ -55,7 +55,7 @@ void FetchUserDataState::onStateMounted(Device *PDN) {
     }
 }   
 
-void FetchUserDataState::onStateLoop(Device *PDN) {
+void FetchUserDataState::onStateLoop(PDN* pdn) {
     fetchTimer.updateTime();
 
     if(fetchTimer.expired()) {
@@ -63,14 +63,14 @@ void FetchUserDataState::onStateLoop(Device *PDN) {
         transitionToConfirmOfflineState = true;
     } else if(fetchTimer.isRunning()) {
         if(SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-            showLoadingGlyphs(PDN);
+            showLoadingGlyphs(pdn);
         }
     }
 }   
 
-void FetchUserDataState::onStateDismounted(Device *PDN) {
+void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT);
+    pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     isFetchingUserData = false;
     isUploadingMatches = false;
     transitionToConfirmOfflineState = false;
@@ -131,8 +131,8 @@ void FetchUserDataState::fetchUserData() {
     );
 }
 
-void FetchUserDataState::showLoadingGlyphs(Device *PDN) {
-    renderLoadingScreen(PDN->getDisplay());
+void FetchUserDataState::showLoadingGlyphs(PDN* pdn) {
+    renderLoadingScreen(pdn->getDisplay());
 }  
 
 bool FetchUserDataState::transitionToWelcomeMessage() {

@@ -1,39 +1,39 @@
 #include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 
-ChooseRoleState::ChooseRoleState(Player* player) : State(PlayerRegistrationStateId::CHOOSE_ROLE) {
+ChooseRoleState::ChooseRoleState(Player* player) : TypedState<PDN>(PlayerRegistrationStateId::CHOOSE_ROLE) {
     this->player = player;
 }
 
 ChooseRoleState::~ChooseRoleState() {
 }
 
-void ChooseRoleState::onStateMounted(Device *PDN) {
-    renderUi(PDN);
+void ChooseRoleState::onStateMounted(PDN* pdn) {
+    renderUi(pdn);
 
-    PDN->getPrimaryButton()->setButtonPress([](void *ctx) {
+    pdn->getPrimaryButton()->setButtonPress([](void *ctx) {
         ChooseRoleState* chooseRoleState = (ChooseRoleState*)ctx;
         chooseRoleState->hunterSelected = !chooseRoleState->hunterSelected;
         chooseRoleState->displayIsDirty = true;
     }, this, ButtonInteraction::CLICK);
 
-    PDN->getSecondaryButton()->setButtonPress([](void *ctx) {
+    pdn->getSecondaryButton()->setButtonPress([](void *ctx) {
         ChooseRoleState* chooseRoleState = (ChooseRoleState*)ctx;
         chooseRoleState->player->setIsHunter(chooseRoleState->hunterSelected);
         chooseRoleState->transitionToWelcomeMessageState = true;
     }, this, ButtonInteraction::CLICK);
 }
 
-void ChooseRoleState::onStateLoop(Device *PDN) {
+void ChooseRoleState::onStateLoop(PDN* pdn) {
     if(displayIsDirty) {
-        renderUi(PDN);
+        renderUi(pdn);
         displayIsDirty = false;
     }
 }
 
-void ChooseRoleState::onStateDismounted(Device *PDN) {
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+void ChooseRoleState::onStateDismounted(PDN* pdn) {
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
     transitionToWelcomeMessageState = false;
     displayIsDirty = false;
     hunterSelected = true;
@@ -43,19 +43,19 @@ bool ChooseRoleState::transitionToWelcomeMessage() {
     return transitionToWelcomeMessageState;
 }
 
-void ChooseRoleState::renderUi(Device *PDN) {
-    PDN->getDisplay()->invalidateScreen();
+void ChooseRoleState::renderUi(PDN* pdn) {
+    pdn->getDisplay()->invalidateScreen();
 
-    PDN->getDisplay()->setGlyphMode(FontMode::TEXT)
+    pdn->getDisplay()->setGlyphMode(FontMode::TEXT)
         ->drawText("Choose Role", 3, 16);
     
     if(hunterSelected) {
-        PDN->getDisplay()->drawButton("HUNTER", 64, 36)
+        pdn->getDisplay()->drawButton("HUNTER", 64, 36)
             ->drawText("BOUNTY", 25, 56);
     } else {
-        PDN->getDisplay()->drawText("HUNTER", 25, 36)
+        pdn->getDisplay()->drawText("HUNTER", 25, 36)
             ->drawButton("BOUNTY", 64, 56);
     }
     
-    PDN->getDisplay()->render();
+    pdn->getDisplay()->render();
 }

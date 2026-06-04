@@ -6,7 +6,7 @@
 
 static const char* TAG = "SymbolMatched";
 
-SymbolMatched::SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState(remoteDeviceCoordinator, SYMBOL_MATCHED) {
+SymbolMatched::SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
     this->player = player;
     this->symbolWirelessManager = symbolWirelessManager;
 }
@@ -15,13 +15,13 @@ SymbolMatched::~SymbolMatched() {
     this->player = nullptr;
 }
 
-void SymbolMatched::onStateMounted(Device *PDN) {
+void SymbolMatched::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "mounted");
     transitionToSymbolState = false;
     transitionToIdleState = false;
     toggleBlink = true;
     holdSteadySymbol = false;
-    renderSymbolScreen(PDN);
+    renderSymbolScreen(pdn);
     blinkTimer.setTimer(BLINK_INTERVAL);
     successTimer.setTimer(SUCCESS_TIMEOUT);
 
@@ -38,10 +38,10 @@ void SymbolMatched::onStateMounted(Device *PDN) {
     cfg.initialState = LEDState();
     cfg.loopDelayMs = 0;
 
-    PDN->getLightManager()->startAnimation(animation, cfg);
+    pdn->getLightManager()->startAnimation(animation, cfg);
 }
 
-void SymbolMatched::onStateLoop(Device *PDN) {
+void SymbolMatched::onStateLoop(PDN* pdn) {
     if (!(getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN)) {
         transitionToIdleState = true;
         return;
@@ -49,25 +49,25 @@ void SymbolMatched::onStateLoop(Device *PDN) {
 
     if (!holdSteadySymbol) {
         if (blinkTimer.expired()) {
-            renderSymbolScreen(PDN);
+            renderSymbolScreen(pdn);
             blinkTimer.setTimer(BLINK_INTERVAL);
         }
 
         if (successTimer.expired()) {
             holdSteadySymbol = true;
-            PDN->getHaptics()->off();
-            PDN->getDisplay()->invalidateScreen();
-            PDN->getDisplay()->whiteScreen();
-            PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
-            PDN->getDisplay()->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
-            PDN->getDisplay()->render();
+            pdn->getHaptics()->off();
+            pdn->getDisplay()->invalidateScreen();
+            pdn->getDisplay()->whiteScreen();
+            pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
+            pdn->getDisplay()->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+            pdn->getDisplay()->render();
             blinkTimer.invalidate();
             successTimer.invalidate();
         }
     }
 }
 
-void SymbolMatched::onStateDismounted(Device *PDN) {
+void SymbolMatched::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
     const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolState;
     transitionToSymbolState = false;
@@ -78,9 +78,9 @@ void SymbolMatched::onStateDismounted(Device *PDN) {
     successTimer.invalidate();
 
 
-    PDN->getLightManager()->stopAnimation();
-    PDN->getLightManager()->clear();
-    PDN->getHaptics()->off();
+    pdn->getLightManager()->stopAnimation();
+    pdn->getLightManager()->clear();
+    pdn->getHaptics()->off();
 
     if (showRefreshScreen) {
         SimpleTimer bufferTimer;
@@ -88,7 +88,7 @@ void SymbolMatched::onStateDismounted(Device *PDN) {
         bufferTimer.setTimer(bufferTimeout);
         while (!bufferTimer.expired()) {
             if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-                renderLoadingScreen(PDN->getDisplay());
+                renderLoadingScreen(pdn->getDisplay());
             }
         }
         bufferTimer.invalidate();
@@ -113,17 +113,17 @@ bool SymbolMatched::transitionToIdle() {
     return transitionToIdleState;
 }
 
-void SymbolMatched::renderSymbolScreen(Device *PDN) {
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->whiteScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
+void SymbolMatched::renderSymbolScreen(PDN* pdn) {
+    pdn->getDisplay()->invalidateScreen();
+    pdn->getDisplay()->whiteScreen();
+    pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
     if (toggleBlink) {
-        PDN->getDisplay()->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
-        PDN->getHaptics()->setIntensity(VIBRATION_MAX);
+        pdn->getDisplay()->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+        pdn->getHaptics()->setIntensity(VIBRATION_MAX);
     } else {
-        PDN->getHaptics()->off();
+        pdn->getHaptics()->off();
     }
-    PDN->getDisplay()->render();
+    pdn->getDisplay()->render();
     toggleBlink = !toggleBlink;
 }
 

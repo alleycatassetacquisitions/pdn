@@ -7,7 +7,7 @@
 #include "device/device.hpp"
 #include <cstdio>
 
-Win::Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : State(WIN) {
+Win::Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : TypedState<PDN>(WIN) {
     this->player = player;
     this->chainDuelManager = chainDuelManager;
     this->matchManager = matchManager;
@@ -18,38 +18,38 @@ Win::~Win() {
     matchManager = nullptr;
 }
 
-void Win::onStateMounted(Device *PDN) {
+void Win::onStateMounted(PDN* pdn) {
     // Propagate the outcome to the supporter chain (no-op for non-champion).
     chainDuelManager->sendGameEventToSupporters(ChainGameEventType::WIN);
 
-    PDN->getHaptics()->setIntensity(VIBRATION_OFF);
+    pdn->getHaptics()->setIntensity(VIBRATION_OFF);
 
-    PDN->getDisplay()->invalidateScreen()
+    pdn->getDisplay()->invalidateScreen()
         ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::WIN));
 
     if (matchManager != nullptr) {
         const LastMatchDisplay& d = matchManager->getLastMatchDisplay();
         if (d.hasData) {
-            PDN->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
+            pdn->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
             char myLine[16];
             char boostLine[16];
             char oppLine[16];
             snprintf(myLine, sizeof(myLine), "You:%4lu", d.myTimeMs);
             snprintf(oppLine, sizeof(oppLine), "Opp:%4lu", d.opponentTimeMs);
-            PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(myLine, 2, 12);
             if (d.boostMs > 0) {
                 unsigned long boosts = d.boostMs / ChainDuelManager::BOOST_PER_SUPPORTER_MS;
                 snprintf(boostLine, sizeof(boostLine), "Boost: %lu", boosts);
-                PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                     ->drawText(boostLine, 2, 28);
             }
-            PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(oppLine, 2, 44);
         }
     }
 
-    PDN->getDisplay()->render();
+    pdn->getDisplay()->render();
 
     winTimer.setTimer(8000);
 
@@ -63,20 +63,20 @@ void Win::onStateMounted(Device *PDN) {
     config.initialState = LEDState();
     config.loopDelayMs = 0;
 
-    PDN->getLightManager()->startAnimation(animation, config);
+    pdn->getLightManager()->startAnimation(animation, config);
 }
 
-void Win::onStateLoop(Device *PDN) {
+void Win::onStateLoop(PDN* pdn) {
     winTimer.updateTime();
     if(winTimer.expired()) {
         reset = true;
     }
 }
 
-void Win::onStateDismounted(Device *PDN) {
+void Win::onStateDismounted(PDN* pdn) {
     winTimer.invalidate();
     reset = false;
-    PDN->getHaptics()->setIntensity(VIBRATION_OFF);
+    pdn->getHaptics()->setIntensity(VIBRATION_OFF);
 }
 
 bool Win::resetGame() {

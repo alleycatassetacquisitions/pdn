@@ -7,7 +7,7 @@
 
 static const char* TAG = "UploadMatchesState";
 
-UploadMatchesState::UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : State(UPLOAD_MATCHES) {
+UploadMatchesState::UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : TypedState<PDN>(UPLOAD_MATCHES) {
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->matchManager = matchManager;
@@ -48,13 +48,13 @@ void UploadMatchesState::attemptUpload() {
     );
 }
 
-void UploadMatchesState::onStateMounted(Device *PDN) {
+void UploadMatchesState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting match upload process");
     
     // Switch to WiFi mode for HTTP upload
-    PDN->getWirelessManager()->enableWifiMode();
+    pdn->getWirelessManager()->enableWifiMode();
 
-    showLoadingGlyphs(PDN);
+    showLoadingGlyphs(pdn);
     uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
     matchUploadRetryCount = 0;
 
@@ -69,10 +69,10 @@ void UploadMatchesState::onStateMounted(Device *PDN) {
     config.speed = 10;
     config.initialState = LEDState();
     config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-    PDN->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
+    pdn->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
 }
 
-void UploadMatchesState::onStateLoop(Device *PDN) {
+void UploadMatchesState::onStateLoop(PDN* pdn) {
     uploadMatchesTimer.updateTime();
     
     // Check if we should retry the upload after connection is re-established
@@ -87,19 +87,19 @@ void UploadMatchesState::onStateLoop(Device *PDN) {
         transitionToSleepState = true;
     }
 
-    showLoadingGlyphs(PDN);
+    showLoadingGlyphs(pdn);
 }
 
-void UploadMatchesState::onStateDismounted(Device *PDN) {
+void UploadMatchesState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
     uploadMatchesTimer.invalidate();
     transitionToSleepState = false;
     shouldRetryUpload = false;
     matchUploadRetryCount = 0;
-    PDN->getLightManager()->stopAnimation();
+    pdn->getLightManager()->stopAnimation();
 }
 
-void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
+void UploadMatchesState::showLoadingGlyphs(PDN* pdn) {
     const int GLYPH_SIZE = 14;
     const int SCREEN_WIDTH = 128;
     const int SCREEN_HEIGHT = 64;
@@ -107,8 +107,8 @@ void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
     const int GLYPHS_PER_ROW = (SCREEN_WIDTH / GLYPH_SIZE);
     const int GLYPHS_PER_COL = (SCREEN_HEIGHT - GLYPH_SIZE / GLYPH_SIZE);
     
-    PDN->getDisplay()->invalidateScreen();
-    PDN->getDisplay()->setGlyphMode(FontMode::LOADING_GLYPH);
+    pdn->getDisplay()->invalidateScreen();
+    pdn->getDisplay()->setGlyphMode(FontMode::LOADING_GLYPH);
     
     for (int row = 0; row < GLYPHS_PER_COL; row++) {
         for (int col = 0; col < GLYPHS_PER_ROW; col++) {
@@ -117,12 +117,12 @@ void UploadMatchesState::showLoadingGlyphs(Device *PDN) {
                 int y = 14 + (row * GLYPH_SIZE);
                 int randomIndex = rand() % 8;
                 const char* glyph = loadingGlyphs[randomIndex];
-                PDN->getDisplay()->renderGlyph(glyph, x, y);
+                pdn->getDisplay()->renderGlyph(glyph, x, y);
             }
         }
     }
     
-    PDN->getDisplay()->render();
+    pdn->getDisplay()->render();
 }
 
 bool UploadMatchesState::transitionToSleep() {

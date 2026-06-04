@@ -7,7 +7,7 @@
 
 static const char* TAG = "SymbolState";
 
-SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState(remoteDeviceCoordinator, SYMBOL) {
+SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, SYMBOL) {
     this->player = player;
     this->matchManager = matchManager;
     this->symbolWirelessManager = symbolWirelessManager;
@@ -19,9 +19,9 @@ SymbolState::~SymbolState() {
     this->symbolWirelessManager = nullptr;
 }
 
-void SymbolState::onStateMounted(Device *PDN) {
+void SymbolState::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "mounted");
-    mountedPdn = PDN;
+    mountedPdn = pdn;
     transitionToIdleState = false;
     transitionToSymbolMatchedState = false;
     matchReady = false;
@@ -45,13 +45,13 @@ void SymbolState::onStateMounted(Device *PDN) {
         symbolState->sendSymbolToFDN();
     };
 
-    PDN->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
+    pdn->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
 
     symbolWirelessManager->setPacketReceivedCallback(
         std::bind(&SymbolState::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
 
-    PDN->getLightManager()->stopAnimation();
+    pdn->getLightManager()->stopAnimation();
 
     LEDState allWhite;
     for (int i = 0; i < 9; ++i) {
@@ -67,21 +67,21 @@ void SymbolState::onStateMounted(Device *PDN) {
     
 }
 
-void SymbolState::onStateLoop(Device *PDN) {
+void SymbolState::onStateLoop(PDN* pdn) {
     if (symbolSent) {
         if (!hapticPulseActive) {
-            PDN->getHaptics()->setIntensity(VIBRATION_MAX);
+            pdn->getHaptics()->setIntensity(VIBRATION_MAX);
             hapticPulseTimer.setTimer(HAPTIC_PULSE_DURATION);
             hapticPulseActive = true;
         }
 
         // sendSymbolToFDN();
-        advanceSymbolRender(PDN);
+        advanceSymbolRender(pdn);
         renderTimer.invalidate();
     }
 
     if (hapticPulseActive && hapticPulseTimer.expired()) {
-        PDN->getHaptics()->off();
+        pdn->getHaptics()->off();
         hapticPulseTimer.invalidate();
         hapticPulseActive = false;
     }
@@ -90,17 +90,17 @@ void SymbolState::onStateLoop(Device *PDN) {
     if (bufferTimer.isRunning()) {
         if (bufferTimer.expired()) {
             bufferTimer.invalidate();
-            advanceSymbolRender(PDN);
+            advanceSymbolRender(pdn);
         } else {
             if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-                renderLoadingScreen(PDN->getDisplay());
+                renderLoadingScreen(pdn->getDisplay());
             }
             return;
         }
     }
 
     if (renderTimer.expired()) {
-        advanceSymbolRender(PDN);
+        advanceSymbolRender(pdn);
     }
 
     // if device is not connected to an FDN, transition to idle
@@ -109,7 +109,7 @@ void SymbolState::onStateLoop(Device *PDN) {
     }
 }
 
-void SymbolState::onStateDismounted(Device *PDN) {
+void SymbolState::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
     const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolMatchedState;
     mountedPdn = nullptr;
@@ -120,7 +120,7 @@ void SymbolState::onStateDismounted(Device *PDN) {
     hapticPulseActive = false;
     bufferTimer.invalidate();
     hapticPulseTimer.invalidate();
-    PDN->getHaptics()->off();
+    pdn->getHaptics()->off();
     if (renderTimer.isRunning()) {
         renderTimer.invalidate();
     }
@@ -129,7 +129,7 @@ void SymbolState::onStateDismounted(Device *PDN) {
         bufferTimer.setTimer(BUFFER_TIMEOUT);
         while (!bufferTimer.expired()) {
             if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-                renderLoadingScreen(PDN->getDisplay());
+                renderLoadingScreen(pdn->getDisplay());
             }
         }
         bufferTimer.invalidate();
@@ -139,8 +139,8 @@ void SymbolState::onStateDismounted(Device *PDN) {
 
     matchReady = false;
 
-    PDN->getLightManager()->stopAnimation();
-    PDN->getLightManager()->clear();
+    pdn->getLightManager()->stopAnimation();
+    pdn->getLightManager()->clear();
 }
 
 bool SymbolState::isPrimaryRequired() {
@@ -159,38 +159,38 @@ bool SymbolState::transitionToSymbolMatched() {
     return transitionToSymbolMatchedState;
 }
 
-void SymbolState::renderSymbolScreen(Device *PDN) {
+void SymbolState::renderSymbolScreen(PDN* pdn) {
     
     
 }
 
-void SymbolState::advanceSymbolRender(Device* PDN) {
+void SymbolState::advanceSymbolRender(PDN* pdn) {
     LOG_W(TAG, "advanceSymbolRender: symbolSent=%d, toggleSymbol=%d", symbolSent, toggleSymbol);
     if (!symbolSent) {
         if (toggleSymbol) {
-            PDN->getDisplay()->invalidateScreen();
-            PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+            pdn->getDisplay()->invalidateScreen();
+            pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
 
-            PDN->getDisplay()->render();
+            pdn->getDisplay()->render();
 
-            PDN->getLightManager()->startAnimation(new IdleAnimation(), cfg);
+            pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
         } else {
-            PDN->getDisplay()->invalidateScreen();
-            PDN->getDisplay()->render();
+            pdn->getDisplay()->invalidateScreen();
+            pdn->getDisplay()->render();
 
-            PDN->getLightManager()->stopAnimation();
+            pdn->getLightManager()->stopAnimation();
         }
         toggleSymbol = !toggleSymbol;
         renderTimer.setTimer(RENDER_TIMEOUT);
     } else {
-        PDN->getDisplay()->invalidateScreen();
-        PDN->getDisplay()->whiteScreen();
-        PDN->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+        pdn->getDisplay()->invalidateScreen();
+        pdn->getDisplay()->whiteScreen();
+        pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
 
-        PDN->getDisplay()->render();
+        pdn->getDisplay()->render();
         symbolSent = false;
 
-        PDN->getLightManager()->startAnimation(new IdleAnimation(), cfg);
+        pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
     }
 }
 

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <gmock/gmock.h>
+#include "device/pdn.hpp"
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "device/drivers/display.hpp"
@@ -276,9 +277,9 @@ public:
     uint8_t getFPS() const override { return 0; }
 };
 
-class MockDevice : public Device {
+class MockDevice : public PDN {
 public:
-    MockDevice() : Device(DriverConfig{}) {
+    MockDevice() : PDN() {
         // Initialize mock pointers
         mockDisplay = new MockDisplay();
         mockPrimaryButton = new MockButton();
@@ -310,6 +311,7 @@ public:
     MOCK_METHOD(void, setDeviceId, (const std::string&), (override));
     MOCK_METHOD(std::string, getDeviceId, (), (override));
     DeviceType getDeviceType() override { return DeviceType::PDN; }
+    void loop() override { Device::loop(); }
 
     // Getters return mock instances
     Display* getDisplay() override { return mockDisplay; }

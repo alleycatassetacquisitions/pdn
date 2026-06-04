@@ -1,5 +1,6 @@
 #pragma once
 
+#include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
 #include "utils/debounced-condition.hpp"
@@ -47,14 +48,14 @@ enum QuickdrawStateId {
     SYMBOL_MATCHED = 29,
 };
 
-class Sleep : public State {
+class Sleep : public TypedState<PDN> {
 public:
     explicit Sleep(Player* player);
     ~Sleep();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToAwakenSequence();
 
 private:
@@ -68,13 +69,13 @@ private:
     static constexpr unsigned long SLEEP_DURATION = 60000UL;
 };
 
-class AwakenSequence : public State {
+class AwakenSequence : public TypedState<PDN> {
 public:
     explicit AwakenSequence(Player* player);
     ~AwakenSequence();
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToIdle();
 
 private:
@@ -86,17 +87,17 @@ private:
     Player* player;
 };
 
-class Idle : public ConnectState {
+class Idle : public TypedConnectState<PDN> {
 public:
     Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~Idle();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelCountdown();
     bool transitionToSupporterReady();
-    void renderStats(Device *PDN);
+    void renderStats(PDN* pdn);
     bool transitionToSymbol();
 
 private:
@@ -120,14 +121,14 @@ private:
     // void serialEventCallbacks(const std::string& message);
 };
 
-class SupporterReady : public ConnectState {
+class SupporterReady : public TypedConnectState<PDN> {
 public:
     SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~SupporterReady();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToIdle();
 
     // Called by Quickdraw's chain-game-event packet handler.
@@ -148,9 +149,9 @@ public:
     // packet handler (WiFi task) communicates via the atomic lastResult;
     // onStateLoop detects transitions and manages the timer here.
     SimpleTimer resultClearTimer;
-    Device *cachedPDN = nullptr;
+    PDN* cachedPDN = nullptr;
 
-    void startLEDs(Device *PDN, bool armed, bool confirmed);
+    void startLEDs(PDN* pdn, bool armed, bool confirmed);
 
 private:
     ChainDuelManager* chainDuelManager;
@@ -163,14 +164,14 @@ private:
 
 
 
-class DuelCountdown : public ConnectState {
+class DuelCountdown : public TypedConnectState<PDN> {
 public:
     DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~DuelCountdown();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool shallWeBattle();
     bool disconnectedBackToIdle();
 
@@ -229,14 +230,14 @@ private:
 
 class ShootoutManager;
 
-class Duel : public ConnectState {
+class Duel : public TypedConnectState<PDN> {
 public:
     Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager);
     ~Duel();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToIdle();
     bool transitionToDuelPushed();
     bool transitionToDuelReceivedResult();
@@ -261,14 +262,14 @@ private:
     const int DUEL_TIMEOUT = 4000;
 };
 
-class DuelPushed : public ConnectState {
+class DuelPushed : public TypedConnectState<PDN> {
 public:
     DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelPushed();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
     bool disconnectedBackToIdle();
 
@@ -282,14 +283,14 @@ private:
     const int DUEL_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public ConnectState {
+class DuelReceivedResult : public TypedConnectState<PDN> {
 public:
     DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelReceivedResult();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
     bool disconnectedBackToIdle();
 
@@ -304,14 +305,14 @@ private:
     MatchManager* matchManager;
 };
 
-class DuelResult : public State {
+class DuelResult : public TypedState<PDN> {
 public:
     DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager);
     ~DuelResult();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToWin();
     bool transitionToLose();
     // Shootout takes priority over the regular Win/Lose paths when a tournament
@@ -329,14 +330,14 @@ private:
     bool captured = false;
 };
 
-class Win : public State {
+class Win : public TypedState<PDN> {
 public:
     Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
     ~Win();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool resetGame();
     bool isTerminalState() override;
 
@@ -348,14 +349,14 @@ private:
     bool reset = false;
 };
 
-class Lose : public State {
+class Lose : public TypedState<PDN> {
 public:
     Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
     ~Lose();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool resetGame();
     bool isTerminalState() override;
 
@@ -367,16 +368,16 @@ private:
     bool reset = false;
 };
 
-class UploadMatchesState : public State {
+class UploadMatchesState : public TypedState<PDN> {
 public:
     UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
     ~UploadMatchesState();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool transitionToSleep();
-    void showLoadingGlyphs(Device *PDN);
+    void showLoadingGlyphs(PDN* pdn);
     void attemptUpload();
 
 private:
@@ -393,12 +394,12 @@ private:
 
 static constexpr unsigned long kLoopBreakDebounceMs = 500;
 
-class ShootoutProposal : public State {
+class ShootoutProposal : public TypedState<PDN> {
 public:
     ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool transitionToBracketReveal();
     bool transitionToIdle();
@@ -413,12 +414,12 @@ private:
     DebouncedCondition loopBreakDebounce_;
 };
 
-class ShootoutBracketReveal : public State {
+class ShootoutBracketReveal : public TypedState<PDN> {
 public:
     ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool transitionToDuelCountdown();
     bool transitionToSpectator();
@@ -435,12 +436,12 @@ private:
     DebouncedCondition loopBreakDebounce_;
 };
 
-class ShootoutSpectator : public State {
+class ShootoutSpectator : public TypedState<PDN> {
 public:
     explicit ShootoutSpectator(ShootoutManager* shootout);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool transitionToDuelCountdown();
     bool transitionToFinalStandings();
@@ -455,12 +456,12 @@ private:
     std::array<uint8_t, 6> lastDisplayedB_{};
 };
 
-class ShootoutEliminated : public State {
+class ShootoutEliminated : public TypedState<PDN> {
 public:
     explicit ShootoutEliminated(ShootoutManager* shootout);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool transitionToFinalStandings();
     bool transitionToAborted();
@@ -471,12 +472,12 @@ private:
     bool shouldGoToAborted_ = false;
 };
 
-class ShootoutFinalStandings : public State {
+class ShootoutFinalStandings : public TypedState<PDN> {
 public:
     ShootoutFinalStandings(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
     bool isTerminalState() override;
 
     bool transitionToSleep();
@@ -487,12 +488,12 @@ private:
     bool shouldGoToSleep_ = false;
 };
 
-class ShootoutAborted : public State {
+class ShootoutAborted : public TypedState<PDN> {
 public:
     explicit ShootoutAborted(ShootoutManager* shootout);
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool transitionToIdle();
 
@@ -503,14 +504,14 @@ private:
     static constexpr unsigned long ABORTED_DISPLAY_MS = 2000;
 };
 
-class SymbolState : public ConnectState {
+class SymbolState : public TypedConnectState<PDN> {
 public:
     SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
     ~SymbolState();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -522,7 +523,7 @@ private:
     Player* player;
     MatchManager* matchManager;
     SymbolWirelessManager* symbolWirelessManager;
-    Device* mountedPdn = nullptr;
+    PDN* mountedPdn = nullptr;
     uint8_t* fdnMac = nullptr;
     /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
     SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
@@ -544,20 +545,20 @@ private:
 
     AnimationConfig cfg{};
 
-    void renderSymbolScreen(Device *PDN);
-    void advanceSymbolRender(Device* PDN);
+    void renderSymbolScreen(PDN* pdn);
+    void advanceSymbolRender(PDN* pdn);
     void sendSymbolToFDN();
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };
 
-class SymbolMatched : public ConnectState {
+class SymbolMatched : public TypedConnectState<PDN> {
 public:
     SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
     ~SymbolMatched();
 
-    void onStateMounted(Device *PDN) override;
-    void onStateLoop(Device *PDN) override;
-    void onStateDismounted(Device *PDN) override;
+    void onStateMounted(PDN* pdn) override;
+    void onStateLoop(PDN* pdn) override;
+    void onStateDismounted(PDN* pdn) override;
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -581,6 +582,6 @@ private:
 
     AnimationConfig cfg{};
 
-    void renderSymbolScreen(Device *PDN);
+    void renderSymbolScreen(PDN* pdn);
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };

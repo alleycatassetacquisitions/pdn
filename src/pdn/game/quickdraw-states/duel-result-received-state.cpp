@@ -6,7 +6,7 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
+DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
     this->player = player;
     this->matchManager = matchManager;
 }
@@ -17,19 +17,19 @@ DuelReceivedResult::~DuelReceivedResult() {
     this->matchManager = nullptr;
 }
 
-void DuelReceivedResult::onStateMounted(Device *PDN) {
+void DuelReceivedResult::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state mounted");
 
     auto duelButtonPush = matchManager->getDuelButtonPush();
-    PDN->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
-    PDN->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
+    pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
 
     buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
 }
 
-void DuelReceivedResult::onStateLoop(Device *PDN) {
+void DuelReceivedResult::onStateLoop(PDN* pdn) {
     if(matchManager->getHasPressedButton()) {
-        PDN->getHaptics()->setIntensity(0);
+        pdn->getHaptics()->setIntensity(0);
     }
 
     buttonPushGraceTimer.updateTime();
@@ -44,7 +44,7 @@ void DuelReceivedResult::onStateLoop(Device *PDN) {
     }
 }   
 
-void DuelReceivedResult::onStateDismounted(Device *PDN) {
+void DuelReceivedResult::onStateDismounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
 
     if (!isConnected()) {
@@ -52,8 +52,8 @@ void DuelReceivedResult::onStateDismounted(Device *PDN) {
     }
 
     transitionToDuelResultState = false;
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
     buttonPushGraceTimer.invalidate();
 }
 

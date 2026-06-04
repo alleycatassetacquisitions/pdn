@@ -2,7 +2,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
 
-AwakenSequence::AwakenSequence(Player* player) : State(AWAKEN_SEQUENCE) {
+AwakenSequence::AwakenSequence(Player* player) : TypedState<PDN>(AWAKEN_SEQUENCE) {
     this->player = player;
 }
 
@@ -10,25 +10,25 @@ AwakenSequence::~AwakenSequence() {
     player = nullptr;
 }
 
-void AwakenSequence::onStateMounted(Device *PDN) {
+void AwakenSequence::onStateMounted(PDN* pdn) {
     activationSequenceTimer.setTimer(activationStepDuration);
     activateMotor= true;
-    PDN->getHaptics()->setIntensity(125);
+    pdn->getHaptics()->setIntensity(125);
 
-    PDN->getDisplay()->
+    pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::STAMP))->
         render();
 }
 
-void AwakenSequence::onStateLoop(Device *PDN) {
+void AwakenSequence::onStateLoop(PDN* pdn) {
     if (activationSequenceTimer.expired()) {
         if (activateMotorCount <= AWAKEN_THRESHOLD) {
             if (activateMotor) {
-                PDN->getHaptics()->setIntensity(VIBRATION_MAX);
+                pdn->getHaptics()->setIntensity(VIBRATION_MAX);
             } else {
-                PDN->getHaptics()->setIntensity(VIBRATION_OFF);
+                pdn->getHaptics()->setIntensity(VIBRATION_OFF);
             }
 
             activationSequenceTimer.setTimer(activationStepDuration);
@@ -38,9 +38,9 @@ void AwakenSequence::onStateLoop(Device *PDN) {
     }
 }
 
-void AwakenSequence::onStateDismounted(Device *PDN) {
+void AwakenSequence::onStateDismounted(PDN* pdn) {
     activationSequenceTimer.invalidate();
-    PDN->getHaptics()->setIntensity(VIBRATION_OFF);
+    pdn->getHaptics()->setIntensity(VIBRATION_OFF);
     activateMotorCount = 0;
     activateMotor = false;
 }

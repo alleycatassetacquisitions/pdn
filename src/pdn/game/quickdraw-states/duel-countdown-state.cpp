@@ -6,7 +6,7 @@
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
     this->chainDuelManager = chainDuelManager;
@@ -18,54 +18,54 @@ DuelCountdown::~DuelCountdown() {
 }
 
 
-void DuelCountdown::onStateMounted(Device *PDN) {
+void DuelCountdown::onStateMounted(PDN* pdn) {
     // If this device is a champion, tell its supporter chain that the
     // duel is starting so they can arm their confirmation window.
     chainDuelManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
 
-    PDN->getDisplay()->
+    pdn->getDisplay()->
     invalidateScreen()->
     drawImage(getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
     render();
 
-    PDN->getLightManager()->startAnimation(new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
+    pdn->getLightManager()->startAnimation(new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
 
     countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
     currentStepIndex++;
 
-    PDN->getPrimaryButton()->setButtonPress(
+    pdn->getPrimaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
         matchManager, ButtonInteraction::CLICK);
 
-    PDN->getSecondaryButton()->setButtonPress(
+    pdn->getSecondaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
         matchManager);
 
-    PDN->getHaptics()->setIntensity(HAPTIC_INTENSITY);
+    pdn->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);
 }
 
 
-void DuelCountdown::onStateLoop(Device *PDN) {
+void DuelCountdown::onStateLoop(PDN* pdn) {
     countdownTimer.updateTime();
     hapticTimer.updateTime();
 
     if (hapticTimer.expired()) {
-        PDN->getHaptics()->setIntensity(0);
+        pdn->getHaptics()->setIntensity(0);
     }
 
     if (countdownTimer.expired()) {
-        PDN->getHaptics()->setIntensity(HAPTIC_INTENSITY);
+        pdn->getHaptics()->setIntensity(HAPTIC_INTENSITY);
         hapticTimer.setTimer(HAPTIC_DURATION);
         if(countdownQueue[currentStepIndex].step == CountdownStep::BATTLE) {
             doBattle = true;
         } else {
-            PDN->getDisplay()->
+            pdn->getDisplay()->
             invalidateScreen()->
             drawImage(getImageForAllegiance(player->getAllegiance(), getImageIdForStep(countdownQueue[currentStepIndex].step)))->
             render();
 
-            PDN->getLightManager()->startAnimation(new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
+            pdn->getLightManager()->startAnimation(new CountdownAnimation(), countdownQueue[currentStepIndex].animationConfig);
 
             countdownTimer.setTimer(countdownQueue[currentStepIndex].countdownTimer);
             currentStepIndex++;
@@ -85,7 +85,7 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 }
 
 
-void DuelCountdown::onStateDismounted(Device *PDN) {
+void DuelCountdown::onStateDismounted(PDN* pdn) {
     if (!doBattle) {
         matchManager->clearCurrentMatch();
         // Countdown aborted (opponent unplugged). Tell supporters to disarm
@@ -98,8 +98,8 @@ void DuelCountdown::onStateDismounted(Device *PDN) {
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
 }
 
 bool DuelCountdown::shallWeBattle() {

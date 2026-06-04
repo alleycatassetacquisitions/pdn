@@ -6,7 +6,7 @@
 #include "device/device.hpp"
 #include <cstdio>
 
-Lose::Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : State(LOSE) {
+Lose::Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : TypedState<PDN>(LOSE) {
     this->player = player;
     this->chainDuelManager = chainDuelManager;
     this->matchManager = matchManager;
@@ -17,35 +17,35 @@ Lose::~Lose() {
     matchManager = nullptr;
 }
 
-void Lose::onStateMounted(Device *PDN) {
+void Lose::onStateMounted(PDN* pdn) {
     chainDuelManager->sendGameEventToSupporters(ChainGameEventType::LOSS);
 
-    PDN->getDisplay()->invalidateScreen()
+    pdn->getDisplay()->invalidateScreen()
         ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOSE));
 
     if (matchManager != nullptr) {
         const LastMatchDisplay& d = matchManager->getLastMatchDisplay();
         if (d.hasData) {
-            PDN->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
+            pdn->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
             char myLine[16];
             char boostLine[16];
             char oppLine[16];
             snprintf(myLine, sizeof(myLine), "You:%4lu", d.myTimeMs);
             snprintf(oppLine, sizeof(oppLine), "Opp:%4lu", d.opponentTimeMs);
-            PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(myLine, 2, 12);
             if (d.boostMs > 0) {
                 unsigned long boosts = d.boostMs / ChainDuelManager::BOOST_PER_SUPPORTER_MS;
                 snprintf(boostLine, sizeof(boostLine), "Boost: %lu", boosts);
-                PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+                pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                     ->drawText(boostLine, 2, 28);
             }
-            PDN->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+            pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(oppLine, 2, 44);
         }
     }
 
-    PDN->getDisplay()->render();
+    pdn->getDisplay()->render();
 
     loseTimer.setTimer(8000);
 
@@ -56,17 +56,17 @@ void Lose::onStateMounted(Device *PDN) {
     config.initialState = LEDState();
     config.loopDelayMs = 0;
 
-    PDN->getLightManager()->startAnimation(new LoseAnimation(), config);
+    pdn->getLightManager()->startAnimation(new LoseAnimation(), config);
 }
 
-void Lose::onStateLoop(Device *PDN) {
+void Lose::onStateLoop(PDN* pdn) {
     loseTimer.updateTime();
     if(loseTimer.expired()) {
         reset = true;
     }
 }
 
-void Lose::onStateDismounted(Device *PDN) {
+void Lose::onStateDismounted(PDN* pdn) {
     loseTimer.invalidate();
     reset = false;
 }

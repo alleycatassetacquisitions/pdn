@@ -2,13 +2,13 @@
 #include "device/device.hpp"
 
 ShootoutEliminated::ShootoutEliminated(ShootoutManager* shootout)
-    : State(SHOOTOUT_ELIMINATED), shootout_(shootout) {}
+    : TypedState<PDN>(SHOOTOUT_ELIMINATED), shootout_(shootout) {}
 
-void ShootoutEliminated::onStateMounted(Device *PDN) {
-    PDN->getPrimaryButton()->removeButtonCallbacks();
-    PDN->getSecondaryButton()->removeButtonCallbacks();
-    PDN->getLightManager()->stopAnimation();
-    auto* d = PDN->getDisplay();
+void ShootoutEliminated::onStateMounted(PDN* pdn) {
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
+    pdn->getLightManager()->stopAnimation();
+    auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText("OUT", 20);
     d->setGlyphMode(FontMode::TEXT_INVERTED_SMALL);
@@ -16,14 +16,14 @@ void ShootoutEliminated::onStateMounted(Device *PDN) {
     d->render();
 }
 
-void ShootoutEliminated::onStateLoop(Device *PDN) {
+void ShootoutEliminated::onStateLoop(PDN* pdn) {
     shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::ENDED) shouldGoToFinalStandings_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
 }
 
-void ShootoutEliminated::onStateDismounted(Device *PDN) {
+void ShootoutEliminated::onStateDismounted(PDN* pdn) {
     shouldGoToFinalStandings_ = false;
     shouldGoToAborted_ = false;
 }
