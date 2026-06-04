@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <functional>
 #include "wireless/wireless-types.hpp"

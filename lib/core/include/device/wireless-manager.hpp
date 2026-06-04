@@ -107,7 +107,7 @@ public:
             return;
         }
         
-        LOG_I(WM_TAG, "Switching to ESP-NOW mode on channel %d...", ESPNOW_CHANNEL);
+        LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
         
         // Step 1: Disconnect HTTP client first (releases WiFi AP connection but keeps radio on)
         if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
@@ -122,7 +122,7 @@ public:
         // Update mode tracking
         currentMode = WirelessMode::ESPNOW;
         
-        LOG_I(WM_TAG, "ESP-NOW mode enabled on channel %d", ESPNOW_CHANNEL);
+        LOG_I(WM_TAG, "ESP-NOW mode enabled");
     }
     
     /**
