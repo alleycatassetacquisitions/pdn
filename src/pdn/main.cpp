@@ -15,6 +15,7 @@
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 
+#include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
 #include "game/player.hpp"
 #include "state/state-machine.hpp"
@@ -50,7 +51,7 @@ Esp32S3Clock* clockDriver = nullptr;
 SSD1306U8G2Driver* displayDriver = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
-WS2812BFastLEDDriver* lightDriver = nullptr;
+WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
@@ -116,13 +117,13 @@ void setup() {
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Now construct remaining drivers (safe to use logging and timers now)
-    displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME);
+    displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
-    lightDriver = new WS2812BFastLEDDriver(LIGHT_DRIVER_NAME);
+    lightDriver = new WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>(LIGHT_DRIVER_NAME, numDisplayLights, numGripLights);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
-    serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME);
-    serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME);
+    serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME, TXt, TXr);
+    serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
     
     // WiFi credentials are compile-time constants from build flags
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);

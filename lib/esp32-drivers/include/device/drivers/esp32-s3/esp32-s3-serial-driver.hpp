@@ -8,30 +8,30 @@
 #include "device/drivers/logger.hpp"
 #include <Arduino.h>
 #include <esp_rom_gpio.h>
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 #include <HardwareSerial.h>
 #include <string>
 
 class Esp32s3SerialOut : public SerialDriverInterface {
 public:
-    explicit Esp32s3SerialOut(const std::string& name) : SerialDriverInterface(name) {}
-    
+    explicit Esp32s3SerialOut(const std::string& name, uint8_t txPin, uint8_t rxPin)
+        : SerialDriverInterface(name), txPin(txPin), rxPin(rxPin) {}
+
     ~Esp32s3SerialOut() override {
         stringCallback = nullptr;
     }
 
     int initialize() override {
-        
-        gpio_reset_pin(GPIO_NUM_38);
-        gpio_reset_pin(GPIO_NUM_39);
+        gpio_reset_pin(static_cast<gpio_num_t>(txPin));
+        gpio_reset_pin(static_cast<gpio_num_t>(rxPin));
 
-        esp_rom_gpio_pad_select_gpio(GPIO_NUM_38);
-        esp_rom_gpio_pad_select_gpio(GPIO_NUM_39);
-        
-        pinMode(TXt, OUTPUT);
-        pinMode(TXr, INPUT);
+        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(txPin));
+        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(rxPin));
 
-        Serial1.begin(BAUDRATE, SERIAL_8N1, TXr, TXt, true);
+        pinMode(txPin, OUTPUT);
+        pinMode(rxPin, INPUT);
+
+        Serial1.begin(BAUDRATE, SERIAL_8N1, rxPin, txPin, true);
         Serial1.setTimeout(100);  // 100ms timeout for readStringUntil
         return 0;
     };
@@ -91,27 +91,30 @@ public:
 
     private:
     SerialStringCallback stringCallback;
+    uint8_t txPin;
+    uint8_t rxPin;
 };
 
 class Esp32s3SerialIn : public SerialDriverInterface {
 public:
-    explicit Esp32s3SerialIn(const std::string& name) : SerialDriverInterface(name) {}
-    
+    explicit Esp32s3SerialIn(const std::string& name, uint8_t txPin, uint8_t rxPin)
+        : SerialDriverInterface(name), txPin(txPin), rxPin(rxPin) {}
+
     ~Esp32s3SerialIn() override {
         stringCallback = nullptr;
     }
 
     int initialize() override {
-        gpio_reset_pin(GPIO_NUM_40);
-        gpio_reset_pin(GPIO_NUM_41);
+        gpio_reset_pin(static_cast<gpio_num_t>(txPin));
+        gpio_reset_pin(static_cast<gpio_num_t>(rxPin));
 
-        esp_rom_gpio_pad_select_gpio(GPIO_NUM_40);
-        esp_rom_gpio_pad_select_gpio(GPIO_NUM_41);
+        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(txPin));
+        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(rxPin));
 
-        pinMode(RXt, OUTPUT);
-        pinMode(RXr, INPUT);
+        pinMode(txPin, OUTPUT);
+        pinMode(rxPin, INPUT);
 
-        Serial2.begin(BAUDRATE, SERIAL_8N1, RXr, RXt, true);
+        Serial2.begin(BAUDRATE, SERIAL_8N1, rxPin, txPin, true);
         Serial2.setTimeout(100);  // 100ms timeout for readStringUntil
         return 0;
     };
@@ -171,4 +174,6 @@ public:
 
     private:
     SerialStringCallback stringCallback;
+    uint8_t txPin;
+    uint8_t rxPin;
 };

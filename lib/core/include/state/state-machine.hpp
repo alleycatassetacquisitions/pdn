@@ -33,6 +33,10 @@
  *
  * The new state's onStateMounted call is then invoked, at which point we return to
  * our loop function and continue with the new state's onStateLoop function.
+ *
+ * Lifecycle dispatch goes through StateLifecycle* so that the bridge methods
+ * (mount/loop/dismount) remain private to state implementers while still being
+ * reachable via virtual dispatch from StateMachine.
 */
 
 class StateMachine : public State {
@@ -48,10 +52,10 @@ public:
     void initialize(Device *PDN) {
         populateStateMap();
         currentState = stateMap[0];
-        currentState->onStateMounted(PDN);
+        asLifecycle(currentState)->mount(PDN);
         launched = true;
     }
-    
+
     /**
      * Skip to a specific state by index, bypassing intermediate states.
      * Useful for testing scenarios where you want to start at a later state.
@@ -63,10 +67,10 @@ public:
             return false;
         }
         if (currentState) {
-            currentState->onStateDismounted(PDN);
+            asLifecycle(currentState)->dismount(PDN);
         }
         currentState = stateMap[stateIndex];
-        currentState->onStateMounted(PDN);
+        asLifecycle(currentState)->mount(PDN);
         return true;
     }
 
@@ -78,13 +82,13 @@ public:
     };
 
     void commitState(Device *PDN) {
-        currentState->onStateDismounted(PDN);
+        asLifecycle(currentState)->dismount(PDN);
 
         currentState = newState;
         stateChangeReady = false;
         newState = nullptr;
 
-        currentState->onStateMounted(PDN);
+        asLifecycle(currentState)->mount(PDN);
     };
 
     State *getCurrentState() {
@@ -100,21 +104,21 @@ public:
      * state machine itself needs to hold onto any data beyond the current state's snapshot.
      */
     std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        currentSnapshot = currentState->onStatePaused(PDN);
-        currentState->onStateDismounted(PDN);
+        currentSnapshot = asLifecycle(currentState)->pause(PDN);
+        asLifecycle(currentState)->dismount(PDN);
         paused = true;
         return nullptr;
     }
 
     void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
-        currentState->onStateMounted(PDN);
-        currentState->onStateResumed(PDN, currentSnapshot.get());
+        asLifecycle(currentState)->mount(PDN);
+        asLifecycle(currentState)->resume(PDN, currentSnapshot.get());
         currentSnapshot = nullptr;
         paused = false;
     }
 
     void onStateLoop(Device *PDN) override {
-        currentState->onStateLoop(PDN);
+        asLifecycle(currentState)->loop(PDN);
         checkStateTransitions();
         if (stateChangeReady) {
             commitState(PDN);
@@ -122,7 +126,7 @@ public:
     }
 
     void onStateDismounted(Device *PDN) override {
-        currentState->onStateDismounted(PDN);
+        asLifecycle(currentState)->dismount(PDN);
         currentSnapshot = nullptr;
         currentState = nullptr;
         stateChangeReady = false;
@@ -147,6 +151,13 @@ protected:
     State *currentState = nullptr;
 
 private:
+    // Upcast helper — mount/loop/dismount are private on State* so we dispatch
+    // through StateLifecycle* where they are public, allowing virtual dispatch to
+    // reach the correct override without exposing the bridge to state authors.
+    static StateLifecycle* asLifecycle(State* state) {
+        return static_cast<StateLifecycle*>(state);
+    }
+
     std::unique_ptr<Snapshot> currentSnapshot;
 
     bool launched = false;

@@ -3,17 +3,16 @@
 #include "device/drivers/driver-interface.hpp"
 #include <U8g2lib.h>
 #include <Arduino.h>
-#include "device/device-constants.hpp"
-
 
 class SSD1306U8G2Driver : public DisplayDriverInterface {
 public:
-    explicit SSD1306U8G2Driver(const std::string& name) 
-        : DisplayDriverInterface(name), screen(U8G2_R0, displayCS, displayDC, displayRST) {
-        pinMode(displayCS, OUTPUT);
-        pinMode(displayDC, OUTPUT);
-        digitalWrite(displayCS, 0);
-        digitalWrite(displayDC, 0);
+    explicit SSD1306U8G2Driver(const std::string& name, uint8_t csPin, uint8_t dcPin, uint8_t rstPin)
+        : DisplayDriverInterface(name), screen(U8G2_R0, csPin, dcPin, rstPin),
+          csPin(csPin), dcPin(dcPin) {
+        pinMode(csPin, OUTPUT);
+        pinMode(dcPin, OUTPUT);
+        digitalWrite(csPin, 0);
+        digitalWrite(dcPin, 0);
     }
 
     ~SSD1306U8G2Driver() override = default;
@@ -156,4 +155,6 @@ public:
 
 private:
     U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI screen;
+    uint8_t csPin;
+    uint8_t dcPin;
 };

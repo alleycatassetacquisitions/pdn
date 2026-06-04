@@ -1,4 +1,3 @@
-#include "device/device-constants.hpp"
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 #include "device/animation/idle-animation.hpp"

@@ -8,7 +8,7 @@
 #include "wireless/handshake-wireless-manager.hpp"
 #include "apps/handshake/handshake.hpp"
 #include "apps/handshake/handshake-states.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 #include "game/player.hpp"
 
 using ::testing::Return;

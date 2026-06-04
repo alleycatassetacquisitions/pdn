@@ -2,37 +2,32 @@
 
 #include <FastLED.h>
 #include "device/drivers/driver-interface.hpp"
-#include "device/device-constants.hpp"
 #include "utils/simple-timer.hpp"
 
-struct PDNLightStripConfig {
-    LightIdentifier lightSet;
-    uint8_t numLights;
-
-    PDNLightStripConfig(LightIdentifier lightSet = LightIdentifier::GLOBAL, uint8_t numLights = 0) : lightSet(lightSet), numLights(numLights) {}
-};
-
-const PDNLightStripConfig DisplayLightsConfig(LightIdentifier::DISPLAY_LIGHTS, numDisplayLights);
-const PDNLightStripConfig GripLightsConfig(LightIdentifier::GRIP_LIGHTS, numGripLights);
-
+// DISPLAY_PIN and GRIP_PIN must be compile-time constants (required by FastLED template API).
+// LED counts are passed at runtime via the constructor.
+template<uint8_t DISPLAY_PIN, uint8_t GRIP_PIN>
 class WS2812BFastLEDDriver : public LightDriverInterface {
 public:
-    explicit WS2812BFastLEDDriver(const std::string& name) : LightDriverInterface(name) {
-        displayLights = new CRGB[DisplayLightsConfig.numLights];
-        gripLights = new CRGB[GripLightsConfig.numLights];
-    };
+    WS2812BFastLEDDriver(const std::string& name, uint8_t numDisplayLights, uint8_t numGripLights)
+        : LightDriverInterface(name),
+          numDisplayLights(numDisplayLights),
+          numGripLights(numGripLights) {
+        displayLights = new CRGB[numDisplayLights];
+        gripLights = new CRGB[numGripLights];
+    }
 
     ~WS2812BFastLEDDriver() override {
         delete[] displayLights;
         delete[] gripLights;
-    };
+    }
 
     int initialize() override {
-        pinMode(displayLightsPin, OUTPUT);
-        pinMode(gripLightsPin, OUTPUT);
+        pinMode(DISPLAY_PIN, OUTPUT);
+        pinMode(GRIP_PIN, OUTPUT);
 
-        FastLED.addLeds<WS2812B, displayLightsPin, GRB>(displayLights, DisplayLightsConfig.numLights);
-        FastLED.addLeds<WS2812B, gripLightsPin, GRB>(gripLights, GripLightsConfig.numLights);
+        FastLED.addLeds<WS2812B, DISPLAY_PIN, GRB>(displayLights, numDisplayLights);
+        FastLED.addLeds<WS2812B, GRIP_PIN, GRB>(gripLights, numGripLights);
 
         setFPS(DEFAULT_FPS);
 
@@ -78,9 +73,9 @@ public:
     
     void fade(LightIdentifier lightSet, uint8_t fadeAmount) override {
         if(lightSet == LightIdentifier::DISPLAY_LIGHTS) {
-            fadeToBlackBy(displayLights, DisplayLightsConfig.numLights, fadeAmount);
+            fadeToBlackBy(displayLights, numDisplayLights, fadeAmount);
         } else if(lightSet == LightIdentifier::GRIP_LIGHTS) {
-            fadeToBlackBy(gripLights, GripLightsConfig.numLights, fadeAmount);
+            fadeToBlackBy(gripLights, numGripLights, fadeAmount);
         }
     }
     
@@ -106,6 +101,8 @@ public:
 protected:
     CRGB* displayLights;
     CRGB* gripLights;
+    uint8_t numDisplayLights;
+    uint8_t numGripLights;
     SimpleTimer frameTimer;
 
     const uint8_t DEFAULT_FPS = 60;

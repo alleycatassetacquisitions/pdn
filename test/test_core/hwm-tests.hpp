@@ -5,7 +5,7 @@
 #include "device-mock.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "apps/handshake/handshake.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 
 using ::testing::Return;
 using ::testing::_;

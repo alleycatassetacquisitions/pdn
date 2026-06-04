@@ -3,18 +3,19 @@
 #include "state-machine.hpp"
 
 /*
- * TypedStateMachine provides a typed cast helper for state machines that
- * operate on a specific Device subclass. The Device* parameter passed to
- * all lifecycle methods can be cast to the concrete subtype via castDevice().
+ * TypedStateMachine<DeviceT> is a convenience base for state machines whose
+ * own lifecycle methods (onStateMounted, onStateLoop, onStateDismounted) need
+ * a typed device pointer.
  *
- * Usage:
- *   class Quickdraw : public TypedStateMachine<PDN> { ... };
+ * Individual states inside the machine should inherit TypedState<DeviceT> from
+ * state.hpp — they receive the correctly typed pointer directly and do not need
+ * castDevice() at all.
  *
- * Device-agnostic state machines (e.g. HandshakeApp) should inherit directly
- * from StateMachine and never call castDevice().
+ * castDevice() here is only for code inside the state machine class itself, for
+ * example when Quickdraw::onStateMounted needs to call PDN-specific setup.
  *
- * The static_cast is safe because each target's main.cpp exclusively wires
- * the correct concrete Device subclass to its own typed state machines.
+ * Device-agnostic state machines (e.g. HandshakeApp) should inherit
+ * StateMachine directly.
  */
 template<typename DeviceT>
 class TypedStateMachine : public StateMachine {

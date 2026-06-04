@@ -65,7 +65,7 @@ jobs:
         sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
     
     - name: Build ESP32-S3 Release
-      run: pio run -e esp32-s3_release
+      run: pio run -e esp32-s3_pdn_release
   
   # Native CLI build verification (Unix only)
   build-cli:

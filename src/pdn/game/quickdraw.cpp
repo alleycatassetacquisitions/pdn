@@ -1,4 +1,4 @@
-#include "../../include/game/quickdraw.hpp"
+#include "game/quickdraw.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"

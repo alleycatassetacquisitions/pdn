@@ -2,10 +2,13 @@
 #include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
-#include "device/device-constants.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <optional>
+
+static constexpr const char* PREF_COUNT_KEY = "count";
+static constexpr const char* PREF_MATCH_KEY  = "match_";
+static constexpr uint8_t     MAX_MATCHES      = 255;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 

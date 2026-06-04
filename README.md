@@ -75,8 +75,8 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    pio run -e <build-target>
    ```
    Depending on your use case, there are a number of build targets:
-   - `esp32-s3_release` - Release build (NO LOGS)
-   - `esp32-s3_debug` - Standard Development build
+   - `esp32-s3_pdn_release` - Release build (NO LOGS)
+   - `esp32-s3_pdn_debug` - Standard Development build
    - `native_cli` - Build the native CLI tool for simulated development (Unix/WSL only)
 
 6. Flash the PDN firmware to your device:
@@ -103,7 +103,7 @@ rm -rf ~/.platformio/packages/framework-arduinoespressif32*
 rm -rf .pio/
 
 # Rebuild
-pio run -e esp32-s3_release
+pio run -e esp32-s3_pdn_release
 ```
 
 ## Usage

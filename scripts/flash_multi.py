@@ -231,7 +231,7 @@ def main():
     )
     parser.add_argument(
         "--build-dir",
-        default=os.path.join(".pio", "build", "esp32-s3_release"),
+        default=os.path.join(".pio", "build", "esp32-s3_pdn_release"),
         help="Directory containing built .bin files",
     )
     parser.add_argument("--erase", action="store_true", help="Erase entire flash before writing")
@@ -250,7 +250,7 @@ def main():
     if missing:
         for f in missing:
             print(f"Error: Missing {os.path.join(build_dir, f)}")
-        print("Run 'pio run -e esp32-s3_release' first to build.")
+        print("Run 'pio run -e esp32-s3_pdn_release' first to build.")
         sys.exit(1)
 
     has_littlefs = os.path.exists(os.path.join(build_dir, "littlefs.bin"))

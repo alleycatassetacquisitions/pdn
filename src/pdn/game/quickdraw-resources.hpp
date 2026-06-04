@@ -1,8 +1,4 @@
-//
-// Created by Elli Furedy on 10/11/2024.
-//
-#ifndef QUICKDRAW_RESOURCES_H
-#define QUICKDRAW_RESOURCES_H
+#pragma once
 
 #include <map>
 #include "images-raw.hpp"
@@ -13,7 +9,7 @@
 
 typedef std::map<ImageType, Image> ImageCollection;
 
-const ImageCollection alleycatImageCollection = {
+inline const ImageCollection alleycatImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_logo_alley, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_alley, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_alley_0, 128, 64, 0, 0)},
@@ -27,7 +23,7 @@ const ImageCollection alleycatImageCollection = {
 {ImageType::LOSE, Image(image_alley_loser, 64, 64, 64, 0)},
 };
 
-const ImageCollection helixImageCollection = {
+inline const ImageCollection helixImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_logo_helix, 128, 64, 64, 0)},
     {ImageType::LOGO_LEFT, Image(image_logo_helix, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_helix_0, 128, 64, 0, 0)},
@@ -41,7 +37,7 @@ const ImageCollection helixImageCollection = {
 {ImageType::LOSE, Image(image_helix_loser, 64, 64, 64, 0)},
 };
 
-const ImageCollection endlineImageCollection = {
+inline const ImageCollection endlineImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_logo_endline, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_logo_endline, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_endline_0, 128, 64, 0, 0)},
@@ -55,7 +51,7 @@ const ImageCollection endlineImageCollection = {
 {ImageType::LOSE, Image(image_endline_loser, 64, 64, 64, 0)},
 };
 
-const ImageCollection resistanceImageCollection = {
+inline const ImageCollection resistanceImageCollection = {
     {ImageType::LOGO_RIGHT, Image(image_resistance_stamp, 128, 64, 64, 0)},
 {ImageType::LOGO_LEFT, Image(image_resistance_stamp, 128, 64, 0, 0)},
 {ImageType::IDLE, Image(image_resistance_0, 128, 64, 0, 0)},
@@ -75,21 +71,21 @@ const ImageCollection resistanceImageCollection = {
 // - CRGB::DarkGreen = #006400 = (0, 100, 0)
 // - CRGB::DarkBlue  = #00008B = (0, 0, 139)
 // - CRGB::Yellow    = #FFFF00 = (255, 255, 0)
-const LEDColor bountyColors[16] = {
+inline const LEDColor bountyColors[16] = {
     LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 165, 0),
     LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 165, 0),
     LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
     LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
 };
 
-const LEDColor hunterColors[16] = {
+inline const LEDColor hunterColors[16] = {
     LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 0, 139),
     LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 0, 139),
     LEDColor(0, 0, 139), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0),
     LEDColor(0, 0, 139), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0),
 };
 
-const LEDColor debugColors[16] = {
+inline const LEDColor debugColors[16] = {
     LEDColor(0, 100, 0),   LEDColor(0, 0, 139),   LEDColor(0, 100, 0),   LEDColor(0, 0, 139),
     LEDColor(255, 0, 0),   LEDColor(255, 255, 0), LEDColor(255, 0, 0),   LEDColor(255, 255, 0),
     LEDColor(0, 100, 0),   LEDColor(0, 0, 139),   LEDColor(0, 100, 0),   LEDColor(0, 0, 139),
@@ -97,14 +93,14 @@ const LEDColor debugColors[16] = {
 };
 
 // Idle animation colors for bounty and hunter
-const LEDColor bountyIdleColors[4] = {
+inline const LEDColor bountyIdleColors[4] = {
     LEDColor(255,2,1),    // Color 1
     LEDColor(255,51,0),   // Color 3
     LEDColor(237,75,0),   // Color 2 (7% dimmer)
     LEDColor(222,97,7)    // Color 4 (13% dimmer)
 };
 
-const LEDColor hunterIdleColors[4] = {
+inline const LEDColor hunterIdleColors[4] = {
     LEDColor(0,255,0),    // Green
     LEDColor(0,237,75),   // Blue-green
     LEDColor(0,200,100),  // Teal
@@ -112,7 +108,7 @@ const LEDColor hunterIdleColors[4] = {
 };
 
 // LED color constants converted from CRGB to LEDColor
-const LEDColor bountyIdleLEDColors[8] = {
+inline const LEDColor bountyIdleLEDColors[8] = {
     LEDColor(255, 2, 1),     // Color 1
     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
     LEDColor(255, 51, 0),    // Color 3
@@ -123,7 +119,7 @@ const LEDColor bountyIdleLEDColors[8] = {
     LEDColor(222, 97, 7)     // Color 4 (13% dimmer)
 };
 
-const LEDColor hunterIdleLEDColors[8] = {
+inline const LEDColor hunterIdleLEDColors[8] = {
     LEDColor(0, 255, 0),     // Green
     LEDColor(0, 237, 75),    // Blue-green
     LEDColor(0, 200, 100),   // Teal
@@ -134,7 +130,7 @@ const LEDColor hunterIdleLEDColors[8] = {
     LEDColor(0, 180, 180)    // Cyan
 };
 
-const LEDColor hunterIdleLEDColorsAlternate[9] = {
+inline const LEDColor hunterIdleLEDColorsAlternate[9] = {
     LEDColor(0, 255, 0),     // Green
     LEDColor(0, 237, 75),    // Blue-green
     LEDColor(0, 200, 100),   // Teal
@@ -146,7 +142,7 @@ const LEDColor hunterIdleLEDColorsAlternate[9] = {
     LEDColor(0, 180, 180)    // Cyan
 };
 
-const LEDColor bountyIdleLEDColorsAlternate[9] = {
+inline const LEDColor bountyIdleLEDColorsAlternate[9] = {
     LEDColor(255, 2, 1),     // Color 1
     LEDColor(237, 75, 0),    // Color 2 (7% dimmer)
     LEDColor(255, 51, 0),    // Color 3
@@ -159,7 +155,7 @@ const LEDColor bountyIdleLEDColorsAlternate[9] = {
 };
 
 
-const LEDState HUNTER_IDLE_STATE = [](){
+inline const LEDState HUNTER_IDLE_STATE = [](){
     LEDState state;
     // Initialize with default values (all black)
     for (int i = 0; i < 9; i++) {
@@ -179,7 +175,7 @@ const LEDState HUNTER_IDLE_STATE = [](){
     return state;
 }();
 
-const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
+inline const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
     LEDState state;
     
     // Set the first 4 LEDs with hunter colors at full brightness
@@ -192,7 +188,7 @@ const LEDState HUNTER_IDLE_STATE_ALTERNATE = [](){
 }();
 
 // Bounty idle LED state - red/orange gradient
-const LEDState BOUNTY_IDLE_STATE = [](){
+inline const LEDState BOUNTY_IDLE_STATE = [](){
     LEDState state;
     // Initialize with default values (all black)
     for (int i = 0; i < 9; i++) {
@@ -212,7 +208,7 @@ const LEDState BOUNTY_IDLE_STATE = [](){
     return state;
 }();
 
-const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
+inline const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
     LEDState state;
     
     state.transmitLight = LEDState::SingleLEDState(LEDColor(0, 0, 0), 0);
@@ -330,5 +326,3 @@ static const LEDState COUNTDOWN_DUEL_STATE = [](){
     }
     return state;
 }();
-
-#endif
