@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <functional>
 #include <string>
 #include <iostream>
 #include <cstdint>
@@ -27,6 +28,13 @@ public:
     bool isHunter() const;
 
     void setIsHunter(bool isHunter);
+
+    // Fires AFTER setIsHunter / toggleHunter mutates the role. Lets ChainManager
+    // invalidate peerRoleByPort_ caches and re-broadcast RoleAnnounce so peers
+    // see the freshly-chosen role rather than the pre-registration default.
+    // Set once at wire-up; not reentrant-safe.
+    using RoleChangedCallback = std::function<void()>;
+    void setOnRoleChanged(RoleChangedCallback cb);
 
     void toggleHunter();
 
@@ -105,6 +113,8 @@ private:
     Allegiance allegiance = Allegiance::RESISTANCE;
 
     Symbol symbol;
-    
+
     bool hunter = true;
+
+    RoleChangedCallback onRoleChanged_;
 };

@@ -518,6 +518,10 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
     playerReactionTimeAverageCalculatesCorrectly(player);
 }
 
+TEST_F(PlayerTestSuite, onRoleChangedFiresOnlyOnActualChange) {
+    playerOnRoleChangedFiresOnlyOnActualChange(player);
+}
+
 // ============================================
 // MATCH TESTS
 // ============================================

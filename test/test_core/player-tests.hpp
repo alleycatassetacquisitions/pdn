@@ -165,3 +165,25 @@ inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
     EXPECT_EQ(player->getLastReactionTime(), 400);
     EXPECT_EQ(player->getAverageReactionTime(), 300); // (200+300+400)/3
 }
+
+// ============================================
+// Role-changed Callback Tests
+// ============================================
+
+inline void playerOnRoleChangedFiresOnlyOnActualChange(Player* player) {
+    int calls = 0;
+    player->setOnRoleChanged([&calls]() { ++calls; });
+
+    // toggleHunter always flips the role, so it fires on every call.
+    player->toggleHunter();
+    player->toggleHunter();
+    EXPECT_EQ(calls, 2);
+
+    // setIsHunter to the role already held is a no-op and must not fire.
+    player->setIsHunter(player->isHunter());
+    EXPECT_EQ(calls, 2);
+
+    // setIsHunter to the opposite role fires once.
+    player->setIsHunter(!player->isHunter());
+    EXPECT_EQ(calls, 3);
+}

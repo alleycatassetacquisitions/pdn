@@ -53,12 +53,21 @@ void Player::fromJson(const std::string &json) {
 
 void Player::toggleHunter()
 {
+  bool prev = hunter;
   hunter = !hunter;
+  if (prev != hunter && onRoleChanged_) onRoleChanged_();
 }
 
-void Player::setIsHunter(bool isHunter) 
+void Player::setIsHunter(bool isHunter)
 {
+  bool prev = hunter;
   hunter = isHunter;
+  if (prev != hunter && onRoleChanged_) onRoleChanged_();
+}
+
+void Player::setOnRoleChanged(RoleChangedCallback cb)
+{
+  onRoleChanged_ = std::move(cb);
 }
 
 void Player::clearUserID()
