@@ -7,8 +7,9 @@
 #include <vector>
 
 // One device's direct-peer view, as carried in a BEACON frame. An all-zero
-// peer MAC means "no peer on that jack". Equality is by full content so the
-// flood layer can dedup re-received beacons without sequence numbers.
+// peer MAC means "no peer on that jack". Equality is by full content, so the
+// flood layer can dedup a re-received beacon against the cached one; freshness
+// after a transient is restored by the 1Hz BEACON backstop, not a seq number.
 struct BeaconRecord {
     net::Mac source{};
     net::Mac inPeer{};
@@ -31,7 +32,10 @@ public:
 
     // Cache a received beacon. Returns true if the cache changed (caller floods
     // the beacon onward when so). A beacon identical to the cached one for its
-    // source returns false — that is the flood-dedup signal.
+    // source returns false — that is the flood-dedup signal. A self-sourced
+    // beacon (source == selfMac_) is always dropped: self is the authority on its
+    // own peers via setSelfPeers, so re-accepting one flooded back around a ring
+    // would only cost an extra ring trip and reset the stability window.
     bool acceptBeacon(const BeaconRecord& beacon, unsigned long nowMs);
 
     std::optional<BeaconRecord> getBeacon(const net::Mac& source) const;
@@ -49,8 +53,9 @@ public:
     // back through self. In a linear chain, removing self splits it into two
     // sides; passing the peer on one jack counts only that side. firstHop
     // itself counts as 1 even before its beacon arrives (it is a confirmed
-    // direct peer); further hops require mutual edges. Returns 0 if firstHop
-    // is absent or is self.
+    // direct peer); further hops require mutual edges. Returns 0 if firstHop is
+    // absent, is self, or is not a MAC self currently claims on a jack — the
+    // count must not vouch for a node self has no live link to.
     size_t countReachableExcludingSelf(const net::Mac& firstHop) const;
 
     bool isTopologyStable(unsigned long nowMs) const;
@@ -63,7 +68,10 @@ private:
     net::Mac selfInPeer_{};
     net::Mac selfOutPeer_{};
     std::map<net::Mac, BeaconRecord> beaconsBySource_;
-    unsigned long lastGraphChangeMs_ = 0;
+    // Unset until the first change is recorded. A graph that has never changed
+    // has no settled topology to report, so it reads as unstable rather than
+    // stable-since-time-zero — the absence of a timestamp says so directly.
+    std::optional<unsigned long> lastGraphChangeMs_;
     GraphChangedCallback onGraphChanged_;
 
     static constexpr unsigned long kTopologyStabilityMs = 200;

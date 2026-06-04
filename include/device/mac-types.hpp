@@ -3,8 +3,10 @@
 #include <array>
 #include <cstdint>
 
-// Shared 6-byte MAC address type and peer-validity helpers, used by the
-// peer-graph protocol, the RDC, and their tests.
+// 6-byte MAC address type and peer-validity helpers for the peer-graph protocol
+// and its tests. The RDC and ESP-NOW layers still spell this type as a raw
+// std::array<uint8_t, 6> / uint8_t[6]; converging them onto net::Mac is left to
+// the peer-graph wire-up rather than done speculatively here.
 namespace net {
 using Mac = std::array<uint8_t, 6>;
 

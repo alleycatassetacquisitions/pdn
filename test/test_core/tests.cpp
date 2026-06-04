@@ -1539,6 +1539,18 @@ TEST_F(PeerGraphTests, countReachableZeroForAbsentPeer) {
     peerGraphCountReachableZeroForAbsentPeer(this);
 }
 
+TEST_F(PeerGraphTests, neverChangedIsNotStable) {
+    peerGraphNeverChangedIsNotStable(this);
+}
+
+TEST_F(PeerGraphTests, countReachableZeroForUnclaimedPeer) {
+    peerGraphCountReachableZeroForUnclaimedPeer(this);
+}
+
+TEST_F(PeerGraphTests, selfSourcedBeaconDropped) {
+    peerGraphSelfSourcedBeaconDropped(this);
+}
+
 TEST(PeerGraphCodecTests, helloRoundTrip) { codecHelloRoundTrip(); }
 TEST(PeerGraphCodecTests, beaconRoundTrip) { codecBeaconRoundTrip(); }
 TEST(PeerGraphCodecTests, beaconEmptyPeersRoundTrip) { codecBeaconEmptyPeersRoundTrip(); }

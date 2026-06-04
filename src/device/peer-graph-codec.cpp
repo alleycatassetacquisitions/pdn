@@ -2,6 +2,7 @@
 
 #include "wireless/crc16.hpp"
 #include <algorithm>
+#include <array>
 
 namespace peer_graph {
 
@@ -12,18 +13,17 @@ constexpr size_t kCrcBytes = 2;
 constexpr uint8_t kPreamble0 = 0xAA;
 constexpr uint8_t kPreamble1 = 0x55;
 
-std::vector<uint8_t> encodeFramed(uint8_t opcode, const std::vector<uint8_t>& payload) {
-    std::vector<uint8_t> body;
-    body.reserve(1 + payload.size());
-    body.push_back(opcode);
-    body.insert(body.end(), payload.begin(), payload.end());
-    const uint16_t crc = crc16(body.data(), body.size());
-
+// Assemble the whole frame in one buffer: preamble, opcode, payload, CRC. The
+// opcode+payload sit contiguously at frame[2..], so the CRC is taken over that
+// slice in place — no separate body buffer to keep byte-aligned with decode.
+std::vector<uint8_t> encodeFramed(uint8_t opcode, const uint8_t* payload, size_t payloadLen) {
     std::vector<uint8_t> frame;
-    frame.reserve(kPreambleBytes + body.size() + kCrcBytes);
+    frame.reserve(kPreambleBytes + 1 + payloadLen + kCrcBytes);
     frame.push_back(kPreamble0);
     frame.push_back(kPreamble1);
-    frame.insert(frame.end(), body.begin(), body.end());
+    frame.push_back(opcode);
+    frame.insert(frame.end(), payload, payload + payloadLen);
+    const uint16_t crc = crc16(&frame[2], 1 + payloadLen);
     frame.push_back(static_cast<uint8_t>(crc >> 8));
     frame.push_back(static_cast<uint8_t>(crc & 0xFF));
     return frame;
@@ -50,9 +50,10 @@ bool validateFrame(const std::vector<uint8_t>& frame, uint8_t expectedOpcode,
 }  // namespace
 
 std::vector<uint8_t> encodeHello(const net::Mac& source, uint8_t deviceType) {
-    std::vector<uint8_t> payload(source.begin(), source.end());
-    payload.push_back(deviceType);
-    return encodeFramed(kOpHello, payload);
+    std::array<uint8_t, 7> payload;
+    std::copy(source.begin(), source.end(), payload.begin());
+    payload[6] = deviceType;
+    return encodeFramed(kOpHello, payload.data(), payload.size());
 }
 
 std::optional<HelloRecord> decodeHello(const std::vector<uint8_t>& frame) {
@@ -65,12 +66,11 @@ std::optional<HelloRecord> decodeHello(const std::vector<uint8_t>& frame) {
 }
 
 std::vector<uint8_t> encodeBeacon(const BeaconRecord& beacon) {
-    std::vector<uint8_t> payload;
-    payload.reserve(18);
-    payload.insert(payload.end(), beacon.source.begin(), beacon.source.end());
-    payload.insert(payload.end(), beacon.inPeer.begin(), beacon.inPeer.end());
-    payload.insert(payload.end(), beacon.outPeer.begin(), beacon.outPeer.end());
-    return encodeFramed(kOpBeacon, payload);
+    std::array<uint8_t, 18> payload;
+    std::copy(beacon.source.begin(), beacon.source.end(), payload.begin());
+    std::copy(beacon.inPeer.begin(), beacon.inPeer.end(), payload.begin() + 6);
+    std::copy(beacon.outPeer.begin(), beacon.outPeer.end(), payload.begin() + 12);
+    return encodeFramed(kOpBeacon, payload.data(), payload.size());
 }
 
 std::optional<BeaconRecord> decodeBeacon(const std::vector<uint8_t>& frame) {

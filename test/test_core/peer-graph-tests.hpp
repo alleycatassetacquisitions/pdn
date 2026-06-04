@@ -228,3 +228,43 @@ inline void peerGraphPeerDropsOutWhenSelfStopsClaiming(PeerGraphTests* suite) {
     EXPECT_EQ(g.getChainMembers().size(), 1u);
     EXPECT_FALSE(g.isInLoop());
 }
+
+// A freshly constructed graph has recorded no change, so it must not claim its
+// (nonexistent) topology has settled — otherwise a just-booted device reads as
+// stable from time zero and a premature coordinator can claim through.
+inline void peerGraphNeverChangedIsNotStable(PeerGraphTests* suite) {
+    PeerGraph g;
+    g.setSelfMac(suite->mac(0x01));
+    EXPECT_FALSE(g.isTopologyStable(0));
+    EXPECT_FALSE(g.isTopologyStable(10000));  // long uptime, but nothing ever changed
+    // A real change establishes the baseline; stability then follows the window.
+    g.setSelfPeers(suite->mac(0x02), {}, 1000);
+    EXPECT_FALSE(g.isTopologyStable(1100));   // inside the 200ms window
+    EXPECT_TRUE(g.isTopologyStable(1300));
+}
+
+// countReachableExcludingSelf must vouch only for peers self actually claims on
+// a jack. A MAC self has no live link to (e.g. a stale value after a yank)
+// contributes nothing, even though it is non-zero and not self.
+inline void peerGraphCountReachableZeroForUnclaimedPeer(PeerGraphTests* suite) {
+    PeerGraph g;
+    g.setSelfMac(suite->mac(0x01));
+    g.setSelfPeers(suite->mac(0x02), {}, 0);
+    // 0x03 is a real, non-self MAC that self does not claim on either jack.
+    EXPECT_EQ(g.countReachableExcludingSelf(suite->mac(0x03)), 0u);
+    // Even with a beacon on file for 0x03, self still has no link to it.
+    g.acceptBeacon({suite->mac(0x03), {}, {}}, 0);
+    EXPECT_EQ(g.countReachableExcludingSelf(suite->mac(0x03)), 0u);
+    // The actually-claimed peer still counts.
+    EXPECT_EQ(g.countReachableExcludingSelf(suite->mac(0x02)), 1u);
+}
+
+// A self-sourced beacon (our own, flooded back around a ring) carries nothing
+// setSelfPeers doesn't already own; it must be dropped, not cached.
+inline void peerGraphSelfSourcedBeaconDropped(PeerGraphTests* suite) {
+    PeerGraph g;
+    g.setSelfMac(suite->mac(0x01));
+    g.setSelfPeers(suite->mac(0x02), suite->mac(0x03), 0);
+    EXPECT_FALSE(g.acceptBeacon({suite->mac(0x01), suite->mac(0x02), suite->mac(0x03)}, 100));
+    EXPECT_FALSE(g.getBeacon(suite->mac(0x01)).has_value());
+}

@@ -13,10 +13,13 @@ bool PeerGraph::acceptBeacon(const BeaconRecord& beacon, unsigned long nowMs) {
     // jack, fabricating a false loop and inflating the chain count. inPeer/outPeer
     // may legitimately be all-zero (an open jack), so only source is validated.
     if (!net::isValidPeerMac(beacon.source)) return false;
+    // Self is the authority on its own peers (setSelfPeers); a self-beacon that
+    // floods back around a ring carries no new information and would otherwise
+    // cost an extra ring trip and reset the stability window.
+    if (beacon.source == selfMac_) return false;
+
     auto it = beaconsBySource_.find(beacon.source);
-    if (it != beaconsBySource_.end() && it->second == beacon) {
-        return false;
-    }
+    if (it != beaconsBySource_.end() && it->second == beacon) return false;
     beaconsBySource_[beacon.source] = beacon;
     lastGraphChangeMs_ = nowMs;
     if (onGraphChanged_) onGraphChanged_();
@@ -85,9 +88,13 @@ std::vector<net::Mac> PeerGraph::getChainMembers() const {
 
 size_t PeerGraph::countReachableExcludingSelf(const net::Mac& firstHop) const {
     if (firstHop == net::Mac{} || firstHop == selfMac_) return 0;
-    // Block self so traversal never crosses to the far side of the chain.
-    // firstHop counts directly (a confirmed direct peer, included as the start
-    // even before its beacon arrives); expansion past it follows mutual edges.
+    // firstHop must be a peer self actually claims on a jack. Counting it as a
+    // confirmed direct peer before its beacon arrives is only sound because self
+    // vouches for the physical link; a MAC self does not claim (e.g. a stale
+    // value held after a yank) is not a member and must contribute nothing.
+    if (selfInPeer_ != firstHop && selfOutPeer_ != firstHop) return 0;
+    // Block self so traversal never crosses to the far side of the chain;
+    // expansion past firstHop follows mutual edges.
     return reachableFrom(firstHop, {selfMac_}).size();
 }
 
@@ -112,11 +119,14 @@ bool PeerGraph::isInLoop() const {
 }
 
 bool PeerGraph::isTopologyStable(unsigned long nowMs) const {
+    // No recorded change yet means no settled topology to report; a just-booted
+    // device must read as unstable, not stable-since-time-zero, so a premature
+    // coordinator can't claim through.
+    if (!lastGraphChangeMs_) return false;
     // Clamp the gap to 0 on a backwards/zero clock so unsigned subtraction can't
-    // underflow to ~UINT32_MAX and falsely report stability (which would let a
-    // premature coordinator claim through). Mirrors the silent-link gap guard in
-    // RemoteDeviceCoordinator.
-    const unsigned long gap = nowMs >= lastGraphChangeMs_ ? nowMs - lastGraphChangeMs_ : 0;
+    // underflow to ~UINT32_MAX and falsely report stability.
+    const unsigned long last = *lastGraphChangeMs_;
+    const unsigned long gap = nowMs >= last ? nowMs - last : 0;
     return gap >= kTopologyStabilityMs;
 }
 
