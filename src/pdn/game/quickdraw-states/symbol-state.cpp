@@ -7,7 +7,7 @@
 
 static const char* TAG = "SymbolState";
 
-SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, SYMBOL) {
+SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL) {
     this->player = player;
     this->matchManager = matchManager;
     this->symbolWirelessManager = symbolWirelessManager;

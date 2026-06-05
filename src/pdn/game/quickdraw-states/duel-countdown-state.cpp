@@ -6,7 +6,7 @@
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
     this->chainDuelManager = chainDuelManager;

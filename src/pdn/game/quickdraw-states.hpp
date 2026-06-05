@@ -87,7 +87,7 @@ private:
     Player* player;
 };
 
-class Idle : public TypedConnectState<PDN> {
+class Idle : public ConnectState<PDN> {
 public:
     Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~Idle();
@@ -121,7 +121,7 @@ private:
     // void serialEventCallbacks(const std::string& message);
 };
 
-class SupporterReady : public TypedConnectState<PDN> {
+class SupporterReady : public ConnectState<PDN> {
 public:
     SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~SupporterReady();
@@ -164,7 +164,7 @@ private:
 
 
 
-class DuelCountdown : public TypedConnectState<PDN> {
+class DuelCountdown : public ConnectState<PDN> {
 public:
     DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
     ~DuelCountdown();
@@ -230,7 +230,7 @@ private:
 
 class ShootoutManager;
 
-class Duel : public TypedConnectState<PDN> {
+class Duel : public ConnectState<PDN> {
 public:
     Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager);
     ~Duel();
@@ -262,7 +262,7 @@ private:
     const int DUEL_TIMEOUT = 4000;
 };
 
-class DuelPushed : public TypedConnectState<PDN> {
+class DuelPushed : public ConnectState<PDN> {
 public:
     DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelPushed();
@@ -283,7 +283,7 @@ private:
     const int DUEL_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public TypedConnectState<PDN> {
+class DuelReceivedResult : public ConnectState<PDN> {
 public:
     DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelReceivedResult();
@@ -504,7 +504,7 @@ private:
     static constexpr unsigned long ABORTED_DISPLAY_MS = 2000;
 };
 
-class SymbolState : public TypedConnectState<PDN> {
+class SymbolState : public ConnectState<PDN> {
 public:
     SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
     ~SymbolState();
@@ -551,7 +551,7 @@ private:
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };
 
-class SymbolMatched : public TypedConnectState<PDN> {
+class SymbolMatched : public ConnectState<PDN> {
 public:
     SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
     ~SymbolMatched();

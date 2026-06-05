@@ -16,7 +16,7 @@
 #include "state/connect-state.hpp"
 #include <cstring>
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
     this->chainDuelManager = chainDuelManager;

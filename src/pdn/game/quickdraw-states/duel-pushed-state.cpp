@@ -4,7 +4,7 @@
 
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
-DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL_PUSHED) {
+DuelPushed::DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL_PUSHED) {
     this->player = player;
     this->matchManager = matchManager;
 }

@@ -10,7 +10,7 @@
 #define TAG "SupporterReady"
 
 SupporterReady::SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager)
-    : TypedConnectState<PDN>(remoteDeviceCoordinator, SUPPORTER_READY) {
+    : ConnectState<PDN>(remoteDeviceCoordinator, SUPPORTER_READY) {
     this->player = player;
     this->chainDuelManager = chainDuelManager;
 }

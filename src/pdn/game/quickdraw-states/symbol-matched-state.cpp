@@ -6,7 +6,7 @@
 
 static const char* TAG = "SymbolMatched";
 
-SymbolMatched::SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
+SymbolMatched::SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
     this->player = player;
     this->symbolWirelessManager = symbolWirelessManager;
 }

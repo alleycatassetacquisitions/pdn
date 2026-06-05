@@ -9,7 +9,7 @@
 
 #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager) : TypedConnectState<PDN>(remoteDeviceCoordinator, DUEL) {
+Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL) {
     this->player = player;
     this->matchManager = matchManager;
     this->chainDuelManager = chainDuelManager;
