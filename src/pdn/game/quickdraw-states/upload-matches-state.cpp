@@ -64,7 +64,6 @@ void UploadMatchesState::onStateMounted(PDN* pdn) {
     attemptUpload();
 
     AnimationConfig config;
-    config.type = AnimationType::TRANSMIT_BREATH;
     config.loop = true;
     config.speed = 10;
     config.initialState = LEDState();

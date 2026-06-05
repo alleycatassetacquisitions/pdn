@@ -13,7 +13,6 @@
  * 
  * ```cpp
  * AnimationConfig config;
- * config.type = AnimationType::TRANSMIT_BREATH;
  * config.speed = 20;                         // 20ms per frame (optional)
  * config.curve = EaseCurve::EASE_IN_OUT;     // Smooth breathing curve (optional)
  * config.loop = true;                        // Repeat indefinitely

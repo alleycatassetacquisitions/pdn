@@ -65,7 +65,6 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     if(matchManager->getStoredMatchCount() > 0) {
         LOG_I(TAG, "Starting transmit breath animation");
         AnimationConfig config;
-        config.type = AnimationType::TRANSMIT_BREATH;
         config.loop = true;
         config.speed = 25;
         config.initialState = LEDState();

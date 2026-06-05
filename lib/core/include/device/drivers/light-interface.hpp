@@ -78,17 +78,6 @@ public:
     virtual uint8_t getFPS() const = 0;
 };
 
-enum class AnimationType {
-    IDLE,
-    VERTICAL_CHASE,
-    DEVICE_CONNECTED,
-    COUNTDOWN,
-    LOSE,
-    HUNTER_WIN,
-    BOUNTY_WIN,
-    TRANSMIT_BREATH
-};
-
 enum class EaseCurve {
     LINEAR,
     EASE_IN_OUT,
@@ -97,7 +86,6 @@ enum class EaseCurve {
 };
 
 struct AnimationConfig {
-    AnimationType type;
     bool loop;
     uint8_t speed;
     EaseCurve curve = EaseCurve::LINEAR;  // Default to linear curve
@@ -128,9 +116,6 @@ public:
     
     // Stop the animation
     virtual void stop() = 0;
-    
-    // Get the current animation type
-    virtual AnimationType getType() const = 0;
     
     // Check if the animation is paused
     virtual bool isPaused() const = 0;

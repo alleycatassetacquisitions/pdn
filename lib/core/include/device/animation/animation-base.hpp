@@ -59,7 +59,6 @@ public:
         isComplete_ = true; 
     }
     
-    AnimationType getType() const override { return config_.type; }
     bool isPaused() const override { return isPaused_; }
 
 protected:

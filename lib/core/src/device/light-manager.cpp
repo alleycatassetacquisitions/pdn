@@ -75,10 +75,6 @@ bool LightManager::isAnimationComplete() const {
     return currentAnimation ? currentAnimation->isComplete() : true;
 }
 
-AnimationType LightManager::getCurrentAnimation() const {
-    return currentAnimation ? currentAnimation->getType() : AnimationType::IDLE;
-}
-
 void LightManager::mapStateToGripLights(const LEDState& state) {
     // Map the LEDState to the grip lights array according to the pattern
     gripLightArray[0] = state.leftLights[2];

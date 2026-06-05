@@ -57,7 +57,6 @@ void Win::onStateMounted(PDN* pdn) {
         ? (AnimationBase*)new HunterWinAnimation()
         : (AnimationBase*)new BountyWinAnimation();
     AnimationConfig config;
-    config.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
     config.loop = true;
     config.speed = 16;
     config.initialState = LEDState();

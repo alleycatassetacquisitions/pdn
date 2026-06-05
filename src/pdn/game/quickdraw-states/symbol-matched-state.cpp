@@ -32,7 +32,6 @@ void SymbolMatched::onStateMounted(PDN* pdn) {
     AnimationBase* animation = player->isHunter()
         ? (AnimationBase*)new HunterWinAnimation()
         : (AnimationBase*)new BountyWinAnimation();
-    cfg.type = player->isHunter() ? AnimationType::HUNTER_WIN : AnimationType::BOUNTY_WIN;
     cfg.loop = true;
     cfg.speed = 16;
     cfg.initialState = LEDState();

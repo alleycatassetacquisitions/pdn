@@ -24,7 +24,6 @@ void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
     AnimationConfig config;
     if (confirmed) {
         animation = new IdleAnimation();
-        config.type = AnimationType::IDLE;
         config.speed = 20;
         config.curve = EaseCurve::LINEAR;
         config.initialState = player->isHunter() ? HUNTER_IDLE_STATE_ALTERNATE : BOUNTY_IDLE_STATE_ALTERNATE;
@@ -32,7 +31,6 @@ void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
         config.loopDelayMs = 0;
     } else if (armed) {
         animation = new VerticalChaseAnimation();
-        config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 12;
         config.curve = EaseCurve::EASE_IN_OUT;
         config.initialState = player->isHunter() ? HUNTER_IDLE_STATE_ALTERNATE : BOUNTY_IDLE_STATE_ALTERNATE;
@@ -40,7 +38,6 @@ void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
         config.loopDelayMs = 0;
     } else {
         animation = new VerticalChaseAnimation();
-        config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 3;
         config.curve = EaseCurve::EASE_OUT;
         config.loop = true;

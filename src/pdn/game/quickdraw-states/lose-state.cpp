@@ -50,7 +50,6 @@ void Lose::onStateMounted(PDN* pdn) {
     loseTimer.setTimer(8000);
 
     AnimationConfig config;
-    config.type = AnimationType::LOSE;
     config.loop = true;
     config.speed = 16;
     config.initialState = LEDState();

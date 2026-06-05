@@ -60,7 +60,6 @@ void SymbolState::onStateMounted(PDN* pdn) {
     }
     allWhite.transmitLight = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
 
-    cfg.type = AnimationType::IDLE;
     cfg.loop = true;
     cfg.speed = 255;  // AnimationConfig::speed is uint8_t
     cfg.initialState = allWhite;

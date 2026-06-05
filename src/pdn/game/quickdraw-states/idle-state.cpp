@@ -37,7 +37,6 @@ void Idle::onStateMounted(PDN* pdn) {
     AnimationBase* animation;
     if(player->isHunter()) {
         animation = new IdleAnimation();
-        config.type = AnimationType::IDLE;
         config.speed = 16;
         config.curve = EaseCurve::LINEAR;
         config.initialState = HUNTER_IDLE_STATE_ALTERNATE;
@@ -45,7 +44,6 @@ void Idle::onStateMounted(PDN* pdn) {
         config.loop = true;
     } else {
         animation = new VerticalChaseAnimation();
-        config.type = AnimationType::VERTICAL_CHASE;
         config.speed = 5;
         config.curve = EaseCurve::ELASTIC;
         config.initialState = BOUNTY_IDLE_STATE;

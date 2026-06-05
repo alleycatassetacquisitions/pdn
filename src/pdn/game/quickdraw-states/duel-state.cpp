@@ -49,7 +49,6 @@ void Duel::onStateMounted(PDN* pdn) {
     LOG_I(DUEL_TAG, "Draw image displayed for allegiance: %d", player->getAllegiance());
 
     AnimationConfig config;
-    config.type = AnimationType::COUNTDOWN;
     config.speed = 16;
     config.loopDelayMs = 0;
     config.loop = false;

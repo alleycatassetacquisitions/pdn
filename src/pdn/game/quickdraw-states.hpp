@@ -190,7 +190,6 @@ private:
         CountdownStage(CountdownStep step, unsigned long countdownTimer) {
             this->step = step;
             this->countdownTimer = countdownTimer;
-            this->animationConfig.type = AnimationType::COUNTDOWN;
             this->animationConfig.loop = false;
             this->animationConfig.speed = 16;
 
