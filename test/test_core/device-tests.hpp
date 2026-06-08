@@ -36,16 +36,10 @@ public:
     int mountedCount = 0;
     int loopCount = 0;
     int dismountedCount = 0;
-    int pausedCount = 0;
-    int resumedCount = 0;
-    
-    bool wasPaused = false;
     
     void onStateMounted(Device *PDN) override {
         mountedCount++;
         launched = true;
-        // Call parent to properly initialize the state machine
-        // This will call initialize() which sets currentState
         if (mountedCount == 1) {
             StateMachine::onStateMounted(PDN);
         }
@@ -59,23 +53,8 @@ public:
         dismountedCount++;
     }
     
-    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        pausedCount++;
-        wasPaused = true;
-        // Call parent to set the base class's paused flag
-        return StateMachine::onStatePaused(PDN);
-    }
-    
-    void onStateResumed(Device *PDN, Snapshot* snapshot) override {
-        resumedCount++;
-        wasPaused = false;
-        // Call parent to clear the base class's paused flag
-        StateMachine::onStateResumed(PDN, snapshot);
-    }
-    
     // Expose protected members for testing
     bool hasLaunchedPublic() const { return launched; }
-    bool isPausedPublic() const { return isPaused(); }
     
 private:
     bool launched = false;

@@ -21,6 +21,4 @@ public:
     virtual void mount(Device* device) {}
     virtual void loop(Device* device) {}
     virtual void dismount(Device* device) {}
-    virtual std::unique_ptr<Snapshot> pause(Device* device) { return nullptr; }
-    virtual void resume(Device* device, Snapshot* snapshot) {}
 };

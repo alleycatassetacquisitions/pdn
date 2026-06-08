@@ -22,13 +22,9 @@ void Device::setActiveApp(StateId appId) {
         return;
     }
     
-    appConfig[currentAppId]->onStatePaused(this);
+    appConfig[currentAppId]->onStateDismounted(this);
     this->currentAppId = appId;
-    if(appConfig[appId]->isPaused()) {
-        appConfig[appId]->onStateResumed(this, nullptr);
-    } else {
-        appConfig[appId]->onStateMounted(this);
-    }
+    appConfig[appId]->onStateMounted(this);
 }
 
 void Device::loop() {

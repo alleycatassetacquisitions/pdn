@@ -105,11 +105,6 @@ public:
     virtual void onStateLoop(Device* device) {}
     virtual void onStateDismounted(Device* device) {}
 
-    virtual std::unique_ptr<Snapshot> onStatePaused(Device* device) {
-        return nullptr;
-    }
-    virtual void onStateResumed(Device* device, Snapshot* snapshot) {}
-
 protected:
     std::vector<StateTransition*> transitions;
 
@@ -119,13 +114,6 @@ private:
     void mount(Device* device) override    { onStateMounted(device); }
     void loop(Device* device) override     { onStateLoop(device); }
     void dismount(Device* device) override { onStateDismounted(device); }
-
-    std::unique_ptr<Snapshot> pause(Device* device) override {
-        return onStatePaused(device);
-    }
-    void resume(Device* device, Snapshot* snapshot) override {
-        onStateResumed(device, snapshot);
-    }
 
     StateId name;
 };
@@ -160,11 +148,6 @@ public:
     virtual void onStateLoop(DeviceT* device) {}
     virtual void onStateDismounted(DeviceT* device) {}
 
-    virtual std::unique_ptr<Snapshot> onStatePaused(DeviceT* device) {
-        return nullptr;
-    }
-    virtual void onStateResumed(DeviceT* device, Snapshot* snapshot) {}
-
 private:
     // Private final bridge — casts once and forwards to the typed user API above.
     // State implementers cannot override or call these.
@@ -176,11 +159,5 @@ private:
     }
     void dismount(Device* device) final {
         onStateDismounted(static_cast<DeviceT*>(device));
-    }
-    std::unique_ptr<Snapshot> pause(Device* device) final {
-        return onStatePaused(static_cast<DeviceT*>(device));
-    }
-    void resume(Device* device, Snapshot* snapshot) final {
-        onStateResumed(static_cast<DeviceT*>(device), snapshot);
     }
 };

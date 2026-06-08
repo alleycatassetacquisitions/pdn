@@ -99,24 +99,6 @@ public:
         initialize(PDN);
     }
 
-    /*
-     * onStatePaused and onStateResume should be overridden in derived classes if the
-     * state machine itself needs to hold onto any data beyond the current state's snapshot.
-     */
-    std::unique_ptr<Snapshot> onStatePaused(Device *PDN) override {
-        currentSnapshot = asLifecycle(currentState)->pause(PDN);
-        asLifecycle(currentState)->dismount(PDN);
-        paused = true;
-        return nullptr;
-    }
-
-    void onStateResumed(Device *PDN, Snapshot* stateMachineSnapshot) override {
-        asLifecycle(currentState)->mount(PDN);
-        asLifecycle(currentState)->resume(PDN, currentSnapshot.get());
-        currentSnapshot = nullptr;
-        paused = false;
-    }
-
     void onStateLoop(Device *PDN) override {
         asLifecycle(currentState)->loop(PDN);
         checkStateTransitions();
@@ -127,7 +109,6 @@ public:
 
     void onStateDismounted(Device *PDN) override {
         asLifecycle(currentState)->dismount(PDN);
-        currentSnapshot = nullptr;
         currentState = nullptr;
         stateChangeReady = false;
         newState = nullptr;
@@ -135,10 +116,6 @@ public:
 
     bool hasLaunched() const {
         return launched;
-    }
-
-    bool isPaused() const {
-        return paused;
     }
 
 protected:
@@ -158,8 +135,5 @@ private:
         return static_cast<StateLifecycle*>(state);
     }
 
-    std::unique_ptr<Snapshot> currentSnapshot;
-
     bool launched = false;
-    bool paused = false;
 };
