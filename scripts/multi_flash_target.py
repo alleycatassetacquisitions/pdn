@@ -3,12 +3,12 @@
 # Inherited by all envs that extend env:esp32-s3_base.
 #
 # Usage (after building): flashes all identified devices, no prompts.
-#   pio run -e esp32-s3_release -t multi_flash   (with --clear-nvs)
-#   pio run -e esp32-s3_debug   -t multi_flash   (no extra args)
+#   pio run -e esp32-s3_pdn_release -t multi_flash   (with --clear-nvs)
+#   pio run -e esp32-s3_pdn_debug   -t multi_flash   (no extra args)
 #
 # Per-environment extra flags are configured via custom_multi_flash_args in
 # platformio.ini. To also erase flash, append --erase at runtime:
-#   $env:MULTI_FLASH_ARGS="--erase"; pio run -e esp32-s3_release -t multi_flash
+#   $env:MULTI_FLASH_ARGS="--erase"; pio run -e esp32-s3_pdn_release -t multi_flash
 
 Import("env")  # noqa: F821  (PlatformIO injects this)
 

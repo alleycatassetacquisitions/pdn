@@ -34,11 +34,11 @@
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "wireless/mac-functions.hpp"
 
 using ::testing::_;

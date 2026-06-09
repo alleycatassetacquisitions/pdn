@@ -1,0 +1,6 @@
+{
+  "name": "native-drivers",
+  "version": "1.0.0",
+  "description": "Native/simulator driver implementations for host builds",
+  "platforms": ["native"]
+}

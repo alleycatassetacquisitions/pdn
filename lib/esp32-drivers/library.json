@@ -1,0 +1,6 @@
+{
+  "name": "esp32-drivers",
+  "version": "1.0.0",
+  "description": "ESP32-S3 hardware driver implementations",
+  "platforms": ["espressif32"]
+}

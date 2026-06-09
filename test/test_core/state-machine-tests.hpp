@@ -6,7 +6,7 @@
 
 #include "device-mock.hpp"
 #include "state/state-machine.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 
 enum TestStateId {
     INITIAL_STATE = 0,

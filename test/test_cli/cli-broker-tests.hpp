@@ -9,7 +9,7 @@
 #include "device/drivers/native/native-peer-broker.hpp"
 #include "device/drivers/native/native-serial-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
-#include "wireless/peer-comms-types.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 
 // ============================================
 // SERIAL CABLE BROKER TEST SUITE

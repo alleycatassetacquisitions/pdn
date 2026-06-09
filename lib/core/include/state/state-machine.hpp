@@ -1,0 +1,139 @@
+#pragma once
+
+#include <vector>
+#include "device/device.hpp"
+#include "state.hpp"
+
+/*
+ * StateMachine can be thought of as the base class for "apps" on the PDN.
+ * The class holds a stateMap, which is a vector of states, and moves through
+ * those states based off of each state's StateTransitions.
+ *
+ * As a state machine moves through the stateMap, it invokes each state's lifecycle
+ * methods in order.
+ *
+ * The basic control flow for a StateMachine looks like this:
+ *
+ * StateMachine initialized -> populates the state map, sets the current state and invokes
+ * the first state's onStateMounted method.
+ *
+ * stateMachine.loop() must be invoked within the arduino loop function, which means
+ * the statemachine loop will be invoked on every tick of the microcontroller.
+ * (this hooks into the device loop())
+ *
+ *
+ * From there, the current state's onStateLoop function is invoked.
+ * At the end of each state's loop, state transitions are checked.
+ *
+ * If the condition for any of a state's transitions are met, the state machine
+ * then invokes a transition to the new state.
+ *
+ * The current state is dismounted through a call to onStateDismounted.
+ * Then, the current state is set to the state attached to the StateTransition.
+ *
+ * The new state's onStateMounted call is then invoked, at which point we return to
+ * our loop function and continue with the new state's onStateLoop function.
+ *
+ * Lifecycle dispatch goes through StateLifecycle* so that the bridge methods
+ * (mount/loop/dismount) remain private to state implementers while still being
+ * reachable via virtual dispatch from StateMachine.
+*/
+
+class StateMachine : public State {
+public:
+    explicit StateMachine(int stateId) : State(stateId) {}
+
+    ~StateMachine() override {
+        for (auto state: stateMap) {
+            delete state;
+        }
+    };
+
+    void initialize(Device *PDN) {
+        populateStateMap();
+        currentState = stateMap[0];
+        asLifecycle(currentState)->mount(PDN);
+        launched = true;
+    }
+
+    /**
+     * Skip to a specific state by index, bypassing intermediate states.
+     * Useful for testing scenarios where you want to start at a later state.
+     * @param stateIndex The index in stateMap to skip to
+     * @return true if successful, false if index out of range
+     */
+    bool skipToState(Device *PDN, int stateIndex) {
+        if (stateIndex < 0 || stateIndex >= static_cast<int>(stateMap.size())) {
+            return false;
+        }
+        if (currentState) {
+            asLifecycle(currentState)->dismount(PDN);
+        }
+        currentState = stateMap[stateIndex];
+        asLifecycle(currentState)->mount(PDN);
+        return true;
+    }
+
+    virtual void populateStateMap() = 0;
+
+    void checkStateTransitions() {
+        newState = currentState->checkTransitions();
+        stateChangeReady = (newState != nullptr);
+    };
+
+    void commitState(Device *PDN) {
+        asLifecycle(currentState)->dismount(PDN);
+
+        currentState = newState;
+        stateChangeReady = false;
+        newState = nullptr;
+
+        asLifecycle(currentState)->mount(PDN);
+    };
+
+    State *getCurrentState() {
+        return currentState;
+    }
+
+    void onStateMounted(Device *PDN) override {
+        initialize(PDN);
+    }
+
+    void onStateLoop(Device *PDN) override {
+        asLifecycle(currentState)->loop(PDN);
+        checkStateTransitions();
+        if (stateChangeReady) {
+            commitState(PDN);
+        }
+    }
+
+    void onStateDismounted(Device *PDN) override {
+        asLifecycle(currentState)->dismount(PDN);
+        currentState = nullptr;
+        stateChangeReady = false;
+        newState = nullptr;
+    }
+
+    bool hasLaunched() const {
+        return launched;
+    }
+
+protected:
+    // initial state is 0 in the list here
+    std::vector<State *> stateMap;
+
+    bool stateChangeReady = false;
+
+    State *newState = nullptr;
+    State *currentState = nullptr;
+
+private:
+    // Upcast helper — mount/loop/dismount are private on State* so we dispatch
+    // through StateLifecycle* where they are public, allowing virtual dispatch to
+    // reach the correct override without exposing the bridge to state authors.
+    static StateLifecycle* asLifecycle(State* state) {
+        return static_cast<StateLifecycle*>(state);
+    }
+
+    bool launched = false;
+};

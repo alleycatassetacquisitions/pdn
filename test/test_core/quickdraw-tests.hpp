@@ -15,7 +15,7 @@
 #include "apps/handshake/handshake-states.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "utility-tests.hpp"
-#include "device/device-constants.hpp"
+#include "protocol-constants.hpp"
 
 using ::testing::_;
 using ::testing::Return;
