@@ -95,6 +95,9 @@ void UploadMatchesState::onStateDismounted(PDN* pdn) {
     transitionToSleepState = false;
     shouldRetryUpload = false;
     matchUploadRetryCount = 0;
+    // The SLEEP exit otherwise leaves WiFi up (scanning, if no AP in range) for
+    // the whole sleep, jamming nearby ESP-NOW until the next Idle mount.
+    pdn->getWirelessManager()->enablePeerCommsMode();
     pdn->getLightManager()->stopAnimation();
 }
 

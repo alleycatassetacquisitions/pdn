@@ -3,23 +3,23 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/animation/idle-animation.hpp"
+#include "device/animation/vertical-chase-animation.hpp"
 #include "game/match-manager.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/chain-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
-#include "device/animation/idle-animation.hpp"
-#include "device/animation/vertical-chase-animation.hpp"
 #include "symbol-match/symbol-manager.hpp"
 #include "symbol-match/symbol-match.hpp"
 #include "wireless/mac-functions.hpp"
 #include "state/connect-state.hpp"
 #include <cstring>
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
+Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager) : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
     this->matchManager = matchManager;
     this->player = player;
-    this->chainDuelManager = chainDuelManager;
+    this->chainManager = chainManager;
 }
 
 Idle::~Idle() {
@@ -29,12 +29,11 @@ Idle::~Idle() {
 
 void Idle::onStateMounted(PDN* pdn) {
 
-    // Switch to ESP-NOW mode for peer-to-peer communication
     pdn->getWirelessManager()->enablePeerCommsMode();
 
     AnimationConfig config;
-
     AnimationBase* animation;
+
     if(player->isHunter()) {
         animation = new IdleAnimation();
         config.speed = 16;
@@ -76,35 +75,29 @@ void Idle::onStateLoop(PDN* pdn) {
     ShootoutManager* shMgr = matchManager->getShootoutManager();
     bool shootoutActive = shMgr && shMgr->active();
     if (!shootoutActive && isConnected()) {
-        if (chainDuelManager->canInitiateMatch()
+        if (chainManager->canInitiateMatch()
             && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN
             && player->isHunter()) {
-            if (!matchInitialized) {
-                const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
-                if (peerMac != nullptr) {
-                    matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
-                    matchInitialized = true;
-                    matchInitializationTimer.setTimer(MATCH_INITIALIZATION_TIMEOUT);
-                }
+            const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+            if (peerMac != nullptr) {
+                // Idempotent: initializeMatch early-returns while a match exists,
+                // so this sends SEND_MATCH_ID once per match. A failed handshake
+                // clears the match via the reliable-send abandon path, and the
+                // next eligible tick re-initiates; no init flag or timer needed.
+                matchManager->initializeMatch(const_cast<uint8_t*>(peerMac));
             }
         }
     }
 
-    if (!matchInitialized && (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
-    || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
+    if (!matchManager->getCurrentMatch().has_value()
+        && (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
+            || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
         transitionToSymbolState = true;
-    }
-
-    if(matchInitializationTimer.expired()) {
-        matchInitialized = false;
-        matchManager->clearCurrentMatch();
     }
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
     statsIndex = 0;
-    matchInitializationTimer.invalidate();
-    matchInitialized = false;
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
@@ -118,7 +111,7 @@ bool Idle::transitionToDuelCountdown() {
 bool Idle::transitionToSupporterReady() {
     // A supporter is a device whose opponent-jack peer is same role.
     // This means the chain extends upstream toward the champion.
-    return chainDuelManager->isSupporter();
+    return chainManager->isSupporter();
 }
 
 void Idle::renderStats(PDN* pdn) {
@@ -144,7 +137,11 @@ void Idle::renderStats(PDN* pdn) {
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Average",70, 20)->drawText("Reaction", 70, 35);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(player->getAverageReactionTime()).c_str(), 80, 55);
     } else if (statsIndex == 6) {
-        size_t sc = chainDuelManager->getSupporterChainPeers().size();
+        // Live topology depth (countChainBehind), deliberately NOT the
+        // confirmedSupporters_ boost count: this is who's physically behind you
+        // now, boost is who confirmed for a duel. They can differ; don't
+        // reconcile them.
+        size_t sc = chainManager->getChainLength();
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)->drawText("Posse",70, 20);
         pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)->drawText(std::to_string(sc).c_str(), 88, 40);
     } else if (statsIndex == 7) {

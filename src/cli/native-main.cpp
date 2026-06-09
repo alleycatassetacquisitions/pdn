@@ -30,7 +30,6 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
 // Global running flag for signal handling
@@ -60,7 +59,6 @@ struct DeviceInstance {
     PDN* pdn;
     Player* player;
     Quickdraw* game;
-    QuickdrawWirelessManager* wirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
 };
 
@@ -105,17 +103,13 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     instance.player->setUserID(IdGenerator::getInstance().generateId());
     instance.pdn->begin();
     
-    // Create wireless manager for this device
-    // Note: QuickdrawWirelessManager is a singleton, so we skip it for now
-    // In a full implementation, we'd need per-device wireless managers
-    instance.wirelessManager = nullptr;
     instance.symbolWirelessManager = new SymbolWirelessManager();
     instance.symbolWirelessManager->initialize(
         instance.pdn->getWirelessManager(),
         instance.pdn->getRemoteDeviceCoordinator());
     
     // Create game
-    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr, instance.symbolWirelessManager);
+    instance.game = new Quickdraw(instance.player, instance.pdn, nullptr, instance.symbolWirelessManager, nullptr);
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {

@@ -22,60 +22,20 @@ public:
     HWSerialWrapper* getInputJack() { return inputJack; }
     void setInputJack(HWSerialWrapper* jack) { inputJack = jack; }
 
-    void writeString(const std::string& msg, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
-        HWSerialWrapper* hw = getJack(jack);
-        hw->print(STRING_START);
-        hw->println(msg);
-    }
-
-    std::string readString(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
-        std::string& head = getHead(jack);
-        std::string return_me = head;
-        head = "";
-
-        HWSerialWrapper* hw = getJack(jack);
-
-        if (return_me.empty()) {
-            while (hw->available() && hw->peek() != STRING_START) {
-                hw->read();
-            }
-            if (hw->peek() == STRING_START) {
-                hw->read();
-                return_me = std::string(hw->readStringUntil(STRING_TERM).c_str());
-            } else {
-                return_me = "null";
-            }
-        }
-        return return_me;
-    }
-
-    std::string* peekComms(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
-        std::string& head = getHead(jack);
-        if (head.empty()) {
-            head = readString(jack);
-        }
-        return &head;
-    }
-
-    bool commsAvailable(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
-        return getJack(jack)->available() > 0;
-    }
-
     int getSerialWriteQueueSize(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
         return TRANSMIT_QUEUE_MAX_SIZE - getJack(jack)->availableForWrite();
     }
 
-    void setOnStringReceivedCallback(const std::function<void(std::string)>& callback, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
-        getJack(jack)->setStringCallback(callback);
+    void writeBytes(const uint8_t* data, size_t len, SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        getJack(jack)->writeBytes(data, len);
     }
 
-    void clearCallback(SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
-        getJack(jack)->setStringCallback(nullptr);
-    }
-
-    void clearCallbacks() {
-        outputJack->setStringCallback(nullptr);
-        inputJack->setStringCallback(nullptr);
+    // One callback slot per jack, owned by RDC for the device's lifetime
+    // (wired in RemoteDeviceCoordinator::initialize). Game code must not call
+    // this; it would silently clobber RDC's frame parser.
+    void setOnBytesReceivedCallback(const SerialBytesCallback& callback,
+                                    SerialIdentifier jack = SerialIdentifier::OUTPUT_JACK) {
+        getJack(jack)->setBytesCallback(callback);
     }
 
     void flushSerial() {
@@ -83,20 +43,11 @@ public:
         inputJack->flush();
     }
 
-    std::string getOutputHead() const { return outputHead; }
-
 private:
     HWSerialWrapper* getJack(SerialIdentifier jack) {
         return jack == SerialIdentifier::OUTPUT_JACK ? outputJack : inputJack;
     }
 
-    std::string& getHead(SerialIdentifier jack) {
-        return jack == SerialIdentifier::OUTPUT_JACK ? outputHead : inputHead;
-    }
-
     HWSerialWrapper* outputJack;
     HWSerialWrapper* inputJack;
-
-    std::string outputHead = "";
-    std::string inputHead = "";
 };

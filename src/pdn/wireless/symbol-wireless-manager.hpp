@@ -19,8 +19,6 @@ enum SMCommand {
     SEND_SYMBOL = 0,
     SYMBOL_MATCH_SUCCESS = 1,
     SYMBOLS_REFRESHED = 2,
-    SM_COMMAND_COUNT,  // Always add new commands above this line
-    SM_INVALID_COMMAND = 0xFF
 };
 
 

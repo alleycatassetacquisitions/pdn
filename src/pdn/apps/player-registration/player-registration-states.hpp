@@ -14,8 +14,7 @@ enum PlayerRegistrationStateId {
     FETCH_USER_DATA = 1,
     CONFIRM_OFFLINE = 2,
     CHOOSE_ROLE = 3,
-    ALLEGIANCE_PICKER = 4,
-    WELCOME_MESSAGE = 5,
+    WELCOME_MESSAGE = 4,
 };
 
 class PlayerRegistrationState : public TypedState<PDN> {

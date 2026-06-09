@@ -1,6 +1,4 @@
-//
-// Mock HTTP Server Tests - Tests for cli::MockHttpServer and NativeHttpClientDriver
-//
+// Mock HTTP Server Tests - cli::MockHttpServer and NativeHttpClientDriver
 
 #pragma once
 
@@ -14,7 +12,7 @@
 // ============================================
 
 class MockHttpServerTestSuite : public testing::Test {
-public:  // Public for test function access
+public:
     void SetUp() override {
         server_ = &cli::MockHttpServer::getInstance();
         server_->clearHistory();
@@ -29,7 +27,6 @@ public:  // Public for test function access
     cli::MockHttpServer* server_;
 };
 
-// Test: Get player returns configured data
 void httpServerGetPlayerReturnsCorrectData(MockHttpServerTestSuite* suite) {
     cli::MockPlayerConfig config;
     config.id = "1234";
@@ -50,7 +47,6 @@ void httpServerGetPlayerReturnsCorrectData(MockHttpServerTestSuite* suite) {
     suite->server_->removePlayer("1234");
 }
 
-// Test: Get unknown player returns defaults
 void httpServerGetPlayerReturnsDefaults(MockHttpServerTestSuite* suite) {
     std::string response;
     int status = suite->server_->handleRequest("GET", "/api/players/5678", "", response);
@@ -60,7 +56,6 @@ void httpServerGetPlayerReturnsDefaults(MockHttpServerTestSuite* suite) {
     ASSERT_TRUE(response.find("Player5678") != std::string::npos);
 }
 
-// Test: Put matches accepts request
 void httpServerPutMatchesAccepts(MockHttpServerTestSuite* suite) {
     std::string response;
     std::string body = R"({"matches":[{"id":"match1"}]})";
@@ -71,7 +66,6 @@ void httpServerPutMatchesAccepts(MockHttpServerTestSuite* suite) {
     ASSERT_TRUE(response.find("success") != std::string::npos);
 }
 
-// Test: Unknown endpoint returns 404
 void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     std::string response;
     int status = suite->server_->handleRequest("GET", "/api/unknown", "", response);
@@ -80,7 +74,6 @@ void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     ASSERT_TRUE(response.find("Not found") != std::string::npos);
 }
 
-// Test: History is tracked
 void httpServerTracksHistory(MockHttpServerTestSuite* suite) {
     std::string response;
     suite->server_->handleRequest("GET", "/api/players/1111", "", response);
@@ -92,18 +85,15 @@ void httpServerTracksHistory(MockHttpServerTestSuite* suite) {
     ASSERT_EQ(history[1].path, "/api/players/2222");
 }
 
-// Test: Offline mode returns errors
 void httpServerOfflineModeSimulation(MockHttpServerTestSuite* suite) {
     suite->server_->setOffline(true);
     ASSERT_TRUE(suite->server_->isOffline());
-    
-    // Note: The server still handles requests when offline flag is set
-    // It's up to the client driver to check isOffline() before calling
+
+    // server still handles requests when offline; the client driver gates on isOffline()
     suite->server_->setOffline(false);
     ASSERT_FALSE(suite->server_->isOffline());
 }
 
-// Test: Clear history removes all entries
 void httpServerClearHistory(MockHttpServerTestSuite* suite) {
     std::string response;
     suite->server_->handleRequest("GET", "/api/players/1111", "", response);
@@ -120,7 +110,7 @@ void httpServerClearHistory(MockHttpServerTestSuite* suite) {
 // ============================================
 
 class NativeHttpClientDriverTestSuite : public testing::Test {
-public:  // Public for test function access
+public:
     void SetUp() override {
         driver_ = new NativeHttpClientDriver("TestHttpClient");
         successCallbackCalled_ = false;
@@ -140,7 +130,6 @@ public:  // Public for test function access
     WirelessError lastErrorCode_;
 };
 
-// Test: Client processes requests
 void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
     HttpRequest request(
         "/api/players/0010",
@@ -158,13 +147,12 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
     
     suite->driver_->setMockServerEnabled(true);
     suite->driver_->queueRequest(request);
-    suite->driver_->exec();  // Process the queue
-    
-    // One of success or error should be called
+    suite->driver_->exec();
+
+    // exactly one of the success/error callbacks must fire
     ASSERT_TRUE(suite->successCallbackCalled_ || suite->errorCallbackCalled_);
 }
 
-// Test: Client handles offline server
 void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
     cli::MockHttpServer::getInstance().setOffline(true);
     
@@ -183,13 +171,10 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
     suite->driver_->setMockServerEnabled(true);
     suite->driver_->queueRequest(request);
     suite->driver_->exec();
-    
-    // With mock server in online mode (default), requests succeed
-    // The offline behavior depends on driver implementation
+
     cli::MockHttpServer::getInstance().setOffline(false);
 }
 
-// Test: Client tracks history
 void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
     HttpRequest request(
         "/api/players/0010",
@@ -207,7 +192,6 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
     ASSERT_GE(history.size(), 1);
 }
 
-// Test: Client fails when mock server is disabled
 void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
     suite->driver_->setMockServerEnabled(false);
     
@@ -225,8 +209,6 @@ void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
     
     suite->driver_->queueRequest(request);
     suite->driver_->exec();
-    
-    // Without mock server, the request should fail (no actual HTTP)
-    // Re-enable for other tests
-    suite->driver_->setMockServerEnabled(true);
+
+    suite->driver_->setMockServerEnabled(true);  // re-enable for other tests
 }

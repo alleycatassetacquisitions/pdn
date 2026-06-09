@@ -14,6 +14,7 @@ PCB's were designed in KiCad 8 and will be uploaded to a separate repository soo
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
+- [The Game](#the-game)
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
@@ -112,13 +113,34 @@ pio run -e esp32-s3_pdn_release
 
 2. **Log in to Device**: After entering the code, the device will attempt to fetch data from the server. If there is no server running, it will default to offline mode. You will need to **confirm the player code**, **select a role - Hunter/Bounty** and then confirm. The device will launch into the idle state and you will then be able to practice quickdraw duels with another device.
 
-3. **For Simulated Development**: See CLI_README.md for development without a hardware device.
+3. **For Simulated Development**: See [src/cli/CLI_README.md](src/cli/CLI_README.md) for development without a hardware device.
+
+## The Game
+
+The PDN is a social icebreaker first. Every mechanic below requires physically cabling your device to someone else's, and the games are designed to pull strangers at an event into face-to-face play. The cables aren't a data link that happens to be social; they're a social mechanic that happens to carry data.
+
+At registration, every player picks a role: **Hunter** or **Bounty**.
+
+- **Quickdraw Duel**: Cable your PDN to a player of the opposite role. Both devices count down together, the screens flash DRAW, and the fastest button press wins. Reaction times, wins, and losses are tracked on the device and uploaded when a server is reachable.
+
+- **Chain Duel**: Players who share your role can daisy-chain their devices behind yours. The device at the head of each same-role run (the one facing an enemy device) is that team's **champion**; everyone behind is a **supporter**. Supporters lock in before the duel, and each locked-in supporter shaves 15ms off their champion's reaction time. Supporters watch the countdown, the draw, and the result live on their own screens.
+
+- **Shootout**: Close a chain into a ring (plug the last device into the first) and the ring proposes a tournament: a shuffled bracket where players duel one-on-one, losers spectate, and matches continue until one player is left standing. Up to 16 devices can play a single shootout.
 
 ## Development
 
 ### Local Development
 
-If you want to contribute to the PDN Project, follow these steps to set up your local development environment:
+The fastest way to see the system working is the CLI simulator: a network of simulated PDNs in your terminal, no hardware required:
+
+```bash
+pio run -e native_cli
+.pio/build/native_cli/program 2
+```
+
+Type `cable 0 1` to connect the two devices over a virtual serial cable and watch them discover each other, then drive the selected device's buttons (`↑`/`↓`) through a quickdraw duel. [src/cli/CLI_README.md](src/cli/CLI_README.md) documents all simulator commands.
+
+To contribute a change:
 
 1. **Fork the repository** and create your development branch:
    ```bash
@@ -126,28 +148,35 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
    ```
 
 2. **Develop your feature**
-3. **Test on Device/CLI** - CLI tests are sufficient if the hardware layer is unchanged, if any changes are made to drivers our core device logic, features need to be tested on device as well.
-3. **Add any new tests** - these should be located in `test/test_core` or `test/test_cli`
-4. **Run the test suite** - ensure your changes haven't broken any unit tests.
+3. **Test on Device/CLI** - CLI tests are sufficient if the hardware layer is unchanged; if any changes are made to drivers or core device logic, features need to be tested on device as well.
+4. **Add any new tests** - these should be located in `test/test_core` or `test/test_cli`
+5. **Run the test suite** - ensure your changes haven't broken any unit tests.
    ```bash
    pio test -e native          # Core unit tests
    pio test -e native_cli_test # CLI-specific tests
    ```
-5. **Commit and push your changes**:
+   `pio test` rebuilds and re-runs everything; when iterating, running the built test binary directly is much faster:
+   ```bash
+   .pio/build/native/program
+   ```
+6. **Commit and push your changes**:
    ```bash
    git commit -m "Add New Feature"
    git push origin feature/NewFeature
    ```
-6. **Create a pull request** for review. Ensure your PR is passing all checks before merging.
+7. **Create a pull request** for review. Ensure your PR is passing all checks before merging.
 
 ### Code Structure
 
-- `include/device/`: This is the hardware abstraction layer that hides all the hardware implementation.
-- `include/device/drivers/`: Provides the concrete implementation of hardware peripherals. The native drivers are used for running the CLI tool. 
-- `include/game/`: Contains code for game experiences.
-- `include/state/`: The core plumbing of the State Machine, the core class that powers games.
-- `test/`: Unit testing files for ensuring code stability.
-- `platformio.ini`: Project configuration file for PlatformIO, defining build environments and dependencies.
+- `lib/core/`: The platform-independent device layer. `include/device/` holds the hardware driver interfaces plus the serial connectivity layer (`RemoteDeviceCoordinator`, peer-graph); `include/wireless/` is the reliable ESP-NOW transport (`WirelessTransport` / `ReliableChannel`); `include/state/` is the state-machine framework that powers every game; `include/game/` has the shared `Player` / `Match` records.
+- `lib/esp32-drivers/`: Concrete ESP32-S3 implementations of the driver interfaces (display, LEDs, buttons, haptics, ESP-NOW radio, HTTP).
+- `lib/native-drivers/`: The same driver interfaces implemented for desktop; these power the CLI simulator and the native test suite.
+- `src/pdn/`: The PDN firmware itself. `main.cpp` is the entry point and platform loop; `game/` contains Quickdraw and its sub-modes (chain duels, shootout tournaments); `apps/` holds the player-registration flow; `device/` assembles the concrete device.
+- `src/cli/`: The terminal simulator ([src/cli/CLI_README.md](src/cli/CLI_README.md)).
+- `test/test_core` and `test/test_cli`: Unit and integration tests, run on the native platform.
+- `platformio.ini`: Build environments and dependencies; `boards/` has the ESP32-S3 board definition; `scripts/` holds flashing and build helpers.
+
+New to the code? Start at `src/pdn/main.cpp`, then `Quickdraw::populateStateMap()` in `src/pdn/game/quickdraw.cpp` for the game-state graph. The header comments in `lib/core/include/wireless/wireless-transport.hpp` (wireless packet lifecycle) and `lib/core/include/device/remote-device-coordinator.hpp` (serial connectivity) are the best protocol documentation in the repo; see also the Architecture in Practice section of [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Contributing
 

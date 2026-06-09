@@ -37,6 +37,13 @@
  * Lifecycle dispatch goes through StateLifecycle* so that the bridge methods
  * (mount/loop/dismount) remain private to state implementers while still being
  * reachable via virtual dispatch from StateMachine.
+ *
+ * Why this shape: the device runs everything on one cooperative loop, so a
+ * game cannot own a thread, sleep, or block; it must be expressed as small
+ * non-blocking lifecycle methods plus declared transitions. The framework is
+ * what enforces that decomposition, and it is also what makes game logic
+ * runnable unchanged on the native simulator and test suite: states see only
+ * the Device interface and the tick cadence, never the platform underneath.
 */
 
 class StateMachine : public State {

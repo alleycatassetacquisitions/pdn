@@ -14,9 +14,10 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
-#include "game/chain-duel-manager.hpp"
-#include <queue>
+#include "device/wireless-manager.hpp"
+#include "wireless/wireless-transport.hpp"
+#include "game/match-manager.hpp"
+#include "game/chain-manager.hpp"
 #include <vector>
 
 using namespace std;
@@ -33,55 +34,22 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         return msgQueue.size() > 0;
     }
 
-    int peek() override {
-        return msgQueue.front();
-    }
-
-    int read() override {
-        char val = msgQueue.front();
-        msgQueue.pop_front();
-        return val;
-    }
-
-    std::string readStringUntil(char terminator) override {
-        vector<char> buffer;
-        while (msgQueue.front() != terminator) {
-            buffer.push_back(msgQueue.front());
-            msgQueue.pop_front();
-        }
-        msgQueue.pop_front();
-        return std::string(&buffer.front(), buffer.size());
-    }
-
-    void print(char msg) override {
-        msgQueue.emplace_back(msg);
-    }
-
-    void println(char* msg) override {
-        while(msg[0] != '\0') {
-            print(*msg);
-        }
-        print(STRING_TERM);
-    }
-
-    void println(const std::string& msg) override {
-        const char* str = msg.c_str();
-        for(size_t i = 0; i < msg.length(); i++) {
-            print(str[i]);
-        }
-        print(STRING_TERM);
-    }
-
     void flush() override {
         msgQueue.clear();
     }
 
-    void setStringCallback(const SerialStringCallback& callback) override {
-        stringCallback = callback;
+    void setBytesCallback(const SerialBytesCallback& callback) override {
+        bytesCallback = callback;
+    }
+
+    void writeBytes(const uint8_t* data, size_t len) override {
+        for (size_t i = 0; i < len; ++i) {
+            msgQueue.emplace_back(static_cast<char>(data[i]));
+        }
     }
 
     deque<char> msgQueue;
-    SerialStringCallback stringCallback;
+    SerialBytesCallback bytesCallback;
 };
 
 class FakeDevice : public Device {
@@ -126,12 +94,9 @@ public:
 
 class MockHttpClient : public HttpClientInterface {
 public:
-    MOCK_METHOD(void, setWifiConfig, (WifiConfig*), (override));
     MOCK_METHOD(bool, isConnected, (), (override));
     MOCK_METHOD(bool, queueRequest, (HttpRequest&), (override));
     MOCK_METHOD(void, disconnect, (), (override));
-    MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));
-    MOCK_METHOD(void, retryConnection, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
     MOCK_METHOD(void, setHttpClientState, (HttpClientState), (override));
     MOCK_METHOD(HttpClientState, getHttpClientState, (), (override));
@@ -144,7 +109,6 @@ public:
     MOCK_METHOD(void, clearPacketHandler, (PktType), (override));
     MOCK_METHOD(const uint8_t*, getGlobalBroadcastAddress, (), (override));
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
-    MOCK_METHOD(void, removePeer, (uint8_t*), (override));
     MOCK_METHOD(int, addEspNowPeer, (const uint8_t*), (override));
     MOCK_METHOD(int, removeEspNowPeer, (const uint8_t*), (override));
     MOCK_METHOD(void, connect, (), (override));
@@ -206,6 +170,18 @@ public:
         return nullptr;
     }
 
+    // Injected peer-graph derivations. ChainManager (and the game states that
+    // gate on it) read role/champion/loop/stability through these; tests shape
+    // them directly instead of standing up a real BEACON flood.
+    void setMutualOpponentIsHunter(std::optional<bool> v) { oppIsHunter_ = v; }
+    std::optional<bool> mutualOpponentIsHunter() const override { return oppIsHunter_; }
+    void setChampionMac(std::optional<net::Mac> v) { champion_ = v; }
+    std::optional<net::Mac> getChampionMac() const override { return champion_; }
+    void setInLoop(bool v) { inLoop_ = v; }
+    bool isInLoop() const override { return inLoop_; }
+    void setTopologyStable(bool v) { topologyStable_ = v; }
+    bool isTopologyStable() const override { return topologyStable_; }
+
 private:
     PortStatus outputStatus = PortStatus::DISCONNECTED;
     PortStatus inputStatus = PortStatus::DISCONNECTED;
@@ -215,51 +191,94 @@ private:
     uint8_t inputPeerMac[6] = {};
     bool outputPeerSet = false;
     bool inputPeerSet = false;
+    std::optional<bool> oppIsHunter_;
+    std::optional<net::Mac> champion_;
+    bool inLoop_ = false;
+    bool topologyStable_ = true;
 };
 
-// Stand-in CDM for tests that flip isLoop() without standing up the full
-// handshake stack. Used by ShootoutProposal/BracketReveal debounce tests.
-class FakeChainDuelManager : public ChainDuelManager {
+// Stand-in ChainManager for tests that flip isCoordinator() without standing up the
+// full connectivity (HELLO/BEACON) stack. Used by ShootoutProposal/BracketReveal debounce
+// tests to simulate coordinator-loss events.
+class FakeChainManager : public ChainManager {
 public:
-    FakeChainDuelManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)
-        : ChainDuelManager(p, wm, rdc) {}
-    bool isLoop() const override { return isLoop_; }
-    void setIsLoop(bool v) { isLoop_ = v; }
+    FakeChainManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)
+        : ChainManager(p, wm, rdc) {}
+    bool isCoordinator() const override { return isCoordinator_; }
+    void setIsCoordinator(bool v) { isCoordinator_ = v; }
+    // Default to "in a stable loop" since shootout tests run inside a ring.
+    bool isInStableLoop() const override { return inStableLoop_; }
+    void setInStableLoop(bool v) { inStableLoop_ = v; }
+    bool isTopologyStable() const override { return topologyStable_; }
 private:
-    bool isLoop_ = true;
+    bool isCoordinator_ = true;
+    bool inStableLoop_ = true;
+    bool topologyStable_ = true;
 };
 
-// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
-// Call deliverLastTo() to route the most-recently-captured packet to another manager's
-// processQuickdrawCommand(), exercising the real serialization/deserialization path.
-class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
+// Radio that records every outbound kQuickdrawCommand frame instead of
+// transmitting it. The stored bytes are exactly what the reliable channel
+// serialized, so tests assert on (and replay) real wire traffic.
+class CapturingPeerComms : public PeerCommsInterface {
 public:
-    FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
+    struct SentQuickdraw {
+        std::array<uint8_t, 6> target;
+        QuickdrawPacket packet;
+    };
 
-    int broadcastPacket(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
-        sentCommands.push_back(command);
-        return 0;
+    int sendData(const uint8_t* mac, PktType type,
+                 const uint8_t* data, const size_t len) override {
+        if (mac != nullptr && type == PktType::kQuickdrawCommand
+            && len == sizeof(QuickdrawPacket)) {
+            SentQuickdraw sent;
+            memcpy(sent.target.data(), mac, 6);
+            memcpy(&sent.packet, data, sizeof(QuickdrawPacket));
+            quickdrawSent.push_back(sent);
+        }
+        return 1;
+    }
+    void setPacketHandler(PktType, PacketCallback, void*) override {}
+    void clearPacketHandler(PktType) override {}
+    const uint8_t* getGlobalBroadcastAddress() override { return broadcast_; }
+    uint8_t* getMacAddress() override { return mac_; }
+    int addEspNowPeer(const uint8_t*) override { return 0; }
+    int removeEspNowPeer(const uint8_t*) override { return 0; }
+    void connect() override {}
+    void disconnect() override {}
+    void setPeerCommsState(PeerCommsState) override {}
+    PeerCommsState getPeerCommsState() override { return PeerCommsState::CONNECTED; }
+
+    std::vector<SentQuickdraw> quickdrawSent;
+
+private:
+    uint8_t mac_[6] = {0};
+    uint8_t broadcast_[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+};
+
+// One simulated device's quickdraw radio stack: capturing radio under a real
+// WirelessManager and WirelessTransport. Pass &transport to
+// MatchManager::initialize to claim the kQuickdrawCommand channel on it;
+// inbound frames enter through transport.deliverIncoming, the same boundary
+// the radio uses (ack, dedup, dispatch all production-path).
+struct QuickdrawTestStack {
+    CapturingPeerComms peerComms;
+    WirelessManager wirelessManager{&peerComms, nullptr};
+    WirelessTransport transport{&wirelessManager};
+
+    std::vector<CapturingPeerComms::SentQuickdraw>& sent() {
+        return peerComms.quickdrawSent;
     }
 
-    void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
-        if (sentCommands.empty()) return;
-        const QuickdrawCommand& cmd = sentCommands.back();
-
-        // Serialize into the same wire format used by the real broadcastPacket.
-        QuickdrawPacket pkt = {};
-        memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
-        memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
-        pkt.isHunter       = cmd.isHunter;
-        pkt.playerDrawTime = cmd.playerDrawTime;
-        pkt.command        = cmd.command;
-
-        recipient->processQuickdrawCommand(
-            senderMac,
-            reinterpret_cast<const uint8_t*>(&pkt),
-            sizeof(pkt));
+    // Replays the newest captured outbound frame into `recipient` as if it
+    // arrived over the air from senderMac.
+    void deliverLastTo(WirelessTransport* recipient, const uint8_t* senderMac) {
+        if (peerComms.quickdrawSent.empty()) return;
+        const auto& sent = peerComms.quickdrawSent.back();
+        recipient->deliverIncoming(
+            PktType::kQuickdrawCommand, 0, senderMac,
+            reinterpret_cast<const uint8_t*>(&sent.packet),
+            sizeof(sent.packet));
     }
-
-    std::vector<QuickdrawCommand> sentCommands;
 };
 
 // Fake light strip for LightManager
@@ -286,7 +305,10 @@ public:
         mockSecondaryButton = new MockButton();
         mockHaptics = new MockHaptics();
         mockHttpClient = new MockHttpClient();
-        mockPeerComms = new MockPeerComms();
+        // NiceMock: the multi-device fixture makes tens of thousands of
+        // expectation-less calls; plain mocks' "uninteresting call" warnings
+        // (~333K lines) make `pio test`'s per-line output parser take minutes.
+        mockPeerComms = new testing::NiceMock<MockPeerComms>();
         mockStorage = new MockStorage();
         lightManager = new LightManager(fakeLightStrip);
         serialManager = new SerialManager(&outputJackSerial, &inputJackSerial);
@@ -324,11 +346,10 @@ public:
     LightManager* getLightManager() override { return lightManager; }
     WirelessManager* getWirelessManager() override { return wirelessManager; }
     SerialManager* getSerialManager() override { return serialManager; }
-    RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override { return &fakeRemoteDeviceCoordinator; }
-
-    std::string getHead() {
-        return serialManager->getOutputHead();
+    RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override {
+        return rdcOverride ? rdcOverride : &fakeRemoteDeviceCoordinator;
     }
+    void setRdcOverride(RemoteDeviceCoordinator* rdc) { rdcOverride = rdc; }
 
     // Mock interface instances
     MockDisplay* mockDisplay;
@@ -346,4 +367,5 @@ public:
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
     FakeRemoteDeviceCoordinator fakeRemoteDeviceCoordinator;
+    RemoteDeviceCoordinator* rdcOverride = nullptr;
 };

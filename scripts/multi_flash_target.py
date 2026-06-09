@@ -44,7 +44,11 @@ def multi_flash(source, target, env):
 
     extra_args = ini_args + runtime_args
 
-    cmd = [sys.executable, script, "--build-dir", build_dir] + extra_args
+    # pio may run under a system python without esptool; flash_multi's device
+    # scans then all time out, so prefer the platformio venv python.
+    pio_python = "/home/tirefire/.platformio/penv/bin/python"
+    python_for_script = pio_python if os.path.exists(pio_python) else sys.executable
+    cmd = [python_for_script, script, "--build-dir", build_dir] + extra_args
 
     print(f"\nLaunching multi-device flasher (build dir: {build_dir})")
     print(f"Command: {' '.join(cmd)}\n")

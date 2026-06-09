@@ -2,6 +2,8 @@
 
 #include "device/drivers/logger.hpp"
 #include <cstring>
+#include <array>
+#include <vector>
 #include "device/drivers/peer-comms-interface.hpp"
 
 // Utility functions
@@ -12,6 +14,24 @@ inline uint64_t MacToUInt64(const uint8_t* macAddr)
         tmp = (tmp << 8) + macAddr[i];
 
     return tmp;
+}
+
+inline bool macInList(const uint8_t* mac, const std::vector<std::array<uint8_t, 6>>& list)
+{
+    for (const auto& m : list)
+        if (std::memcmp(m.data(), mac, 6) == 0) return true;
+    return false;
+}
+
+// Lowest MAC (lexicographic by byte) in a set; the lowest-MAC member is the
+// coordinator. An empty set yields the broadcast MAC (all 0xFF), a sentinel
+// above any real address.
+inline std::array<uint8_t, 6> lowestMacIn(const std::vector<std::array<uint8_t, 6>>& list)
+{
+    std::array<uint8_t, 6> lowest = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    for (const auto& m : list)
+        if (std::memcmp(m.data(), lowest.data(), 6) < 0) lowest = m;
+    return lowest;
 }
 
 inline const char* MacToString(const uint8_t* macAddr)

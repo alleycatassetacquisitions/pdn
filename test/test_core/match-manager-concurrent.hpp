@@ -7,7 +7,6 @@
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
@@ -16,11 +15,10 @@
 // race between the simulated WiFi task (receivePacket) and the main loop (exec +
 // MatchManager reads).
 //
-// Before the fix: receivePacket() called listenForMatchEvents() directly, racing
-// with the main loop reading isMatchReady() / getHunterDrawTime() etc.
-//
-// After the fix: receivePacket() only enqueues; exec() drains on the caller's
-// thread. MatchManager is therefore only ever touched from a single thread.
+// Invariant under test: receivePacket() only enqueues; exec() drains on the
+// caller's thread, so MatchManager is only ever touched from a single thread.
+// A direct receivePacket()->listenForMatchEvents() call would race the main
+// loop reading isMatchReady() / getHunterDrawTime() etc.
 //
 // Run under TSan to confirm zero race reports:
 //   pio test -e native_tsan -f test_core --filter "*MatchManagerConcurrent*"
@@ -37,7 +35,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     char playerId[] = "test";
     player.setUserID(playerId);
     player.setIsHunter(false);
-    FakeQuickdrawWirelessManager wireless;
     FakeRemoteDeviceCoordinator rdc;
     const uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
     rdc.setPeerMac(SerialIdentifier::INPUT_JACK, peerMac);
@@ -46,8 +43,10 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.initialize();
     driver.connect();
 
+    // No transport: this test routes packets through the driver's queue
+    // directly into listenForMatchEvents; sends are out of scope.
     MatchManager mm;
-    mm.initialize(&player, &storage, &wireless);
+    mm.initialize(&player, &storage, nullptr);
     mm.setRemoteDeviceCoordinator(&rdc);
     mm.clearCurrentMatch();
 
@@ -58,18 +57,14 @@ inline void matchManagerConcurrentDriverVsReader() {
             if (len < sizeof(QuickdrawPacket)) return;
             auto* matchMgr = static_cast<MatchManager*>(ctx);
             const auto* pkt = reinterpret_cast<const QuickdrawPacket*>(data);
-            QuickdrawCommand cmd(src,
-                                 static_cast<QDCommand>(pkt->command),
-                                 pkt->matchId, pkt->playerId,
-                                 pkt->playerDrawTime, pkt->isHunter);
-            matchMgr->listenForMatchEvents(cmd);
+            matchMgr->listenForMatchEvents(src, *pkt);
         },
         &mm
     );
 
     std::atomic<bool> running{true};
 
-    // Simulates the WiFi task: only enqueues after the fix — never touches MatchManager.
+    // Simulates the WiFi task: only enqueues, never touches MatchManager.
     std::thread wifiTask([&]() {
         int iter = 0;
         while (running.load(std::memory_order_relaxed)) {

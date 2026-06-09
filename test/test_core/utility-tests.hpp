@@ -48,7 +48,6 @@ inline void uuidStringToBytesProducesCorrectOutput() {
 
     IdGenerator::uuidStringToBytes(uuid, bytes);
 
-    // Verify first few bytes
     EXPECT_EQ(bytes[0], 0x12);
     EXPECT_EQ(bytes[1], 0x34);
     EXPECT_EQ(bytes[2], 0x56);
@@ -70,26 +69,21 @@ inline void uuidBytesToStringProducesValidFormat() {
 
     std::string uuid = IdGenerator::uuidBytesToString(bytes);
 
-    // Should be in format: 8-4-4-4-12
     EXPECT_EQ(uuid.length(), 36);
     EXPECT_EQ(uuid[8], '-');
     EXPECT_EQ(uuid[13], '-');
     EXPECT_EQ(uuid[18], '-');
     EXPECT_EQ(uuid[23], '-');
 
-    // Verify content
     EXPECT_EQ(uuid, "12345678-abcd-ef01-2345-6789abcdef01");
 }
 
 inline void uuidRoundTripPreservesData() {
-    // Original UUID string
     std::string original = "deadbeef-cafe-babe-1234-567890abcdef";
     uint8_t bytes[16];
 
-    // Convert to bytes
     IdGenerator::uuidStringToBytes(original, bytes);
 
-    // Convert back to string
     std::string restored = IdGenerator::uuidBytesToString(bytes);
 
     EXPECT_EQ(restored, original);
@@ -101,7 +95,6 @@ inline void uuidGeneratorProducesValidFormat() {
 
     std::string uuidStr(uuid);
     
-    // Should be valid UUID format
     EXPECT_EQ(uuidStr.length(), 36);
     EXPECT_EQ(uuidStr[8], '-');
     EXPECT_EQ(uuidStr[13], '-');
@@ -148,10 +141,8 @@ inline void stringToMacParsesValidFormat() {
 inline void stringToMacRejectsInvalidLength() {
     uint8_t mac[6];
 
-    // Too short
     EXPECT_FALSE(StringToMac("AA:BB:CC", mac));
 
-    // Too long
     EXPECT_FALSE(StringToMac("AA:BB:CC:DD:EE:FF:00", mac));
 }
 
@@ -167,10 +158,8 @@ inline void macToUInt64ProducesCorrectValue() {
 inline void macRoundTripPreservesData() {
     uint8_t original[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
 
-    // Convert to string
     const char* macStr = MacToString(original);
 
-    // Convert back to bytes
     uint8_t restored[6];
     bool success = StringToMac(macStr, restored);
 
@@ -208,11 +197,9 @@ inline void timerExpiresAfterDuration(FakePlatformClock* fakeClock) {
     EXPECT_TRUE(timer.isRunning());
     EXPECT_FALSE(timer.expired());
 
-    // Advance time, but not enough
     fakeClock->advance(400);
     EXPECT_FALSE(timer.expired());
 
-    // Advance past expiration
     fakeClock->advance(200);
     EXPECT_TRUE(timer.expired());
 }
@@ -269,7 +256,6 @@ inline void timerWithNullClockHandlesGracefully() {
     SimpleTimer::setPlatformClock(nullptr);
     SimpleTimer timer;
 
-    // Should not crash
     timer.setTimer(1000);
     EXPECT_EQ(timer.now, 0);
     EXPECT_EQ(timer.getElapsedTime(), 0);

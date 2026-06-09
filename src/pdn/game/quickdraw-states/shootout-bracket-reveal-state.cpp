@@ -1,8 +1,8 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 
-ShootoutBracketReveal::ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+ShootoutBracketReveal::ShootoutBracketReveal(ShootoutManager* shootout, ChainManager* chainManager)
+    : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL), shootout_(shootout), loopBreakAbort_(shootout, chainManager) {}
 
 void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
     // Clear stale button callbacks left by ShootoutProposal.
@@ -17,7 +17,6 @@ void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
         if (shootout_->isLocalDuelist()) {
@@ -27,11 +26,7 @@ void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
         }
     }
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
-    bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
-    if (loopBreakDebounce_.heldFor(loopBroken, kLoopBreakDebounceMs)) {
-        shootout_->resetToIdle();
-        shouldGoToIdle_ = true;
-    }
+    loopBreakAbort_.tick();
 }
 
 void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
@@ -39,7 +34,7 @@ void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
     shouldGoToSpectator_ = false;
     shouldGoToAborted_ = false;
     shouldGoToIdle_ = false;
-    loopBreakDebounce_.reset();
+    loopBreakAbort_.reset();
 }
 
 bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }

@@ -108,10 +108,6 @@ public:
         return macAddress_;
     }
 
-    void removePeer(uint8_t* macAddr) override {
-        // In native simulation, peers are managed by broker
-        // This is a no-op but could track "known peers" if needed
-    }
 
     int addEspNowPeer(const uint8_t* macAddr) override {
         (void)macAddr;

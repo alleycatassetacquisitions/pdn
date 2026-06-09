@@ -42,10 +42,10 @@ int SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIden
 int SymbolWirelessManager::processSymbolMatchCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen) {
 
     if (dataLen != sizeof(SymbolMatchPacket)) {
-        LOG_E(SWM_TAG, "RX symbol pkt bad len: got %u expected %u from %s",
+        LOG_E(SWM_TAG, "SymbolMatchPacket size mismatch from %s: got %u, expected %u (possible firmware mismatch)",
+              macAddress ? MacToString(macAddress) : "(null)",
               static_cast<unsigned>(dataLen),
-              static_cast<unsigned>(sizeof(SymbolMatchPacket)),
-              macAddress ? MacToString(macAddress) : "(null)");
+              static_cast<unsigned>(sizeof(SymbolMatchPacket)));
         return -1;
     }
 
@@ -66,16 +66,11 @@ int SymbolWirelessManager::processSymbolMatchCommand(const uint8_t* macAddress, 
     bool portResolved = false;
 
     for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-        PortState portState = remoteDeviceCoordinator->getPortState(port);
-        for (const auto& peerMac : portState.peerMacAddresses) {
-            if (macAddress != nullptr && std::memcmp(peerMac.data(), macAddress, 6) == 0) {
-                resolvedPort = port;
-                portResolved = true;
-                break;
-            }
-        }
-
-        if (portResolved) {
+        const uint8_t* directMac = remoteDeviceCoordinator->getPeerMac(port);
+        if (directMac != nullptr && macAddress != nullptr &&
+            std::memcmp(directMac, macAddress, 6) == 0) {
+            resolvedPort = port;
+            portResolved = true;
             break;
         }
     }

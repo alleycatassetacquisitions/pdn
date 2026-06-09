@@ -1,8 +1,9 @@
 #include "game/quickdraw-states.hpp"
-#include "device/device.hpp"
-#include "device/drivers/logger.hpp"
+#include "game/quickdraw-resources.hpp"
 #include "device/animation/hunter-win-animation.hpp"
 #include "device/animation/bounty-win-animation.hpp"
+#include "device/device.hpp"
+#include "device/drivers/logger.hpp"
 
 static const char* TAG = "SymbolMatched";
 

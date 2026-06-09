@@ -46,14 +46,8 @@ public:
         processPendingRequests();
     }
 
-    void setWifiConfig(WifiConfig* config) override {
-        if (config) {
-            wifiConfig = *config;
-        }
-    }
-
     bool isConnected() override {
-        return connected && httpClientState == HttpClientState::CONNECTED;
+        return connected && httpClientState == HttpClientState::WIFI_ENGAGED;
     }
 
     bool queueRequest(HttpRequest& request) override {
@@ -64,19 +58,7 @@ public:
 
     void disconnect() override {
         connected = false;
-        httpClientState = HttpClientState::DISCONNECTED;
-    }
-
-    void updateConfig(WifiConfig* config) override {
-        setWifiConfig(config);
-    }
-
-    void retryConnection() override {
-        // Simulate successful reconnection
-        if (httpClientState == HttpClientState::DISCONNECTED) {
-            httpClientState = HttpClientState::CONNECTED;
-            connected = true;
-        }
+        httpClientState = HttpClientState::IDLE;
     }
 
     uint8_t* getMacAddress() override {
@@ -84,11 +66,11 @@ public:
     }
 
     void setHttpClientState(HttpClientState state) override {
-        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+        if (state == HttpClientState::WIFI_ENGAGED && httpClientState != HttpClientState::WIFI_ENGAGED) {
             // Simulate connection
             connected = true;
-            httpClientState = HttpClientState::CONNECTED;
-        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+            httpClientState = HttpClientState::WIFI_ENGAGED;
+        } else if (state == HttpClientState::IDLE && httpClientState != HttpClientState::IDLE) {
             disconnect();
         }
     }
@@ -98,14 +80,13 @@ public:
     }
 
     // Test helper methods
-    void setConnected(bool isConnected) { 
+    void setConnected(bool isConnected) {
         connected = isConnected;
         if (isConnected) {
-            httpClientState = HttpClientState::CONNECTED;
+            httpClientState = HttpClientState::WIFI_ENGAGED;
         }
     }
-    uint8_t getCurrentChannel() const { return currentChannel; }
-    
+
     /**
      * Enable or disable mock server mode.
      * When enabled, requests are processed through the CLI MockHttpServer.
@@ -134,11 +115,9 @@ public:
     }
 
 private:
-    WifiConfig wifiConfig;
     bool connected = false;
-    uint8_t currentChannel = 0;
     uint8_t macAddress[6];
-    HttpClientState httpClientState = HttpClientState::DISCONNECTED;
+    HttpClientState httpClientState = HttpClientState::IDLE;
     
     std::queue<HttpRequest> pendingRequests_;
     std::deque<HttpRequestHistoryEntry> requestHistory_;

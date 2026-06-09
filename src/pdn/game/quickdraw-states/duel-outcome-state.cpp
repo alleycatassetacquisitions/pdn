@@ -2,30 +2,30 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/hunter-win-animation.hpp"
 #include "device/animation/bounty-win-animation.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "device/animation/lose-animation.hpp"
+#include "game/chain-manager.hpp"
 #include "game/match-manager.hpp"
 #include "device/device.hpp"
 #include <cstdio>
 
-Win::Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : TypedState<PDN>(WIN) {
-    this->player = player;
-    this->chainDuelManager = chainDuelManager;
-    this->matchManager = matchManager;
-}
+DuelOutcome::DuelOutcome(Player *player, ChainManager* chainManager, MatchManager* matchManager, bool won)
+    : TypedState<PDN>(won ? WIN : LOSE), player(player), chainManager(chainManager),
+      matchManager(matchManager), won_(won) {}
 
-Win::~Win() {
+DuelOutcome::~DuelOutcome() {
     player = nullptr;
     matchManager = nullptr;
 }
 
-void Win::onStateMounted(PDN* pdn) {
+void DuelOutcome::onStateMounted(PDN* pdn) {
     // Propagate the outcome to the supporter chain (no-op for non-champion).
-    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::WIN);
+    chainManager->sendGameEventToSupporters(won_ ? ChainGameEventType::WIN : ChainGameEventType::LOSS);
 
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
 
     pdn->getDisplay()->invalidateScreen()
-        ->drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::WIN));
+        ->drawImage(getImageForAllegiance(player->getAllegiance(),
+                                          won_ ? ImageType::WIN : ImageType::LOSE));
 
     if (matchManager != nullptr) {
         const LastMatchDisplay& d = matchManager->getLastMatchDisplay();
@@ -39,7 +39,7 @@ void Win::onStateMounted(PDN* pdn) {
             pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                 ->drawText(myLine, 2, 12);
             if (d.boostMs > 0) {
-                unsigned long boosts = d.boostMs / ChainDuelManager::BOOST_PER_SUPPORTER_MS;
+                unsigned long boosts = d.boostMs / ChainManager::BOOST_PER_SUPPORTER_MS;
                 snprintf(boostLine, sizeof(boostLine), "Boost: %lu", boosts);
                 pdn->getDisplay()->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
                     ->drawText(boostLine, 2, 28);
@@ -51,12 +51,13 @@ void Win::onStateMounted(PDN* pdn) {
 
     pdn->getDisplay()->render();
 
-    winTimer.setTimer(8000);
+    outcomeTimer.setTimer(8000);
 
-    AnimationBase* animation = player->isHunter()
-        ? (AnimationBase*)new HunterWinAnimation()
-        : (AnimationBase*)new BountyWinAnimation();
     AnimationConfig config;
+    AnimationBase* animation = won_
+        ? (player->isHunter() ? static_cast<AnimationBase*>(new HunterWinAnimation())
+                              : static_cast<AnimationBase*>(new BountyWinAnimation()))
+        : static_cast<AnimationBase*>(new LoseAnimation());
     config.loop = true;
     config.speed = 16;
     config.initialState = LEDState();
@@ -65,23 +66,19 @@ void Win::onStateMounted(PDN* pdn) {
     pdn->getLightManager()->startAnimation(animation, config);
 }
 
-void Win::onStateLoop(PDN* pdn) {
-    winTimer.updateTime();
-    if(winTimer.expired()) {
-        reset = true;
-    }
+void DuelOutcome::onStateLoop(PDN* pdn) {
+    outcomeTimer.updateTime();
 }
 
-void Win::onStateDismounted(PDN* pdn) {
-    winTimer.invalidate();
-    reset = false;
+void DuelOutcome::onStateDismounted(PDN* pdn) {
+    outcomeTimer.invalidate();
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
 }
 
-bool Win::resetGame() {
-    return reset;
+bool DuelOutcome::resetGame() {
+    return outcomeTimer.expired();
 }
 
-bool Win::isTerminalState() {
+bool DuelOutcome::isTerminalState() {
     return true;
 }

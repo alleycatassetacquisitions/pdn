@@ -30,7 +30,6 @@ void ShootoutSpectator::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutSpectator::onStateLoop(PDN* pdn) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS && shootout_->isLocalDuelist()) {
         shouldGoToDuelCountdown_ = true;
@@ -39,8 +38,7 @@ void ShootoutSpectator::onStateLoop(PDN* pdn) {
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
 
     auto pair = shootout_->getCurrentMatchPair();
-    if (memcmp(pair.first.data(), lastDisplayedA_.data(), 6) != 0 ||
-        memcmp(pair.second.data(), lastDisplayedB_.data(), 6) != 0) {
+    if (pair.first != lastDisplayedA_ || pair.second != lastDisplayedB_) {
         lastDisplayedA_ = pair.first;
         lastDisplayedB_ = pair.second;
         drawSpectatorScreen(pdn, shootout_, pair);

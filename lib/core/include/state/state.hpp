@@ -135,8 +135,8 @@ private:
  *       void onStateLoop(PDN* pdn) override    { ... }
  *   };
  *
- * Device-agnostic states (e.g. handshake states) should inherit State directly
- * and override onStateMounted(Device*) as before.
+ * Device-agnostic states (only test states today) inherit State directly
+ * and override onStateMounted(Device*).
  */
 template<typename DeviceT>
 class TypedState : public State {

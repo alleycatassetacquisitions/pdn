@@ -23,6 +23,24 @@ class StateMachine;
 
 using AppConfig = std::map<StateId, StateMachine*>;
 
+// This layer exists so the same game code runs on three targets: ESP32-S3
+// hardware, the native CLI simulator, and the native test suite. Game code
+// talks only to driver interfaces; retargeting is swapping the DriverConfig
+// handed to the concrete Device. Reaching around this boundary into platform
+// APIs (Arduino / FreeRTOS / WiFi.h) from game code breaks the native targets,
+// which is where nearly all iteration and regression coverage happens.
+//
+// Everything runs on one cooperative loop: loop() gives every driver an exec()
+// slice, then runs the active app's onStateLoop(). Nothing may block: a
+// blocked tick freezes input sampling, the display, state transitions, and the
+// wireless retransmit pump together. Long operations are written as
+// exec()-driven non-blocking slices instead (see the HTTP client driver).
+//
+// Drivers register by name (driver-names.hpp) rather than by fixed slots so
+// device variants (PDN, FDN) can carry different peripheral sets without
+// changing this base class; the convenience accessors return null when the
+// named driver is absent. Registration hands ownership to DriverManager, which
+// deletes drivers on dismount.
 class Device {
 public:
     Device(const Device&) = delete;

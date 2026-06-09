@@ -74,3 +74,5 @@ callgrind*
 
 .VSCodeCounter/
 .clangd/
+
+.superpowers/

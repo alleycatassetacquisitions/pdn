@@ -93,8 +93,8 @@ Use `http offline` to simulate network failures.
 .pio/build/native_cli/program 2
 
 # In the simulator:
-cable 0 1              # Connect devices - starts handshake
-# Watch devices progress through: Idle → Handshake → ConnectionSuccessful → DuelCountdown → Duel
+cable 0 1              # Connect devices - HELLO peering begins
+# Watch devices progress through: Idle → DuelCountdown → Duel (match init over ESP-NOW after HELLO peering)
 
 # Press buttons during duel
 press 0 primary        # Hunter presses button

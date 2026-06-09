@@ -2,14 +2,14 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/countdown-animation.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/chain-manager.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 
-DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+DuelCountdown::DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = player;
     this->matchManager = matchManager;
-    this->chainDuelManager = chainDuelManager;
+    this->chainManager = chainManager;
 }
 
 DuelCountdown::~DuelCountdown() {
@@ -19,9 +19,8 @@ DuelCountdown::~DuelCountdown() {
 
 
 void DuelCountdown::onStateMounted(PDN* pdn) {
-    // If this device is a champion, tell its supporter chain that the
-    // duel is starting so they can arm their confirmation window.
-    chainDuelManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
+    // Champion only: arm the supporter chain's confirmation window.
+    chainManager->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);
 
     pdn->getDisplay()->
     invalidateScreen()->
@@ -90,14 +89,19 @@ void DuelCountdown::onStateDismounted(PDN* pdn) {
         matchManager->clearCurrentMatch();
         // Countdown aborted (opponent unplugged). Tell supporters to disarm
         // so they don't stay stuck on "PRESS".
-        if (chainDuelManager != nullptr) {
-            chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
+        if (chainManager != nullptr) {
+            chainManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
         }
     }
 
     doBattle = false;
     currentStepIndex = 0;
     countdownTimer.invalidate();
+    hapticTimer.invalidate();
+    // onStateLoop clears the per-step haptic pulse when its timer expires;
+    // leaving mid-pulse (loop-close yield, abort, disconnect) skips that and the
+    // motor latches on. Force it off here.
+    pdn->getHaptics()->setIntensity(0);
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
 }
@@ -111,9 +115,9 @@ bool DuelCountdown::disconnectedBackToIdle() {
 }
 
 bool DuelCountdown::isPrimaryRequired() {
-    return player->isHunter();
+    return matchManager->localIsHunterForMatch();
 }
 
 bool DuelCountdown::isAuxRequired() {
-    return !player->isHunter();
+    return !matchManager->localIsHunterForMatch();
 }

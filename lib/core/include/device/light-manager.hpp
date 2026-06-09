@@ -1,21 +1,11 @@
 /*
-    This class is responsible for managing the LED's on the device.
-
-    It will be responsible for:
-    - Keeping track of the state of LED's,
-    - loading and unloading animations and color palettes.
-    - setting brightness - brightness values should always be clamped between 0 and 255.
-    - any other led management functions.
-
-    This class relies on the FastLED library.
-
-    When loading an animation, we should be able to load a color palette and a bezier curve.
-    The bezier should be optional, and if no bezier is provided, a linear animation should be used.
+    Manages the LEDs on the device. Platform-agnostic over LightStrip;
+    FastLED lives in the ws2812b-fastled driver. Brightness values are
+    always clamped between 0 and 255.
 */
 
 #pragma once
 
-#include "utils/simple-timer.hpp"
 #include "drivers/light-interface.hpp"
 #include "device/animation/animation-base.hpp"
 

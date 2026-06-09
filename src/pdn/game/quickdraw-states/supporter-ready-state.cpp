@@ -1,5 +1,5 @@
 #include "game/quickdraw-states.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/chain-manager.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"
@@ -9,10 +9,10 @@
 
 #define TAG "SupporterReady"
 
-SupporterReady::SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager)
+SupporterReady::SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager)
     : ConnectState<PDN>(remoteDeviceCoordinator, SUPPORTER_READY) {
     this->player = player;
-    this->chainDuelManager = chainDuelManager;
+    this->chainManager = chainManager;
 }
 
 SupporterReady::~SupporterReady() {
@@ -20,8 +20,8 @@ SupporterReady::~SupporterReady() {
 }
 
 void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
-    AnimationBase* animation;
     AnimationConfig config;
+    AnimationBase* animation;
     if (confirmed) {
         animation = new IdleAnimation();
         config.speed = 20;
@@ -64,9 +64,11 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     auto onSupporterPress = [](void *ctx) {
         auto* self = static_cast<SupporterReady*>(ctx);
         if (!self || !self->buttonArmed || self->hasConfirmed) return;
-        if (self->chainDuelManager == nullptr) return;
+        if (self->chainManager == nullptr) return;
 
-        self->chainDuelManager->sendConfirm();
+        // Don't spend the press unless a CONFIRM actually went out; with no
+        // champion resolved yet the next press (or the 1Hz backstop) retries.
+        if (!self->chainManager->sendConfirm()) return;
 
         self->hasConfirmed = true;
         self->displayIsDirty = true;
@@ -78,7 +80,16 @@ void SupporterReady::onStateMounted(PDN* pdn) {
 }
 
 void SupporterReady::onStateLoop(PDN* pdn) {
-    if (chainDuelManager == nullptr || !chainDuelManager->isSupporter()) {
+    if (chainManager == nullptr || !chainManager->isSupporter()) {
+        transitionToIdleFlag = true;
+    }
+    // A closed loop means a shootout is forming on every ring member. A
+    // same-role-adjacent member stays isSupporter==true and would otherwise sit
+    // here forever (no CONFIRM arrives until someone presses confirm, which needs
+    // the proposal screen). Leave for Idle so the Idle->ShootoutProposal gate
+    // fires. Gating on isInStableLoop prevents toggling: without it Idle has no
+    // valid transition and would bounce straight back here.
+    if (chainManager && chainManager->isInStableLoop()) {
         transitionToIdleFlag = true;
     }
 
@@ -146,9 +157,8 @@ void SupporterReady::onStateDismounted(PDN* pdn) {
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
 }
 
-// Runs on the ESP-NOW WiFi task on hardware. Touch only atomic fields here;
-// onStateLoop (main task) observes lastResult transitions and manages the
-// non-atomic resultClearTimer.
+// Touch only atomic fields here; onStateLoop (main task) observes lastResult
+// transitions and manages the non-atomic resultClearTimer.
 void SupporterReady::onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac) {
     (void)senderMac;
     ChainGameEventType et = static_cast<ChainGameEventType>(event_type);

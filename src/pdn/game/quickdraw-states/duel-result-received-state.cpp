@@ -6,14 +6,12 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
-    this->player = player;
-    this->matchManager = matchManager;
+DuelReceivedResult::DuelReceivedResult(MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator)
+    : DuelWaitState(matchManager, remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
 }
 
 DuelReceivedResult::~DuelReceivedResult() {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state destroyed");
-    this->player = nullptr;
     this->matchManager = nullptr;
 }
 
@@ -24,7 +22,7 @@ void DuelReceivedResult::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(duelButtonPush, matchManager, ButtonInteraction::CLICK);
 
-    buttonPushGraceTimer.setTimer(BUTTON_PUSH_GRACE_PERIOD);
+    buttonPushGraceTimer.setTimer(quickdraw_timing::BUTTON_PUSH_GRACE_PERIOD_MS);
 }
 
 void DuelReceivedResult::onStateLoop(PDN* pdn) {
@@ -34,41 +32,33 @@ void DuelReceivedResult::onStateLoop(PDN* pdn) {
 
     buttonPushGraceTimer.updateTime();
 
+    // sendNeverPressed is first-writer-wins and idempotent, so calling it every
+    // tick past expiry needs no "already sent" flag; a press landing the same
+    // tick already resolved my side, so it no-ops too.
     if(buttonPushGraceTimer.expired()) {
-        LOG_I(DUEL_RESULT_RECEIVED_TAG, "Button push grace period expired");
-
         unsigned long pityTime = SimpleTimer::getPlatformClock()->milliseconds() - matchManager->getDuelLocalStartTime();
-
         matchManager->sendNeverPressed(pityTime);
-        transitionToDuelResultState = true;
     }
-}   
+}
 
 void DuelReceivedResult::onStateDismounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
 
-    if (!isConnected()) {
-        matchManager->clearCurrentMatch();
-    }
+    clearMatchOnDebouncedDisconnect();
 
-    transitionToDuelResultState = false;
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     buttonPushGraceTimer.invalidate();
 }
 
 bool DuelReceivedResult::transitionToDuelResult() {
-    return matchManager->matchResultsAreIn() || transitionToDuelResultState;
-}
-
-bool DuelReceivedResult::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
+    return matchManager->matchResultsAreIn();
 }
 
 bool DuelReceivedResult::isPrimaryRequired() {
-    return player->isHunter();
+    return matchManager->localIsHunterForMatch();
 }
 
 bool DuelReceivedResult::isAuxRequired() {
-    return !player->isHunter();
+    return !matchManager->localIsHunterForMatch();
 }

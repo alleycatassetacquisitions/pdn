@@ -1,6 +1,7 @@
 #include "game/quickdraw-states.hpp"
-#include "device/device.hpp"
+#include "game/quickdraw-resources.hpp"
 #include "device/animation/idle-animation.hpp"
+#include "device/device.hpp"
 #include "device/drivers/logger.hpp"
 #include <functional>
 
@@ -30,7 +31,7 @@ void SymbolState::onStateMounted(PDN* pdn) {
     toggleSymbol = true;
 
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
-        fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
+        fdnMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
     }
 
     if (fdnMac != nullptr) {
@@ -85,7 +86,7 @@ void SymbolState::onStateLoop(PDN* pdn) {
         hapticPulseActive = false;
     }
 
-    // Buffer animation must not block the main loop — handshake/sync needs to run every tick.
+    // Buffer animation must not block the main loop; RDC sync (HELLO liveness) needs to run every tick.
     if (bufferTimer.isRunning()) {
         if (bufferTimer.expired()) {
             bufferTimer.invalidate();
@@ -156,11 +157,6 @@ bool SymbolState::transitionToIdle() {
 
 bool SymbolState::transitionToSymbolMatched() {
     return transitionToSymbolMatchedState;
-}
-
-void SymbolState::renderSymbolScreen(PDN* pdn) {
-    
-    
 }
 
 void SymbolState::advanceSymbolRender(PDN* pdn) {

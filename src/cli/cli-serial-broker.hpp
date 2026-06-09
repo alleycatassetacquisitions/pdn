@@ -249,22 +249,15 @@ private:
     }
     
     /**
-     * Transfer data from one jack's output buffer to another jack's input.
+     * Transfer raw bytes from one jack's output buffer into the peer jack's
+     * RX path verbatim. Presence/topology is binary HELLO/BEACON framing, so
+     * no line splitting or ASCII reframing.
      */
     void transferFromTo(NativeSerialDriver* from, NativeSerialDriver* to) {
         std::string data = from->getOutput();
         if (!data.empty()) {
-            // Parse into messages (split by newlines, which is how println works)
-            size_t pos = 0;
-            while ((pos = data.find('\n')) != std::string::npos) {
-                std::string msg = data.substr(0, pos);
-                if (!msg.empty()) {
-                    // The message already has STRING_START (*) prepended by writeString
-                    // Just add the terminator that DeviceSerial expects
-                    to->injectInput(msg + "\r");
-                }
-                data.erase(0, pos + 1);
-            }
+            to->injectInputBytes(reinterpret_cast<const uint8_t*>(data.data()),
+                                 data.size());
             from->clearOutput();
         }
     }

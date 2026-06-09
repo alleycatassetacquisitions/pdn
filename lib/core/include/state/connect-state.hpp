@@ -19,12 +19,11 @@ public:
     }
 
     bool isConnected() {
-        auto connectedOrChain = [this](SerialIdentifier jack) {
-            PortStatus s = remoteDeviceCoordinator->getPortStatus(jack);
-            return s == PortStatus::CONNECTED || s == PortStatus::DAISY_CHAINED;
+        auto connected = [this](SerialIdentifier jack) {
+            return remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED;
         };
-        return (isPrimaryRequired() && connectedOrChain(SerialIdentifier::OUTPUT_JACK)) ||
-               (isAuxRequired() && connectedOrChain(SerialIdentifier::INPUT_JACK));
+        return (isPrimaryRequired() && connected(SerialIdentifier::OUTPUT_JACK)) ||
+               (isAuxRequired() && connected(SerialIdentifier::INPUT_JACK));
     }
 
     bool isPersistentlyDisconnected() {

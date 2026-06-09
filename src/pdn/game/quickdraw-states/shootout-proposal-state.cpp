@@ -1,8 +1,8 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 
-ShootoutProposal::ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : TypedState<PDN>(SHOOTOUT_PROPOSAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+ShootoutProposal::ShootoutProposal(ShootoutManager* shootout, ChainManager* chainManager)
+    : TypedState<PDN>(SHOOTOUT_PROPOSAL), shootout_(shootout), loopBreakAbort_(shootout, chainManager) {}
 
 void ShootoutProposal::onStateMounted(PDN* pdn) {
     shootout_->startProposal();
@@ -22,16 +22,11 @@ void ShootoutProposal::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutProposal::onStateLoop(PDN* pdn) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
     if (p == ShootoutManager::Phase::IDLE) shouldGoToIdle_ = true;
-    bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
-    if (loopBreakDebounce_.heldFor(loopBroken, kLoopBreakDebounceMs)) {
-        shootout_->resetToIdle();
-        shouldGoToIdle_ = true;
-    }
+    loopBreakAbort_.tick();
 }
 
 void ShootoutProposal::onStateDismounted(PDN* pdn) {
@@ -40,7 +35,7 @@ void ShootoutProposal::onStateDismounted(PDN* pdn) {
     shouldGoToReveal_ = false;
     shouldGoToIdle_ = false;
     shouldGoToAborted_ = false;
-    loopBreakDebounce_.reset();
+    loopBreakAbort_.reset();
 }
 
 bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }

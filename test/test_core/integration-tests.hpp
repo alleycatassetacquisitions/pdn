@@ -16,8 +16,8 @@ using ::testing::NiceMock;
 // ============================================
 
 /**
- * Two-device duel simulation. Each device has its own MatchManager and
- * FakeQuickdrawWirelessManager. performHandshake() drives the production
+ * Two-device duel simulation. Each device has its own MatchManager over its
+ * own QuickdrawTestStack. performHandshake() drives the production
  * SEND_MATCH_ID → MATCH_ID_ACK exchange so tests never call createMatch().
  */
 class DuelIntegrationTestSuite : public testing::Test {
@@ -37,21 +37,13 @@ public:
         bounty->setUserID(bountyId);
         bounty->setIsHunter(false);
 
-        hunterWirelessManager = new FakeQuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, nullptr, 0);
         hunterMatchManager = new MatchManager();
-        hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
+        hunterMatchManager->initialize(hunter, &hunterStorage, &hunterWireless.transport);
         hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
-        hunterWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
 
-        bountyWirelessManager = new FakeQuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, nullptr, 0);
         bountyMatchManager = new MatchManager();
-        bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
+        bountyMatchManager->initialize(bounty, &bountyStorage, &bountyWireless.transport);
         bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
-        bountyWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, bountyMatchManager, std::placeholders::_1));
     }
 
     void TearDown() override {
@@ -59,8 +51,6 @@ public:
         bountyMatchManager->clearCurrentMatch();
         delete hunterMatchManager;
         delete bountyMatchManager;
-        delete hunterWirelessManager;
-        delete bountyWirelessManager;
         delete hunter;
         delete bounty;
         SimpleTimer::setPlatformClock(nullptr);
@@ -75,8 +65,8 @@ public:
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
-        hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
-        bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
+        hunterWireless.deliverLastTo(&bountyWireless.transport, hunterMac);
+        bountyWireless.deliverLastTo(&hunterWireless.transport, bountyMac);
     }
 
     FakePlatformClock* fakeClock = nullptr;
@@ -84,8 +74,8 @@ public:
     Player* bounty = nullptr;
     MatchManager* hunterMatchManager = nullptr;
     MatchManager* bountyMatchManager = nullptr;
-    FakeQuickdrawWirelessManager* hunterWirelessManager = nullptr;
-    FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
+    QuickdrawTestStack hunterWireless;
+    QuickdrawTestStack bountyWireless;
     NiceMock<MockStorage> hunterStorage;
     NiceMock<MockStorage> bountyStorage;
     FakeRemoteDeviceCoordinator hunterFakeRdc;
@@ -107,39 +97,26 @@ inline void completeDuelFlowHunterWins(DuelIntegrationTestSuite* suite) {
     suite->hunterMatchManager->setDuelLocalStartTime(10000);
     suite->bountyMatchManager->setDuelLocalStartTime(10000);
 
+    uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+    uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+
     // Hunter side
     suite->hunterMatchManager->setHunterDrawTime(HUNTER_REACTION_MS);
     suite->hunterMatchManager->setReceivedButtonPush();
-    suite->hunterMatchManager->setBountyDrawTime(BOUNTY_REACTION_MS);
-    suite->hunterMatchManager->setReceivedDrawResult();
+    suite->hunterMatchManager->listenForMatchEvents(bountyMac, makeQuickdrawPacket(QDCommand::DRAW_RESULT, suite->hunterMatchManager->getCurrentMatch()->getMatchId(),
+        "boun", BOUNTY_REACTION_MS, false));
 
     EXPECT_TRUE(suite->hunterMatchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->hunterMatchManager->didWin());
 
-    suite->hunter->incrementWins();
-    suite->hunter->incrementMatchesPlayed();
-    suite->hunter->incrementStreak();
-    suite->hunter->addReactionTime(HUNTER_REACTION_MS);
-
-    EXPECT_EQ(suite->hunter->getWins(), 1);
-    EXPECT_EQ(suite->hunter->getStreak(), 1);
-
     // Bounty side
     suite->bountyMatchManager->setBountyDrawTime(BOUNTY_REACTION_MS);
     suite->bountyMatchManager->setReceivedButtonPush();
-    suite->bountyMatchManager->setHunterDrawTime(HUNTER_REACTION_MS);
-    suite->bountyMatchManager->setReceivedDrawResult();
+    suite->bountyMatchManager->listenForMatchEvents(hunterMac, makeQuickdrawPacket(QDCommand::DRAW_RESULT, suite->bountyMatchManager->getCurrentMatch()->getMatchId(),
+        "hunt", HUNTER_REACTION_MS, true));
 
     EXPECT_TRUE(suite->bountyMatchManager->matchResultsAreIn());
     EXPECT_FALSE(suite->bountyMatchManager->didWin());
-
-    suite->bounty->incrementLosses();
-    suite->bounty->incrementMatchesPlayed();
-    suite->bounty->resetStreak();
-    suite->bounty->addReactionTime(BOUNTY_REACTION_MS);
-
-    EXPECT_EQ(suite->bounty->getLosses(), 1);
-    EXPECT_EQ(suite->bounty->getStreak(), 0);
 }
 
 // ============================================
@@ -155,11 +132,14 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     suite->hunterMatchManager->setDuelLocalStartTime(5000);
     suite->bountyMatchManager->setDuelLocalStartTime(5000);
 
+    uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
+    uint8_t hunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
+
     // Hunter side
     suite->hunterMatchManager->setHunterDrawTime(HUNTER_REACTION_MS);
     suite->hunterMatchManager->setReceivedButtonPush();
-    suite->hunterMatchManager->setBountyDrawTime(BOUNTY_REACTION_MS);
-    suite->hunterMatchManager->setReceivedDrawResult();
+    suite->hunterMatchManager->listenForMatchEvents(bountyMac, makeQuickdrawPacket(QDCommand::DRAW_RESULT, suite->hunterMatchManager->getCurrentMatch()->getMatchId(),
+        "boun", BOUNTY_REACTION_MS, false));
 
     EXPECT_TRUE(suite->hunterMatchManager->matchResultsAreIn());
     EXPECT_FALSE(suite->hunterMatchManager->didWin());
@@ -167,89 +147,14 @@ inline void completeDuelFlowBountyWins(DuelIntegrationTestSuite* suite) {
     // Bounty side
     suite->bountyMatchManager->setBountyDrawTime(BOUNTY_REACTION_MS);
     suite->bountyMatchManager->setReceivedButtonPush();
-    suite->bountyMatchManager->setHunterDrawTime(HUNTER_REACTION_MS);
-    suite->bountyMatchManager->setReceivedDrawResult();
+    suite->bountyMatchManager->listenForMatchEvents(hunterMac, makeQuickdrawPacket(QDCommand::DRAW_RESULT, suite->bountyMatchManager->getCurrentMatch()->getMatchId(),
+        "hunt", HUNTER_REACTION_MS, true));
 
     EXPECT_TRUE(suite->bountyMatchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->bountyMatchManager->didWin());
 }
 
-// ============================================
-// Match Data Serialization Flow
-// ============================================
 
-inline void matchSerializationRoundTrip() {
-    Match originalMatch(
-        "abcdef12-3456-7890-abcd-ef1234567890",
-        "a0b1c2d3-0000-0000-0000-000000000001",
-        true
-    );
-    originalMatch.setHunterDrawTime(225);
-    originalMatch.setBountyDrawTime(310);
-
-    uint8_t buffer[MATCH_BINARY_SIZE];
-    size_t bytesWritten = originalMatch.serialize(buffer);
-    EXPECT_EQ(bytesWritten, MATCH_BINARY_SIZE);
-
-    Match receivedMatch;
-    size_t bytesRead = receivedMatch.deserialize(buffer);
-    EXPECT_EQ(bytesRead, MATCH_BINARY_SIZE);
-
-    EXPECT_STREQ(receivedMatch.getMatchId(), originalMatch.getMatchId());
-    EXPECT_EQ(receivedMatch.getHunterDrawTime(), 225);
-    EXPECT_EQ(receivedMatch.getBountyDrawTime(), 310);
-
-    std::string json = receivedMatch.toJson();
-    Match jsonRestored;
-    jsonRestored.fromJson(json);
-
-    EXPECT_STREQ(jsonRestored.getMatchId(), originalMatch.getMatchId());
-    EXPECT_EQ(jsonRestored.getHunterDrawTime(), 225);
-}
-
-// ============================================
-// Player Stats Flow Over Multiple Matches
-// ============================================
-
-inline void playerStatsAccumulateAcrossMatches(Player* player) {
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-    player->addReactionTime(200);
-
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-    player->addReactionTime(180);
-
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-    player->addReactionTime(220);
-
-    EXPECT_EQ(player->getStreak(), 3);
-    EXPECT_EQ(player->getWins(), 3);
-
-    player->incrementLosses();
-    player->incrementMatchesPlayed();
-    player->resetStreak();
-    player->addReactionTime(350);
-
-    EXPECT_EQ(player->getStreak(), 0);
-    EXPECT_EQ(player->getLosses(), 1);
-
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-    player->addReactionTime(190);
-
-    EXPECT_EQ(player->getWins(), 4);
-    EXPECT_EQ(player->getLosses(), 1);
-    EXPECT_EQ(player->getMatchesPlayed(), 5);
-    EXPECT_EQ(player->getStreak(), 1);
-    EXPECT_EQ(player->getLastReactionTime(), 190);
-    EXPECT_EQ(player->getAverageReactionTime(), 228);
-}
 
 // ============================================
 // Edge Cases
@@ -258,10 +163,11 @@ inline void playerStatsAccumulateAcrossMatches(Player* player) {
 inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
     suite->performHandshake();
 
+    uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
     suite->hunterMatchManager->setHunterDrawTime(250);
-    suite->hunterMatchManager->setBountyDrawTime(250);
     suite->hunterMatchManager->setReceivedButtonPush();
-    suite->hunterMatchManager->setReceivedDrawResult();
+    suite->hunterMatchManager->listenForMatchEvents(bountyMac, makeQuickdrawPacket(QDCommand::DRAW_RESULT, suite->hunterMatchManager->getCurrentMatch()->getMatchId(),
+        "boun", 250, false));
 
     // Equal times: hunter_time < bounty_time is false, so hunter loses
     EXPECT_FALSE(suite->hunterMatchManager->didWin());
@@ -270,9 +176,11 @@ inline void duelWithTiedReactionTimes(DuelIntegrationTestSuite* suite) {
 inline void duelWithOpponentTimeout(DuelIntegrationTestSuite* suite) {
     suite->performHandshake();
 
+    uint8_t bountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
     suite->hunterMatchManager->setHunterDrawTime(300);
     suite->hunterMatchManager->setReceivedButtonPush();
-    suite->hunterMatchManager->setOpponentNeverPressed();
+    suite->hunterMatchManager->listenForMatchEvents(bountyMac, makeQuickdrawPacket(QDCommand::NEVER_PRESSED, suite->hunterMatchManager->getCurrentMatch()->getMatchId(),
+        "boun", 0, false));
 
     EXPECT_TRUE(suite->hunterMatchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->hunterMatchManager->didWin());

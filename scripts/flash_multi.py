@@ -73,7 +73,7 @@ def test_esp32_on_port(port_name):
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "esptool", "--port", port_name, subcmd],
-                capture_output=True, text=True, timeout=2,
+                capture_output=True, text=True, timeout=15,
                 encoding="utf-8", errors="replace",
             )
             if result.returncode == 0 and "ESP32" in result.stdout:

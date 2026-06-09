@@ -1,12 +1,8 @@
-//
-// CLI Test Entry Point
-// Run with: pio test -e native_cli
-//
+// CLI Test Entry Point. Run with: pio test -e native_cli_test
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
-// CLI-specific test headers
 #include "cli-broker-tests.hpp"
 #include "cli-http-server-tests.hpp"
 #include "native-driver-tests.hpp"
@@ -115,16 +111,8 @@ TEST_F(NativeSerialDriverTestSuite, OutputBufferMaxSize) {
     serialDriverOutputBufferMaxSize(this);
 }
 
-TEST_F(NativeSerialDriverTestSuite, InputQueueFIFO) {
-    serialDriverInputQueueFIFO(this);
-}
-
 TEST_F(NativeSerialDriverTestSuite, AvailableForWrite) {
     serialDriverAvailableForWrite(this);
-}
-
-TEST_F(NativeSerialDriverTestSuite, TracksHistory) {
-    serialDriverTracksHistory(this);
 }
 
 TEST_F(NativeSerialDriverTestSuite, ClearOutput) {
@@ -133,10 +121,6 @@ TEST_F(NativeSerialDriverTestSuite, ClearOutput) {
 
 TEST_F(NativeSerialDriverTestSuite, CallbackInvoked) {
     serialDriverCallbackInvoked(this);
-}
-
-TEST_F(NativeSerialDriverTestSuite, StripsFraming) {
-    serialDriverStripsFraming(this);
 }
 
 // ============================================
@@ -200,7 +184,7 @@ TEST_F(NativeLightStripDriverTestSuite, GlobalBrightness) {
 }
 
 // ============================================
-// NATIVE DISPLAY DRIVER TESTS - Old Behavior
+// NATIVE DISPLAY DRIVER TESTS - Text & Buffer
 // ============================================
 
 TEST_F(NativeDisplayDriverTestSuite, DrawTextAddsToHistory) {

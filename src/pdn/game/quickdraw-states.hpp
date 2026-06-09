@@ -6,21 +6,33 @@
 #include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/resender.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
-#include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
-#include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
-#include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "game/chain-manager.hpp"
 #include "game/shootout-manager.hpp"
+
+// Duel grace windows are coupled, not independent. A presser in DuelPushed must
+// outlast the opponent's worst-case NEVER_PRESSED: the opponent's full
+// button-push grace + reliable retransmit budget + margin. Below that our grace
+// expires before their NEVER_PRESSED lands and the duel voids even when their
+// outcome (didn't press -> loses) is unambiguous. Deriving one from the other
+// keeps them from drifting apart when either is tuned.
+namespace quickdraw_timing {
+    constexpr int BUTTON_PUSH_GRACE_PERIOD_MS = 750;
+    constexpr int RELIABLE_RETRY_BUDGET_MS =
+        static_cast<int>(Resender::RetryPolicy{}.totalBudgetMs());
+    constexpr int DUEL_RESULT_GRACE_MARGIN_MS = 250;
+    constexpr int DUEL_RESULT_GRACE_PERIOD_MS =
+        BUTTON_PUSH_GRACE_PERIOD_MS + RELIABLE_RETRY_BUDGET_MS + DUEL_RESULT_GRACE_MARGIN_MS;
+}
 
 enum QuickdrawStateId {
     SLEEP = 6,
@@ -41,9 +53,6 @@ enum QuickdrawStateId {
     SHOOTOUT_ELIMINATED = 25,
     SHOOTOUT_FINAL_STANDINGS = 26,
     SHOOTOUT_ABORTED = 27,
-    // Symbol-match IDs sit after the shootout block so neither protocol's
-    // wire-visible state IDs collide. Main introduced SYMBOL=22/SYMBOL_MATCHED=23
-    // in parallel with shootout taking 22-27; they were renumbered here on merge.
     SYMBOL = 28,
     SYMBOL_MATCHED = 29,
 };
@@ -89,7 +98,7 @@ private:
 
 class Idle : public ConnectState<PDN> {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager);
     ~Idle();
 
     void onStateMounted(PDN* pdn) override;
@@ -103,8 +112,7 @@ public:
 private:
     Player *player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
-    bool matchInitialized = false;
+    ChainManager* chainManager;
     bool displayIsDirty = false;
     int statsIndex = 0;
     int statsCount = 7;
@@ -113,9 +121,6 @@ private:
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
 
-    SimpleTimer matchInitializationTimer;
-    const int MATCH_INITIALIZATION_TIMEOUT = 1000;
-
     bool transitionToSymbolState = false;
 
     // void serialEventCallbacks(const std::string& message);
@@ -123,7 +128,7 @@ private:
 
 class SupporterReady : public ConnectState<PDN> {
 public:
-    SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager);
     ~SupporterReady();
 
     void onStateMounted(PDN* pdn) override;
@@ -154,7 +159,7 @@ public:
     void startLEDs(PDN* pdn, bool armed, bool confirmed);
 
 private:
-    ChainDuelManager* chainDuelManager;
+    ChainManager* chainManager;
     bool transitionToIdleFlag = false;
     int lastProcessedResult_ = 0;  // main-task-only; mirrors lastResult
 
@@ -166,7 +171,7 @@ private:
 
 class DuelCountdown : public ConnectState<PDN> {
 public:
-    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager);
     ~DuelCountdown();
 
     void onStateMounted(PDN* pdn) override;
@@ -224,14 +229,14 @@ private:
     const CountdownStage countdownQueue[4] = {THREE, TWO, ONE, BATTLE};
     int currentStepIndex = 0;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    ChainManager* chainManager;
 };
 
 class ShootoutManager;
 
 class Duel : public ConnectState<PDN> {
 public:
-    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager);
+    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainManager* chainManager, ShootoutManager* shootoutManager);
     ~Duel();
 
     void onStateMounted(PDN* pdn) override;
@@ -249,7 +254,7 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
-    ChainDuelManager* chainDuelManager;
+    ChainManager* chainManager;
     ShootoutManager* shootoutManager;
     parameterizedCallbackFunction buttonPress;
     bool transitionToDuelPushedState = false;
@@ -261,52 +266,69 @@ private:
     const int DUEL_TIMEOUT = 4000;
 };
 
-class DuelPushed : public ConnectState<PDN> {
+// Shared base for the two half-resolved duel states (local press sent:
+// DuelPushed; opponent's result arrived first: DuelReceivedResult), both
+// waiting on matchResultsAreIn. On dismount the match is cleared only on a
+// debounced disconnect (the same condition that routes back to idle): an
+// instantaneous check would wipe a voided/resolved match on a single dropped
+// HELLO tick during the void->DuelResult commit, exactly the flaky-link case
+// the void path exists for.
+class DuelWaitState : public ConnectState<PDN> {
 public:
-    DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    DuelWaitState(MatchManager* matchManager,
+                  RemoteDeviceCoordinator* remoteDeviceCoordinator, int stateId)
+        : ConnectState<PDN>(remoteDeviceCoordinator, stateId),
+          matchManager(matchManager) {}
+
+    bool disconnectedBackToIdle() { return isPersistentlyDisconnected(); }
+
+protected:
+    void clearMatchOnDebouncedDisconnect() {
+        if (isPersistentlyDisconnected()) {
+            matchManager->clearCurrentMatch();
+        }
+    }
+
+    MatchManager* matchManager;
+};
+
+class DuelPushed : public DuelWaitState {
+public:
+    DuelPushed(MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelPushed();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
 
 private:
-    Player* player;
-    MatchManager* matchManager;
     SimpleTimer gracePeriodTimer;
-    const int DUEL_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public ConnectState<PDN> {
+class DuelReceivedResult : public DuelWaitState {
 public:
-    DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    DuelReceivedResult(MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~DuelReceivedResult();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
 
 private:
     SimpleTimer buttonPushGraceTimer;
-    bool transitionToDuelResultState = false;
-    const int BUTTON_PUSH_GRACE_PERIOD = 750;
-    Player* player;
-    MatchManager* matchManager;
 };
 
 class DuelResult : public TypedState<PDN> {
 public:
-    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager);
+    DuelResult(Player* player, MatchManager* matchManager, ShootoutManager* shootoutManager);
     ~DuelResult();
 
     void onStateMounted(PDN* pdn) override;
@@ -319,20 +341,29 @@ public:
     // bracket advances exactly once per match.
     bool transitionToShootoutSpectator();
     bool transitionToShootoutEliminated();
+    // Voided duels (reliable-send abandoned, or receiver-side grace expired
+    // without result) skip win/lose entirely and return to Idle.
+    bool transitionToIdleOnVoid();
+    // Voiding inside a shootout aborts the tournament: neither duelist can
+    // broadcast a MATCH_RESULT, so the bracket cannot advance.
+    bool transitionToShootoutAbortOnVoid();
 
 private:
     Player* player;
     MatchManager* matchManager;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
     ShootoutManager* shootoutManager;
     bool wonBattle = false;
     bool captured = false;
+    bool voided = false;
 };
 
-class Win : public TypedState<PDN> {
+// Terminal win/lose screen. The two outcomes differ only by values (state id,
+// result image, chain event, animation), so they share one class; `won`
+// selects them. Construct one instance per outcome.
+class DuelOutcome : public TypedState<PDN> {
 public:
-    Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
-    ~Win();
+    DuelOutcome(Player *player, ChainManager* chainManager, MatchManager* matchManager, bool won);
+    ~DuelOutcome();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -341,30 +372,11 @@ public:
     bool isTerminalState() override;
 
 private:
-    SimpleTimer winTimer = SimpleTimer();
+    SimpleTimer outcomeTimer = SimpleTimer();
     Player *player;
-    ChainDuelManager* chainDuelManager;
+    ChainManager* chainManager;
     MatchManager* matchManager;
-    bool reset = false;
-};
-
-class Lose : public TypedState<PDN> {
-public:
-    Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
-    ~Lose();
-
-    void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
-    void onStateDismounted(PDN* pdn) override;
-    bool resetGame();
-    bool isTerminalState() override;
-
-private:
-    SimpleTimer loseTimer = SimpleTimer();
-    Player *player;
-    ChainDuelManager* chainDuelManager;
-    MatchManager* matchManager;
-    bool reset = false;
+    bool won_;
 };
 
 class UploadMatchesState : public TypedState<PDN> {
@@ -391,11 +403,34 @@ private:
     bool shouldRetryUpload = false;
 };
 
-static constexpr unsigned long kLoopBreakDebounceMs = 500;
+// Aborts the tournament once the topology has settled into a non-loop (ring
+// break). Debounced because connectivity flickers for a tick or two on real
+// hardware.
+class LoopBreakAbort {
+public:
+    static constexpr unsigned long kLoopBreakDebounceMs = 500;
+
+    LoopBreakAbort(ShootoutManager* shootout, ChainManager* chainManager)
+        : shootout_(shootout), chainManager_(chainManager) {}
+
+    void tick() {
+        bool ringSettledOpen = chainManager_ && chainManager_->isRingSettledOpen();
+        if (debounce_.heldFor(ringSettledOpen, kLoopBreakDebounceMs)) {
+            shootout_->abortTournament();
+        }
+    }
+
+    void reset() { debounce_.reset(); }
+
+private:
+    ShootoutManager* shootout_;
+    ChainManager* chainManager_;
+    DebouncedCondition debounce_;
+};
 
 class ShootoutProposal : public TypedState<PDN> {
 public:
-    ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    ShootoutProposal(ShootoutManager* shootout, ChainManager* chainManager);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -406,16 +441,15 @@ public:
 
 private:
     ShootoutManager* shootout_;
-    ChainDuelManager* chainDuelManager_;
     bool shouldGoToReveal_ = false;
     bool shouldGoToIdle_ = false;
     bool shouldGoToAborted_ = false;
-    DebouncedCondition loopBreakDebounce_;
+    LoopBreakAbort loopBreakAbort_;
 };
 
 class ShootoutBracketReveal : public TypedState<PDN> {
 public:
-    ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    ShootoutBracketReveal(ShootoutManager* shootout, ChainManager* chainManager);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -427,12 +461,11 @@ public:
 
 private:
     ShootoutManager* shootout_;
-    ChainDuelManager* chainDuelManager_;
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
     bool shouldGoToAborted_ = false;
     bool shouldGoToIdle_ = false;
-    DebouncedCondition loopBreakDebounce_;
+    LoopBreakAbort loopBreakAbort_;
 };
 
 class ShootoutSpectator : public TypedState<PDN> {
@@ -455,52 +488,55 @@ private:
     std::array<uint8_t, 6> lastDisplayedB_{};
 };
 
-class ShootoutEliminated : public TypedState<PDN> {
+// Passive hold screen shared by elimination and abort. The two differ only by
+// values (state id, text, dwell): dwellMs == 0 holds until the tournament
+// phase moves on; dwellMs > 0 times out to Idle and clears the tournament on
+// exit. Construct one instance per screen.
+class ShootoutOutcome : public TypedState<PDN> {
 public:
-    explicit ShootoutEliminated(ShootoutManager* shootout);
+    ShootoutOutcome(QuickdrawStateId id, ShootoutManager* shootout,
+                    const char* heading, int headingY,
+                    const char* detail, int detailY,
+                    unsigned long dwellMs);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
     bool transitionToFinalStandings();
     bool transitionToAborted();
+    bool transitionToIdle();
+
+    static constexpr unsigned long ABORTED_DISPLAY_MS = 2000;
 
 private:
     ShootoutManager* shootout_;
+    const char* heading_;
+    int headingY_;
+    const char* detail_;
+    int detailY_;
+    unsigned long dwellMs_;
+    SimpleTimer displayTimer_;
     bool shouldGoToFinalStandings_ = false;
     bool shouldGoToAborted_ = false;
+    bool shouldGoToIdle_ = false;
 };
 
 class ShootoutFinalStandings : public TypedState<PDN> {
 public:
-    ShootoutFinalStandings(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    ShootoutFinalStandings(ShootoutManager* shootout, ChainManager* chainManager);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool isTerminalState() override;
 
-    bool transitionToSleep();
-
-private:
-    ShootoutManager* shootout_;
-    ChainDuelManager* chainDuelManager_;
-    bool shouldGoToSleep_ = false;
-};
-
-class ShootoutAborted : public TypedState<PDN> {
-public:
-    explicit ShootoutAborted(ShootoutManager* shootout);
-    void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
-    void onStateDismounted(PDN* pdn) override;
-
     bool transitionToIdle();
 
 private:
     ShootoutManager* shootout_;
+    ChainManager* chainManager_;
     SimpleTimer displayTimer_;
     bool shouldGoToIdle_ = false;
-    static constexpr unsigned long ABORTED_DISPLAY_MS = 2000;
+    static constexpr unsigned long STANDINGS_DISPLAY_MS = 10000;
 };
 
 class SymbolState : public ConnectState<PDN> {
@@ -523,7 +559,7 @@ private:
     MatchManager* matchManager;
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
-    uint8_t* fdnMac = nullptr;
+    const uint8_t* fdnMac = nullptr;
     /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
     SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
     SymbolId fdnSymbol;
@@ -544,7 +580,6 @@ private:
 
     AnimationConfig cfg{};
 
-    void renderSymbolScreen(PDN* pdn);
     void advanceSymbolRender(PDN* pdn);
     void sendSymbolToFDN();
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);

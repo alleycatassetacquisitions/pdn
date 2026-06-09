@@ -10,7 +10,8 @@
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "game/chain-duel-manager.hpp"
+#include "wireless/wireless-transport.hpp"
+#include "game/chain-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
@@ -20,26 +21,14 @@ constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
+    Quickdraw(Player *player, Device *PDN, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, WirelessTransport* transport);
     ~Quickdraw();
 
     void populateStateMap() override;
 
-    // Static entry points for ESP-NOW packet handlers. Route to the
-    // current state if it's SupporterReady (for game events) or to the
-    // MatchManager/champion-side confirm tracker (for confirms).
-    void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onStateLoop(Device *PDN) override;
 
 private:
-    void onChainStateChanged();
-
     std::vector<Match> matches;
     int numMatches = 0;
     MatchManager* matchManager;
@@ -48,20 +37,20 @@ private:
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
+    ChainManager* chainManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
 
-    // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
-    // counters from both RDC and CDM. Intended for venue deployment: `cat`ing
-    // the serial port gives a rolling view of retry-machine health. Parseable
-    // by scripts/chain_status.sh (prefix: "STATS").
+    // Emits one STATS LOG_W line every kStatsLogIntervalMs with retry counters
+    // from ChainManager, for a rolling view of retry-machine health off the
+    // serial port.
     SimpleTimer statsLogTimer_;
     static constexpr unsigned long kStatsLogIntervalMs = 5000;
 
-    // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
-    bool lastIsLoop_ = false;
+    // Diagnostic: track isCoordinator() transitions to expose ring closure
+    // and tiebreaker handoffs (lower-mac demotion path).
+    bool lastIsCoordinator_ = false;
+    int lastLoggedStateId_ = -999;
 };

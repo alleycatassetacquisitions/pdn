@@ -9,28 +9,20 @@
 #include "wireless/wireless-types.hpp"
 #include "utils/simple-timer.hpp"
 
-// Forward declaration for the event handler
 class Esp32S3HttpClient;
 static const char* const HTTP_TAG = "HttpClient";
 
-// Fallback channel for ESP-NOW when WiFi connection fails
-// IMPORTANT: Configure your WiFi AP to use this same channel for reliable ESP-NOW!
+// Channel ESP-NOW falls back to when the WiFi connection fails. IMPORTANT:
+// configure your WiFi AP to this same channel for reliable ESP-NOW.
 static constexpr uint8_t ESPNOW_FALLBACK_CHANNEL = 6;
 
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
-/**
- * Handles WiFi connection and HTTP requests using ESP-IDF's esp_http_client.
- * 
- * This class manages:
- * - WiFi connection establishment and monitoring
- * - HTTP client initialization and cleanup
- * - Asynchronous request queueing and processing
- * - Retry logic with exponential backoff
- */
+// WiFi connection and HTTP requests over ESP-IDF's esp_http_client: connection
+// monitoring, async request queueing, and retry with exponential backoff.
 class Esp32S3HttpClient : public HttpClientDriverInterface {
 public:
-    static const int WIFI_CONNECTION_TIMEOUT_MS = 12500;  // 2.5 sec * 5 attempts
+    static const int WIFI_CONNECTION_TIMEOUT_MS = 12500;
     static const uint8_t MAX_RETRIES = 1;
 
     Esp32S3HttpClient(const std::string& name, WifiConfig* config)
@@ -43,26 +35,11 @@ public:
     }
 
     int initialize() override {
-        wifiConnected = false;
-        httpClientInitialized = false;
-        wifiGivenUp = false;
-        
         return 0;
     }
 
-    void setWifiConfig(WifiConfig* config) override {
-        wifiConfig = config;
-        wifiConnected = false;
-        httpClientInitialized = false;
-        wifiGivenUp = false;
-        
-        LOG_I(HTTP_TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
-        startWifiConnection();
-        connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
-    }
-
     bool isConnected() override {
-        return wifiConnected && httpClientInitialized;
+        return connectionState == ConnectionState::CONNECTED;
     }
 
     bool queueRequest(HttpRequest& request) override {
@@ -71,46 +48,28 @@ public:
     }
 
     void exec() override {
-        if (!wifiConnected && !wifiGivenUp) {
-            checkWifiConnection();
-        } else if (wifiConnected && !httpClientInitialized) {
-            httpClientInitialized = initializeHttpClient();
-        } else if (wifiConnected) {
-            processQueuedRequests();
-            checkOngoingRequests();
+        switch (connectionState) {
+            case ConnectionState::CONNECTING:
+                checkWifiConnection();
+                break;
+            case ConnectionState::CONNECTED:
+                processQueuedRequests();
+                checkOngoingRequests();
+                break;
+            default:
+                break;
         }
     }
 
     void disconnect() override {
         cleanupHttpClient();
+        // disconnect() alone doesn't stop the core's reconnect scan loop, which
+        // drags the radio off ESPNOW_CHANNEL.
+        WiFi.setAutoReconnect(false);
         WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
-        
-        wifiConnected = false;
-        httpClientInitialized = false;
-        wifiGivenUp = false;
+
         connectionAttemptTimer.invalidate();
-        httpClientState = HttpClientState::DISCONNECTED;
-    }
-
-    void updateConfig(WifiConfig* config) override {
-        bool needsReconnect = wifiConnected && 
-            (config->ssid != wifiConfig->ssid || config->password != wifiConfig->password);
-        
-        wifiConfig = config;
-        
-        if (needsReconnect) {
-            disconnect();
-            setWifiConfig(config);
-        }
-    }
-
-    void retryConnection() override {
-        if (!wifiConnected) {
-            LOG_I(HTTP_TAG, "Retrying WiFi connection...");
-            wifiGivenUp = false;
-            startWifiConnection();
-            connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
-        }
+        connectionState = ConnectionState::IDLE;
     }
 
     uint8_t* getMacAddress() override {
@@ -119,56 +78,35 @@ public:
     }
 
     void setHttpClientState(HttpClientState state) override {
-        if(state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+        if (state == HttpClientState::WIFI_ENGAGED && connectionState == ConnectionState::IDLE) {
             connect();
-        }
-        else if(state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+        } else if (state == HttpClientState::IDLE && connectionState != ConnectionState::IDLE) {
             disconnect();
         }
-        httpClientState = state;
     }
 
     HttpClientState getHttpClientState() override {
-        return httpClientState;
-    }
-
-    void connect() {
-        LOG_I(HTTP_TAG, "Enabling HTTP mode...");
-        
-        if (wifiConnected && WiFi.status() == WL_CONNECTED) {
-            LOG_D(HTTP_TAG, "Already connected to WiFi");
-        }
-        
-        // Start WiFi connection
-        startWifiConnection();
-        
-        // Wait for connection with timeout
-        int attempts = 0;
-        const int maxAttempts = 50;  // 5 seconds max (50 * 100ms)
-        while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
-            delay(100);
-            attempts++;
-        }
-        
-        if (WiFi.status() == WL_CONNECTED) {
-            wifiConnected = true;
-            wifiGivenUp = false;
-            channel = WiFi.channel();
-            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", 
-                  WiFi.localIP().toString().c_str(), channel);
-            
-            if (!httpClientInitialized) {
-                httpClientInitialized = initializeHttpClient();
-            }
-            httpClientState = HttpClientState::CONNECTED;
-        } else {
-            LOG_W(HTTP_TAG, "WiFi connection failed after %d attempts", attempts);
-        }
+        return connectionState == ConnectionState::IDLE
+            ? HttpClientState::IDLE
+            : HttpClientState::WIFI_ENGAGED;
     }
 
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
 private:
+    enum class ConnectionState {
+        IDLE,        // WiFi mode not requested
+        CONNECTING,  // waiting for AP association, bounded by connectionAttemptTimer
+        CONNECTED,   // AP up, HTTP requests flow
+        FAILED       // gave up; radio parked on the ESP-NOW fallback channel
+    };
+
+    void connect() {
+        startWifiConnection();
+        connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
+        connectionState = ConnectionState::CONNECTING;
+    }
+
     void startWifiConnection() {
         WiFi.mode(WIFI_STA);
         WiFi.disconnect(false);  // Clear any previous connection but keep radio on
@@ -180,33 +118,30 @@ private:
 
     void checkWifiConnection() {
         connectionAttemptTimer.updateTime();
-        
-        // Check if we've connected
+
         if (WiFi.status() == WL_CONNECTED) {
-            channel = WiFi.channel();
-            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", WiFi.localIP().toString().c_str(), channel);
-            wifiConnected = true;
-            wifiGivenUp = false;
+            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", WiFi.localIP().toString().c_str(), WiFi.channel());
             connectionAttemptTimer.invalidate();
-            httpClientInitialized = initializeHttpClient();
+            // On init failure httpClient stays null; initiateHttpRequest retries
+            // per request attempt.
+            initializeHttpClient();
+            connectionState = ConnectionState::CONNECTED;
             // Leave auto-reconnect ON so WiFi recovers from disconnections
             return;
         }
-        
-        // Check if connection timeout expired
+
         if (connectionAttemptTimer.expired()) {
             logWifiStatusError();
-            wifiGivenUp = true;
             LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
-            WiFi.setAutoReconnect(false);  // Disable auto-reconnect to stop retry spam
-            WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
-            
-            // Force fallback channel for ESP-NOW compatibility
-            // IMPORTANT: Configure your WiFi AP to use this same channel!
+            WiFi.setAutoReconnect(false);  // Stop the retry spam
+            WiFi.disconnect(false);  // Drop the AP but keep the radio on for ESP-NOW
+
+            // Force fallback channel; AP must match it for ESP-NOW compatibility.
             WiFi.channel(ESPNOW_FALLBACK_CHANNEL);
             LOG_I(HTTP_TAG, "Set fallback WiFi channel to %d for ESP-NOW", ESPNOW_FALLBACK_CHANNEL);
-            
+
             connectionAttemptTimer.invalidate();
+            connectionState = ConnectionState::FAILED;
         }
     }
 
@@ -441,22 +376,15 @@ private:
         httpQueue.pop();
     }
 
-    // Configuration
     WifiConfig* wifiConfig = nullptr;
     uint8_t macAddress_[6];
-    
-    // WiFi connection state
-    bool wifiConnected = false;
-    bool httpClientInitialized = false;
-    bool wifiGivenUp = false;
+
+    ConnectionState connectionState = ConnectionState::IDLE;
     SimpleTimer connectionAttemptTimer;
 
-    // HTTP client state
-    uint8_t channel = 0;
     std::queue<HttpRequest> httpQueue;
     esp_http_client_handle_t httpClient = nullptr;
     HttpRequest* currentRequest = nullptr;
-    HttpClientState httpClientState = HttpClientState::DISCONNECTED;
 };
 
 // Event handler must be defined after the class

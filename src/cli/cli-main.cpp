@@ -267,9 +267,11 @@ int main(int argc, char** argv) {
         // Transfer serial data between connected devices
         cli::SerialCableBroker::getInstance().transferData();
         
-        // Update all devices
+        // The platform loop owns the transport's resender pump, same as
+        // loop() in main.cpp.
         for (auto& device : devices) {
             device.pdn->loop();
+            if (device.wirelessTransport) device.wirelessTransport->sync();
         }
         
         // Render UI

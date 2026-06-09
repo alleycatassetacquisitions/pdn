@@ -22,9 +22,10 @@
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/quickdraw.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
+#include "wireless/resender.hpp"
+#include "wireless/wireless-transport.hpp"
 #include "apps/player-registration/player-registration.hpp"
 
 // CLI components
@@ -43,15 +44,11 @@ inline const char* getStateName(int stateId) {
         case 1:  return "FetchUserData";
         case 2:  return "ConfirmOffline";
         case 3:  return "ChooseRole";
-        case 4:  return "AllegiancePicker";
         case 5:  return "WelcomeMessage";
         case 6:  return "Sleep";
         case 7:  return "AwakenSequence";
         case 8:  return "Idle";
-        case 9:  return "HandshakeInitiate";
-        case 10: return "BountySendCC";
-        case 11: return "HunterSendId";
-        case 12: return "ConnectionSuccessful";
+        // 4 and 9-12 belonged to deleted states; don't reuse the IDs.
         case 13: return "DuelCountdown";
         case 14: return "Duel";
         case 15: return "DuelPushed";
@@ -60,13 +57,15 @@ inline const char* getStateName(int stateId) {
         case 18: return "Win";
         case 19: return "Lose";
         case 20: return "UploadMatches";
-        case 21: return "PosseReady";
+        case 21: return "SupporterReady";
         case 22: return "ShootoutProposal";
         case 23: return "ShootoutBracketReveal";
         case 24: return "ShootoutSpectator";
         case 25: return "ShootoutEliminated";
         case 26: return "ShootoutFinalStandings";
         case 27: return "ShootoutAborted";
+        case 28: return "Symbol";
+        case 29: return "SymbolMatched";
         default: return "Unknown";
     }
 }
@@ -97,8 +96,8 @@ struct DeviceInstance {
     PDN* pdn = nullptr;
     Player* player = nullptr;
     Quickdraw* game = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
+    WirelessTransport* wirelessTransport = nullptr;
     
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
@@ -196,19 +195,9 @@ public:
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
         
-        // Create QuickdrawWirelessManager (required by game states even when mocking)
-        instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
-        instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
-        
-        // Register ESP-NOW packet handlers (similar to setupEspNow in main.cpp)
-        // This is required for devices to actually receive and process ESP-NOW packets
-        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
-            PktType::kQuickdrawCommand,
-            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-                ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-            },
-            instance.quickdrawWirelessManager
-        );
+        // Reliable-channel PktTypes and kAck are wired by WirelessTransport
+        // itself; only non-channel subsystems register handlers below.
+        instance.wirelessTransport = new WirelessTransport(instance.pdn->getWirelessManager());
 
         instance.symbolWirelessManager = new SymbolWirelessManager();
         instance.symbolWirelessManager->initialize(
@@ -226,9 +215,9 @@ public:
         instance.game = new Quickdraw(
             instance.player,
             instance.pdn,
-            instance.quickdrawWirelessManager,
             nullptr,
-            instance.symbolWirelessManager);
+            instance.symbolWirelessManager,
+            instance.wirelessTransport);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
@@ -260,7 +249,6 @@ public:
         MockHttpServer::getInstance().removePlayer(device.deviceId);
         
         delete device.game;
-        delete device.quickdrawWirelessManager;
         delete device.symbolWirelessManager;
         delete device.player;
         delete device.pdn;

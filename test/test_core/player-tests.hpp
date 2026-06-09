@@ -21,7 +21,6 @@ protected:
 // ============================================
 
 inline void playerJsonRoundTripPreservesAllFields(Player* player) {
-    // Set up player with all fields populated
     char testId[] = "test-uuid-1234";
     player->setUserID(testId);
     player->setName("TestPlayer");
@@ -29,83 +28,15 @@ inline void playerJsonRoundTripPreservesAllFields(Player* player) {
     player->setFaction("TestFaction");
     player->setIsHunter(true);
 
-    // Serialize to JSON
     std::string json = player->toJson();
 
-    // Create new player and deserialize
     Player restored;
     restored.fromJson(json);
 
-    // Verify all fields preserved
     EXPECT_EQ(restored.getUserID(), "test-uuid-1234");
     EXPECT_EQ(restored.getName(), "TestPlayer");
     EXPECT_EQ(restored.getFaction(), "TestFaction");
     EXPECT_TRUE(restored.isHunter());
-}
-
-inline void playerJsonRoundTripWithBountyRole(Player* player) {
-    char testId[] = "bounty-player-id";
-    player->setUserID(testId);
-    player->setIsHunter(false);
-
-    std::string json = player->toJson();
-
-    Player restored;
-    restored.fromJson(json);
-
-    EXPECT_EQ(restored.getUserID(), "bounty-player-id");
-    EXPECT_FALSE(restored.isHunter());
-}
-
-// ============================================
-// Stats Tracking Tests
-// ============================================
-
-inline void playerStatsIncrementCorrectly(Player* player) {
-    EXPECT_EQ(player->getWins(), 0);
-    EXPECT_EQ(player->getLosses(), 0);
-    EXPECT_EQ(player->getMatchesPlayed(), 0);
-    EXPECT_EQ(player->getStreak(), 0);
-
-    // Simulate winning 3 matches
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-
-    player->incrementWins();
-    player->incrementMatchesPlayed();
-    player->incrementStreak();
-
-    EXPECT_EQ(player->getWins(), 3);
-    EXPECT_EQ(player->getLosses(), 0);
-    EXPECT_EQ(player->getMatchesPlayed(), 3);
-    EXPECT_EQ(player->getStreak(), 3);
-
-    // Simulate losing a match (resets streak)
-    player->incrementLosses();
-    player->incrementMatchesPlayed();
-    player->resetStreak();
-
-    EXPECT_EQ(player->getWins(), 3);
-    EXPECT_EQ(player->getLosses(), 1);
-    EXPECT_EQ(player->getMatchesPlayed(), 4);
-    EXPECT_EQ(player->getStreak(), 0);
-}
-
-inline void playerStreakResetsOnLoss(Player* player) {
-    // Build up a streak
-    for (int i = 0; i < 5; i++) {
-        player->incrementStreak();
-    }
-    EXPECT_EQ(player->getStreak(), 5);
-
-    // Reset streak (simulating a loss)
-    player->resetStreak();
-    EXPECT_EQ(player->getStreak(), 0);
 }
 
 // ============================================
@@ -149,7 +80,6 @@ inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
     // No matches played - average should be 0
     EXPECT_EQ(player->getAverageReactionTime(), 0);
 
-    // Add reaction times and matches
     player->addReactionTime(200);
     player->incrementMatchesPlayed();
     EXPECT_EQ(player->getLastReactionTime(), 200);

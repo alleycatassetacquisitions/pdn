@@ -41,9 +41,8 @@ void Sleep::onStateLoop(PDN* pdn) {
         transitionToAwakenSequenceState = true;
     }
 
-    // TODO: Convert this breathing effect to use the new animation system
-    // The old direct LED control API (setLight) has been removed in favor of animations
-    // This breathing effect should be implemented as a proper Animation class
+    // TODO: reimplement this breathing effect as an Animation (no direct-LED
+    // setLight API exists).
     /*
     EVERY_N_MILLIS(16) {
         if (breatheUp) {
@@ -61,7 +60,7 @@ void Sleep::onStateLoop(PDN* pdn) {
         }
 
         LEDColor color = bountyColors[random8()];
-        PDN->getLightManager()->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
+        pdn->getLightManager()->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
     }
     */
 }

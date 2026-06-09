@@ -9,18 +9,57 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
+#include <cstring>
 #include <functional>
 #include <optional>
-#include <vector>
 #include <string>
 #include "device/drivers/button.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "id-generator.hpp"
+#include "wireless/reliable-channel.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
+class WirelessTransport;
+
+// Wire format transmitted over ESP-NOW for every quickdraw command.
+// seqId is stamped by the reliable channel on send for ack matching;
+// 0 means "fire-and-forget, no ack expected".
+struct QuickdrawPacket {
+    char matchId[37];  // IdGenerator::UUID_BUFFER_SIZE
+    char playerId[5];  // 4 chars + null terminator
+    bool isHunter;
+    long playerDrawTime;
+    int  command;
+    uint8_t seqId;
+} __attribute__((packed));
+
+enum QDCommand {
+    SEND_MATCH_ID = 0,
+    MATCH_ID_ACK = 1,
+    MATCH_ROLE_MISMATCH = 2,
+    DRAW_RESULT = 3,
+    NEVER_PRESSED = 4,
+};
+
+// Builds a wire packet. seqId is normally stamped by the reliable channel on
+// send; the parameter exists for tests that inject received packets directly.
+inline QuickdrawPacket makeQuickdrawPacket(int command, const char* matchId,
+                                           const char* playerId,
+                                           long playerDrawTime, bool isHunter,
+                                           uint8_t seqId = 0) {
+    QuickdrawPacket p{};
+    p.command = command;
+    p.playerDrawTime = playerDrawTime;
+    p.isHunter = isHunter;
+    p.seqId = seqId;
+    strncpy(p.matchId, matchId, sizeof(p.matchId) - 1);
+    strncpy(p.playerId, playerId, sizeof(p.playerId) - 1);
+    return p;
+}
 
 // Preferences namespace and keys
 
@@ -33,15 +72,28 @@ struct LastMatchDisplay {
 
 struct ActiveDuelState {
     bool matchIsReady = false;
-    bool hasReceivedDrawResult = false;
-    bool hasPressedButton = false;
-    bool gracePeriodExpiredNoResult = false;
-    bool opponentNeverPressed = false;
+    // Each side's duel outcome, resolved once (first writer wins). Absent means
+    // not yet known; pressed=false means that side timed out and its draw time
+    // is the pity time. "Pressed" and "timed out" are the same field, so the
+    // contradiction (pressed AND timed-out) cannot be represented.
+    struct SideResult { bool pressed; };
+    std::optional<SideResult> myResult;
+    std::optional<SideResult> theirResult;
     unsigned long duelLocalStartTime = 0;
     unsigned long BUTTON_MASHER_PENALTY_MS = 75;
     int buttonMasherCount = 0;
     std::optional<Match> match;
     std::array<uint8_t, 6> opponentMac = {};
+    // This device's draw-slot for THIS match (which of hunter/bounty_draw_time it
+    // writes), captured at match init. Normal duel: equals the player's global
+    // role. Same-role shootout duel: MAC-ordered so two hunters still slot
+    // into distinct draw times. Kept off Player::isHunter() so the shootout never
+    // mutates the global role.
+    bool localIsHunter = false;
+    // Shootout matches are venue-local: no persistence, no upload, no career
+    // stats, no chain boost. Set only by initializeShootoutMatch, never
+    // derived from wire data, so a peer can't mark a normal duel ephemeral.
+    bool isShootout = false;
 
     unsigned long calculateButtonMasherPenalty() {
         return BUTTON_MASHER_PENALTY_MS * buttonMasherCount;
@@ -69,9 +121,18 @@ public:
 
     // Shootout mode: prime a match without the SEND_MATCH_ID handshake.
     // Both duelists call this independently on MATCH_START with the same
-    // derived match ID. Assumes hunter-vs-bounty pairing (same-role
-    // Shootout matches are out of MVP scope).
-    void initializeShootoutMatch(const char* matchId, uint8_t* opponentMac);
+    // derived match ID. localIsHunter is the MAC-ordered per-match draw-slot
+    // (both sides compute the same ordering), so same-role ring devices still
+    // form a valid hunter-vs-bounty pairing without touching the global role.
+    void initializeShootoutMatch(const char* matchId, uint8_t* opponentMac,
+                                 bool localIsHunter);
+
+    // This device's draw-slot for the active match (see ActiveDuelState).
+    // Falls back to the global hunter/bounty role when no match is active.
+    bool localIsHunterForMatch() const {
+        return activeDuelState.match.has_value() ? activeDuelState.localIsHunter
+                                                 : player->isHunter();
+    }
 
     bool isMatchReady();
 
@@ -135,9 +196,12 @@ public:
     void setShootoutManager(ShootoutManager* shootoutManager);
     ShootoutManager* getShootoutManager() const;
 
-    void listenForMatchEvents(const QuickdrawCommand& command);
+    void listenForMatchEvents(const uint8_t* fromMac, const QuickdrawPacket& packet);
 
-    void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
+    // Claims the (kQuickdrawCommand, 0) reliable channel on the transport and
+    // installs its receive/abandon handlers. A null transport (tests, devices
+    // without a radio) leaves the channel unset; sends become no-ops.
+    void initialize(Player* player, StorageInterface* storage, WirelessTransport* transport);
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -145,11 +209,25 @@ public:
 
     void sendNeverPressed(unsigned long pityTime);
 
-    // For testing purposes only DO NOT USE IN PRODUCTION
-    void setReceivedDrawResult();
+    void voidCurrentMatch();
+    bool isVoided() const {
+        return activeDuelState.match.has_value() && activeDuelState.match->isVoided();
+    }
+
+    // Shootout matches are venue-local: they never persist or upload, so they
+    // must not touch lifetime career stats either. Gates the same way
+    // finalizeMatch() gates persistence, keeping the two consistent.
+    bool currentMatchIsShootout() const;
+
+    // A reliable send is abandoned only after exhausting its retry budget.
+    // No-ops unless `target` is the current opponent, so a stale abandon for a
+    // prior peer can't void a match primed against a new one.
+    void onReliableSendAbandoned(const uint8_t* target);
+
+    // Public because the button-push callback (getDuelButtonPush) is a free
+    // function with no access to the private duel state; every other duel-state
+    // transition is internal.
     void setReceivedButtonPush();
-    void setNeverPressed();
-    void setOpponentNeverPressed() { activeDuelState.opponentNeverPressed = true; }
 
 
 private:
@@ -167,7 +245,19 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
+    ReliableChannel<QuickdrawPacket>* channel_ = nullptr;
+
+    // Reliable unicast on the quickdraw channel; the channel stamps a fresh
+    // seqId into the packet and the transport's resender retries until acked
+    // or the retry budget routes to onReliableSendAbandoned.
+    void sendReliable(const uint8_t* macAddress, const QuickdrawPacket& packet);
+    // Packet stamped with this device's own player ID, the common case for
+    // every outbound command.
+    QuickdrawPacket makeOwnPacket(int command, const char* matchId,
+                                  long playerDrawTime, bool isHunter) const {
+        return makeQuickdrawPacket(command, matchId, player->getUserID().c_str(),
+                                   playerDrawTime, isHunter);
+    }
     /**
      * Appends a match to storage
      * @param match Match to save
@@ -194,15 +284,17 @@ private:
     // in ESP-NOW range could forge a result for a match they're not in.
     // SEND_MATCH_ID is intentionally exempt: it's the packet that
     // establishes the peering in the first place.
-    bool isFromActiveMatchOpponent(const QuickdrawCommand& command) const;
+    bool isFromActiveMatchOpponent(const uint8_t* fromMac,
+                                   const QuickdrawPacket& packet) const;
 
     void sendMatchAck();
     void sendMatchId();
-    void sendMatchRoleMismatch(const QuickdrawCommand& incoming);
+    void sendMatchRoleMismatch(const uint8_t* fromMac, const QuickdrawPacket& incoming);
 
-    // Emplace match with given id/opponent. Common path for both the
-    // cable-handshake init and the Shootout MATCH_START init.
-    void primeMatch(const char* matchId, const uint8_t* opponentMac);
+    // Emplace match with given id/opponent. Common path for both the normal
+    // duel init (the wireless SEND_MATCH_ID handshake, triggered by cable
+    // connect) and the Shootout MATCH_START init.
+    void primeMatch(const char* matchId, const uint8_t* opponentMac, bool localIsHunter);
 };
 
 

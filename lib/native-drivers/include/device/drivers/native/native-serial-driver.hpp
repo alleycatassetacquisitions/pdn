@@ -1,16 +1,17 @@
 #pragma once
 
 #include "device/drivers/driver-interface.hpp"
-#include <queue>
+#include <cstdint>
+#include <cstddef>
 #include <deque>
 #include <string>
+#include <vector>
 
 class NativeSerialDriver : public SerialDriverInterface {
 public:
     // Maximum buffer sizes to prevent unbounded growth
     static constexpr size_t MAX_OUTPUT_BUFFER_SIZE = 255;
-    static constexpr size_t MAX_INPUT_QUEUE_SIZE = 32;
-    
+
     explicit NativeSerialDriver(const std::string& name) : SerialDriverInterface(name) {}
 
     ~NativeSerialDriver() override = default;
@@ -20,65 +21,34 @@ public:
     }
 
     void exec() override {
-        // Process any incoming serial data
+        // With fragmentation on, deliver only 1-3 bytes per tick so byte-stream
+        // parsers see the partial reads they face on real UART hardware.
+        if (pendingBytes_.empty()) {
+            return;
+        }
+        size_t chunkSize = pendingBytes_.size();
+        if (fragmentDeliveries_) {
+            chunkSize = static_cast<size_t>((fragmentCounter_ % 3) + 1);
+            fragmentCounter_++;
+            if (chunkSize > pendingBytes_.size()) {
+                chunkSize = pendingBytes_.size();
+            }
+        }
+        std::vector<uint8_t> chunk(pendingBytes_.begin(),
+                                   pendingBytes_.begin() + chunkSize);
+        pendingBytes_.erase(pendingBytes_.begin(),
+                            pendingBytes_.begin() + chunkSize);
+        if (bytesCallback_) {
+            bytesCallback_(chunk.data(), chunk.size());
+        }
     }
 
     int availableForWrite() override {
-        // Return remaining space in output buffer
         return static_cast<int>(MAX_OUTPUT_BUFFER_SIZE - outputBuffer_.size());
     }
 
     int available() override {
-        return inputBuffer_.empty() ? 0 : 1;
-    }
-
-    int peek() override {
-        if (inputBuffer_.empty()) return -1;
-        return inputBuffer_.front()[0];
-    }
-
-    int read() override {
-        if (inputBuffer_.empty()) return -1;
-        char c = inputBuffer_.front()[0];
-        if (inputBuffer_.front().length() == 1) {
-            inputBuffer_.pop();
-        } else {
-            inputBuffer_.front() = inputBuffer_.front().substr(1);
-        }
-        return c;
-    }
-
-    std::string readStringUntil(char terminator) override {
-        if (inputBuffer_.empty()) return "";
-        std::string result = inputBuffer_.front();
-        inputBuffer_.pop();
-        // Remove terminator if present
-        if (!result.empty() && result.back() == terminator) {
-            result.pop_back();
-        }
-        // Note: History tracking is done in injectInput() when data arrives
-        return result;
-    }
-
-    void print(char msg) override {
-        outputBuffer_ += msg;
-        trimOutputBuffer();
-    }
-
-    void println(char* msg) override {
-        outputBuffer_ += msg;
-        outputBuffer_ += '\n';
-        trimOutputBuffer();
-        // Track sent message
-        addToHistory(sentHistory_, std::string(msg));
-    }
-
-    void println(const std::string& msg) override {
-        outputBuffer_ += msg;
-        outputBuffer_ += '\n';
-        trimOutputBuffer();
-        // Track sent message
-        addToHistory(sentHistory_, msg);
+        return pendingBytes_.empty() ? 0 : 1;
     }
 
     void flush() override {
@@ -88,37 +58,34 @@ public:
         // The broker calls clearOutput() after successfully transferring data.
     }
 
-    void setStringCallback(const SerialStringCallback& callback) override {
-        stringCallback_ = callback;
+    void setBytesCallback(const SerialBytesCallback& callback) override {
+        bytesCallback_ = callback;
     }
 
-    // Test helper methods
-    void injectInput(const std::string& input) {
-        // Enforce FIFO limit on input queue
-        while (inputBuffer_.size() >= MAX_INPUT_QUEUE_SIZE) {
-            inputBuffer_.pop();  // Drop oldest
+    void writeBytes(const uint8_t* data, size_t len) override {
+        for (size_t i = 0; i < len; ++i) {
+            outputBuffer_ += static_cast<char>(data[i]);
         }
-        inputBuffer_.push(input);
-        
-        // Clean the message by stripping framing (if present)
-        // Framing: STRING_START (*) at beginning, STRING_TERM (\r) at end
-        std::string cleanMsg = input;
-        // Remove STRING_START prefix if present
-        if (!cleanMsg.empty() && cleanMsg[0] == '*') {
-            cleanMsg = cleanMsg.substr(1);
+        trimOutputBuffer();
+        addToHistory(sentHistory_, describeBytes(data, len));
+    }
+
+    // Toggle artificial fragmentation of byte deliveries; used by tests to
+    // exercise byte-stream parser accumulators that would otherwise never see
+    // partial input on native.
+    void setFragmentDeliveriesForTest(bool fragment) {
+        fragmentDeliveries_ = fragment;
+        fragmentCounter_ = 0;
+    }
+
+    // Enqueue raw bytes that exec() will drain to the byte callback. The
+    // SerialCableBroker uses this to route one jack's emitted bytes into the
+    // peer jack's RX path; tests use it to feed binary frames.
+    void injectInputBytes(const uint8_t* data, size_t len) {
+        for (size_t i = 0; i < len; ++i) {
+            pendingBytes_.push_back(data[i]);
         }
-        // Remove STRING_TERM suffix if present
-        if (!cleanMsg.empty() && cleanMsg.back() == '\r') {
-            cleanMsg.pop_back();
-        }
-        
-        // Track the clean message in history for UI display
-        addToHistory(receivedHistory_, cleanMsg);
-        
-        // Invoke callback with clean message
-        if (stringCallback_) {
-            stringCallback_(cleanMsg);
-        }
+        addToHistory(receivedHistory_, describeBytes(data, len));
     }
 
     std::string getOutput() const {
@@ -128,38 +95,50 @@ public:
     void clearOutput() {
         outputBuffer_.clear();
     }
-    
+
     // Message history access for CLI display
     const std::deque<std::string>& getSentHistory() const { return sentHistory_; }
     const std::deque<std::string>& getReceivedHistory() const { return receivedHistory_; }
-    
+
     // Get current buffer sizes for display
-    size_t getInputQueueSize() const { return inputBuffer_.size(); }
+    size_t getInputQueueSize() const { return pendingBytes_.size(); }
     size_t getOutputBufferSize() const { return outputBuffer_.size(); }
 
 private:
-    std::queue<std::string> inputBuffer_;
     std::string outputBuffer_;
-    SerialStringCallback stringCallback_;
-    
+    SerialBytesCallback bytesCallback_;
+    std::deque<uint8_t> pendingBytes_;
+    bool fragmentDeliveries_ = false;
+    size_t fragmentCounter_ = 0;
+
     // Message history (most recent at back)
     std::deque<std::string> sentHistory_;
     std::deque<std::string> receivedHistory_;
     static const size_t MAX_HISTORY = 5;
-    
+
     void addToHistory(std::deque<std::string>& history, const std::string& msg) {
         history.push_back(msg);
         while (history.size() > MAX_HISTORY) {
             history.pop_front();
         }
     }
-    
-    /**
-     * Trim output buffer to max size using FIFO - drops oldest data from front.
-     */
+
+    // Hex-render a byte burst for the CLI's serial-traffic display panes.
+    static std::string describeBytes(const uint8_t* data, size_t len) {
+        static const char* hex = "0123456789ABCDEF";
+        std::string s;
+        s.reserve(len * 3);
+        for (size_t i = 0; i < len; ++i) {
+            if (i) s += ' ';
+            s += hex[(data[i] >> 4) & 0x0F];
+            s += hex[data[i] & 0x0F];
+        }
+        return s;
+    }
+
+    // FIFO trim: drop oldest data from the front, keep the newest tail.
     void trimOutputBuffer() {
         if (outputBuffer_.size() > MAX_OUTPUT_BUFFER_SIZE) {
-            // Keep only the newest data (from the end)
             outputBuffer_ = outputBuffer_.substr(outputBuffer_.size() - MAX_OUTPUT_BUFFER_SIZE);
         }
     }

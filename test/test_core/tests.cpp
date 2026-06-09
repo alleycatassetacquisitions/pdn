@@ -14,12 +14,17 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
-#include "hwm-tests.hpp"
+#include "direct-peer-table-tests.hpp"
+#include "serial-frame-parser-tests.hpp"
 #include "rdc-tests.hpp"
-#include "chain-duel-manager-tests.hpp"
-#include "chain-duel-multi-device-fixture.hpp"
+#include "chain-manager-tests.hpp"
+#include "chain-manager-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
+#include "wireless-transport-tests.hpp"
 #include "match-manager-concurrent.hpp"
+#include "crc16-tests.hpp"
+#include "peer-graph-tests.hpp"
+#include "peer-graph-codec-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -37,11 +42,9 @@ void setup()
 
 void loop()
 {
-    // Run tests
     if (RUN_ALL_TESTS())
         ;
 
-    // sleep for 1 sec
     delay(1000);
 }
 
@@ -271,11 +274,9 @@ TEST_F(DeviceTestSuite, loopCallsCurrentAppStateLoop) {
 }
 
 TEST_F(DeviceTestSuite, loopHandlesEmptyAppConfig) {
-    // Should not crash with empty config
+    // No active app: loop() must not crash.
     device->loop();
     device->loop();
-    
-    // No assertions needed - just checking it doesn't crash
     SUCCEED();
 }
 
@@ -466,16 +467,12 @@ TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {
 // SERIAL TESTS
 // ============================================
 
-TEST_F(SerialTestSuite, serialWriteAppendsStringStart) {
-    serialWriteAppendsStringStart();
+TEST(NativeSerialDriver, byteCallbackReceivesArbitraryBytes) {
+    nativeSerialDriverByteCallbackReceivesArbitraryBytes();
 }
 
-TEST_F(SerialTestSuite, headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue) {
-    headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue();
-}
-
-TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
-    whenHeadIsEmptyReadStringStillReturnsNextString();
+TEST(NativeSerialDriver, byteCallbackFragmentsWhenEnabled) {
+    nativeSerialDriverByteCallbackFragmentsWhenEnabled();
 }
 
 // ============================================
@@ -484,18 +481,6 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 
 TEST_F(PlayerTestSuite, jsonRoundTripPreservesAllFields) {
     playerJsonRoundTripPreservesAllFields(player);
-}
-
-TEST_F(PlayerTestSuite, jsonRoundTripWithBountyRole) {
-    playerJsonRoundTripWithBountyRole(player);
-}
-
-TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
-    playerStatsIncrementCorrectly(player);
-}
-
-TEST_F(PlayerTestSuite, streakResetsOnLoss) {
-    playerStreakResetsOnLoss(player);
 }
 
 TEST_F(PlayerTestSuite, allegianceFromIntSetsCorrectly) {
@@ -522,14 +507,6 @@ TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
     matchJsonContainsWinnerFlag();
 }
 
-TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
-    matchBinaryRoundTripPreservesAllFields();
-}
-
-TEST_F(MatchTestSuite, binarySizeIsCorrect) {
-    matchBinarySizeIsCorrect();
-}
-
 TEST_F(MatchTestSuite, setupClearsDrawTimes) {
     matchSetupClearsDrawTimes();
 }
@@ -541,30 +518,6 @@ TEST_F(MatchTestSuite, drawTimesSetCorrectly) {
 TEST_F(MatchTestSuite, withZeroDrawTimes) {
     matchWithZeroDrawTimes();
 }
-
-TEST_F(MatchTestSuite, withLargeDrawTimes) {
-    matchWithLargeDrawTimes();
-}
-
-// // ============================================
-// // UUID TESTS
-// // ============================================
-
-// TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
-//     uuidStringToBytesProducesCorrectOutput();
-// }
-
-// TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-//     uuidBytesToStringProducesValidFormat();
-// }
-
-// TEST_F(UUIDTestSuite, roundTripPreservesData) {
-//     uuidRoundTripPreservesData();
-// }
-
-// TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-//     uuidGeneratorProducesValidFormat();
-// }
 
 // ============================================
 // MAC ADDRESS TESTS
@@ -622,16 +575,23 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 // MATCH MANAGER TESTS
 // ============================================
 
-TEST_F(MatchManagerTestSuite, setBoostStoresValue) {
-    matchManagerSetBoostStoresValue(matchManager, player);
+TEST_F(MatchManagerTestSuite, clearCancelsInflightWithoutAbandon) {
+    matchManagerClearCancelsInflightWithoutAbandon(this);
 }
 
 TEST_F(MatchManagerTestSuite, boostSubtractedFromHunterReactionTime) {
     matchManagerBoostSubtractedFromHunterReactionTime(this);
 }
 
-TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsBoost) {
-    matchManagerClearCurrentMatchResetsBoost(matchManager, player);
+TEST_F(MatchManagerTestSuite, shootoutMatchExcludedFromReactionStats) {
+    matchManagerShootoutMatchExcludedFromReactionStats(this);
+}
+
+TEST_F(MatchManagerTestSuite, shootoutMatchIgnoresChainBoost) {
+    matchManagerShootoutMatchIgnoresChainBoost(this);
+}
+TEST_F(MatchManagerTestSuite, shootoutMatchRoleDecoupledFromGlobalRole) {
+    matchManagerShootoutMatchRoleDecoupledFromGlobalRole(this);
 }
 
 TEST_F(MatchManagerTestSuite, initializeCreatesMatch) {
@@ -670,12 +630,40 @@ TEST_F(MatchManagerTestSuite, bountyWinsWhenHunterNeverPressed) {
     matchManagerBountyWinsWhenHunterNeverPressed(matchManager, player);
 }
 
+TEST_F(MatchManagerTestSuite, opponentResultIsFirstWriterWins) {
+    matchManagerOpponentResultIsFirstWriterWins(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, lateTimeoutDoesNotClobberWinningTime) {
+    matchManagerLateTimeoutDoesNotClobberWinningTime(matchManager, player);
+}
+
 TEST_F(MatchManagerTestSuite, tracksDuelState) {
     matchManagerTracksDuelState(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, graceExpiredAloneFinalizes) {
     matchManagerGraceExpiredAloneFinalizes(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, voidedDuelPersistsWithFlag) {
+    matchManagerVoidedDuelPersistsWithFlag(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, neverPressedAbandonPreservesLoss) {
+    matchManagerNeverPressedAbandonPreservesLoss(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, drawResultAbandonVoids) {
+    matchManagerDrawResultAbandonVoids(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, staleAbandonForOtherPeerIgnored) {
+    matchManagerStaleAbandonForOtherPeerIgnored(matchManager, player);
+}
+
+TEST_F(MatchManagerTestSuite, setupAbandonClearsUnreadyMatch) {
+    matchManagerSetupAbandonClearsUnreadyMatch(matchManager, player);
 }
 
 TEST_F(MatchManagerTestSuite, rejectsNeverPressedFromStranger) {
@@ -711,7 +699,7 @@ TEST_F(MatchManagerTestSuite, duelStartTimeTracking) {
 }
 
 TEST_F(MatchManagerTestSuite, clearCurrentMatchResetsMasherCount) {
-    matchManagerClearCurrentMatchResetsMasherCount(matchManager, player);
+    matchManagerClearCurrentMatchResetsMasherCount(this);
 }
 
 TEST_F(MatchManagerTestSuite, matchIsReadyFalseBeforeHandshake) {
@@ -734,10 +722,6 @@ TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
 }
 
-// ============================================
-// MATCH MANAGER CONCURRENCY TESTS (TSan)
-// ============================================
-
 TEST(MatchManagerConcurrent, driverExecSerializesMatchManagerAccess) {
     matchManagerConcurrentDriverVsReader();
 }
@@ -752,14 +736,6 @@ TEST_F(DuelIntegrationTestSuite, completeDuelFlowHunterWins) {
 
 TEST_F(DuelIntegrationTestSuite, completeDuelFlowBountyWins) {
     completeDuelFlowBountyWins(this);
-}
-
-TEST_F(DuelIntegrationTestSuite, matchSerializationRoundTrip) {
-    matchSerializationRoundTrip();
-}
-
-TEST_F(DuelIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
-    playerStatsAccumulateAcrossMatches(hunter);
 }
 
 TEST_F(DuelIntegrationTestSuite, duelWithTiedReactionTimes) {
@@ -786,10 +762,6 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
     idleStateClearsOnDismount(this);
 }
 
-TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
-    idleButtonCallbacksRegisteredAndRemoved(this);
-}
-
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
 }
@@ -797,65 +769,110 @@ TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
 TEST_F(IdleStateTests, transitionsToDuelCountdownWhenMatchIsReady) {
     idleTransitionsToDuelCountdownWhenMatchIsReady(this);
 }
+TEST_F(IdleStateTests, keepsReadyMatchAcrossReinit) {
+    idleKeepsReadyMatchAcrossReinit(this);
+}
 
 // ============================================
-// QUICKDRAW STATE TESTS - HANDSHAKE
+// PEER GRAPH TESTS
 // ============================================
 
-TEST_F(HandshakeStateTests, outputIdleTransitionsOnMacReceived) {
-    outputIdleTransitionsOnMacReceived(this);
+TEST_F(PeerGraphTests, storesBeaconBySource) {
+    peerGraphStoresBeaconBySource(this);
 }
 
-TEST_F(HandshakeStateTests, outputIdleIgnoresUnrelatedSerial) {
-    outputIdleIgnoresUnrelatedSerial(this);
+TEST_F(PeerGraphTests, mutualEdgeRequiresBothClaims) {
+    peerGraphMutualEdgeRequiresBothClaims(this);
 }
 
-TEST_F(HandshakeStateTests, outputIdleClearsCallbackOnDismount) {
-    outputIdleClearsCallbackOnDismount(this);
+TEST_F(PeerGraphTests, isInLoopThreeNodeRing) {
+    peerGraphIsInLoopThreeNodeRing(this);
 }
 
-TEST_F(HandshakeStateTests, outputSendIdTransitionsOnExchangeIdAck) {
-    outputSendIdTransitionsOnExchangeIdAck(this);
+TEST_F(PeerGraphTests, threeNodeChainNotInLoop) {
+    peerGraphThreeNodeChainNotInLoop(this);
 }
 
-TEST_F(HandshakeStateTests, outputSendIdClearsOnDismount) {
-    outputSendIdClearsOnDismount(this);
+TEST_F(PeerGraphTests, fourNodeRingInLoop) {
+    peerGraphFourNodeRingInLoop(this);
 }
 
-TEST_F(HandshakeStateTests, inputIdleTransitionsOnExchangeId) {
-    inputIdleTransitionsOnExchangeId(this);
+TEST_F(PeerGraphTests, selfIslandNotInLoop) {
+    peerGraphSelfIslandNotInLoop(this);
 }
 
-TEST_F(HandshakeStateTests, inputSendIdTransitionsOnExchangeIdAck) {
-    inputSendIdTransitionsOnExchangeIdAck(this);
+TEST_F(PeerGraphTests, rejectsPoisonBeaconSource) {
+    peerGraphRejectsPoisonBeaconSource(this);
 }
 
-TEST_F(HandshakeStateTests, inputSendIdClearsOnDismount) {
-    inputSendIdClearsOnDismount(this);
+TEST_F(PeerGraphTests, topologyStableAfterDebounceWindow) {
+    peerGraphTopologyStableAfterDebounceWindow(this);
+}
+TEST_F(PeerGraphTests, backwardsClockNotStable) {
+    peerGraphBackwardsClockNotStable(this);
 }
 
-TEST_F(HandshakeStateTests, handshakeAppOutputJackTimeoutResetsToIdle) {
-    handshakeAppOutputJackTimeoutResetsToIdle(this);
+TEST_F(PeerGraphTests, unchangedBeaconDoesNotResetStability) {
+    peerGraphUnchangedBeaconDoesNotResetStability(this);
 }
+
+TEST_F(PeerGraphTests, roleFlipDoesNotResetStability) {
+    peerGraphRoleFlipDoesNotResetStability(this);
+}
+
+TEST_F(PeerGraphTests, halfOpenBeaconDoesNotResetStability) {
+    peerGraphHalfOpenBeaconDoesNotResetStability(this);
+}
+
+TEST_F(PeerGraphTests, nonMutualNodeExcludedFromMembers) {
+    peerGraphNonMutualNodeExcludedFromMembers(this);
+}
+
+TEST_F(PeerGraphTests, peerDropsOutWhenSelfStopsClaiming) {
+    peerGraphPeerDropsOutWhenSelfStopsClaiming(this);
+}
+
+TEST_F(PeerGraphTests, twoDeviceBothJacksNotLoopButRetainsPeer) {
+    peerGraphTwoDeviceBothJacksNotLoopButRetainsPeer(this);
+}
+
+TEST_F(PeerGraphTests, countReachableSplitsChainAtSelf) {
+    peerGraphCountReachableSplitsChainAtSelf(this);
+}
+
+TEST_F(PeerGraphTests, countReachableDirectPeerBeforeBeacon) {
+    peerGraphCountReachableDirectPeerBeforeBeacon(this);
+}
+
+TEST_F(PeerGraphTests, countReachableZeroForAbsentPeer) {
+    peerGraphCountReachableZeroForAbsentPeer(this);
+}
+
+TEST_F(ChainManagerTests, getChainLengthChampionOnly) {
+    chainGetChainLengthChampionOnly(this);
+}
+
+TEST(PeerGraphCodecTests, helloRoundTrip) { codecHelloRoundTrip(); }
+TEST(PeerGraphCodecTests, beaconRoundTrip) { codecBeaconRoundTrip(); }
+TEST(PeerGraphCodecTests, beaconRoleByteIsOpaque) { codecBeaconRoleByteIsOpaque(); }
+TEST(PeerGraphCodecTests, beaconEmptyPeersRoundTrip) { codecBeaconEmptyPeersRoundTrip(); }
+TEST(PeerGraphCodecTests, rejectsWrongLength) { codecRejectsWrongLength(); }
+
+TEST(ChainRoleWalkTests, loneHunterIsSelfChampion) { chainRoleLoneHunterIsSelfChampion(); }
+TEST(ChainRoleWalkTests, championHunterFacingBounty) { chainRoleChampionHunterFacingBounty(); }
+TEST(ChainRoleWalkTests, championWalkToHead) { chainRoleChampionWalkToHead(); }
+TEST(ChainRoleWalkTests, championNoneInClosedRing) { chainRoleChampionNoneInClosedRing(); }
+TEST(ChainRoleWalkTests, championResolvesInHalfOpenRing) { chainRoleChampionResolvesInHalfOpenRing(); }
+TEST(ChainRoleWalkTests, noneSelfHasNoChampion) { chainRoleNoneSelfHasNoChampion(); }
+TEST(ChainRoleWalkTests, noneMidChainSeversChain) { chainRoleNoneMidChainSeversChain(); }
+TEST(ChainRoleWalkTests, mutualOpponentNoneIsNotAnOpponent) { chainRoleMutualOpponentNoneIsNotAnOpponent(); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
 
-TEST_F(DuelCountdownTests, buttonMasherPenaltyIncrementsOnButtonPress) {
-    countdownButtonMasherPenaltyIncrementsOnButtonPress(this);
-}
-
-TEST_F(DuelCountdownTests, multipleEarlyPressesAccumulatePenalty) {
-    countdownMultipleEarlyPressesAccumulatePenalty(this);
-}
-
 TEST_F(DuelCountdownTests, progressesThroughStages) {
     countdownProgressesThroughStages(this);
-}
-
-TEST_F(DuelCountdownTests, battleTransitionSetsFlag) {
-    countdownBattleTransitionSetsFlag(this);
 }
 
 TEST_F(DuelCountdownTests, cleansUpOnDismount) {
@@ -939,6 +956,10 @@ TEST_F(DuelResultTests, hunterWinsWithFasterTime) {
     resultHunterWinsWithFasterTime(this);
 }
 
+TEST_F(DuelResultTests, voidedDuelInShootoutAbortsTournament) {
+    voidedDuelInShootoutAbortsTournament(this);
+}
+
 TEST_F(DuelResultTests, bountyWinsWithFasterTime) {
     resultBountyWinsWithFasterTime(this);
 }
@@ -999,10 +1020,6 @@ TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
 }
 
-TEST_F(StateCleanupTests, handshakeClearsWirelessCallbacks) {
-    cleanupHandshakeClearsWirelessCallbacks(this);
-}
-
 TEST_F(StateCleanupTests, duelResultClearsWirelessCallbacks) {
     cleanupDuelResultClearsWirelessCallbacks(this);
 }
@@ -1031,20 +1048,16 @@ TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
     countdownDebouncesTransientDisconnect(this);
 }
 
+TEST_F(StateCleanupTests, pushedDoesNotClearMatchOnTransientDisconnect) {
+    pushedDoesNotClearMatchOnTransientDisconnect(this);
+}
+
 TEST_F(StateCleanupTests, duelPushedDebouncesTransientDisconnect) {
     duelPushedDebouncesTransientDisconnect(this);
 }
 
 TEST_F(StateCleanupTests, duelReceivedResultDebouncesTransientDisconnect) {
     duelReceivedResultDebouncesTransientDisconnect(this);
-}
-
-// ============================================
-// QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
-// ============================================
-
-TEST_F(ConnectionSuccessfulTests, transitionsAfterThreshold) {
-    connectionSuccessfulTransitionsAfterThreshold(this);
 }
 
 TEST_F(QuickdrawLifecycleTests, ctorDtorDoesNotLeak) {
@@ -1055,16 +1068,12 @@ TEST_F(QuickdrawLifecycleTests, ctorDtorDoesNotLeak) {
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================
 
-TEST_F(PacketParsingTests, drawResultInvokesCallback) {
-    packetParsingDrawResultInvokesCallback(this);
-}
-
-TEST_F(PacketParsingTests, neverPressedParsesCorrectly) {
-    packetParsingNeverPressedParsesCorrectly(this);
-}
-
 TEST_F(PacketParsingTests, rejectsMalformedPacket) {
     packetParsingRejectsMalformedPacket(this);
+}
+
+TEST_F(PacketParsingTests, dedupsResentReliablePacket) {
+    packetParsingDedupsResentReliablePacket(this);
 }
 
 TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeHunter) {
@@ -1114,6 +1123,9 @@ TEST_F(StateFlowIntegrationTests, dutPressesFirstWins) {
 TEST_F(StateFlowIntegrationTests, dutReceivesFirstLoses) {
     stateFlowDutReceivesFirstLoses(this);
 }
+TEST_F(StateFlowIntegrationTests, pressAtGraceExpiryStillCounts) {
+    stateFlowPressAtGraceExpiryStillCounts(this);
+}
 
 TEST_F(StateFlowIntegrationTests, dutNeverPressesLoses) {
     stateFlowDutNeverPressesLoses(this);
@@ -1129,6 +1141,10 @@ TEST_F(StateFlowIntegrationTests, throughDuelResultToWin) {
 
 TEST_F(StateFlowIntegrationTests, throughDuelResultToLose) {
     stateFlowThroughDuelResultToLose(this);
+}
+
+TEST_F(StateFlowIntegrationTests, shootoutMatchWritesNoLifetimeStats) {
+    stateFlowShootoutMatchWritesNoLifetimeStats(this);
 }
 
 // ============================================
@@ -1147,318 +1163,272 @@ TEST_F(TwoDeviceSimulationTests, closeRaceCorrectWinner) {
     twoDeviceCloseRaceCorrectWinner(this);
 }
 
-// ============================================
-// QUICKDRAW INTEGRATION TESTS - HANDSHAKE
-// ============================================
-
-TEST_F(HandshakeIntegrationTests, completeBountyPerspective) {
-    handshakeCompleteBountyPerspective(this);
+TEST_F(DirectPeerTableTests, getMacPeerReturnsNullWhenNotSet) {
+    directPeerTableGetMacPeerReturnsNullWhenNotSet(this);
 }
 
-TEST_F(HandshakeIntegrationTests, completeHunterPerspective) {
-    handshakeCompleteHunterPerspective(this);
+TEST_F(DirectPeerTableTests, getMacPeerReturnsCorrectMac) {
+    directPeerTableGetMacPeerReturnsCorrectMac(this);
 }
 
-TEST_F(HandshakeIntegrationTests, twoDeviceFullFlow) {
-    handshakeTwoDeviceFullFlow(this);
-}
-
-TEST_F(HandshakeIntegrationTests, timeoutBeforeCompletion) {
-    handshakeTimeoutBeforeCompletion(this);
-}
-
-TEST_F(HandshakeIntegrationTests, rejectsInvalidPacketData) {
-    handshakeRejectsInvalidPacketData(this);
-}
-
-TEST_F(HandshakeIntegrationTests, ignoresUnexpectedCommands) {
-    handshakeIgnoresUnexpectedCommands(this);
-}
-
-TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
-    handshakeSetsOpponentMacAddress(this);
-}
-
-TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
-    handshakeMatchDataPropagatedCorrectly(this);
+TEST_F(DirectPeerTableTests, removeMacPeerClearsEntry) {
+    directPeerTableRemoveMacPeerClearsEntry(this);
 }
 
 // ============================================
-// HWM UNIT TESTS
+// SERIAL FRAME PARSER TESTS
 // ============================================
 
-TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) {
-    hwmGetMacPeerReturnsNullWhenNotSet(this);
+TEST_F(SerialFrameParserTests, validBinaryFrameRoutesToFrameHandler) {
+    serialFrameParserValidBinaryFrameRoutesToFrameHandler(this);
 }
 
-TEST_F(HWMUnitTests, getMacPeerReturnsCorrectMac) {
-    hwmGetMacPeerReturnsCorrectMac(this);
+TEST_F(SerialFrameParserTests, badCrcDropsFrame) {
+    serialFrameParserBadCrcDropsFrame(this);
 }
 
-TEST_F(HWMUnitTests, removeMacPeerClearsEntry) {
-    hwmRemoveMacPeerClearsEntry(this);
+TEST_F(SerialFrameParserTests, unknownOpcodeDrops) {
+    serialFrameParserUnknownOpcodeDrops(this);
 }
 
-TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) {
-    hwmSendPacketFailsWithNoPeer(this);
+TEST_F(SerialFrameParserTests, fragmentedFrameAssembles) {
+    serialFrameParserFragmentedFrameAssembles(this);
 }
 
-TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
-    hwmClearCallbacksRemovesAll(this);
+TEST_F(SerialFrameParserTests, midFrameTimeoutResets) {
+    serialFrameParserMidFrameTimeoutResets(this);
 }
 
-TEST_F(HWMUnitTests, processRejectsNegativeCommand) {
-    hwmProcessRejectsNegativeCommand(this);
+TEST_F(SerialFrameParserTests, garbageThenValidFrameResyncs) {
+    serialFrameParserGarbageThenValidFrameResyncs(this);
+}
+
+TEST_F(SerialFrameParserTests, doubleAAResyncsToPreamble) {
+    serialFrameParserDoubleAAResyncsToPreamble(this);
+}
+
+TEST_F(SerialFrameParserTests, splitPreambleAcrossFeeds) {
+    serialFrameParserSplitPreambleAcrossFeeds(this);
 }
 
 // ============================================
 // REMOTE DEVICE COORDINATOR TESTS
 // ============================================
 
-TEST_F(RDCTests, defaultStateIsDisconnectedOnAllPorts) {
-    rdcDefaultStateIsDisconnectedOnAllPorts(this);
+TEST_F(RDCTests, defaultStateIsDisconnected) { rdcDefaultStateIsDisconnected(this); }
+TEST_F(RDCTests, helloSetsMacPeerAndConnected) { rdcHelloSetsMacPeerAndConnected(this); }
+TEST_F(RDCTests, helloFromSelfRejected) { rdcHelloFromSelfRejected(this); }
+TEST_F(RDCTests, silentLinkClearsPeerAfterThreshold) { rdcSilentLinkClearsPeerAfterThreshold(this); }
+TEST_F(RDCTests, silentLinkReleasesEspNowPeerSlot) { rdcSilentLinkReleasesEspNowPeerSlot(this); }
+TEST_F(RDCTests, silentLinkSurvivesRefreshWithinWindow) { rdcSilentLinkSurvivesRefreshWithinWindow(this); }
+TEST_F(RDCTests, silentLinkFiresDisconnectCallback) { rdcSilentLinkFiresDisconnectCallback(this); }
+TEST_F(RDCTests, connectFiresConnectCallback) { rdcConnectFiresConnectCallback(this); }
+TEST_F(RDCTests, disconnectCallbackCarriesDeviceType) { rdcDisconnectCallbackCarriesDeviceType(this); }
+TEST_F(RDCTests, repeatedHelloFiresConnectOnce) { rdcRepeatedHelloFiresConnectOnce(this); }
+TEST_F(RDCTests, isDirectPeerTrueForCableNeighbor) { rdcIsDirectPeerTrueForCableNeighbor(this); }
+TEST_F(RDCTests, macPeerChangeEmitsBeacon) { rdcMacPeerChangeEmitsBeacon(this); }
+TEST_F(RDCTests, beaconsFormRingIsInLoop) { rdcBeaconsFormRingIsInLoop(this); }
+TEST_F(RDCTests, selfSourcedBeaconNotForwarded) { rdcSelfSourcedBeaconNotForwarded(this); }
+TEST_F(RDCTests, foreignBeaconFloodedOnOppositeJack) { rdcForeignBeaconFloodedOnOppositeJack(this); }
+TEST_F(RDCTests, newPeerReplaysCachedTopology) { rdcNewPeerReplaysCachedTopology(this); }
+TEST_F(RDCTests, backstopReplaysChainMemberBeacons) { rdcBackstopReplaysChainMemberBeacons(this); }
+TEST_F(RDCTests, beaconReplayIsPaced) { rdcBeaconReplayIsPaced(this); }
+TEST_F(RDCTests, sameJackPeerSwapFiresDisconnectThenConnect) { rdcSameJackPeerSwapFiresDisconnectThenConnect(this); }
+TEST_F(RDCTests, roleFlipEmitsBeaconImmediately) { rdcRoleFlipEmitsBeaconImmediately(this); }
+TEST_F(RDCTests, recvQueueBoundedDropsOldest) { rdcRecvQueueBoundedDropsOldest(this); }
+
+
+TEST_F(ChainManagerTests, roleDerivationWithChampionTopology) {
+    chainRoleDerivationWithChampionTopology(this);
 }
 
-TEST_F(RDCTests, outputPortConnectionLifecycle) {
-    rdcOutputPortConnectionLifecycle(this);
+TEST_F(ChainManagerTests, canInitiateMatchFalseForBounty) {
+    chainCanInitiateMatchFalseForBounty(this);
 }
 
-TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
-    rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
+TEST_F(ChainManagerTests, canInitiateMatchFalseWhenInLoop) {
+    chainCanInitiateMatchFalseWhenInLoop(this);
 }
 
-TEST_F(RDCTests, chainAnnouncementFiltersSelfMac) {
-    rdcChainAnnouncementFiltersSelfMac(this);
+TEST_F(ChainManagerTests, confirmLifecycle) {
+    chainConfirmLifecycle(this);
 }
 
-TEST_F(RDCTests, daisyChainCappedAtMaxPeers) {
-    rdcDaisyChainCappedAtMaxPeers(this);
+TEST_F(ChainManagerTests, onChainStateChangedClearsOnDrain) {
+    chainOnChainStateChangedClearsOnDrain(this);
 }
 
-TEST_F(RDCTests, disconnectWipesDaisyChainedPeers) {
-    rdcDisconnectWipesDaisyChainedPeers(this);
+TEST_F(ChainManagerTests, isChampionFalseWithSameRoleOpponent) {
+    chainIsChampionFalseWithSameRoleOpponent(this);
 }
 
-TEST_F(RDCTests, ignoresAnnouncementFromNonDirectPeer) {
-    rdcIgnoresAnnouncementFromNonDirectPeer(this);
+TEST_F(ChainManagerTests, DirectPeerConnectDoesNotClaim) { chainDirectPeerConnectDoesNotClaim(this); }
+TEST_F(ChainManagerTests, coordinatorGuardSuppressesSupporter) {
+    chainCoordinatorGuardSuppressesSupporter(this);
+}
+TEST_F(ChainManagerTests, sendConfirmTargetsChampionMac) {
+    chainSendConfirmTargetsChampionMac(this);
 }
 
-TEST_F(RDCTests, chainChangeCallbackFiresOnDaisyAdded) {
-    rdcChainChangeCallbackFiresOnDaisyAdded(this);
+TEST_F(ChainManagerTests, sendConfirmIncrementsSeqId) {
+    chainSendConfirmIncrementsSeqId(this);
 }
 
-TEST_F(RDCTests, doesNotEmitWhenOtherPortDisconnected) {
-    rdcDoesNotEmitWhenOtherPortDisconnected(this);
+TEST_F(ChainManagerTests, sendConfirmNoopWhenChampionMacInvalid) {
+    chainSendConfirmNoopWhenChampionMacInvalid(this);
 }
 
-TEST_F(RDCTests, midChainEmitsForwardAndBackward) {
-    rdcMidChainEmitsForwardAndBackward(this);
+TEST_F(ChainManagerTests, retryStatsRecordsLifecycle) {
+    chainRetryStatsRecordsLifecycle(this);
 }
 
-TEST_F(RDCTests, duplicateAnnouncementDoesNotFireCallback) {
-    rdcDuplicateAnnouncementDoesNotFireCallback(this);
+TEST_F(ChainManagerTests, gameEventAckFromWrongMacIgnored) {
+    chainGameEventAckFromWrongMacIgnored(this);
 }
 
-TEST_F(RDCTests, directPeerRegistrationEmitsBackwardAnnouncement) {
-    rdcDirectPeerRegistrationEmitsBackwardAnnouncement(this);
+TEST_F(ChainManagerTests, gameEventCountdownIsTrackedAndRetried) {
+    chainGameEventCountdownIsTrackedAndRetried(this);
 }
 
-TEST_F(RDCTests, directPeerDropEmitsAnnouncement) {
-    rdcDirectPeerDropEmitsAnnouncement(this);
+TEST_F(ChainManagerTests, countdownReachesMultiHopSupporter) {
+    chainCountdownReachesMultiHopSupporter(this);
 }
 
-TEST_F(RDCTests, directPeerDropFiresPeerLostCallbackWithMac) {
-    rdcDirectPeerDropFiresPeerLostCallbackWithMac(this);
+TEST_F(ChainManagerTests, gameEventWinIsTrackedAndRetried) {
+    chainGameEventWinIsTrackedAndRetried(this);
 }
 
-TEST_F(RDCTests, chainAnnouncementPacketHandlerUpdatesDaisyChain) {
-    rdcChainAnnouncementPacketHandlerUpdatesDaisyChain(this);
+TEST_F(ChainManagerTests, gameEventAckClearsPending) {
+    chainGameEventAckClearsPending(this);
 }
 
-TEST_F(RDCTests, ackedAnnouncementDoesNotRetransmit) {
-    rdcAckedAnnouncementDoesNotRetransmit(this);
+TEST_F(ChainManagerTests, gameEventAbandonsAfterMax) {
+    chainGameEventAbandonsAfterMax(this);
 }
 
-TEST_F(RDCTests, announcementAbandonedAfterMaxRetries) {
-    rdcAnnouncementAbandonedAfterMaxRetries(this);
+TEST_F(ChainManagerTests, claimsCoordinatorWhenSelfIsLowestMacInLoop) {
+    chainClaimsCoordinatorWhenSelfIsLowestMacInLoop(this);
+}
+TEST_F(ChainManagerTests, demotesCoordinatorWhenLowerMacJoins) {
+    chainDemotesCoordinatorWhenLowerMacJoins(this);
+}
+TEST_F(ChainManagerTests, doesNotClaimWithoutLoop) {
+    chainDoesNotClaimWithoutLoop(this);
+}
+TEST_F(ChainManagerTests, oneSecondMinStabilityGuard) {
+    chainOneSecondMinStabilityGuard(this);
+}
+TEST_F(ChainManagerTests, confirmDroppedWhenTopologyUnstable) {
+    chainConfirmDroppedWhenTopologyUnstable(this);
 }
 
-// ============================================
-// CHAIN DUEL MANAGER TESTS
-// ============================================
-
-TEST_F(ChainDuelManagerTests, roleDerivationWithChampionTopology) {
-    cdmRoleDerivationWithChampionTopology(this);
+TEST_F(ChainMultiDeviceFixture, chainFormsAndElectsChampion) {
+    chainMultiDeviceChainFormsAndElectsChampion(this);
 }
 
-TEST_F(ChainDuelManagerTests, canInitiateMatchFalseForBounty) {
-    cdmCanInitiateMatchFalseForBounty(this);
+TEST_F(ChainMultiDeviceFixture, confirmDeliveredToChampion) {
+    chainMultiDeviceConfirmDeliveredToChampion(this);
 }
 
-TEST_F(ChainDuelManagerTests, confirmLifecycle) {
-    cdmConfirmLifecycle(this);
+TEST_F(ChainMultiDeviceFixture, autoConfirmReachesChampion) {
+    chainMultiDeviceAutoConfirmReachesChampion(this);
 }
 
-TEST_F(ChainDuelManagerTests, onChainStateChangedClearsOnDrain) {
-    cdmOnChainStateChangedClearsOnDrain(this);
-}
-
-TEST_F(ChainDuelManagerTests, confirmFromUnknownOriginatorRejected) {
-    cdmConfirmFromUnknownOriginatorRejected(this);
-}
-
-TEST_F(ChainDuelManagerTests, isChampionFalseWithSameRoleOpponent) {
-    cdmIsChampionFalseWithSameRoleOpponent(this);
-}
-
-TEST_F(ChainDuelManagerTests, isChampionFalseInRing) {
-    cdmIsChampionFalseInRing(this);
-}
-
-TEST_F(ChainDuelManagerTests, sendConfirmTargetsChampionMac) {
-    cdmSendConfirmTargetsChampionMac(this);
-}
-
-TEST_F(ChainDuelManagerTests, sendConfirmIncrementsSeqId) {
-    cdmSendConfirmIncrementsSeqId(this);
-}
-
-TEST_F(ChainDuelManagerTests, sendConfirmNoopWhenChampionMacInvalid) {
-    cdmSendConfirmNoopWhenChampionMacInvalid(this);
-}
-
-TEST_F(ChainDuelManagerTests, roleAnnounceUpdatesChampionMac) {
-    cdmRoleAnnounceUpdatesChampionMac(this);
-}
-
-TEST_F(ChainDuelManagerTests, roleAnnounceNoCascadeIfChampionUnchanged) {
-    cdmRoleAnnounceNoCascadeIfChampionUnchanged(this);
-}
-
-TEST_F(ChainDuelManagerTests, broadcastRoleAndChampionSends) {
-    cdmBroadcastRoleAndChampionSends(this);
-}
-
-TEST_F(ChainDuelManagerTests, ackClearsPending) {
-    cdmAckClearsPending(this);
-}
-
-TEST_F(ChainDuelManagerTests, ackFromWrongMacIgnored) {
-    cdmAckFromWrongMacIgnored(this);
-}
-
-TEST_F(ChainDuelManagerTests, retryStatsRecordsLifecycle) {
-    cdmRetryStatsRecordsLifecycle(this);
-}
-
-TEST_F(ChainDuelManagerTests, retransmitAbandonsAfterMax) {
-    cdmRetransmitAbandonsAfterMax(this);
-}
-
-TEST_F(ChainDuelManagerTests, onChainStateBecomesChampionSetsSelfMac) {
-    cdmOnChainStateBecomesChampionSetsSelfMac(this);
-}
-
-TEST_F(ChainDuelManagerTests, supporterKeepsUpstreamChampionMacAfterTransition) {
-    cdmSupporterKeepsUpstreamChampionMacAfterTransition(this);
-}
-
-TEST_F(ChainDuelManagerTests, onChainStateNewSupporterTriggersBroadcast) {
-    cdmOnChainStateNewSupporterTriggersBroadcast(this);
-}
-
-TEST_F(ChainDuelManagerTests, chainDuelThreeDeviceConfirm) {
-    chainDuelThreeDeviceConfirm(this);
-}
-
-TEST_F(ChainDuelManagerTests, chainDuelReconfigRecovers) {
-    chainDuelReconfigRecovers(this);
-}
-
-TEST_F(ChainDuelManagerTests, roleAnnounceFromSupporterJackIgnoresChampionMac) {
-    cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(this);
-}
-
-TEST_F(ChainDuelManagerTests, broadcastToOpponentJackPopulatesRemoteRole) {
-    cdmBroadcastToOpponentJackPopulatesRemoteRole(this);
-}
-
-TEST_F(ChainDuelManagerTests, championToSupporterClearsStaleSelfMac) {
-    cdmChampionToSupporterClearsStaleSelfMac(this);
-}
-
-TEST_F(ChainDuelManagerTests, roleAnnounceFromOppositeRoleOpponentIgnoresChampionMac) {
-    cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChampionMac(this);
-}
-
-TEST_F(ChainDuelManagerTests, gameEventCountdownIsFireAndForget) {
-    cdmGameEventCountdownIsFireAndForget(this);
-}
-
-TEST_F(ChainDuelManagerTests, gameEventWinIsTrackedAndRetried) {
-    cdmGameEventWinIsTrackedAndRetried(this);
-}
-
-TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) {
-    cdmGameEventAckClearsPending(this);
-}
-
-TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) {
-    cdmGameEventAbandonsAfterMax(this);
-}
-
-// ============================================
-// CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
-// ============================================
-
-TEST_F(ChainDuelMultiDeviceFixture, chainFormsAndElectsChampion) {
-    cdmMultiDeviceChainFormsAndElectsChampion(this);
-}
-
-TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChampion) {
-    cdmMultiDeviceConfirmDeliveredToChampion(this);
-}
-
-TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceFullTournament) {
+// Ring/loop detection flows through RDC::isInLoop() + isTopologyStable(), so
+// these tests advance the clock via primeTopologyStableAll() rather than driving
+// connect-edge events.
+TEST_F(ChainMultiDeviceFixture, shootoutFourDeviceFullTournament) {
     shootoutFourDeviceFullTournament(this);
 }
-TEST_F(ChainDuelMultiDeviceFixture, shootoutEightDeviceFullTournament) {
+TEST_F(ChainMultiDeviceFixture, shootoutEightDeviceFullTournament) {
     shootoutEightDeviceFullTournament(this);
 }
-TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
+TEST_F(ChainMultiDeviceFixture, shootoutSixteenDeviceFullTournament) {
+    shootoutSixteenDeviceFullTournament(this);
+}
+TEST_F(ChainMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
     shootoutFourDeviceConsensusAndMatchStart(this);
 }
+TEST_F(ChainMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) {
+    shootoutFourDeviceTwoTournamentsBackToBack(this);
+}
+TEST_F(ChainMultiDeviceFixture, ThreeDeviceChainNoLoop) { rdcThreeDeviceChainNoLoop(this); }
+TEST_F(ChainMultiDeviceFixture, ThreeDeviceRingReportsLoop) { rdcThreeDeviceRingReportsLoop(this); }
+TEST_F(ChainMultiDeviceFixture, HunterRingClaimsExactlyOneCoordinator) { chainHunterRingClaimsExactlyOneCoordinator(this); }
+TEST_F(ChainMultiDeviceFixture, CoordinatorIsNeverSupporter) { chainCoordinatorIsNeverSupporter(this); }
+TEST_F(ChainMultiDeviceFixture, MixedRoleRingClaimsCoordinator) { chainMixedRoleRingClaimsCoordinator(this); }
+TEST_F(ChainMultiDeviceFixture, DeviceTypePropagatesViaHello) { chainDeviceTypePropagatesViaHello(this); }
+TEST_F(ChainMultiDeviceFixture, UserIdPropagatesViaHello) { chainUserIdPropagatesViaHello(this); }
+TEST_F(ChainMultiDeviceFixture, TwoDeviceBothJacksIsLoop) { chainTwoDeviceBothJacksIsLoop(this); }
+TEST_F(ChainMultiDeviceFixture, FdnPeerReportsFdnDeviceType) { chainFdnPeerReportsFdnDeviceType(this); }
+TEST_F(ChainMultiDeviceFixture, FdnMidChainSeversDuelChain) { chainFdnMidChainSeversDuelChain(this); }
+TEST_F(ChainMultiDeviceFixture, SelfHelloEchoRejected) { chainSelfHelloEchoRejected(this); }
+TEST_F(ChainMultiDeviceFixture, ChampionChainLengthFromTopology) { chainChampionChainLengthFromTopology(this); }
+TEST_F(ChainMultiDeviceFixture, MixedChainRolesConverge) { chainMixedChainRolesConverge(this); }
+TEST_F(ChainMultiDeviceFixture, RingYankLeavesOneChampion) { chainRingYankLeavesOneChampion(this); }
+TEST_F(ChainMultiDeviceFixture, HalfOpenLinkNoPhantomEdge) { chainHalfOpenLinkNoPhantomEdge(this); }
+TEST_F(ChainMultiDeviceFixture, HalfOpenRingResolvesChampion) { chainHalfOpenRingResolvesChampion(this); }
+TEST_F(ChainMultiDeviceFixture, SelfHelloDoesNotRefreshSilentLink) { chainSelfHelloDoesNotRefreshSilentLink(this); }
+TEST_F(ChainMultiDeviceFixture, sixDeviceMixedLoopTailToTailFirst) { chainSixDeviceMixedLoopTailToTailFirst(this); }
+TEST_F(ChainMultiDeviceFixture, sixDeviceMixedLoopHeadToHeadFirst) { chainSixDeviceMixedLoopHeadToHeadFirst(this); }
+TEST_F(ChainMultiDeviceFixture, fourDeviceMixedLoopTailToTailFirst) {
+    chainFourDeviceMixedLoopTailToTailFirst(this);
+}
+TEST_F(ChainMultiDeviceFixture, fourDeviceMixedLoopHeadToHeadFirst) {
+    chainFourDeviceMixedLoopHeadToHeadFirst(this);
+}
+TEST_F(ChainMultiDeviceFixture, mixedLoopCableYankClearsLoopMergeState) {
+    chainMixedLoopCableYankClearsLoopMergeState(this);
+}
+TEST_F(ChainMultiDeviceFixture, sixteenDeviceRingFullBracket) {
+    chainSixteenDeviceRingFullBracket(this);
+}
+TEST_F(ChainMultiDeviceFixture, cableYankSixteenRingConverges) {
+    chainCableYankSixteenRingConverges(this);
+}
+TEST_F(ChainMultiDeviceFixture, cableYankFiftyRingConverges) {
+    chainCableYankFiftyRingConverges(this);
+}
+TEST_F(ChainMultiDeviceFixture, idleCadenceSettlesToOneHz) {
+    chainIdleCadenceSettlesToOneHz(this);
+}
 
-// ============================================
-// SHOOTOUT MANAGER TESTS
-// ============================================
 
-TEST_F(ShootoutManagerTests, coordinatorIsLowestMacAmongConfirmed) { coordinatorIsLowestMacAmongConfirmed(this); }
 TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
 TEST_F(ShootoutManagerTests, localConfirmIsRecordedAndBroadcast) { localConfirmIsRecordedAndBroadcast(this); }
 TEST_F(ShootoutManagerTests, receivingAllConfirmsAdvancesToBracketReveal) { receivingAllConfirmsAdvancesToBracketReveal(this); }
-TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { confirmRebroadcastsEverySecondDuringProposal(this); }
-TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
+TEST_F(ShootoutManagerTests, confirmRetriesUntilAckedDuringProposal) { confirmRetriesUntilAckedDuringProposal(this); }
+TEST_F(ShootoutManagerTests, nonCoordinatorDoesNotAdvanceOnConfirmTally) { nonCoordinatorDoesNotAdvanceOnConfirmTally(this); }
 TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
 TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
+TEST_F(ShootoutManagerTests, matchStartAbandonAbortsTournament) { matchStartAbandonAbortsTournament(this); }
+TEST_F(ShootoutManagerTests, matchResultAbandonAbortsTournament) { matchResultAbandonAbortsTournament(this); }
+TEST_F(ShootoutManagerTests, oversizedBracketAbortsTournament) { oversizedBracketAbortsTournament(this); }
+TEST_F(ShootoutManagerTests, matchResultAbandonAfterTournamentEndStaysEnded) { matchResultAbandonAfterTournamentEndStaysEnded(this); }
+TEST_F(ShootoutManagerTests, abortReceivedAfterTournamentEndStaysEnded) { abortReceivedAfterTournamentEndStaysEnded(this); }
 TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
+TEST_F(ShootoutManagerTests, lowerMacBracketEntryStandsDownAndAdoptsPostBracket) { lowerMacBracketEntryStandsDownAndAdoptsPostBracket(this); }
+TEST_F(ShootoutManagerTests, higherMacBracketEntryDoesNotUnseatCoordinator) { higherMacBracketEntryDoesNotUnseatCoordinator(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
+TEST_F(ShootoutManagerTests, nonCoordinatorWinnerBroadcastsMatchResult) { nonCoordinatorWinnerBroadcastsMatchResult(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
-TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }
 TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) { finalMatchResultTriggersTournamentEnd(this); }
 TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) { startProposalClearsAllPriorTournamentState(this); }
 TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) { tournamentEndRetriesUntilAcked(this); }
+TEST_F(ShootoutManagerTests, abortRetriesUntilAcked) { abortRetriesUntilAcked(this); }
 TEST_F(ShootoutManagerTests, matchResultRetriesUntilAcked) { matchResultRetriesUntilAcked(this); }
 TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) { duplicateMatchResultDoesNotDoubleAdvance(this); }
 TEST_F(ShootoutManagerTests, confirmRecordsPeerName) { confirmRecordsPeerName(this); }
-TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) { isHunterRestoredAfterTournament(this); }
+TEST_F(ShootoutManagerTests, shootoutDoesNotMutateGlobalRole) { shootoutDoesNotMutateGlobalRole(this); }
 TEST_F(ShootoutManagerTests, localRDCDisconnectIsIdempotent) { localRDCDisconnectIsIdempotent(this); }
 TEST_F(ShootoutManagerTests, shootoutProposalDebouncesTransientLoopBreak) { shootoutProposalDebouncesTransientLoopBreak(this); }
 TEST_F(ShootoutManagerTests, shootoutBracketRevealDebouncesTransientLoopBreak) { shootoutBracketRevealDebouncesTransientLoopBreak(this); }
+TEST_F(ShootoutManagerTests, buildLoopMemberSetEmptyWhenTopologyUnstable) { shootoutBuildLoopMemberSetEmptyWhenTopologyUnstable(this); }
+TEST_F(ShootoutManagerTests, buildLoopMemberSetReturnsChainMembersWhenStable) { shootoutBuildLoopMemberSetReturnsChainMembersWhenStable(this); }
 
 // ============================================
 // MAIN

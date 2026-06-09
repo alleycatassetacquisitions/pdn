@@ -8,17 +8,32 @@
 #include "device/drivers/logger.hpp"
 #include <Arduino.h>
 #include <esp_rom_gpio.h>
+#include <driver/gpio.h>
 #include "protocol-constants.hpp"
 #include <HardwareSerial.h>
 #include <string>
 
-class Esp32s3SerialOut : public SerialDriverInterface {
+// One physical jack's UART. The two jacks differ only in which hardware UART
+// they own and the RX pull direction (a per-jack electrical fact; see the
+// construction sites in main.cpp), so both are instances of this one class.
+class Esp32s3SerialJack : public SerialDriverInterface {
 public:
-    explicit Esp32s3SerialOut(const std::string& name, uint8_t txPin, uint8_t rxPin)
-        : SerialDriverInterface(name), txPin(txPin), rxPin(rxPin) {}
+    // RX idle bias for a marginal TRS contact. With invert=true the line
+    // idles LOW, so a jack receiving on the cable TIP (worst contact) needs
+    // PULLDOWN: a pullup would float a marginal contact HIGH and false-trip
+    // the silent-link. A jack whose contact is solid uses PULLUP so a marginal
+    // contact idles HIGH, matching the remote's active-LOW idle. Data pulses
+    // overpower either weak pull, so reception stays intact.
+    // (Not named PULLUP/PULLDOWN: those are Arduino-core preprocessor macros.)
+    enum class RxPull { Down, Up };
 
-    ~Esp32s3SerialOut() override {
-        stringCallback = nullptr;
+    explicit Esp32s3SerialJack(const std::string& name, HardwareSerial& serial,
+                               uint8_t txPin, uint8_t rxPin, RxPull rxPull)
+        : SerialDriverInterface(name), serial_(serial),
+          txPin(txPin), rxPin(rxPin), rxPull(rxPull) {}
+
+    ~Esp32s3SerialJack() override {
+        bytesCallback = nullptr;
     }
 
     int initialize() override {
@@ -31,149 +46,63 @@ public:
         pinMode(txPin, OUTPUT);
         pinMode(rxPin, INPUT);
 
-        Serial1.begin(BAUDRATE, SERIAL_8N1, rxPin, txPin, true);
-        Serial1.setTimeout(100);  // 100ms timeout for readStringUntil
+        serial_.begin(BAUDRATE, SERIAL_8N1, rxPin, txPin, true);
+        serial_.setTimeout(100);
+
+        // Drain on the UART event task: onReceive fires a symbol-gap after the
+        // burst, so a HELLO's liveness timestamp is accurate to ~1ms regardless
+        // of main-loop load, letting the silent-link watchdog stay tight.
+        serial_.onReceive([this]() { drainUart(); });
+
+        if (rxPull == RxPull::Down) {
+            gpio_set_pull_mode(static_cast<gpio_num_t>(rxPin), GPIO_PULLDOWN_ONLY);
+        } else {
+            gpio_pullup_en(static_cast<gpio_num_t>(rxPin));
+        }
         return 0;
     };
 
-    void exec() override {
-        while (Serial1.available() > 0) {
-            char incomingChar = Serial1.read();
-            if (incomingChar == STRING_START) {
-                std::string receivedString = std::string(Serial1.readStringUntil(STRING_TERM).c_str());
-                LOG_D("SERIAL1", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
-                if (stringCallback) {
-                    stringCallback(receivedString);
-                }
-            }
-        }
-    }
+    // RX is drained on the UART event task (onReceive), so the per-tick driver
+    // pump has nothing to do.
+    void exec() override {}
 
     int availableForWrite() override {
-        return Serial1.availableForWrite();
+        return serial_.availableForWrite();
     }
 
     int available() override {
-        return Serial1.available();
-    }
-
-    int peek() override {
-        return Serial1.peek();
-    }
-
-    int read() override {
-        return Serial1.read();
-    }
-
-    std::string readStringUntil(char terminator) override {
-        return std::string(Serial1.readStringUntil(terminator).c_str());
-    }
-
-    void print(char msg) override {
-        Serial1.print(msg);
-    }
-
-    void println(char* msg) override {
-        Serial1.println(msg);
-    }
-
-    void println(const std::string& msg) override {
-        Serial1.println(msg.c_str());
+        return serial_.available();
     }
 
     void flush() override {
-        Serial1.flush();
+        serial_.flush();
     }
 
-    void setStringCallback(const SerialStringCallback& callback) override {
-        stringCallback = callback;
+    void setBytesCallback(const SerialBytesCallback& callback) override {
+        bytesCallback = callback;
+    }
+
+    void writeBytes(const uint8_t* data, size_t len) override {
+        serial_.write(data, len);
     }
 
     private:
-    SerialStringCallback stringCallback;
+    SerialBytesCallback bytesCallback;
+    HardwareSerial& serial_;
     uint8_t txPin;
     uint8_t rxPin;
-};
+    RxPull rxPull;
 
-class Esp32s3SerialIn : public SerialDriverInterface {
-public:
-    explicit Esp32s3SerialIn(const std::string& name, uint8_t txPin, uint8_t rxPin)
-        : SerialDriverInterface(name), txPin(txPin), rxPin(rxPin) {}
-
-    ~Esp32s3SerialIn() override {
-        stringCallback = nullptr;
-    }
-
-    int initialize() override {
-        gpio_reset_pin(static_cast<gpio_num_t>(txPin));
-        gpio_reset_pin(static_cast<gpio_num_t>(rxPin));
-
-        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(txPin));
-        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(rxPin));
-
-        pinMode(txPin, OUTPUT);
-        pinMode(rxPin, INPUT);
-
-        Serial2.begin(BAUDRATE, SERIAL_8N1, rxPin, txPin, true);
-        Serial2.setTimeout(100);  // 100ms timeout for readStringUntil
-        return 0;
-    };
-
-    void exec() override {
-        while (Serial2.available() > 0) {
-            char incomingChar = Serial2.read();
-            if (incomingChar == STRING_START) {
-                std::string receivedString = std::string(Serial2.readStringUntil(STRING_TERM).c_str());
-                LOG_D("SERIAL2", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
-                if (stringCallback) {
-                    stringCallback(receivedString);
-                }
+    // Runs on the UART event task; touches only event-task-owned state (the
+    // parser behind bytesCallback).
+    void drainUart() {
+        uint8_t buf[64];
+        while (serial_.available() > 0) {
+            size_t n = serial_.read(buf, sizeof(buf));
+            if (n == 0) break;
+            if (bytesCallback) {
+                bytesCallback(buf, n);
             }
         }
     }
-
-    int availableForWrite() override {
-        return Serial2.availableForWrite();
-    }
-
-    int available() override {
-        return Serial2.available();
-    }
-
-    int peek() override {
-        return Serial2.peek();
-    }
-
-    int read() override {
-        return Serial2.read();
-    }
-
-    std::string readStringUntil(char terminator) override {
-        return std::string(Serial2.readStringUntil(terminator).c_str());
-    }
-
-    void print(char msg) override {
-        Serial2.print(msg);
-    }
-
-    void println(char* msg) override {
-        Serial2.println(msg);
-    }
-
-    void println(const std::string& msg) override {
-        Serial2.println(msg.c_str());
-    }
-
-    void flush() override {
-        Serial2.flush();
-    }
-
-    void setStringCallback(const SerialStringCallback& callback) override {
-        stringCallback = callback;
-    }
-
-    private:
-    SerialStringCallback stringCallback;
-    uint8_t txPin;
-    uint8_t rxPin;
 };

@@ -36,7 +36,7 @@ void PDN::loop() {
     Device::loop();
     lightManager->loop();
     if (remoteDeviceCoordinator) {
-        remoteDeviceCoordinator->sync(this);
+        remoteDeviceCoordinator->sync();
     }
 }
 

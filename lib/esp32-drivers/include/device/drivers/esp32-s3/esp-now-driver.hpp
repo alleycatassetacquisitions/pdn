@@ -30,21 +30,36 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 
 //Singleton class that handles communication over ESP-NOW protocol.
-class EspNowManager : public PeerCommsDriverInterface
+class EspNowDriver : public PeerCommsDriverInterface
 {
 public:
-    static EspNowManager* CreateEspNowManager(const std::string& name) {
-        instance = new EspNowManager(name);
+    static EspNowDriver* CreateEspNowDriver(const std::string& name) {
+        instance = new EspNowDriver(name);
         return instance;
     }
 
-    static EspNowManager* GetInstance() {
+    static EspNowDriver* GetInstance() {
         return instance;
     }
 
     // === PEER COMMS INTERFACE === //
 
     void exec() override {
+        // Re-pin armed by connect(): retry (paced) until the readback sticks,
+        // re-issuing the disconnect each attempt to kill whatever STA attempt
+        // is blocking the pin. Stops if an excursion takes the radio.
+        if (channelPinPending_ && peerCommsState == PeerCommsState::CONNECTED) {
+            unsigned long now = millis();
+            if (now - lastChannelPinMs_ >= kChannelPinRetryMs) {
+                lastChannelPinMs_ = now;
+                WiFi.disconnect(false);
+                if (pinEspNowChannel()) {
+                    channelPinPending_ = false;
+                    LOG_W("ENC", "channel pin recovered: on %d", ESPNOW_CHANNEL);
+                }
+            }
+        }
+
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex_, portMAX_DELAY);
         std::swap(pending, recvQueue_);
@@ -62,33 +77,48 @@ public:
     }
 
     void connect() override {
-        // Set WiFi to station mode
+        // ESP-NOW requires station mode.
         WiFi.mode(WIFI_STA);
-        
-        // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
-        // ESP-NOW requires the WiFi radio to be active!
+
+        // Stop the STA auto-reconnect scan loop: its periodic all-channel scans
+        // pull the radio off ESPNOW_CHANNEL, so peers miss each other's unicast
+        // ACKs. It keeps scanning even after a failed connect unless stopped.
+        WiFi.setAutoReconnect(false);
+
+        // Drop any AP but keep the radio on (false); ESP-NOW needs it active.
         WiFi.disconnect(false);
-        
+
+        // STA modem sleep defaults ON; with no AP the radio mostly sleeps and
+        // peers can't return L2 ACKs, killing the link. PS_NONE keeps it on.
+        esp_wifi_set_ps(WIFI_PS_NONE);
+
         // Small delay to let WiFi stabilize after mode change
         delay(100);
-        
-        // Set the channel using ESP-IDF API for reliability
-        esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-        if (err != ESP_OK) {
-            LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
+
+        channelPinPending_ = !pinEspNowChannel();
+        if (channelPinPending_) {
+            // A STA connect/scan can still be in flight here (the core can
+            // schedule one last reconnect that lands after our disconnect),
+            // and set_channel fails until it resolves. Without the retry,
+            // ESP-NOW runs on whatever channel the scan stopped at until the
+            // next mode switch.
+            LOG_E("ENC", "channel pin to %d failed; retrying from exec()",
+                  ESPNOW_CHANNEL);
+            lastChannelPinMs_ = millis();
         }
-        
-        // Verify the channel was set correctly
-        uint8_t primary_channel;
-        wifi_second_chan_t secondary_channel;
-        esp_wifi_get_channel(&primary_channel, &secondary_channel);
-        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
 
         initializeEspNow();
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
     void disconnect() override {
+        // An excursion owns the radio now; the next connect() re-evaluates.
+        channelPinPending_ = false;
+        // esp_now_deinit() destroys the TX-complete callback the send queue
+        // drains on, so a send in flight here orphans the queue forever. Clear it
+        // first; the reliable layer resends anything that mattered after resume.
+        clearSendQueue();
+
         esp_err_t err = esp_now_deinit();
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
@@ -126,12 +156,8 @@ public:
         uint8_t numInCluster = length / MAX_PKT_DATA_SIZE + 
                                (length % MAX_PKT_DATA_SIZE == 0 ? 0 : 1);
         
-        //Allocate entire send buffer up front so we don't fail an allocation part way through
-        //the cluster
-        //We'll use alloca for tracking the buffers while we set them up since this should
-        //require a very small amount of memory making the risk of stack overflow very small
-        //This will also be much faster than malloc/free which would be wasteful for such a
-        //small allocation
+        // alloca the per-cluster buffer pointers: tiny, stack-cheap, and avoids a
+        // mid-cluster malloc failure leaving a partially-built cluster.
         auto sendBuffers = static_cast<uint8_t**>(alloca(sizeof(uint8_t*) * numInCluster));
         size_t bytesLeft = length;
         for(int i = 0; i < numInCluster; ++i)
@@ -193,12 +219,8 @@ public:
         return 0;
     }
 
-    //Set the packet handler for a particular packet type
-    //Only one handler can be registered per packet type at a time, so if a new
-    //packet handler is registered for a packet type that has an existing handler,
-    //the existing handler is automatically unregistered
-    //userArg will be saved per packet type and will be passed in unmodified to
-    //packet handler for that packet type (when a packet of that type is receieved)
+    // One handler per packet type; registering replaces any existing one. ctx is
+    // stored per type and passed back unmodified to the handler.
     void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {
         m_pktHandlerCallbacks[(int)packetType].first = callback;
         m_pktHandlerCallbacks[(int)packetType].second = ctx;
@@ -237,7 +259,7 @@ public:
     }
 
 private:
-    static EspNowManager* instance;
+    static EspNowDriver* instance;
 
     // Struct definitions must come before methods that use them
     struct DeferredPacket {
@@ -260,7 +282,7 @@ private:
         uint8_t expectedNextIdx;
     };
 
-    explicit EspNowManager(const std::string& name) :
+    explicit EspNowDriver(const std::string& name) :
         PeerCommsDriverInterface(name),
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
         m_maxRetries(5),
@@ -269,11 +291,18 @@ private:
         sendMutex_(xSemaphoreCreateMutex())
     {
 
+#if PDN_ENABLE_RSSI_TRACKING
+        // Gated: promiscuous mode is only needed for RSSI (the normal recv
+        // callback doesn't expose it). Leaving it on unconditionally delivers
+        // frames our STA MAC didn't filter, breaking the addressed-only unicast
+        // assumption, hardware-confirmed to make uncabled devices latch each
+        // other as wireless peers. Do not enable without RSSI tracking.
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
         esp_wifi_set_promiscuous_filter(&filter);
-        esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
+        esp_wifi_set_promiscuous_rx_cb(EspNowDriver::WifiPromiscuousRecvCallback);
         esp_wifi_set_promiscuous(true);
+#endif
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
         // after WiFi has been set up
     }
@@ -289,13 +318,13 @@ private:
         }
         
         // Register callbacks
-        err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
+        err = esp_now_register_recv_cb(EspNowDriver::EspNowRecvCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
             return -1;
         }
         
-        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
+        err = esp_now_register_send_cb(EspNowDriver::EspNowSendCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
             return -1;
@@ -334,12 +363,12 @@ private:
         const uint8_t* srcMac = (pkt->payload) + 10;
         uint64_t srcMac64 = MacToUInt64(srcMac);
 
-        EspNowManager::GetInstance()->m_rssiTracker[srcMac64] = rssi;
+        EspNowDriver::GetInstance()->m_rssiTracker[srcMac64] = rssi;
     }
 
     //ESP-NOW callbacks
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
-        EspNowManager* manager = EspNowManager::GetInstance();
+        EspNowDriver* manager = EspNowDriver::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
@@ -451,7 +480,7 @@ private:
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
-        EspNowManager* manager = EspNowManager::GetInstance();
+        EspNowDriver* manager = EspNowDriver::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Send Callback");
@@ -530,6 +559,16 @@ private:
         m_curRetries = 0;
     }
 
+    void clearSendQueue() {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        while (!m_sendQueue.empty()) {
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+        }
+        xSemaphoreGive(sendMutex_);
+        m_curRetries = 0;
+    }
+
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
         if(esp_now_is_peer_exist(mac_addr))
             return 0;
@@ -596,9 +635,6 @@ private:
         return PEER_BROADCAST_ADDR;
     }
 
-    void removePeer(uint8_t* macAddr) override {
-        esp_now_del_peer(macAddr);
-    }
 
     int addEspNowPeer(const uint8_t* macAddr) override {
         return EnsurePeerIsRegistered(macAddr);
@@ -612,6 +648,23 @@ private:
         }
         return 0;
     }
+
+    // True when the radio is verifiably on ESPNOW_CHANNEL. esp_wifi_set_channel
+    // ESP_FAILs while a STA connect/scan is in flight, so trust the readback,
+    // not the call's return code.
+    bool pinEspNowChannel() {
+        esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+        uint8_t primary;
+        wifi_second_chan_t secondary;
+        esp_wifi_get_channel(&primary, &secondary);
+        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary,
+              ESPNOW_CHANNEL);
+        return primary == ESPNOW_CHANNEL;
+    }
+
+    static constexpr unsigned long kChannelPinRetryMs = 100;
+    bool channelPinPending_ = false;
+    unsigned long lastChannelPinMs_ = 0;
 
     PeerCommsState peerCommsState = PeerCommsState::DISCONNECTED;
 

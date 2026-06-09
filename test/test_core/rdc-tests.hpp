@@ -5,18 +5,13 @@
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
-#include "wireless/handshake-wireless-manager.hpp"
-#include "apps/handshake/handshake.hpp"
-#include "apps/handshake/handshake-states.hpp"
-#include "protocol-constants.hpp"
-#include "game/player.hpp"
+#include "device/peer-graph-codec.hpp"
 
 using ::testing::Return;
 using ::testing::_;
-using ::testing::NiceMock;
 
 // ============================================
-// RemoteDeviceCoordinator Tests
+// RemoteDeviceCoordinator Tests (peer-graph protocol)
 // ============================================
 
 class RDCTests : public testing::Test {
@@ -31,20 +26,12 @@ public:
         ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
         ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
         ON_CALL(*device.mockPeerComms, getPeerCommsState()).WillByDefault(Return(PeerCommsState::CONNECTED));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kHandshakeCommand), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedHandler),
-                testing::SaveArg<2>(&capturedCtx)));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kChainAnnouncement), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedChainHandler),
-                testing::SaveArg<2>(&capturedChainCtx)));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kChainAnnouncementAck), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedAckHandler),
-                testing::SaveArg<2>(&capturedAckCtx)));
 
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
+        // Most single-device tests advance the fake clock across windows far
+        // longer than the 30ms HELLO silent-link. Push the threshold out so
+        // silent-link doesn't fire unless a test specifically exercises it.
+        rdc.setJackDeadSilentLinkMsForTest(60000);
     }
 
     void TearDown() override {
@@ -52,484 +39,477 @@ public:
         delete fakeClock;
     }
 
-    void deliverPacketViaRDC(int command, SerialIdentifier senderJack, int deviceType = 0) {
-        SerialIdentifier receivingJack = (senderJack == SerialIdentifier::OUTPUT_JACK)
-            ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
-        struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
-        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), deviceType, command };
-        uint8_t dummyMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-
-        ASSERT_NE(capturedHandler, nullptr);
-        capturedHandler(dummyMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt), capturedCtx);
+    FakeHWSerialWrapper& serialFor(SerialIdentifier jack) {
+        return jack == SerialIdentifier::INPUT_JACK
+            ? device.inputJackSerial : device.outputJackSerial;
     }
+
+    void deliverHello(SerialIdentifier jack, const uint8_t* mac,
+                      uint8_t deviceType = static_cast<uint8_t>(DeviceType::PDN)) {
+        net::Mac m;
+        std::copy_n(mac, 6, m.begin());
+        auto frame = peer_graph::encodeHello(m, deviceType, peer_graph::kUserIdUnknown);
+        serialFor(jack).bytesCallback(frame.data(), frame.size());
+    }
+
+    void deliverBeacon(SerialIdentifier jack, const BeaconRecord& b) {
+        auto frame = peer_graph::encodeBeacon(b);
+        serialFor(jack).bytesCallback(frame.data(), frame.size());
+        // ingestSerial only enqueues; exec() drains it so the BEACON is accepted
+        // and flooded within this helper, without driving a full sync().
+        rdc.exec();
+    }
+
+    // True if a BEACON frame from `source` claiming (inPeer, outPeer) appears in
+    // the bytes RDC emitted on `jack` since the last queue drain.
+    bool emittedBeacon(SerialIdentifier jack, const BeaconRecord& want) {
+        auto& q = serialFor(jack).msgQueue;
+        std::vector<uint8_t> bytes(q.begin(), q.end());
+        const auto target = peer_graph::encodeBeacon(want);
+        if (bytes.size() < target.size()) return false;
+        for (size_t i = 0; i + target.size() <= bytes.size(); ++i) {
+            if (std::equal(target.begin(), target.end(), bytes.begin() + i)) return true;
+        }
+        return false;
+    }
+
+    void drainQueues() {
+        device.inputJackSerial.msgQueue.clear();
+        device.outputJackSerial.msgQueue.clear();
+    }
+
+    net::Mac mac(uint8_t last) { return {0x0A, 0, 0, 0, 0, last}; }
 
     MockDevice device;
     RemoteDeviceCoordinator rdc;
     FakePlatformClock* fakeClock;
-    PeerCommsInterface::PacketCallback capturedHandler = nullptr;
-    void* capturedCtx = nullptr;
-    PeerCommsInterface::PacketCallback capturedChainHandler = nullptr;
-    void* capturedChainCtx = nullptr;
-    PeerCommsInterface::PacketCallback capturedAckHandler = nullptr;
-    void* capturedAckCtx = nullptr;
     uint8_t localMac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 };
 
-// Default state: both ports disconnected, all getters return empty/null/unknown
-inline void rdcDefaultStateIsDisconnectedOnAllPorts(RDCTests* suite) {
+inline void rdcDefaultStateIsDisconnected(RDCTests* suite) {
     EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
     EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
-
-    PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    EXPECT_EQ(state.status, PortStatus::DISCONNECTED);
-    EXPECT_TRUE(state.peerMacAddresses.empty());
-
     EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
-    EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
-
-    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN);
-    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::INPUT_JACK), DeviceType::UNKNOWN);
+    EXPECT_FALSE(suite->rdc.isInLoop());
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 1u);  // just self
 }
 
-// Output port connection lifecycle: disconnected → connecting → connected,
-// with port state, peer MAC, and device type correct at each stage.
-// Input port stays independent throughout.
-inline void rdcOutputPortConnectionLifecycle(RDCTests* suite) {
-    // MAC received over serial → CONNECTING
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
-    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
-    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::INPUT_JACK), DeviceType::UNKNOWN);
-
-    PortState connectingState = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    ASSERT_EQ(connectingState.peerMacAddresses.size(), 1u);
-    EXPECT_EQ(connectingState.peerMacAddresses[0][0], 0xAA);
-
-    const uint8_t* mac = suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK);
-    ASSERT_NE(mac, nullptr);
-    EXPECT_EQ(mac[0], 0xAA);
-    EXPECT_EQ(mac[5], 0xFF);
-
-    // Input port unaffected
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
-    EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
-
-    // EXCHANGE_ID reply → CONNECTED
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-
+inline void rdcHelloSetsMacPeerAndConnected(RDCTests* suite) {
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
     EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-    mac = suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK);
-    ASSERT_NE(mac, nullptr);
-    EXPECT_EQ(mac[0], 0xAA);
-
-    // Input still unaffected
-    EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
+    const uint8_t* m = suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK);
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m[0], 0xAA);
+    EXPECT_EQ(m[5], 0xFF);
+    // INPUT untouched.
+    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
 }
 
-inline void rdcConnectedPortDisconnectsOnHeartbeatTimeout(RDCTests* suite) {
-    // Complete the output-port handshake
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+inline void rdcHelloFromSelfRejected(RDCTests* suite) {
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->localMac);
+    suite->rdc.sync();
+    EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
+}
 
-    // Let the heartbeat monitor timeout expire (firstHeartbeatTimeout = 2000ms)
-    suite->fakeClock->advance(2100);
-    suite->rdc.sync(&suite->device);
-
-    // After timeout, the connected state should transition back to idle
-    suite->rdc.sync(&suite->device);
+inline void rdcSilentLinkClearsPeerAfterThreshold(RDCTests* suite) {
+    suite->rdc.setJackDeadSilentLinkMsForTest(30);
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
+    // No further HELLO; advance past 30ms.
+    suite->fakeClock->advance(40);
+    suite->rdc.sync();
+    EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
     EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
 }
 
-// ============================================
-// Daisy chain tracking
-// ============================================
+// A peer that silent-dies must release its ESP-NOW slot. The 20-slot table is
+// finite; without this every distinct neighbour that drops leaks a slot until
+// new peers are rejected and matches silently fail.
+inline void rdcSilentLinkReleasesEspNowPeerSlot(RDCTests* suite) {
+    suite->rdc.setJackDeadSilentLinkMsForTest(30);
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
 
-inline void rdcDuplicateAnnouncementDoesNotFireCallback(RDCTests* suite) {
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                removeEspNowPeer(::testing::Truly([&](const uint8_t* m) {
+                    return m != nullptr && memcmp(m, peer, 6) == 0;
+                }))).Times(1);
 
-    uint8_t directPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> peers = {
-        {0x33, 0x33, 0x33, 0x33, 0x33, 0x33}
-    };
-    suite->rdc.onChainAnnouncementReceived(directPeerMac, SerialIdentifier::OUTPUT_JACK, peers);
-
-    // First announcement set the state. Now hook the callback and send the same again.
-    int callbackCount = 0;
-    suite->rdc.setChainChangeCallback([&]() { callbackCount++; });
-
-    suite->rdc.onChainAnnouncementReceived(directPeerMac, SerialIdentifier::OUTPUT_JACK, peers);
-
-    EXPECT_EQ(callbackCount, 0);
+    // No further HELLO; silent-link fires declareJackDead on the next sync.
+    suite->fakeClock->advance(40);
+    suite->rdc.sync();
 }
 
-inline void rdcDirectPeerRegistrationEmitsBackwardAnnouncement(RDCTests* suite) {
-    // Bring up OUTPUT port first
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+inline void rdcSilentLinkSurvivesRefreshWithinWindow(RDCTests* suite) {
+    // 100ms mirrors the production kHelloSilentLinkMs. Each HELLO inside the
+    // window resets the liveness baseline, so a peer that keeps emitting never
+    // trips the watchdog; only a full window of true silence declares it dead.
+    // Guards the false-fire margin: a sub-threshold gap must not drop the peer.
+    suite->rdc.setJackDeadSilentLinkMsForTest(100);
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
 
-    // Hook callback BEFORE bringing up INPUT port
-    int emitCount = 0;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t*, uint8_t, const std::vector<std::array<uint8_t, 6>>&) { emitCount++; });
+    // 80ms gap (< window), then a refreshing HELLO: baseline resets, still alive.
+    suite->fakeClock->advance(80);
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    EXPECT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
 
-    // Bring up INPUT port — this should emit BOTH forward (to OUTPUT's peer)
-    // AND backward (to the new INPUT peer about OUTPUT's chain)
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
+    // Another 80ms gap, still under 100ms since the last HELLO: alive.
+    suite->fakeClock->advance(80);
+    suite->rdc.sync();
+    EXPECT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
 
-    EXPECT_EQ(emitCount, 2);
+    // Now go fully silent past the window: dead.
+    suite->fakeClock->advance(120);
+    suite->rdc.sync();
+    EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
 }
 
-inline void rdcDirectPeerDropEmitsAnnouncement(RDCTests* suite) {
-    // Bring up both ports
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
-
-    // Hook callback AFTER both ports are up so registration emits don't pollute the count
-    int emitCount = 0;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t*, uint8_t, const std::vector<std::array<uint8_t, 6>>&) { emitCount++; });
-
-    // Drop OUTPUT only — deliver NOTIFY_DISCONNECT to OUTPUT (sender = INPUT_JACK on the peer)
-    suite->deliverPacketViaRDC(HSCommand::NOTIFY_DISCONNECT, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
-
-    EXPECT_GT(emitCount, 0);
+inline void rdcSilentLinkFiresDisconnectCallback(RDCTests* suite) {
+    suite->rdc.setJackDeadSilentLinkMsForTest(30);
+    int disconnects = 0;
+    suite->rdc.setOnDirectPeerChange(
+        [&](SerialIdentifier, std::optional<RemoteDeviceCoordinator::Peer> prev,
+            std::optional<RemoteDeviceCoordinator::Peer> cur) {
+            if (prev.has_value() && !cur.has_value()) disconnects++;
+        });
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    suite->fakeClock->advance(40);
+    suite->rdc.sync();
+    EXPECT_EQ(disconnects, 1);
 }
 
-inline void rdcDirectPeerDropFiresPeerLostCallbackWithMac(RDCTests* suite) {
-    // Bring up both ports (same setup as rdcDirectPeerDropEmitsAnnouncement —
-    // handshake requires a bidirectional exchange to reach CONNECTED).
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-
-    // Hook callback AFTER bring-up so only the disconnect fires it.
-    std::array<uint8_t, 6> capturedMac{};
-    int firedCount = 0;
-    suite->rdc.setPeerLostCallback([&](const uint8_t* lostMac) {
-        memcpy(capturedMac.data(), lostMac, 6);
-        firedCount++;
-    });
-
-    // Drop OUTPUT.
-    suite->deliverPacketViaRDC(HSCommand::NOTIFY_DISCONNECT, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
-
-    EXPECT_EQ(firedCount, 1);
-    std::array<uint8_t, 6> expected = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    EXPECT_EQ(capturedMac, expected);
+inline void rdcConnectFiresConnectCallback(RDCTests* suite) {
+    int connects = 0;
+    suite->rdc.setOnDirectPeerChange(
+        [&](SerialIdentifier, std::optional<RemoteDeviceCoordinator::Peer> prev,
+            std::optional<RemoteDeviceCoordinator::Peer> cur) {
+            if (!prev.has_value() && cur.has_value()) connects++;
+        });
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    EXPECT_EQ(connects, 1);
 }
 
-inline void rdcAnnouncementAbandonedAfterMaxRetries(RDCTests* suite) {
-    int chainAnnouncementSendCount = 0;
-    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainAnnouncement, _, _))
-        .WillByDefault(testing::DoAll(
-            testing::InvokeWithoutArgs([&]() { chainAnnouncementSendCount++; }),
-            Return(1)));
+// removeMacPeer still holds the dropped peer's full record, so the disconnect
+// callback carries the real deviceType rather than an UNKNOWN placeholder.
+inline void rdcDisconnectCallbackCarriesDeviceType(RDCTests* suite) {
+    suite->rdc.setJackDeadSilentLinkMsForTest(30);
+    int disconnects = 0;
+    DeviceType droppedType = DeviceType::UNKNOWN;
+    suite->rdc.setOnDirectPeerChange(
+        [&](SerialIdentifier, std::optional<RemoteDeviceCoordinator::Peer> prev,
+            std::optional<RemoteDeviceCoordinator::Peer> cur) {
+            if (prev.has_value() && !cur.has_value()) {
+                disconnects++;
+                droppedType = prev->deviceType;
+            }
+        });
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer,
+                        static_cast<uint8_t>(DeviceType::FDN));
+    suite->rdc.sync();
+    suite->fakeClock->advance(40);
+    suite->rdc.sync();
+    EXPECT_EQ(disconnects, 1);
+    EXPECT_EQ(droppedType, DeviceType::FDN);
+}
 
-    // Bring up both ports → 2 initial emits, 2 pending
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    chainAnnouncementSendCount = 0;
+// Edge detection lives in DirectPeerTable (setMacPeer fires only on an empty->present
+// transition): the repeated HELLOs of a steady connection must not re-fire
+// connect every sync.
+inline void rdcRepeatedHelloFiresConnectOnce(RDCTests* suite) {
+    int connects = 0;
+    suite->rdc.setOnDirectPeerChange(
+        [&](SerialIdentifier, std::optional<RemoteDeviceCoordinator::Peer> prev,
+            std::optional<RemoteDeviceCoordinator::Peer> cur) {
+            if (!prev.has_value() && cur.has_value()) connects++;
+        });
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    for (int i = 0; i < 3; ++i) {
+        suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+        suite->rdc.sync();
+    }
+    EXPECT_EQ(connects, 1);
+}
 
-    // Run many retransmit cycles, refreshing heartbeats so the connection
-    // doesn't drop. With max_retries=3 and exponential backoff (100, 200,
-    // 400ms), each pending retransmits at most 3 times then abandons.
-    for (int i = 0; i < 20; i++) {
-        suite->device.outputJackSerial.stringCallback(SERIAL_HEARTBEAT);
-        suite->device.inputJackSerial.stringCallback(SERIAL_HEARTBEAT);
-        suite->fakeClock->advance(110);
-        suite->rdc.sync(&suite->device);
+inline void rdcIsDirectPeerTrueForCableNeighbor(RDCTests* suite) {
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::INPUT_JACK, peer);
+    suite->rdc.sync();
+    EXPECT_TRUE(suite->rdc.isDirectPeer(peer));
+    uint8_t stranger[6] = {0x99, 0, 0, 0, 0, 0};
+    EXPECT_FALSE(suite->rdc.isDirectPeer(stranger));
+}
+
+inline void rdcMacPeerChangeEmitsBeacon(RDCTests* suite) {
+    suite->drainQueues();
+    uint8_t peer[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, peer);
+    suite->rdc.sync();
+    // reconcileSelfPeers should have emitted a BEACON claiming the peer on OUT.
+    BeaconRecord want;
+    std::copy_n(suite->localMac, 6, want.source.begin());
+    std::copy_n(peer, 6, want.outPeer.begin());  // inPeer stays zero
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::OUTPUT_JACK, want));
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::INPUT_JACK, want));
+}
+
+// A 3-device ring: self + two peers each claiming around the ring → isInLoop.
+inline void rdcBeaconsFormRingIsInLoop(RDCTests* suite) {
+    // Self's direct peers: 0x0A..02 on OUTPUT, 0x0A..03 on INPUT.
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x02).data());
+    suite->deliverHello(SerialIdentifier::INPUT_JACK, suite->mac(0x03).data());
+    suite->rdc.sync();
+    // Peer 0x02 claims self (on its IN) and 0x03 (on its OUT).
+    net::Mac self;
+    std::copy_n(suite->localMac, 6, self.begin());
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK,
+                         {suite->mac(0x02), suite->mac(0x03), self});
+    // Peer 0x03 claims 0x02 (IN) and self (OUT).
+    suite->deliverBeacon(SerialIdentifier::INPUT_JACK,
+                         {suite->mac(0x03), suite->mac(0x02), self});
+    suite->rdc.sync();
+    EXPECT_TRUE(suite->rdc.isInLoop());
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 3u);
+}
+
+inline void rdcSelfSourcedBeaconNotForwarded(RDCTests* suite) {
+    suite->drainQueues();
+    net::Mac self;
+    std::copy_n(suite->localMac, 6, self.begin());
+    // A beacon claiming to originate from self arrives (our own, looped around).
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK,
+                         {self, suite->mac(0x02), suite->mac(0x03)});
+    // It must not be re-emitted on the opposite (INPUT) jack.
+    auto& inQ = suite->device.inputJackSerial.msgQueue;
+    std::vector<uint8_t> bytes(inQ.begin(), inQ.end());
+    BeaconRecord echoed{self, suite->mac(0x02), suite->mac(0x03)};
+    auto target = peer_graph::encodeBeacon(echoed);
+    bool found = false;
+    for (size_t i = 0; i + target.size() <= bytes.size(); ++i)
+        if (std::equal(target.begin(), target.end(), bytes.begin() + i)) found = true;
+    EXPECT_FALSE(found);
+}
+
+inline void rdcForeignBeaconFloodedOnOppositeJack(RDCTests* suite) {
+    suite->drainQueues();
+    BeaconRecord b{suite->mac(0x02), suite->mac(0x03), suite->mac(0x04)};
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK, b);
+    // Flooded onward on INPUT (opposite jack).
+    auto& inQ = suite->device.inputJackSerial.msgQueue;
+    std::vector<uint8_t> bytes(inQ.begin(), inQ.end());
+    auto target = peer_graph::encodeBeacon(b);
+    bool found = false;
+    for (size_t i = 0; i + target.size() <= bytes.size(); ++i)
+        if (std::equal(target.begin(), target.end(), bytes.begin() + i)) found = true;
+    EXPECT_TRUE(found);
+}
+
+// A forwarded BEACON lost to line noise is never re-delivered by the
+// change-gated flood, so the 1Hz backstop must replay the cached beacons of
+// current chain members, not just self. Departed nodes (no mutual path to
+// self) stay quiet so replay cost tracks live chain size, not event history.
+// Replay is paced, so the test pumps sync across the pacing interval.
+inline void rdcBackstopReplaysChainMemberBeacons(RDCTests* suite) {
+    net::Mac self;
+    std::copy_n(suite->localMac, 6, self.begin());
+    // Linear chain: self -OUTPUT- 0x02 - 0x03 (open end). INPUT stays open.
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x02).data());
+    suite->rdc.sync();
+    BeaconRecord member2{suite->mac(0x02), self, suite->mac(0x03)};
+    BeaconRecord member3{suite->mac(0x03), suite->mac(0x02), {}};
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK, member2);
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK, member3);
+    // A departed node's beacon: cached, but no mutual edge into our component.
+    BeaconRecord zombie{suite->mac(0x07), suite->mac(0x08), suite->mac(0x09)};
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK, zombie);
+    suite->rdc.sync();
+
+    suite->drainQueues();
+    // Cross the 1s backstop, then pump sync across pacing intervals so the
+    // paced queue drains fully.
+    suite->fakeClock->advance(1100);
+    for (int i = 0; i < 6; ++i) {
+        suite->rdc.sync();
+        suite->fakeClock->advance(60);
     }
 
-    // Sanity: at least some retransmits fired across both pending ports.
-    EXPECT_GT(chainAnnouncementSendCount, 3);
-    // 2 pending * 3 retries = 6 retransmits maximum
-    EXPECT_LE(chainAnnouncementSendCount, 6);
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::OUTPUT_JACK, member2))
+        << "backstop must replay a chain member's cached beacon";
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::OUTPUT_JACK, member3))
+        << "backstop must replay multi-hop members too";
+    EXPECT_FALSE(suite->emittedBeacon(SerialIdentifier::OUTPUT_JACK, zombie))
+        << "departed nodes' beacons must not be replayed";
+    EXPECT_FALSE(suite->emittedBeacon(SerialIdentifier::INPUT_JACK, member2))
+        << "no replay onto a jack with no direct peer";
+    EXPECT_FALSE(suite->emittedBeacon(SerialIdentifier::INPUT_JACK, zombie));
 }
 
-inline void rdcAckedAnnouncementDoesNotRetransmit(RDCTests* suite) {
-    std::vector<uint8_t> sentAnnouncementIds;
-    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kChainAnnouncement, _, _))
-        .WillByDefault(testing::DoAll(
-            testing::WithArg<2>(testing::Invoke([&](const uint8_t* data) {
-                sentAnnouncementIds.push_back(data[0]);
-            })),
-            Return(1)));
-    ASSERT_NE(suite->capturedAckHandler, nullptr);
+// Replay frames must trickle out one per jack per kReplayPacingMs, never as a
+// back-to-back burst: a burst of N beacons on the 19200-baud jack queues
+// ahead of the 20ms HELLO stream and stalls it past the 100ms silent-link
+// threshold at N>=7, making the partner declare the jack dead once a second.
+inline void rdcBeaconReplayIsPaced(RDCTests* suite) {
+    net::Mac self;
+    std::copy_n(suite->localMac, 6, self.begin());
+    // self -OUTPUT- 0x02, with 0x03 and 0x04 chained beyond it.
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x02).data());
+    suite->rdc.sync();
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK,
+                         {suite->mac(0x02), self, suite->mac(0x03)});
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK,
+                         {suite->mac(0x03), suite->mac(0x02), suite->mac(0x04)});
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK,
+                         {suite->mac(0x04), suite->mac(0x03), {}});
+    suite->rdc.sync();
 
-    // Bring up both ports → emits, pending state set
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
+    // Cross the backstop: this tick emits the self beacon plus AT MOST one
+    // paced replay frame on the peered jack.
+    const auto base = suite->rdc.getBeaconStats(SerialIdentifier::OUTPUT_JACK).framesTx;
+    suite->fakeClock->advance(1100);
+    suite->rdc.sync();
+    const auto afterBackstop =
+        suite->rdc.getBeaconStats(SerialIdentifier::OUTPUT_JACK).framesTx;
+    EXPECT_LE(afterBackstop - base, 2u)
+        << "backstop tick must not burst the whole member replay at once";
 
-    ASSERT_GE(sentAnnouncementIds.size(), 1u);  // at least one emit happened
+    // Within the pacing window, another sync emits nothing further.
+    suite->fakeClock->advance(10);
+    suite->rdc.sync();
+    EXPECT_EQ(suite->rdc.getBeaconStats(SerialIdentifier::OUTPUT_JACK).framesTx,
+              afterBackstop)
+        << "replay must respect the pacing interval";
 
-    // Deliver ACK for the most recent pending (the latest id per port is what's active)
-    uint8_t fromMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    for (uint8_t id : sentAnnouncementIds) {
-        suite->capturedAckHandler(fromMac, &id, 1, suite->capturedAckCtx);
+    // Past the pacing window, exactly one more replay frame goes out.
+    suite->fakeClock->advance(60);
+    suite->rdc.sync();
+    EXPECT_EQ(suite->rdc.getBeaconStats(SerialIdentifier::OUTPUT_JACK).framesTx,
+              afterBackstop + 1)
+        << "one replay frame per pacing interval";
+}
+
+// recvQueue_ is fed by the UART task (HELLO/BEACON) and the 20ms watchdog
+// (JACK_SILENT) but drained only by the main loop, so a stalled loop must not
+// let it grow without bound on a 512KB part. Shedding the OLDEST entry is
+// safe (every kind is periodically regenerated) and keeps the freshest.
+inline void rdcRecvQueueBoundedDropsOldest(RDCTests* suite) {
+    // Simulate a stalled main loop: enqueue far past the cap with no drain.
+    for (size_t i = 0; i < RemoteDeviceCoordinator::kRecvQueueMax + 50; ++i) {
+        suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x02).data());
     }
+    EXPECT_EQ(suite->rdc.recvQueueDepthForTest(),
+              RemoteDeviceCoordinator::kRecvQueueMax);
 
-    sentAnnouncementIds.clear();
-    suite->fakeClock->advance(150);
-    suite->rdc.sync(&suite->device);
-
-    // No retransmits should have fired for any acked pending
-    EXPECT_EQ(sentAnnouncementIds.size(), 0u);
+    // The newest event must survive the cap: a BEACON arriving last (queue
+    // already full) is still accepted and flooded once the loop drains.
+    suite->drainQueues();
+    BeaconRecord b{suite->mac(0x05), suite->mac(0x06), {}};
+    auto frame = peer_graph::encodeBeacon(b);
+    suite->serialFor(SerialIdentifier::OUTPUT_JACK)
+        .bytesCallback(frame.data(), frame.size());
+    suite->rdc.exec();
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::INPUT_JACK, b))
+        << "newest event was dropped; cap must shed oldest, not newest";
 }
 
-inline void rdcChainAnnouncementPacketHandlerUpdatesDaisyChain(RDCTests* suite) {
-    // Bring up OUTPUT port
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-    ASSERT_NE(suite->capturedChainHandler, nullptr);
-
-    // Build a chain announcement packet from the direct peer.
-    // Wire: [id, count, mac(6)]
-    uint8_t fromMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    uint8_t buf[8];
-    buf[0] = 0x01;  // announcement_id
-    buf[1] = 1;     // peer count
-    buf[2] = 0x55; buf[3] = 0x55; buf[4] = 0x55;
-    buf[5] = 0x55; buf[6] = 0x55; buf[7] = 0x55;
-
-    suite->capturedChainHandler(fromMac, buf, sizeof(buf), suite->capturedChainCtx);
-
-    PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    EXPECT_EQ(state.peerMacAddresses.size(), 2u);  // direct + 1 daisy
-}
-
-inline void rdcMidChainEmitsForwardAndBackward(RDCTests* suite) {
-    // Bring up OUTPUT port
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-
-    // Bring up INPUT port via wireless EXCHANGE_ID exchange
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
-
-    // Track all emissions
-    std::vector<std::array<uint8_t, 6>> emittedTos;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t* toMac, uint8_t, const std::vector<std::array<uint8_t, 6>>&) {
-            std::array<uint8_t, 6> mac;
-            std::copy(toMac, toMac + 6, mac.begin());
-            emittedTos.push_back(mac);
+// A different MAC arriving on an occupied jack (cable swapped within the
+// silent-link window) is a disconnect of the old peer followed by a connect of
+// the new one. Swallowing it silently leaves the old MAC's ESP-NOW slot
+// leaked, the new MAC unregistered (reliable sends to it fail), and the game
+// layer unaware the partner changed.
+inline void rdcSameJackPeerSwapFiresDisconnectThenConnect(RDCTests* suite) {
+    std::vector<std::pair<bool, net::Mac>> events;  // {isConnect, mac}
+    suite->rdc.setOnDirectPeerChange(
+        [&](SerialIdentifier, std::optional<RemoteDeviceCoordinator::Peer> prev,
+            std::optional<RemoteDeviceCoordinator::Peer> cur) {
+            if (cur.has_value()) {
+                net::Mac m;
+                std::copy_n(cur->mac.data(), 6, m.begin());
+                events.push_back({true, m});
+            } else if (prev.has_value()) {
+                net::Mac m;
+                std::copy_n(prev->mac.data(), 6, m.begin());
+                events.push_back({false, m});
+            }
         });
 
-    // Receive an announcement on OUTPUT
-    uint8_t outputDirectMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> incoming = {
-        {0x33, 0x33, 0x33, 0x33, 0x33, 0x33}
-    };
-    suite->rdc.onChainAnnouncementReceived(
-        outputDirectMac, SerialIdentifier::OUTPUT_JACK, incoming);
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x02).data());
+    suite->rdc.sync();
+    ASSERT_EQ(events.size(), 1u);
 
-    // Should emit forward to INPUT's direct peer (the dummyMac AA:BB:CC:DD:EE:FF used by deliverPacketViaRDC)
-    EXPECT_GE(emittedTos.size(), 1u);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                removeEspNowPeer(::testing::Truly([&](const uint8_t* m) {
+                    return m != nullptr && memcmp(m, suite->mac(0x02).data(), 6) == 0;
+                }))).Times(1);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                addEspNowPeer(::testing::Truly([&](const uint8_t* m) {
+                    return m != nullptr && memcmp(m, suite->mac(0x05).data(), 6) == 0;
+                }))).Times(1);
+
+    // The swap: a different peer's HELLO on the same, still-occupied jack.
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x05).data());
+    suite->rdc.sync();
+
+    ASSERT_EQ(events.size(), 3u) << "swap must fire disconnect then connect";
+    EXPECT_FALSE(events[1].first);
+    EXPECT_EQ(events[1].second, suite->mac(0x02));
+    EXPECT_TRUE(events[2].first);
+    EXPECT_EQ(events[2].second, suite->mac(0x05));
+
+    const uint8_t* now = suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK);
+    ASSERT_NE(now, nullptr);
+    EXPECT_EQ(memcmp(now, suite->mac(0x05).data(), 6), 0);
 }
 
-inline void rdcDoesNotEmitWhenOtherPortDisconnected(RDCTests* suite) {
-    // Only OUTPUT is connected — INPUT has no direct peer
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
+// The role byte is BEACON content like the peer slots, so a change must
+// re-emit immediately: the beacon keeps remote peers' champion derivation in
+// sync and emitBeaconBothJacks() is also what copies the byte into the local
+// graph (setSelfRole). Waiting for the 1Hz backstop leaves the local champion
+// walk reading a stale role for up to a second.
+inline void rdcRoleFlipEmitsBeaconImmediately(RDCTests* suite) {
+    uint8_t role = chain_role::byteFor(false);
+    suite->rdc.setRoleProvider([&] { return role; });
 
-    int emitCount = 0;
-    suite->rdc.setAnnouncementEmitCallback(
-        [&](const uint8_t*, uint8_t, const std::vector<std::array<uint8_t, 6>>&) { emitCount++; });
+    suite->deliverHello(SerialIdentifier::OUTPUT_JACK, suite->mac(0x02).data());
+    suite->rdc.sync();
+    suite->drainQueues();
 
-    uint8_t outputDirectPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> incoming = {
-        {0x33, 0x33, 0x33, 0x33, 0x33, 0x33}
-    };
-    suite->rdc.onChainAnnouncementReceived(
-        outputDirectPeerMac, SerialIdentifier::OUTPUT_JACK, incoming);
+    // Flip the role with no topology change and no backstop due (clock still).
+    role = chain_role::byteFor(true);
+    suite->rdc.sync();
 
-    // No emission because INPUT has no direct peer to forward to
-    EXPECT_EQ(emitCount, 0);
+    net::Mac self;
+    std::copy_n(suite->localMac, 6, self.begin());
+    BeaconRecord want{self, {}, suite->mac(0x02)};
+    want.role = chain_role::byteFor(true);
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::OUTPUT_JACK, want))
+        << "role change must re-emit the BEACON without waiting for the backstop";
 }
 
-inline void rdcChainChangeCallbackFiresOnDaisyAdded(RDCTests* suite) {
-    // Set up: OUTPUT port connected
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-
-    int callbackFireCount = 0;
-    suite->rdc.setChainChangeCallback([&]() { callbackFireCount++; });
-
-    // Receiving an announcement should fire the callback
-    uint8_t directPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> announcedPeers = {
-        {0x22, 0x22, 0x22, 0x22, 0x22, 0x22}
-    };
-    suite->rdc.onChainAnnouncementReceived(
-        directPeerMac, SerialIdentifier::OUTPUT_JACK, announcedPeers);
-
-    EXPECT_EQ(callbackFireCount, 1);
+// The change-gated flood never re-delivers unchanged far beacons to a peer
+// that joined or rebooted after convergence, so a new HELLO replays our cache
+// out that jack; connect-only, so steady state stays 1Hz.
+inline void rdcNewPeerReplaysCachedTopology(RDCTests* suite) {
+    // Seed a cached beacon for a node beyond our direct neighbors.
+    BeaconRecord far{suite->mac(0x07), suite->mac(0x08), suite->mac(0x09)};
+    suite->deliverBeacon(SerialIdentifier::OUTPUT_JACK, far);
+    suite->drainQueues();
+    // A fresh neighbor connects on INPUT.
+    suite->deliverHello(SerialIdentifier::INPUT_JACK, suite->mac(0x03).data());
+    suite->rdc.sync();
+    EXPECT_TRUE(suite->emittedBeacon(SerialIdentifier::INPUT_JACK, far))
+        << "new peer must receive a replay of the cached topology";
 }
-
-inline void rdcIgnoresAnnouncementFromNonDirectPeer(RDCTests* suite) {
-    // Set up: OUTPUT port connected to peer AA:BB:CC:DD:EE:FF
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-
-    // Announcement from a different MAC (not our direct peer) should be ignored
-    uint8_t strangerMac[6] = {0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE};
-    std::vector<std::array<uint8_t, 6>> announcedPeers = {
-        {0x22, 0x22, 0x22, 0x22, 0x22, 0x22}
-    };
-
-    suite->rdc.onChainAnnouncementReceived(
-        strangerMac, SerialIdentifier::OUTPUT_JACK, announcedPeers);
-
-    // No daisy-chained peers should have been added
-    PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    EXPECT_EQ(state.peerMacAddresses.size(), 1u);  // only direct peer
-    EXPECT_EQ(state.status, PortStatus::CONNECTED);
-}
-
-inline void rdcDisconnectWipesDaisyChainedPeers(RDCTests* suite) {
-    // Set up: OUTPUT port connected with a daisy-chained peer
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-
-    uint8_t directPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> announcedPeers = {
-        {0x22, 0x22, 0x22, 0x22, 0x22, 0x22},
-        {0x33, 0x33, 0x33, 0x33, 0x33, 0x33},
-    };
-    suite->rdc.onChainAnnouncementReceived(
-        directPeerMac, SerialIdentifier::OUTPUT_JACK, announcedPeers);
-
-    ASSERT_EQ(suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK).peerMacAddresses.size(), 3u);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DAISY_CHAINED);
-
-    // Heartbeat monitor timeout expires → handshake drops → port disconnects
-    suite->fakeClock->advance(2100);
-    suite->rdc.sync(&suite->device);
-    suite->rdc.sync(&suite->device);
-
-    // Both direct and daisy-chained peers should be cleared
-    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
-    PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    EXPECT_TRUE(state.peerMacAddresses.empty());
-}
-
-inline void rdcChainAnnouncementFiltersSelfMac(RDCTests* suite) {
-    // Set up: OUTPUT port connected to a direct peer
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-
-    // Direct peer announces a chain including this device's own MAC (ring)
-    uint8_t directPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> announcedPeers = {
-        {0x22, 0x22, 0x22, 0x22, 0x22, 0x22},
-        {0x11, 0x22, 0x33, 0x44, 0x55, 0x66},  // our own MAC (localMac)
-        {0x33, 0x33, 0x33, 0x33, 0x33, 0x33},
-    };
-
-    suite->rdc.onChainAnnouncementReceived(
-        directPeerMac,
-        SerialIdentifier::OUTPUT_JACK,
-        announcedPeers);
-
-    // Self-MAC must be filtered out — only the two other peers remain as daisy-chained
-    PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    ASSERT_EQ(state.peerMacAddresses.size(), 3u);  // direct + 2 daisy-chained
-    EXPECT_EQ(state.peerMacAddresses[0][0], 0xAA);  // direct peer
-    EXPECT_EQ(state.peerMacAddresses[1][0], 0x22);  // first non-self daisy
-    EXPECT_EQ(state.peerMacAddresses[2][0], 0x33);  // second non-self daisy
-}
-
-// Daisy-chained peer list is capped at kMaxChainPeersPerPort (18). An
-// announcement naming more peers than the cap is silently truncated — the
-// excess peers are invisible to this device. Guards the ESP-NOW peer-table
-// limit (20 on ESP32-S3).
-inline void rdcDaisyChainCappedAtMaxPeers(RDCTests* suite) {
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-
-    uint8_t directPeerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    std::vector<std::array<uint8_t, 6>> announced;
-    for (uint8_t i = 0; i < 25; ++i) {
-        announced.push_back({static_cast<uint8_t>(0x30 + i), 0, 0, 0, 0, 0});
-    }
-
-    suite->rdc.onChainAnnouncementReceived(
-        directPeerMac, SerialIdentifier::OUTPUT_JACK, announced);
-
-    // direct peer + at most 18 daisy = 19
-    PortState state = suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK);
-    EXPECT_LE(state.peerMacAddresses.size(), 19u);
-    EXPECT_GE(state.peerMacAddresses.size(), 2u);
-}
-

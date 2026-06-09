@@ -30,7 +30,7 @@ struct MockPlayerConfig {
     std::string id;
     std::string name;
     bool isHunter;
-    int allegiance;  // 0 = NONE, 1 = RESISTANCE, 2 = HUNTERS_GUILD
+    int allegiance;  // Allegiance enum: 0 = ALLEYCAT ("None"), 1 = ENDLINE, 2 = HELIX, 3 = RESISTANCE
     std::string faction;
 };
 
