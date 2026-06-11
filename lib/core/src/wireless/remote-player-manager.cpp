@@ -99,6 +99,8 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
     auto remotePlayer = std::find_if(remotePlayers.begin(), remotePlayers.end(),
         [srcMacAddr](RemotePlayer rp) { return memcmp(srcMacAddr, rp.wifiMacAddr, 6) == 0;});
 
+    int currentRssi = peerComms->getRssiForPeer(srcMacAddr);
+
     //If we don't currently have a record for them, add them
     if(remotePlayer == remotePlayers.end())
     {
@@ -106,7 +108,7 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
         LOG_D("RPM", "Discovered player %s Allegiance: %u IsHunter: %u\n", pkt->id, pkt->allegiance, pkt->hunter);
 
         remotePlayers.emplace_back(srcMacAddr, pkt->id, pkt->allegiance, pkt->hunter,
-            SimpleTimer::getPlatformClock()->milliseconds(), 0);
+            SimpleTimer::getPlatformClock()->milliseconds(), currentRssi);
         remotePlayer = remotePlayers.end() - 1;
         LOG_I("RPM", "Added discovered player %s (Allegiance: %u, %s) at addr %X:%X:%X:%X:%X:%X\n", 
             remotePlayer->playerInfo.getUserID().c_str(),
@@ -116,12 +118,32 @@ int RemotePlayerManager::ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const u
             srcMacAddr[3], srcMacAddr[4], srcMacAddr[5]);
     }
 
-    //If we have a local record of this player, update their last seen time, regardless of packet type
+    //If we have a local record of this player, update their last seen time and RSSI
     if(remotePlayer != remotePlayers.end())
     {
         remotePlayer->lastSeenTime = SimpleTimer::getPlatformClock()->milliseconds();
-        // remotePlayer->rssi = EspNowManager::GetInstance()->GetRssiForPeer(srcMacAddr);
-        // LOG_D("RPM", "Updated peer rssi to %i\n", remotePlayer->rssi);
+        remotePlayer->rssi = currentRssi;
     }
+
+    lastRssi = currentRssi;
+    packetReceived = true;
+
     return 0;
+}
+
+bool RemotePlayerManager::consumePacketReceived()
+{
+    bool received = packetReceived;
+    packetReceived = false;
+    return received;
+}
+
+int RemotePlayerManager::getLastRssi() const
+{
+    return lastRssi;
+}
+
+int RemotePlayerManager::getRemotePlayerCount() const
+{
+    return static_cast<int>(remotePlayers.size());
 }

@@ -11,7 +11,8 @@ using SerialStringCallback = std::function<void(std::string)>;
 
 enum class SerialIdentifier {
     OUTPUT_JACK = 0,
-    INPUT_JACK = 1
+    INPUT_JACK = 1,
+    INPUT_JACK_SECONDARY = 2,
 };
 
 class HWSerialWrapper {

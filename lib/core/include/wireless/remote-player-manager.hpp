@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <cstring>  // For memcpy
 #include <string>
@@ -20,6 +22,10 @@ public:
 
     int ProcessPlayerInfoPkt(const uint8_t* srcMacAddr, const uint8_t* data, const size_t dataLen);
 
+    int getLastRssi() const;
+    int getRemotePlayerCount() const;
+    bool consumePacketReceived();
+
 protected:
     int BroadcastPlayerInfo();
     PeerCommsInterface* peerComms;
@@ -28,5 +34,7 @@ protected:
     unsigned long remotePlayerTTL;
     unsigned long broadcastInterval;
     unsigned long lastBroadcastTime;
+    int lastRssi = 0;
+    bool packetReceived = false;
 
 };

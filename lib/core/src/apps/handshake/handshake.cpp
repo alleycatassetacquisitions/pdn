@@ -83,9 +83,9 @@ void HandshakeApp::createOutputJackStateMap() {
 }
 
 void HandshakeApp::createInputJackStateMap() {
-    InputIdleState* inputIdleState = new InputIdleState(handshakeWirelessManager);
-    InputSendIdState* inputSendIdState = new InputSendIdState(handshakeWirelessManager);
-    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, SerialIdentifier::INPUT_JACK, HandshakeStateId::INPUT_CONNECTED_STATE);
+    InputIdleState* inputIdleState = new InputIdleState(handshakeWirelessManager, jack);
+    InputSendIdState* inputSendIdState = new InputSendIdState(handshakeWirelessManager, jack);
+    HandshakeConnectedState* connectedState = new HandshakeConnectedState(handshakeWirelessManager, jack, HandshakeStateId::INPUT_CONNECTED_STATE);
 
     inputIdleState->addTransition(
         new StateTransition(

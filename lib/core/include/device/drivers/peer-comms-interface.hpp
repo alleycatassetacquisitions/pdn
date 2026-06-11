@@ -27,6 +27,9 @@ public:
     virtual void connect() = 0;
     virtual void disconnect() = 0;
 
+    // Returns the last observed RSSI for a peer, or -1 if unknown/unavailable.
+    virtual int getRssiForPeer(const uint8_t* macAddr) { (void)macAddr; return -1; }
+
 protected:
 
 };
