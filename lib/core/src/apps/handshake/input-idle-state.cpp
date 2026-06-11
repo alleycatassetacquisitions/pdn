@@ -6,7 +6,8 @@
 
 #define TAG "INPUT_IDLE_STATE"
 
-InputIdleState::InputIdleState(HandshakeWirelessManager* handshakeWirelessManager) : State(HandshakeStateId::INPUT_IDLE_STATE) {
+InputIdleState::InputIdleState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack)
+    : State(HandshakeStateId::INPUT_IDLE_STATE), jack(jack) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 
@@ -15,7 +16,8 @@ InputIdleState::~InputIdleState() {
 }
 
 void InputIdleState::onStateMounted(Device *PDN) {
-    handshakeWirelessManager->setPacketReceivedCallback(std::bind(&InputIdleState::onHandshakeCommandReceived, this, std::placeholders::_1), SerialIdentifier::INPUT_JACK);
+    handshakeWirelessManager->setPacketReceivedCallback(
+        std::bind(&InputIdleState::onHandshakeCommandReceived, this, std::placeholders::_1), jack);
 
     emitMacTimer.setTimer(emitMacInterval);
 }
@@ -24,9 +26,9 @@ void InputIdleState::onStateLoop(Device *PDN) {
     if (emitMacTimer.expired()) {
         PDN->getSerialManager()->writeString(
             SEND_MAC_ADDRESS + MacToString(PDN->getWirelessManager()->getMacAddress()) +
-            PORT_SEPARATOR + std::to_string((int)SerialIdentifier::INPUT_JACK) +
+            PORT_SEPARATOR + std::to_string((int)jack) +
             DEVICE_TYPE_SEPARATOR + std::to_string((int)PDN->getDeviceType()),
-            SerialIdentifier::INPUT_JACK);
+            jack);
         emitMacTimer.setTimer(emitMacInterval);
     }
 }
@@ -34,7 +36,7 @@ void InputIdleState::onStateLoop(Device *PDN) {
 void InputIdleState::onStateDismounted(Device *PDN) {
     emitMacTimer.invalidate();
     transitionToSendIdState = false;
-    handshakeWirelessManager->clearCallback(SerialIdentifier::INPUT_JACK);
+    handshakeWirelessManager->clearCallback(jack);
 }
 
 void InputIdleState::onHandshakeCommandReceived(HandshakeCommand command) {
@@ -43,7 +45,7 @@ void InputIdleState::onHandshakeCommandReceived(HandshakeCommand command) {
         memcpy(peer.macAddr.data(), command.wifiMacAddr, 6);
         peer.sid = command.sendingJack;
         peer.deviceType = static_cast<DeviceType>(command.deviceType);
-        if (!handshakeWirelessManager->setMacPeer(SerialIdentifier::INPUT_JACK, peer)) {
+        if (!handshakeWirelessManager->setMacPeer(jack, peer)) {
             LOG_W(TAG, "Rejecting EXCHANGE_ID from self-MAC (loopback or spoof)");
             return;
         }

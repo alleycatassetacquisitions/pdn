@@ -102,8 +102,9 @@ public:
 
 private:
     RetryStats retryStats_;
-    std::array<std::vector<std::array<uint8_t, 6>>, 2> daisyChainedByPort_;
-    std::array<std::optional<std::array<uint8_t, 6>>, 2> previousDirectPeer_;
+    static constexpr size_t kNumPorts = 3;
+    std::array<std::vector<std::array<uint8_t, 6>>, kNumPorts> daisyChainedByPort_;
+    std::array<std::optional<std::array<uint8_t, 6>>, kNumPorts> previousDirectPeer_;
     uint8_t nextAnnouncementId_ = 1;
 
     struct PendingAnnouncement {
@@ -113,7 +114,7 @@ private:
         std::vector<std::array<uint8_t, 6>> peers;
         SimpleTimer timer;
     };
-    std::array<PendingAnnouncement, 2> pendingByPort_;
+    std::array<PendingAnnouncement, kNumPorts> pendingByPort_;
     static constexpr unsigned long ackTimeoutMs_ = 100;
     static constexpr uint8_t maxRetries_ = 3;
     // ESP-NOW peer-table capacity is 20 on ESP32-S3. Reserve margin for the
@@ -150,4 +151,9 @@ private:
 
     HandshakeApp* inputPortHandshake = nullptr;
     HandshakeApp* outputPortHandshake = nullptr;
+    HandshakeApp* secondaryInputPortHandshake = nullptr;
+
+    // Returns the list of ports that have active handshake apps.
+    std::vector<SerialIdentifier> activePorts() const;
+    HandshakeApp* handshakeAppForPort(SerialIdentifier port) const;
 };

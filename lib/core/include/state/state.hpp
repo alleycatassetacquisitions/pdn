@@ -86,6 +86,17 @@ public:
         transitions.push_back(transition);
     }
 
+    void addAppTransition(std::function<bool()> condition, StateId targetAppId) {
+        appTransitions.push_back({std::move(condition), targetAppId});
+    }
+
+    StateId checkAppTransitions() const {
+        for (const auto& t : appTransitions) {
+            if (t.condition()) return t.targetAppId;
+        }
+        return StateId(-1);
+    }
+
     State* checkTransitions() {
         for (StateTransition* transition : transitions) {
             if (transition->isConditionMet()) {
@@ -114,6 +125,12 @@ protected:
     std::vector<StateTransition*> transitions;
 
 private:
+    struct AppTransitionEntry {
+        std::function<bool()> condition;
+        StateId targetAppId;
+    };
+    std::vector<AppTransitionEntry> appTransitions;
+
     // StateLifecycle bridge — private so state subclasses cannot call or override
     // these entry points. StateMachine dispatches through StateLifecycle* to reach them.
     void mount(Device* device) override    { onStateMounted(device); }
