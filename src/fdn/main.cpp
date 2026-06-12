@@ -195,7 +195,7 @@ void setup() {
         {StateId(HACKING_APP_ID),      hackingApp},
         {StateId(IDLE_APP_ID),         idleApp},
     };
-    fdn->loadAppConfig(apps, StateId(IDLE_APP_ID));
+    fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
 }
 
 void loop() {
