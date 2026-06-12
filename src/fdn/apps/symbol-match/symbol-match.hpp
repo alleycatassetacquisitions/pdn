@@ -23,6 +23,8 @@ public:
     void populateStateMap() override;
 
     void onStateMounted(Device* device) override;
+    std::unique_ptr<Snapshot> onStatePaused(Device* device) override;
+    void onStateResumed(Device* device, Snapshot* snapshot) override;
     void onStateDismounted(Device* device) override;
     void onStateLoop(Device* device) override;
 
@@ -47,6 +49,7 @@ private:
     bool nearbyAnimationActive = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+    static constexpr int kSelectionStateIndex          = 0;
     static constexpr int kUploadPendingStateIndex      = 3;
     static constexpr int kConnectionDetectedStateIndex = 4;
     static constexpr int STRONG_RSSI_THRESHOLD = -50;

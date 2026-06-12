@@ -4,11 +4,11 @@
 Symbol::Symbol() {
     setRandomSymbol();
 
-    symbolGlyphMap[SymbolId::SYMBOL_A] = "\u0089";
-    symbolGlyphMap[SymbolId::SYMBOL_B] = "\u0103";
-    symbolGlyphMap[SymbolId::SYMBOL_C] = "\u0107";
-    symbolGlyphMap[SymbolId::SYMBOL_D] = "\u0081";
-    symbolGlyphMap[SymbolId::SYMBOL_E] = "\u0047";
+    symbolGlyphMap[SymbolId::SYMBOL_A] = "\u0089";  // half
+    symbolGlyphMap[SymbolId::SYMBOL_B] = "\u0103";  // sun
+    symbolGlyphMap[SymbolId::SYMBOL_C] = "\u0107";  // target
+    symbolGlyphMap[SymbolId::SYMBOL_D] = "\u0081";  // gear
+    symbolGlyphMap[SymbolId::SYMBOL_E] = "\u0047";  // aperture
 }
 
 Symbol::~Symbol() {
