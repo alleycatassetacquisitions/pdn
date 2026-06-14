@@ -206,6 +206,17 @@ public:
         return nullptr;
     }
 
+    // Production RDC checks activePorts() (initialized handshake apps). The fake
+    // stubs peer MACs directly without standing up handshakes, so iterate ports here.
+    bool isDirectPeer(const uint8_t* mac) const override {
+        if (!mac) return false;
+        for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
+            const uint8_t* peer = getPeerMac(port);
+            if (peer && memcmp(peer, mac, 6) == 0) return true;
+        }
+        return false;
+    }
+
 private:
     PortStatus outputStatus = PortStatus::DISCONNECTED;
     PortStatus inputStatus = PortStatus::DISCONNECTED;

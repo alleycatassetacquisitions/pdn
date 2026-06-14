@@ -297,7 +297,7 @@ inline void inputIdleTransitionsOnExchangeId(HandshakeStateTests* suite) {
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(Return(nullptr));
 
-    InputIdleState idleState(&suite->handshakeWirelessManager);
+    InputIdleState idleState(&suite->handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
     idleState.onStateMounted(&suite->device);
 
     EXPECT_FALSE(idleState.transitionToSendId());
@@ -318,7 +318,7 @@ inline void inputSendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) {
     uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     suite->handshakeWirelessManager.setMacPeer(SerialIdentifier::INPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::INPUT_JACK));
 
-    InputSendIdState sendIdState(&suite->handshakeWirelessManager);
+    InputSendIdState sendIdState(&suite->handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
     sendIdState.onStateMounted(&suite->device);
 
     // Should NOT transition immediately after sending
@@ -340,7 +340,7 @@ inline void inputSendIdClearsOnDismount(HandshakeStateTests* suite) {
     uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     suite->handshakeWirelessManager.setMacPeer(SerialIdentifier::INPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::INPUT_JACK));
 
-    InputSendIdState sendIdState(&suite->handshakeWirelessManager);
+    InputSendIdState sendIdState(&suite->handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
     sendIdState.onStateMounted(&suite->device);
 
     suite->deliverPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
