@@ -56,26 +56,26 @@ void SymbolMatch::onStateMounted(Device* device) {
     StateMachine::onStateMounted(device);
 }
 
-std::unique_ptr<Snapshot> SymbolMatch::onStatePaused(Device* device) {
-    uploadCheckTimer.invalidate();
-    nearbyAnimationTimer.invalidate();
-    nearbyAnimationActive = false;
-    return StateMachine::onStatePaused(device);
-}
+// std::unique_ptr<Snapshot> SymbolMatch::onStatePaused(Device* device) {
+//     uploadCheckTimer.invalidate();
+//     nearbyAnimationTimer.invalidate();
+//     nearbyAnimationActive = false;
+//     return StateMachine::onStatePaused(device);
+// }
 
-void SymbolMatch::onStateResumed(Device* device, Snapshot* snapshot) {
-    StateMachine::onStateResumed(device, snapshot);
-
-    FDN* fdn = static_cast<FDN*>(device);
-    connectionResolved = false;
-    pendingConnectedPlayerId.clear();
-    uploadCheckTimer.invalidate();
-    nearbyAnimationTimer.invalidate();
-    nearbyAnimationActive = false;
-
-    skipToState(device, kSelectionStateIndex);
-    startIdleLightAnimation(fdn);
-}
+// void SymbolMatch::onStateResumed(Device* device, Snapshot* snapshot) {
+//     StateMachine::onStateResumed(device, snapshot);
+//
+//     FDN* fdn = static_cast<FDN*>(device);
+//     connectionResolved = false;
+//     pendingConnectedPlayerId.clear();
+//     uploadCheckTimer.invalidate();
+//     nearbyAnimationTimer.invalidate();
+//     nearbyAnimationActive = false;
+//
+//     skipToState(device, kSelectionStateIndex);
+//     startIdleLightAnimation(fdn);
+// }
 
 void SymbolMatch::onStateDismounted(Device* device) {
     FDN* fdn = static_cast<FDN*>(device);

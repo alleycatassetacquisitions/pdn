@@ -23,8 +23,8 @@ public:
     void populateStateMap() override;
 
     void onStateMounted(Device* device) override;
-    std::unique_ptr<Snapshot> onStatePaused(Device* device) override;
-    void onStateResumed(Device* device, Snapshot* snapshot) override;
+    // std::unique_ptr<Snapshot> onStatePaused(Device* device) override;
+    // void onStateResumed(Device* device, Snapshot* snapshot) override;
     void onStateDismounted(Device* device) override;
     void onStateLoop(Device* device) override;
 
