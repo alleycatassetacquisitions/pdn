@@ -89,7 +89,7 @@ public:
         stringCallback = callback;
     }
 
-    private:
+private:
     SerialStringCallback stringCallback;
     uint8_t txPin;
     uint8_t rxPin;
@@ -172,7 +172,70 @@ public:
         stringCallback = callback;
     }
 
-    private:
+private:
+    SerialStringCallback stringCallback;
+    uint8_t txPin;
+    uint8_t rxPin;
+};
+
+// Secondary input jack — uses Serial1 (same peripheral as SerialOut, only one active at a time).
+// FDN devices have two input jacks and no output jack, so Serial1 is available for a second input.
+class Esp32s3SerialInSecondary : public SerialDriverInterface {
+public:
+    explicit Esp32s3SerialInSecondary(const std::string& name, uint8_t txPin, uint8_t rxPin)
+        : SerialDriverInterface(name), txPin(txPin), rxPin(rxPin) {}
+
+    ~Esp32s3SerialInSecondary() override {
+        stringCallback = nullptr;
+    }
+
+    int initialize() override {
+        gpio_reset_pin(static_cast<gpio_num_t>(txPin));
+        gpio_reset_pin(static_cast<gpio_num_t>(rxPin));
+
+        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(txPin));
+        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(rxPin));
+
+        pinMode(txPin, OUTPUT);
+        pinMode(rxPin, INPUT);
+
+        Serial1.begin(BAUDRATE, SERIAL_8N1, rxPin, txPin, true);
+        Serial1.setTimeout(100);
+        return 0;
+    }
+
+    void exec() override {
+        while (Serial1.available() > 0) {
+            char incomingChar = Serial1.read();
+            if (incomingChar == STRING_START) {
+                std::string receivedString = std::string(Serial1.readStringUntil(STRING_TERM).c_str());
+                LOG_D("SERIAL1_SEC", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
+                if (stringCallback) {
+                    stringCallback(receivedString);
+                }
+            }
+        }
+    }
+
+    int availableForWrite() override { return Serial1.availableForWrite(); }
+    int available() override { return Serial1.available(); }
+    int peek() override { return Serial1.peek(); }
+    int read() override { return Serial1.read(); }
+
+    std::string readStringUntil(char terminator) override {
+        return std::string(Serial1.readStringUntil(terminator).c_str());
+    }
+
+    void print(char msg) override { Serial1.print(msg); }
+    void println(char* msg) override { Serial1.println(msg); }
+    void println(const std::string& msg) override { Serial1.println(msg.c_str()); }
+    void flush() override { Serial1.flush(); }
+
+    void setStringCallback(const SerialStringCallback& callback) override {
+        stringCallback = callback;
+    }
+
+private:
     SerialStringCallback stringCallback;
     uint8_t txPin;
     uint8_t rxPin;

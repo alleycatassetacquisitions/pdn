@@ -104,6 +104,12 @@ public:
         checkStateTransitions();
         if (stateChangeReady) {
             commitState(PDN);
+            return;
+        }
+
+        StateId nextApp = currentState->checkAppTransitions();
+        if (nextApp.id >= 0) {
+            PDN->setActiveApp(nextApp);
         }
     }
 

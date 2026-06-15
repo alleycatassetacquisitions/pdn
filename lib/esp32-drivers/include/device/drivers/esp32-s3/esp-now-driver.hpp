@@ -224,7 +224,11 @@ public:
         return -1;
     }
 
-    // Public methods for ESP-NOW callback handling 
+    int getRssiForPeer(const uint8_t* macAddr) override {
+        return GetRssiForPeer(macAddr);
+    }
+
+    // Public methods for ESP-NOW callback handling
     // (used when re-initializing ESP-NOW in EspNowState)
     void HandleReceivedData(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         // This simply forwards to the static callback method

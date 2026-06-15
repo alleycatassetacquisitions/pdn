@@ -77,7 +77,7 @@ private:
 
 class InputIdleState : public State {
 public:
-    explicit InputIdleState(HandshakeWirelessManager* handshakeWirelessManager);
+    InputIdleState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack);
     ~InputIdleState();
 
     void onStateMounted(Device *PDN) override;
@@ -89,6 +89,7 @@ public:
 
 private:
     HandshakeWirelessManager* handshakeWirelessManager;
+    SerialIdentifier jack;
     SimpleTimer emitMacTimer;
     const int emitMacInterval = 250;
     bool transitionToSendIdState = false;
@@ -96,7 +97,7 @@ private:
 
 class InputSendIdState : public State {
 public:
-    explicit InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager);
+    InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack);
     ~InputSendIdState();
 
     void onStateMounted(Device *PDN) override;
@@ -108,5 +109,6 @@ public:
 
 private:
     HandshakeWirelessManager* handshakeWirelessManager;
+    SerialIdentifier jack;
     bool transitionToConnectedState = false;
 };

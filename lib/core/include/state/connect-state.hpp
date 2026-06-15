@@ -23,8 +23,9 @@ public:
             PortStatus s = remoteDeviceCoordinator->getPortStatus(jack);
             return s == PortStatus::CONNECTED || s == PortStatus::DAISY_CHAINED;
         };
-        return (isPrimaryRequired() && connectedOrChain(SerialIdentifier::OUTPUT_JACK)) ||
-               (isAuxRequired() && connectedOrChain(SerialIdentifier::INPUT_JACK));
+        return (isPrimaryRequired()   && connectedOrChain(SerialIdentifier::OUTPUT_JACK)) ||
+               (isAuxRequired()       && connectedOrChain(SerialIdentifier::INPUT_JACK)) ||
+               (isSecondaryRequired() && connectedOrChain(SerialIdentifier::INPUT_JACK_SECONDARY));
     }
 
     bool isPersistentlyDisconnected() {
@@ -36,6 +37,9 @@ protected:
 
     virtual bool isPrimaryRequired() = 0;
     virtual bool isAuxRequired() = 0;
+    // Override and return true to also consider INPUT_JACK_SECONDARY when
+    // evaluating isConnected(). Devices with a single input jack leave this false.
+    virtual bool isSecondaryRequired() { return false; }
 
 private:
     static constexpr unsigned long kDisconnectDebounceMs = 500;

@@ -22,7 +22,7 @@
 class LightManager {
 public:
     LightManager(LightStrip& pdnLights);
-    ~LightManager();
+    virtual ~LightManager();
 
     // Core functionality
     void loop();
@@ -42,52 +42,28 @@ public:
     bool isPaused() const;
     bool isAnimationComplete() const;
 
+protected:
+    // Override in subclasses to provide a device-specific LED mapping.
+    // The default implementation uses PDN layout (6 grip + 13 display).
+    virtual void applyLEDState(const LEDState& state);
+
+    LightStrip& pdnLights;
+
 private:
     /*
-        These methods are used to extract the CRGB arrays from the LEDState.
-        This is useful for sending the LEDState to the FastLED library.
-        Extract grip lights will create a CRGB array from the LEDState like this:
-
-        gripLight[0] = state.leftLights[0];
-        gripLight[1] = state.leftLights[1];
-        gripLight[2] = state.leftLights[2];
-        gripLight[3] = state.rightLights[2];
-        gripLight[4] = state.rightLights[1];
-        gripLight[5] = state.rightLights[0];
-        
-        And extract display lights will create a CRGB array from the LEDState like this:
-
-        displayLight[0] = state.leftLights[3];
-        displayLight[1] = state.leftLights[4];
-        displayLight[2] = state.leftLights[5];
-        displayLight[3] = state.leftLights[6];
-        displayLight[4] = state.leftLights[7];
-        displayLight[5] = state.leftLights[8];
-        displayLight[6] = state.rightLights[8];
-        displayLight[7] = state.rightLights[7];
-        displayLight[8] = state.rightLights[6];
-        displayLight[9] = state.rightLights[5];
-        displayLight[10] = state.rightLights[4];
-        displayLight[11] = state.rightLights[3];
-        displayLight[12] = state.transmitLight;
-        
+        PDN LED mapping:
+        gripLight[0-2]   = leftLights[0-2]
+        gripLight[3-5]   = rightLights[0-2]
+        displayLight[0-5]  = leftLights[3-8]
+        displayLight[6-11] = rightLights[3-8] (reversed)
+        displayLight[12]   = transmitLight
     */
     void mapStateToGripLights(const LEDState& state);
     void mapStateToDisplayLights(const LEDState& state);
-    
-    /*
-        This method will apply the LEDState to the physical LEDs.
-        It will use the arrays extracted from the LEDState to set the color and brightness of the LEDs.
-        This should be a pair of simple for loops, one that iterates over the grip lights
-        and one that iterates over the display lights. For each LED, we will set the color and brightness.
-    */ 
-    void applyLEDState(const LEDState& state);
-    
-    // Member variables
-    LightStrip& pdnLights;
+
     IAnimation* currentAnimation;
-    
-    // Member arrays for extracted lights
+
+    // Member arrays for extracted lights (PDN layout: 6 grip + 13 display)
     LEDState::SingleLEDState gripLightArray[6];
     LEDState::SingleLEDState displayLightArray[13];
 };
