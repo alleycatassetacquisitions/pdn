@@ -29,6 +29,8 @@
 #include "apps/hacking/hacking.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
+#include "apps/symbol-lock/symbol-lock.hpp"
+#include "apps/demo-modules/demo-module.hpp"
 #include "apps/fdn-app-ids.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
@@ -44,6 +46,9 @@
 #endif
 
 WifiConfig* wifiConfig = nullptr;
+
+// Set to true for one shared symbol on both ports; false for two independent symbols.
+static constexpr bool kSymbolLockSingleSymbol = true;
 
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;
@@ -74,10 +79,12 @@ HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
 
 // Apps
-MainMenu*    mainMenu        = nullptr;
-Idle*        idleApp         = nullptr;
-Hacking*     hackingApp      = nullptr;
-SymbolMatch* symbolMatchApp  = nullptr;
+// MainMenu*    mainMenu        = nullptr;
+// Idle*        idleApp         = nullptr;
+// Hacking*     hackingApp      = nullptr;
+// SymbolMatch* symbolMatchApp  = nullptr;
+SymbolLock*  symbolLockApp = nullptr;
+DemoModule*  demoModule    = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -167,20 +174,25 @@ void setup() {
     setupEspNow(peerCommsDriver);
 
     // Apps
-    idleApp = new Idle(
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
+    // idleApp = new Idle(
+    //     remotePlayerManager, hackedPlayersManager,
+    //     fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
 
-    mainMenu = new MainMenu(fdn, remotePlayerManager);
+    // // mainMenu = new MainMenu(fdn, remotePlayerManager);
 
-    hackingApp = new Hacking(
-        fdnConnectWirelessManager, hackedPlayersManager,
-        fdn->getRemoteDeviceCoordinator());
+    // hackingApp = new Hacking(
+    //     fdnConnectWirelessManager, hackedPlayersManager,
+    //     fdn->getRemoteDeviceCoordinator());
 
-    symbolMatchApp = new SymbolMatch(
-        fdn, symbolWirelessManager,
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager);
+    // symbolMatchApp = new SymbolMatch(
+    //     fdn, symbolWirelessManager,
+    //     remotePlayerManager, hackedPlayersManager,
+    //     fdnConnectWirelessManager);
+
+    symbolLockApp = new SymbolLock(
+        fdn, symbolWirelessManager, remotePlayerManager, kSymbolLockSingleSymbol);
+
+    demoModule = new DemoModule(DEMO_MODULE_APP_ID);
 
     // Splash screen
     fdn->getDisplay()
@@ -190,12 +202,14 @@ void setup() {
     delay(2000);
 
     AppConfig apps = {
-        {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
-        {StateId(MAIN_MENU_APP_ID),    mainMenu},
-        {StateId(HACKING_APP_ID),      hackingApp},
-        {StateId(IDLE_APP_ID),         idleApp},
+        // {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
+        // {StateId(MAIN_MENU_APP_ID),    mainMenu},
+        // {StateId(HACKING_APP_ID),      hackingApp},
+        // {StateId(IDLE_APP_ID),         idleApp},
+        {StateId(SYMBOL_LOCK_APP_ID), symbolLockApp},
+        {StateId(DEMO_MODULE_APP_ID),  demoModule},
     };
-    fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
+    fdn->loadAppConfig(apps, StateId(SYMBOL_LOCK_APP_ID));
 }
 
 void loop() {
