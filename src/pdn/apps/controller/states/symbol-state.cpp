@@ -25,6 +25,7 @@ void SymbolState::onStateMounted(PDN* pdn) {
     matchReady = false;
     symbolSent = false;
     hapticPulseActive = false;
+    fdnTargetPort = SerialIdentifier::INPUT_JACK;
 
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
         fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
@@ -195,7 +196,7 @@ void SymbolState::sendSymbolToFDN() {
         symbolWirelessManager->sendPacket(
             SMCommand::SEND_SYMBOL,
             player->getSymbol()->getSymbolId(),
-            SerialIdentifier::OUTPUT_JACK);
+            fdnTargetPort);
     } else {
         // trigger rejection behavior
     }
@@ -205,6 +206,7 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
 
     if (command.command == SMCommand::SEND_SYMBOL) {
         fdnSymbol = command.symbolId;
+        fdnTargetPort = command.targetPort;
         if (fdnSymbol == player->getSymbol()->getSymbolId()) {
             matchReady = true;
         } else {

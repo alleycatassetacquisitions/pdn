@@ -13,6 +13,8 @@ class RemoteDeviceCoordinator;
 struct SymbolMatchPacket {
     int command;
     SymbolId symbolId;
+    // FDN input jack this exchange belongs to (SerialIdentifier as int).
+    int targetPort;
 } __attribute__((packed));
 
 enum SMCommand {
@@ -29,11 +31,14 @@ struct SymbolMatchCommand {
     bool wifiMacAddrValid;
     int command;
     SymbolId symbolId;
+    SerialIdentifier targetPort;
 
     SymbolMatchCommand() = delete;
 
-    SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId)
-        : wifiMacAddrValid(macAddress != nullptr), command(command), symbolId(symbolId) {
+    SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId,
+                       SerialIdentifier targetPort = SerialIdentifier::OUTPUT_JACK)
+        : wifiMacAddrValid(macAddress != nullptr), command(command), symbolId(symbolId),
+          targetPort(targetPort) {
         if (macAddress) {
             memcpy(wifiMacAddr, macAddress, 6);
         } else {

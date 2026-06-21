@@ -32,7 +32,17 @@ void applyMatchSideHalves(FDNLightManager* lm, bool leftOn, bool rightOn) {
         }
     }
 }
+
+bool isPortConnected(RemoteDeviceCoordinator* rdc, SerialIdentifier port) {
+    const PortStatus status = rdc->getPortStatus(port);
+    return status == PortStatus::CONNECTED || status == PortStatus::DAISY_CHAINED;
+}
 }  // namespace
+
+void SymbolLockIdleState::refreshConnectionState() {
+    leftConnected  = isPortConnected(remoteDeviceCoordinator, SerialIdentifier::INPUT_JACK);
+    rightConnected = isPortConnected(remoteDeviceCoordinator, SerialIdentifier::INPUT_JACK_SECONDARY);
+}
 
 SymbolLockIdleState::SymbolLockIdleState(
     SymbolLockManager* symbolManager,
@@ -54,16 +64,20 @@ void SymbolLockIdleState::onStateMounted(FDN* fdn) {
     symbolWirelessManager->setPacketReceivedCallback(
         [this](const SymbolMatchCommand& command) {
             if (command.command != SMCommand::SEND_SYMBOL) return;
+            refreshConnectionState();
             const SymbolId local = symbolManager->getSymbol(SerialIdentifier::INPUT_JACK)->getSymbolId();
             symbolManager->setMatched(SerialIdentifier::INPUT_JACK, command.symbolId == local);
+            symbolSentLeft = true;
             if (mountedFdn) { renderSymbolScreen(mountedFdn); syncMatchSideLights(mountedFdn); }
         }, SerialIdentifier::INPUT_JACK);
 
     symbolWirelessManager->setPacketReceivedCallback(
         [this](const SymbolMatchCommand& command) {
             if (command.command != SMCommand::SEND_SYMBOL) return;
+            refreshConnectionState();
             const SymbolId local = symbolManager->getSymbol(SerialIdentifier::INPUT_JACK_SECONDARY)->getSymbolId();
             symbolManager->setMatched(SerialIdentifier::INPUT_JACK_SECONDARY, command.symbolId == local);
+            symbolSentRight = true;
             if (mountedFdn) { renderSymbolScreen(mountedFdn); syncMatchSideLights(mountedFdn); }
         }, SerialIdentifier::INPUT_JACK_SECONDARY);
 
@@ -75,11 +89,15 @@ void SymbolLockIdleState::onStateMounted(FDN* fdn) {
                 SMCommand::SEND_SYMBOL,
                 symbolManager->getSymbol(port)->getSymbolId(),
                 port);
+            if (port == SerialIdentifier::INPUT_JACK) {
+                symbolSentLeft = true;
+            } else {
+                symbolSentRight = true;
+            }
         }
     }
 
-    leftConnected  = remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::CONNECTED;
-    rightConnected = remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::CONNECTED;
+    refreshConnectionState();
     bool leftLeds  = symbolManager->isMatched(SerialIdentifier::INPUT_JACK) && symbolSentLeft;
     bool rightLeds = symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY) && symbolSentRight;
     lastSideLightLeft_  = leftLeds;
@@ -93,8 +111,7 @@ void SymbolLockIdleState::onStateLoop(FDN* fdn) {
         return;
     }
 
-    leftConnected  = remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::CONNECTED;
-    rightConnected = remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::CONNECTED;
+    refreshConnectionState();
 
     if (!leftConnected) {
         symbolManager->setMatched(SerialIdentifier::INPUT_JACK, false);
@@ -244,6 +261,15 @@ bool SymbolLockIdleState::transitionToSelection() {
 }
 
 bool SymbolLockIdleState::transitionToMatchSuccess() {
-    return symbolManager->allConnectedPortsMatched(leftConnected, rightConnected)
-        && symbolsSentToConnectedPorts();
+    if (symbolManager->isSingleSymbolMode()) {
+        return symbolManager->allConnectedPortsMatched(leftConnected, rightConnected)
+            && symbolsSentToConnectedPorts();
+    }
+
+    return leftConnected
+        && rightConnected
+        && symbolManager->isMatched(SerialIdentifier::INPUT_JACK)
+        && symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY)
+        && symbolSentLeft
+        && symbolSentRight;
 }

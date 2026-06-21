@@ -49,7 +49,7 @@
 WifiConfig* wifiConfig = nullptr;
 
 // Set to true for one shared symbol on both ports; false for two independent symbols.
-static constexpr bool kSymbolLockSingleSymbol = true;
+static constexpr bool kSymbolLockSingleSymbol = false;
 
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;

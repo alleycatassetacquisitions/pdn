@@ -49,6 +49,7 @@ public:
     bool transitionToMatchSuccess();
 
 private:
+    void refreshConnectionState();
     void renderSymbolScreen(FDN* fdn);
     void updateMatchSideLights(FDN* fdn, bool leftOn, bool rightOn);
     void syncMatchSideLights(FDN* fdn);
