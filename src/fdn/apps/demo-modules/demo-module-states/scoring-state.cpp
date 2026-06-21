@@ -12,7 +12,6 @@ ScoringState::~ScoringState() {}
 
 void ScoringState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    transitionTimer.setTimer(kDemoStateDisplayMs);
     renderDemoStateLabel(fdn, kStateLabel);
 }
 
@@ -22,9 +21,8 @@ void ScoringState::onStateLoop(FDN* fdn) {
 
 void ScoringState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
-    transitionTimer.invalidate();
 }
 
 bool ScoringState::transitionToMainMenu() {
-    return transitionTimer.expired();
+    return false;
 }

@@ -18,7 +18,8 @@ enum class ButtonInteraction {
     MULTI_CLICK = 3,
     LONG_PRESS = 4,
     DURING_LONG_PRESS = 5,
-    RELEASE = 6
+    RELEASE = 6,
+    BUTTON_INTERACTION_COUNT = 7
 };
 
 using callbackFunction = void (*)();

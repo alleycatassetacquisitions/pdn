@@ -7,13 +7,16 @@
 
 static const char* TAG = "SymbolMatched";
 
-SymbolMatchedState::SymbolMatchedState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
+SymbolMatchedState::SymbolMatchedState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager, ControllerWirelessManager* controllerWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
     this->player = player;
     this->symbolWirelessManager = symbolWirelessManager;
+    this->controllerWirelessManager = controllerWirelessManager;
 }
 
 SymbolMatchedState::~SymbolMatchedState() {
     this->player = nullptr;
+    this->symbolWirelessManager = nullptr;
+    this->controllerWirelessManager = nullptr;
 }
 
 void SymbolMatchedState::onStateMounted(PDN* pdn) {
@@ -39,6 +42,16 @@ void SymbolMatchedState::onStateMounted(PDN* pdn) {
     cfg.loopDelayMs = 0;
 
     pdn->getLightManager()->startAnimation(animation, cfg);
+
+    if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
+        const uint8_t* fdnMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
+        if (fdnMac != nullptr) {
+            controllerWirelessManager->setMacPeer(fdnMac);
+        }
+    }
+
+    controllerWirelessManager->setGameSelectReceivedCallback(
+        std::bind(&SymbolMatchedState::onGameSelectCommandReceived, this, std::placeholders::_1));
 }
 
 void SymbolMatchedState::onStateLoop(PDN* pdn) {
@@ -134,5 +147,19 @@ void SymbolMatchedState::renderSymbolScreen(PDN* pdn) {
 void SymbolMatchedState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
     if (command.command == SMCommand::SYMBOLS_REFRESHED) {
         transitionToSymbolState = true;
+    }
+}
+
+void SymbolMatchedState::onGameSelectCommandReceived(GameSelectCommand command) {
+    if (command.command != GameSelectCmd::GAME_SELECT) {
+        return;
+    }
+
+    switch (command.gameId) {
+        case GameSelectId::CONTROLLER_1:
+            transitionToController1State = true;
+            break;
+        default:
+            break;
     }
 }

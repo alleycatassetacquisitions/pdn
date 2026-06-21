@@ -1,14 +1,17 @@
 #include "apps/demo-modules/demo-module.hpp"
 #include "apps/demo-modules/demo-module-states.hpp"
 
-DemoModule::DemoModule(int stateId, RemoteDeviceCoordinator* remoteDeviceCoordinator)
+DemoModule::DemoModule(int stateId,
+                       RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                       ControllerWirelessManager* controllerWirelessManager)
     : TypedStateMachine<FDN>(stateId)
-    , disconnectPolicy(remoteDeviceCoordinator) {}
+    , disconnectPolicy(remoteDeviceCoordinator)
+    , controllerWirelessManager(controllerWirelessManager) {}
 
 DemoModule::~DemoModule() {}
 
 void DemoModule::populateStateMap() {
-    auto* mainMenuState = new MainMenuState();
+    auto* mainMenuState = new MainMenuState(controllerWirelessManager);
     auto* tutorialState = new TutorialState();
     auto* gameState = new GameState();
     auto* scoringState = new ScoringState();

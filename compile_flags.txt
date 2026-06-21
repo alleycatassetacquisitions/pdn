@@ -1,0 +1,7 @@
+# Clangd include paths for PDN + FDN (both device headers coexist safely).
+# Prefer this over `pio run -t compiledb` — compile_commands.json breaks host clangd.
+-std=c++17
+-Isrc/fdn
+-Isrc/pdn
+-Ilib/core/include
+-Ilib/esp32-drivers/include

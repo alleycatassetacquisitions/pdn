@@ -49,7 +49,7 @@
 WifiConfig* wifiConfig = nullptr;
 
 // Set to true for one shared symbol on both ports; false for two independent symbols.
-static constexpr bool kSymbolLockSingleSymbol = false;
+static constexpr bool kSymbolLockSingleSymbol = true;
 
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;
@@ -218,7 +218,7 @@ void setup() {
     symbolLockApp = new SymbolLock(
         fdn, symbolWirelessManager, remotePlayerManager, kSymbolLockSingleSymbol);
 
-    demoModule = new DemoModule(DEMO_MODULE_APP_ID, fdn->getRemoteDeviceCoordinator());
+    demoModule = new DemoModule(DEMO_MODULE_APP_ID, fdn->getRemoteDeviceCoordinator(), controllerWirelessManager);
 
     // Splash screen
     fdn->getDisplay()

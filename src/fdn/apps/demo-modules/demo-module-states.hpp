@@ -2,8 +2,8 @@
 
 #include "state/state.hpp"
 #include "device/fdn.hpp"
-#include "utils/simple-timer.hpp"
 #include "device/drivers/display.hpp"
+#include "wireless/controller-wireless-manager.hpp"
 
 enum DemoModuleStateId {
     MAIN_MENU,
@@ -11,8 +11,6 @@ enum DemoModuleStateId {
     GAME,
     SCORING,
 };
-
-constexpr int kDemoStateDisplayMs = 1000;
 
 inline void renderDemoStateLabel(FDN* fdn, const char* label) {
     fdn->getDisplay()
@@ -24,7 +22,7 @@ inline void renderDemoStateLabel(FDN* fdn, const char* label) {
 
 class MainMenuState : public TypedState<FDN> {
 public:
-    explicit MainMenuState();
+    explicit MainMenuState(ControllerWirelessManager* controllerWirelessManager);
     ~MainMenuState();
 
     void onStateMounted(FDN* fdn) override;
@@ -35,8 +33,9 @@ public:
     bool transitionToGame();
 
 private:
-    SimpleTimer transitionTimer;
-    bool goToTutorialNext = true;
+    ControllerWirelessManager* controllerWirelessManager;
+
+    void onControllerCommandReceived(ControllerCommand command);
 };
 
 class TutorialState : public TypedState<FDN> {
@@ -49,9 +48,6 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToMainMenu();
-
-private:
-    SimpleTimer transitionTimer;
 };
 
 class GameState : public TypedState<FDN> {
@@ -64,9 +60,6 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToScoring();
-
-private:
-    SimpleTimer transitionTimer;
 };
 
 class ScoringState : public TypedState<FDN> {
@@ -79,7 +72,4 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToMainMenu();
-
-private:
-    SimpleTimer transitionTimer;
 };

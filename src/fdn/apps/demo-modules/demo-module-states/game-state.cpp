@@ -12,7 +12,6 @@ GameState::~GameState() {}
 
 void GameState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    transitionTimer.setTimer(kDemoStateDisplayMs);
     renderDemoStateLabel(fdn, kStateLabel);
 }
 
@@ -22,9 +21,8 @@ void GameState::onStateLoop(FDN* fdn) {
 
 void GameState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
-    transitionTimer.invalidate();
 }
 
 bool GameState::transitionToScoring() {
-    return transitionTimer.expired();
+    return false;
 }

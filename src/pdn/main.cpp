@@ -203,7 +203,8 @@ void setup() {
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, controllerWirelessManager, peerCommsDriver);
     
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    controller = new Controller(player, pdn->getRemoteDeviceCoordinator(), symbolWirelessManager);
+    controller = new Controller(
+        player, pdn->getRemoteDeviceCoordinator(), symbolWirelessManager, controllerWirelessManager);
     
     pdn->getDisplay()->
     invalidateScreen()->

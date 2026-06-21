@@ -23,6 +23,7 @@ void SymbolState::onStateMounted(PDN* pdn) {
     transitionToIdleState = false;
     transitionToSymbolMatchedState = false;
     matchReady = false;
+    fdnSymbolValid = false;
     symbolSent = false;
     hapticPulseActive = false;
     fdnTargetPort = SerialIdentifier::INPUT_JACK;
@@ -159,7 +160,7 @@ void SymbolState::cycleSymbol() {
     const int next = (current + 1) % static_cast<int>(SymbolId::NUM_SYMBOLS);
     player->getSymbol()->setSymbolId(static_cast<SymbolId>(next));
 
-    matchReady = fdnSymbol == player->getSymbol()->getSymbolId();
+    matchReady = fdnSymbolValid && fdnSymbol == player->getSymbol()->getSymbolId();
     symbolSent = false;
 
     LOG_W(TAG, "Cycled symbol to %d, matchReady=%d",
@@ -205,13 +206,10 @@ void SymbolState::sendSymbolToFDN() {
 void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
 
     if (command.command == SMCommand::SEND_SYMBOL) {
+        fdnSymbolValid = true;
         fdnSymbol = command.symbolId;
         fdnTargetPort = command.targetPort;
-        if (fdnSymbol == player->getSymbol()->getSymbolId()) {
-            matchReady = true;
-        } else {
-            matchReady = false;
-        }
+        matchReady = fdnSymbol == player->getSymbol()->getSymbolId();
         LOG_W(TAG, "Comparison: fdnSymbol=%d, playerSymbol=%d, matchReady=%d", 
               static_cast<int>(fdnSymbol), 
               static_cast<int>(player->getSymbol()->getSymbolId()), 
@@ -220,6 +218,7 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
 
         LOG_W(TAG, "Received symbol: %d", static_cast<int>(fdnSymbol));
     } else if (command.command == SMCommand::SYMBOLS_REFRESHED) {
+        fdnSymbolValid = false;
         symbolSent = false;
         matchReady = false;
         transitionToSymbolMatchedState = false;

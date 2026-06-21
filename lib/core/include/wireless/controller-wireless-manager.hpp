@@ -64,8 +64,8 @@ struct GameResponsePacket {
 } __attribute__((packed));
 
 enum GameResponseId {
-    ACCEPTED = 0,
-    REJECTED = 1,
+    TOP_BUTTON_PRESSED = 0,
+    BOTTOM_BUTTON_PRESSED = 1,
     GAME_RESPONSE_ID_COUNT,
     GAME_RESPONSE_INVALID_ID = 0xFF
 };
@@ -126,25 +126,24 @@ public:
 
     int processGameResponseCommand(const uint8_t* macAddress, const uint8_t* data, size_t dataLen);
 
-    int sendPacket(int command,
-                   ButtonIdentifier buttonId,
-                   ButtonInteraction interactionId,
-                   SerialIdentifier serialPort);
+    int sendControllerCommandPacket(int command,
+                                    ButtonIdentifier buttonId,
+                                    ButtonInteraction interactionId,
+                                    SerialIdentifier serialPort);
 
-    int sendGameSelectPacket(GameSelectId gameId, SerialIdentifier serialPort);
+    int sendGameSelectPacket(GameSelectId gameId);
 
-    int sendGameResponsePacket(GameResponseId responseId, SerialIdentifier serialPort);
+    int sendGameResponsePacket(GameResponseId responseId);
 
     void setMacPeer(const uint8_t* macAddress);
 
-    void setPacketReceivedCallback(const std::function<void(const ControllerCommand&)>& callback,
-                                   SerialIdentifier port);
+    void setControllerCommandReceivedCallback(
+        const std::function<void(const ControllerCommand&)>& callback,
+        SerialIdentifier port);
 
-    void setGameSelectReceivedCallback(const std::function<void(const GameSelectCommand&)>& callback,
-                                       SerialIdentifier port);
+    void setGameSelectReceivedCallback(const std::function<void(const GameSelectCommand&)>& callback);
 
-    void setGameResponseReceivedCallback(const std::function<void(const GameResponseCommand&)>& callback,
-                                         SerialIdentifier port);
+    void setGameResponseReceivedCallback(const std::function<void(const GameResponseCommand&)>& callback);
 
     void clearCallback();
 
@@ -153,7 +152,7 @@ private:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     uint8_t macPeer[6];
 
-    std::map<SerialIdentifier, std::function<void(const ControllerCommand&)>> packetReceivedCallbacks;
-    std::map<SerialIdentifier, std::function<void(const GameSelectCommand&)>> gameSelectReceivedCallbacks;
-    std::map<SerialIdentifier, std::function<void(const GameResponseCommand&)>> gameResponseReceivedCallbacks;
+    std::map<SerialIdentifier, std::function<void(const ControllerCommand&)>> controllerCommandReceivedCallbacks;
+    std::function<void(const GameSelectCommand&)> gameSelectReceivedCallback;
+    std::function<void(const GameResponseCommand&)> gameResponseReceivedCallback;
 };

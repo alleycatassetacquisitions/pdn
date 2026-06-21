@@ -68,6 +68,11 @@ private:
     bool symbolSentLeft  = false;
     bool symbolSentRight = false;
     int  lastTimeRendered = 0;
+    SimpleTimer symbolResendTimerLeft;
+    SimpleTimer symbolResendTimerRight;
+    static constexpr int kSymbolResendIntervalMs = 1000;
+
+    void sendSymbolToPort(SerialIdentifier port, bool& sentFlag, SimpleTimer& resendTimer);
 };
 
 class SymbolLockMatchSuccessState : public TypedState<FDN> {

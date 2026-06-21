@@ -7,6 +7,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/player.hpp"
 #include "apps/pdn-app-ids.hpp"
+#include "wireless/controller-wireless-manager.hpp"
 
 class ControllerDisconnectPolicy : public ConnectState<PDN> {
 public:
@@ -19,7 +20,10 @@ public:
 
 class Controller : public TypedStateMachine<PDN> {
 public:
-    Controller(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    Controller(Player* player,
+               RemoteDeviceCoordinator* remoteDeviceCoordinator,
+               SymbolWirelessManager* symbolWirelessManager,
+               ControllerWirelessManager* controllerWirelessManager);
     ~Controller();
 
     void populateStateMap() override;
@@ -28,5 +32,6 @@ private:
     Player* player;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     SymbolWirelessManager* symbolWirelessManager;
+    ControllerWirelessManager* controllerWirelessManager;
     ControllerDisconnectPolicy disconnectPolicy;
 };

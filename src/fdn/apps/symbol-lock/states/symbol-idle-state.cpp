@@ -44,6 +44,21 @@ void SymbolLockIdleState::refreshConnectionState() {
     rightConnected = isPortConnected(remoteDeviceCoordinator, SerialIdentifier::INPUT_JACK_SECONDARY);
 }
 
+void SymbolLockIdleState::sendSymbolToPort(SerialIdentifier port, bool& sentFlag, SimpleTimer& resendTimer) {
+    const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
+    if (peerMac == nullptr) {
+        return;
+    }
+
+    symbolWirelessManager->setMacPeer(peerMac);
+    symbolWirelessManager->sendPacket(
+        SMCommand::SEND_SYMBOL,
+        symbolManager->getSymbol(port)->getSymbolId(),
+        port);
+    sentFlag = true;
+    resendTimer.setTimer(kSymbolResendIntervalMs);
+}
+
 SymbolLockIdleState::SymbolLockIdleState(
     SymbolLockManager* symbolManager,
     RemoteDeviceCoordinator* remoteDeviceCoordinator,
@@ -84,15 +99,10 @@ void SymbolLockIdleState::onStateMounted(FDN* fdn) {
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
         const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
         if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(
-                SMCommand::SEND_SYMBOL,
-                symbolManager->getSymbol(port)->getSymbolId(),
-                port);
             if (port == SerialIdentifier::INPUT_JACK) {
-                symbolSentLeft = true;
+                sendSymbolToPort(port, symbolSentLeft, symbolResendTimerLeft);
             } else {
-                symbolSentRight = true;
+                sendSymbolToPort(port, symbolSentRight, symbolResendTimerRight);
             }
         }
     }
@@ -123,29 +133,25 @@ void SymbolLockIdleState::onStateLoop(FDN* fdn) {
     }
 
     if (!symbolSentLeft && leftConnected) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::INPUT_JACK);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL,
-                symbolManager->getSymbol(SerialIdentifier::INPUT_JACK)->getSymbolId(),
-                SerialIdentifier::INPUT_JACK);
-            symbolSentLeft = true;
-        }
+        sendSymbolToPort(SerialIdentifier::INPUT_JACK, symbolSentLeft, symbolResendTimerLeft);
     } else if (!leftConnected) {
         symbolSentLeft = false;
+        symbolResendTimerLeft.invalidate();
+    } else if (leftConnected
+               && !symbolManager->isMatched(SerialIdentifier::INPUT_JACK)
+               && symbolResendTimerLeft.expired()) {
+        sendSymbolToPort(SerialIdentifier::INPUT_JACK, symbolSentLeft, symbolResendTimerLeft);
     }
 
     if (!symbolSentRight && rightConnected) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::INPUT_JACK_SECONDARY);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SEND_SYMBOL,
-                symbolManager->getSymbol(SerialIdentifier::INPUT_JACK_SECONDARY)->getSymbolId(),
-                SerialIdentifier::INPUT_JACK_SECONDARY);
-            symbolSentRight = true;
-        }
+        sendSymbolToPort(SerialIdentifier::INPUT_JACK_SECONDARY, symbolSentRight, symbolResendTimerRight);
     } else if (!rightConnected) {
         symbolSentRight = false;
+        symbolResendTimerRight.invalidate();
+    } else if (rightConnected
+               && !symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY)
+               && symbolResendTimerRight.expired()) {
+        sendSymbolToPort(SerialIdentifier::INPUT_JACK_SECONDARY, symbolSentRight, symbolResendTimerRight);
     }
 
     if (symbolManager->getRefreshTimer()->isRunning()) {
@@ -166,6 +172,8 @@ void SymbolLockIdleState::onStateDismounted(FDN* fdn) {
     lastTimeRendered           = 0;
     symbolSentLeft             = false;
     symbolSentRight            = false;
+    symbolResendTimerLeft.invalidate();
+    symbolResendTimerRight.invalidate();
 
     symbolWirelessManager->clearCallback();
     symbolManager->setMatched(SerialIdentifier::INPUT_JACK, false);

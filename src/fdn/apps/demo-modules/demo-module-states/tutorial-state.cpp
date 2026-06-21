@@ -12,7 +12,6 @@ TutorialState::~TutorialState() {}
 
 void TutorialState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    transitionTimer.setTimer(kDemoStateDisplayMs);
     renderDemoStateLabel(fdn, kStateLabel);
 }
 
@@ -22,9 +21,8 @@ void TutorialState::onStateLoop(FDN* fdn) {
 
 void TutorialState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
-    transitionTimer.invalidate();
 }
 
 bool TutorialState::transitionToMainMenu() {
-    return transitionTimer.expired();
+    return false;
 }

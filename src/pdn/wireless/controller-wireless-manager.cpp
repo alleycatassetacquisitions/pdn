@@ -26,7 +26,7 @@ void ControllerWirelessManager::setMacPeer(const uint8_t* macAddress) {
     memcpy(macPeer, macAddress, 6);
 }
 
-int ControllerWirelessManager::sendPacket(int command,
+int ControllerWirelessManager::sendControllerCommandPacket(int command,
                                           ButtonIdentifier buttonId,
                                           ButtonInteraction interactionId,
                                           SerialIdentifier serialPort) {
@@ -50,17 +50,16 @@ int ControllerWirelessManager::sendPacket(int command,
         sizeof(packet));
 }
 
-int ControllerWirelessManager::sendGameSelectPacket(GameSelectId gameId, SerialIdentifier serialPort) {
+int ControllerWirelessManager::sendGameSelectPacket(GameSelectId gameId) {
     GameSelectPacket packet{};
     packet.command = GAME_SELECT;
     packet.gameId = static_cast<int>(gameId);
 
     LOG_W(CWM_TAG,
-          "TX game select command %d to %s (gameId=%d, targetPort=%d)",
+          "TX game select command %d to %s (gameId=%d)",
           packet.command,
           MacToString(macPeer),
-          packet.gameId,
-          static_cast<int>(serialPort));
+          packet.gameId);
 
     return wirelessManager->sendEspNowData(
         macPeer,
@@ -69,15 +68,14 @@ int ControllerWirelessManager::sendGameSelectPacket(GameSelectId gameId, SerialI
         sizeof(packet));
 }
 
-int ControllerWirelessManager::sendGameResponsePacket(GameResponseId responseId, SerialIdentifier serialPort) {
+int ControllerWirelessManager::sendGameResponsePacket(GameResponseId responseId) {
     GameResponsePacket packet{};
     packet.responseId = static_cast<int>(responseId);
 
     LOG_W(CWM_TAG,
-          "TX game response %d to %s (targetPort=%d)",
+          "TX game response %d to %s",
           packet.responseId,
-          MacToString(macPeer),
-          static_cast<int>(serialPort));
+          MacToString(macPeer));
 
     return wirelessManager->sendEspNowData(
         macPeer,
@@ -137,8 +135,8 @@ int ControllerWirelessManager::processControllerCommand(const uint8_t* macAddres
                             packet->buttonId,
                             packet->interactionId);
 
-    auto callbackIt = packetReceivedCallbacks.find(resolvedPort);
-    if (callbackIt != packetReceivedCallbacks.end() && callbackIt->second) {
+    auto callbackIt = controllerCommandReceivedCallbacks.find(resolvedPort);
+    if (callbackIt != controllerCommandReceivedCallbacks.end() && callbackIt->second) {
         callbackIt->second(command);
     }
 
@@ -183,23 +181,8 @@ int ControllerWirelessManager::processGameSelectCommand(const uint8_t* macAddres
         return -1;
     }
 
-    SerialIdentifier resolvedPort = SerialIdentifier::OUTPUT_JACK;
-    bool portResolved = false;
-
-    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-        PortState portState = remoteDeviceCoordinator->getPortState(port);
-        for (const auto& peerMac : portState.peerMacAddresses) {
-            if (macAddress != nullptr && std::memcmp(peerMac.data(), macAddress, 6) == 0) {
-                resolvedPort = port;
-                portResolved = true;
-                break;
-            }
-        }
-        if (portResolved) break;
-    }
-
-    if (!portResolved) {
-        LOG_W(CWM_TAG, "No matching port for game select packet from %s",
+    if (!remoteDeviceCoordinator->isDirectPeer(macAddress)) {
+        LOG_W(CWM_TAG, "Game select packet from unknown peer %s, dropping",
               macAddress ? MacToString(macAddress) : "(null)");
         return -1;
     }
@@ -208,9 +191,8 @@ int ControllerWirelessManager::processGameSelectCommand(const uint8_t* macAddres
                             packet->command,
                             static_cast<GameSelectId>(packet->gameId));
 
-    auto callbackIt = gameSelectReceivedCallbacks.find(resolvedPort);
-    if (callbackIt != gameSelectReceivedCallbacks.end() && callbackIt->second) {
-        callbackIt->second(command);
+    if (gameSelectReceivedCallback) {
+        gameSelectReceivedCallback(command);
     }
 
     return 1;
@@ -246,54 +228,38 @@ int ControllerWirelessManager::processGameResponseCommand(const uint8_t* macAddr
         return -1;
     }
 
-    SerialIdentifier resolvedPort = SerialIdentifier::OUTPUT_JACK;
-    bool portResolved = false;
-
-    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
-        PortState portState = remoteDeviceCoordinator->getPortState(port);
-        for (const auto& peerMac : portState.peerMacAddresses) {
-            if (macAddress != nullptr && std::memcmp(peerMac.data(), macAddress, 6) == 0) {
-                resolvedPort = port;
-                portResolved = true;
-                break;
-            }
-        }
-        if (portResolved) break;
-    }
-
-    if (!portResolved) {
-        LOG_W(CWM_TAG, "No matching port for game response packet from %s",
+    if (!remoteDeviceCoordinator->isDirectPeer(macAddress)) {
+        LOG_W(CWM_TAG, "Game response packet from unknown peer %s, dropping",
               macAddress ? MacToString(macAddress) : "(null)");
         return -1;
     }
 
     GameResponseCommand command(macAddress, static_cast<GameResponseId>(packet->responseId));
 
-    auto callbackIt = gameResponseReceivedCallbacks.find(resolvedPort);
-    if (callbackIt != gameResponseReceivedCallbacks.end() && callbackIt->second) {
-        callbackIt->second(command);
+    if (gameResponseReceivedCallback) {
+        gameResponseReceivedCallback(command);
     }
 
     return 1;
 }
 
-void ControllerWirelessManager::setPacketReceivedCallback(
+void ControllerWirelessManager::setControllerCommandReceivedCallback(
     const std::function<void(const ControllerCommand&)>& callback, SerialIdentifier port) {
-    packetReceivedCallbacks[port] = callback;
+    controllerCommandReceivedCallbacks[port] = callback;
 }
 
 void ControllerWirelessManager::setGameSelectReceivedCallback(
-    const std::function<void(const GameSelectCommand&)>& callback, SerialIdentifier port) {
-    gameSelectReceivedCallbacks[port] = callback;
+    const std::function<void(const GameSelectCommand&)>& callback) {
+    gameSelectReceivedCallback = callback;
 }
 
 void ControllerWirelessManager::setGameResponseReceivedCallback(
-    const std::function<void(const GameResponseCommand&)>& callback, SerialIdentifier port) {
-    gameResponseReceivedCallbacks[port] = callback;
+    const std::function<void(const GameResponseCommand&)>& callback) {
+    gameResponseReceivedCallback = callback;
 }
 
 void ControllerWirelessManager::clearCallback() {
-    packetReceivedCallbacks.clear();
-    gameSelectReceivedCallbacks.clear();
-    gameResponseReceivedCallbacks.clear();
+    controllerCommandReceivedCallbacks.clear();
+    gameSelectReceivedCallback = nullptr;
+    gameResponseReceivedCallback = nullptr;
 }

@@ -7,6 +7,7 @@
 #include "device/remote-device-coordinator.hpp" 
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
+#include "wireless/controller-wireless-manager.hpp"
 
 enum ControllerStateId {
     CONTROLLER_SELECT,
@@ -40,6 +41,7 @@ class SymbolState : public ConnectState<PDN> {
         /// FDN input jack that assigned the current target symbol.
         SerialIdentifier fdnTargetPort = SerialIdentifier::INPUT_JACK;
         SymbolId fdnSymbol;
+        bool fdnSymbolValid = false;
     
         SimpleTimer bufferTimer;
         const int BUFFER_TIMEOUT = 500;
@@ -62,7 +64,7 @@ class SymbolState : public ConnectState<PDN> {
     
 class SymbolMatchedState : public ConnectState<PDN> {
     public:
-        SymbolMatchedState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+        SymbolMatchedState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager, ControllerWirelessManager* controllerWirelessManager);
         ~SymbolMatchedState();
     
         void onStateMounted(PDN* pdn) override;
@@ -79,6 +81,7 @@ class SymbolMatchedState : public ConnectState<PDN> {
     private:
         Player* player;
         SymbolWirelessManager* symbolWirelessManager;
+        ControllerWirelessManager* controllerWirelessManager;
     
         bool transitionToController1State = false;
         bool transitionToSymbolState = false;
@@ -95,6 +98,7 @@ class SymbolMatchedState : public ConnectState<PDN> {
     
         void renderSymbolScreen(PDN* pdn);
         void onSymbolMatchCommandReceived(SymbolMatchCommand command);
+        void onGameSelectCommandReceived(GameSelectCommand command);
     };
 
 class ControllerSelectState : public TypedState<PDN> {
@@ -111,10 +115,17 @@ public:
 
 class Controller1State : public TypedState<PDN> {
 public:
-    explicit Controller1State();
+    explicit Controller1State(ControllerWirelessManager* controllerWirelessManager);
     ~Controller1State();
 
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
+
+private:
+    ControllerWirelessManager* controllerWirelessManager;
+    ButtonIdentifier lastPressedButton = ButtonIdentifier::PRIMARY_BUTTON;
+    
+    void sendButtonMessage(ButtonIdentifier buttonId, ButtonInteraction interaction);
+    void onGameResponseCommandReceived(GameResponseCommand command);
 };
