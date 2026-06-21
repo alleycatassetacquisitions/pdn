@@ -34,6 +34,8 @@ public:
     void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    void onStateMounted(Device* PDN) override;
+    void onStateDismounted(Device* PDN) override;
     void onStateLoop(Device *PDN) override;
 
 private:
@@ -63,4 +65,7 @@ private:
 
     // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
     bool lastIsLoop_ = false;
+
+    // Restored when returning from another app (e.g. Controller).
+    State* savedState_ = nullptr;
 };

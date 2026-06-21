@@ -218,7 +218,7 @@ void setup() {
     symbolLockApp = new SymbolLock(
         fdn, symbolWirelessManager, remotePlayerManager, kSymbolLockSingleSymbol);
 
-    demoModule = new DemoModule(DEMO_MODULE_APP_ID);
+    demoModule = new DemoModule(DEMO_MODULE_APP_ID, fdn->getRemoteDeviceCoordinator());
 
     // Splash screen
     fdn->getDisplay()

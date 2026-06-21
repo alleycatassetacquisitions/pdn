@@ -129,6 +129,20 @@ void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* d
     chainDuelManager->onRoleAnnounceAckReceived(fromMac, payload->seqId);
 }
 
+void Quickdraw::onStateDismounted(Device* PDN) {
+    savedState_ = currentState;
+    StateMachine::onStateDismounted(PDN);
+}
+
+void Quickdraw::onStateMounted(Device* PDN) {
+    if (!hasLaunched()) {
+        StateMachine::onStateMounted(PDN);
+        return;
+    }
+    currentState = savedState_ != nullptr ? savedState_ : stateMap[0];
+    static_cast<StateLifecycle*>(currentState)->mount(PDN);
+}
+
 void Quickdraw::onStateLoop(Device *PDN) {
     if (chainDuelManager) chainDuelManager->sync();
 
@@ -290,7 +304,6 @@ Quickdraw::~Quickdraw() {
 }
 
 void Quickdraw::populateStateMap() {
-
     // Sub-state machines for player registration and handshake
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
     // Quickdraw gameplay states

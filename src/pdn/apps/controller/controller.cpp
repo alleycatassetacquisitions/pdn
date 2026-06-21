@@ -5,7 +5,8 @@ Controller::Controller(Player* player, RemoteDeviceCoordinator* remoteDeviceCoor
     : TypedStateMachine<PDN>(CONTROLLER_APP_ID)
     , player(player)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
-    , symbolWirelessManager(symbolWirelessManager) {}
+    , symbolWirelessManager(symbolWirelessManager)
+    , disconnectPolicy(remoteDeviceCoordinator) {}
 
 Controller::~Controller() {}
 
@@ -29,4 +30,10 @@ void Controller::populateStateMap() {
     stateMap.push_back(symbolState);
     stateMap.push_back(symbolMatchedState);
     stateMap.push_back(controller1State);
+
+    for (State* state : stateMap) {
+        state->addAppTransition(
+            [this]() { return disconnectPolicy.isPersistentlyDisconnected(); },
+            StateId(QUICKDRAW_APP_ID));
+    }
 }

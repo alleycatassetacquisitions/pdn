@@ -1,8 +1,9 @@
 #include "apps/demo-modules/demo-module.hpp"
 #include "apps/demo-modules/demo-module-states.hpp"
-#include "apps/fdn-app-ids.hpp"
 
-DemoModule::DemoModule(int stateId) : TypedStateMachine<FDN>(stateId) {}
+DemoModule::DemoModule(int stateId, RemoteDeviceCoordinator* remoteDeviceCoordinator)
+    : TypedStateMachine<FDN>(stateId)
+    , disconnectPolicy(remoteDeviceCoordinator) {}
 
 DemoModule::~DemoModule() {}
 
@@ -35,4 +36,10 @@ void DemoModule::populateStateMap() {
     stateMap.push_back(tutorialState);
     stateMap.push_back(gameState);
     stateMap.push_back(scoringState);
+
+    for (State* state : stateMap) {
+        state->addAppTransition(
+            [this]() { return disconnectPolicy.isPersistentlyDisconnected(); },
+            StateId(SYMBOL_LOCK_APP_ID));
+    }
 }
