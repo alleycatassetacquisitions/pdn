@@ -13,10 +13,9 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
+#include "apps/pdn-app-ids.hpp"
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
-
-constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:

@@ -1,21 +1,19 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/controller/controller-states.hpp"
 #include "device/device.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/drivers/logger.hpp"
 #include <functional>
-
+#include "game/quickdraw-resources.hpp"
 
 static const char* TAG = "SymbolState";
 
-SymbolState::SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL) {
+SymbolState::SymbolState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL) {
     this->player = player;
-    this->matchManager = matchManager;
     this->symbolWirelessManager = symbolWirelessManager;
 }
 
 SymbolState::~SymbolState() {
     this->player = nullptr;
-    this->matchManager = nullptr;
     this->symbolWirelessManager = nullptr;
 }
 

@@ -23,11 +23,12 @@
 #include "game/quickdraw.hpp"
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
-#include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
+#include "wireless/controller-wireless-manager.hpp"
+#include "apps/controller/controller.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 
@@ -66,16 +67,19 @@ Player* player = nullptr;
 
 // Game instance
 Quickdraw* game = nullptr;
+Controller* controller = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
+ControllerWirelessManager* controllerWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
 
 void setupEspNow(
     QuickdrawWirelessManager* quickdrawWirelessManager,
     RemoteDebugManager* remoteDebugManager,
     SymbolWirelessManager* symbolWirelessManager,
+    ControllerWirelessManager* controllerWirelessManager,
     PeerCommsInterface* peerCommsDriver) {
     // Register packet handlers
     peerCommsDriver->setPacketHandler(
@@ -100,6 +104,30 @@ void setupEspNow(
             ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(srcAddr, data, len);
         },
         symbolWirelessManager
+    );
+
+    peerCommsDriver->setPacketHandler(
+        PktType::kControllerCommand,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            ((ControllerWirelessManager*)userArg)->processControllerCommand(srcAddr, data, len);
+        },
+        controllerWirelessManager
+    );
+
+    peerCommsDriver->setPacketHandler(
+        PktType::kGameSelect,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            ((ControllerWirelessManager*)userArg)->processGameSelectCommand(srcAddr, data, len);
+        },
+        controllerWirelessManager
+    );
+
+    peerCommsDriver->setPacketHandler(
+        PktType::kGameResponse,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            ((ControllerWirelessManager*)userArg)->processGameResponseCommand(srcAddr, data, len);
+        },
+        controllerWirelessManager
     );
 }
 
@@ -159,6 +187,8 @@ void setup() {
     quickdrawWirelessManager = new QuickdrawWirelessManager();
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
     symbolWirelessManager = new SymbolWirelessManager();
+    LOG_I("SETUP", "Creating ControllerWirelessManager...");
+    controllerWirelessManager = new ControllerWirelessManager();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     
@@ -167,11 +197,13 @@ void setup() {
 
     quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
+    controllerWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
     
     // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
+    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, controllerWirelessManager, peerCommsDriver);
     
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
+    controller = new Controller(player, pdn->getRemoteDeviceCoordinator(), symbolWirelessManager);
     
     pdn->getDisplay()->
     invalidateScreen()->
@@ -182,7 +214,8 @@ void setup() {
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
-        {StateId(QUICKDRAW_APP_ID), game}
+        {StateId(QUICKDRAW_APP_ID), game},
+        {StateId(CONTROLLER_APP_ID), controller}
     };
     pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
 }

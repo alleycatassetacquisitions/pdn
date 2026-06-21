@@ -1,21 +1,22 @@
-#include "game/quickdraw-states.hpp"
+#include "apps/controller/controller-states.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
+#include "game/quickdraw-resources.hpp"
 #include "device/animation/hunter-win-animation.hpp"
 #include "device/animation/bounty-win-animation.hpp"
 
 static const char* TAG = "SymbolMatched";
 
-SymbolMatched::SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
+SymbolMatchedState::SymbolMatchedState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
     this->player = player;
     this->symbolWirelessManager = symbolWirelessManager;
 }
 
-SymbolMatched::~SymbolMatched() {
+SymbolMatchedState::~SymbolMatchedState() {
     this->player = nullptr;
 }
 
-void SymbolMatched::onStateMounted(PDN* pdn) {
+void SymbolMatchedState::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "mounted");
     transitionToSymbolState = false;
     transitionToIdleState = false;
@@ -26,7 +27,7 @@ void SymbolMatched::onStateMounted(PDN* pdn) {
     successTimer.setTimer(SUCCESS_TIMEOUT);
 
     symbolWirelessManager->setPacketReceivedCallback(
-        std::bind(&SymbolMatched::onSymbolMatchCommandReceived, this, std::placeholders::_1),
+        std::bind(&SymbolMatchedState::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
 
     AnimationBase* animation = player->isHunter()
@@ -40,7 +41,7 @@ void SymbolMatched::onStateMounted(PDN* pdn) {
     pdn->getLightManager()->startAnimation(animation, cfg);
 }
 
-void SymbolMatched::onStateLoop(PDN* pdn) {
+void SymbolMatchedState::onStateLoop(PDN* pdn) {
     if (!(getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN)) {
         transitionToIdleState = true;
         return;
@@ -66,7 +67,7 @@ void SymbolMatched::onStateLoop(PDN* pdn) {
     }
 }
 
-void SymbolMatched::onStateDismounted(PDN* pdn) {
+void SymbolMatchedState::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
     const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolState;
     transitionToSymbolState = false;
@@ -96,23 +97,27 @@ void SymbolMatched::onStateDismounted(PDN* pdn) {
     symbolWirelessManager->clearCallback();
 }
 
-bool SymbolMatched::isPrimaryRequired() {
+bool SymbolMatchedState::isPrimaryRequired() {
     return true;
 }
 
-bool SymbolMatched::isAuxRequired() {
+bool SymbolMatchedState::isAuxRequired() {
     return true;
 }
 
-bool SymbolMatched::transitionToSymbol() {
+bool SymbolMatchedState::transitionToSymbol() {
     return transitionToSymbolState;
 }
 
-bool SymbolMatched::transitionToIdle() {
+bool SymbolMatchedState::transitionToIdle() {
     return transitionToIdleState;
 }
 
-void SymbolMatched::renderSymbolScreen(PDN* pdn) {
+bool SymbolMatchedState::transitionToController1() {
+    return transitionToController1State;
+}
+
+void SymbolMatchedState::renderSymbolScreen(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen();
     pdn->getDisplay()->whiteScreen();
     pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH);
@@ -126,7 +131,7 @@ void SymbolMatched::renderSymbolScreen(PDN* pdn) {
     toggleBlink = !toggleBlink;
 }
 
-void SymbolMatched::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
+void SymbolMatchedState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
     if (command.command == SMCommand::SYMBOLS_REFRESHED) {
         transitionToSymbolState = true;
     }

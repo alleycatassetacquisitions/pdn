@@ -4,6 +4,7 @@
 #include "device/drivers/logger.hpp"
 #include <array>
 #include <cstring>
+#include "apps/pdn-app-ids.hpp"
 
 Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
     this->player = player;
@@ -319,9 +320,6 @@ void Quickdraw::populateStateMap() {
     auto* shFinalStandings = new ShootoutFinalStandings(sht, chainDuelManager);
     auto* shAborted = new ShootoutAborted(sht);
 
-    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
-    SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
-
     // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(
         new StateTransition(
@@ -564,30 +562,9 @@ void Quickdraw::populateStateMap() {
             sleep));
 
     // --- Symbol-match transitions ---
-    idle->addTransition(
-        new StateTransition(
-            std::bind(&Idle::transitionToSymbol, idle),
-            symbol));
-
-    symbol->addTransition(
-        new StateTransition(
-            std::bind(&SymbolState::transitionToIdle, symbol),
-            idle));
-
-    symbol->addTransition(
-        new StateTransition(
-            std::bind(&SymbolState::transitionToSymbolMatched, symbol),
-            symbolMatched));
-
-    symbolMatched->addTransition(
-        new StateTransition(
-            std::bind(&SymbolMatched::transitionToSymbol, symbolMatched),
-            symbol));
-
-    symbolMatched->addTransition(
-        new StateTransition(
-            std::bind(&SymbolMatched::transitionToIdle, symbolMatched),
-            idle));
+    idle->addAppTransition(
+        std::bind(&Idle::transitionToSymbol, idle),
+        StateId(CONTROLLER_APP_ID));
 
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
@@ -609,6 +586,4 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(shEliminated);
     stateMap.push_back(shFinalStandings);
     stateMap.push_back(shAborted);
-    stateMap.push_back(symbol);
-    stateMap.push_back(symbolMatched);
 }

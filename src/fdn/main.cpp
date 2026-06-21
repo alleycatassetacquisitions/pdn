@@ -22,6 +22,7 @@
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/fdn-connect-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
+#include "wireless/controller-wireless-manager.hpp"
 #include "wireless/wireless-types.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "apps/main-menu/main-menu.hpp"
@@ -77,6 +78,7 @@ RemotePlayerManager*      remotePlayerManager      = nullptr;
 FDNConnectWirelessManager* fdnConnectWirelessManager = nullptr;
 HackedPlayersManager*     hackedPlayersManager     = nullptr;
 SymbolWirelessManager*    symbolWirelessManager    = nullptr;
+ControllerWirelessManager* controllerWirelessManager = nullptr;
 
 // Apps
 // MainMenu*    mainMenu        = nullptr;
@@ -109,6 +111,27 @@ static void setupEspNow(PeerCommsInterface* peerComms) {
             static_cast<SymbolWirelessManager*>(arg)->processSymbolMatchCommand(src, data, len);
         },
         symbolWirelessManager);
+
+    peerComms->setPacketHandler(
+        PktType::kControllerCommand,
+        [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
+            static_cast<ControllerWirelessManager*>(arg)->processControllerCommand(src, data, len);
+        },
+        controllerWirelessManager);
+
+    peerComms->setPacketHandler(
+        PktType::kGameSelect,
+        [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
+            static_cast<ControllerWirelessManager*>(arg)->processGameSelectCommand(src, data, len);
+        },
+        controllerWirelessManager);
+
+    peerComms->setPacketHandler(
+        PktType::kGameResponse,
+        [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
+            static_cast<ControllerWirelessManager*>(arg)->processGameResponseCommand(src, data, len);
+        },
+        controllerWirelessManager);
 }
 
 void setup() {
@@ -170,6 +193,9 @@ void setup() {
 
     symbolWirelessManager = new SymbolWirelessManager();
     symbolWirelessManager->initialize(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
+
+    controllerWirelessManager = new ControllerWirelessManager();
+    controllerWirelessManager->initialize(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
 
     setupEspNow(peerCommsDriver);
 
