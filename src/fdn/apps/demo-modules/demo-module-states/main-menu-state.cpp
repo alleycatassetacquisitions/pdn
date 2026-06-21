@@ -3,6 +3,7 @@
 
 namespace {
 static const char* TAG = "MainMenuState";
+static const char* kStateLabel = "MAIN MENU";
 }
 
 MainMenuState::MainMenuState() : TypedState<FDN>(DemoModuleStateId::MAIN_MENU) {}
@@ -11,20 +12,24 @@ MainMenuState::~MainMenuState() {}
 
 void MainMenuState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
+    transitionTimer.setTimer(kDemoStateDisplayMs);
+    renderDemoStateLabel(fdn, kStateLabel);
 }
 
 void MainMenuState::onStateLoop(FDN* fdn) {
-    LOG_W(TAG, "Loop");
+    renderDemoStateLabel(fdn, kStateLabel);
 }
 
 void MainMenuState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
+    transitionTimer.invalidate();
+    goToTutorialNext = !goToTutorialNext;
 }
 
 bool MainMenuState::transitionToTutorial() {
-    return true;
+    return transitionTimer.expired() && goToTutorialNext;
 }
 
 bool MainMenuState::transitionToGame() {
-    return true;
+    return transitionTimer.expired() && !goToTutorialNext;
 }

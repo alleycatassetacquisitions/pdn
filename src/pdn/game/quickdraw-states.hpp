@@ -518,6 +518,8 @@ public:
     bool transitionToIdle();
     bool transitionToSymbolMatched();
 
+    void cycleSymbol();
+
 private:
     Player* player;
     MatchManager* matchManager;
@@ -528,14 +530,11 @@ private:
     SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
     SymbolId fdnSymbol;
 
-    SimpleTimer renderTimer;
-    const int RENDER_TIMEOUT = 500;
     SimpleTimer bufferTimer;
     const int BUFFER_TIMEOUT = 500;
     SimpleTimer hapticPulseTimer;
     const int HAPTIC_PULSE_DURATION = 100;
 
-    bool toggleSymbol = true;
     bool symbolSent = false;
     bool hapticPulseActive = false;
     bool matchReady = false;
@@ -544,8 +543,8 @@ private:
 
     AnimationConfig cfg{};
 
-    void renderSymbolScreen(PDN* pdn);
-    void advanceSymbolRender(PDN* pdn);
+    void renderSymbolSteady(PDN* pdn);
+    void renderSendConfirmation(PDN* pdn);
     void sendSymbolToFDN();
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
 };

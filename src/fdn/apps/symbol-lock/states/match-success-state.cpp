@@ -23,6 +23,7 @@ SymbolLockMatchSuccessState::~SymbolLockMatchSuccessState() {
 
 void SymbolLockMatchSuccessState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
+    demoTransitionReady = false;
     bufferTimer.setTimer(bufferInterval);
     renderTimer.setTimer(renderInterval);
 
@@ -45,6 +46,10 @@ void SymbolLockMatchSuccessState::onStateLoop(FDN* fdn) {
         renderSymbolScreen(fdn);
         renderTimer.setTimer(renderInterval);
     }
+
+    if (bufferTimer.expired()) {
+        demoTransitionReady = true;
+    }
 }
 
 void SymbolLockMatchSuccessState::onStateDismounted(FDN* fdn) {
@@ -52,6 +57,7 @@ void SymbolLockMatchSuccessState::onStateDismounted(FDN* fdn) {
     bufferTimer.invalidate();
     renderTimer.invalidate();
     toggleBlink = true;
+    demoTransitionReady = false;
     fdn->getLightManager()->stopAnimation();
 }
 
@@ -73,5 +79,5 @@ void SymbolLockMatchSuccessState::renderSymbolScreen(FDN* fdn) {
 }
 
 bool SymbolLockMatchSuccessState::transitionToDemoModule() {
-    return bufferTimer.expired();
+    return demoTransitionReady;
 }

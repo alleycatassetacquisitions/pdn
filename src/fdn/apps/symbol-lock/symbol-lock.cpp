@@ -1,5 +1,6 @@
 #include "apps/symbol-lock/symbol-lock.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include "fdn-constants.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "device/animation/animation-base.hpp"
 #include "device/drivers/logger.hpp"
@@ -10,6 +11,16 @@
 namespace {
 constexpr uint8_t kIdleSpeed = 20;
 static const char* TAG = "SymbolLock";
+
+void shutdownDisplayAndLights(FDN* fdn) {
+    fdn->getLightManager()->stopAnimation();
+    auto* lm = static_cast<FDNLightManager*>(fdn->getLightManager());
+    lm->clearAllLights(fdnNumRecessLights, fdnNumFinLights);
+    fdn->getDisplay()
+        ->invalidateScreen()
+        ->setGlyphMode(FontMode::TEXT)
+        ->render();
+}
 }
 
 SymbolLock::SymbolLock(FDN* fdn,
@@ -43,8 +54,8 @@ void SymbolLock::onStateDismounted(Device* device) {
     FDN* fdn = castDevice(device);
     nearbyAnimationTimer.invalidate();
     nearbyAnimationActive = false;
-    fdn->getLightManager()->stopAnimation();
     TypedStateMachine<FDN>::onStateDismounted(device);
+    shutdownDisplayAndLights(fdn);
 }
 
 void SymbolLock::startIdleLightAnimation(FDN* fdn) {

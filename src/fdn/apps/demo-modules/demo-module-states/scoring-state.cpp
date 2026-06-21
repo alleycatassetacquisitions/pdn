@@ -3,6 +3,7 @@
 
 namespace {
 static const char* TAG = "ScoringState";
+static const char* kStateLabel = "SCORING";
 }
 
 ScoringState::ScoringState() : TypedState<FDN>(DemoModuleStateId::SCORING) {}
@@ -11,16 +12,19 @@ ScoringState::~ScoringState() {}
 
 void ScoringState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
+    transitionTimer.setTimer(kDemoStateDisplayMs);
+    renderDemoStateLabel(fdn, kStateLabel);
 }
 
 void ScoringState::onStateLoop(FDN* fdn) {
-    LOG_W(TAG, "Loop");
+    renderDemoStateLabel(fdn, kStateLabel);
 }
 
 void ScoringState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
+    transitionTimer.invalidate();
 }
 
 bool ScoringState::transitionToMainMenu() {
-    return true;
+    return transitionTimer.expired();
 }

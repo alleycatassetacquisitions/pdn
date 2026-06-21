@@ -27,7 +27,6 @@ void SymbolState::onStateMounted(PDN* pdn) {
     matchReady = false;
     symbolSent = false;
     hapticPulseActive = false;
-    toggleSymbol = true;
 
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
         fdnMac = const_cast<uint8_t*>(remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK));
@@ -45,6 +44,11 @@ void SymbolState::onStateMounted(PDN* pdn) {
         symbolState->sendSymbolToFDN();
     };
 
+    parameterizedCallbackFunction cycleSymbolPress = [](void *ctx) {
+        static_cast<SymbolState*>(ctx)->cycleSymbol();
+    };
+
+    pdn->getPrimaryButton()->setButtonPress(cycleSymbolPress, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
 
     symbolWirelessManager->setPacketReceivedCallback(
@@ -74,9 +78,7 @@ void SymbolState::onStateLoop(PDN* pdn) {
             hapticPulseActive = true;
         }
 
-        // sendSymbolToFDN();
-        advanceSymbolRender(pdn);
-        renderTimer.invalidate();
+        renderSendConfirmation(pdn);
     }
 
     if (hapticPulseActive && hapticPulseTimer.expired()) {
@@ -89,17 +91,13 @@ void SymbolState::onStateLoop(PDN* pdn) {
     if (bufferTimer.isRunning()) {
         if (bufferTimer.expired()) {
             bufferTimer.invalidate();
-            advanceSymbolRender(pdn);
+            renderSymbolSteady(pdn);
         } else {
             if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
                 renderLoadingScreen(pdn->getDisplay());
             }
             return;
         }
-    }
-
-    if (renderTimer.expired()) {
-        advanceSymbolRender(pdn);
     }
 
     // if device is not connected to an FDN, transition to idle
@@ -120,9 +118,6 @@ void SymbolState::onStateDismounted(PDN* pdn) {
     bufferTimer.invalidate();
     hapticPulseTimer.invalidate();
     pdn->getHaptics()->off();
-    if (renderTimer.isRunning()) {
-        renderTimer.invalidate();
-    }
 
     if (showRefreshScreen) {
         bufferTimer.setTimer(BUFFER_TIMEOUT);
@@ -138,6 +133,8 @@ void SymbolState::onStateDismounted(PDN* pdn) {
 
     matchReady = false;
 
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
     pdn->getLightManager()->stopAnimation();
     pdn->getLightManager()->clear();
 }
@@ -158,39 +155,40 @@ bool SymbolState::transitionToSymbolMatched() {
     return transitionToSymbolMatchedState;
 }
 
-void SymbolState::renderSymbolScreen(PDN* pdn) {
-    
-    
+void SymbolState::cycleSymbol() {
+    const int current = static_cast<int>(player->getSymbol()->getSymbolId());
+    const int next = (current + 1) % static_cast<int>(SymbolId::NUM_SYMBOLS);
+    player->getSymbol()->setSymbolId(static_cast<SymbolId>(next));
+
+    matchReady = fdnSymbol == player->getSymbol()->getSymbolId();
+    symbolSent = false;
+
+    LOG_W(TAG, "Cycled symbol to %d, matchReady=%d",
+          static_cast<int>(player->getSymbol()->getSymbolId()),
+          matchReady ? 1 : 0);
+
+    if (mountedPdn != nullptr) {
+        renderSymbolSteady(mountedPdn);
+    }
 }
 
-void SymbolState::advanceSymbolRender(PDN* pdn) {
-    LOG_W(TAG, "advanceSymbolRender: symbolSent=%d, toggleSymbol=%d", symbolSent, toggleSymbol);
-    if (!symbolSent) {
-        if (toggleSymbol) {
-            pdn->getDisplay()->invalidateScreen();
-            pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
+void SymbolState::renderSymbolSteady(PDN* pdn) {
+    pdn->getDisplay()->invalidateScreen();
+    pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(
+        player->getSymbol()->getSymbolGlyph(), 48, 48);
+    pdn->getDisplay()->render();
+    pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
+}
 
-            pdn->getDisplay()->render();
-
-            pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
-        } else {
-            pdn->getDisplay()->invalidateScreen();
-            pdn->getDisplay()->render();
-
-            pdn->getLightManager()->stopAnimation();
-        }
-        toggleSymbol = !toggleSymbol;
-        renderTimer.setTimer(RENDER_TIMEOUT);
-    } else {
-        pdn->getDisplay()->invalidateScreen();
-        pdn->getDisplay()->whiteScreen();
-        pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48);
-
-        pdn->getDisplay()->render();
-        symbolSent = false;
-
-        pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
-    }
+void SymbolState::renderSendConfirmation(PDN* pdn) {
+    pdn->getDisplay()->invalidateScreen();
+    pdn->getDisplay()->whiteScreen();
+    pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(
+        player->getSymbol()->getSymbolGlyph(), 48, 48);
+    pdn->getDisplay()->render();
+    symbolSent = false;
+    pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
+    renderSymbolSteady(pdn);
 }
 
 void SymbolState::sendSymbolToFDN() {
@@ -211,6 +209,8 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
         fdnSymbol = command.symbolId;
         if (fdnSymbol == player->getSymbol()->getSymbolId()) {
             matchReady = true;
+        } else {
+            matchReady = false;
         }
         LOG_W(TAG, "Comparison: fdnSymbol=%d, playerSymbol=%d, matchReady=%d", 
               static_cast<int>(fdnSymbol), 
@@ -222,15 +222,11 @@ void SymbolState::onSymbolMatchCommandReceived(SymbolMatchCommand command) {
     } else if (command.command == SMCommand::SYMBOLS_REFRESHED) {
         symbolSent = false;
         matchReady = false;
-        toggleSymbol = true;
         transitionToSymbolMatchedState = false;
 
-        // Force an immediate redraw back to the blinking symbol.
-        renderTimer.invalidate();
         bufferTimer.invalidate();
         if (mountedPdn != nullptr) {
-            advanceSymbolRender(mountedPdn);
-            renderTimer.setTimer(RENDER_TIMEOUT);
+            renderSymbolSteady(mountedPdn);
         }
     } else if (command.command == SMCommand::SYMBOL_MATCH_SUCCESS) {
         transitionToSymbolMatchedState = true;

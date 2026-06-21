@@ -89,6 +89,7 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     bool toggleBlink = true;
+    bool demoTransitionReady = false;
     SimpleTimer bufferTimer;
     int bufferInterval = 3 * 1000;
     SimpleTimer renderTimer;
