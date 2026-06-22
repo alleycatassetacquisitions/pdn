@@ -14,6 +14,14 @@ Controller::Controller(Player* player,
 
 Controller::~Controller() {}
 
+void Controller::onStateMounted(Device* device) {
+    if (!hasLaunched()) {
+        TypedStateMachine<PDN>::onStateMounted(device);
+        return;
+    }
+    skipToState(device, kSymbolStateIndex);
+}
+
 void Controller::populateStateMap() {
     auto* symbolState = new SymbolState(player, remoteDeviceCoordinator, symbolWirelessManager);
     auto* symbolMatchedState = new SymbolMatchedState(

@@ -24,8 +24,10 @@ SymbolLockMatchSuccessState::~SymbolLockMatchSuccessState() {
 void SymbolLockMatchSuccessState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
     demoTransitionReady = false;
+    toggleBlink = true;
     bufferTimer.setTimer(bufferInterval);
     renderTimer.setTimer(renderInterval);
+    renderSymbolScreen(fdn);
 
     AnimationConfig cfg{};
     cfg.loop  = true;
@@ -47,7 +49,7 @@ void SymbolLockMatchSuccessState::onStateLoop(FDN* fdn) {
         renderTimer.setTimer(renderInterval);
     }
 
-    if (bufferTimer.expired()) {
+    if (bufferTimer.expired() && !demoTransitionReady) {
         demoTransitionReady = true;
     }
 }
@@ -66,16 +68,13 @@ void SymbolLockMatchSuccessState::renderSymbolScreen(FDN* fdn) {
     d->invalidateScreen();
     d->whiteScreen();
     d->setGlyphMode(FontMode::SYMBOL_GLYPH);
-    if (toggleBlink) {
-        if (symbolManager->isSingleSymbolMode()) {
-            d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK), 48, 40);
-        } else {
-            d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK), 24, 40);
-            d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK_SECONDARY), 72, 40);
-        }
+    if (symbolManager->isSingleSymbolMode()) {
+        d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK), 48, 40);
+    } else {
+        d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK), 24, 40);
+        d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK_SECONDARY), 72, 40);
     }
     d->render();
-    toggleBlink = !toggleBlink;
 }
 
 bool SymbolLockMatchSuccessState::transitionToDemoModule() {

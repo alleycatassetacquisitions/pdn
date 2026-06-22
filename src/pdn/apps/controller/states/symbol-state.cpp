@@ -1,11 +1,21 @@
 #include "apps/controller/controller-states.hpp"
 #include "device/device.hpp"
-#include "device/animation/idle-animation.hpp"
+#include "device/animation/animation-base.hpp"
 #include "device/drivers/logger.hpp"
 #include <functional>
 #include "game/quickdraw-resources.hpp"
 
 static const char* TAG = "SymbolState";
+
+namespace {
+
+class SteadyLightAnimation : public AnimationBase {
+protected:
+    void onInit() override { currentState_ = config_.initialState; }
+    LEDState onAnimate() override { return currentState_; }
+};
+
+}  // namespace
 
 SymbolState::SymbolState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL) {
     this->player = player;
@@ -26,6 +36,7 @@ void SymbolState::onStateMounted(PDN* pdn) {
     fdnSymbolValid = false;
     symbolSent = false;
     hapticPulseActive = false;
+    symbolLightsActive = false;
     fdnTargetPort = SerialIdentifier::INPUT_JACK;
 
     if (remoteDeviceCoordinator->getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
@@ -115,6 +126,7 @@ void SymbolState::onStateDismounted(PDN* pdn) {
     transitionToSymbolMatchedState = false;
     symbolSent = false;
     hapticPulseActive = false;
+    symbolLightsActive = false;
     bufferTimer.invalidate();
     hapticPulseTimer.invalidate();
     pdn->getHaptics()->off();
@@ -168,16 +180,27 @@ void SymbolState::cycleSymbol() {
           matchReady ? 1 : 0);
 
     if (mountedPdn != nullptr) {
-        renderSymbolSteady(mountedPdn);
+        renderSymbolDisplay(mountedPdn);
     }
 }
 
-void SymbolState::renderSymbolSteady(PDN* pdn) {
+void SymbolState::renderSymbolDisplay(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen();
     pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(
         player->getSymbol()->getSymbolGlyph(), 48, 48);
     pdn->getDisplay()->render();
-    pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
+}
+
+void SymbolState::applySteadySymbolLights(PDN* pdn) {
+    pdn->getLightManager()->startAnimation(new SteadyLightAnimation(), cfg);
+    symbolLightsActive = true;
+}
+
+void SymbolState::renderSymbolSteady(PDN* pdn) {
+    renderSymbolDisplay(pdn);
+    if (!symbolLightsActive) {
+        applySteadySymbolLights(pdn);
+    }
 }
 
 void SymbolState::renderSendConfirmation(PDN* pdn) {
@@ -187,8 +210,7 @@ void SymbolState::renderSendConfirmation(PDN* pdn) {
         player->getSymbol()->getSymbolGlyph(), 48, 48);
     pdn->getDisplay()->render();
     symbolSent = false;
-    pdn->getLightManager()->startAnimation(new IdleAnimation(), cfg);
-    renderSymbolSteady(pdn);
+    renderSymbolDisplay(pdn);
 }
 
 void SymbolState::sendSymbolToFDN() {

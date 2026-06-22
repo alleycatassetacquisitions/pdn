@@ -2,6 +2,7 @@
 #include "device/device.hpp"
 #include "device/drivers/button.hpp"
 #include "device/drivers/logger.hpp"
+#include "game/quickdraw-resources.hpp"
 
 namespace {
 static const char* TAG = "Controller1State";
@@ -61,6 +62,18 @@ void Controller1State::onStateLoop(PDN* pdn) {
 
 void Controller1State::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "Dismounted");
+    controllerWirelessManager->clearCallback();
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
+
+    SimpleTimer bufferTimer;
+    const int bufferTimeout = 1000;
+    bufferTimer.setTimer(bufferTimeout);
+    while (!bufferTimer.expired()) {
+        if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
+            renderLoadingScreen(pdn->getDisplay());
+        }
+    }
 }
 
 void Controller1State::sendButtonMessage(ButtonIdentifier buttonId, ButtonInteraction interaction) {

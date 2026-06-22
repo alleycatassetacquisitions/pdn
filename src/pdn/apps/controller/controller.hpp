@@ -28,7 +28,10 @@ public:
 
     void populateStateMap() override;
 
+    void onStateMounted(Device* device) override;
+
 private:
+    static constexpr int kSymbolStateIndex = 0;
     Player* player;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     SymbolWirelessManager* symbolWirelessManager;

@@ -47,7 +47,11 @@ void SymbolLock::onStateMounted(Device* device) {
     nearbyAnimationTimer.invalidate();
     nearbyAnimationActive = false;
     startIdleLightAnimation(fdn);
-    TypedStateMachine<FDN>::onStateMounted(device);
+    if (!hasLaunched()) {
+        TypedStateMachine<FDN>::onStateMounted(device);
+        return;
+    }
+    skipToState(device, kSelectionStateIndex);
 }
 
 void SymbolLock::onStateDismounted(Device* device) {

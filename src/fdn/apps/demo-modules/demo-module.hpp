@@ -22,7 +22,10 @@ public:
 
     void populateStateMap() override;
 
+    void onStateMounted(Device* device) override;
+
 private:
+    static constexpr int kMainMenuStateIndex = 0;
     DemoModuleDisconnectPolicy disconnectPolicy;
     ControllerWirelessManager* controllerWirelessManager;
 };

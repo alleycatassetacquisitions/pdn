@@ -23,6 +23,7 @@ void SymbolMatchedState::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "mounted");
     transitionToSymbolState = false;
     transitionToIdleState = false;
+    transitionToController1State = false;
     toggleBlink = true;
     holdSteadySymbol = false;
     renderSymbolScreen(pdn);
@@ -85,11 +86,11 @@ void SymbolMatchedState::onStateDismounted(PDN* pdn) {
     const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolState;
     transitionToSymbolState = false;
     transitionToIdleState = false;
+    transitionToController1State = false;
     toggleBlink = true;
     holdSteadySymbol = false;
     blinkTimer.invalidate();
     successTimer.invalidate();
-
 
     pdn->getLightManager()->stopAnimation();
     pdn->getLightManager()->clear();

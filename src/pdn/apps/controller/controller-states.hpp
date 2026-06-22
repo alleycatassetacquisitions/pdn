@@ -53,10 +53,13 @@ class SymbolState : public ConnectState<PDN> {
         bool matchReady = false;
         bool transitionToIdleState = false;
         bool transitionToSymbolMatchedState = false;
-    
+        bool symbolLightsActive = false;
+
         AnimationConfig cfg{};
     
         void renderSymbolSteady(PDN* pdn);
+        void renderSymbolDisplay(PDN* pdn);
+        void applySteadySymbolLights(PDN* pdn);
         void renderSendConfirmation(PDN* pdn);
         void sendSymbolToFDN();
         void onSymbolMatchCommandReceived(SymbolMatchCommand command);

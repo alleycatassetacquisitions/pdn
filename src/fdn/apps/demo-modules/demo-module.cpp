@@ -10,6 +10,14 @@ DemoModule::DemoModule(int stateId,
 
 DemoModule::~DemoModule() {}
 
+void DemoModule::onStateMounted(Device* device) {
+    if (!hasLaunched()) {
+        TypedStateMachine<FDN>::onStateMounted(device);
+        return;
+    }
+    skipToState(device, kMainMenuStateIndex);
+}
+
 void DemoModule::populateStateMap() {
     auto* mainMenuState = new MainMenuState(controllerWirelessManager);
     auto* tutorialState = new TutorialState();
