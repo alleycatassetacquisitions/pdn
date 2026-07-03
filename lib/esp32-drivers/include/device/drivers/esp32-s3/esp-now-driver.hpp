@@ -45,6 +45,21 @@ public:
     // === PEER COMMS INTERFACE === //
 
     void exec() override {
+        // Re-pin armed by connect(): retry (paced) until the readback sticks,
+        // re-issuing the disconnect each attempt to kill whatever STA attempt
+        // is blocking the pin. Stops if an excursion takes the radio.
+        if (channelPinPending_ && peerCommsState == PeerCommsState::CONNECTED) {
+            unsigned long now = millis();
+            if (now - lastChannelPinMs_ >= kChannelPinRetryMs) {
+                lastChannelPinMs_ = now;
+                WiFi.disconnect(false);
+                if (pinEspNowChannel()) {
+                    channelPinPending_ = false;
+                    LOG_W("ENC", "channel pin recovered: on %d", ESPNOW_CHANNEL);
+                }
+            }
+        }
+
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex_, portMAX_DELAY);
         std::swap(pending, recvQueue_);
@@ -62,33 +77,43 @@ public:
     }
 
     void connect() override {
-        // Set WiFi to station mode
+        // ESP-NOW requires station mode.
         WiFi.mode(WIFI_STA);
-        
-        // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
-        // ESP-NOW requires the WiFi radio to be active!
+
+        // Stop the STA auto-reconnect scan loop: its periodic all-channel scans
+        // pull the radio off ESPNOW_CHANNEL, so peers miss each other's unicast
+        // ACKs. It keeps scanning even after a failed connect unless stopped.
+        WiFi.setAutoReconnect(false);
+
+        // Drop any AP but keep the radio on (false); ESP-NOW needs it active.
         WiFi.disconnect(false);
-        
+
+        // STA modem sleep defaults ON; with no AP the radio mostly sleeps and
+        // peers can't return L2 ACKs, killing the link. PS_NONE keeps it on.
+        esp_wifi_set_ps(WIFI_PS_NONE);
+
         // Small delay to let WiFi stabilize after mode change
         delay(100);
-        
-        // Set the channel using ESP-IDF API for reliability
-        esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-        if (err != ESP_OK) {
-            LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
+
+        channelPinPending_ = !pinEspNowChannel();
+        if (channelPinPending_) {
+            // A STA connect/scan can still be in flight here (the core can
+            // schedule one last reconnect that lands after our disconnect),
+            // and set_channel fails until it resolves. Without the retry,
+            // ESP-NOW runs on whatever channel the scan stopped at until the
+            // next mode switch.
+            LOG_E("ENC", "channel pin to %d failed; retrying from exec()",
+                  ESPNOW_CHANNEL);
+            lastChannelPinMs_ = millis();
         }
-        
-        // Verify the channel was set correctly
-        uint8_t primary_channel;
-        wifi_second_chan_t secondary_channel;
-        esp_wifi_get_channel(&primary_channel, &secondary_channel);
-        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
 
         initializeEspNow();
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
     void disconnect() override {
+        // An excursion owns the radio now; the next connect() re-evaluates.
+        channelPinPending_ = false;
         // esp_now_deinit() destroys the TX-complete callback the send queue
         // drains on, so a send in flight here orphans the queue forever. Clear it
         // first; the reliable layer resends anything that mattered after resume.
@@ -631,6 +656,23 @@ private:
         }
         return 0;
     }
+
+    // True when the radio is verifiably on ESPNOW_CHANNEL. esp_wifi_set_channel
+    // ESP_FAILs while a STA connect/scan is in flight, so trust the readback,
+    // not the call's return code.
+    bool pinEspNowChannel() {
+        esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+        uint8_t primary;
+        wifi_second_chan_t secondary;
+        esp_wifi_get_channel(&primary, &secondary);
+        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary,
+              ESPNOW_CHANNEL);
+        return primary == ESPNOW_CHANNEL;
+    }
+
+    static constexpr unsigned long kChannelPinRetryMs = 100;
+    bool channelPinPending_ = false;
+    unsigned long lastChannelPinMs_ = 0;
 
     PeerCommsState peerCommsState = PeerCommsState::DISCONNECTED;
 
