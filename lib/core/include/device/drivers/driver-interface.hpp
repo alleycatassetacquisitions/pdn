@@ -10,6 +10,7 @@
 #include "logger.hpp"
 #include "platform-clock.hpp"
 #include "storage-interface.hpp"
+#include "mqtt-interface.hpp"
 
 enum class DriverType {
     SCREEN = 0,
@@ -22,6 +23,7 @@ enum class DriverType {
     PLATFORM_CLOCK = 7,
     LOGGER = 8,
     STORAGE = 9,
+    MQTT = 10,
 };
 
 class DriverInterface {
@@ -107,4 +109,11 @@ public:
     explicit StorageDriverInterface(const std::string& name) : DriverInterface(DriverType::STORAGE, name) {}
     ~StorageDriverInterface() override = default;
     void* abstractSelf() override { return static_cast<StorageInterface*>(this); }
+};
+
+class MQTTDriverInterface : public DriverInterface, public MQTTInterface {
+public:
+    explicit MQTTDriverInterface(const std::string& name) : DriverInterface(DriverType::MQTT, name) {}
+    ~MQTTDriverInterface() override = default;
+    void* abstractSelf() override { return static_cast<MQTTInterface*>(this); }
 };
