@@ -244,13 +244,9 @@ size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
-    PortStatus statusByState = mapHandshakeStateToStatus(port);
-
-    if (statusByState == PortStatus::CONNECTED && !daisyChainedByPort_[portIndex(port)].empty()) {
-        return PortStatus::DAISY_CHAINED;
-    }
-
-    return statusByState;
+    // Daisy-chained peers no longer upgrade the status: a port is CONNECTED or
+    // it isn't. Chain position is a device-level fact (getChainRole()).
+    return mapHandshakeStateToStatus(port);
 }
 
 PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {

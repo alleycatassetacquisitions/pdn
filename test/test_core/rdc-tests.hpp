@@ -21,6 +21,7 @@ using ::testing::NiceMock;
 
 class RDCTests : public testing::Test {
 public:
+    /// Fake clock + mocked radio with captured per-PktType handlers; RDC initialized.
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
@@ -47,11 +48,13 @@ public:
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
     }
 
+    /// Restores the real clock.
     void TearDown() override {
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
 
+    /// Injects a raw handshake packet as if received on the jack opposite senderJack.
     void deliverPacketViaRDC(int command, SerialIdentifier senderJack, int deviceType = 0) {
         SerialIdentifier receivingJack = (senderJack == SerialIdentifier::OUTPUT_JACK)
             ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
@@ -465,7 +468,9 @@ inline void rdcDisconnectWipesDaisyChainedPeers(RDCTests* suite) {
         directPeerMac, SerialIdentifier::OUTPUT_JACK, announcedPeers);
 
     ASSERT_EQ(suite->rdc.getPortState(SerialIdentifier::OUTPUT_JACK).peerMacAddresses.size(), 3u);
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DAISY_CHAINED);
+    // Daisy peers no longer upgrade the port status (chain position is
+    // device-level via getChainRole()); the port stays plain CONNECTED.
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
 
     // Heartbeat monitor timeout expires → handshake drops → port disconnects
     suite->fakeClock->advance(2100);
