@@ -4,7 +4,7 @@
 
 namespace {
 static const char* TAG = "MainMenuState";
-static const char* kStateLabel = "MAIN MENU";
+static const char* kGameTitle = "QUICKDRAW";
 }
 
 MainMenuState::MainMenuState(ControllerWirelessManager* controllerWirelessManager)
@@ -15,7 +15,7 @@ MainMenuState::~MainMenuState() {}
 
 void MainMenuState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    renderDemoStateLabel(fdn, kStateLabel);
+    renderMainMenuScreen(fdn, kGameTitle);
 
     RemoteDeviceCoordinator* remoteDeviceCoordinator = fdn->getRemoteDeviceCoordinator();
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
@@ -33,22 +33,42 @@ void MainMenuState::onStateMounted(FDN* fdn) {
     controllerWirelessManager->setControllerCommandReceivedCallback(
         std::bind(&MainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::INPUT_JACK_SECONDARY);
+
+    parameterizedCallbackFunction onPrimaryButtonPressed = [](void* ctx) {
+        static_cast<MainMenuState*>(ctx)->transitionToTutorialState = true;
+    };
+
+    fdn->getPrimaryButton()->setButtonPress(
+        onPrimaryButtonPressed,
+        this,
+        ButtonInteraction::PRESS);
+
+    parameterizedCallbackFunction onSecondaryButtonPressed = [](void* ctx) {
+        static_cast<MainMenuState*>(ctx)->transitionToGameState = true;
+    };
+
+    fdn->getSecondaryButton()->setButtonPress(
+        onSecondaryButtonPressed,
+        this,
+        ButtonInteraction::PRESS);
 }
 
 void MainMenuState::onStateLoop(FDN* fdn) {
-    renderDemoStateLabel(fdn, kStateLabel);
+    renderMainMenuScreen(fdn, kGameTitle);
 }
 
 void MainMenuState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
+    transitionToTutorialState = false;
+    transitionToGameState = false;
 }
 
 bool MainMenuState::transitionToTutorial() {
-    return false;
+    return transitionToTutorialState;
 }
 
 bool MainMenuState::transitionToGame() {
-    return false;
+    return transitionToGameState;
 }
 
 void MainMenuState::onControllerCommandReceived(ControllerCommand command) {

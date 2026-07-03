@@ -20,6 +20,29 @@ inline void renderDemoStateLabel(FDN* fdn, const char* label) {
         ->render();
 }
 
+inline int centeredTextXInHalf(Display* display, const char* text, int halfCenterX) {
+    return halfCenterX - display->getTextWidth(text) / 2;
+}
+
+inline void renderMainMenuScreen(FDN* fdn, const char* gameTitle) {
+    static constexpr const char* kTutorialOption = "TUTORIAL";
+    static constexpr const char* kPlayOption = "PLAY";
+
+    constexpr int kLeftButtonCenterX  = 32;
+    constexpr int kRightButtonCenterX = 96;
+    constexpr int kTitleY             = 28;
+    constexpr int kOptionsY           = 56;
+
+    Display* d = fdn->getDisplay();
+    d->invalidateScreen()
+        ->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)
+        ->drawCenteredText(gameTitle, kTitleY)
+        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+        ->drawText(kTutorialOption, centeredTextXInHalf(d, kTutorialOption, kLeftButtonCenterX), kOptionsY)
+        ->drawText(kPlayOption, centeredTextXInHalf(d, kPlayOption, kRightButtonCenterX), kOptionsY)
+        ->render();
+}
+
 class MainMenuState : public TypedState<FDN> {
 public:
     explicit MainMenuState(ControllerWirelessManager* controllerWirelessManager);
@@ -34,6 +57,8 @@ public:
 
 private:
     ControllerWirelessManager* controllerWirelessManager;
+    bool transitionToTutorialState = false;
+    bool transitionToGameState = false;
 
     void onControllerCommandReceived(ControllerCommand command);
 };
