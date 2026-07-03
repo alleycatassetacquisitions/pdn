@@ -3,8 +3,7 @@
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
-enum class PktType : uint8_t
-{
+enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
     kDebugPacket = 2,
@@ -20,8 +19,14 @@ enum class PktType : uint8_t
     kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
-    kNumPacketTypes //Not a real packet type, DO NOT USE
+    ACK = 15,
+    kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
+
+struct AckPayload {
+    uint8_t originalType;
+    uint8_t seqId;
+} __attribute__((packed));
 
 struct DataPktHdr
 {

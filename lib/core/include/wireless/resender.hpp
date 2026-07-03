@@ -1,0 +1,142 @@
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <vector>
+
+#include "utils/simple-timer.hpp"
+#include "device/drivers/peer-comms-types.hpp"
+
+class WirelessManager;
+
+// Reliable unicast: send a packet to a peer, retransmit on timeout, abandon
+// after maxRetries. Per-target pending granularity depends on SendMode: state
+// channels keep one entry per (PktType, target); stream channels keep one per
+// (PktType, target, seqId) so a batch of distinct packets to the same peer all
+// retain their own retry slots. sync() must be called every loop tick to drive
+// retransmits.
+
+// One retry policy for every channel; Resender::RETRY_POLICY is the single
+// instance. (Namespace scope because a nested struct's default member
+// initializers can't be evaluated inside the enclosing class definition.)
+struct ResenderRetryPolicy {
+    unsigned long initialTimeoutMs = 100;
+    uint8_t maxRetries = 3;
+
+    /// Exponential backoff for the given retry number: 100, 200, 400 ...
+    constexpr unsigned long backoffMs(uint8_t retryNum) const {
+        // unsigned long is 32-bit on the ESP32; an unclamped shift from a
+        // caller-set maxRetries would be UB past ~25 doublings.
+        unsigned shift = retryNum > 16 ? 16u : retryNum;
+        return initialTimeoutMs << shift;
+    }
+
+    /// Time from the first transmission until the last retransmit leaves the
+    /// radio; after this window a reliable send can no longer reach the peer
+    /// (abandonment fires one further backoff later).
+    constexpr unsigned long totalBudgetMs() const {
+        unsigned long total = 0;
+        for (uint8_t i = 0; i < maxRetries; ++i)
+            total += backoffMs(i);
+        return total;
+    }
+};
+
+class Resender {
+public:
+    // How a send relates to other in-flight sends to the same peer on the same
+    // channel. SUPERSEDE_PER_TARGET (default): the payload is current state, so a
+    // newer send obsoletes any prior unacked one and only the latest survives
+    // (an older retransmit arriving last would otherwise reinstate stale state).
+    // KEEP_DISTINCT: the payload is one item of a stream (e.g. a bracket slot),
+    // so each seqId keeps its own retry slot and a dropped one still retransmits.
+    enum class SendMode { SUPERSEDE_PER_TARGET,
+                          KEEP_DISTINCT };
+
+    using RetryPolicy = ResenderRetryPolicy;
+    static constexpr RetryPolicy RETRY_POLICY{};
+
+    /// Fires once per pending entry that exhausts its retry budget. Invoked
+    /// from sync() AFTER all retransmits have been processed and the
+    /// abandoned entries removed, so callbacks may freely call send() or
+    /// cancel() on this Resender without invalidating the iteration.
+    using AbandonCallback = std::function<void(PktType type, uint8_t seqId,
+                                               const uint8_t* targetMac)>;
+
+    /// wirelessManager may be nullptr in unit tests; transmit() then no-ops.
+    explicit Resender(WirelessManager* wirelessManager)
+        : wirelessManager(wirelessManager) {}
+    /// Pending entries own their payload copies; nothing external to release.
+    ~Resender() = default;
+
+    /// Send the shared ack wire format for a reliably-received packet.
+    static void sendAck(WirelessManager* wm, const uint8_t* toMac,
+                        PktType originalType, uint8_t seqId);
+
+    /// Registers the once-per-abandoned-entry callback (see AbandonCallback).
+    void setAbandonCallback(AbandonCallback cb) {
+        abandonCallback = std::move(cb);
+    }
+
+    /// Reliable send. SendMode controls how it relates to other pending sends to
+    /// the same (type, target): SUPERSEDE_PER_TARGET drops any prior one,
+    /// KEEP_DISTINCT keeps prior sends with a different seqId. payload bytes are
+    /// copied.
+    void send(const uint8_t* target, PktType type, uint8_t seqId,
+              const uint8_t* payload, size_t len,
+              SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
+
+    /// Clears the matching pending entry. Returns true when one matched.
+    bool onAck(PktType type, uint8_t seqId, const uint8_t* fromMac);
+
+    /// Silent drop; use when the target is known unreachable. No abandon callback.
+    void cancel(PktType type, const uint8_t* target);
+
+    /// Drives retransmits and abandonment. Must be called every loop tick.
+    void sync();
+
+    /// Number of pending entries on this channel, across all targets.
+    size_t pendingCount(PktType type) const {
+        size_t count = 0;
+        for (const Pending& p : pending) {
+            if (p.type == type) ++count;
+        }
+        return count;
+    }
+
+    /// True when at least one entry to this target is pending on this channel.
+    bool isPending(PktType type, const uint8_t* target) const {
+        if (target == nullptr) return false;
+        for (const Pending& p : pending) {
+            if (p.type != type) continue;
+            if (memcmp(p.target.data(), target, 6) == 0) return true;
+        }
+        return false;
+    }
+
+private:
+    struct Pending {
+        PktType type;
+        std::array<uint8_t, 6> target;
+        uint8_t seqId;
+        std::vector<uint8_t> payload;
+        uint8_t retries;
+        SimpleTimer timer;
+    };
+
+    std::vector<Pending>::iterator findPending(
+        PktType type, uint8_t seqId, const uint8_t* target);
+
+    // Drop every pending entry to `target` on this PktType, across all seqIds.
+    void eraseAllToTarget(PktType type, const uint8_t* target);
+
+    // Returns false when the frame never reached the radio, so the caller can
+    // avoid spending a retry on a packet that was not actually sent.
+    bool transmit(const Pending& p);
+
+    WirelessManager* wirelessManager;
+    std::vector<Pending> pending;
+    AbandonCallback abandonCallback;
+};

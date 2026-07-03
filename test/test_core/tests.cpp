@@ -21,6 +21,7 @@
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "serial-frame-parser-tests.hpp"
+#include "reliable-channel-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -430,7 +431,50 @@ TEST_F(DeviceTestSuite, inactiveAppLoopCountUnchanged) {
     int loopsBeforeSwitch = appOne->loopCount;
     
     // Switch away
-    device->setActiveApp(APP_TWO);
+    device->setActiveApp(APP_TWO);iDRAC9 recovery + security research — fresh start.
+
+  GOAL: Regain administrative/console access to a locked-out Dell PowerEdge R640 iDRAC9,
+  firmware 6.10.00.00, WITHOUT plugging in a host CPU/RAM. A credential-less remote path is
+  preferred, but any working method (incl. physical, minus CPU/RAM) counts. "If we don't have
+  a working proof of concept, we don't have anything." Prioritize freely; don't stop to ask.
+
+  ENVIRONMENT:
+  - Live bench unit at 192.168.0.137; this research host is 192.168.0.50 on the same L2
+    segment (I control DHCP/DNS). Only 443/80/22 are open externally. IPMI off.
+  - No credentials (root/calvin returns 401). No micro-USB-OTG adapter available. No host.
+  - Extracted firmware: /home/ubuntu/idrac_fw/extracted_610/payload/rootfs (use the 610 tree,
+    NOT the older 7.30 one).
+  - Tools: pyghidra + Ghidra 12.1.2 (/home/ubuntu/tools/ghidra_12.1.2_PUBLIC); helpers
+    /home/ubuntu/idrac_fw/decomp_addr.py and decomp_byname.py. Live HTTP/nmap testing of .137
+    is authorized (owner's unit); avoid gratuitous DoS.
+
+  READ FIRST: /home/ubuntu/idrac_fw/INDEX.md (the map). It links DISCLOSURE.md (findings
+  F1-F9), RECOVERY_FINDINGS.md, VMEDIA_RCE.md, and the THREAD_A..O deliverables with verdicts.
+
+  STATE (verified — don't blindly redo, but DO question):
+  - One real new bug: F8 = vmedia pre-auth unauthenticated ROOT out-of-bounds write via an
+    unchecked 64-bit WebSocket length (live DoS PoC in scratchpad/vmedia_poc.py + vmedia_crash.py).
+    We concluded DoS-only because the forward-only .bss write can't reach GOT/stack/heap/any
+    code pointer (all below the buffer). ~13 pre-auth memory-corruption hunts + a library-CVE
+    audit found nothing else exploitable pre-auth; a dedicated auth-bypass/session-mint hunt
+    found no forgery (sessions are unsigned urandom bearer tokens; the :5555/:5556 session-forge
+    sinks are loopback-only; Auto-Config is disarmed with no remote re-arm). The rich RCE-class
+    bugs (libxml2 2.9.10 SCP import, vmedia's utl_execve mount path) are all POST-AUTH.
+  - The unit reports DEFCRED=1 (default-credential flag set) but there is NO default-password
+    sticker on the chassis (tag shows only the service tag/serial).
+
+  YOUR MANDATE — fresh eyes, question our assumptions:
+  1. Re-derive the recovery independently. Don't anchor on our "DoS-only / all-gated" conclusions
+     — look for what we tunnel-visioned past. Especially: is the vmedia OOB REALLY unexploitable
+     (re-examine the geometry/heap/threads yourself)? Is there a pre-auth path to a SESSION we
+     under-weighted (the /ssh_cert OAuth-secret gate, the metric-engine X-User-Priv header, the
+     CMC /tmp token write, a second SSRF to reach :5555)?
+  2. Reconsider the DEFCRED=1 signal and whether the default password is recoverable another way.
+  3. Enumerate physical-but-no-CPU/RAM recovery options for a 14G R640 iDRAC beyond USB-SCP.
+  4. Report the shortest working path to admin, or a crisp honest negative per avenue.
+
+  Keep me updated concisely (I dislike long walls of text). Lead with the action/answer.
+
     
     // Run loops on app two — app one should not receive any
     device->loop();
