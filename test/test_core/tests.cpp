@@ -20,6 +20,7 @@
 #include "chain-duel-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
+#include "reliable-channel-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
