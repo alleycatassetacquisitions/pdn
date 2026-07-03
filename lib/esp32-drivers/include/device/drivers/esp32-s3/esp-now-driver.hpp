@@ -89,6 +89,11 @@ public:
     }
 
     void disconnect() override {
+        // esp_now_deinit() destroys the TX-complete callback the send queue
+        // drains on, so a send in flight here orphans the queue forever. Clear it
+        // first; the reliable layer resends anything that mattered after resume.
+        clearSendQueue();
+
         esp_err_t err = esp_now_deinit();
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
@@ -527,6 +532,16 @@ private:
     void MoveToNextSendPkt() {
         xSemaphoreTake(sendMutex_, portMAX_DELAY);
         if (!m_sendQueue.empty()) {
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+        }
+        xSemaphoreGive(sendMutex_);
+        m_curRetries = 0;
+    }
+
+    void clearSendQueue() {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        while (!m_sendQueue.empty()) {
             free(m_sendQueue.front().ptr);
             m_sendQueue.pop();
         }
