@@ -33,49 +33,55 @@ constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 class EspNowManager : public PeerCommsDriverInterface
 {
 public:
+    /// Creates the process-wide singleton; call once at driver registration.
     static EspNowManager* CreateEspNowManager(const std::string& name) {
         instance = new EspNowManager(name);
         return instance;
     }
 
+    /// The process-wide singleton, or nullptr before CreateEspNowManager.
     static EspNowManager* GetInstance() {
         return instance;
     }
 
     // === PEER COMMS INTERFACE === //
 
+    /// Main-loop tick: drains the deferred receive queue into the per-type
+    /// packet handlers, and retries a pending channel pin.
     void exec() override {
         // Re-pin armed by connect(): retry (paced) until the readback sticks,
         // re-issuing the disconnect each attempt to kill whatever STA attempt
         // is blocking the pin. Stops if an excursion takes the radio.
-        if (channelPinPending_ && peerCommsState == PeerCommsState::CONNECTED) {
+        if (channelPinPending && peerCommsState == PeerCommsState::CONNECTED) {
             unsigned long now = millis();
-            if (now - lastChannelPinMs_ >= kChannelPinRetryMs) {
-                lastChannelPinMs_ = now;
+            if (now - lastChannelPinMs >= CHANNEL_PIN_RETRY_MS) {
+                lastChannelPinMs = now;
                 WiFi.disconnect(false);
                 if (pinEspNowChannel()) {
-                    channelPinPending_ = false;
+                    channelPinPending = false;
                     LOG_W("ENC", "channel pin recovered: on %d", ESPNOW_CHANNEL);
                 }
             }
         }
 
         std::queue<DeferredPacket> pending;
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
-        std::swap(pending, recvQueue_);
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        std::swap(pending, recvQueue);
+        xSemaphoreGive(recvMutex);
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
-            PacketCallback cb = m_pktHandlerCallbacks[(int)pkt.type].first;
+            PacketCallback cb = pktHandlerCallbacks[(int)pkt.type].first;
             if (cb) {
                 cb(pkt.srcMac, pkt.data.data(), pkt.data.size(),
-                   m_pktHandlerCallbacks[(int)pkt.type].second);
+                   pktHandlerCallbacks[(int)pkt.type].second);
             }
             pending.pop();
         }
     }
 
+    /// Brings the radio into ESP-NOW mode: STA, auto-reconnect off, PS_NONE,
+    /// channel pinned (with exec() retry when a STA scan blocks the pin).
     void connect() override {
         // ESP-NOW requires station mode.
         WiFi.mode(WIFI_STA);
@@ -95,8 +101,8 @@ public:
         // Small delay to let WiFi stabilize after mode change
         delay(100);
 
-        channelPinPending_ = !pinEspNowChannel();
-        if (channelPinPending_) {
+        channelPinPending = !pinEspNowChannel();
+        if (channelPinPending) {
             // A STA connect/scan can still be in flight here (the core can
             // schedule one last reconnect that lands after our disconnect),
             // and set_channel fails until it resolves. Without the retry,
@@ -104,16 +110,18 @@ public:
             // next mode switch.
             LOG_E("ENC", "channel pin to %d failed; retrying from exec()",
                   ESPNOW_CHANNEL);
-            lastChannelPinMs_ = millis();
+            lastChannelPinMs = millis();
         }
 
         initializeEspNow();
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
+    /// Tears down ESP-NOW for a WiFi excursion; clears the send queue first
+    /// (an in-flight send orphaned across deinit stalls TX forever).
     void disconnect() override {
         // An excursion owns the radio now; the next connect() re-evaluates.
-        channelPinPending_ = false;
+        channelPinPending = false;
         // esp_now_deinit() destroys the TX-complete callback the send queue
         // drains on, so a send in flight here orphans the queue forever. Clear it
         // first; the reliable layer resends anything that mattered after resume.
@@ -128,10 +136,12 @@ public:
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
 
+    /// Current radio mode (ESP-NOW connected vs released for WiFi).
     PeerCommsState getPeerCommsState() override {
         return peerCommsState;
     }
 
+    /// Transitions the radio between ESP-NOW and released states.
     void setPeerCommsState(PeerCommsState state) override {
         if(state == PeerCommsState::CONNECTED && peerCommsState != PeerCommsState::CONNECTED) {
             connect();
@@ -141,7 +151,8 @@ public:
         }
     }
 
-    //Queues up data for sending, may not send right away
+    // Queues up data for sending, may not send right away
+    /// Queues data for sending; may not send right away.
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
         if(length > (255 * MAX_PKT_DATA_SIZE))
         {
@@ -182,8 +193,8 @@ public:
             bytesLeft -= thisBuffer;
         }
 
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
-        bool willNeedToStartSend = m_sendQueue.empty();
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        bool willNeedToStartSend = sendQueue.empty();
 
         //Build up each packet
         bytesLeft = length;
@@ -210,11 +221,11 @@ public:
             memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
             buffer.ptr = sendBuffers[pktIdx];
             buffer.len = hdr->pktLen;
-            m_sendQueue.push(buffer);
+            sendQueue.push(buffer);
 
             bytesLeft -= thisBuffer;
         }
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
         if(willNeedToStartSend)
         {
@@ -223,48 +234,57 @@ public:
         return 0;
     }
 
-    //Set the packet handler for a particular packet type
-    //Only one handler can be registered per packet type at a time, so if a new
-    //packet handler is registered for a packet type that has an existing handler,
-    //the existing handler is automatically unregistered
-    //userArg will be saved per packet type and will be passed in unmodified to
-    //packet handler for that packet type (when a packet of that type is receieved)
+    // Set the packet handler for a particular packet type
+    // Only one handler can be registered per packet type at a time, so if a new
+    // packet handler is registered for a packet type that has an existing handler,
+    // the existing handler is automatically unregistered
+    // userArg will be saved per packet type and will be passed in unmodified to
+    // packet handler for that packet type (when a packet of that type is receieved)
+    /// One handler per packet type; registering replaces any existing one.
+    /// ctx is stored per type and passed back unmodified to the handler.
     void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {
-        m_pktHandlerCallbacks[(int)packetType].first = callback;
-        m_pktHandlerCallbacks[(int)packetType].second = ctx;
+        pktHandlerCallbacks[(int)packetType].first = callback;
+        pktHandlerCallbacks[(int)packetType].second = ctx;
     }
 
-    //Unregister packet handler for specified packet type
+    // Unregister packet handler for specified packet type
+    /// Removes the handler for a packet type.
     void clearPacketHandler(PktType packetType) override {
-        m_pktHandlerCallbacks[(int)packetType].first = nullptr;
+        pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
     // because WiFi must be set up first. Actual init happens in connect().
+    /// Driver-interface initialization hook; radio setup happens in connect().
     int initialize() override {
         // No-op: ESP-NOW initialization requires WiFi to be running first.
         // The actual initialization happens in connect() -> initializeEspNow()
         return 0;
     }
 
+    /// Last captured RSSI for a peer; requires PDN_ENABLE_RSSI_TRACKING.
     int GetRssiForPeer(const uint8_t* macAddr) {
         uint64_t macAddr64 = MacToUInt64(macAddr);
-        if(m_rssiTracker.count(macAddr64) > 0)
-            return m_rssiTracker[macAddr64];
+        if (rssiTracker.count(macAddr64) > 0)
+            return rssiTracker[macAddr64];
         return -1;
     }
 
+    /// PeerCommsInterface adapter for GetRssiForPeer.
     int getRssiForPeer(const uint8_t* macAddr) override {
         return GetRssiForPeer(macAddr);
     }
 
     // Public methods for ESP-NOW callback handling
     // (used when re-initializing ESP-NOW in EspNowState)
+    /// Forwards to the static ESP-NOW receive callback (used when
+    /// re-initializing ESP-NOW).
     void HandleReceivedData(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         // This simply forwards to the static callback method
         EspNowRecvCallback(esp_now_info, data, data_len);
     }
 
+    /// Forwards to the static ESP-NOW send-status callback.
     void HandleSendStatus(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
         // This simply forwards to the static callback method
         EspNowSendCallback(esp_now_info, status);
@@ -294,14 +314,13 @@ private:
         uint8_t expectedNextIdx;
     };
 
-    explicit EspNowManager(const std::string& name) :
-        PeerCommsDriverInterface(name),
-        m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
-        m_maxRetries(5),
-        m_curRetries(0),
-        recvMutex_(xSemaphoreCreateMutex()),
-        sendMutex_(xSemaphoreCreateMutex())
-    {
+    explicit EspNowManager(const std::string& name)
+        : PeerCommsDriverInterface(name)
+        , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
+        , maxRetries(5)
+        , curRetries(0)
+        , recvMutex(xSemaphoreCreateMutex())
+        , sendMutex(xSemaphoreCreateMutex()) {
 
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
@@ -368,7 +387,7 @@ private:
         const uint8_t* srcMac = (pkt->payload) + 10;
         uint64_t srcMac64 = MacToUInt64(srcMac);
 
-        EspNowManager::GetInstance()->m_rssiTracker[srcMac64] = rssi;
+        EspNowManager::GetInstance()->rssiTracker[srcMac64] = rssi;
     }
 
     //ESP-NOW callbacks
@@ -417,23 +436,23 @@ private:
     void handleFirstPacketInCluster(uint64_t macAddr64, const DataPktHdr* pktHdr) {
         // If there's an existing cluster for this mac address, release it
         // as that means we lost a packet somewhere
-        auto existingBuffer = m_recvBuffers.find(macAddr64);
-        if(existingBuffer != m_recvBuffers.end()) {
+        auto existingBuffer = recvBuffers.find(macAddr64);
+        if (existingBuffer != recvBuffers.end()) {
             free(existingBuffer->second.data);
-            m_recvBuffers.erase(existingBuffer);
+            recvBuffers.erase(existingBuffer);
         }
 
         DataRecvBuffer newBuffer;
         newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
         newBuffer.expectedNextIdx = 1;
-        m_recvBuffers[macAddr64] = newBuffer;
+        recvBuffers[macAddr64] = newBuffer;
     }
 
     void handleSubsequentPacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr, uint64_t macAddr64) {
-        auto existingBuffer = m_recvBuffers.find(macAddr64);
-        
+        auto existingBuffer = recvBuffers.find(macAddr64);
+
         // If no buffer exists, we missed the start packet
-        if(existingBuffer == m_recvBuffers.end()) {
+        if (existingBuffer == recvBuffers.end()) {
             LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
             return;
         }
@@ -458,7 +477,7 @@ private:
             LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
                   recvBuffer.expectedNextIdx, pktHdr->idxInCluster);
             free(recvBuffer.data);
-            m_recvBuffers.erase(existingBuffer);
+            recvBuffers.erase(existingBuffer);
             return false;
         }
         return true;
@@ -481,7 +500,7 @@ private:
         HandlePktCallback(pktHdr->packetType, mac_addr, recvBuffer.data, totalClusterSize);
         
         free(recvBuffer.data);
-        m_recvBuffers.erase(existingBuffer);
+        recvBuffers.erase(existingBuffer);
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
@@ -498,16 +517,13 @@ private:
         }
         else
         {
-            if(manager->m_curRetries < manager->m_maxRetries)
-            {
+            if (manager->curRetries < manager->maxRetries) {
                 LOG_W("ENC", "Send FAILED (retry %d/%d)",
-                      manager->m_curRetries + 1, manager->m_maxRetries);
-                ++manager->m_curRetries;
-            }
-            else
-            {
+                      manager->curRetries + 1, manager->maxRetries);
+                ++manager->curRetries;
+            } else {
                 LOG_E("ENC", "Send FAILED - giving up after %d retries",
-                      manager->m_maxRetries);
+                      manager->maxRetries);
                 manager->MoveToNextSendPkt();
             }
         }
@@ -518,16 +534,16 @@ private:
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
-        if(m_sendQueue.empty()) {
-            xSemaphoreGive(sendMutex_);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        if (sendQueue.empty()) {
+            xSemaphoreGive(sendMutex);
             return 0;
         }
-        auto buffer = m_sendQueue.front();
-        xSemaphoreGive(sendMutex_);
+        DataSendBuffer buffer = sendQueue.front();
+        xSemaphoreGive(sendMutex);
 
         //If this is the first packet in cluster, make sure the peer is registered
-        auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
+        DataPktHdr* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
         if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
             EnsurePeerIsRegistered(buffer.dstMac);
 
@@ -537,9 +553,8 @@ private:
             err = esp_now_send(buffer.dstMac, buffer.ptr, buffer.len);
             if(err != ESP_OK)
             {
-                ++m_curRetries;
-                if(m_curRetries >= m_maxRetries)
-                {
+                ++curRetries;
+                if (curRetries >= maxRetries) {
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
                     //TODO: Pop all packets in the current cluster?
                     MoveToNextSendPkt();
@@ -555,23 +570,23 @@ private:
 
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
-        if (!m_sendQueue.empty()) {
-            free(m_sendQueue.front().ptr);
-            m_sendQueue.pop();
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        if (!sendQueue.empty()) {
+            free(sendQueue.front().ptr);
+            sendQueue.pop();
         }
-        xSemaphoreGive(sendMutex_);
-        m_curRetries = 0;
+        xSemaphoreGive(sendMutex);
+        curRetries = 0;
     }
 
     void clearSendQueue() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
-        while (!m_sendQueue.empty()) {
-            free(m_sendQueue.front().ptr);
-            m_sendQueue.pop();
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        while (!sendQueue.empty()) {
+            free(sendQueue.front().ptr);
+            sendQueue.pop();
         }
-        xSemaphoreGive(sendMutex_);
-        m_curRetries = 0;
+        xSemaphoreGive(sendMutex);
+        curRetries = 0;
     }
 
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
@@ -606,13 +621,13 @@ private:
         return 0;
     }
 
-    SemaphoreHandle_t recvMutex_;
-    std::queue<DeferredPacket> recvQueue_;
+    SemaphoreHandle_t recvMutex;
+    std::queue<DeferredPacket> recvQueue;
 
-    SemaphoreHandle_t sendMutex_;
+    SemaphoreHandle_t sendMutex;
 
     //Storage for packet handler callbacks and their user args
-    std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
+    std::vector<std::pair<PacketCallback, void*>> pktHandlerCallbacks;
 
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)
@@ -626,14 +641,14 @@ private:
         memcpy(pkt.srcMac, srcMacAddr, 6);
         pkt.data.assign(pktData, pktData + pktLen);
 
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
-        recvQueue_.push(std::move(pkt));
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        recvQueue.push(std::move(pkt));
+        xSemaphoreGive(recvMutex);
     }
 
     uint8_t* getMacAddress() override {
-        esp_read_mac(macAddress_, ESP_MAC_WIFI_STA);
-        return macAddress_;
+        esp_read_mac(macAddress, ESP_MAC_WIFI_STA);
+        return macAddress;
     }
 
     const uint8_t* getGlobalBroadcastAddress() override {
@@ -670,25 +685,25 @@ private:
         return primary == ESPNOW_CHANNEL;
     }
 
-    static constexpr unsigned long kChannelPinRetryMs = 100;
-    bool channelPinPending_ = false;
-    unsigned long lastChannelPinMs_ = 0;
+    static constexpr unsigned long CHANNEL_PIN_RETRY_MS = 100;
+    bool channelPinPending = false;
+    unsigned long lastChannelPinMs = 0;
 
     PeerCommsState peerCommsState = PeerCommsState::DISCONNECTED;
 
     //Storage for MAC address
-    uint8_t macAddress_[6];
+    uint8_t macAddress[6];
 
     //Storage for retry handling
-    uint8_t m_maxRetries;
-    uint8_t m_curRetries;
+    uint8_t maxRetries;
+    uint8_t curRetries;
 
     //Packet send queue
-    std::queue<DataSendBuffer> m_sendQueue;
+    std::queue<DataSendBuffer> sendQueue;
 
     //Receive buffer tracking for multi-packet clusters
-    std::unordered_map<uint64_t, DataRecvBuffer> m_recvBuffers;
+    std::unordered_map<uint64_t, DataRecvBuffer> recvBuffers;
 
     //Storage for rssi, which is captured by wifi promiscuous callback
-    std::unordered_map<uint64_t, int> m_rssiTracker;
+    std::unordered_map<uint64_t, int> rssiTracker;
 };
