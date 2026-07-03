@@ -22,6 +22,7 @@
 #include "match-manager-concurrent.hpp"
 #include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
+#include "direct-peer-table-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -433,8 +434,6 @@ TEST_F(DeviceTestSuite, inactiveAppLoopCountUnchanged) {
     // Switch away
     device->setActiveApp(APP_TWO);
 
-
-    
     // Run loops on app two — app one should not receive any
     device->loop();
     device->loop();
