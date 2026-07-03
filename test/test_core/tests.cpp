@@ -20,6 +20,7 @@
 #include "chain-duel-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
+#include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
 
 #if defined(ARDUINO)
@@ -431,6 +432,8 @@ TEST_F(DeviceTestSuite, inactiveAppLoopCountUnchanged) {
     
     // Switch away
     device->setActiveApp(APP_TWO);
+
+
     
     // Run loops on app two — app one should not receive any
     device->loop();
