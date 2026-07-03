@@ -17,13 +17,6 @@
 
 #define DEBUG_PRINT_ESP_NOW 0
 
-//Change to 1 to enable tracking rssi for peers
-//This works, but requires wifi to be in promiscuous mode
-//which likely prevents connecting to access points and
-//requires an unknown but likely high amount of processing
-//power
-#define PDN_ENABLE_RSSI_TRACKING 0
-
 //Use this mac address in order to reach all nearby devices
 constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -262,7 +255,7 @@ public:
         return 0;
     }
 
-    /// Last captured RSSI for a peer; requires PDN_ENABLE_RSSI_TRACKING.
+    /// Last RSSI captured for a peer from its receive callbacks; -1 if none seen.
     int GetRssiForPeer(const uint8_t* macAddr) {
         uint64_t macAddr64 = MacToUInt64(macAddr);
         if (rssiTracker.count(macAddr64) > 0)
@@ -321,14 +314,9 @@ private:
         , curRetries(0)
         , recvMutex(xSemaphoreCreateMutex())
         , sendMutex(xSemaphoreCreateMutex()) {
-
-        wifi_promiscuous_filter_t filter = {
-            .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
-        esp_wifi_set_promiscuous_filter(&filter);
-        esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
-        esp_wifi_set_promiscuous(true);
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
-        // after WiFi has been set up
+        // after WiFi has been set up. RSSI is read directly from each receive
+        // callback (esp_now_recv_info_t::rx_ctrl), so no promiscuous mode.
     }
 
     // Actually initializes ESP-NOW - must be called after WiFi is configured
@@ -369,30 +357,16 @@ private:
         return 0;
     }
 
-    //Callback for receiving raw Wifi packets, used for rssi tracking
-    static void WifiPromiscuousRecvCallback(void *buf, wifi_promiscuous_pkt_type_t type) {
-        const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
-
-        //TODO: Filter to make sure it's an Action frame
-        
-        //ESP-NOW uses category type 127 in vendor specific action frames (a type of mgmt frame)
-        if(pkt->payload[24] != 127)
-            return;
-        
-        int rssi = pkt->rx_ctrl.rssi;
-        //2 bytes for frame control
-        //2 bytes for duration id
-        //6 bytes for first mac addr (which is receiver)
-        //=10 byte offset to get to sender
-        const uint8_t* srcMac = (pkt->payload) + 10;
-        uint64_t srcMac64 = MacToUInt64(srcMac);
-
-        EspNowManager::GetInstance()->rssiTracker[srcMac64] = rssi;
-    }
-
     //ESP-NOW callbacks
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         EspNowManager* manager = EspNowManager::GetInstance();
+
+        // rx_ctrl carries the per-frame RSSI, available on every ESP-NOW
+        // receive without promiscuous mode. This is the sole RSSI fill path.
+        if (esp_now_info->rx_ctrl != nullptr) {
+            uint64_t srcMac64 = MacToUInt64(esp_now_info->src_addr);
+            manager->rssiTracker[srcMac64] = esp_now_info->rx_ctrl->rssi;
+        }
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
@@ -510,13 +484,13 @@ private:
         ESP_LOGD("ENC", "ESPNOW Send Callback");
 #endif
 
-        if(status == ESP_NOW_SEND_SUCCESS)
-        {
+        // tx_info->tx_status is the forward-compatible source; the `status`
+        // parameter is documented for removal in a future IDF release. The two
+        // enums share values (ESP_NOW_SEND_SUCCESS == WIFI_SEND_SUCCESS).
+        if (esp_now_info->tx_status == WIFI_SEND_SUCCESS) {
             LOG_D("ENC", "Send SUCCESS");
             manager->MoveToNextSendPkt();
-        }
-        else
-        {
+        } else {
             if (manager->curRetries < manager->maxRetries) {
                 LOG_W("ENC", "Send FAILED (retry %d/%d)",
                       manager->curRetries + 1, manager->maxRetries);
@@ -704,6 +678,6 @@ private:
     //Receive buffer tracking for multi-packet clusters
     std::unordered_map<uint64_t, DataRecvBuffer> recvBuffers;
 
-    //Storage for rssi, which is captured by wifi promiscuous callback
+    // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl)
     std::unordered_map<uint64_t, int> rssiTracker;
 };
