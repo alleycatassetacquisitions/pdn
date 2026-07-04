@@ -23,12 +23,9 @@ public:
 
     /// True when every jack this state requires reports CONNECTED.
     bool isConnected() {
-        auto connected = [this](SerialIdentifier jack) {
-            return remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED;
-        };
-        return (isPrimaryRequired() && connected(SerialIdentifier::OUTPUT_JACK)) ||
-               (isAuxRequired() && connected(SerialIdentifier::INPUT_JACK)) ||
-               (isSecondaryRequired() && connected(SerialIdentifier::INPUT_JACK_SECONDARY));
+        return (isPrimaryRequired() && isJackConnected(SerialIdentifier::OUTPUT_JACK)) ||
+               (isAuxRequired() && isJackConnected(SerialIdentifier::INPUT_JACK)) ||
+               (isSecondaryRequired() && isJackConnected(SerialIdentifier::INPUT_JACK_SECONDARY));
     }
 
     /// isConnected() has been false for the full debounce window.
@@ -46,6 +43,11 @@ protected:
     virtual bool isSecondaryRequired() { return false; }
 
 private:
+    /// True when the given jack's port status is CONNECTED.
+    bool isJackConnected(SerialIdentifier jack) const {
+        return remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED;
+    }
+
     static constexpr unsigned long kDisconnectDebounceMs = 500;
     DebouncedCondition disconnectDebounce_;
 };
