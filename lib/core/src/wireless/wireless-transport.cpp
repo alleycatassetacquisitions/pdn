@@ -35,27 +35,27 @@ WirelessTransport::~WirelessTransport() {
         entry.second = nullptr;
     }
     registry.clear();
-    for (RxBinding*& binding : rxBindings) {
+    for (ReceiveBinding*& binding : receiveBindings) {
         delete binding;
         binding = nullptr;
     }
-    rxBindings.clear();
+    receiveBindings.clear();
 }
 
-void WirelessTransport::ensureRxBinding(PktType type) {
-    for (const RxBinding* b : rxBindings) {
+void WirelessTransport::ensureReceiveBinding(PktType type) {
+    for (const ReceiveBinding* b : receiveBindings) {
         if (b->type == type) return;
     }
-    rxBindings.push_back(new RxBinding{this, type});
+    receiveBindings.push_back(new ReceiveBinding{this, type});
     if (wirelessManager == nullptr) return;
     wirelessManager->setEspNowPacketHandler(
         type,
         [](const uint8_t* src, const uint8_t* data, const size_t len,
            void* ctx) {
-            RxBinding* b = static_cast<RxBinding*>(ctx);
+            ReceiveBinding* b = static_cast<ReceiveBinding*>(ctx);
             b->transport->deliverIncoming(b->type, src, data, len);
         },
-        rxBindings.back());
+        receiveBindings.back());
 }
 
 void WirelessTransport::onAckPacket(const uint8_t* from,

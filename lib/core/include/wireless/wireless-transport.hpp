@@ -52,7 +52,7 @@ public:
         if (!inserted.second) {
             abortWithMessage("duplicate channel claim");
         }
-        ensureRxBinding(type);
+        ensureReceiveBinding(type);
         return raw;
     }
 
@@ -72,14 +72,14 @@ public:
     WirelessManager* getWirelessManager() { return wirelessManager; }
 
 private:
-    // Installs the driver's per-PktType rx handler the first time a channel
+    // Installs the driver's per-PktType receive handler the first time a channel
     // claims that PktType. The driver callback carries only a void* ctx, so
     // each binding is a stable heap cell pairing this transport with the type.
-    struct RxBinding {
+    struct ReceiveBinding {
         WirelessTransport* transport;
         PktType type;
     };
-    void ensureRxBinding(PktType type);
+    void ensureReceiveBinding(PktType type);
 
     [[noreturn]] static void abortWithMessage(const char* msg);
 
@@ -89,5 +89,5 @@ private:
     WirelessManager* wirelessManager;
     Resender resender;
     std::map<PktType, ReliableChannelBase*> registry;
-    std::vector<RxBinding*> rxBindings;
+    std::vector<ReceiveBinding*> receiveBindings;
 };
