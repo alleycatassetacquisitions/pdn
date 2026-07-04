@@ -29,14 +29,14 @@ class WirelessManager;
 //     ack was lost: re-ack, then drop the duplicate) and dispatches the
 //     decoded payload to the owning channel's onReceive. Claiming a channel
 //     is sufficient to make its receive path live.
-class WirelessTransport {
+class ReliableTransport {
 public:
     /// Installs the ack-packet handler on construction; wm may be nullptr in
     /// unit tests (channels then run without a radio).
-    explicit WirelessTransport(WirelessManager* wm);
+    explicit ReliableTransport(WirelessManager* wm);
 
     /// Deletes every vended channel and rx binding.
-    ~WirelessTransport();
+    ~ReliableTransport();
 
     /// Get-or-create the channel owning a PktType. A first claim creates and
     /// registers it. A re-claim of the same PktType with the same payload type
@@ -85,7 +85,7 @@ private:
     // claims that PktType. The driver callback carries only a void* ctx, so
     // each binding is a stable heap cell pairing this transport with the type.
     struct ReceiveBinding {
-        WirelessTransport* transport;
+        ReliableTransport* transport;
         PktType type;
     };
     void ensurePacketCallback(PktType type);

@@ -18,7 +18,7 @@
 // (packed, memcpy'd); both ends run the same firmware, so field layout is the
 // protocol. ReliableChannelBase holds the untyped mechanics; the
 // ReliableChannel<P> template below binds them to a payload type. Channels
-// are created and owned by WirelessTransport, one per PktType.
+// are created and owned by ReliableTransport, one per PktType.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;

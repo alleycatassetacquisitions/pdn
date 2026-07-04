@@ -1,4 +1,4 @@
-#include "wireless/wireless-transport.hpp"
+#include "wireless/reliable-transport.hpp"
 
 #include <cstring>
 
@@ -6,10 +6,10 @@
 #include "device/wireless-manager.hpp"
 
 namespace {
-constexpr const char* WIRELESS_TRANSPORT_TAG = "WirelessTransport";
+constexpr const char* RELIABLE_TRANSPORT_TAG = "ReliableTransport";
 }
 
-WirelessTransport::WirelessTransport(WirelessManager* wm)
+ReliableTransport::ReliableTransport(WirelessManager* wm)
     : wirelessManager(wm)
     , resender(wm) {
     resender.setAbandonCallback(
@@ -21,13 +21,13 @@ WirelessTransport::WirelessTransport(WirelessManager* wm)
             PktType::ACK,
             [](const uint8_t* src, const uint8_t* data, const size_t len,
                void* ctx) {
-                static_cast<WirelessTransport*>(ctx)->onAckPacket(src, data, len);
+                static_cast<ReliableTransport*>(ctx)->onAckPacket(src, data, len);
             },
             this);
     }
 }
 
-WirelessTransport::~WirelessTransport() {
+ReliableTransport::~ReliableTransport() {
     for (std::pair<const PktType, ReliableChannelBase*>& entry : registry) {
         delete entry.second;
         entry.second = nullptr;
@@ -40,7 +40,7 @@ WirelessTransport::~WirelessTransport() {
     receiveBindings.clear();
 }
 
-void WirelessTransport::ensurePacketCallback(PktType type) {
+void ReliableTransport::ensurePacketCallback(PktType type) {
     for (const ReceiveBinding* b : receiveBindings) {
         if (b->type == type) return;
     }
@@ -56,7 +56,7 @@ void WirelessTransport::ensurePacketCallback(PktType type) {
         receiveBindings.back());
 }
 
-void WirelessTransport::onAckPacket(const uint8_t* from,
+void ReliableTransport::onAckPacket(const uint8_t* from,
                                     const uint8_t* data, size_t len) {
     if (len < sizeof(AckPayload)) return;
     AckPayload ack;
@@ -67,26 +67,26 @@ void WirelessTransport::onAckPacket(const uint8_t* from,
     it->second->onAck(ack.seqId, from);
 }
 
-bool WirelessTransport::deliverIncoming(PktType type, const uint8_t* fromMac,
+bool ReliableTransport::deliverIncoming(PktType type, const uint8_t* fromMac,
                                         const uint8_t* data, size_t len) {
     std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
     if (it == registry.end()) return false;
     return it->second->deliverBytes(fromMac, data, len);
 }
 
-void WirelessTransport::sync() {
+void ReliableTransport::sync() {
     resender.sync();
 }
 
-void WirelessTransport::onResenderAbandon(PktType type, uint8_t seqId,
+void ReliableTransport::onResenderAbandon(PktType type, uint8_t seqId,
                                           const uint8_t* targetMac) {
     std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
     if (it == registry.end()) return;
     it->second->onResenderAbandon(seqId, targetMac);
 }
 
-void WirelessTransport::logChannelTypeCollision(PktType type, size_t got, size_t have) {
-    LOG_E(WIRELESS_TRANSPORT_TAG,
+void ReliableTransport::logChannelTypeCollision(PktType type, size_t got, size_t have) {
+    LOG_E(RELIABLE_TRANSPORT_TAG,
           "channel(): PktType %u already claimed by a %zu-byte payload; "
           "rejected a %zu-byte claim (two subsystems on one PktType)",
           (unsigned)type, have, got);

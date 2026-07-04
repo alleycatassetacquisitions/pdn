@@ -6,7 +6,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "wireless/reliable-channel.hpp"
-#include "wireless/wireless-transport.hpp"
+#include "wireless/reliable-transport.hpp"
 #include "device/wireless-manager.hpp"
 #include "device-mock.hpp"
 
@@ -19,13 +19,13 @@ struct TransportTestPayload {
     uint8_t data[14];
 } __attribute__((packed));
 
-TEST(WirelessTransportTest, reclaimSamePayloadReturnsSameChannel) {
+TEST(ReliableTransportTest, reclaimSamePayloadReturnsSameChannel) {
     // A re-claim of a PktType with the same payload type (e.g. a re-created
     // owner re-initializing) hands back the existing channel rather than
     // duplicating or crashing.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
     ReliableChannel<TransportTestPayload>* first = transport.channel<TransportTestPayload>(
         PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
     ASSERT_NE(first, nullptr);
@@ -34,7 +34,7 @@ TEST(WirelessTransportTest, reclaimSamePayloadReturnsSameChannel) {
     EXPECT_EQ(again, first);
 }
 
-TEST(WirelessTransportTest, reclaimDifferentPayloadOnSameTypeRejected) {
+TEST(ReliableTransportTest, reclaimDifferentPayloadOnSameTypeRejected) {
     // Two subsystems claiming one PktType with different payloads is a wiring
     // bug; the second claim is rejected (nullptr) rather than clobbering.
     struct WiderPayload {
@@ -45,7 +45,7 @@ TEST(WirelessTransportTest, reclaimDifferentPayloadOnSameTypeRejected) {
 
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
     ReliableChannel<TransportTestPayload>* first = transport.channel<TransportTestPayload>(
         PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
     ASSERT_NE(first, nullptr);
@@ -54,20 +54,20 @@ TEST(WirelessTransportTest, reclaimDifferentPayloadOnSameTypeRejected) {
     EXPECT_EQ(collision, nullptr);
 }
 
-TEST(WirelessTransportTest, deliverIncomingReturnsFalseWhenChannelMissing) {
+TEST(ReliableTransportTest, deliverIncomingReturnsFalseWhenChannelMissing) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
     uint8_t from[6] = {1, 2, 3, 4, 5, 6};
     uint8_t data[4] = {0};
     EXPECT_FALSE(transport.deliverIncoming(
         PktType::kChainGameEvent, from, data, sizeof(data)));
 }
 
-TEST(WirelessTransportTest, sendReliableTriggersAck) {
+TEST(ReliableTransportTest, sendReliableTriggersAck) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     bool abandoned = false;
     ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
@@ -111,10 +111,10 @@ TEST(WirelessTransportTest, sendReliableTriggersAck) {
     ASSERT_EQ(deliveredP.cmd, 99);
 }
 
-TEST(WirelessTransportTest, abandonAfterMaxRetries) {
+TEST(ReliableTransportTest, abandonAfterMaxRetries) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     int abandonCount = 0;
     uint8_t abandonedSeqId = 0;
@@ -152,14 +152,14 @@ TEST(WirelessTransportTest, abandonAfterMaxRetries) {
     ASSERT_FALSE(ch->isPending(target));
 }
 
-TEST(WirelessTransportTest, failedSendDoesNotConsumeRetry) {
+TEST(ReliableTransportTest, failedSendDoesNotConsumeRetry) {
     // A send that never reaches the radio (sendData < 0: transient PSRAM
     // pressure, or ESP-NOW not ready mid mode-switch) must not spend a retry.
     // The packet stays pending and keeps retrying rather than being abandoned
     // against a budget it never actually used.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     int abandonCount = 0;
     ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
@@ -199,7 +199,7 @@ TEST(WirelessTransportTest, failedSendDoesNotConsumeRetry) {
     EXPECT_FALSE(ch->isPending(target));
 }
 
-TEST(WirelessTransportTest, ackRoutesByPktType) {
+TEST(ReliableTransportTest, ackRoutesByPktType) {
     // Each channel allocates seqIds independently, so two channels can have
     // pending sends to the same target with identical seqIds. An ack routed to
     // one channel's PktType must clear that channel's entry, not the other's;
@@ -207,7 +207,7 @@ TEST(WirelessTransportTest, ackRoutesByPktType) {
     // via its abandon callback.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     ReliableChannel<TransportTestPayload>* chA = transport.channel<TransportTestPayload>(
         PktType::kShootoutCommand,
@@ -238,14 +238,14 @@ TEST(WirelessTransportTest, ackRoutesByPktType) {
     ASSERT_TRUE(chB->isPending(target));
 }
 
-TEST(WirelessTransportTest, droppedNonFinalSlotStillRetransmits) {
+TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
     // End-to-end: a coordinator sends three distinct reliable packets to one
     // peer on one channel, the peer acks the later two but the first is lost.
     // The first must remain armed and ultimately abandon, not be silently
     // dropped because two later sends share its (type, target).
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     int abandonCount = 0;
     uint8_t abandonedSeqId = 0;
@@ -291,13 +291,13 @@ TEST(WirelessTransportTest, droppedNonFinalSlotStillRetransmits) {
     EXPECT_FALSE(ch->isPending(target));
 }
 
-TEST(WirelessTransportTest, duplicateReliableDeliveryDispatchesOnce) {
+TEST(ReliableTransportTest, duplicateReliableDeliveryDispatchesOnce) {
     // A lost ack makes the sender resend, so the receiver sees the same
     // (sender, seqId) twice. The reliable layer must ack both (to silence the
     // sender) yet dispatch onReceive only once.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     int deliveries = 0;
     ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
@@ -331,13 +331,13 @@ TEST(WirelessTransportTest, duplicateReliableDeliveryDispatchesOnce) {
     EXPECT_EQ(deliveries, 3);
 }
 
-TEST(WirelessTransportTest, unsequencedDeliveryNeverDeduped) {
+TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
     // seqId==0 is the sendOnce/unsequenced sentinel: those payloads dedup by
     // domain identity at the caller (e.g. forwarded CONFIRMs all carry 0), so
     // the base must dispatch every one.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
-    WirelessTransport transport(&wm);
+    ReliableTransport transport(&wm);
 
     int deliveries = 0;
     ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
