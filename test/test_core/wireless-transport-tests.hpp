@@ -19,17 +19,39 @@ struct TransportTestPayload {
     uint8_t data[14];
 } __attribute__((packed));
 
-TEST(WirelessTransportTest, channelsClaimDistinctPktTypes) {
+TEST(WirelessTransportTest, reclaimSamePayloadReturnsSameChannel) {
+    // A re-claim of a PktType with the same payload type (e.g. a re-created
+    // owner re-initializing) hands back the existing channel rather than
+    // duplicating or crashing.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     WirelessTransport transport(&wm);
-    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
-        PktType::kChainGameEvent,
-        [](uint8_t, const uint8_t*) {});
-    ASSERT_NE(ch, nullptr);
-    ASSERT_DEATH({ transport.channel<TransportTestPayload>(
-                       PktType::kChainGameEvent,
-                       [](uint8_t, const uint8_t*) {}); }, "duplicate channel claim");
+    ReliableChannel<TransportTestPayload>* first = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    ASSERT_NE(first, nullptr);
+    ReliableChannel<TransportTestPayload>* again = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    EXPECT_EQ(again, first);
+}
+
+TEST(WirelessTransportTest, reclaimDifferentPayloadOnSameTypeRejected) {
+    // Two subsystems claiming one PktType with different payloads is a wiring
+    // bug; the second claim is rejected (nullptr) rather than clobbering.
+    struct WiderPayload {
+        uint8_t cmd;
+        uint8_t seqId;
+        uint8_t data[40];
+    } __attribute__((packed));
+
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    WirelessTransport transport(&wm);
+    ReliableChannel<TransportTestPayload>* first = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    ASSERT_NE(first, nullptr);
+    ReliableChannel<WiderPayload>* collision = transport.channel<WiderPayload>(
+        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    EXPECT_EQ(collision, nullptr);
 }
 
 TEST(WirelessTransportTest, deliverIncomingReturnsFalseWhenChannelMissing) {

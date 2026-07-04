@@ -1,7 +1,5 @@
 #include "wireless/wireless-transport.hpp"
 
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
 #include "device/drivers/logger.hpp"
@@ -42,7 +40,7 @@ WirelessTransport::~WirelessTransport() {
     receiveBindings.clear();
 }
 
-void WirelessTransport::ensureReceiveBinding(PktType type) {
+void WirelessTransport::ensurePacketCallback(PktType type) {
     for (const ReceiveBinding* b : receiveBindings) {
         if (b->type == type) return;
     }
@@ -87,10 +85,9 @@ void WirelessTransport::onResenderAbandon(PktType type, uint8_t seqId,
     it->second->onResenderAbandon(seqId, targetMac);
 }
 
-void WirelessTransport::abortWithMessage(const char* msg) {
-    LOG_E(WIRELESS_TRANSPORT_TAG, "%s", msg);
-    // Also write to stderr so death-test matchers (which scan child stderr)
-    // can detect the abort message in native unit-test builds.
-    std::fprintf(stderr, "%s\n", msg);
-    std::abort();
+void WirelessTransport::logChannelTypeCollision(PktType type, size_t got, size_t have) {
+    LOG_E(WIRELESS_TRANSPORT_TAG,
+          "channel(): PktType %u already claimed by a %zu-byte payload; "
+          "rejected a %zu-byte claim (two subsystems on one PktType)",
+          (unsigned)type, have, got);
 }

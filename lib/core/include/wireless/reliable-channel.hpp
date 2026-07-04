@@ -66,6 +66,15 @@ public:
     /// to its onReceive callback. Returns true if delivered.
     virtual bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) = 0;
 
+    /// sizeof the payload struct this channel is typed on. The transport uses
+    /// it to tell a same-type re-claim from a different-payload collision on
+    /// the same PktType.
+    virtual size_t payloadSize() const = 0;
+
+    /// Rebinds the abandon callback; used when a re-created owner re-claims an
+    /// already-registered channel so the callback points at the live instance.
+    void setOnAbandon(OnAbandon cb) { onAbandon = std::move(cb); }
+
 protected:
     uint8_t nextSeqId();
     // nullptr in probe-style unit tests; every use is null-tolerant.
@@ -161,6 +170,9 @@ public:
     bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) override {
         return deliver(fromMac, data, len);
     }
+
+    /// This channel's payload struct size, for the transport's claim guard.
+    size_t payloadSize() const override { return sizeof(P); }
 
     /// Registers the decoded-payload handler.
     void onReceive(OnReceive cb) { onReceiveCallback = std::move(cb); }

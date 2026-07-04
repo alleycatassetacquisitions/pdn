@@ -38,21 +38,30 @@ public:
     /// Deletes every vended channel and rx binding.
     ~WirelessTransport();
 
-    /// Constructs the channel owning a PktType. Aborts (loud failure) if
-    /// another channel has already claimed it. The returned pointer stays
-    /// owned by the transport.
+    /// Get-or-create the channel owning a PktType. A first claim creates and
+    /// registers it. A re-claim of the same PktType with the same payload type
+    /// (e.g. a re-created owner re-initializing) returns the existing channel
+    /// with its abandon callback rebound, so the caller just re-sets onReceive.
+    /// A re-claim with a DIFFERENT payload type is a wiring collision — two
+    /// subsystems fighting over one PktType — and returns nullptr after logging.
+    /// The returned pointer stays owned by the transport.
     template <class P>
     ReliableChannel<P>* channel(PktType type,
                                 ReliableChannelBase::OnAbandon onAbandon,
                                 Resender::SendMode sendMode = Resender::SendMode::SUPERSEDE_PER_TARGET) {
+        std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
+        if (it != registry.end()) {
+            if (it->second->payloadSize() != sizeof(P)) {
+                logChannelTypeCollision(type, sizeof(P), it->second->payloadSize());
+                return nullptr;
+            }
+            it->second->setOnAbandon(std::move(onAbandon));
+            return static_cast<ReliableChannel<P>*>(it->second);
+        }
         ReliableChannel<P>* raw = new ReliableChannel<P>(
             wirelessManager, &resender, type, std::move(onAbandon), sendMode);
-        std::pair<std::map<PktType, ReliableChannelBase*>::iterator, bool> inserted =
-            registry.insert({type, raw});
-        if (!inserted.second) {
-            abortWithMessage("duplicate channel claim");
-        }
-        ensureReceiveBinding(type);
+        registry.insert({type, raw});
+        ensurePacketCallback(type);
         return raw;
     }
 
@@ -79,9 +88,10 @@ private:
         WirelessTransport* transport;
         PktType type;
     };
-    void ensureReceiveBinding(PktType type);
+    void ensurePacketCallback(PktType type);
 
-    [[noreturn]] static void abortWithMessage(const char* msg);
+    // Logs a PktType claimed by two different payload types (a wiring bug).
+    static void logChannelTypeCollision(PktType type, size_t got, size_t have);
 
     void onResenderAbandon(PktType type, uint8_t seqId,
                            const uint8_t* targetMac);
