@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <vector>
 #include "device/serial-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
@@ -13,21 +14,44 @@ class Device;
 class HandshakeApp;
 
 enum class PortStatus {
-    DISCONNECTED = 0, // No Connection. Handshake is in Idle state.
-    CONNECTING = 1, // Port is NOT connected && NOT in handshake idle state.
-    CONNECTED = 2, // Port is connected to exactly 1 peer.
-    DAISY_CHAINED = 3, // Port is connected to more than 1 peer.
+    DISCONNECTED = 0,  // No Connection. Handshake is in Idle state.
+    CONNECTING = 1,    // Port is NOT connected && NOT in handshake idle state.
+    CONNECTED = 2,     // Port is connected to a peer.
 };
 
-    struct PortState {
-        SerialIdentifier port;
-        PortStatus status;
-        std::vector<std::array<uint8_t, 6>> peerMacAddresses;
+// This device's position in the physical chain, derived from jack state:
+// head has no in-peer, a child has one, a ring is a chain whose ends met.
+// Device-level (not per-port): whether a connection makes this device a head
+// or child is a chain concern surfaced here, never a PortStatus.
+enum class ChainRole {
+    STANDALONE = 0,
+    HEAD = 1,
+    CHILD = 2,
+    RING = 3,
+};
+
+struct PortState {
+    SerialIdentifier port;
+    PortStatus status;
+    std::vector<std::array<uint8_t, 6>> peerMacAddresses;
 };
 
 class RemoteDeviceCoordinator {
 public:
+    /// Fires on a per-jack connect (true) / disconnect (false) transition.
+    using JackChangeCallback = std::function<void(SerialIdentifier jack, bool connected)>;
+    /// Fires when this device's ChainRole changes.
+    using ChainRoleChangeCallback = std::function<void(ChainRole role)>;
+    /// Head-only: fires when the chain member roster changes; read the new
+    /// roster via getChainMembers().
+    using MembershipChangeCallback = std::function<void()>;
+    /// Head-only: fires when the ring fully closes. This is the shootout
+    /// coordinator claim point.
+    using RingClosedCallback = std::function<void()>;
+
+    /// Inert until initialize().
     RemoteDeviceCoordinator();
+    /// Tears down the per-port handshake apps.
     ~RemoteDeviceCoordinator();
 
     /**
@@ -45,7 +69,10 @@ public:
      */
     void sync(Device* PDN);
 
+    /// Connection state of one jack (device-level chain facts live in
+    /// getChainRole(), not here).
     virtual PortStatus getPortStatus(SerialIdentifier port);
+    /// Status plus the peer MACs reachable via the port.
     PortState getPortState(SerialIdentifier port);
 
     /**
@@ -54,13 +81,54 @@ public:
      */
     virtual const uint8_t* getPeerMac(SerialIdentifier port) const;
 
+    /// The direct peer's hardware kind (PDN/FDN) for the given port.
     virtual DeviceType getPeerDeviceType(SerialIdentifier port) const;
 
-    // Returns true iff `mac` matches the direct peer on either jack.
+    /// The direct peer's 4-digit player id for the given port; 0xFFFF when
+    /// unregistered or no peer. STUB until the context exchange lands (#157):
+    /// always 0xFFFF.
+    virtual uint16_t getPeerUserId(SerialIdentifier port) const { return 0xFFFF; }
+
+    /// Returns true iff `mac` matches the direct peer on either jack.
     virtual bool isDirectPeer(const uint8_t* mac) const;
 
-    // Reachable via either jack (direct peer or daisy-chained).
+    /// Reachable via either jack (direct peer or daisy-chained).
     virtual bool canReachPeer(const uint8_t* mac) const;
+
+    // ---- Chain-level surface (#154). Stubs until the connection-state
+    // machines land (#155-#159): they return the standalone defaults so the
+    // game layer can compile and wire against the final shape now. ----
+
+    /// This device's chain role. STUB: always STANDALONE.
+    virtual ChainRole getChainRole() const { return ChainRole::STANDALONE; }
+
+    /// The chain head's MAC, or nullptr when this device is the head or
+    /// standalone. STUB: always nullptr.
+    virtual const uint8_t* getHeadMac() const { return nullptr; }
+
+    /// Head-only chain member roster; empty for a child or standalone device.
+    /// STUB: always empty.
+    virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const { return {}; }
+
+    /// Registers the per-jack connect/disconnect observer.
+    void setOnJackChange(JackChangeCallback callback) {
+        jackChangeCallback = std::move(callback);
+    }
+
+    /// Registers the chain-role transition observer.
+    void setOnChainRoleChange(ChainRoleChangeCallback callback) {
+        chainRoleChangeCallback = std::move(callback);
+    }
+
+    /// Registers the head-only roster observer.
+    void setOnMembershipChange(MembershipChangeCallback callback) {
+        membershipChangeCallback = std::move(callback);
+    }
+
+    /// Registers the head-only ring-closure observer.
+    void setOnRingClosed(RingClosedCallback callback) {
+        ringClosedCallback = std::move(callback);
+    }
 
     /**
      * Called when a chain announcement is received from a direct peer.
@@ -72,19 +140,25 @@ public:
         SerialIdentifier port,
         const std::vector<std::array<uint8_t, 6>>& announcedPeers);
 
+    /// Registers the legacy any-chain-change observer.
     void setChainChangeCallback(std::function<void()> callback);
 
-    // Direct peer drops only; daisy-chained drops arrive via chain announcements.
+    /// Direct peer drops only; daisy-chained drops arrive via chain announcements.
     void setPeerLostCallback(std::function<void(const uint8_t*)> callback);
 
+    /// Decodes and applies an inbound kChainAnnouncement packet.
     void processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     using AnnouncementEmitCallback = std::function<void(const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers)>;
+    /// Registers the outbound chain-announcement sender.
     void setAnnouncementEmitCallback(AnnouncementEmitCallback callback);
 
+    /// Decodes and applies an inbound kChainAnnouncementAck packet.
     void processChainAnnouncementAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
+    /// Registers the MAC as an ESP-NOW peer slot.
     void registerPeer(const uint8_t* macAddress);
+    /// Releases the MAC's ESP-NOW peer slot.
     void unregisterPeer(const uint8_t* macAddress);
 
     // Retry / reliability observability. Cumulative since boot. For hardware
@@ -98,6 +172,7 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
+    /// Cumulative chain-announcement retry counters (see RetryStats).
     RetryStats getRetryStats() const { return retryStats_; }
 
 private:
@@ -146,6 +221,12 @@ private:
     std::function<void()> chainChangeCallback_;
     std::function<void(const uint8_t*)> peerLostCallback_;
     AnnouncementEmitCallback announcementEmitCallback_;
+
+    // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
+    JackChangeCallback jackChangeCallback;
+    ChainRoleChangeCallback chainRoleChangeCallback;
+    MembershipChangeCallback membershipChangeCallback;
+    RingClosedCallback ringClosedCallback;
 
     HandshakeWirelessManager handshakeWirelessManager;
 

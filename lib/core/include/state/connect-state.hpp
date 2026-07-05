@@ -7,27 +7,28 @@
 template<typename DeviceT>
 class ConnectState : public TypedState<DeviceT> {
 public:
+    /// Binds the state to the coordinator whose jack statuses it watches.
     ConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator, int stateId)
         : TypedState<DeviceT>(stateId), remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
+    /// Non-owning; just drops the coordinator pointer.
     virtual ~ConnectState() {
         remoteDeviceCoordinator = nullptr;
     }
 
+    /// The direct peer's hardware kind on the given port.
     const DeviceType getPeerDeviceType(SerialIdentifier port) const {
         return remoteDeviceCoordinator->getPeerDeviceType(port);
     }
 
+    /// True when every jack this state requires reports CONNECTED.
     bool isConnected() {
-        auto connectedOrChain = [this](SerialIdentifier jack) {
-            PortStatus s = remoteDeviceCoordinator->getPortStatus(jack);
-            return s == PortStatus::CONNECTED || s == PortStatus::DAISY_CHAINED;
-        };
-        return (isPrimaryRequired()   && connectedOrChain(SerialIdentifier::OUTPUT_JACK)) ||
-               (isAuxRequired()       && connectedOrChain(SerialIdentifier::INPUT_JACK)) ||
-               (isSecondaryRequired() && connectedOrChain(SerialIdentifier::INPUT_JACK_SECONDARY));
+        return (isPrimaryRequired() && isJackConnected(SerialIdentifier::OUTPUT_JACK)) ||
+               (isAuxRequired() && isJackConnected(SerialIdentifier::INPUT_JACK)) ||
+               (isSecondaryRequired() && isJackConnected(SerialIdentifier::INPUT_JACK_SECONDARY));
     }
 
+    /// isConnected() has been false for the full debounce window.
     bool isPersistentlyDisconnected() {
         return disconnectDebounce_.heldFor(!isConnected(), kDisconnectDebounceMs);
     }
@@ -42,6 +43,11 @@ protected:
     virtual bool isSecondaryRequired() { return false; }
 
 private:
+    /// True when the given jack's port status is CONNECTED.
+    bool isJackConnected(SerialIdentifier jack) const {
+        return remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED;
+    }
+
     static constexpr unsigned long kDisconnectDebounceMs = 500;
     DebouncedCondition disconnectDebounce_;
 };
