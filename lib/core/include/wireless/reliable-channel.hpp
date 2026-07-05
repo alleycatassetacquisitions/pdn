@@ -48,20 +48,6 @@ public:
     /// Silently drops every pending send to this MAC (no abandon callback).
     void cancel(const uint8_t* mac);
 
-    /// Counts peers with at least one in-flight entry on this channel.
-    size_t pendingCount(const std::vector<std::array<uint8_t, 6>>& peers) const {
-        size_t n = 0;
-        for (const std::array<uint8_t, 6>& p : peers)
-            if (isPending(p.data())) ++n;
-        return n;
-    }
-
-    /// Silently drops every pending send to each peer in the set.
-    void cancel(const std::vector<std::array<uint8_t, 6>>& peers) {
-        for (const std::array<uint8_t, 6>& p : peers)
-            cancel(p.data());
-    }
-
     /// Typed subclass deserializes bytes into its payload type and dispatches
     /// to its onReceive callback. Returns true if delivered.
     virtual bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) = 0;
@@ -70,8 +56,6 @@ protected:
     uint8_t nextSeqId();
     // nullptr in probe-style unit tests; every use is null-tolerant.
     WirelessManager* getWirelessManager() const { return wirelessManager; }
-    // Own MAC, for self-exclusion in multi-target sends; nullptr without a manager.
-    const uint8_t* selfMac() const;
     void sendOnceBytes(const uint8_t* mac, const uint8_t* data, size_t len);
     // Defined in the .cpp so the logger stays out of this template header.
     static void logLengthMismatch(PktType type, size_t got, size_t want);
@@ -128,17 +112,6 @@ public:
         sendOnceBytes(mac, reinterpret_cast<const uint8_t*>(&p), sizeof(P));
     }
 
-    /// Broadcast the same payload reliably to a peer set, skipping self. Each
-    /// target gets its own seqId just as a single-target send would.
-    void sendReliable(const std::vector<std::array<uint8_t, 6>>& peers, P p) {
-        broadcast(peers, [&](const uint8_t* mac) { sendReliable(mac, p); });
-    }
-
-    /// Broadcast the same payload fire-and-forget to a peer set, skipping self.
-    void sendOnce(const std::vector<std::array<uint8_t, 6>>& peers, P p) {
-        broadcast(peers, [&](const uint8_t* mac) { sendOnce(mac, p); });
-    }
-
     /// Decode + dispatch one inbound packet: ack first (a retransmit means our
     /// prior ack was lost), then dedup, then the onReceive callback.
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
@@ -166,14 +139,5 @@ public:
     void onReceive(OnReceive cb) { onReceiveCallback = std::move(cb); }
 
 private:
-    template <typename SendToTarget>
-    void broadcast(const std::vector<std::array<uint8_t, 6>>& peers, SendToTarget sendToTarget) {
-        const uint8_t* self = selfMac();
-        for (const std::array<uint8_t, 6>& target : peers) {
-            if (self && std::memcmp(target.data(), self, 6) == 0) continue;
-            sendToTarget(target.data());
-        }
-    }
-
     OnReceive onReceiveCallback;
 };

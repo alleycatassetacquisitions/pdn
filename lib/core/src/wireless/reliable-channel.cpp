@@ -47,11 +47,6 @@ uint8_t ReliableChannelBase::nextSeqId() {
     return lastSentSeqId;
 }
 
-const uint8_t* ReliableChannelBase::selfMac() const {
-    WirelessManager* wm = getWirelessManager();
-    return wm ? wm->getMacAddress() : nullptr;
-}
-
 bool ReliableChannelBase::isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId) {
     if (seqId == 0 || fromMac == nullptr) return false;
     for (RxSeqRecord& r : rxSeq) {

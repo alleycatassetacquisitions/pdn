@@ -32,16 +32,6 @@ struct ResenderRetryPolicy {
         unsigned shift = retryNum > 16 ? 16u : retryNum;
         return initialTimeoutMs << shift;
     }
-
-    /// Time from the first transmission until the last retransmit leaves the
-    /// radio; after this window a reliable send can no longer reach the peer
-    /// (abandonment fires one further backoff later).
-    constexpr unsigned long totalBudgetMs() const {
-        unsigned long total = 0;
-        for (uint8_t i = 0; i < maxRetries; ++i)
-            total += backoffMs(i);
-        return total;
-    }
 };
 
 class Resender {
