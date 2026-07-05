@@ -45,7 +45,7 @@ public:
         return out;
     }
 
-    /// HELLO payload: source mac[6] + deviceType[1] + headMac[6] + confirmed[1].
+    /// HELLO payload bytes: source mac[6] + deviceType[1] + headMac[6] + confirmed[1].
     std::vector<uint8_t> helloPayload(uint8_t firstMacByte = 0x10) {
         std::vector<uint8_t> p = {firstMacByte, 0x20, 0x30, 0x40, 0x50, 0x60,  // source
                                   0x01,                                        // deviceType
@@ -64,40 +64,90 @@ public:
     FakePlatformClock* fakeClock = nullptr;
 };
 
-TEST_F(SerialFrameParserTests, validBinaryFrameRoutesToFrameHandler) {
+TEST_F(SerialFrameParserTests, validFrameDecodesToHelloPayload) {
     int frameCount = 0;
-    Frame got;
-    parser.setBinaryFrameHandler([&](const Frame& f) { got = f; ++frameCount; });
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
 
-    std::vector<uint8_t> frame = buildFrame(OP_HELLO, helloPayload());
+    feed(buildFrame(OP_HELLO, helloPayload()));
+
+    ASSERT_EQ(frameCount, 1);
+    EXPECT_EQ(got.source[0], 0x10);
+    EXPECT_EQ(got.source[5], 0x60);
+    EXPECT_EQ(got.deviceType, 0x01);
+    EXPECT_EQ(got.headMac[0], 0xAA);
+    EXPECT_EQ(got.headMac[5], 0xFF);
+    EXPECT_EQ(got.confirmed, 0x00);
+}
+
+TEST_F(SerialFrameParserTests, decodeMapsEveryWireByteToItsField) {
+    // Independent of buildFrame/encodeFramed: a hand-laid frame whose CRC is the
+    // precomputed CRC-16/XMODEM of (opcode + payload). Pins the exact byte->field
+    // mapping so a reordered or repacked struct fails here, not silently on the wire.
+    // Layout: preamble 0xAA 0x55, OP_HELLO 0x00, source[6]=11..66, deviceType=01,
+    // headMac[6]=DE AD BE EF 00 01, confirmed=01, then CRC 0xDC48.
+    const std::vector<uint8_t> frame = {0xAA, 0x55, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x01,
+                                        0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x01, 0xDC, 0x48};
+
+    int frameCount = 0;
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
     feed(frame);
 
     ASSERT_EQ(frameCount, 1);
-    EXPECT_EQ(got.opcode, OP_HELLO);
-    ASSERT_EQ(got.payload.size(), HELLO_PAYLOAD_LEN);
-    EXPECT_EQ(got.payload[0], 0x10);
-    EXPECT_EQ(got.payload[13], 0x00);
+    const uint8_t expectedSource[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    const uint8_t expectedHead[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+    for (int i = 0; i < 6; ++i) {
+        EXPECT_EQ(got.source[i], expectedSource[i]);
+        EXPECT_EQ(got.headMac[i], expectedHead[i]);
+    }
+    EXPECT_EQ(got.deviceType, 0x01);
+    EXPECT_EQ(got.confirmed, 0x01);
+}
+
+TEST_F(SerialFrameParserTests, encodeFramedEmitsExactFrameBytes) {
+    // The typed encoder must produce the identical bytes the hand oracle above
+    // expects: preamble + opcode + packed payload + precomputed CRC.
+    HelloPayload hello{};
+    const uint8_t source[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    const uint8_t head[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+    for (int i = 0; i < 6; ++i) {
+        hello.source[i] = source[i];
+        hello.headMac[i] = head[i];
+    }
+    hello.deviceType = 0x01;
+    hello.confirmed = 0x01;
+
+    // Same bytes the decode oracle above pins: preamble, OP_HELLO, payload, CRC 0xDC48.
+    const std::vector<uint8_t> expected = {0xAA, 0x55, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x01,
+                                           0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x01, 0xDC, 0x48};
+    EXPECT_EQ(encodeFramed(hello), expected);
 }
 
 TEST_F(SerialFrameParserTests, encodeFramedRoundTripsThroughParser) {
-    // The encoder is the parser's inverse: a frame produced by encodeFramed
-    // must parse back to the identical opcode + payload.
+    // The typed encoder is the parser's inverse: a HelloPayload framed by
+    // encodeFramed must decode back to the identical field values.
     int frameCount = 0;
-    Frame got;
-    parser.setBinaryFrameHandler([&](const Frame& f) { got = f; ++frameCount; });
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
 
-    std::vector<uint8_t> payload = helloPayload(0xA7);
-    std::vector<uint8_t> frame = encodeFramed(OP_HELLO, payload);
-    feed(frame);
+    HelloPayload sent{};
+    sent.source[0] = 0xA7;
+    sent.deviceType = 0x02;
+    sent.headMac[3] = 0x99;
+    sent.confirmed = 0x01;
+    feed(encodeFramed(sent));
 
     ASSERT_EQ(frameCount, 1);
-    EXPECT_EQ(got.opcode, OP_HELLO);
-    EXPECT_EQ(got.payload, payload);
+    EXPECT_EQ(got.source[0], 0xA7);
+    EXPECT_EQ(got.deviceType, 0x02);
+    EXPECT_EQ(got.headMac[3], 0x99);
+    EXPECT_EQ(got.confirmed, 0x01);
 }
 
 TEST_F(SerialFrameParserTests, badCrcDropsFrame) {
     int frameCount = 0;
-    parser.setBinaryFrameHandler([&](const Frame&) { ++frameCount; });
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
     // Full-length frame so the parser consumes everything and actually reaches
     // the CRC comparison. A short payload would end mid-CRC-read and drop the
@@ -118,7 +168,7 @@ TEST_F(SerialFrameParserTests, badCrcDropsFrame) {
 
 TEST_F(SerialFrameParserTests, unknownOpcodeDrops) {
     int frameCount = 0;
-    parser.setBinaryFrameHandler([&](const Frame&) { ++frameCount; });
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
     // 0x99 is not an opcode; neither is 0x01 (the fork's BEACON, not ported).
     feed({0xAA, 0x55, 0x99, 0x01, 0x02, 0x03, 0x04});
@@ -132,8 +182,8 @@ TEST_F(SerialFrameParserTests, unknownOpcodeDrops) {
 
 TEST_F(SerialFrameParserTests, fragmentedFrameAssembles) {
     int frameCount = 0;
-    Frame got;
-    parser.setBinaryFrameHandler([&](const Frame& f) { got = f; ++frameCount; });
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
 
     std::vector<uint8_t> frame = buildFrame(OP_HELLO, helloPayload(0x01));
     for (uint8_t b : frame) {
@@ -142,15 +192,13 @@ TEST_F(SerialFrameParserTests, fragmentedFrameAssembles) {
     }
 
     ASSERT_EQ(frameCount, 1);
-    EXPECT_EQ(got.opcode, OP_HELLO);
-    ASSERT_EQ(got.payload.size(), HELLO_PAYLOAD_LEN);
-    EXPECT_EQ(got.payload[0], 0x01);
-    EXPECT_EQ(got.payload[5], 0x60);
+    EXPECT_EQ(got.source[0], 0x01);
+    EXPECT_EQ(got.source[5], 0x60);
 }
 
 TEST_F(SerialFrameParserTests, midFrameTimeoutResets) {
     int frameCount = 0;
-    parser.setBinaryFrameHandler([&](const Frame&) { ++frameCount; });
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
     // Inject just the preamble + opcode + partial payload, then stall.
     feed({0xAA, 0x55, OP_HELLO, 0xDE, 0xAD, 0xBE});
@@ -169,7 +217,7 @@ TEST_F(SerialFrameParserTests, requestResetClearsPartialFrameAtNextFeed) {
     // The cross-thread reset used when a jack is declared dead: mid-frame state
     // from the dying connection must not corrupt the next device to plug in.
     int frameCount = 0;
-    parser.setBinaryFrameHandler([&](const Frame&) { ++frameCount; });
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
     // Partial frame in flight, then a reset requested from "another thread".
     feed({0xAA, 0x55, OP_HELLO, 0x01, 0x02, 0x03});
@@ -183,8 +231,8 @@ TEST_F(SerialFrameParserTests, requestResetClearsPartialFrameAtNextFeed) {
 
 TEST_F(SerialFrameParserTests, garbageThenValidFrameResyncs) {
     int frameCount = 0;
-    Frame got;
-    parser.setBinaryFrameHandler([&](const Frame& f) { got = f; ++frameCount; });
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
 
     // Leading line noise with no preamble must be discarded, and the parser must
     // resync on the next 0xAA 0x55 rather than swallowing the following frame.
@@ -192,13 +240,12 @@ TEST_F(SerialFrameParserTests, garbageThenValidFrameResyncs) {
     feed(buildFrame(OP_HELLO, helloPayload(0xA1)));
 
     ASSERT_EQ(frameCount, 1);
-    EXPECT_EQ(got.opcode, OP_HELLO);
-    EXPECT_EQ(got.payload[0], 0xA1);
+    EXPECT_EQ(got.source[0], 0xA1);
 }
 
 TEST_F(SerialFrameParserTests, doubleAAResyncsToPreamble) {
     int frameCount = 0;
-    parser.setBinaryFrameHandler([&](const Frame&) { ++frameCount; });
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
     // A stray extra 0xAA before the real preamble: GotAA on another 0xAA must
     // stay in GotAA so 0xAA 0xAA 0x55 still opens a frame rather than aborting.
@@ -213,7 +260,7 @@ TEST_F(SerialFrameParserTests, doubleAAResyncsToPreamble) {
 
 TEST_F(SerialFrameParserTests, splitPreambleAcrossFeeds) {
     int frameCount = 0;
-    parser.setBinaryFrameHandler([&](const Frame&) { ++frameCount; });
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
     // The 0xAA and 0x55 of the preamble arrive in separate feed() calls; the
     // GotAA state must survive across reads.

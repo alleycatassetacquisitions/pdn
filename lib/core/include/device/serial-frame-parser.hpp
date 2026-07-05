@@ -14,25 +14,34 @@
 constexpr uint8_t FRAME_PREAMBLE_0 = 0xAA;
 constexpr uint8_t FRAME_PREAMBLE_1 = 0x55;
 constexpr uint8_t OP_HELLO = 0x00;
-// Payload bytes after the opcode, before the CRC: source mac[6] +
-// deviceType[1] + headMac[6] + confirmed[1]. The packed HelloPayload struct
-// that owns this layout arrives with the HELLO wire-format work; the parser
-// only needs the length to frame it.
+// Payload bytes after the opcode, before the CRC. Owned by the packed
+// HelloPayload struct below; the constant lets the parser frame the payload
+// without depending on the struct in switch tables.
 constexpr size_t HELLO_PAYLOAD_LEN = 14;
 
-// Wraps a payload in the framed wire format: preamble, opcode, payload,
+// The sole serial payload, exchanged jack-to-jack on every HELLO frame.
+// Packed to a fixed 14-byte wire layout: the parser memcpys the raw payload
+// straight into this struct, so the field order and packing ARE the wire
+// contract.
+struct HelloPayload {
+    uint8_t source[6];   // this device's WiFi MAC
+    uint8_t deviceType;  // DeviceType value; discriminates ConnectionContext deser
+    uint8_t headMac[6];  // chain head MAC, all-zero if head/standalone; hop-propagated
+    uint8_t confirmed;   // 1 once head context exchange completes, else 0
+} __attribute__((packed));
+
+static_assert(sizeof(HelloPayload) == HELLO_PAYLOAD_LEN,
+              "HelloPayload must match the 14-byte HELLO wire layout");
+
+// Wraps a raw payload in the framed wire format: preamble, opcode, payload,
 // CRC-16 over (opcode + payload). The inverse of SerialFrameParser.
 std::vector<uint8_t> encodeFramed(uint8_t opcode, const std::vector<uint8_t>& payload);
 
-// A validated binary frame surfaced to downstream consumers (RDC's serial
-// ingest, bound via setBinaryFrameHandler). payload holds the raw bytes
-// between the opcode and the CRC.
-struct Frame {
-    uint8_t opcode;
-    std::vector<uint8_t> payload;
-};
+// Serializes a HelloPayload into a HELLO frame. Convenience over the raw
+// encodeFramed for the only payload type serial actually carries.
+std::vector<uint8_t> encodeFramed(const HelloPayload& hello);
 
-using BinaryFrameHandler = std::function<void(const Frame&)>;
+using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 
 // Parses one jack's serial byte stream into framed binary frames
 // (preamble 0xAA 0x55 + opcode + payload + CRC-16). One instance per jack.
@@ -52,8 +61,8 @@ public:
     /// the start of the next feed(), keeping parser state single-owner.
     void requestReset() { resetRequested.store(true); }
 
-    /// Registers the validated-frame consumer.
-    void setBinaryFrameHandler(BinaryFrameHandler cb) { binaryFrameHandler = std::move(cb); }
+    /// Registers the consumer for CRC-valid HELLO frames, decoded to HelloPayload.
+    void setHelloFrameHandler(HelloFrameHandler cb) { helloFrameHandler = std::move(cb); }
 
 private:
     enum class ParseState {
@@ -81,7 +90,7 @@ private:
 
     std::atomic<bool> resetRequested{false};
 
-    BinaryFrameHandler binaryFrameHandler;
+    HelloFrameHandler helloFrameHandler;
 
     // Wall-clock window after which a mid-frame parser resets to scan-for-sync.
     static constexpr unsigned long PARSER_TIMEOUT_MS = 50;
