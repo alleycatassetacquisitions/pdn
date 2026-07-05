@@ -41,9 +41,8 @@ ReliableTransport::~ReliableTransport() {
 }
 
 void ReliableTransport::ensurePacketCallback(PktType type) {
-    for (const ReceiveBinding* b : receiveBindings) {
-        if (b->type == type) return;
-    }
+    // Only ever called on a channel's first claim of `type` (channel() returns
+    // early on a re-claim), so the binding is always new — no dedup needed.
     receiveBindings.push_back(new ReceiveBinding{this, type});
     if (wirelessManager == nullptr) return;
     wirelessManager->setEspNowPacketHandler(
