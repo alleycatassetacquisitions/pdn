@@ -4,6 +4,7 @@
 #include <vector>
 #include <queue>
 #include <unordered_map>
+#include <limits>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -23,7 +24,13 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // Max application payload per frame. ESP-NOW v2.0 (IDF 5.x, all-S3 targets)
 // carries up to 1470 bytes in a single frame, so every packet type fits in
 // one send — no multi-frame clustering.
-constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr);
+// The payload ceiling is whatever DataPktHdr::pktLen can hold (it stores the
+// total packet length), minus the header. ESP-NOW v2 frames are far larger,
+// but the length field is the real ceiling: a payload above this would overflow
+// pktLen and deliver a corrupt short buffer. Derived from the field's type so
+// it follows automatically if pktLen ever widens.
+constexpr size_t MAX_PKT_DATA_SIZE =
+    std::numeric_limits<decltype(DataPktHdr::pktLen)>::max() - sizeof(DataPktHdr);
 
 //Singleton class that handles communication over ESP-NOW protocol.
 class EspNowManager : public PeerCommsDriverInterface
