@@ -3,8 +3,9 @@
 #include <cstdio>
 #include <cstring>
 
-ShootoutSpectator::ShootoutSpectator(ShootoutManager* shootout)
-    : TypedState<PDN>(SHOOTOUT_SPECTATOR), shootout_(shootout) {}
+ShootoutSpectator::ShootoutSpectator(const GameContext& ctx)
+    : TypedState<PDN>(SHOOTOUT_SPECTATOR)
+    , shootout_(ctx.shootoutManager) {}
 
 static void drawSpectatorScreen(PDN* pdn, ShootoutManager* shootout,
                                 const std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>& pair) {

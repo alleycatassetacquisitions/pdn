@@ -9,11 +9,12 @@
 
 #define DUEL_TAG "DUEL_STATE"
 
-Duel::Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL) {
-    this->player = player;
-    this->matchManager = matchManager;
-    this->chainDuelManager = chainDuelManager;
-    this->shootoutManager = shootoutManager;
+Duel::Duel(const GameContext& ctx)
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL) {
+    this->player = ctx.player;
+    this->matchManager = ctx.matchManager;
+    this->chainDuelManager = ctx.chainDuelManager;
+    this->shootoutManager = ctx.shootoutManager;
 }
 
 Duel::~Duel() {

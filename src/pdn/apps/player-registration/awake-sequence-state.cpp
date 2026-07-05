@@ -2,8 +2,9 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/device.hpp"
 
-AwakenSequence::AwakenSequence(Player* player) : TypedState<PDN>(AWAKEN_SEQUENCE) {
-    this->player = player;
+AwakenSequence::AwakenSequence(const GameContext& ctx)
+    : TypedState<PDN>(AWAKEN_SEQUENCE) {
+    this->player = ctx.player;
 }
 
 AwakenSequence::~AwakenSequence() {

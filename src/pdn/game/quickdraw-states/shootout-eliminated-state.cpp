@@ -1,8 +1,9 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 
-ShootoutEliminated::ShootoutEliminated(ShootoutManager* shootout)
-    : TypedState<PDN>(SHOOTOUT_ELIMINATED), shootout_(shootout) {}
+ShootoutEliminated::ShootoutEliminated(const GameContext& ctx)
+    : TypedState<PDN>(SHOOTOUT_ELIMINATED)
+    , shootout_(ctx.shootoutManager) {}
 
 void ShootoutEliminated::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();

@@ -6,9 +6,10 @@
 
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
-DuelReceivedResult::DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) : ConnectState<PDN>(remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
-    this->player = player;
-    this->matchManager = matchManager;
+DuelReceivedResult::DuelReceivedResult(const GameContext& ctx)
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
+    this->player = ctx.player;
+    this->matchManager = ctx.matchManager;
 }
 
 DuelReceivedResult::~DuelReceivedResult() {

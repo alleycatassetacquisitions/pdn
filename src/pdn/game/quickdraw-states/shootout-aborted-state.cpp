@@ -1,8 +1,9 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 
-ShootoutAborted::ShootoutAborted(ShootoutManager* shootout)
-    : TypedState<PDN>(SHOOTOUT_ABORTED), shootout_(shootout) {}
+ShootoutAborted::ShootoutAborted(const GameContext& ctx)
+    : TypedState<PDN>(SHOOTOUT_ABORTED)
+    , shootout_(ctx.shootoutManager) {}
 
 void ShootoutAborted::onStateMounted(PDN* pdn) {
     pdn->getLightManager()->stopAnimation();
