@@ -24,9 +24,7 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager,
     , onAbandon(std::move(onAbandon)) {}
 
 void ReliableChannelBase::onAck(uint8_t seqId, const uint8_t* fromMac) {
-    if (resender) {
-        resender->onAck(packetType, seqId, fromMac);
-    }
+    resender->onAck(packetType, seqId, fromMac);
 }
 
 void ReliableChannelBase::onResenderAbandon(uint8_t seqId, const uint8_t* targetMac) {
@@ -34,22 +32,17 @@ void ReliableChannelBase::onResenderAbandon(uint8_t seqId, const uint8_t* target
 }
 
 bool ReliableChannelBase::isPending(const uint8_t* mac) const {
-    return resender && resender->isPending(packetType, mac);
+    return resender->isPending(packetType, mac);
 }
 
 void ReliableChannelBase::cancel(const uint8_t* mac) {
-    if (resender) resender->cancel(packetType, mac);
+    resender->cancel(packetType, mac);
 }
 
 uint8_t ReliableChannelBase::nextSeqId() {
     // 0 is reserved for "no ack expected"; skip it on wrap.
     lastSentSeqId = lastSentSeqId == 255 ? 1 : lastSentSeqId + 1;
     return lastSentSeqId;
-}
-
-const uint8_t* ReliableChannelBase::selfMac() const {
-    WirelessManager* wm = getWirelessManager();
-    return wm ? wm->getMacAddress() : nullptr;
 }
 
 bool ReliableChannelBase::isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId) {

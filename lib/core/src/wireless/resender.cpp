@@ -43,7 +43,7 @@ void Resender::send(const uint8_t* target, PktType type, uint8_t seqId,
     p.seqId = seqId;
     p.payload.assign(payload, payload + len);
     p.retries = 0;
-    p.timer.setTimer(RETRY_POLICY.backoffMs(0));
+    p.timer.setTimer(backoffMs(0));
     pending.push_back(std::move(p));
 
     transmit(pending.back());
@@ -97,7 +97,7 @@ void Resender::sync() {
             continue;
         }
 
-        if (p.retries >= RETRY_POLICY.maxRetries) {
+        if (p.retries >= MAX_RETRIES) {
             LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
                   (unsigned)p.type, p.seqId, p.target[4], p.target[5]);
             abandoned.push_back({p.type, p.seqId, p.target});
@@ -113,7 +113,7 @@ void Resender::sync() {
         // Re-arm either way. A send that never reached the radio leaves retries
         // unchanged, so a packet that was not actually transmitted keeps being
         // retried rather than being abandoned against an exhausted budget.
-        p.timer.setTimer(RETRY_POLICY.backoffMs(p.retries));
+        p.timer.setTimer(backoffMs(p.retries));
         ++i;
     }
 

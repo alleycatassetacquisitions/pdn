@@ -18,32 +18,6 @@ class WirelessManager;
 // retain their own retry slots. sync() must be called every loop tick to drive
 // retransmits.
 
-// One retry policy for every channel; Resender::RETRY_POLICY is the single
-// instance. (Namespace scope because a nested struct's default member
-// initializers can't be evaluated inside the enclosing class definition.)
-struct ResenderRetryPolicy {
-    unsigned long initialTimeoutMs = 100;
-    uint8_t maxRetries = 3;
-
-    /// Exponential backoff for the given retry number: 100, 200, 400 ...
-    constexpr unsigned long backoffMs(uint8_t retryNum) const {
-        // unsigned long is 32-bit on the ESP32; an unclamped shift from a
-        // caller-set maxRetries would be UB past ~25 doublings.
-        unsigned shift = retryNum > 16 ? 16u : retryNum;
-        return initialTimeoutMs << shift;
-    }
-
-    /// Time from the first transmission until the last retransmit leaves the
-    /// radio; after this window a reliable send can no longer reach the peer
-    /// (abandonment fires one further backoff later).
-    constexpr unsigned long totalBudgetMs() const {
-        unsigned long total = 0;
-        for (uint8_t i = 0; i < maxRetries; ++i)
-            total += backoffMs(i);
-        return total;
-    }
-};
-
 class Resender {
 public:
     // How a send relates to other in-flight sends to the same peer on the same
@@ -55,8 +29,17 @@ public:
     enum class SendMode { SUPERSEDE_PER_TARGET,
                           KEEP_DISTINCT };
 
-    using RetryPolicy = ResenderRetryPolicy;
-    static constexpr RetryPolicy RETRY_POLICY{};
+    // Retry tuning, shared by every channel: first retransmit after 100ms,
+    // doubling each retry, capped at 3 retries.
+    static constexpr unsigned long INITIAL_TIMEOUT_MS = 100;
+    static constexpr uint8_t MAX_RETRIES = 3;
+
+    /// Exponential backoff for the given retry number: 100, 200, 400 ...
+    static constexpr unsigned long backoffMs(uint8_t retryNum) {
+        // Clamp the shift so raising MAX_RETRIES past ~25 can't hit shift UB
+        // (unsigned long is 32-bit on the ESP32).
+        return INITIAL_TIMEOUT_MS << (retryNum > 16 ? 16u : retryNum);
+    }
 
     /// Fires once per pending entry that exhausts its retry budget. Invoked
     /// from sync() AFTER all retransmits have been processed and the
