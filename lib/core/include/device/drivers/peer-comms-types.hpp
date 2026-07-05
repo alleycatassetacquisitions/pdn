@@ -33,8 +33,6 @@ struct DataPktHdr
     //Total packet length including header
     uint8_t pktLen;
     PktType packetType;
-    uint8_t numPktsInCluster;
-    uint8_t idxInCluster;
 } __attribute__((packed));
 
 struct ChainConfirmPayload
