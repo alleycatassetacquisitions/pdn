@@ -36,6 +36,17 @@ PIO_BIN = "/usr/bin/pio"
 PYSERIAL_PYTHON = "/home/tirefire/.platformio/penv/bin/python"
 LOG_DIR = "/tmp/pdn-logs"
 
+# pyserial lives in the platformio venv, not necessarily on the python running
+# this script. If it's missing here, re-exec the whole script once under the
+# venv python so every reader thread can just use `serial` in-process.
+try:
+    import serial  # noqa: F401
+except ImportError:
+    if os.path.realpath(sys.executable) == os.path.realpath(PYSERIAL_PYTHON):
+        raise  # already the venv python and still no pyserial: nothing to do
+    os.execv(PYSERIAL_PYTHON,
+             [PYSERIAL_PYTHON, os.path.abspath(__file__), *sys.argv[1:]])
+
 _print_lock = threading.Lock()
 _stop = threading.Event()
 
@@ -102,17 +113,6 @@ def flash_all(env, ports):
 
 
 def reader_thread(port, idx, duration, tail_filter):
-    # pyserial lives in the platformio venv; import inside the thread so the
-    # script itself doesn't need pyserial on system Python.
-    sys.path.insert(0, "/home/tirefire/.platformio/penv/lib/python3.13/site-packages")
-    sys.path.insert(0, "/home/tirefire/.platformio/penv/lib/python3.12/site-packages")
-    sys.path.insert(0, "/home/tirefire/.platformio/penv/lib/python3.11/site-packages")
-    try:
-        import serial  # noqa: E402
-    except ImportError:
-        run_reader_subprocess(port, idx, duration, tail_filter)
-        return
-
     try:
         s = serial.Serial(port, 115200, timeout=1)
     except Exception as e:
@@ -152,31 +152,6 @@ def reader_thread(port, idx, duration, tail_filter):
             s.close()
         except Exception:
             pass
-
-
-def run_reader_subprocess(port, idx, duration, tail_filter):
-    # Spawn the platformio venv python so pyserial is available.
-    code = (
-        "import sys, time, re, serial\n"
-        f"s = serial.Serial({port!r}, 115200, timeout=1)\n"
-        f"end = time.time() + {duration if duration else 0}\n"
-        f"pat = re.compile({tail_filter!r}) if {tail_filter!r} else None\n"
-        f"f = open({(LOG_DIR + '/dev' + str(idx) + '.log')!r}, 'wb')\n"
-        "buf = b''\n"
-        "while True:\n"
-        "  if end and time.time() >= end: break\n"
-        "  d = s.read(4096)\n"
-        "  if not d: continue\n"
-        "  f.write(d); f.flush()\n"
-        "  buf += d\n"
-        "  while b'\\n' in buf:\n"
-        "    line, buf = buf.split(b'\\n', 1)\n"
-        "    t = line.decode('utf-8', errors='replace').rstrip()\n"
-        "    if not t: continue\n"
-        "    if pat and not pat.search(t): continue\n"
-        f"    print('[dev{idx}]', t, flush=True)\n"
-    )
-    subprocess.run([PYSERIAL_PYTHON, "-c", code])
 
 
 def install_signal_handlers():
