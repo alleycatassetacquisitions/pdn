@@ -23,6 +23,7 @@
 #include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
 #include "direct-peer-table-tests.hpp"
+#include "reliable-transport-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
