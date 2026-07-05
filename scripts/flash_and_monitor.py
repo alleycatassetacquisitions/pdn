@@ -191,14 +191,6 @@ def main():
             emit("MAIN", "flash failed; aborting before monitor")
             return 1
 
-    os.makedirs(LOG_DIR, exist_ok=True)
-    # Truncate prior logs so each run starts clean.
-    for i in range(len(ports)):
-        try:
-            open(f"{LOG_DIR}/dev{i}.log", "wb").close()
-        except Exception:
-            pass
-
     threads = []
     for i, p in enumerate(ports):
         t = threading.Thread(
@@ -215,11 +207,8 @@ def main():
             time.sleep(0.5)
         _stop.set()
     else:
-        try:
-            while not _stop.is_set():
-                time.sleep(0.5)
-        except KeyboardInterrupt:
-            _stop.set()
+        while not _stop.is_set():
+            time.sleep(0.5)
 
     for t in threads:
         t.join(timeout=2)
