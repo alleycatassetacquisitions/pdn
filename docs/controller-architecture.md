@@ -45,20 +45,32 @@ lib/core/include/controller/
 | Command | Purpose |
 |---|---|
 | `GAME_SELECT` | Session setup — tells PDN which game mode to enter |
+| `COMMAND_SET` | Sends an ordered list of selectable actions to the PDN; PDN cycles through them with the top button |
 | `GAME_EVENT` | Game state update — the FDN pushes state the PDN should display (scores, prompts, outcomes) |
 | *(extensible)* | Additional commands added as game experiences are built |
 
-**PDN→FDN channel** (`kPdnInput`) — the PDN sends raw input events to the FDN.
+A `COMMAND_SET` packet contains an ordered list of command options. Each option has an ID and a display label. The PDN renders the current selection and cycles through the list on each top button press. The FDN can push an updated `COMMAND_SET` at any time — the PDN replaces its list and resets the selection index to 0.
+
+```
+CommandSet {
+    options: [ { id: CMD_A, label: "OPTION A" },
+               { id: CMD_B, label: "OPTION B" },
+               { id: CMD_C, label: "OPTION C" } ]
+}
+```
+
+**PDN→FDN channel** (`kPdnInput`) — the PDN sends semantic input events to the FDN.
 
 | Command | Purpose |
 |---|---|
-| `TOP_BUTTON_PRESS` | Primary button pressed |
-| `BOTTOM_BUTTON_PRESS` | Secondary button pressed |
+| `SELECTION_CONFIRMED` | Bottom button pressed — carries the ID of the currently selected command |
 | *(extensible)* | Additional input types (long press, hold, etc.) |
 
-Both input commands carry an optional **payload** — arbitrary bytes interpreted by the receiving game state. The protocol is otherwise fixed; game-specific data lives in the payload.
+The PDN never sends raw button identifiers. It sends the command that was selected when the player confirmed. The FDN is fully decoupled from the PDN's physical button layout.
 
-> **Note on the old packet types:** `kGameSelect`, `kControllerCommand`, and `kGameResponse` collapse into the two channels above. The echo-confirmation pattern (FDN echoing the button ID back to PDN) is removed. The FDN sends `GAME_EVENT` when game state changes — not as a reflexive acknowledgment of input.
+> **Note on the old packet types:** `kGameSelect`, `kControllerCommand`, and `kGameResponse` collapse into the two channels above. The echo-confirmation pattern (FDN echoing the button ID back to PDN) is removed. The FDN sends `GAME_EVENT` or `COMMAND_SET` when game state changes — not as a reflexive acknowledgment of input.
+
+> **Pattern recognition:** This interaction model is a direct generalization of the existing `SymbolState` behavior — the FDN sends a symbol (the command set), the PDN cycles through symbols with the top button, and confirms a selection with the bottom button. The new architecture formalizes and extends that pattern.
 
 ---
 
@@ -72,12 +84,18 @@ Both input commands carry an optional **payload** — arbitrary bytes interprete
 `onStateLoop` polls `isPersistentlyDisconnected()`. If the FDN connection is lost, the base class sets a transition flag that drives an app-level jump back to `Quickdraw`. Concrete states do not implement disconnect logic.
 
 **Button callbacks**
-On mount, the base class registers both button callbacks. On dismount, it removes them. Concrete states never touch button registration.
+On mount, the base class registers both button callbacks. On dismount, it removes them. Concrete states never touch button registration. Button behavior is fixed and universal:
 
-When a button is pressed, the base class calls `topButtonPayload()` or `bottomButtonPayload()` (virtual methods) to get the payload, then sends the appropriate input command to the FDN via the wireless layer. Concrete states override these methods to customize what payload accompanies each button event.
+- **Top button** — advances the selection index through the current command set, wrapping around. Renders the newly selected option's label.
+- **Bottom button** — sends `SELECTION_CONFIRMED(currentCommand.id)` to the FDN.
+
+Concrete states have no button API to override. Button behavior is fully owned by the base class.
+
+**Command set management**
+The base class holds the active `CommandSet` received from the FDN. When a new `COMMAND_SET` command arrives, the base class replaces the current set and resets the selection index to 0 — even if the PDN is mid-selection. The base class owns rendering the current selection label; concrete states do not need to handle `COMMAND_SET` in their registry.
 
 **Command registry and dispatch**
-The base class holds a `map<CommandId, std::function<void(CommandPayload)>>`. Incoming FDN commands are dispatched through this registry. Unregistered command IDs are dropped with a log warning. States call `registerCommand(id, callback)` — typically in their constructor or `onControllerMounted` — to declare what they handle.
+The base class holds a `map<CommandId, std::function<void(CommandPayload)>>`. Incoming FDN commands are dispatched through this registry. Unregistered command IDs are dropped with a log warning. States call `registerCommand(id, callback)` — typically in their constructor — to declare what they handle. `COMMAND_SET` is always handled by the base class and never reaches the concrete state's registry.
 
 **Lifecycle hooks**
 The base class implements `onStateMounted` / `onStateLoop` / `onStateDismounted` and exposes protected hooks:
@@ -100,10 +118,6 @@ public:
 
 protected:
     void registerCommand(CommandId id, std::function<void(CommandPayload)> callback);
-    void sendInput(InputCommandId id, CommandPayload payload);
-
-    virtual CommandPayload topButtonPayload();
-    virtual CommandPayload bottomButtonPayload();
 
     virtual void onControllerMounted(PDN* pdn)    {}
     virtual void onControllerLoop(PDN* pdn)        {}
@@ -114,6 +128,12 @@ private:
     void onStateLoop(PDN* pdn) final;
     void onStateDismounted(PDN* pdn) final;
 
+    // Always handled by base — never reaches concrete state registry
+    void onCommandSetReceived(CommandSet commandSet, PDN* pdn);
+    void renderCurrentSelection(PDN* pdn);
+
+    CommandSet activeCommandSet;
+    int selectionIndex = 0;
     std::map<CommandId, std::function<void(CommandPayload)>> commandRegistry;
     bool transitionToQuickdrawState = false;
 };
@@ -150,7 +170,7 @@ ControllerRoutingState
 
 ### PDN Side: Concrete Controller States
 
-A concrete controller state extends `ControllerState`, registers the commands it cares about, and optionally overrides button payload methods.
+A concrete controller state extends `ControllerState` and registers only the FDN commands it cares about. It does not implement any button logic.
 
 #### Minimal example
 
@@ -164,12 +184,8 @@ public:
     }
 
 protected:
-    CommandPayload topButtonPayload() override {
-        return CommandPayload{ /* game-specific data */ };
-    }
-
     void onControllerMounted(PDN* pdn) override {
-        // render initial screen
+        // render initial state — command set cycling UI is handled by base class
     }
 
 private:
@@ -178,6 +194,8 @@ private:
     }
 };
 ```
+
+The FDN drives the available actions by sending `COMMAND_SET` at any point during the state's lifetime. The base class replaces the cycling list and re-renders automatically. The concrete state only handles semantic events (`GAME_EVENT`, etc.) — it is never involved in the selection UI.
 
 ---
 
@@ -232,35 +250,21 @@ This is planned as part of the upcoming communications architecture rewrite.
 
 These decisions are not yet made. Input from the team is needed.
 
-### 1. Button payload mechanism
+### 1. ~~Button payload mechanism~~ — Resolved
 
-The base class always fires button input commands. Concrete states customize the payload via virtual methods. Two options:
-
-**Virtual method (call-time):**
-```cpp
-virtual CommandPayload topButtonPayload();
-```
-Payload is computed at press time. Supports dynamic payloads (contextual game state embedded in payload). Requires subclassing.
-
-**Registration (construct-time):**
-```cpp
-setTopButtonPayload(CommandPayload{...});
-```
-Payload is fixed at construction. Simpler for states with static payloads. Cannot respond to game state changes without calling `set` again mid-lifecycle.
-
-Virtual method is preferred if payloads are expected to vary with game state. Which is the common case?
+The `COMMAND_SET` / `SELECTION_CONFIRMED` model supersedes this question. The base class fully owns both buttons. The PDN never sends raw button identifiers — it sends the ID of the command selected when the player confirmed. No virtual payload methods are needed.
 
 ### 2. FDN-driven display
 
-Under the FDN-authoritative model, the FDN can send display instructions as part of `GAME_EVENT` payloads. Two options:
+The `COMMAND_SET` pattern partially answers this — the command cycling UI is entirely FDN-driven (the FDN provides labels, the base class renders them). The remaining question is how `GAME_EVENT` payloads interact with the PDN display.
 
-**Option A — FDN sends render commands:**
-The `GAME_EVENT` payload includes display data. The base `ControllerState` handles a standard render command by directly updating the PDN display before dispatching to the registry. The PDN never makes display decisions.
+**Option A — `GAME_EVENT` includes display data:**
+The payload carries rendered display content (text, glyph IDs, layout hints). The base `ControllerState` handles a standard render pass before dispatching to the registry. The PDN makes no display decisions for `GAME_EVENT`.
 
-**Option B — PDN-side render hooks:**
-`GAME_EVENT` carries semantic game data. Concrete states interpret it and call their own render logic. The PDN drives its own display based on received game state.
+**Option B — `GAME_EVENT` carries semantic data:**
+The payload carries game-meaningful data (a score value, an outcome ID, a prompt string). Concrete states interpret it and call their own render logic. The PDN's concrete state drives its display based on received game state.
 
-Option A fully realizes the FDN-authoritative model. Option B is more conventional but keeps display logic on the PDN. This decision affects payload structure across all commands.
+Option A is the more fully FDN-authoritative model and keeps concrete states simpler. Option B is more conventional C++ and gives concrete states more flexibility. The key practical question: is the FDN better positioned to know how to render on a PDN, or should the PDN retain that knowledge about itself?
 
 ### 3. SymbolState / ControllerState boundary
 
@@ -285,9 +289,11 @@ When a HEAD device in a daisy chain connects to an FDN, the chain's downstream d
 | Controller pairing | Inside `Controller` state machine | Stays in `Quickdraw` (`SymbolState` / `SymbolMatchedState`) |
 | Controller entry | `Controller` state machine starts with `SymbolState` | `Controller` app starts with `ControllerRoutingState` |
 | Game routing | `kGameSelect` received by `SymbolMatchedState` | `ControllerRoutingState` handles `GAME_SELECT` and routes |
-| Button callbacks | Registered per-state manually | Always owned by `ControllerState` base class |
+| Button callbacks | Registered per-state manually | Always owned by `ControllerState` base class — not overridable |
+| Button behavior | Per-state custom logic | Top = cycle command set; bottom = confirm selection — universal |
 | Command dispatch | Per-state callback registration on wireless manager | Centralized command registry on `ControllerState` |
-| FDN→PDN packets | `kGameSelect` + `kGameResponse` (echo) | Unified `kFdnCommand` with `GAME_SELECT` and `GAME_EVENT` |
-| PDN→FDN packets | `kControllerCommand` | `kPdnInput` with `TOP_BUTTON_PRESS` / `BOTTOM_BUTTON_PRESS` |
+| FDN→PDN packets | `kGameSelect` + `kGameResponse` (echo) | Unified `kFdnCommand` with `GAME_SELECT`, `COMMAND_SET`, `GAME_EVENT` |
+| PDN→FDN packets | `kControllerCommand` (raw button IDs) | `kPdnInput` with `SELECTION_CONFIRMED(commandId)` — semantic, not physical |
+| Available actions | Hardcoded per-state | FDN-pushed `COMMAND_SET`, updateable live mid-state |
 | MAC routing | Single mutable `macPeer` | Per-port MAC map (with comms rewrite) |
 | Disconnect | Per-state flag + per-state `clearCallback()` | Handled by `ControllerState` base class transparently |
