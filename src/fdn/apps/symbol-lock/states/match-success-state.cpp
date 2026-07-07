@@ -77,6 +77,6 @@ void SymbolLockMatchSuccessState::renderSymbolScreen(FDN* fdn) {
     d->render();
 }
 
-bool SymbolLockMatchSuccessState::transitionToDemoModule() {
+bool SymbolLockMatchSuccessState::transitionToQuickdrawDemo() {
     return demoTransitionReady;
 }

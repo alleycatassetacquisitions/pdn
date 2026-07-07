@@ -86,7 +86,7 @@ public:
     void onStateLoop(FDN* fdn) override;
     void onStateDismounted(FDN* fdn) override;
 
-    bool transitionToDemoModule();
+    bool transitionToQuickdrawDemo();
 
 private:
     void renderSymbolScreen(FDN* fdn);
