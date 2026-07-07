@@ -31,7 +31,7 @@
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/symbol-lock/symbol-lock.hpp"
-#include "apps/demo-modules/demo-module.hpp"
+#include "apps/floaty-boat/floaty-boat.hpp"
 #include "apps/fdn-app-ids.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
@@ -86,7 +86,7 @@ ControllerWirelessManager* controllerWirelessManager = nullptr;
 // Hacking*     hackingApp      = nullptr;
 // SymbolMatch* symbolMatchApp  = nullptr;
 SymbolLock*  symbolLockApp = nullptr;
-DemoModule*  demoModule    = nullptr;
+FloatyBoat*  floatyBoat    = nullptr;
 
 static constexpr unsigned long PLAYER_BROADCAST_INTERVAL_MS = 12000;
 
@@ -218,7 +218,7 @@ void setup() {
     symbolLockApp = new SymbolLock(
         fdn, symbolWirelessManager, remotePlayerManager, kSymbolLockSingleSymbol);
 
-    demoModule = new DemoModule(DEMO_MODULE_APP_ID, fdn->getRemoteDeviceCoordinator(), controllerWirelessManager);
+    floatyBoat = new FloatyBoat(FLOATY_BOAT_APP_ID, fdn->getRemoteDeviceCoordinator(), controllerWirelessManager);
 
     // Splash screen
     fdn->getDisplay()
@@ -233,7 +233,7 @@ void setup() {
         // {StateId(HACKING_APP_ID),      hackingApp},
         // {StateId(IDLE_APP_ID),         idleApp},
         {StateId(SYMBOL_LOCK_APP_ID), symbolLockApp},
-        {StateId(DEMO_MODULE_APP_ID),  demoModule},
+        {StateId(FLOATY_BOAT_APP_ID),  floatyBoat},
     };
     fdn->loadAppConfig(apps, StateId(SYMBOL_LOCK_APP_ID));
 }
