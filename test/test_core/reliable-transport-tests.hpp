@@ -115,6 +115,64 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
     ASSERT_EQ(deliveredP.cmd, 99);
 }
 
+TEST(ReliableTransportTest, sendFailLeavesPendingForBackoffRetry) {
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    ReliableTransport transport(&wm);
+
+    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent,
+        [](uint8_t, const uint8_t*) {});
+
+    using ::testing::_;
+    using ::testing::Return;
+    EXPECT_CALL(mockComms, sendData(_, _, _, _))
+        .Times(::testing::AnyNumber())
+        .WillRepeatedly(Return(1));
+
+    uint8_t target[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    uint8_t seq = ch->sendReliable(target, p);
+    ASSERT_TRUE(ch->isPending(target));
+
+    // A SEND_FAIL must NOT clear the pending entry: loss is left to the backoff
+    // timer, so the entry stays armed for retransmit.
+    TransportTestPayload sentEcho{};
+    sentEcho.seqId = seq;
+    transport.onSendResult(PktType::kChainGameEvent, target,
+                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), false);
+    EXPECT_TRUE(ch->isPending(target));
+}
+
+TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    ReliableTransport transport(&wm);
+
+    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent,
+        [](uint8_t, const uint8_t*) {});
+
+    using ::testing::_;
+    using ::testing::Return;
+    EXPECT_CALL(mockComms, sendData(_, _, _, _))
+        .Times(::testing::AnyNumber())
+        .WillRepeatedly(Return(1));
+
+    uint8_t target[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    ch->sendReliable(target, p);  // stamps a nonzero seqId
+    ASSERT_TRUE(ch->isPending(target));
+
+    // A fire-and-forget send-result (seqId 0) has no sender-side pending entry
+    // to match, so it must not clear the live reliable pending entry.
+    TransportTestPayload fireAndForget{};
+    fireAndForget.seqId = 0;
+    transport.onSendResult(PktType::kChainGameEvent, target,
+                           reinterpret_cast<const uint8_t*>(&fireAndForget), sizeof(fireAndForget), true);
+    EXPECT_TRUE(ch->isPending(target));
+}
+
 TEST(ReliableTransportTest, abandonAfterMaxRetries) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);

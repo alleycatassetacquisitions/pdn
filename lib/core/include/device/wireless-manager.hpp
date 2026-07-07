@@ -214,6 +214,13 @@ public:
     }
 
     /**
+     * Clear the send-status handler for a specific packet type.
+     */
+    void clearEspNowSendStatusHandler(PktType packetType) {
+        peerComms->clearSendStatusHandler(packetType);
+    }
+
+    /**
      * Register a MAC as an ESP-NOW peer, making it eligible for unicast sends.
      */
     int addEspNowPeer(const uint8_t* mac) {

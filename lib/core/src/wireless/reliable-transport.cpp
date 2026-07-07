@@ -24,7 +24,15 @@ ReliableTransport::~ReliableTransport() {
         entry.second = nullptr;
     }
     registry.clear();
+    // Unregister the driver callbacks before freeing their ctx cells: each
+    // ReceiveBinding is the void* ctx held by the driver's per-type receive and
+    // send-status handlers, so a packet arriving after this dtor would otherwise
+    // dispatch into freed memory.
     for (ReceiveBinding*& binding : receiveBindings) {
+        if (wirelessManager != nullptr) {
+            wirelessManager->clearEspNowPacketHandler(binding->type);
+            wirelessManager->clearEspNowSendStatusHandler(binding->type);
+        }
         delete binding;
         binding = nullptr;
     }
