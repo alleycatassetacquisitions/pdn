@@ -142,8 +142,8 @@ void SymbolLock::populateStateMap() {
         matchSuccess));
 
     matchSuccess->addAppTransition(
-        std::bind(&SymbolLockMatchSuccessState::transitionToDemoModule, matchSuccess),
-        StateId(DEMO_MODULE_APP_ID));
+        std::bind(&SymbolLockMatchSuccessState::transitionToCryptCreeper, matchSuccess),
+        StateId(CRYPT_CREEPER_APP_ID));
 
     stateMap.push_back(selection);    // 0
     stateMap.push_back(symbolIdle);   // 1
