@@ -65,8 +65,13 @@ public:
         return raw;
     }
 
-    /// Routes the inbound AckPayload to the owning channel, if any.
-    void onAckPacket(const uint8_t* from, const uint8_t* data, size_t len);
+    /// Routes a radio send-result (SEND_SUCCESS/FAIL for one outbound packet)
+    /// to the channel claiming its PktType. On success the channel reads the
+    /// stamped seqId back out of `data` and clears its pending entry; this is
+    /// what replaces the old ack round-trip. Public so unit tests can drive it
+    /// directly without a radio.
+    void onSendResult(PktType type, const uint8_t* toMac,
+                      const uint8_t* data, size_t len, bool success);
 
     /// Dispatches an inbound data packet to the channel claiming its PktType.
     /// Returns false if no channel is registered.

@@ -94,8 +94,12 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
     ASSERT_NE(seq, 0);
     ASSERT_TRUE(ch->isPending(target));
 
-    AckPayload ack{static_cast<uint8_t>(PktType::kChainGameEvent), seq};
-    transport.onAckPacket(target, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    // Radio SEND_SUCCESS for the packet we sent clears the pending entry. The
+    // channel reads the stamped seqId back out of the echoed payload bytes.
+    TransportTestPayload sentEcho{};
+    sentEcho.seqId = seq;
+    transport.onSendResult(PktType::kChainGameEvent, target,
+                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
     ASSERT_FALSE(ch->isPending(target));
     ASSERT_FALSE(abandoned);
 
@@ -231,8 +235,10 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     ASSERT_TRUE(chA->isPending(target));
     ASSERT_TRUE(chB->isPending(target));
 
-    AckPayload ack{static_cast<uint8_t>(PktType::kShootoutCommand), seqA};
-    transport.onAckPacket(target, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    TransportTestPayload sentEcho{};
+    sentEcho.seqId = seqA;
+    transport.onSendResult(PktType::kShootoutCommand, target,
+                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
 
     ASSERT_FALSE(chA->isPending(target));
     ASSERT_TRUE(chB->isPending(target));
@@ -273,8 +279,10 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
 
     // Peer acks the two later slots; s1 stays pending.
     for (uint8_t seq : {s2, s3}) {
-        AckPayload ack{static_cast<uint8_t>(PktType::kShootoutCommand), seq};
-        transport.onAckPacket(target, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+        TransportTestPayload sentEcho{};
+        sentEcho.seqId = seq;
+        transport.onSendResult(PktType::kShootoutCommand, target,
+                               reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
     }
     ASSERT_TRUE(ch->isPending(target));  // s1 survived the later sends
 

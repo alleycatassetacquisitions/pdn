@@ -196,6 +196,15 @@ public:
     void setEspNowPacketHandler(PktType packetType, PeerCommsInterface::PacketCallback callback, void* ctx) {
         peerComms->setPacketHandler(packetType, callback, ctx);
     }
+
+    /**
+     * Set the radio send-result handler for a packet type. Fires per outbound
+     * packet with the MAC-layer SEND_SUCCESS/FAIL verdict; drives the reliable
+     * transport's ack in place of a round-trip ack packet.
+     */
+    void setEspNowSendStatusHandler(PktType packetType, PeerCommsInterface::SendStatusCallback callback, void* ctx) {
+        peerComms->setSendStatusHandler(packetType, callback, ctx);
+    }
     
     /**
      * Clear packet handler for a specific packet type.

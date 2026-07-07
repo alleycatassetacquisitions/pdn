@@ -19,14 +19,8 @@ enum class PktType : uint8_t {
     kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
-    ACK = 15,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
-
-struct AckPayload {
-    uint8_t originalType;
-    uint8_t seqId;
-} __attribute__((packed));
 
 struct DataPktHdr
 {

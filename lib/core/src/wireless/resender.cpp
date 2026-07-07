@@ -7,17 +7,6 @@ namespace {
 constexpr const char* RSND_TAG = "RSND";
 }
 
-void Resender::sendAck(WirelessManager* wm, const uint8_t* toMac,
-                       PktType originalType, uint8_t seqId) {
-    if (wm == nullptr || toMac == nullptr) return;
-    // seqId=0 is the fire-and-forget sentinel; no sender-side pending entry
-    // exists for the ack to match, so emitting one wastes airtime.
-    if (seqId == 0) return;
-    AckPayload payload{static_cast<uint8_t>(originalType), seqId};
-    wm->sendEspNowData(toMac, PktType::ACK,
-                       reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
-}
-
 void Resender::send(const uint8_t* target, PktType type, uint8_t seqId,
                     const uint8_t* payload, size_t len, SendMode mode) {
     if (target == nullptr) return;

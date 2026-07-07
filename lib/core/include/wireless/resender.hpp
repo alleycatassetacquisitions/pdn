@@ -54,10 +54,6 @@ public:
     /// Pending entries own their payload copies; nothing external to release.
     ~Resender() = default;
 
-    /// Send the shared ack wire format for a reliably-received packet.
-    static void sendAck(WirelessManager* wm, const uint8_t* toMac,
-                        PktType originalType, uint8_t seqId);
-
     /// Registers the once-per-abandoned-entry callback (see AbandonCallback).
     void setAbandonCallback(AbandonCallback cb) {
         abandonCallback = std::move(cb);
@@ -72,6 +68,12 @@ public:
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
 
     /// Clears the matching pending entry. Returns true when one matched.
+    /// Driven by the radio SEND_SUCCESS callback (the peer's MAC ack), which
+    /// replaces the old application-level ACK round-trip. A SEND_FAIL is
+    /// deliberately ignored: the existing backoff timer retransmits on timeout,
+    /// which avoids burning the whole retry budget on a briefly-absent peer.
+    /// (SEND_FAIL as a fast-retry accelerant is left as a follow-up; its
+    /// interaction with backoff is unsettled.)
     bool onAck(PktType type, uint8_t seqId, const uint8_t* fromMac);
 
     /// Silent drop; use when the target is known unreachable. No abandon callback.
