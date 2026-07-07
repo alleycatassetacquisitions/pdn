@@ -3,6 +3,7 @@
 #include "utils/simple-timer.hpp"
 #include "wireless/crc16.hpp"
 
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -26,6 +27,11 @@ std::vector<uint8_t> encodeFramed(uint8_t opcode, const std::vector<uint8_t>& pa
     frame.push_back(static_cast<uint8_t>(crc >> 8));
     frame.push_back(static_cast<uint8_t>(crc & 0xFF));
     return frame;
+}
+
+std::vector<uint8_t> encodeFramed(const HelloPayload& hello) {
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&hello);
+    return encodeFramed(OP_HELLO, std::vector<uint8_t>(bytes, bytes + sizeof(hello)));
 }
 
 unsigned long SerialFrameParser::nowMs() {
@@ -129,11 +135,13 @@ void SerialFrameParser::feed(const uint8_t* data, size_t len) {
                     uint16_t expected = crc16(&parser.opcode, 1);
                     expected = crc16Update(expected, parser.payloadBuf.data(),
                                            parser.payloadBuf.size());
-                    if (got == expected && binaryFrameHandler) {
-                        // Move, don't copy: resetParser()'s clear() is valid on
-                        // the moved-from buffer.
-                        Frame f{parser.opcode, std::move(parser.payloadBuf)};
-                        binaryFrameHandler(f);
+                    if (got == expected && helloFrameHandler &&
+                        parser.payloadBuf.size() == sizeof(HelloPayload)) {
+                        // The packed struct mirrors the wire byte-for-byte, so
+                        // the validated payload copies straight in.
+                        HelloPayload hello;
+                        std::memcpy(&hello, parser.payloadBuf.data(), sizeof(hello));
+                        helloFrameHandler(hello);
                     }
                     resetParser();
                 }
