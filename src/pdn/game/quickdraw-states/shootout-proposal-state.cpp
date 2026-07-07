@@ -1,8 +1,10 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 
-ShootoutProposal::ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : TypedState<PDN>(SHOOTOUT_PROPOSAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+ShootoutProposal::ShootoutProposal(const GameContext& ctx)
+    : TypedState<PDN>(SHOOTOUT_PROPOSAL)
+    , shootout_(ctx.shootoutManager)
+    , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutProposal::onStateMounted(PDN* pdn) {
     shootout_->startProposal();

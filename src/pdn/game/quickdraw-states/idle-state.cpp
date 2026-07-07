@@ -16,10 +16,11 @@
 #include "state/connect-state.hpp"
 #include <cstring>
 
-Idle::Idle(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager) : ConnectState<PDN>(remoteDeviceCoordinator, IDLE) {
-    this->matchManager = matchManager;
-    this->player = player;
-    this->chainDuelManager = chainDuelManager;
+Idle::Idle(const GameContext& ctx)
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, IDLE) {
+    this->matchManager = ctx.matchManager;
+    this->player = ctx.player;
+    this->chainDuelManager = ctx.chainDuelManager;
 }
 
 Idle::~Idle() {

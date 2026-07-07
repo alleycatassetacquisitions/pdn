@@ -3,8 +3,10 @@
 #include <cstdio>
 #include <cstring>
 
-ShootoutFinalStandings::ShootoutFinalStandings(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : TypedState<PDN>(SHOOTOUT_FINAL_STANDINGS), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+ShootoutFinalStandings::ShootoutFinalStandings(const GameContext& ctx)
+    : TypedState<PDN>(SHOOTOUT_FINAL_STANDINGS)
+    , shootout_(ctx.shootoutManager)
+    , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
     pdn->getLightManager()->stopAnimation();

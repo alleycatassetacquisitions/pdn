@@ -7,10 +7,11 @@
 
 static const char* TAG = "UploadMatchesState";
 
-UploadMatchesState::UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager) : TypedState<PDN>(UPLOAD_MATCHES) {
-    this->player = player;
-    this->wirelessManager = wirelessManager;
-    this->matchManager = matchManager;
+UploadMatchesState::UploadMatchesState(const GameContext& ctx)
+    : TypedState<PDN>(UPLOAD_MATCHES) {
+    this->player = ctx.player;
+    this->wirelessManager = ctx.wirelessManager;
+    this->matchManager = ctx.matchManager;
     LOG_I(TAG, "UploadMatchesState initialized");
 }
 

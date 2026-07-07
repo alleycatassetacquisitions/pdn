@@ -6,10 +6,11 @@
 #include "device/device.hpp"
 #include <cstdio>
 
-Lose::Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : TypedState<PDN>(LOSE) {
-    this->player = player;
-    this->chainDuelManager = chainDuelManager;
-    this->matchManager = matchManager;
+Lose::Lose(const GameContext& ctx)
+    : TypedState<PDN>(LOSE) {
+    this->player = ctx.player;
+    this->chainDuelManager = ctx.chainDuelManager;
+    this->matchManager = ctx.matchManager;
 }
 
 Lose::~Lose() {

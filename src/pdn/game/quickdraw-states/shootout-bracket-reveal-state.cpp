@@ -1,8 +1,10 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
 
-ShootoutBracketReveal::ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager)
-    : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL), shootout_(shootout), chainDuelManager_(chainDuelManager) {}
+ShootoutBracketReveal::ShootoutBracketReveal(const GameContext& ctx)
+    : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL)
+    , shootout_(ctx.shootoutManager)
+    , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
     // Clear stale button callbacks left by ShootoutProposal.

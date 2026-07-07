@@ -290,37 +290,46 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
+    GameContext ctx;
+    ctx.player = player;
+    ctx.matchManager = matchManager;
+    ctx.remoteDeviceCoordinator = remoteDeviceCoordinator;
+    ctx.chainDuelManager = chainDuelManager;
+    ctx.shootoutManager = shootoutManager_;
+    ctx.quickdrawWirelessManager = quickdrawWirelessManager;
+    ctx.symbolWirelessManager = symbolWirelessManager;
+    ctx.wirelessManager = wirelessManager;
+
     // Sub-state machines for player registration and handshake
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
     // Quickdraw gameplay states
-    AwakenSequence* awakenSequence = new AwakenSequence(player);
-    Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
+    AwakenSequence* awakenSequence = new AwakenSequence(ctx);
+    Idle* idle = new Idle(ctx);
 
-    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
-    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager, shootoutManager_);
-    DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator);
-    DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager, shootoutManager_);
-    SupporterReady* supporterReady = new SupporterReady(player, remoteDeviceCoordinator, chainDuelManager);
+    DuelCountdown* duelCountdown = new DuelCountdown(ctx);
+    Duel* duel = new Duel(ctx);
+    DuelPushed* duelPushed = new DuelPushed(ctx);
+    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(ctx);
+    DuelResult* duelResult = new DuelResult(ctx);
+    SupporterReady* supporterReady = new SupporterReady(ctx);
     this->supporterReadyState = supporterReady;
 
-    Win* win = new Win(player, chainDuelManager, matchManager);
-    Lose* lose = new Lose(player, chainDuelManager, matchManager);
+    Win* win = new Win(ctx);
+    Lose* lose = new Lose(ctx);
 
-    Sleep* sleep = new Sleep(player);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+    Sleep* sleep = new Sleep(ctx);
+    UploadMatchesState* uploadMatches = new UploadMatchesState(ctx);
 
     // Shootout tournament states (auto-triggered by loop closure from Idle).
-    ShootoutManager* sht = shootoutManager_;
-    auto* shProposal = new ShootoutProposal(sht, chainDuelManager);
-    auto* shBracketReveal = new ShootoutBracketReveal(sht, chainDuelManager);
-    auto* shSpectator = new ShootoutSpectator(sht);
-    auto* shEliminated = new ShootoutEliminated(sht);
-    auto* shFinalStandings = new ShootoutFinalStandings(sht, chainDuelManager);
-    auto* shAborted = new ShootoutAborted(sht);
+    auto* shProposal = new ShootoutProposal(ctx);
+    auto* shBracketReveal = new ShootoutBracketReveal(ctx);
+    auto* shSpectator = new ShootoutSpectator(ctx);
+    auto* shEliminated = new ShootoutEliminated(ctx);
+    auto* shFinalStandings = new ShootoutFinalStandings(ctx);
+    auto* shAborted = new ShootoutAborted(ctx);
 
-    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
-    SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolState* symbol = new SymbolState(ctx);
+    SymbolMatched* symbolMatched = new SymbolMatched(ctx);
 
     // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(

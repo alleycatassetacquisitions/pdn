@@ -7,10 +7,11 @@
 #include "device/device.hpp"
 #include <cstdio>
 
-Win::Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager) : TypedState<PDN>(WIN) {
-    this->player = player;
-    this->chainDuelManager = chainDuelManager;
-    this->matchManager = matchManager;
+Win::Win(const GameContext& ctx)
+    : TypedState<PDN>(WIN) {
+    this->player = ctx.player;
+    this->chainDuelManager = ctx.chainDuelManager;
+    this->matchManager = ctx.matchManager;
 }
 
 Win::~Win() {

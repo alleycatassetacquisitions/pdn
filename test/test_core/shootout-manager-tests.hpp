@@ -799,7 +799,10 @@ inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* su
     suite->shootout->startProposal();
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 
-    ShootoutProposal state(suite->shootout, &fakeCdm);
+    GameContext ctx;
+    ctx.shootoutManager = suite->shootout;
+    ctx.chainDuelManager = &fakeCdm;
+    ShootoutProposal state(ctx);
 
     // Single-tick blip: phase must remain PROPOSAL.
     fakeCdm.setIsLoop(false);
@@ -842,7 +845,10 @@ inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTest
     for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
 
-    ShootoutBracketReveal state(suite->shootout, &fakeCdm);
+    GameContext ctx;
+    ctx.shootoutManager = suite->shootout;
+    ctx.chainDuelManager = &fakeCdm;
+    ShootoutBracketReveal state(ctx);
 
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);

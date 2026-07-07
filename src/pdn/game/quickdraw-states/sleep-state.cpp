@@ -11,8 +11,9 @@
 
 using namespace std;
 
-Sleep::Sleep(Player* player) : TypedState<PDN>(SLEEP) {
-    this->player = player;
+Sleep::Sleep(const GameContext& ctx)
+    : TypedState<PDN>(SLEEP) {
+    this->player = ctx.player;
 }
 
 Sleep::~Sleep() {

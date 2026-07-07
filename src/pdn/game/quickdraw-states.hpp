@@ -22,6 +22,21 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 
+/// Bundle of the shared game-wide managers a state may need. Built once by
+/// Quickdraw::populateStateMap and handed to every state so a new manager is a
+/// one-line addition here rather than a constructor change across every state.
+/// All pointers are non-owning; states read only the fields they use.
+struct GameContext {
+    Player* player = nullptr;
+    MatchManager* matchManager = nullptr;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
+    ChainDuelManager* chainDuelManager = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
+    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
+    SymbolWirelessManager* symbolWirelessManager = nullptr;
+    WirelessManager* wirelessManager = nullptr;
+};
+
 enum QuickdrawStateId {
     SLEEP = 6,
     AWAKEN_SEQUENCE = 7,
@@ -50,7 +65,7 @@ enum QuickdrawStateId {
 
 class Sleep : public TypedState<PDN> {
 public:
-    explicit Sleep(Player* player);
+    explicit Sleep(const GameContext& ctx);
     ~Sleep();
 
     void onStateMounted(PDN* pdn) override;
@@ -71,7 +86,7 @@ private:
 
 class AwakenSequence : public TypedState<PDN> {
 public:
-    explicit AwakenSequence(Player* player);
+    explicit AwakenSequence(const GameContext& ctx);
     ~AwakenSequence();
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -89,7 +104,7 @@ private:
 
 class Idle : public ConnectState<PDN> {
 public:
-    Idle(Player *player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    explicit Idle(const GameContext& ctx);
     ~Idle();
 
     void onStateMounted(PDN* pdn) override;
@@ -123,7 +138,7 @@ private:
 
 class SupporterReady : public ConnectState<PDN> {
 public:
-    SupporterReady(Player *player, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    explicit SupporterReady(const GameContext& ctx);
     ~SupporterReady();
 
     void onStateMounted(PDN* pdn) override;
@@ -166,7 +181,7 @@ private:
 
 class DuelCountdown : public ConnectState<PDN> {
 public:
-    DuelCountdown(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager);
+    explicit DuelCountdown(const GameContext& ctx);
     ~DuelCountdown();
 
     void onStateMounted(PDN* pdn) override;
@@ -231,7 +246,7 @@ class ShootoutManager;
 
 class Duel : public ConnectState<PDN> {
 public:
-    Duel(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, ChainDuelManager* chainDuelManager, ShootoutManager* shootoutManager);
+    explicit Duel(const GameContext& ctx);
     ~Duel();
 
     void onStateMounted(PDN* pdn) override;
@@ -263,7 +278,7 @@ private:
 
 class DuelPushed : public ConnectState<PDN> {
 public:
-    DuelPushed(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    explicit DuelPushed(const GameContext& ctx);
     ~DuelPushed();
 
     void onStateMounted(PDN* pdn) override;
@@ -284,7 +299,7 @@ private:
 
 class DuelReceivedResult : public ConnectState<PDN> {
 public:
-    DuelReceivedResult(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    explicit DuelReceivedResult(const GameContext& ctx);
     ~DuelReceivedResult();
 
     void onStateMounted(PDN* pdn) override;
@@ -306,7 +321,7 @@ private:
 
 class DuelResult : public TypedState<PDN> {
 public:
-    DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager);
+    explicit DuelResult(const GameContext& ctx);
     ~DuelResult();
 
     void onStateMounted(PDN* pdn) override;
@@ -331,7 +346,7 @@ private:
 
 class Win : public TypedState<PDN> {
 public:
-    Win(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
+    explicit Win(const GameContext& ctx);
     ~Win();
 
     void onStateMounted(PDN* pdn) override;
@@ -350,7 +365,7 @@ private:
 
 class Lose : public TypedState<PDN> {
 public:
-    Lose(Player *player, ChainDuelManager* chainDuelManager, MatchManager* matchManager);
+    explicit Lose(const GameContext& ctx);
     ~Lose();
 
     void onStateMounted(PDN* pdn) override;
@@ -369,7 +384,7 @@ private:
 
 class UploadMatchesState : public TypedState<PDN> {
 public:
-    UploadMatchesState(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager);
+    explicit UploadMatchesState(const GameContext& ctx);
     ~UploadMatchesState();
 
     void onStateMounted(PDN* pdn) override;
@@ -395,7 +410,7 @@ static constexpr unsigned long kLoopBreakDebounceMs = 500;
 
 class ShootoutProposal : public TypedState<PDN> {
 public:
-    ShootoutProposal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -415,7 +430,7 @@ private:
 
 class ShootoutBracketReveal : public TypedState<PDN> {
 public:
-    ShootoutBracketReveal(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -437,7 +452,7 @@ private:
 
 class ShootoutSpectator : public TypedState<PDN> {
 public:
-    explicit ShootoutSpectator(ShootoutManager* shootout);
+    explicit ShootoutSpectator(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -457,7 +472,7 @@ private:
 
 class ShootoutEliminated : public TypedState<PDN> {
 public:
-    explicit ShootoutEliminated(ShootoutManager* shootout);
+    explicit ShootoutEliminated(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -473,7 +488,7 @@ private:
 
 class ShootoutFinalStandings : public TypedState<PDN> {
 public:
-    ShootoutFinalStandings(ShootoutManager* shootout, ChainDuelManager* chainDuelManager);
+    explicit ShootoutFinalStandings(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -489,7 +504,7 @@ private:
 
 class ShootoutAborted : public TypedState<PDN> {
 public:
-    explicit ShootoutAborted(ShootoutManager* shootout);
+    explicit ShootoutAborted(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
@@ -505,7 +520,7 @@ private:
 
 class SymbolState : public ConnectState<PDN> {
 public:
-    SymbolState(Player* player, MatchManager* matchManager, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    explicit SymbolState(const GameContext& ctx);
     ~SymbolState();
 
     void onStateMounted(PDN* pdn) override;
@@ -552,7 +567,7 @@ private:
 
 class SymbolMatched : public ConnectState<PDN> {
 public:
-    SymbolMatched(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager);
+    explicit SymbolMatched(const GameContext& ctx);
     ~SymbolMatched();
 
     void onStateMounted(PDN* pdn) override;

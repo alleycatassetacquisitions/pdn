@@ -6,11 +6,12 @@
 
 #define DUEL_RESULT_TAG "DUEL_RESULT"
 
-DuelResult::DuelResult(Player* player, MatchManager* matchManager, QuickdrawWirelessManager* quickdrawWirelessManager, ShootoutManager* shootoutManager) : TypedState<PDN>(QuickdrawStateId::DUEL_RESULT) {
-    this->player = player;
-    this->matchManager = matchManager;
-    this->quickdrawWirelessManager = quickdrawWirelessManager;
-    this->shootoutManager = shootoutManager;
+DuelResult::DuelResult(const GameContext& ctx)
+    : TypedState<PDN>(QuickdrawStateId::DUEL_RESULT) {
+    this->player = ctx.player;
+    this->matchManager = ctx.matchManager;
+    this->quickdrawWirelessManager = ctx.quickdrawWirelessManager;
+    this->shootoutManager = ctx.shootoutManager;
 }
 
 DuelResult::~DuelResult() {
