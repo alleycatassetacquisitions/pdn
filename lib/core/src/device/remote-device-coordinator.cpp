@@ -613,8 +613,15 @@ void RemoteDeviceCoordinator::emitHello() {
 }
 
 void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const HelloPayload& hello) {
+    // Reject an all-zero source (open jack) and our own echo before any liveness
+    // stamp: the output TX pin can loop back through the TRS contacts, and a
+    // self-HELLO must never keep a dead cable "alive" or fake a peer.
+    if (MacToUInt64(hello.source) == 0) return;
+    if (memcmp(hello.source, selfMac_.data(), 6) == 0) return;
+
     JackHelloLink& link = helloByPort_[portIndex(jack)];
     link.lastHelloMs = nowMs();
+    memcpy(link.peerMac.data(), hello.source, 6);
 
     // Idle jack + first HELLO from a source = a new link opening. CONNECTING/
     // CONNECTED just refresh liveness above.

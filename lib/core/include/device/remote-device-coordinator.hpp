@@ -300,6 +300,7 @@ private:
         HelloLinkState state = HelloLinkState::IDLE;
         unsigned long lastHelloMs = 0;
         unsigned long connectingSinceMs = 0;
+        std::array<uint8_t, 6> peerMac{};  // source MAC last heard on this jack
         SerialFrameParser parser;  // non-copyable; default-constructed in place
     };
     std::array<JackHelloLink, kNumPorts> helloByPort_;

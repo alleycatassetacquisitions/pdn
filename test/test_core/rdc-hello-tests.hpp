@@ -99,6 +99,29 @@ public:
     SerialIdentifier lastDisconnectJack = SerialIdentifier::OUTPUT_JACK;
 };
 
+// A looped-back own HELLO or an all-zero-source (open-jack) HELLO must not open a
+// link: on real hardware the output TX pin bleeds back through the TRS contacts,
+// and treating that as a peer would keep a dead cable "alive". A genuine distinct
+// peer must still connect, so the guard is not over-broad.
+inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
+    HelloPayload zero{};
+    zero.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+    suite->deliverHello(suite->outJack, encodeFramed(zero));
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    HelloPayload self{};
+    for (int i = 0; i < 6; ++i) self.source[i] = suite->localMac[i];
+    self.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+    suite->deliverHello(suite->outJack, encodeFramed(self));
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+}
+
 // (a) A HELLO from a new MAC drives that jack Idle -> Connecting.
 inline void rdcHelloNewMacDrivesConnecting(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),

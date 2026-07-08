@@ -1296,6 +1296,10 @@ TEST_F(RDCHelloTests, newMacDrivesConnecting) {
     rdcHelloNewMacDrivesConnecting(this);
 }
 
+TEST_F(RDCHelloTests, rejectsSelfAndZeroSource) {
+    rdcHelloRejectsSelfAndZeroSource(this);
+}
+
 TEST_F(RDCHelloTests, contextCompleteConnects) {
     rdcHelloContextCompleteConnects(this);
 }
