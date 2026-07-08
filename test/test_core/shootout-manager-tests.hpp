@@ -808,21 +808,23 @@ inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* su
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
     // Loop returns within debounce window — debounce cleared, phase intact.
     fakeCdm.setIsLoop(true);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
-    // Persistent loss past the debounce window — now reset to IDLE fires.
+    // Persistent loss past the debounce window — now the tournament aborts
+    // visibly (ABORT broadcast + Phase::ABORTED + aborted screen), not a silent
+    // drop to IDLE.
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);  // start debounce
     suite->fakeClock->advance(2000);  // well past any reasonable debounce window
     state.onStateLoop(nullptr);
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
-    EXPECT_TRUE(state.transitionToIdle());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+    EXPECT_TRUE(state.transitionToAborted());
 }
 
 // Same debounce contract on ShootoutBracketReveal (tournament state is more
@@ -853,17 +855,17 @@ inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTest
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
     fakeCdm.setIsLoop(true);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     suite->fakeClock->advance(2000);
     state.onStateLoop(nullptr);
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
-    EXPECT_TRUE(state.transitionToIdle());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+    EXPECT_TRUE(state.transitionToAborted());
 }

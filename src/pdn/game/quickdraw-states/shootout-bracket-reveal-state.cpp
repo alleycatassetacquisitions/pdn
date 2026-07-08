@@ -3,7 +3,7 @@
 
 ShootoutBracketReveal::ShootoutBracketReveal(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL)
-    , shootout_(ctx.shootoutManager)
+    , ShootoutAwareState(ctx.shootoutManager)
     , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
@@ -19,10 +19,10 @@ void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
-    shootout_->sync();
-    auto p = shootout_->getPhase();
+    shootoutManager->sync();
+    auto p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
-        if (shootout_->isLocalDuelist()) {
+        if (shootoutManager->isLocalDuelist()) {
             shouldGoToDuelCountdown_ = true;
         } else {
             shouldGoToSpectator_ = true;
@@ -30,10 +30,7 @@ void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
     }
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
     bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
-    if (loopBreakDebounce_.heldFor(loopBroken, kLoopBreakDebounceMs)) {
-        shootout_->resetToIdle();
-        shouldGoToIdle_ = true;
-    }
+    if (tickAbortGuard(loopBroken)) shouldGoToAborted_ = true;
 }
 
 void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
@@ -41,7 +38,7 @@ void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
     shouldGoToSpectator_ = false;
     shouldGoToAborted_ = false;
     shouldGoToIdle_ = false;
-    loopBreakDebounce_.reset();
+    resetAbortGuard();
 }
 
 bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }

@@ -3,11 +3,11 @@
 
 ShootoutProposal::ShootoutProposal(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_PROPOSAL)
-    , shootout_(ctx.shootoutManager)
+    , ShootoutAwareState(ctx.shootoutManager)
     , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutProposal::onStateMounted(PDN* pdn) {
-    shootout_->startProposal();
+    shootoutManager->startProposal();
     auto* d = pdn->getDisplay();
     d->invalidateScreen()->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
     d->drawCenteredText("SHOOTOUT", 15);
@@ -16,24 +16,21 @@ void ShootoutProposal::onStateMounted(PDN* pdn) {
     d->drawCenteredText("confirm", 55);
     d->render();
 
-    parameterizedCallbackFunction confirmCb = [](void *ctx) {
-        static_cast<ShootoutProposal*>(ctx)->shootout_->confirmLocal();
+    parameterizedCallbackFunction confirmCb = [](void* ctx) {
+        static_cast<ShootoutProposal*>(ctx)->shootoutManager->confirmLocal();
     };
     pdn->getPrimaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(confirmCb, this, ButtonInteraction::CLICK);
 }
 
 void ShootoutProposal::onStateLoop(PDN* pdn) {
-    shootout_->sync();
-    auto p = shootout_->getPhase();
+    shootoutManager->sync();
+    auto p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
     if (p == ShootoutManager::Phase::IDLE) shouldGoToIdle_ = true;
     bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
-    if (loopBreakDebounce_.heldFor(loopBroken, kLoopBreakDebounceMs)) {
-        shootout_->resetToIdle();
-        shouldGoToIdle_ = true;
-    }
+    if (tickAbortGuard(loopBroken)) shouldGoToAborted_ = true;
 }
 
 void ShootoutProposal::onStateDismounted(PDN* pdn) {
@@ -42,7 +39,7 @@ void ShootoutProposal::onStateDismounted(PDN* pdn) {
     shouldGoToReveal_ = false;
     shouldGoToIdle_ = false;
     shouldGoToAborted_ = false;
-    loopBreakDebounce_.reset();
+    resetAbortGuard();
 }
 
 bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }

@@ -394,16 +394,13 @@ void Quickdraw::populateStateMap() {
             std::bind(&DuelCountdown::shallWeBattle, duelCountdown),
             duel));
 
-    {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelCountdown->addTransition(
-            new StateTransition(
-                [duelCountdown, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelCountdown->disconnectedBackToIdle();
-                },
-                idle));
-    }
+    duelCountdown->addTransition(
+        new StateTransition(
+            [duelCountdown]() {
+                return duelCountdown->disconnectedBackToIdle(
+                    [duelCountdown] { return duelCountdown->isPersistentlyDisconnected(); });
+            },
+            idle));
 
     duel->addTransition(
         new StateTransition(
@@ -430,32 +427,26 @@ void Quickdraw::populateStateMap() {
             std::bind(&Duel::transitionToDuelPushed, duel),
             duelPushed));
 
-    {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelPushed->addTransition(
-            new StateTransition(
-                [duelPushed, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelPushed->disconnectedBackToIdle();
-                },
-                idle));
-    }
+    duelPushed->addTransition(
+        new StateTransition(
+            [duelPushed]() {
+                return duelPushed->disconnectedBackToIdle(
+                    [duelPushed] { return duelPushed->isPersistentlyDisconnected(); });
+            },
+            idle));
 
     duelPushed->addTransition(
         new StateTransition(
             std::bind(&DuelPushed::transitionToDuelResult, duelPushed),
             duelResult));
 
-    {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelReceivedResult->addTransition(
-            new StateTransition(
-                [duelReceivedResult, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelReceivedResult->disconnectedBackToIdle();
-                },
-                idle));
-    }
+    duelReceivedResult->addTransition(
+        new StateTransition(
+            [duelReceivedResult]() {
+                return duelReceivedResult->disconnectedBackToIdle(
+                    [duelReceivedResult] { return duelReceivedResult->isPersistentlyDisconnected(); });
+            },
+            idle));
 
     duelReceivedResult->addTransition(
         new StateTransition(

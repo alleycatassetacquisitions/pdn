@@ -7,7 +7,8 @@
 #define DUEL_RESULT_RECEIVED_TAG "DUEL_RESULT_RECEIVED"
 
 DuelReceivedResult::DuelReceivedResult(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_RECEIVED_RESULT) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_RECEIVED_RESULT)
+    , ShootoutAwareState(ctx.shootoutManager) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
 }
@@ -60,10 +61,6 @@ void DuelReceivedResult::onStateDismounted(PDN* pdn) {
 
 bool DuelReceivedResult::transitionToDuelResult() {
     return matchManager->matchResultsAreIn() || transitionToDuelResultState;
-}
-
-bool DuelReceivedResult::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
 }
 
 bool DuelReceivedResult::isPrimaryRequired() {
