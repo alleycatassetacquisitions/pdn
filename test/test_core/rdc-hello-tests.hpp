@@ -306,6 +306,33 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     EXPECT_EQ(suite->lastConnectJack, SerialIdentifier::OUTPUT_JACK);
 }
 
+// (f) Output initiates, input replies: a context arriving on an INPUT jack
+// completes that jack AND sends our context back, so the initiator's out-jack
+// can also complete. Without the reply the initiator loops CONNECTING->IDLE.
+inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
+        .WillByDefault(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .Times(testing::AnyNumber());
+
+    // Peer arrives on the INPUT jack; an in-jack HELLO must NOT initiate a send.
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
+
+    // Receiving the peer's context completes the input jack AND replies.
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->rdc.getReliableTransport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_TRUE(suite->rdc.isContextSendPending(peer));  // reply was sent
+}
+
 // (d) A headMac change mid-exchange cancels the in-flight send and re-initiates.
 inline void rdcContextHeadChangeReinitiates(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};

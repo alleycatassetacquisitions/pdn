@@ -742,7 +742,15 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
     // Recorded for the device chain SM (#156); not acted on here.
     helloByPort_[portIndex(jack)].peerChainRole = chainRole;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
+    // Output initiates, input replies: a peer that arrived on an input jack sent
+    // its context first, so send ours back so its out-jack completes too.
+    // Complete our side BEFORE replying so a same-tick SEND_SUCCESS can't race.
+    // The initiator (this peer on our OUTPUT jack) already sent its context and
+    // must not reply, or the two would ping-pong forever.
     onContextExchangeComplete(jack);
+    if (jack != SerialIdentifier::OUTPUT_JACK) {
+        sendSelfContext(fromMac);
+    }
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
