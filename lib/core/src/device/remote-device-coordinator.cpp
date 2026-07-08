@@ -67,6 +67,8 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     delete inputPortHandshake;
     delete outputPortHandshake;
     delete secondaryInputPortHandshake;
+    // Owns the channels; deletes them and their driver rx bindings.
+    delete transport;
 }
 
 
@@ -128,6 +130,33 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         },
         this
     );
+
+    // Reliable context exchange (#157): one device-level channel per device-type
+    // PktType. Claiming a channel makes its receive path live (the transport
+    // installs the driver rx handler). The abandon callback is a no-op: an
+    // unreachable peer's jack link self-heals to IDLE via the context-exchange
+    // timeout in serviceConnectivity().
+    transport = new ReliableTransport(wirelessManager);
+    pdnContextChannel = transport->channel<PdnConnectionContext>(
+        PktType::kPdnConnectionContext, [](uint8_t, const uint8_t*) {});
+    if (pdnContextChannel != nullptr) {
+        pdnContextChannel->onReceive(
+            [this](const uint8_t* fromMac, const PdnConnectionContext& ctx) {
+                onContextReceived(fromMac, DeviceType::PDN, ctx.chainRole,
+                                  reinterpret_cast<const uint8_t*>(&ctx.player),
+                                  sizeof(ctx.player));
+            });
+    }
+    fdnContextChannel = transport->channel<FdnConnectionContext>(
+        PktType::kFdnConnectionContext, [](uint8_t, const uint8_t*) {});
+    if (fdnContextChannel != nullptr) {
+        fdnContextChannel->onReceive(
+            [this](const uint8_t* fromMac, const FdnConnectionContext& ctx) {
+                onContextReceived(fromMac, DeviceType::FDN, ctx.chainRole,
+                                  reinterpret_cast<const uint8_t*>(&ctx.fdn),
+                                  sizeof(ctx.fdn));
+            });
+    }
 }
 
 std::vector<SerialIdentifier> RemoteDeviceCoordinator::activePorts() const {
@@ -203,6 +232,10 @@ void RemoteDeviceCoordinator::processChainAnnouncementPacket(const uint8_t* from
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
+    // Platform-loop-owns-the-pump: drive reliable-transport retransmits/abandon
+    // here every tick. Game managers must not pump it.
+    if (transport != nullptr) transport->sync();
+
     if (helloConnectivityEnabled) {
         // The handshake is quiesced on HELLO jacks: skipping its onStateLoop is
         // what keeps it off the UART (it neither consumes RX nor writes TX). The
@@ -594,7 +627,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.jack = port;
         context.nowMs = [] { return RemoteDeviceCoordinator::nowMs(); };
         context.onContextRequest = [this](SerialIdentifier j) {
-            if (contextRequestCallback) contextRequestCallback(j);
+            initiateContextExchange(j);
         };
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
             if (jackChangeCallback) jackChangeCallback(j, connected);
@@ -643,8 +676,73 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     if (MacToUInt64(hello.source) == 0) return;
     if (memcmp(hello.source, selfMac_.data(), 6) == 0) return;
 
+    // The machine records the peer MAC and, for a first HELLO on an Idle OUT jack,
+    // fires onContextRequest -> initiateContextExchange as it enters Connecting.
     HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
     if (machine) machine->onHelloReceived(hello);
+}
+
+ReliableChannelBase* RemoteDeviceCoordinator::selfContextChannel() const {
+    return selfDeviceType == DeviceType::FDN
+               ? static_cast<ReliableChannelBase*>(fdnContextChannel)
+               : static_cast<ReliableChannelBase*>(pdnContextChannel);
+}
+
+void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
+    HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
+    if (machine == nullptr) return;
+    const uint8_t* mac = machine->peer().data();
+    registerPeer(mac);
+    ReliableChannelBase* channel = selfContextChannel();
+    if (channel != nullptr) channel->cancel(mac);
+    sendSelfContext(mac);
+}
+
+void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
+    // chainRole 0 = unresolved: the device chain SM (#156) fills it once it
+    // learns this device's position; out of scope here.
+    if (selfDeviceType == DeviceType::FDN) {
+        if (fdnContextChannel == nullptr) return;
+        FdnConnectionContext ctx{};
+        ctx.chainRole = 0;
+        fdnContextChannel->sendReliable(mac, ctx);
+        return;
+    }
+    if (pdnContextChannel == nullptr) return;
+    PdnConnectionContext ctx{};
+    ctx.chainRole = 0;
+    ctx.player = selfPlayerProfile;
+    pdnContextChannel->sendReliable(mac, ctx);
+}
+
+bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {
+    if (pdnContextChannel != nullptr && pdnContextChannel->isPending(mac)) return true;
+    if (fdnContextChannel != nullptr && fdnContextChannel->isPending(mac)) return true;
+    return false;
+}
+
+bool RemoteDeviceCoordinator::findJackForMac(const uint8_t* mac, SerialIdentifier& jack) const {
+    for (SerialIdentifier port : HELLO_JACKS) {
+        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
+        if (memcmp(machine->peer().data(), mac, 6) == 0) {
+            jack = port;
+            return true;
+        }
+    }
+    return false;
+}
+
+void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
+                                                uint8_t chainRole, const uint8_t* profile,
+                                                size_t len) {
+    registerPeer(fromMac);
+    SerialIdentifier jack;
+    if (!findJackForMac(fromMac, jack)) return;
+    // Recorded for the device chain SM (#156); not acted on here.
+    helloByPort_[portIndex(jack)].peerChainRole = chainRole;
+    if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
+    onContextExchangeComplete(jack);
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {

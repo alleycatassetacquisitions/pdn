@@ -206,25 +206,134 @@ inline void rdcHelloEmitProducesFramesOnBothJacks(RDCHelloTests* suite) {
     }
 }
 
-// (e) A new HELLO MAC on the OUT jack invokes the context-request placeholder;
-// the IN jack does not.
+// (e) A new HELLO MAC on the OUT jack sends this device's context (pending
+// entry created); the IN jack does not initiate one.
 inline void rdcHelloOutputJackInitiatesContext(RDCHelloTests* suite) {
-    int outRequests = 0;
-    int inRequests = 0;
-    suite->rdc.setOnContextRequest([&](SerialIdentifier jack) {
-        if (jack == SerialIdentifier::OUTPUT_JACK)
-            outRequests++;
-        else
-            inRequests++;
-    });
+    const uint8_t outPeer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t inPeer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
     suite->rdc.sync(&suite->device);
 
-    EXPECT_EQ(outRequests, 1);
-    EXPECT_EQ(inRequests, 0);
+    EXPECT_TRUE(suite->rdc.isContextSendPending(outPeer));
+    EXPECT_FALSE(suite->rdc.isContextSendPending(inPeer));
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+}
+
+// A PdnConnectionContext carrying the given chainRole + userId, serialized to
+// its wire bytes for deliverIncoming.
+inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, uint8_t seqId) {
+    PdnConnectionContext ctx{};
+    ctx.seqId = seqId;
+    ctx.chainRole = chainRole;
+    ctx.player.userId = userId;
+    std::vector<uint8_t> bytes(sizeof(ctx));
+    memcpy(bytes.data(), &ctx, sizeof(ctx));
+    return bytes;
+}
+
+// (a)+(b) A new OUT-jack HELLO MAC sends context (pending), and the #152
+// SEND_SUCCESS onSendResult clears that pending entry.
+inline void rdcContextSendClearedBySendSuccess(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    // Capture the exact bytes handed to the radio so the echoed seqId can be
+    // fed back through onSendResult, exactly as the driver's send callback does.
+    std::vector<uint8_t> sentPayload;
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::Invoke([&sentPayload](const uint8_t*, PktType, const uint8_t* data,
+                                           size_t len) {
+                sentPayload.assign(data, data + len);
+            }),
+            Return(1)));
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
+    ASSERT_EQ(sentPayload.size(), sizeof(PdnConnectionContext));
+
+    suite->rdc.getReliableTransport()->onSendResult(
+        PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
+
+    EXPECT_FALSE(suite->rdc.isContextSendPending(peer));
+}
+
+// (c) Receiving a peer's context registers it, records chainRole, fires the
+// opaque profile callback with the matched jack, and drives that jack
+// CONNECTING -> CONNECTED.
+inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    SerialIdentifier cbJack = SerialIdentifier::INPUT_JACK;
+    DeviceType cbType = DeviceType::UNKNOWN;
+    uint16_t cbUserId = 0;
+    int cbCount = 0;
+    suite->rdc.setOnContextReceived(
+        [&](SerialIdentifier jack, DeviceType type, const uint8_t* profile, size_t len) {
+            cbCount++;
+            cbJack = jack;
+            cbType = type;
+            ASSERT_EQ(len, sizeof(PlayerProfile));
+            PlayerProfile p{};
+            memcpy(&p, profile, len);
+            cbUserId = p.userId;
+        });
+
+    // The OUT jack must already know the peer MAC (from its HELLO) for the
+    // received context to match a jack.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .Times(testing::AnyNumber());
+
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/2, /*userId=*/4242, /*seqId=*/9);
+    suite->rdc.getReliableTransport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+
+    EXPECT_EQ(cbCount, 1);
+    EXPECT_EQ(cbJack, SerialIdentifier::OUTPUT_JACK);
+    EXPECT_EQ(cbType, DeviceType::PDN);
+    EXPECT_EQ(cbUserId, 4242);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 2);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->connectCount, 1);
+    EXPECT_EQ(suite->lastConnectJack, SerialIdentifier::OUTPUT_JACK);
+}
+
+// (d) A headMac change mid-exchange cancels the in-flight send and re-initiates.
+inline void rdcContextHeadChangeReinitiates(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    int contextSends = 0;
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&contextSends]() { contextSends++; }),
+            Return(1)));
+
+    // First HELLO: head all-zero. Opens the exchange (one send).
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
+    const int sendsAfterFirst = contextSends;
+    ASSERT_EQ(sendsAfterFirst, 1);
+
+    // Second HELLO from the same source, now carrying a non-zero head: the
+    // exchange re-initiates (cancel + fresh send), the jack stays CONNECTING.
+    HelloPayload hello{};
+    memcpy(hello.source, peer, 6);
+    hello.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+    hello.headMac[0] = 0xCC;
+    suite->deliverHello(suite->outJack, encodeFramed(hello));
+
+    EXPECT_EQ(contextSends, sendsAfterFirst + 1);
+    EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
 

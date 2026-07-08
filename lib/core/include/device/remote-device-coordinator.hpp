@@ -10,6 +10,7 @@
 #include "device/serial-frame-parser.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
+#include "wireless/reliable-transport.hpp"
 #include "device/device-type.hpp"
 
 #ifndef NATIVE_BUILD
@@ -139,13 +140,36 @@ public:
                                 CONNECTING,
                                 CONNECTED };
 
-    // Fires on the OUT jack when a new HELLO source appears: the output jack
-    // initiates the context request (#157 placeholder). The IN jacks never do.
-    using ContextRequestCallback = std::function<void(SerialIdentifier jack)>;
-    /// Registers the output-jack context-request initiator (#157 placeholder).
-    void setOnContextRequest(ContextRequestCallback callback) {
-        contextRequestCallback = std::move(callback);
+    /// Hands a received peer context to the game layer opaquely: the jack it
+    /// arrived on, the peer's device kind, and the raw profile bytes
+    /// (PlayerProfile for PDN, FdnProfile for FDN). RDC never interprets them.
+    using ContextReceivedCallback =
+        std::function<void(SerialIdentifier jack, DeviceType peerType,
+                           const uint8_t* profile, size_t len)>;
+    /// Registers the opaque peer-context consumer.
+    void setOnContextReceived(ContextReceivedCallback callback) {
+        contextReceivedCallback = std::move(callback);
     }
+
+    /// Supplies this device's outgoing player profile, forwarded verbatim in the
+    /// context this device sends to a new OUT-jack peer. Opaque to RDC.
+    void setSelfPlayerProfile(const PlayerProfile& profile) {
+        selfPlayerProfile = profile;
+    }
+
+    /// The chainRole recorded from the peer's context on `jack`; 0 until one
+    /// arrives. Recorded for the device chain SM (#156), not acted on here.
+    uint8_t getPeerChainRole(SerialIdentifier jack) const {
+        return helloByPort_[portIndex(jack)].peerChainRole;
+    }
+
+    /// True while a context send to `mac` is still awaiting its SEND_SUCCESS.
+    bool isContextSendPending(const uint8_t* mac) const;
+
+    /// The reliable transport driving the context exchange. Exposed so tests can
+    /// inject SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming)
+    /// without a radio.
+    ReliableTransport* getReliableTransport() { return transport; }
 
     /// Wires byte callbacks + parsers on every present jack, quiesces the
     /// handshake, and (unless external) spawns the emit task. Idempotent.
@@ -300,13 +324,37 @@ private:
     struct JackHelloLink {
         SerialFrameParser parser;  // non-copyable; default-constructed in place
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
+        // Recorded from the peer's received context; consumed by the chain SM (#156).
+        uint8_t peerChainRole = 0;
     };
     std::array<JackHelloLink, kNumPorts> helloByPort_;
     bool helloConnectivityEnabled = false;
     bool externalConnectivityTask = false;
-    ContextRequestCallback contextRequestCallback;
+    ContextReceivedCallback contextReceivedCallback;
+    PlayerProfile selfPlayerProfile{};
     std::array<uint8_t, 6> selfMac_{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
+
+    // Owned reliable transport + one context channel per device-type PktType.
+    // Device-level, not per-jack: on receive the source MAC is matched back to a
+    // jack. Constructed in initialize() once the WirelessManager is known.
+    ReliableTransport* transport = nullptr;
+    ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
+    ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
+
+    // OUT jack initiates: register the peer as a radio slot, then send this
+    // device's context reliably. Re-callable to re-send after a headMac change.
+    void initiateContextExchange(SerialIdentifier jack);
+    // Serialize + reliably send this device's context to `mac` per selfDeviceType.
+    void sendSelfContext(const uint8_t* mac);
+    // Base channel for this device's own context type (nullptr before init).
+    ReliableChannelBase* selfContextChannel() const;
+    // A received peer context: register, record chainRole, hand off the profile
+    // opaquely, match the MAC to its jack, and complete that jack's exchange.
+    void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
+                           uint8_t chainRole, const uint8_t* profile, size_t len);
+    // Jack whose HELLO link currently names `mac`, or false if none.
+    bool findJackForMac(const uint8_t* mac, SerialIdentifier& jack) const;
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task

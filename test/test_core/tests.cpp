@@ -1316,6 +1316,18 @@ TEST_F(RDCHelloTests, outputJackInitiatesContext) {
     rdcHelloOutputJackInitiatesContext(this);
 }
 
+TEST_F(RDCHelloTests, contextSendClearedBySendSuccess) {
+    rdcContextSendClearedBySendSuccess(this);
+}
+
+TEST_F(RDCHelloTests, contextReceiveConnectsJack) {
+    rdcContextReceiveConnectsJack(this);
+}
+
+TEST_F(RDCHelloTests, contextHeadChangeReinitiates) {
+    rdcContextHeadChangeReinitiates(this);
+}
+
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
 }
