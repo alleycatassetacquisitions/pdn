@@ -253,7 +253,18 @@ private:
      */
     void transferFromTo(NativeSerialDriver* from, NativeSerialDriver* to) {
         std::string data = from->getOutput();
-        if (!data.empty()) {
+        if (data.empty()) return;
+
+        // Byte/binary mode (HELLO): deliver the raw stream; the receiver's
+        // byte-mode exec() feeds it to the frame parser. The STRING_START
+        // re-framing below only applies to the legacy string handshake.
+        if (to->hasByteCallback()) {
+            to->injectBytes(std::vector<uint8_t>(data.begin(), data.end()));
+            from->clearOutput();
+            return;
+        }
+
+        {
             // Parse into messages (split by newlines, which is how println works)
             size_t pos = 0;
             while ((pos = data.find('\n')) != std::string::npos) {

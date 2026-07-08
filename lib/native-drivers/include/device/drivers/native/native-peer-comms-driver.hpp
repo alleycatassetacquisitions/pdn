@@ -51,6 +51,18 @@ public:
             }
             pending.pop();
         }
+
+        // Fire deferred SEND_SUCCESS callbacks (drives the reliable transport's
+        // ack, exactly as the esp32 driver does from its exec()).
+        while (!sendResultQueue_.empty()) {
+            auto& r = sendResultQueue_.front();
+            auto it = sendStatusHandlers_.find(r.type);
+            if (it != sendStatusHandlers_.end()) {
+                it->second.callback(r.dst, r.data.data(), r.data.size(), true,
+                                    it->second.context);
+            }
+            sendResultQueue_.pop();
+        }
     }
 
     void connect() override {
@@ -89,6 +101,17 @@ public:
         addToHistory(entry);
         
         NativePeerBroker::getInstance().sendPacket(macAddress_, dst, packetType, data, length);
+
+        // Report SEND_SUCCESS on the next exec() (never inline: that would
+        // re-enter Resender::send mid-transmit). The sim's broker delivery is
+        // reliable, so every send succeeds.
+        if (sendStatusHandlers_.count(packetType)) {
+            DeferredSendResult r;
+            r.type = packetType;
+            memcpy(r.dst, dst, 6);
+            r.data.assign(data, data + length);
+            sendResultQueue_.push(std::move(r));
+        }
         return 0; // Success
     }
 
@@ -98,6 +121,14 @@ public:
 
     void clearPacketHandler(PktType packetType) override {
         handlers_.erase(packetType);
+    }
+
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        sendStatusHandlers_[packetType] = {callback, ctx};
+    }
+
+    void clearSendStatusHandler(PktType packetType) override {
+        sendStatusHandlers_.erase(packetType);
     }
 
     const uint8_t* getGlobalBroadcastAddress() override {
@@ -187,7 +218,23 @@ private:
         std::vector<uint8_t> data;
     };
 
+    struct SendStatusEntry {
+        PeerCommsInterface::SendStatusCallback callback;
+        void* context;
+    };
+
+    // A send whose SEND_SUCCESS is reported on the next exec(), mirroring the
+    // esp32 driver's deferred dispatch so the reliable transport's ack is driven
+    // the same way in the sim (and never re-enters Resender::send mid-transmit).
+    struct DeferredSendResult {
+        PktType type;
+        uint8_t dst[6];
+        std::vector<uint8_t> data;
+    };
+
     std::map<PktType, HandlerEntry> handlers_;
+    std::map<PktType, SendStatusEntry> sendStatusHandlers_;
+    std::queue<DeferredSendResult> sendResultQueue_;
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];
