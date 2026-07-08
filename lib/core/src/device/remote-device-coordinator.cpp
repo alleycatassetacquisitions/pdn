@@ -10,6 +10,12 @@
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 
+static constexpr std::array<SerialIdentifier, 3> HELLO_JACKS = {
+    SerialIdentifier::OUTPUT_JACK,
+    SerialIdentifier::INPUT_JACK,
+    SerialIdentifier::INPUT_JACK_SECONDARY,
+};
+
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
 
 #ifndef NATIVE_BUILD
@@ -545,9 +551,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         if (mac != nullptr) memcpy(selfMac_.data(), mac, 6);
     }
 
-    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
+    for (SerialIdentifier port : HELLO_JACKS) {
         HWSerialWrapper* hw = jackWrapper(port);
         if (hw == nullptr) continue;
         JackHelloLink& link = helloByPort_[portIndex(port)];
@@ -578,9 +582,7 @@ void RemoteDeviceCoordinator::emitHello() {
     hello.confirmed = 0;
 
     const std::vector<uint8_t> frame = encodeFramed(hello);
-    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
+    for (SerialIdentifier port : HELLO_JACKS) {
         HWSerialWrapper* hw = jackWrapper(port);
         if (hw == nullptr) continue;
         for (uint8_t b : frame)
@@ -595,8 +597,6 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     // Idle jack + first HELLO from a source = a new link opening. CONNECTING/
     // CONNECTED just refresh liveness above.
     if (link.state == HelloLinkState::IDLE) {
-        memcpy(link.sourceMac.data(), hello.source, 6);
-        link.hasSource = true;
         link.state = HelloLinkState::CONNECTING;
         link.connectingSinceMs = link.lastHelloMs;
         // Output-jack-initiates: only the OUT jack requests the context exchange.
@@ -617,9 +617,7 @@ void RemoteDeviceCoordinator::serviceConnectivity() {
     if (!helloConnectivityEnabled) return;
     const unsigned long now = nowMs();
 
-    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK,
-                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
+    for (SerialIdentifier port : HELLO_JACKS) {
         if (!isHelloJack(port)) continue;
         JackHelloLink& link = helloByPort_[portIndex(port)];
         const unsigned long sinceHello = now >= link.lastHelloMs ? now - link.lastHelloMs : 0;
@@ -648,8 +646,6 @@ void RemoteDeviceCoordinator::serviceConnectivity() {
 
 void RemoteDeviceCoordinator::resetHelloLink(JackHelloLink& link) {
     link.state = HelloLinkState::IDLE;
-    link.hasSource = false;
-    link.sourceMac = {};
     // Drop any half-read frame so the next device's bytes don't merge in.
     link.parser.requestReset();
 }

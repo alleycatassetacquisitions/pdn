@@ -291,8 +291,6 @@ private:
     // ---- HELLO connectivity internals (#155) ----
     struct JackHelloLink {
         HelloLinkState state = HelloLinkState::IDLE;
-        std::array<uint8_t, 6> sourceMac{};
-        bool hasSource = false;
         unsigned long lastHelloMs = 0;
         unsigned long connectingSinceMs = 0;
         SerialFrameParser parser;  // non-copyable; default-constructed in place
