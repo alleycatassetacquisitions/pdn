@@ -80,8 +80,14 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         stringCallback = callback;
     }
 
+    /// Routes RX bytes to the byte callback; see HWSerialWrapper.
+    void setByteCallback(const SerialByteCallback& callback) override {
+        byteCallback = callback;
+    }
+
     deque<char> msgQueue;
     SerialStringCallback stringCallback;
+    SerialByteCallback byteCallback;
 };
 
 class FakeDevice : public Device {

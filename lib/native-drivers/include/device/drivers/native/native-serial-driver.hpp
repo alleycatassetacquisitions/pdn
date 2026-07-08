@@ -4,6 +4,7 @@
 #include <queue>
 #include <deque>
 #include <string>
+#include <vector>
 
 class NativeSerialDriver : public SerialDriverInterface {
 public:
@@ -20,7 +21,14 @@ public:
     }
 
     void exec() override {
-        // Process any incoming serial data
+        // Byte mode drains the RX buffer straight to the byte callback (HELLO
+        // framing); no string assembly. Legacy string jacks push through
+        // injectInput() and leave exec() a no-op.
+        if (byteCallback_) {
+            while (available() > 0) {
+                byteCallback_(static_cast<uint8_t>(read()));
+            }
+        }
     }
 
     int availableForWrite() override {
@@ -92,6 +100,20 @@ public:
         stringCallback_ = callback;
     }
 
+    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    void setByteCallback(const SerialByteCallback& callback) override {
+        byteCallback_ = callback;
+    }
+
+    /// Test/broker helper: buffers raw bytes for exec() to drain to the byte
+    /// callback. The binary-framing analogue of injectInput().
+    void injectBytes(const std::vector<uint8_t>& bytes) {
+        while (inputBuffer_.size() >= MAX_INPUT_QUEUE_SIZE) {
+            inputBuffer_.pop();
+        }
+        inputBuffer_.push(std::string(bytes.begin(), bytes.end()));
+    }
+
     // Test helper methods
     void injectInput(const std::string& input) {
         // Enforce FIFO limit on input queue
@@ -141,7 +163,8 @@ private:
     std::queue<std::string> inputBuffer_;
     std::string outputBuffer_;
     SerialStringCallback stringCallback_;
-    
+    SerialByteCallback byteCallback_;
+
     // Message history (most recent at back)
     std::deque<std::string> sentHistory_;
     std::deque<std::string> receivedHistory_;

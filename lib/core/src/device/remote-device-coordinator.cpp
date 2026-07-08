@@ -12,7 +12,27 @@
 
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
 
+#ifndef NATIVE_BUILD
+// The connectivity task's only job is periodic HELLO TX. Kept free-standing so
+// xTaskCreate can take it directly; it touches no SM state through emitHello().
+static void connectivityTaskEntry(void* ctx) {
+    auto* rdc = static_cast<RemoteDeviceCoordinator*>(ctx);
+    for (;;) {
+        rdc->emitHello();
+        vTaskDelay(pdMS_TO_TICKS(RemoteDeviceCoordinator::HELLO_CADENCE_MS));
+    }
+}
+#endif
+
 RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
+#ifndef NATIVE_BUILD
+    // Stop the emit task before tearing down anything it could touch. A delete
+    // mid-emit at worst truncates one HELLO frame; the peer's CRC drops it.
+    if (connectivityTaskHandle != nullptr) {
+        vTaskDelete(connectivityTaskHandle);
+        connectivityTaskHandle = nullptr;
+    }
+#endif
     delete inputPortHandshake;
     delete outputPortHandshake;
     delete secondaryInputPortHandshake;
@@ -22,6 +42,9 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
 void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, SerialManager* serialManager, Device* PDN) {
     this->serialManager = serialManager;
     this->wirelessManager_ = wirelessManager;
+    if (PDN != nullptr) {
+        selfDeviceType = PDN->getDeviceType();
+    }
 
     handshakeWirelessManager.initialize(wirelessManager);
 
@@ -149,6 +172,15 @@ void RemoteDeviceCoordinator::processChainAnnouncementPacket(const uint8_t* from
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
+    if (helloConnectivityEnabled) {
+        // The handshake is quiesced on HELLO jacks: skipping its onStateLoop is
+        // what keeps it off the UART (it neither consumes RX nor writes TX). The
+        // chain-announcement machinery below rides handshake CONNECTED state, so
+        // it stays dormant here too until HELLO drives its own peer identity (#157).
+        serviceConnectivity();
+        return;
+    }
+
     if (inputPortHandshake)          inputPortHandshake->onStateLoop(PDN);
     if (outputPortHandshake)         outputPortHandshake->onStateLoop(PDN);
     if (secondaryInputPortHandshake) secondaryInputPortHandshake->onStateLoop(PDN);
@@ -244,6 +276,11 @@ size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
+    // When HELLO owns the jack, connectivity comes from its link SM, not the
+    // quiesced handshake.
+    if (isHelloJack(port)) {
+        return mapHelloLinkToStatus(port);
+    }
     // Daisy-chained peers no longer upgrade the status: a port is CONNECTED or
     // it isn't. Chain position is a device-level fact (getChainRole()).
     return mapHandshakeStateToStatus(port);
@@ -476,4 +513,157 @@ void RemoteDeviceCoordinator::unregisterPeer(const uint8_t* macAddress) {
             handshakeWirelessManager.removeMacPeer(port);
         }
     }
+}
+
+// ---- Per-jack HELLO connectivity (#155) ----
+
+unsigned long RemoteDeviceCoordinator::nowMs() {
+    PlatformClock* clock = SimpleTimer::getPlatformClock();
+    return clock != nullptr ? clock->milliseconds() : 0;
+}
+
+HWSerialWrapper* RemoteDeviceCoordinator::jackWrapper(SerialIdentifier port) const {
+    if (serialManager == nullptr) return nullptr;
+    switch (port) {
+        case SerialIdentifier::OUTPUT_JACK: return serialManager->getOutputJack();
+        case SerialIdentifier::INPUT_JACK: return serialManager->getInputJack();
+        case SerialIdentifier::INPUT_JACK_SECONDARY: return serialManager->getSecondaryInputJack();
+        default: return nullptr;
+    }
+}
+
+bool RemoteDeviceCoordinator::isHelloJack(SerialIdentifier port) const {
+    return helloConnectivityEnabled && jackWrapper(port) != nullptr;
+}
+
+void RemoteDeviceCoordinator::enableHelloConnectivity() {
+    if (helloConnectivityEnabled) return;
+    helloConnectivityEnabled = true;
+
+    if (wirelessManager_ != nullptr) {
+        const uint8_t* mac = wirelessManager_->getMacAddress();
+        if (mac != nullptr) memcpy(selfMac_.data(), mac, 6);
+    }
+
+    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK,
+                                  SerialIdentifier::INPUT_JACK,
+                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
+        HWSerialWrapper* hw = jackWrapper(port);
+        if (hw == nullptr) continue;
+        JackHelloLink& link = helloByPort_[portIndex(port)];
+        link.parser.setHelloFrameHandler(
+            [this, port](const HelloPayload& hello) { onHelloReceived(port, hello); });
+        // exec() runs on the main loop, so the parser is fed single-threaded.
+        hw->setByteCallback([this, port](uint8_t b) {
+            helloByPort_[portIndex(port)].parser.feed(&b, 1);
+        });
+    }
+
+#ifndef NATIVE_BUILD
+    if (!externalConnectivityTask && connectivityTaskHandle == nullptr) {
+        xTaskCreate(connectivityTaskEntry, "rdc-hello", kConnectivityTaskStack, this,
+                    kConnectivityTaskPriority, &connectivityTaskHandle);
+    }
+#endif
+}
+
+void RemoteDeviceCoordinator::emitHello() {
+    if (!helloConnectivityEnabled) return;
+
+    HelloPayload hello{};
+    memcpy(hello.source, selfMac_.data(), 6);
+    hello.deviceType = static_cast<uint8_t>(selfDeviceType);
+    // headMac stays zero and confirmed stays 0 until the device chain SM (#156)
+    // learns the head and completes its context exchange.
+    hello.confirmed = 0;
+
+    const std::vector<uint8_t> frame = encodeFramed(hello);
+    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK,
+                                  SerialIdentifier::INPUT_JACK,
+                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
+        HWSerialWrapper* hw = jackWrapper(port);
+        if (hw == nullptr) continue;
+        for (uint8_t b : frame)
+            hw->print(static_cast<char>(b));
+    }
+}
+
+void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const HelloPayload& hello) {
+    JackHelloLink& link = helloByPort_[portIndex(jack)];
+    link.lastHelloMs = nowMs();
+
+    // Idle jack + first HELLO from a source = a new link opening. CONNECTING/
+    // CONNECTED just refresh liveness above.
+    if (link.state == HelloLinkState::IDLE) {
+        memcpy(link.sourceMac.data(), hello.source, 6);
+        link.hasSource = true;
+        link.state = HelloLinkState::CONNECTING;
+        link.connectingSinceMs = link.lastHelloMs;
+        // Output-jack-initiates: only the OUT jack requests the context exchange.
+        if (jack == SerialIdentifier::OUTPUT_JACK && contextRequestCallback) {
+            contextRequestCallback(jack);
+        }
+    }
+}
+
+void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
+    JackHelloLink& link = helloByPort_[portIndex(jack)];
+    if (link.state != HelloLinkState::CONNECTING) return;
+    link.state = HelloLinkState::CONNECTED;
+    if (jackChangeCallback) jackChangeCallback(jack, true);
+}
+
+void RemoteDeviceCoordinator::serviceConnectivity() {
+    if (!helloConnectivityEnabled) return;
+    const unsigned long now = nowMs();
+
+    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK,
+                                  SerialIdentifier::INPUT_JACK,
+                                  SerialIdentifier::INPUT_JACK_SECONDARY}) {
+        if (!isHelloJack(port)) continue;
+        JackHelloLink& link = helloByPort_[portIndex(port)];
+        const unsigned long sinceHello = now >= link.lastHelloMs ? now - link.lastHelloMs : 0;
+
+        switch (link.state) {
+            case HelloLinkState::CONNECTING: {
+                const unsigned long connecting =
+                    now >= link.connectingSinceMs ? now - link.connectingSinceMs : 0;
+                if (sinceHello > HELLO_SILENT_LINK_MS ||
+                    connecting > CONTEXT_EXCHANGE_TIMEOUT_MS) {
+                    resetHelloLink(link);
+                }
+                break;
+            }
+            case HelloLinkState::CONNECTED:
+                if (sinceHello > HELLO_SILENT_LINK_MS) {
+                    resetHelloLink(link);
+                    if (jackChangeCallback) jackChangeCallback(port, false);
+                }
+                break;
+            case HelloLinkState::IDLE:
+                break;
+        }
+    }
+}
+
+void RemoteDeviceCoordinator::resetHelloLink(JackHelloLink& link) {
+    link.state = HelloLinkState::IDLE;
+    link.hasSource = false;
+    link.sourceMac = {};
+    // Drop any half-read frame so the next device's bytes don't merge in.
+    link.parser.requestReset();
+}
+
+RemoteDeviceCoordinator::HelloLinkState
+RemoteDeviceCoordinator::getHelloLinkState(SerialIdentifier jack) const {
+    return helloByPort_[portIndex(jack)].state;
+}
+
+PortStatus RemoteDeviceCoordinator::mapHelloLinkToStatus(SerialIdentifier port) const {
+    switch (helloByPort_[portIndex(port)].state) {
+        case HelloLinkState::CONNECTED: return PortStatus::CONNECTED;
+        case HelloLinkState::CONNECTING: return PortStatus::CONNECTING;
+        case HelloLinkState::IDLE: return PortStatus::DISCONNECTED;
+    }
+    return PortStatus::DISCONNECTED;
 }

@@ -39,6 +39,13 @@ public:
     void exec() override {
         while (Serial1.available() > 0) {
             char incomingChar = Serial1.read();
+            // Byte mode routes each RX byte to the byte callback (HELLO
+            // framing) and skips string assembly; the two are mutually
+            // exclusive per jack.
+            if (byteCallback) {
+                byteCallback(static_cast<uint8_t>(incomingChar));
+                continue;
+            }
             if (incomingChar == STRING_START) {
                 std::string receivedString = std::string(Serial1.readStringUntil(STRING_TERM).c_str());
                 LOG_D("SERIAL1", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
@@ -89,8 +96,14 @@ public:
         stringCallback = callback;
     }
 
+    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    void setByteCallback(const SerialByteCallback& callback) override {
+        byteCallback = callback;
+    }
+
 private:
     SerialStringCallback stringCallback;
+    SerialByteCallback byteCallback;
     uint8_t txPin;
     uint8_t rxPin;
 };
@@ -122,6 +135,13 @@ public:
     void exec() override {
         while (Serial2.available() > 0) {
             char incomingChar = Serial2.read();
+            // Byte mode routes each RX byte to the byte callback (HELLO
+            // framing) and skips string assembly; the two are mutually
+            // exclusive per jack.
+            if (byteCallback) {
+                byteCallback(static_cast<uint8_t>(incomingChar));
+                continue;
+            }
             if (incomingChar == STRING_START) {
                 std::string receivedString = std::string(Serial2.readStringUntil(STRING_TERM).c_str());
                 LOG_D("SERIAL2", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
@@ -172,8 +192,14 @@ public:
         stringCallback = callback;
     }
 
+    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    void setByteCallback(const SerialByteCallback& callback) override {
+        byteCallback = callback;
+    }
+
 private:
     SerialStringCallback stringCallback;
+    SerialByteCallback byteCallback;
     uint8_t txPin;
     uint8_t rxPin;
 };
@@ -207,6 +233,13 @@ public:
     void exec() override {
         while (Serial1.available() > 0) {
             char incomingChar = Serial1.read();
+            // Byte mode routes each RX byte to the byte callback (HELLO
+            // framing) and skips string assembly; the two are mutually
+            // exclusive per jack.
+            if (byteCallback) {
+                byteCallback(static_cast<uint8_t>(incomingChar));
+                continue;
+            }
             if (incomingChar == STRING_START) {
                 std::string receivedString = std::string(Serial1.readStringUntil(STRING_TERM).c_str());
                 LOG_D("SERIAL1_SEC", "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
@@ -235,8 +268,14 @@ public:
         stringCallback = callback;
     }
 
+    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    void setByteCallback(const SerialByteCallback& callback) override {
+        byteCallback = callback;
+    }
+
 private:
     SerialStringCallback stringCallback;
+    SerialByteCallback byteCallback;
     uint8_t txPin;
     uint8_t rxPin;
 };
