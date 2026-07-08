@@ -7,7 +7,8 @@
 #include "device/drivers/logger.hpp"
 
 DuelCountdown::DuelCountdown(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_COUNTDOWN) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_COUNTDOWN)
+    , ShootoutAwareState(ctx.shootoutManager) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
     this->chainDuelManager = ctx.chainDuelManager;
@@ -105,10 +106,6 @@ void DuelCountdown::onStateDismounted(PDN* pdn) {
 
 bool DuelCountdown::shallWeBattle() {
     return doBattle;
-}
-
-bool DuelCountdown::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
 }
 
 bool DuelCountdown::isPrimaryRequired() {

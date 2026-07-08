@@ -5,7 +5,8 @@
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
 DuelPushed::DuelPushed(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_PUSHED) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_PUSHED)
+    , ShootoutAwareState(ctx.shootoutManager) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
 }
@@ -47,10 +48,6 @@ bool DuelPushed::isPrimaryRequired() {
 
 bool DuelPushed::isAuxRequired() {
     return !player->isHunter();
-}
-
-bool DuelPushed::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
 }
 
 bool DuelPushed::transitionToDuelResult() {

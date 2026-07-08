@@ -21,6 +21,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
+#include "game/shootout-aware-state.hpp"
 
 /// Bundle of the shared game-wide managers a state may need. Built once by
 /// Quickdraw::populateStateMap and handed to every state so a new manager is a
@@ -177,9 +178,7 @@ private:
     bool isAuxRequired() override;
 };
 
-
-
-class DuelCountdown : public ConnectState<PDN> {
+class DuelCountdown : public ConnectState<PDN>, public ShootoutAwareState {
 public:
     explicit DuelCountdown(const GameContext& ctx);
     ~DuelCountdown();
@@ -188,7 +187,6 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool shallWeBattle();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -276,7 +274,7 @@ private:
     const int DUEL_TIMEOUT = 4000;
 };
 
-class DuelPushed : public ConnectState<PDN> {
+class DuelPushed : public ConnectState<PDN>, public ShootoutAwareState {
 public:
     explicit DuelPushed(const GameContext& ctx);
     ~DuelPushed();
@@ -285,7 +283,6 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -297,7 +294,7 @@ private:
     const int DUEL_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public ConnectState<PDN> {
+class DuelReceivedResult : public ConnectState<PDN>, public ShootoutAwareState {
 public:
     explicit DuelReceivedResult(const GameContext& ctx);
     ~DuelReceivedResult();
@@ -306,7 +303,6 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -406,9 +402,7 @@ private:
     bool shouldRetryUpload = false;
 };
 
-static constexpr unsigned long kLoopBreakDebounceMs = 500;
-
-class ShootoutProposal : public TypedState<PDN> {
+class ShootoutProposal : public TypedState<PDN>, public ShootoutAwareState {
 public:
     explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -420,15 +414,13 @@ public:
     bool transitionToAborted();
 
 private:
-    ShootoutManager* shootout_;
     ChainDuelManager* chainDuelManager_;
     bool shouldGoToReveal_ = false;
     bool shouldGoToIdle_ = false;
     bool shouldGoToAborted_ = false;
-    DebouncedCondition loopBreakDebounce_;
 };
 
-class ShootoutBracketReveal : public TypedState<PDN> {
+class ShootoutBracketReveal : public TypedState<PDN>, public ShootoutAwareState {
 public:
     explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -441,13 +433,11 @@ public:
     bool transitionToIdle();
 
 private:
-    ShootoutManager* shootout_;
     ChainDuelManager* chainDuelManager_;
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
     bool shouldGoToAborted_ = false;
     bool shouldGoToIdle_ = false;
-    DebouncedCondition loopBreakDebounce_;
 };
 
 class ShootoutSpectator : public TypedState<PDN> {
