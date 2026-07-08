@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -158,6 +159,12 @@ public:
     /// on a separate FreeRTOS task while the main loop owns everything else.
     void emitHello();
 
+#ifndef NATIVE_BUILD
+    /// FreeRTOS task body: emit at HELLO_CADENCE_MS until the destructor requests
+    /// a stop, then self-delete. A member so it can read the stop flags directly.
+    void connectivityTaskBody();
+#endif
+
     /// #157 drives this once the context exchange completes: CONNECTING->CONNECTED
     /// and fires the jack-connect observer.
     void onContextExchangeComplete(SerialIdentifier jack);
@@ -303,6 +310,11 @@ private:
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
+    // Cooperative stop: the destructor sets stopRequested and waits for the task
+    // to observe it and self-delete (setting exited), rather than a cross-core
+    // vTaskDelete that could truncate an in-flight emit or strand the UART lock.
+    std::atomic<bool> connectivityTaskStopRequested{false};
+    std::atomic<bool> connectivityTaskExited{false};
     static constexpr uint32_t kConnectivityTaskStack = 4096;
     static constexpr unsigned kConnectivityTaskPriority = 1;
 #endif

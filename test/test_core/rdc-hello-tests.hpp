@@ -84,10 +84,13 @@ public:
     }
 
     MockDevice device;
-    RemoteDeviceCoordinator rdc;
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
     NativeSerialDriver inJack{"hello-in"};
+    // Declared after the jacks so it is destroyed FIRST: the RDC dtor clears the
+    // byte callbacks on the jacks, which must still be alive (mirrors production,
+    // where the serial drivers outlive the RDC).
+    RemoteDeviceCoordinator rdc;
     uint8_t localMac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 
     int connectCount = 0;

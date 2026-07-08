@@ -19,26 +19,48 @@ static constexpr std::array<SerialIdentifier, 3> HELLO_JACKS = {
 RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
 
 #ifndef NATIVE_BUILD
-// The connectivity task's only job is periodic HELLO TX. Kept free-standing so
-// xTaskCreate can take it directly; it touches no SM state through emitHello().
+// Free entry point xTaskCreate can take directly; the loop lives in a member so
+// it can read the cooperative-stop flags.
 static void connectivityTaskEntry(void* ctx) {
-    auto* rdc = static_cast<RemoteDeviceCoordinator*>(ctx);
+    static_cast<RemoteDeviceCoordinator*>(ctx)->connectivityTaskBody();
+}
+
+void RemoteDeviceCoordinator::connectivityTaskBody() {
     for (;;) {
-        rdc->emitHello();
-        vTaskDelay(pdMS_TO_TICKS(RemoteDeviceCoordinator::HELLO_CADENCE_MS));
+        // Check before touching any state so a stop can never race an emit.
+        if (connectivityTaskStopRequested.load()) {
+            connectivityTaskExited.store(true);
+            vTaskDelete(nullptr);  // self-delete; never returns
+        }
+        emitHello();
+        vTaskDelay(pdMS_TO_TICKS(HELLO_CADENCE_MS));
     }
 }
 #endif
 
 RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
 #ifndef NATIVE_BUILD
-    // Stop the emit task before tearing down anything it could touch. A delete
-    // mid-emit at worst truncates one HELLO frame; the peer's CRC drops it.
+    // Cooperatively stop the emit task before freeing anything it dereferences:
+    // request exit, then wait for the task to observe it and self-delete. A
+    // cross-core vTaskDelete could otherwise cut it mid-emit, stranding the UART
+    // lock or dereferencing freed state.
     if (connectivityTaskHandle != nullptr) {
-        vTaskDelete(connectivityTaskHandle);
+        connectivityTaskStopRequested.store(true);
+        while (!connectivityTaskExited.load()) {
+            vTaskDelay(pdMS_TO_TICKS(HELLO_CADENCE_MS));
+        }
         connectivityTaskHandle = nullptr;
     }
 #endif
+    // Drop the byte callbacks: they capture `this` and live on the externally
+    // owned jacks, so a post-destruction exec() would otherwise call a lambda
+    // over freed memory.
+    if (helloConnectivityEnabled) {
+        for (SerialIdentifier port : HELLO_JACKS) {
+            HWSerialWrapper* hw = jackWrapper(port);
+            if (hw != nullptr) hw->setByteCallback(nullptr);
+        }
+    }
     delete inputPortHandshake;
     delete outputPortHandshake;
     delete secondaryInputPortHandshake;
