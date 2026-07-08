@@ -40,6 +40,7 @@ public:
     /// transition flag.
     bool tickAbortGuard(bool ringSettledOpen) {
         if (!debounce.heldFor(ringSettledOpen, kLoopBreakDebounceMs)) return false;
+        if (!shootoutManager) return false;
         shootoutManager->abortTournament();
         return true;
     }

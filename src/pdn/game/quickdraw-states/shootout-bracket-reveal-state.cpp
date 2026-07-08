@@ -37,11 +37,9 @@ void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
     shouldGoToDuelCountdown_ = false;
     shouldGoToSpectator_ = false;
     shouldGoToAborted_ = false;
-    shouldGoToIdle_ = false;
     resetAbortGuard();
 }
 
 bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }
 bool ShootoutBracketReveal::transitionToSpectator() { return shouldGoToSpectator_; }
 bool ShootoutBracketReveal::transitionToAborted() { return shouldGoToAborted_; }
-bool ShootoutBracketReveal::transitionToIdle() { return shouldGoToIdle_; }

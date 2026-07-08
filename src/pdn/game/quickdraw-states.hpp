@@ -430,14 +430,12 @@ public:
     bool transitionToDuelCountdown();
     bool transitionToSpectator();
     bool transitionToAborted();
-    bool transitionToIdle();
 
 private:
     ChainDuelManager* chainDuelManager_;
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
     bool shouldGoToAborted_ = false;
-    bool shouldGoToIdle_ = false;
 };
 
 class ShootoutSpectator : public TypedState<PDN> {
