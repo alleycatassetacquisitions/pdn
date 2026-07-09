@@ -118,6 +118,7 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
@@ -128,6 +129,7 @@ inline void rdcHelloNewMacDrivesConnecting(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
@@ -140,10 +142,12 @@ inline void rdcHelloNewMacDrivesConnecting(RDCHelloTests* suite) {
 // (b) onContextExchangeComplete drives Connecting -> Connected and fires jack-connect.
 inline void rdcHelloContextCompleteConnects(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
@@ -156,7 +160,9 @@ inline void rdcHelloContextCompleteConnects(RDCHelloTests* suite) {
 // (c) Clock past silent-link with no HELLO drives Connected -> Idle, fires disconnect.
 inline void rdcHelloSilentLinkDisconnects(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 
@@ -214,6 +220,7 @@ inline void rdcHelloOutputJackInitiatesContext(RDCHelloTests* suite) {
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(outRequests, 1);
     EXPECT_EQ(inRequests, 0);

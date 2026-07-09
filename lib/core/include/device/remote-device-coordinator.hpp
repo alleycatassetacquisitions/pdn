@@ -19,6 +19,7 @@
 
 class Device;
 class HandshakeApp;
+class HelloLinkMachine;
 
 enum class PortStatus {
     DISCONNECTED = 0,  // No Connection. Handshake is in Idle state.
@@ -151,7 +152,7 @@ public:
     void enableHelloConnectivity();
 
     /// Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
-    /// drives emitHello()/serviceConnectivity() directly on one thread.
+    /// drives emitHello() and the per-jack link machines (via sync()) on one thread.
     void setExternalConnectivityTask(bool external) { externalConnectivityTask = external; }
 
     /// The connectivity task's sole action: emit one HELLO frame on every jack.
@@ -297,11 +298,8 @@ private:
 
     // ---- HELLO connectivity internals (#155) ----
     struct JackHelloLink {
-        HelloLinkState state = HelloLinkState::IDLE;
-        unsigned long lastHelloMs = 0;
-        unsigned long connectingSinceMs = 0;
-        std::array<uint8_t, 6> peerMac{};  // source MAC last heard on this jack
         SerialFrameParser parser;  // non-copyable; default-constructed in place
+        HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
     };
     std::array<JackHelloLink, kNumPorts> helloByPort_;
     bool helloConnectivityEnabled = false;
@@ -323,8 +321,6 @@ private:
     HWSerialWrapper* jackWrapper(SerialIdentifier port) const;
     bool isHelloJack(SerialIdentifier port) const;
     void onHelloReceived(SerialIdentifier jack, const HelloPayload& hello);
-    void serviceConnectivity();
-    void resetHelloLink(JackHelloLink& link);
     PortStatus mapHelloLinkToStatus(SerialIdentifier port) const;
     static unsigned long nowMs();
 };
