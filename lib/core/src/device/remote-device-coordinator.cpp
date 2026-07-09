@@ -315,8 +315,8 @@ PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
     if (isHelloJack(port)) {
         return mapHelloLinkToStatus(port);
     }
-    // Daisy-chained peers no longer upgrade the status: a port is CONNECTED or
-    // it isn't. Chain position is a device-level fact (getChainRole()).
+    // A port is CONNECTED or it isn't; a daisy-chained peer does not upgrade its
+    // status. Chain position is a device-level fact (getChainRole()).
     return mapHandshakeStateToStatus(port);
 }
 

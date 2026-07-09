@@ -12,7 +12,7 @@
 
 // Per-jack HELLO link state machine (#155). One instance per jack, driven by the
 // RDC. Three states — Idle / Connecting / Connected — on the project's StateMachine
-// framework, replacing the enum the first cut used.
+// framework.
 //
 // Liveness (lastHelloMs) is inherently cross-state: every HELLO refreshes the
 // watchdog in Connecting and Connected alike, so it lives on this shared context,
