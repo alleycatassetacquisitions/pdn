@@ -16,6 +16,7 @@
 #include "quickdraw-integration-tests.hpp"
 #include "hwm-tests.hpp"
 #include "rdc-tests.hpp"
+#include "rdc-hello-tests.hpp"
 #include "chain-duel-manager-tests.hpp"
 #include "chain-duel-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
@@ -1285,6 +1286,42 @@ TEST_F(RDCTests, ackedAnnouncementDoesNotRetransmit) {
 
 TEST_F(RDCTests, announcementAbandonedAfterMaxRetries) {
     rdcAnnouncementAbandonedAfterMaxRetries(this);
+}
+
+// ============================================
+// RDC PER-JACK HELLO TESTS (#155)
+// ============================================
+
+TEST_F(RDCHelloTests, newMacDrivesConnecting) {
+    rdcHelloNewMacDrivesConnecting(this);
+}
+
+TEST_F(RDCHelloTests, rejectsSelfAndZeroSource) {
+    rdcHelloRejectsSelfAndZeroSource(this);
+}
+
+TEST_F(RDCHelloTests, contextCompleteConnects) {
+    rdcHelloContextCompleteConnects(this);
+}
+
+TEST_F(RDCHelloTests, silentLinkDisconnects) {
+    rdcHelloSilentLinkDisconnects(this);
+}
+
+TEST_F(RDCHelloTests, emitProducesFramesOnBothJacks) {
+    rdcHelloEmitProducesFramesOnBothJacks(this);
+}
+
+TEST_F(RDCHelloTests, outputJackInitiatesContext) {
+    rdcHelloOutputJackInitiatesContext(this);
+}
+
+TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
+    rdcHelloByteModeSuppressesStringAssembly();
+}
+
+TEST(RDCHelloStandalone, syncSkipsHandshakeOnStateLoop) {
+    rdcHelloSyncSkipsHandshakeOnStateLoop();
 }
 
 // ============================================

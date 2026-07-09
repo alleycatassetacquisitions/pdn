@@ -1,17 +1,25 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <vector>
 #include "device/serial-manager.hpp"
+#include "device/serial-frame-parser.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "device/device-type.hpp"
 
+#ifndef NATIVE_BUILD
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+
 class Device;
 class HandshakeApp;
+class HelloLinkMachine;
 
 enum class PortStatus {
     DISCONNECTED = 0,  // No Connection. Handshake is in Idle state.
@@ -114,6 +122,56 @@ public:
     void setOnJackChange(JackChangeCallback callback) {
         jackChangeCallback = std::move(callback);
     }
+
+    // ---- Per-jack HELLO connectivity (#155) ----
+    // HELLO is the serial discovery/liveness beacon that replaces the string
+    // handshake (deleted by #160). Each jack runs an independent link SM fed by
+    // the real exec()-driven RX byte pump. Off by default: production stays on
+    // the handshake until the context exchange (#157) and device chain SM (#156)
+    // land, since nothing drives CONNECTING->CONNECTED before then.
+
+    static constexpr unsigned long HELLO_CADENCE_MS = 20;
+    static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
+    // A link stuck mid-context-exchange past this falls back to IDLE (#157).
+    static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
+
+    enum class HelloLinkState { IDLE,
+                                CONNECTING,
+                                CONNECTED };
+
+    // Fires on the OUT jack when a new HELLO source appears: the output jack
+    // initiates the context request (#157 placeholder). The IN jacks never do.
+    using ContextRequestCallback = std::function<void(SerialIdentifier jack)>;
+    /// Registers the output-jack context-request initiator (#157 placeholder).
+    void setOnContextRequest(ContextRequestCallback callback) {
+        contextRequestCallback = std::move(callback);
+    }
+
+    /// Wires byte callbacks + parsers on every present jack, quiesces the
+    /// handshake, and (unless external) spawns the emit task. Idempotent.
+    void enableHelloConnectivity();
+
+    /// Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
+    /// drives emitHello() and the per-jack link machines (via sync()) on one thread.
+    void setExternalConnectivityTask(bool external) { externalConnectivityTask = external; }
+
+    /// The connectivity task's sole action: emit one HELLO frame on every jack.
+    /// TX only — touches no SM state and fires no callback, so it is safe to run
+    /// on a separate FreeRTOS task while the main loop owns everything else.
+    void emitHello();
+
+#ifndef NATIVE_BUILD
+    /// FreeRTOS task body: emit at HELLO_CADENCE_MS until the destructor requests
+    /// a stop, then self-delete. A member so it can read the stop flags directly.
+    void connectivityTaskBody();
+#endif
+
+    /// #157 drives this once the context exchange completes: CONNECTING->CONNECTED
+    /// and fires the jack-connect observer.
+    void onContextExchangeComplete(SerialIdentifier jack);
+
+    /// This jack's HELLO link state (observability / tests).
+    HelloLinkState getHelloLinkState(SerialIdentifier jack) const;
 
     /// Registers the chain-role transition observer.
     void setOnChainRoleChange(ChainRoleChangeCallback callback) {
@@ -237,4 +295,32 @@ private:
     // Returns the list of ports that have active handshake apps.
     std::vector<SerialIdentifier> activePorts() const;
     HandshakeApp* handshakeAppForPort(SerialIdentifier port) const;
+
+    // ---- HELLO connectivity internals (#155) ----
+    struct JackHelloLink {
+        SerialFrameParser parser;  // non-copyable; default-constructed in place
+        HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
+    };
+    std::array<JackHelloLink, kNumPorts> helloByPort_;
+    bool helloConnectivityEnabled = false;
+    bool externalConnectivityTask = false;
+    ContextRequestCallback contextRequestCallback;
+    std::array<uint8_t, 6> selfMac_{};
+    DeviceType selfDeviceType = DeviceType::UNKNOWN;
+#ifndef NATIVE_BUILD
+    TaskHandle_t connectivityTaskHandle = nullptr;
+    // Cooperative stop: the destructor sets stopRequested and waits for the task
+    // to observe it and self-delete (setting exited), rather than a cross-core
+    // vTaskDelete that could truncate an in-flight emit or strand the UART lock.
+    std::atomic<bool> connectivityTaskStopRequested{false};
+    std::atomic<bool> connectivityTaskExited{false};
+    static constexpr uint32_t kConnectivityTaskStack = 4096;
+    static constexpr unsigned kConnectivityTaskPriority = 1;
+#endif
+
+    HWSerialWrapper* jackWrapper(SerialIdentifier port) const;
+    bool isHelloJack(SerialIdentifier port) const;
+    void onHelloReceived(SerialIdentifier jack, const HelloPayload& hello);
+    PortStatus mapHelloLinkToStatus(SerialIdentifier port) const;
+    static unsigned long nowMs();
 };
