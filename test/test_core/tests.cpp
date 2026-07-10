@@ -1348,6 +1348,9 @@ TEST_F(RDCHelloTests, chainRingOpensOnOutputDrop) {
 TEST_F(RDCHelloTests, chainRingOpensWhenReturnedHeadChanges) {
     rdcChainRingOpensWhenReturnedHeadChanges(this);
 }
+TEST_F(RDCHelloTests, chainRingLatchesOnMergeWithConnectedInput) {
+    rdcChainRingLatchesOnMergeWithConnectedInput(this);
+}
 TEST_F(RDCHelloTests, chainPeerSwapClearsStaleRing) {
     rdcChainPeerSwapClearsStaleRing(this);
 }

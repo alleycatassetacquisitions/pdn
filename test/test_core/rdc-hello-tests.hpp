@@ -489,6 +489,26 @@ inline void rdcChainRingOpensWhenReturnedHeadChanges(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), upstream, 6));
 }
 
+// Merge-in-the-middle: two already-connected sub-chains join into a ring, so our
+// own head first returns on an INPUT jack that is ALREADY connected. Latching must
+// gate on OUTPUT presence, not role==HEAD (which demands a disconnected INPUT).
+inline void rdcChainRingLatchesOnMergeWithConnectedInput(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t upstream[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    const uint8_t foreignHead[6] = {0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC};
+    // INPUT fully connects first, under some other head (role CHILD).
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, foreignHead));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+
+    // The far side of the merge now carries our own MAC back around.
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+}
+
 // A different source MAC on a still-live INPUT jack (peer swapped before the
 // silent-link watchdog fired) tears the link down and re-derives: the stale ring
 // latch and the head inherited from the vanished peer cannot survive.

@@ -774,10 +774,13 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         ringLatched = false;
     }
 
-    // Ring: a structural head sees its own MAC return on its INPUT jack, so the
-    // head it seeded traveled the whole loop back. Because inheritance carries
-    // that MAC unchallenged, this latches for ANY head regardless of MAC value.
-    if (!ringLatched && peerHeadIsSelf && getChainRole() == ChainRole::HEAD) {
+    // Ring: this device's own MAC returns on its INPUT jack, so the head it seeded
+    // traveled the whole loop back. Gate on OUTPUT being connected (a downstream
+    // exists), NOT on role==HEAD — two already-connected sub-chains merging into a
+    // ring deliver our head back on an INPUT that is already CONNECTED, where
+    // role==HEAD (which demands INPUT be un-connected) would miss the closure.
+    if (!ringLatched && peerHeadIsSelf &&
+        getHelloLinkState(SerialIdentifier::OUTPUT_JACK) == HelloLinkState::CONNECTED) {
         ringLatched = true;
         if (ringClosedCallback) ringClosedCallback();
         return;
