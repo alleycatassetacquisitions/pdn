@@ -507,6 +507,9 @@ inline void rdcChainRingLatchesOnMergeWithConnectedInput(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+    // Latching means we are the head: the head adopted while the ring was forming
+    // must be dropped, not advertised on into the closed ring.
+    EXPECT_EQ(suite->rdc.getHeadMac(), nullptr);
 }
 
 // A different source MAC on a still-live INPUT jack (peer swapped before the

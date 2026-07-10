@@ -782,6 +782,9 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     if (!ringLatched && peerHeadIsSelf &&
         getHelloLinkState(SerialIdentifier::OUTPUT_JACK) == HelloLinkState::CONNECTED) {
         ringLatched = true;
+        // Our own MAC came back, so we ARE the head: drop any head adopted while the
+        // ring was forming, or we would sit in RING advertising a stale foreign head.
+        chainHeadState.store(0);
         if (ringClosedCallback) ringClosedCallback();
         return;
     }
