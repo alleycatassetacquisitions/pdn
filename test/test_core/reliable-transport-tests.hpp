@@ -94,8 +94,12 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
     ASSERT_NE(seq, 0);
     ASSERT_TRUE(ch->isPending(target));
 
-    AckPayload ack{static_cast<uint8_t>(PktType::kChainGameEvent), seq};
-    transport.onAckPacket(target, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    // Radio SEND_SUCCESS for the packet we sent clears the pending entry. The
+    // channel reads the stamped seqId back out of the echoed payload bytes.
+    TransportTestPayload sentEcho{};
+    sentEcho.seqId = seq;
+    transport.onSendResult(PktType::kChainGameEvent, target,
+                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
     ASSERT_FALSE(ch->isPending(target));
     ASSERT_FALSE(abandoned);
 
@@ -109,6 +113,64 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
                               sizeof(incoming));
     ASSERT_TRUE(received);
     ASSERT_EQ(deliveredP.cmd, 99);
+}
+
+TEST(ReliableTransportTest, sendFailLeavesPendingForBackoffRetry) {
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    ReliableTransport transport(&wm);
+
+    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent,
+        [](uint8_t, const uint8_t*) {});
+
+    using ::testing::_;
+    using ::testing::Return;
+    EXPECT_CALL(mockComms, sendData(_, _, _, _))
+        .Times(::testing::AnyNumber())
+        .WillRepeatedly(Return(1));
+
+    uint8_t target[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    uint8_t seq = ch->sendReliable(target, p);
+    ASSERT_TRUE(ch->isPending(target));
+
+    // A SEND_FAIL must NOT clear the pending entry: loss is left to the backoff
+    // timer, so the entry stays armed for retransmit.
+    TransportTestPayload sentEcho{};
+    sentEcho.seqId = seq;
+    transport.onSendResult(PktType::kChainGameEvent, target,
+                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), false);
+    EXPECT_TRUE(ch->isPending(target));
+}
+
+TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    ReliableTransport transport(&wm);
+
+    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent,
+        [](uint8_t, const uint8_t*) {});
+
+    using ::testing::_;
+    using ::testing::Return;
+    EXPECT_CALL(mockComms, sendData(_, _, _, _))
+        .Times(::testing::AnyNumber())
+        .WillRepeatedly(Return(1));
+
+    uint8_t target[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload p{};
+    ch->sendReliable(target, p);  // stamps a nonzero seqId
+    ASSERT_TRUE(ch->isPending(target));
+
+    // A fire-and-forget send-result (seqId 0) has no sender-side pending entry
+    // to match, so it must not clear the live reliable pending entry.
+    TransportTestPayload fireAndForget{};
+    fireAndForget.seqId = 0;
+    transport.onSendResult(PktType::kChainGameEvent, target,
+                           reinterpret_cast<const uint8_t*>(&fireAndForget), sizeof(fireAndForget), true);
+    EXPECT_TRUE(ch->isPending(target));
 }
 
 TEST(ReliableTransportTest, abandonAfterMaxRetries) {
@@ -231,8 +293,10 @@ TEST(ReliableTransportTest, ackRoutesByPktType) {
     ASSERT_TRUE(chA->isPending(target));
     ASSERT_TRUE(chB->isPending(target));
 
-    AckPayload ack{static_cast<uint8_t>(PktType::kShootoutCommand), seqA};
-    transport.onAckPacket(target, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+    TransportTestPayload sentEcho{};
+    sentEcho.seqId = seqA;
+    transport.onSendResult(PktType::kShootoutCommand, target,
+                           reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
 
     ASSERT_FALSE(chA->isPending(target));
     ASSERT_TRUE(chB->isPending(target));
@@ -273,8 +337,10 @@ TEST(ReliableTransportTest, droppedNonFinalSlotStillRetransmits) {
 
     // Peer acks the two later slots; s1 stays pending.
     for (uint8_t seq : {s2, s3}) {
-        AckPayload ack{static_cast<uint8_t>(PktType::kShootoutCommand), seq};
-        transport.onAckPacket(target, reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
+        TransportTestPayload sentEcho{};
+        sentEcho.seqId = seq;
+        transport.onSendResult(PktType::kShootoutCommand, target,
+                               reinterpret_cast<const uint8_t*>(&sentEcho), sizeof(sentEcho), true);
     }
     ASSERT_TRUE(ch->isPending(target));  // s1 survived the later sends
 

@@ -81,6 +81,21 @@ public:
             }
             pending.pop();
         }
+
+        std::queue<DeferredSendResult> sendResults;
+        xSemaphoreTake(sendResultMutex, portMAX_DELAY);
+        std::swap(sendResults, sendResultQueue);
+        xSemaphoreGive(sendResultMutex);
+
+        while (!sendResults.empty()) {
+            auto& r = sendResults.front();
+            SendStatusCallback cb = sendStatusHandlers_[(int)r.type].first;
+            if (cb) {
+                cb(r.dstMac, r.data.data(), r.data.size(), r.success,
+                   sendStatusHandlers_[(int)r.type].second);
+            }
+            sendResults.pop();
+        }
     }
 
     /// Brings the radio into ESP-NOW mode: STA, auto-reconnect off, PS_NONE,
@@ -214,6 +229,19 @@ public:
         pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
+    /// Radio send-result handler, one per PktType. Fired from exec() (deferred
+    /// to the main loop) when the send callback reports SEND_SUCCESS or a final
+    /// SEND_FAIL for a packet of this type. Drives the reliable-transport ack.
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        sendStatusHandlers_[(int)packetType].first = callback;
+        sendStatusHandlers_[(int)packetType].second = ctx;
+    }
+
+    /// Removes the send-result handler for a packet type.
+    void clearSendStatusHandler(PktType packetType) override {
+        sendStatusHandlers_[(int)packetType].first = nullptr;
+    }
+
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
     // because WiFi must be set up first. Actual init happens in connect().
     /// Driver-interface initialization hook; radio setup happens in connect().
@@ -261,6 +289,16 @@ private:
         std::vector<uint8_t> data;
     };
 
+    // A send callback result queued off the WiFi-task callback for the main
+    // loop to dispatch. `data` is the payload (past the DataPktHdr) of the
+    // packet that was sent, so the reliable channel can read its seqId back out.
+    struct DeferredSendResult {
+        PktType type;
+        uint8_t dstMac[6];
+        std::vector<uint8_t> data;
+        bool success;
+    };
+
     struct DataSendBuffer
     {
         uint8_t dstMac[6];
@@ -271,10 +309,12 @@ private:
     explicit EspNowManager(const std::string& name)
         : PeerCommsDriverInterface(name)
         , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
+        , sendStatusHandlers_((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
         , maxRetries(5)
         , curRetries(0)
         , recvMutex(xSemaphoreCreateMutex())
         , sendMutex(xSemaphoreCreateMutex()) {
+        sendResultMutex = xSemaphoreCreateMutex();
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
         // after WiFi has been set up. RSSI is read directly from each receive
         // callback (esp_now_recv_info_t::rx_ctrl), so no promiscuous mode.
@@ -366,6 +406,7 @@ private:
         // enums share values (ESP_NOW_SEND_SUCCESS == WIFI_SEND_SUCCESS).
         if (esp_now_info->tx_status == WIFI_SEND_SUCCESS) {
             LOG_D("ENC", "Send SUCCESS");
+            manager->deferSendResult(true);
             manager->MoveToNextSendPkt();
         } else {
             if (manager->curRetries < manager->maxRetries) {
@@ -375,6 +416,7 @@ private:
             } else {
                 LOG_E("ENC", "Send FAILED - giving up after %d retries",
                       manager->maxRetries);
+                manager->deferSendResult(false);
                 manager->MoveToNextSendPkt();
             }
         }
@@ -429,6 +471,32 @@ private:
         curRetries = 0;
     }
 
+    // Snapshot the just-finished send (still at sendQueue.front()) onto the
+    // deferred queue for exec() to dispatch on the main loop. Call BEFORE
+    // MoveToNextSendPkt, which frees the front buffer. Broadcast/unsequenced
+    // sends are queued too; the reliable channel drops them (no seqId match).
+    void deferSendResult(bool success) {
+        DeferredSendResult res;
+        bool have = false;
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        if (!sendQueue.empty()) {
+            const DataSendBuffer& buf = sendQueue.front();
+            const DataPktHdr* hdr = reinterpret_cast<const DataPktHdr*>(buf.ptr);
+            res.type = hdr->packetType;
+            memcpy(res.dstMac, buf.dstMac, 6);
+            const uint8_t* payload = buf.ptr + sizeof(DataPktHdr);
+            size_t payloadLen = buf.len > sizeof(DataPktHdr) ? buf.len - sizeof(DataPktHdr) : 0;
+            res.data.assign(payload, payload + payloadLen);
+            res.success = success;
+            have = true;
+        }
+        xSemaphoreGive(sendMutex);
+        if (!have) return;
+        xSemaphoreTake(sendResultMutex, portMAX_DELAY);
+        sendResultQueue.push(std::move(res));
+        xSemaphoreGive(sendResultMutex);
+    }
+
     void clearSendQueue() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         while (!sendQueue.empty()) {
@@ -478,6 +546,8 @@ private:
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> pktHandlerCallbacks;
+    // Send-result handlers, one per PktType, mirroring pktHandlerCallbacks.
+    std::vector<std::pair<SendStatusCallback, void*>> sendStatusHandlers_;
 
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)
@@ -550,6 +620,12 @@ private:
 
     //Packet send queue
     std::queue<DataSendBuffer> sendQueue;
+
+    // Deferred send-result queue: the WiFi-task send callback snapshots each
+    // finished send here; exec() drains it on the main loop so the reliable
+    // transport ack never races Resender::sync().
+    SemaphoreHandle_t sendResultMutex;
+    std::queue<DeferredSendResult> sendResultQueue;
 
     // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl)
     std::unordered_map<uint64_t, int> rssiTracker;

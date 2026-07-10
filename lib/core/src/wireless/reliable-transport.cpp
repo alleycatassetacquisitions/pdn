@@ -16,15 +16,6 @@ ReliableTransport::ReliableTransport(WirelessManager* wm)
         [this](PktType type, uint8_t seqId, const uint8_t* targetMac) {
             onResenderAbandon(type, seqId, targetMac);
         });
-    if (wirelessManager != nullptr) {
-        wirelessManager->setEspNowPacketHandler(
-            PktType::ACK,
-            [](const uint8_t* src, const uint8_t* data, const size_t len,
-               void* ctx) {
-                static_cast<ReliableTransport*>(ctx)->onAckPacket(src, data, len);
-            },
-            this);
-    }
 }
 
 ReliableTransport::~ReliableTransport() {
@@ -33,7 +24,15 @@ ReliableTransport::~ReliableTransport() {
         entry.second = nullptr;
     }
     registry.clear();
+    // Unregister the driver callbacks before freeing their ctx cells: each
+    // ReceiveBinding is the void* ctx held by the driver's per-type receive and
+    // send-status handlers, so a packet arriving after this dtor would otherwise
+    // dispatch into freed memory.
     for (ReceiveBinding*& binding : receiveBindings) {
+        if (wirelessManager != nullptr) {
+            wirelessManager->clearEspNowPacketHandler(binding->type);
+            wirelessManager->clearEspNowSendStatusHandler(binding->type);
+        }
         delete binding;
         binding = nullptr;
     }
@@ -44,6 +43,7 @@ void ReliableTransport::ensurePacketCallback(PktType type) {
     // Only ever called on a channel's first claim of `type` (channel() returns
     // early on a re-claim), so the binding is always new — no dedup needed.
     receiveBindings.push_back(new ReceiveBinding{this, type});
+    ReceiveBinding* binding = receiveBindings.back();
     if (wirelessManager == nullptr) return;
     wirelessManager->setEspNowPacketHandler(
         type,
@@ -52,18 +52,23 @@ void ReliableTransport::ensurePacketCallback(PktType type) {
             ReceiveBinding* b = static_cast<ReceiveBinding*>(ctx);
             b->transport->deliverIncoming(b->type, src, data, len);
         },
-        receiveBindings.back());
+        binding);
+    wirelessManager->setEspNowSendStatusHandler(
+        type,
+        [](const uint8_t* dst, const uint8_t* data, const size_t len,
+           bool success, void* ctx) {
+            ReceiveBinding* b = static_cast<ReceiveBinding*>(ctx);
+            b->transport->onSendResult(b->type, dst, data, len, success);
+        },
+        binding);
 }
 
-void ReliableTransport::onAckPacket(const uint8_t* from,
-                                    const uint8_t* data, size_t len) {
-    if (len < sizeof(AckPayload)) return;
-    AckPayload ack;
-    std::memcpy(&ack, data, sizeof(ack));
-    PktType origType = static_cast<PktType>(ack.originalType);
-    std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(origType);
+void ReliableTransport::onSendResult(PktType type, const uint8_t* toMac,
+                                     const uint8_t* data, size_t len,
+                                     bool success) {
+    std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
     if (it == registry.end()) return;
-    it->second->onAck(ack.seqId, from);
+    it->second->onSendResult(toMac, data, len, success);
 }
 
 bool ReliableTransport::deliverIncoming(PktType type, const uint8_t* fromMac,

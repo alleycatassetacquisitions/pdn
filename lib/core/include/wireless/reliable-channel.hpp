@@ -52,6 +52,12 @@ public:
     /// to its onReceive callback. Returns true if delivered.
     virtual bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) = 0;
 
+    /// Radio send-result for one of this channel's outbound packets. The typed
+    /// subclass reads the stamped seqId back from `data` and, on success,
+    /// clears the pending entry (replacing the old ack round-trip).
+    virtual void onSendResult(const uint8_t* toMac, const uint8_t* data,
+                              size_t len, bool success) = 0;
+
     /// sizeof the payload struct this channel is typed on. The transport uses
     /// it to tell a same-type re-claim from a different-payload collision on
     /// the same PktType.
@@ -121,19 +127,20 @@ public:
         sendOnceBytes(mac, reinterpret_cast<const uint8_t*>(&p), sizeof(P));
     }
 
-    /// Decode + dispatch one inbound packet: ack first (a retransmit means our
-    /// prior ack was lost), then dedup, then the onReceive callback.
+    /// Decode + dispatch one inbound packet: dedup, then the onReceive
+    /// callback. No ack is emitted; the sender's Resender is cleared by its own
+    /// radio SEND_SUCCESS, not a round-trip. Dedup still matters because a
+    /// sender that missed SEND_SUCCESS retransmits, and the duplicate must be
+    /// suppressed here.
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
-            // Drop without acking: a corrupt/truncated ESP-NOW frame (no CRC on
-            // this path) would otherwise be retransmitted to abandonment with no
-            // trace. Log so it's diagnosable rather than silent.
+            // A corrupt/truncated ESP-NOW frame (no CRC on this path); log so
+            // it's diagnosable rather than silently dropped.
             logLengthMismatch(packetType, len, sizeof(P));
             return false;
         }
         P p;
         std::memcpy(&p, data, sizeof(P));
-        Resender::sendAck(getWirelessManager(), fromMac, packetType, p.seqId);
         if (isDuplicateReliableRx(fromMac, p.seqId)) return true;
         if (onReceiveCallback) onReceiveCallback(fromMac, p);
         return true;
@@ -142,6 +149,20 @@ public:
     /// Untyped entry point used by the transport's rx routing.
     bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) override {
         return deliver(fromMac, data, len);
+    }
+
+    /// Radio send-result for one of this channel's outbound packets, routed
+    /// from the driver's send callback via the transport. `data` is the exact
+    /// payload handed to the radio, so the stamped seqId reads straight back
+    /// out. SEND_SUCCESS clears the pending entry (the peer's MAC acked it);
+    /// SEND_FAIL is ignored and left to the backoff timer.
+    void onSendResult(const uint8_t* toMac, const uint8_t* data, size_t len,
+                      bool success) override {
+        if (!success || len != sizeof(P)) return;
+        P p;
+        std::memcpy(&p, data, sizeof(P));
+        if (p.seqId == 0) return;  // fire-and-forget, no pending entry to clear
+        resender->onAck(packetType, p.seqId, toMac);
     }
 
     /// This channel's payload struct size, for the transport's claim guard.
