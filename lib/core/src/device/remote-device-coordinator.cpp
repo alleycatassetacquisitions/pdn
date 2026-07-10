@@ -720,37 +720,37 @@ bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {
     return false;
 }
 
-bool RemoteDeviceCoordinator::findJackForMac(const uint8_t* mac, SerialIdentifier& jack) const {
-    for (SerialIdentifier port : HELLO_JACKS) {
-        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
-        if (memcmp(machine->peer().data(), mac, 6) == 0) {
-            jack = port;
-            return true;
-        }
-    }
-    return false;
-}
-
 void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                                                 uint8_t chainRole, const uint8_t* profile,
                                                 size_t len) {
-    SerialIdentifier jack;
-    if (!findJackForMac(fromMac, jack)) return;
-    // Register only after a jack matches: an unmatched or late context (its link
-    // already timed out to IDLE) must not leak a peer slot we never send to.
-    registerPeer(fromMac);
-    helloByPort_[portIndex(jack)].peerChainRole = chainRole;
-    if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
-    // Output initiates, input replies: a peer that arrived on an input jack sent
-    // its context first, so send ours back so its out-jack completes too.
-    // Complete our side BEFORE replying so a same-tick SEND_SUCCESS can't race.
-    // The initiator (this peer on our OUTPUT jack) already sent its context and
-    // must not reply, or the two would ping-pong forever.
-    onContextExchangeComplete(jack);
-    if (jack != SerialIdentifier::OUTPUT_JACK) {
-        sendSelfContext(fromMac);
+    // A 2-node ring cables BOTH our jacks to the same peer, so one context can
+    // complete more than one link. Complete every jack mid-exchange with this MAC,
+    // not just the first, or the unmatched link times out and opens the ring. Only
+    // a Connecting jack consumes a context: an Idle jack isn't ours, and an
+    // already-Connected one is a duplicate to drop (this also stops the input-reply
+    // below from ping-ponging once both links are up).
+    bool matched = false;
+    bool replyToInput = false;
+    for (SerialIdentifier port : HELLO_JACKS) {
+        HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
+        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
+        if (!matched) {
+            matched = true;
+            // Register only after a jack matches, so an unmatched/late context can't
+            // leak a peer slot we never send to.
+            registerPeer(fromMac);
+        }
+        helloByPort_[portIndex(port)].peerChainRole = chainRole;
+        if (contextReceivedCallback) contextReceivedCallback(port, peerType, profile, len);
+        // Complete our side BEFORE replying so a same-tick SEND_SUCCESS can't race.
+        onContextExchangeComplete(port);
+        if (port != SerialIdentifier::OUTPUT_JACK) replyToInput = true;
     }
+    // Output initiates, input replies: a peer that arrived on an input jack sent its
+    // context first, so send ours back so its out-jack completes too. The OUTPUT
+    // initiator already sent first and must not reply, or the two ping-pong.
+    if (replyToInput) sendSelfContext(fromMac);
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {

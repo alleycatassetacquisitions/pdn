@@ -354,7 +354,6 @@ private:
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                            uint8_t chainRole, const uint8_t* profile, size_t len);
     // Jack whose HELLO link currently names `mac`, or false if none.
-    bool findJackForMac(const uint8_t* mac, SerialIdentifier& jack) const;
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task

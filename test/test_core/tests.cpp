@@ -1324,6 +1324,9 @@ TEST_F(RDCHelloTests, contextReceiveConnectsJack) {
     rdcContextReceiveConnectsJack(this);
 }
 
+TEST_F(RDCHelloTests, contextCompletesBothJacksForSamePeer) {
+    rdcContextCompletesBothJacksForSamePeer(this);
+}
 TEST_F(RDCHelloTests, contextInputJackReplies) {
     rdcContextInputJackReplies(this);
 }

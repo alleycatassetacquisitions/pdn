@@ -338,6 +338,34 @@ inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
     EXPECT_TRUE(suite->rdc.isContextSendPending(peer));  // reply was sent
 }
 
+// A 2-node ring cables the same peer to BOTH jacks. One received context must
+// complete BOTH links; if the un-matched one is left CONNECTING it silent-links to
+// IDLE and opens the ring.
+inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->rdc.getReliableTransport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+}
+
 // (d) A headMac change mid-exchange cancels the in-flight send and re-initiates.
 
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
