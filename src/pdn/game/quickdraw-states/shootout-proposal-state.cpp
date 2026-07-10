@@ -3,7 +3,7 @@
 
 ShootoutProposal::ShootoutProposal(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_PROPOSAL)
-    , ShootoutAwareState(ctx.shootoutManager)
+    , LoopBreakAbortState(ctx.shootoutManager)
     , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutProposal::onStateMounted(PDN* pdn) {

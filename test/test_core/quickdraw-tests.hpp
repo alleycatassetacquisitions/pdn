@@ -1525,19 +1525,19 @@ inline void countdownDebouncesTransientDisconnect(StateCleanupTests* suite) {
     // Single-tick blip: should be absorbed by the debounce.
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Recovery within the window clears the timer.
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
-    EXPECT_FALSE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Persistent loss past the debounce window: now the abort fires.
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));  // start debounce
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 }
 
 // Same debounce contract on DuelPushed (between BATTLE press and result
@@ -1550,17 +1550,17 @@ inline void duelPushedDebouncesTransientDisconnect(StateCleanupTests* suite) {
 
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(pushed.disconnectedBackToIdle([&] { return pushed.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
-    EXPECT_FALSE(pushed.disconnectedBackToIdle([&] { return pushed.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(pushed.disconnectedBackToIdle([&] { return pushed.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(pushed.disconnectedBackToIdle([&] { return pushed.isPersistentlyDisconnected(); }));
+    EXPECT_TRUE(duelReturnsToIdle(pushed, suite->ctx.shootoutManager));
 }
 
 // Same debounce contract on DuelReceivedResult.
@@ -1571,20 +1571,20 @@ inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* su
 
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(received.disconnectedBackToIdle([&] { return received.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
-    EXPECT_FALSE(received.disconnectedBackToIdle([&] { return received.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
 
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(received.disconnectedBackToIdle([&] { return received.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(received.disconnectedBackToIdle([&] { return received.isPersistentlyDisconnected(); }));
+    EXPECT_TRUE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
 }
 
-// Regression: while a shootout is live, disconnectedBackToIdle must both
+// Regression: while a shootout is live, duelReturnsToIdle must both
 // suppress the idle-return and leave the disconnect debounce frozen. Sampling
 // persistence advances that debounce, so sampling it mid-tournament aged the
 // timer and let a duelist snap to Idle the instant the shootout ended instead
@@ -1605,17 +1605,17 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     // not age even as wall-clock time passes.
     suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
         SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
-    EXPECT_FALSE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_FALSE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     // Tournament ends. A frozen debounce means one tick does not bail; a fresh
     // full window is still required.
     shootout.resetToIdle();
     ASSERT_FALSE(shootout.active());
-    EXPECT_FALSE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
     suite->fakeClock->advance(2000);
-    EXPECT_TRUE(countdown.disconnectedBackToIdle([&] { return countdown.isPersistentlyDisconnected(); }));
+    EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
     suite->ctx.shootoutManager = nullptr;
 }

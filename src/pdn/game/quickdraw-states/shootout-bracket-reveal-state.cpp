@@ -3,7 +3,7 @@
 
 ShootoutBracketReveal::ShootoutBracketReveal(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL)
-    , ShootoutAwareState(ctx.shootoutManager)
+    , LoopBreakAbortState(ctx.shootoutManager)
     , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutBracketReveal::onStateMounted(PDN* pdn) {

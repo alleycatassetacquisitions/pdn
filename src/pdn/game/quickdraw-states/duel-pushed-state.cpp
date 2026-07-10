@@ -5,8 +5,7 @@
 #define DUEL_PUSHED_TAG "DUEL_PUSHED"
 
 DuelPushed::DuelPushed(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_PUSHED)
-    , ShootoutAwareState(ctx.shootoutManager) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_PUSHED) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
 }

@@ -7,8 +7,7 @@
 #include "device/drivers/logger.hpp"
 
 DuelCountdown::DuelCountdown(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_COUNTDOWN)
-    , ShootoutAwareState(ctx.shootoutManager) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, DUEL_COUNTDOWN) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
     this->chainDuelManager = ctx.chainDuelManager;

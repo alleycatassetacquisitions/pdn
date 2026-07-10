@@ -21,7 +21,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "game/shootout-aware-state.hpp"
+#include "game/loop-break-abort-state.hpp"
 
 /// Bundle of the shared game-wide managers a state may need. Built once by
 /// Quickdraw::populateStateMap and handed to every state so a new manager is a
@@ -178,7 +178,16 @@ private:
     bool isAuxRequired() override;
 };
 
-class DuelCountdown : public ConnectState<PDN>, public ShootoutAwareState {
+/// A duel state returns to Idle on a persistent disconnect, but never while a
+/// tournament is live — the shootout's own PEER_LOST/ABORT teardown owns that
+/// path. Short-circuit so persistence is not sampled mid-tournament: sampling it
+/// advances the disconnect debounce, which would let a duelist snap to Idle the
+/// instant the shootout ends instead of after a fresh window.
+inline bool duelReturnsToIdle(ConnectState<PDN>& duel, ShootoutManager* shootout) {
+    return !(shootout && shootout->active()) && duel.isPersistentlyDisconnected();
+}
+
+class DuelCountdown : public ConnectState<PDN> {
 public:
     explicit DuelCountdown(const GameContext& ctx);
     ~DuelCountdown();
@@ -274,7 +283,7 @@ private:
     const int DUEL_TIMEOUT = 4000;
 };
 
-class DuelPushed : public ConnectState<PDN>, public ShootoutAwareState {
+class DuelPushed : public ConnectState<PDN> {
 public:
     explicit DuelPushed(const GameContext& ctx);
     ~DuelPushed();
@@ -294,7 +303,7 @@ private:
     const int DUEL_RESULT_GRACE_PERIOD = 900;
 };
 
-class DuelReceivedResult : public ConnectState<PDN>, public ShootoutAwareState {
+class DuelReceivedResult : public ConnectState<PDN> {
 public:
     explicit DuelReceivedResult(const GameContext& ctx);
     ~DuelReceivedResult();
@@ -402,7 +411,7 @@ private:
     bool shouldRetryUpload = false;
 };
 
-class ShootoutProposal : public TypedState<PDN>, public ShootoutAwareState {
+class ShootoutProposal : public TypedState<PDN>, public LoopBreakAbortState {
 public:
     explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -420,7 +429,7 @@ private:
     bool shouldGoToAborted_ = false;
 };
 
-class ShootoutBracketReveal : public TypedState<PDN>, public ShootoutAwareState {
+class ShootoutBracketReveal : public TypedState<PDN>, public LoopBreakAbortState {
 public:
     explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;

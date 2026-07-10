@@ -396,9 +396,8 @@ void Quickdraw::populateStateMap() {
 
     duelCountdown->addTransition(
         new StateTransition(
-            [duelCountdown]() {
-                return duelCountdown->disconnectedBackToIdle(
-                    [duelCountdown] { return duelCountdown->isPersistentlyDisconnected(); });
+            [this, duelCountdown]() {
+                return duelReturnsToIdle(*duelCountdown, shootoutManager_);
             },
             idle));
 
@@ -429,9 +428,8 @@ void Quickdraw::populateStateMap() {
 
     duelPushed->addTransition(
         new StateTransition(
-            [duelPushed]() {
-                return duelPushed->disconnectedBackToIdle(
-                    [duelPushed] { return duelPushed->isPersistentlyDisconnected(); });
+            [this, duelPushed]() {
+                return duelReturnsToIdle(*duelPushed, shootoutManager_);
             },
             idle));
 
@@ -442,9 +440,8 @@ void Quickdraw::populateStateMap() {
 
     duelReceivedResult->addTransition(
         new StateTransition(
-            [duelReceivedResult]() {
-                return duelReceivedResult->disconnectedBackToIdle(
-                    [duelReceivedResult] { return duelReceivedResult->isPersistentlyDisconnected(); });
+            [this, duelReceivedResult]() {
+                return duelReturnsToIdle(*duelReceivedResult, shootoutManager_);
             },
             idle));
 
