@@ -131,11 +131,10 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         this
     );
 
-    // Reliable context exchange (#157): one device-level channel per device-type
-    // PktType. Claiming a channel makes its receive path live (the transport
-    // installs the driver rx handler). The abandon callback is a no-op: an
-    // unreachable peer's jack link self-heals to IDLE via the context-exchange
-    // timeout in serviceConnectivity().
+    // One device-level channel per device-type PktType. Claiming a channel makes
+    // its receive path live (the transport installs the driver rx handler). The
+    // abandon callback is a no-op: an unreachable peer's jack link self-heals to
+    // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
     transport = new ReliableTransport(wirelessManager);
     pdnContextChannel = transport->channel<PdnConnectionContext>(
         PktType::kPdnConnectionContext, [](uint8_t, const uint8_t*) {});
