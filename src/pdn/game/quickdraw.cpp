@@ -500,10 +500,6 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&ShootoutProposal::transitionToAborted, shProposal),
             shAborted));
-    shProposal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutProposal::transitionToIdle, shProposal),
-            idle));
 
     shBracketReveal->addTransition(
         new StateTransition(

@@ -28,7 +28,6 @@ void ShootoutProposal::onStateLoop(PDN* pdn) {
     auto p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
-    if (p == ShootoutManager::Phase::IDLE) shouldGoToIdle_ = true;
     bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
     if (tickAbortGuard(loopBroken)) shouldGoToAborted_ = true;
 }
@@ -37,11 +36,9 @@ void ShootoutProposal::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     shouldGoToReveal_ = false;
-    shouldGoToIdle_ = false;
     shouldGoToAborted_ = false;
     resetAbortGuard();
 }
 
 bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }
-bool ShootoutProposal::transitionToIdle() { return shouldGoToIdle_; }
 bool ShootoutProposal::transitionToAborted() { return shouldGoToAborted_; }

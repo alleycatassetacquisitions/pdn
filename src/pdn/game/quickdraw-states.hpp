@@ -419,13 +419,11 @@ public:
     void onStateDismounted(PDN* pdn) override;
 
     bool transitionToBracketReveal();
-    bool transitionToIdle();
     bool transitionToAborted();
 
 private:
     ChainDuelManager* chainDuelManager_;
     bool shouldGoToReveal_ = false;
-    bool shouldGoToIdle_ = false;
     bool shouldGoToAborted_ = false;
 };
 

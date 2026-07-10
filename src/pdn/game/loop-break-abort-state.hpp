@@ -17,10 +17,9 @@ public:
 
     /// Once the ring has stayed open for the full window, abort the whole
     /// tournament: abortTournament broadcasts ABORT to the ring and lands the
-    /// local device on the aborted screen (Phase::ABORTED) rather than dropping
-    /// just this device to Idle. Idempotent, so a debounced guard firing
-    /// repeatedly is harmless. Returns true on the tick the guard fires so the
-    /// caller can raise its own transition flag.
+    /// local device on the aborted screen (Phase::ABORTED). Idempotent, so a
+    /// debounced guard firing repeatedly is harmless. Returns true on the tick
+    /// the guard fires so the caller can raise its own transition flag.
     bool tickAbortGuard(bool ringSettledOpen) {
         if (!debounce.heldFor(ringSettledOpen, kLoopBreakDebounceMs)) return false;
         if (!shootoutManager) return false;
