@@ -468,6 +468,27 @@ inline void rdcChainRingOpensOnOutputDrop(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
 }
 
+// Non-adjacent break: the INPUT peer stays put but, having lost ITS own upstream,
+// stops echoing our head and advertises itself. The head returning on INPUT no
+// longer matches ours, so the ring must open even though neither of our links
+// dropped — the break was further around the loop.
+inline void rdcChainRingOpensWhenReturnedHeadChanges(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t upstream[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    // Same upstream source, now advertising itself as head (absent head_mac).
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, nullptr));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_NE(suite->rdc.getChainRole(), ChainRole::RING);
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), upstream, 6));
+}
+
 // A different source MAC on a still-live INPUT jack (peer swapped before the
 // silent-link watchdog fired) tears the link down and re-derives: the stale ring
 // latch and the head inherited from the vanished peer cannot survive.

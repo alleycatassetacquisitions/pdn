@@ -176,10 +176,10 @@ public:
                memcmp(context.peerMac.data(), source, 6) != 0;
     }
 
-    // Tear the link down to Idle immediately: dismounts the live state (so leaving
-    // Connected fires the disconnect + parser reset) then mounts Idle. Used on a
-    // peer swap so the new peer opens a fresh link within the same HELLO, keeping
-    // the teardown-before-readopt order that ring/head clearing depends on.
+    // Tear the link down to Idle immediately: dismounts the live state (leaving
+    // Connected fires the disconnect) then mounts Idle, whose onStateMounted resets
+    // the parser. Used on a peer swap so the new peer opens a fresh link within the
+    // same HELLO, keeping the teardown-before-readopt order ring/head clearing needs.
     void forceIdle() { skipToState(nullptr, 0); }
 
 private:

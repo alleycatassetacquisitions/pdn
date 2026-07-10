@@ -766,6 +766,14 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     const bool peerHeadIsSelf =
         memcmp(peerEffectiveHead.data(), selfMac_.data(), 6) == 0;
 
+    // A latched ring hears its own seeded head return on INPUT every cycle. When
+    // INPUT instead delivers a different head, the loop no longer closes through
+    // us — an upstream link broke, possibly one not adjacent to this device — so
+    // open the ring and fall through to adopt the new upstream head.
+    if (ringLatched && !peerHeadIsSelf) {
+        ringLatched = false;
+    }
+
     // Ring: a structural head sees its own MAC return on its INPUT jack, so the
     // head it seeded traveled the whole loop back. Because inheritance carries
     // that MAC unchallenged, this latches for ANY head regardless of MAC value.
@@ -787,9 +795,12 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
 }
 
 void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
-    // Any ring-link drop opens the ring for this device: a closed loop is broken
-    // whether the break is upstream (INPUT) or downstream (OUTPUT). Clearing this
-    // only on INPUT drop left an OUTPUT-side break reporting RING forever.
+    // The FDN secondary input jack is a symbol link, not part of the INPUT/OUTPUT
+    // chain, so its teardown must not open the ring or clear the inherited head.
+    if (port == SerialIdentifier::INPUT_JACK_SECONDARY) return;
+
+    // A ring closes through both this device's chain links; losing either the
+    // upstream (INPUT) or downstream (OUTPUT) one breaks the loop, so open the ring.
     ringLatched = false;
 
     // Only the upstream (INPUT) peer supplies our inherited head, so only its loss
