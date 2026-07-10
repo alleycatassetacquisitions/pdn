@@ -17,7 +17,8 @@ class DemoModule : public TypedStateMachine<FDN> {
 public:
     DemoModule(int stateId,
                RemoteDeviceCoordinator* remoteDeviceCoordinator,
-               ControllerWirelessManager* controllerWirelessManager);
+               ControllerWirelessManager* controllerWirelessManager,
+               bool skipDisconnectPolicy = false);
     ~DemoModule();
 
     void populateStateMap() override;
@@ -28,4 +29,5 @@ private:
     static constexpr int kMainMenuStateIndex = 0;
     DemoModuleDisconnectPolicy disconnectPolicy;
     ControllerWirelessManager* controllerWirelessManager;
+    bool skipDisconnectPolicy_;
 };

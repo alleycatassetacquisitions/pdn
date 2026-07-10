@@ -41,8 +41,18 @@ struct CableConnection {
 };
 
 /**
+ * Connection from a PDN's output jack to one of the FDN's input jacks.
+ */
+struct FDNConnection {
+    int pdnIndex;
+    int fdnIndex;
+    bool useSecondaryJack;  // false = INPUT_JACK, true = INPUT_JACK_SECONDARY
+};
+
+/**
  * Broker that manages serial cable connections between simulated devices.
  * Routes data between the appropriate jacks based on device roles.
+ * Also supports FDN devices which have two input jacks and no output jack.
  */
 class SerialCableBroker {
 public:
@@ -56,7 +66,7 @@ public:
     SerialCableBroker& operator=(const SerialCableBroker&) = delete;
     
     /**
-     * Register a device's serial drivers with the broker.
+     * Register a PDN device's serial drivers with the broker.
      * @param deviceIndex Unique index for this device
      * @param outputJack The device's output jack driver
      * @param inputJack The device's input jack driver
@@ -72,9 +82,99 @@ public:
         ds.isHunter = isHunter;
         devices_[deviceIndex] = ds;
     }
-    
+
     /**
-     * Unregister a device from the broker.
+     * Register an FDN device's serial drivers with the broker.
+     * FDN has two input jacks and no output jack.
+     * @param fdnIndex Unique index for this FDN (use a distinct namespace from PDN indices)
+     * @param inputJack1 Primary input jack (INPUT_JACK)
+     * @param inputJack2 Secondary input jack (INPUT_JACK_SECONDARY)
+     */
+    void registerFDN(int fdnIndex,
+                     NativeSerialDriver* inputJack1,
+                     NativeSerialDriver* inputJack2) {
+        FDNSerial fs;
+        fs.inputJack1 = inputJack1;
+        fs.inputJack2 = inputJack2;
+        fdnDevices_[fdnIndex] = fs;
+    }
+
+    /**
+     * Unregister an FDN device from the broker.
+     */
+    void unregisterFDN(int fdnIndex) {
+        disconnectAllFDN(fdnIndex);
+        fdnDevices_.erase(fdnIndex);
+    }
+
+    /**
+     * Connect a PDN's output jack to an FDN input jack.
+     * Routes: PDN OUTPUT_JACK → FDN INPUT_JACK (jack 1) or INPUT_JACK_SECONDARY (jack 2)
+     * @param pdnIndex PDN device index
+     * @param fdnIndex FDN device index
+     * @param useSecondaryJack true to use FDN INPUT_JACK_SECONDARY, false for INPUT_JACK
+     * @return true if connection was made
+     */
+    bool connectPdnToFdn(int pdnIndex, int fdnIndex, bool useSecondaryJack = false) {
+        if (devices_.find(pdnIndex) == devices_.end()) return false;
+        if (fdnDevices_.find(fdnIndex) == fdnDevices_.end()) return false;
+
+        // Check if already connected
+        for (const auto& conn : fdnConnections_) {
+            if (conn.pdnIndex == pdnIndex && conn.fdnIndex == fdnIndex) return true;
+        }
+
+        FDNConnection conn;
+        conn.pdnIndex = pdnIndex;
+        conn.fdnIndex = fdnIndex;
+        conn.useSecondaryJack = useSecondaryJack;
+        fdnConnections_.push_back(conn);
+        return true;
+    }
+
+    /**
+     * Disconnect a PDN from an FDN.
+     * @return true if disconnected
+     */
+    bool disconnectPdnFromFdn(int pdnIndex, int fdnIndex) {
+        for (auto it = fdnConnections_.begin(); it != fdnConnections_.end(); ++it) {
+            if (it->pdnIndex == pdnIndex && it->fdnIndex == fdnIndex) {
+                fdnConnections_.erase(it);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns the FDN index a PDN is connected to, or -1 if not connected to any FDN.
+     */
+    int getConnectedFDN(int pdnIndex) const {
+        for (const auto& conn : fdnConnections_) {
+            if (conn.pdnIndex == pdnIndex) return conn.fdnIndex;
+        }
+        return -1;
+    }
+
+    /**
+     * Returns the jack (false=primary, true=secondary) a PDN uses on the FDN, or false if not connected.
+     */
+    bool getConnectedFDNJack(int pdnIndex) const {
+        for (const auto& conn : fdnConnections_) {
+            if (conn.pdnIndex == pdnIndex) return conn.useSecondaryJack;
+        }
+        return false;
+    }
+
+    /**
+     * Get all PDN→FDN connections.
+     */
+    const std::vector<FDNConnection>& getFDNConnections() const {
+        return fdnConnections_;
+    }
+
+    /**
+     * Unregister a PDN device from the broker.
      */
     void unregisterDevice(int deviceIndex) {
         // Remove any connections involving this device
@@ -173,23 +273,35 @@ public:
     /**
      * Transfer pending serial data between connected devices.
      * Should be called from the main loop.
+     * Handles both PDN↔PDN and PDN→FDN connections.
      */
     void transferData() {
+        // PDN↔PDN connections (bidirectional)
         for (const auto& conn : connections_) {
             auto itA = devices_.find(conn.deviceA);
             auto itB = devices_.find(conn.deviceB);
             
             if (itA == devices_.end() || itB == devices_.end()) continue;
             
-            // Get the appropriate jacks based on connection type
             NativeSerialDriver* jackA = getJack(itA->second, conn.jackA);
             NativeSerialDriver* jackB = getJack(itB->second, conn.jackB);
             
-            // Transfer A → B: A's jack output goes to B's jack input
             transferFromTo(jackA, jackB);
-            
-            // Transfer B → A: B's jack output goes to A's jack input
             transferFromTo(jackB, jackA);
+        }
+
+        // PDN→FDN connections (PDN output → FDN input only; FDN has no output)
+        for (const auto& conn : fdnConnections_) {
+            auto pdnIt  = devices_.find(conn.pdnIndex);
+            auto fdnIt  = fdnDevices_.find(conn.fdnIndex);
+            if (pdnIt == devices_.end() || fdnIt == fdnDevices_.end()) continue;
+
+            NativeSerialDriver* pdnOut = pdnIt->second.outputJack;
+            NativeSerialDriver* fdnIn  = conn.useSecondaryJack
+                ? fdnIt->second.inputJack2
+                : fdnIt->second.inputJack1;
+
+            transferFromTo(pdnOut, fdnIn);
         }
     }
     
@@ -234,15 +346,30 @@ public:
 
 private:
     SerialCableBroker() = default;
-    
+
+    void disconnectAllFDN(int fdnIndex) {
+        fdnConnections_.erase(
+            std::remove_if(fdnConnections_.begin(), fdnConnections_.end(),
+                [fdnIndex](const FDNConnection& c) { return c.fdnIndex == fdnIndex; }),
+            fdnConnections_.end());
+    }
+
     struct DeviceSerial {
         NativeSerialDriver* outputJack;
         NativeSerialDriver* inputJack;
         bool isHunter;
     };
-    
+
+    struct FDNSerial {
+        NativeSerialDriver* inputJack1;   // INPUT_JACK (primary)
+        NativeSerialDriver* inputJack2;   // INPUT_JACK_SECONDARY
+    };
+
     std::map<int, DeviceSerial> devices_;
     std::vector<CableConnection> connections_;
+
+    std::map<int, FDNSerial> fdnDevices_;
+    std::vector<FDNConnection> fdnConnections_;
     
     NativeSerialDriver* getJack(const DeviceSerial& device, JackType type) {
         return (type == JackType::OUTPUT_JACK) ? device.outputJack : device.inputJack;

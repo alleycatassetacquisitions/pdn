@@ -24,8 +24,11 @@
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
+#include "wireless/controller-wireless-manager.hpp"
+#include "apps/controller/controller.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
+#include "apps/pdn-app-ids.hpp"
 
 // CLI components
 #include "cli/cli-serial-broker.hpp"
@@ -97,8 +100,10 @@ struct DeviceInstance {
     PDN* pdn = nullptr;
     Player* player = nullptr;
     Quickdraw* game = nullptr;
+    Controller* controllerApp = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
+    ControllerWirelessManager* controllerWirelessManager = nullptr;
     
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
@@ -221,7 +226,40 @@ public:
             },
             instance.symbolWirelessManager
         );
-        
+
+        instance.controllerWirelessManager = new ControllerWirelessManager();
+        instance.controllerWirelessManager->initialize(
+            instance.pdn->getWirelessManager(),
+            instance.pdn->getRemoteDeviceCoordinator());
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kControllerCommand,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+                ((ControllerWirelessManager*)userArg)->processControllerCommand(src, data, len);
+            },
+            instance.controllerWirelessManager
+        );
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kGameSelect,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+                ((ControllerWirelessManager*)userArg)->processGameSelectCommand(src, data, len);
+            },
+            instance.controllerWirelessManager
+        );
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kGameResponse,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+                ((ControllerWirelessManager*)userArg)->processGameResponseCommand(src, data, len);
+            },
+            instance.controllerWirelessManager
+        );
+        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
+            PktType::kPeripheralCommand,
+            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
+                ((ControllerWirelessManager*)userArg)->processPeripheralCommand(src, data, len);
+            },
+            instance.controllerWirelessManager
+        );
+
         // Create game (no remote debug manager for now)
         instance.game = new Quickdraw(
             instance.player,
@@ -230,9 +268,16 @@ public:
             nullptr,
             instance.symbolWirelessManager);
 
-        // Register state machines with the device and launch Quickdraw
+        instance.controllerApp = new Controller(
+            instance.player,
+            instance.pdn->getRemoteDeviceCoordinator(),
+            instance.symbolWirelessManager,
+            instance.controllerWirelessManager);
+
+        // Register both Quickdraw and Controller apps
         AppConfig apps = {
-            {StateId(QUICKDRAW_APP_ID), instance.game}
+            {StateId(QUICKDRAW_APP_ID),    instance.game},
+            {StateId(CONTROLLER_APP_ID),   instance.controllerApp},
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
         
@@ -260,8 +305,10 @@ public:
         MockHttpServer::getInstance().removePlayer(device.deviceId);
         
         delete device.game;
+        delete device.controllerApp;
         delete device.quickdrawWirelessManager;
         delete device.symbolWirelessManager;
+        delete device.controllerWirelessManager;
         delete device.player;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted

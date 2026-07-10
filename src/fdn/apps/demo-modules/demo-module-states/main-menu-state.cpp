@@ -17,14 +17,8 @@ void MainMenuState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
     renderMainMenuScreen(fdn, kGameTitle);
 
-    RemoteDeviceCoordinator* remoteDeviceCoordinator = fdn->getRemoteDeviceCoordinator();
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
-        if (peerMac != nullptr) {
-            controllerWirelessManager->setMacPeer(peerMac);
-            controllerWirelessManager->sendGameSelectPacket(GameSelectId::CONTROLLER_1);
-        }
-    }
+    sendGameSelectToConnectedPeers(fdn);
+    gameSelectResendTimer.setTimer(kGameSelectResendIntervalMs);
 
     controllerWirelessManager->setControllerCommandReceivedCallback(
         std::bind(&MainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
@@ -55,12 +49,32 @@ void MainMenuState::onStateMounted(FDN* fdn) {
 
 void MainMenuState::onStateLoop(FDN* fdn) {
     renderMainMenuScreen(fdn, kGameTitle);
+
+    // Periodically re-send GameSelect so PDNs that connect after initial mount
+    // (e.g. after the serial handshake completes) receive the game selection.
+    if (gameSelectResendTimer.expired()) {
+        sendGameSelectToConnectedPeers(fdn);
+        gameSelectResendTimer.setTimer(kGameSelectResendIntervalMs);
+    }
 }
 
 void MainMenuState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
     transitionToTutorialState = false;
     transitionToGameState = false;
+    gameSelectResendTimer.invalidate();
+}
+
+void MainMenuState::sendGameSelectToConnectedPeers(FDN* fdn) {
+    RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
+    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
+        const uint8_t* peerMac = rdc->getPeerMac(port);
+        if (peerMac != nullptr) {
+            LOG_W(TAG, "Sending GameSelect to peer on port %d", static_cast<int>(port));
+            controllerWirelessManager->setMacPeer(peerMac);
+            controllerWirelessManager->sendGameSelectPacket(GameSelectId::CONTROLLER_1);
+        }
+    }
 }
 
 bool MainMenuState::transitionToTutorial() {

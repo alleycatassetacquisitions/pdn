@@ -3,10 +3,12 @@
 
 DemoModule::DemoModule(int stateId,
                        RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                       ControllerWirelessManager* controllerWirelessManager)
+                       ControllerWirelessManager* controllerWirelessManager,
+                       bool skipDisconnectPolicy)
     : TypedStateMachine<FDN>(stateId)
     , disconnectPolicy(remoteDeviceCoordinator)
-    , controllerWirelessManager(controllerWirelessManager) {}
+    , controllerWirelessManager(controllerWirelessManager)
+    , skipDisconnectPolicy_(skipDisconnectPolicy) {}
 
 DemoModule::~DemoModule() {}
 
@@ -48,9 +50,11 @@ void DemoModule::populateStateMap() {
     stateMap.push_back(gameState);
     stateMap.push_back(scoringState);
 
-    for (State* state : stateMap) {
-        state->addAppTransition(
-            [this]() { return disconnectPolicy.isPersistentlyDisconnected(); },
-            StateId(SYMBOL_LOCK_APP_ID));
+    if (!skipDisconnectPolicy_) {
+        for (State* state : stateMap) {
+            state->addAppTransition(
+                [this]() { return disconnectPolicy.isPersistentlyDisconnected(); },
+                StateId(SYMBOL_LOCK_APP_ID));
+        }
     }
 }
