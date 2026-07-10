@@ -1351,6 +1351,9 @@ TEST_F(RDCHelloTests, chainRingOpensWhenReturnedHeadChanges) {
 TEST_F(RDCHelloTests, chainRingLatchesOnMergeWithConnectedInput) {
     rdcChainRingLatchesOnMergeWithConnectedInput(this);
 }
+TEST_F(RDCHelloTests, chainSecondaryJackLossKeepsRing) {
+    rdcChainSecondaryJackLossKeepsRing(this);
+}
 TEST_F(RDCHelloTests, chainPeerSwapClearsStaleRing) {
     rdcChainPeerSwapClearsStaleRing(this);
 }

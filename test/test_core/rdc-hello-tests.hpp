@@ -43,6 +43,7 @@ public:
 
         device.serialManager->setOutputJack(&outJack);
         device.serialManager->setInputJack(&inJack);
+        device.serialManager->setSecondaryInputJack(&secondaryJack);
 
         rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
@@ -87,6 +88,7 @@ public:
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
     NativeSerialDriver inJack{"hello-in"};
+    NativeSerialDriver secondaryJack{"hello-sec"};
     // Declared after the jacks so it is destroyed FIRST: the RDC dtor clears the
     // byte callbacks on the jacks, which must still be alive (mirrors production,
     // where the serial drivers outlive the RDC).
@@ -510,6 +512,29 @@ inline void rdcChainRingLatchesOnMergeWithConnectedInput(RDCHelloTests* suite) {
     // Latching means we are the head: the head adopted while the ring was forming
     // must be dropped, not advertised on into the closed ring.
     EXPECT_EQ(suite->rdc.getHeadMac(), nullptr);
+}
+
+// The FDN secondary input jack is a symbol link, not part of the chain, so its
+// loss must not open a ring closed over the INPUT/OUTPUT jacks.
+inline void rdcChainSecondaryJackLossKeepsRing(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t upstream[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    connectJack(suite, suite->secondaryJack, SerialIdentifier::INPUT_JACK_SECONDARY,
+                suite->helloFrame(0xD1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    // Let ONLY the secondary jack silent-link out; keep the two chain jacks alive.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
 }
 
 // A different source MAC on a still-live INPUT jack (peer swapped before the
