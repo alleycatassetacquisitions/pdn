@@ -1324,6 +1324,34 @@ TEST(RDCHelloStandalone, syncSkipsHandshakeOnStateLoop) {
     rdcHelloSyncSkipsHandshakeOnStateLoop();
 }
 
+TEST_F(RDCHelloTests, chainRoleReadsJackPresence) {
+    rdcChainRoleReadsJackPresence(this);
+}
+TEST_F(RDCHelloTests, chainInheritsAndReadvertisesHead) {
+    rdcChainInheritsAndReadvertisesHead(this);
+}
+TEST_F(RDCHelloTests, chainNonLowestHeadDetectsRing) {
+    rdcChainNonLowestHeadDetectsRing(this);
+}
+TEST_F(RDCHelloTests, chainHeadTransferClearsInheritedHead) {
+    rdcChainHeadTransferClearsInheritedHead(this);
+}
+TEST_F(RDCHelloTests, chainPhantomHeadClearedOnSupplierLoss) {
+    rdcChainPhantomHeadClearedOnSupplierLoss(this);
+}
+TEST_F(RDCHelloTests, chainRingOpensOnInputDrop) {
+    rdcChainRingOpensOnInputDrop(this);
+}
+TEST_F(RDCHelloTests, chainRingOpensOnOutputDrop) {
+    rdcChainRingOpensOnOutputDrop(this);
+}
+TEST_F(RDCHelloTests, chainPeerSwapClearsStaleRing) {
+    rdcChainPeerSwapClearsStaleRing(this);
+}
+TEST(RDCHelloStandalone, chainTwoNodeRingCloses) {
+    rdcChainTwoNodeRingCloses();
+}
+
 // ============================================
 // CHAIN DUEL MANAGER TESTS
 // ============================================

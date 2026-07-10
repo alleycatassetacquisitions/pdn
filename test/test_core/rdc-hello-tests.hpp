@@ -294,3 +294,273 @@ inline void rdcHelloSyncSkipsHandshakeOnStateLoop() {
     subjectRdc.sync(&subject);
     EXPECT_EQ(subjectSends, 0);
 }
+
+// ============================================
+// Device-level chain state machine (#156)
+// ============================================
+
+// A framed HELLO carrying a source MAC and, optionally, an advertised head.
+inline std::vector<uint8_t> chainHelloFrame(const uint8_t* source, const uint8_t* head) {
+    HelloPayload hello{};
+    memcpy(hello.source, source, 6);
+    hello.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+    if (head != nullptr) memcpy(hello.headMac, head, 6);
+    return encodeFramed(hello);
+}
+
+// Decodes a jack's emitted output back into a single HelloPayload.
+inline HelloPayload parseEmittedHello(const std::string& out) {
+    SerialFrameParser parser;
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; });
+    std::vector<uint8_t> bytes(out.begin(), out.end());
+    parser.feed(bytes.data(), bytes.size());
+    return got;
+}
+
+// Drives a jack Idle -> Connecting -> Connected. Each transition commits on a
+// sync() tick, and the context exchange only advances a Connecting link.
+inline void connectJack(RDCHelloTests* suite, NativeSerialDriver& jack,
+                        SerialIdentifier id, const std::vector<uint8_t>& firstHello) {
+    suite->deliverHello(jack, firstHello);
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(id);
+    suite->rdc.sync(&suite->device);
+}
+
+// Chain role is a local read of jack presence: OUTPUT connected = HEAD, INPUT
+// connected = CHILD (dominates), neither = STANDALONE.
+inline void rdcChainRoleReadsJackPresence(RDCHelloTests* suite) {
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                suite->helloFrame(0xA1));
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+}
+
+// Downstream inheritance: adopt the upstream peer's effective head and
+// re-advertise it. Head inheritance is synchronous on HELLO receipt.
+inline void rdcChainInheritsAndReadvertisesHead(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), head, 6));
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    HelloPayload emitted = parseEmittedHello(suite->outJack.getOutput());
+    EXPECT_EQ(0, memcmp(emitted.headMac, head, 6));
+    EXPECT_EQ(0, memcmp(emitted.source, suite->localMac, 6));
+
+    const uint8_t zero[6] = {0, 0, 0, 0, 0, 0};
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, zero));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), upstream, 6));
+}
+
+// KEY REGRESSION: a structural head whose MAC is NOT the lowest still latches the
+// ring, because inheritance carries its own MAC around the loop unchallenged.
+inline void rdcChainNonLowestHeadDetectsRing(RDCHelloTests* suite) {
+    int ringClosedCount = 0;
+    suite->rdc.setOnRingClosed([&]() { ringClosedCount++; });
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    const uint8_t lowNeighbour[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
+
+    EXPECT_EQ(ringClosedCount, 1);
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+}
+
+// Head transfer: when the INPUT peer drops while an OUTPUT peer remains, this
+// device becomes the new head and clears its inherited (now phantom) head.
+inline void rdcChainHeadTransferClearsInheritedHead(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t downstream[6] = {0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6};
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                chainHelloFrame(downstream, nullptr));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->outJack, chainHelloFrame(downstream, nullptr));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+    EXPECT_EQ(suite->rdc.getHeadMac(), nullptr);
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    HelloPayload emitted = parseEmittedHello(suite->outJack.getOutput());
+    const uint8_t zero[6] = {0, 0, 0, 0, 0, 0};
+    EXPECT_EQ(0, memcmp(emitted.headMac, zero, 6));
+}
+
+// Phantom-head clear: a pure child whose upstream vanishes falls back to
+// STANDALONE and stops advertising the vanished head.
+inline void rdcChainPhantomHeadClearedOnSupplierLoss(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
+    EXPECT_EQ(suite->rdc.getHeadMac(), nullptr);
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    HelloPayload emitted = parseEmittedHello(suite->outJack.getOutput());
+    const uint8_t zero[6] = {0, 0, 0, 0, 0, 0};
+    EXPECT_EQ(0, memcmp(emitted.headMac, zero, 6));
+}
+
+// Ring opens when the INPUT peer drops: the latch clears and the role falls back
+// to a plain read of jack presence.
+inline void rdcChainRingOpensOnInputDrop(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t lowNeighbour[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+}
+
+// Ring opens when the peer drops on the OUTPUT side, not just the INPUT side: a
+// closed loop breaks whichever link fails.
+inline void rdcChainRingOpensOnOutputDrop(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t lowNeighbour[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(lowNeighbour, suite->localMac));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+}
+
+// A different source MAC on a still-live INPUT jack (peer swapped before the
+// silent-link watchdog fired) tears the link down and re-derives: the stale ring
+// latch and the head inherited from the vanished peer cannot survive.
+inline void rdcChainPeerSwapClearsStaleRing(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t peerA[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    suite->deliverHello(suite->inJack, chainHelloFrame(peerA, suite->localMac));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    const uint8_t peerB[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x02};
+    const uint8_t foreignHead[6] = {0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC};
+    suite->deliverHello(suite->inJack, chainHelloFrame(peerB, foreignHead));
+
+    EXPECT_NE(suite->rdc.getChainRole(), ChainRole::RING);
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), foreignHead, 6));
+}
+
+// One node bundling an RDC, its device and jacks, for the two-live-RDC ring test.
+struct ChainRingNode {
+    explicit ChainRingNode(const uint8_t m[6]) {
+        memcpy(mac, m, 6);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
+        ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
+        ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
+        ON_CALL(*device.mockPeerComms, getPeerCommsState())
+            .WillByDefault(Return(PeerCommsState::CONNECTED));
+        device.serialManager->setOutputJack(&out);
+        device.serialManager->setInputJack(&in);
+        rdc.setExternalConnectivityTask(true);
+        rdc.initialize(device.wirelessManager, device.serialManager, &device);
+        rdc.setOnRingClosed([this]() { ringClosedCount++; });
+        rdc.enableHelloConnectivity();
+    }
+
+    MockDevice device;
+    NativeSerialDriver out{"ring-out"};
+    NativeSerialDriver in{"ring-in"};
+    RemoteDeviceCoordinator rdc;
+    uint8_t mac[6] = {};
+    int ringClosedCount = 0;
+};
+
+// Two live RDCs cross-wired into a 2-device ring (A.out<->B.in, B.out<->A.in). A's
+// head MAC propagates to B by inheritance, returns on A's INPUT jack, and latches
+// the ring on A with no coordination message and no MAC election.
+inline void rdcChainTwoNodeRingCloses() {
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+
+    const uint8_t macA[6] = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x02};
+    const uint8_t macB[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x03};
+    ChainRingNode A(macA);
+    ChainRingNode B(macB);
+
+    auto pump = [](NativeSerialDriver& from, NativeSerialDriver& to) {
+        const std::string bytes = from.getOutput();
+        from.clearOutput();
+        if (bytes.empty()) return;
+        to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
+        to.exec();
+    };
+
+    // Cable 1: A.out -> B.in. B inherits A as its head.
+    A.rdc.emitHello();
+    pump(A.out, B.in);
+    ASSERT_NE(B.rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(B.rdc.getHeadMac(), macA, 6));
+    B.rdc.sync(&B.device);
+
+    // A.out hears B on the return leg; bring both ends to Connected so A is the
+    // structural HEAD and B a CHILD.
+    B.rdc.emitHello();
+    pump(B.in, A.out);
+    A.rdc.sync(&A.device);
+    A.rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    A.rdc.sync(&A.device);
+    B.rdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    B.rdc.sync(&B.device);
+    ASSERT_EQ(A.rdc.getChainRole(), ChainRole::HEAD);
+    ASSERT_EQ(B.rdc.getChainRole(), ChainRole::CHILD);
+
+    // Cable 2 closes the ring: B.out -> A.in carries B's HELLO advertising head=A.
+    B.out.clearOutput();
+    B.rdc.emitHello();
+    pump(B.out, A.in);
+
+    EXPECT_EQ(A.ringClosedCount, 1);
+    EXPECT_EQ(A.rdc.getChainRole(), ChainRole::RING);
+
+    SimpleTimer::setPlatformClock(nullptr);
+}

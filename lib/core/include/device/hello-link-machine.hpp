@@ -52,7 +52,13 @@ class HelloIdleState : public State {
 public:
     explicit HelloIdleState(HelloLinkContext* context) : State(HELLO_LINK_IDLE), context(context) {}
 
-    void onStateMounted(Device*) override { transitionToConnectingState = false; }
+    void onStateMounted(Device*) override {
+        transitionToConnectingState = false;
+        // Entering Idle means the link is down (init, silent-link/context timeout, or
+        // a peer swap): drop any half-read frame so the next device's bytes can't
+        // merge into a stale partial left by the peer that just left.
+        if (context->resetParser) context->resetParser();
+    }
 
     void arm() { transitionToConnectingState = true; }
     bool transitionToConnecting() { return transitionToConnectingState; }
@@ -104,12 +110,10 @@ public:
         if (context->onJackChange) context->onJackChange(context->jack, true);
     }
 
-    // Leaving Connected means the link died: fire the disconnect and reset the
-    // parser so a half-read frame from the dying peer cannot merge into the next
-    // device that plugs in.
+    // Leaving Connected means the link died: fire the disconnect. The parser reset
+    // for a dropped link lives in HelloIdleState (every teardown enters Idle).
     void onStateDismounted(Device*) override {
         if (context->onJackChange) context->onJackChange(context->jack, false);
-        if (context->resetParser) context->resetParser();
     }
 
     bool transitionToIdle() { return context->sinceHello() > context->silentLinkMs; }
@@ -163,6 +167,20 @@ public:
     int currentStateId() const {
         return currentState ? currentState->getStateId() : HELLO_LINK_IDLE;
     }
+
+    // True when a live (non-Idle) link hears a HELLO from a MAC other than the
+    // peer it is tracking: the peer was physically swapped before the silent-link
+    // watchdog could fire.
+    bool tracksDifferentPeer(const uint8_t* source) const {
+        return currentState && currentState->getStateId() != HELLO_LINK_IDLE &&
+               memcmp(context.peerMac.data(), source, 6) != 0;
+    }
+
+    // Tear the link down to Idle immediately: dismounts the live state (so leaving
+    // Connected fires the disconnect + parser reset) then mounts Idle. Used on a
+    // peer swap so the new peer opens a fresh link within the same HELLO, keeping
+    // the teardown-before-readopt order that ring/head clearing depends on.
+    void forceIdle() { skipToState(nullptr, 0); }
 
 private:
     HelloLinkContext context;

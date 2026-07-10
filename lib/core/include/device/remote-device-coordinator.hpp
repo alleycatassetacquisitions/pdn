@@ -107,12 +107,12 @@ public:
     // machines land (#155-#159): they return the standalone defaults so the
     // game layer can compile and wire against the final shape now. ----
 
-    /// This device's chain role. STUB: always STANDALONE.
-    virtual ChainRole getChainRole() const { return ChainRole::STANDALONE; }
+    /// This device's chain role, derived from jack presence plus the ring latch.
+    virtual ChainRole getChainRole() const;
 
     /// The chain head's MAC, or nullptr when this device is the head or
-    /// standalone. STUB: always nullptr.
-    virtual const uint8_t* getHeadMac() const { return nullptr; }
+    /// standalone.
+    virtual const uint8_t* getHeadMac() const;
 
     /// Head-only chain member roster; empty for a child or standalone device.
     /// STUB: always empty.
@@ -323,4 +323,26 @@ private:
     void onHelloReceived(SerialIdentifier jack, const HelloPayload& hello);
     PortStatus mapHelloLinkToStatus(SerialIdentifier port) const;
     static unsigned long nowMs();
+
+    // ---- Device-level chain state machine (#156) ----
+    // headMac (48 bits) + a confirmed bit packed into one atomic: the emit task
+    // reads it while the main loop writes it. confirmed is wired but always 0
+    // until #157's context exchange populates it.
+    static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
+    static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
+    std::atomic<uint64_t> chainHeadState{0};
+    // Latched when this structural head sees its own MAC return on the INPUT jack;
+    // cleared when any ring link drops. Dominates getChainRole().
+    bool ringLatched = false;
+    // Stable storage backing getHeadMac()'s returned pointer.
+    mutable std::array<uint8_t, 6> headMacScratch{};
+    // Last role reported to chainRoleChangeCallback, for edge-triggered firing.
+    ChainRole lastChainRole = ChainRole::STANDALONE;
+
+    static uint64_t packHead(const uint8_t* mac, bool confirmed);
+    static void unpackMac(uint64_t value, uint8_t* out);
+    std::array<uint8_t, 6> effectiveHead() const;
+    void applyUpstreamHead(const HelloPayload& hello);
+    void onLinkLost(SerialIdentifier port);
+    void maybeFireChainRoleChange();
 };

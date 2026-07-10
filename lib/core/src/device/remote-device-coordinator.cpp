@@ -210,8 +210,20 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         // it stays dormant here too until HELLO drives its own peer identity (#157).
         for (SerialIdentifier port : HELLO_JACKS) {
             HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
-            if (machine) machine->onStateLoop(PDN);
+            if (!machine) continue;
+            const int before = machine->currentStateId();
+            machine->onStateLoop(PDN);
+            // A link falling back to Idle (silent-link or context-exchange timeout)
+            // opens the ring and severs an inherited head. onLinkLost clears that
+            // chain state on the teardown edge; the machine's disconnect callback
+            // only fires from Connected, so a Connecting-side drop would otherwise
+            // leave a stale ring latched.
+            if (before != HELLO_LINK_IDLE &&
+                machine->currentStateId() == HELLO_LINK_IDLE) {
+                onLinkLost(port);
+            }
         }
+        maybeFireChainRoleChange();
         return;
     }
 
@@ -622,9 +634,13 @@ void RemoteDeviceCoordinator::emitHello() {
     HelloPayload hello{};
     memcpy(hello.source, selfMac_.data(), 6);
     hello.deviceType = static_cast<uint8_t>(selfDeviceType);
-    // headMac stays zero and confirmed stays 0 until the device chain SM (#156)
-    // learns the head and completes its context exchange.
-    hello.confirmed = 0;
+    // Single atomic load: the main loop is the sole writer, so one snapshot of the
+    // packed head/confirmed word is internally consistent. All-zero headMac means
+    // "I am the head/standalone". confirmed stays 0 until #157's context exchange.
+    const uint64_t head = chainHeadState.load();
+    const uint64_t mac48 = head & HEAD_MAC_MASK;
+    if (mac48 != 0) unpackMac(mac48, hello.headMac);
+    hello.confirmed = (head & CONFIRMED_BIT) != 0 ? 1 : 0;
 
     const std::vector<uint8_t> frame = encodeFramed(hello);
     for (SerialIdentifier port : HELLO_JACKS) {
@@ -644,7 +660,25 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     if (memcmp(hello.source, selfMac_.data(), 6) == 0) return;
 
     HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
-    if (machine) machine->onHelloReceived(hello);
+    if (machine) {
+        // A live link hearing a different source MAC means the peer swapped before
+        // the silent-link watchdog fired. Tear the old link down now (opening a
+        // stale ring, clearing a head inherited from the vanished peer) so the new
+        // peer opens a fresh link below; teardown must precede re-adoption.
+        if (machine->tracksDifferentPeer(hello.source)) {
+            machine->forceIdle();
+            onLinkLost(jack);
+        }
+        machine->onHelloReceived(hello);
+    }
+
+    // Head inheritance + ring detection are directional: only the upstream (INPUT)
+    // jack drives them, so the head's MAC cascades downstream. The FDN secondary
+    // input jack is a symbol link and takes no part in the chain.
+    if (jack == SerialIdentifier::INPUT_JACK) {
+        applyUpstreamHead(hello);
+    }
+    maybeFireChainRoleChange();
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
@@ -671,4 +705,106 @@ PortStatus RemoteDeviceCoordinator::mapHelloLinkToStatus(SerialIdentifier port) 
         case HELLO_LINK_CONNECTING: return PortStatus::CONNECTING;
         default:                    return PortStatus::DISCONNECTED;
     }
+}
+
+// ---- Device-level chain state machine (#156) ----
+
+uint64_t RemoteDeviceCoordinator::packHead(const uint8_t* mac, bool confirmed) {
+    uint64_t value = MacToUInt64(mac) & HEAD_MAC_MASK;
+    if (confirmed) value |= CONFIRMED_BIT;
+    return value;
+}
+
+void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
+    for (int i = 5; i >= 0; --i) {
+        out[i] = static_cast<uint8_t>(value & 0xFF);
+        value >>= 8;
+    }
+}
+
+std::array<uint8_t, 6> RemoteDeviceCoordinator::effectiveHead() const {
+    const uint64_t mac48 = chainHeadState.load() & HEAD_MAC_MASK;
+    std::array<uint8_t, 6> out{};
+    // No inherited head means this device is its own head: advertise own MAC.
+    if (mac48 == 0) {
+        memcpy(out.data(), selfMac_.data(), 6);
+    } else {
+        unpackMac(mac48, out.data());
+    }
+    return out;
+}
+
+ChainRole RemoteDeviceCoordinator::getChainRole() const {
+    if (ringLatched) return ChainRole::RING;
+    if (getHelloLinkState(SerialIdentifier::INPUT_JACK) == HelloLinkState::CONNECTED) {
+        return ChainRole::CHILD;
+    }
+    if (getHelloLinkState(SerialIdentifier::OUTPUT_JACK) == HelloLinkState::CONNECTED) {
+        return ChainRole::HEAD;
+    }
+    return ChainRole::STANDALONE;
+}
+
+const uint8_t* RemoteDeviceCoordinator::getHeadMac() const {
+    const uint64_t mac48 = chainHeadState.load() & HEAD_MAC_MASK;
+    if (mac48 == 0) return nullptr;
+    unpackMac(mac48, headMacScratch.data());
+    return headMacScratch.data();
+}
+
+void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
+    // The upstream peer's effective head: its advertised headMac if it has one,
+    // else its own MAC (meaning the peer is itself the head). No MAC comparison,
+    // no min-election — the head's MAC flows down the chain unchallenged.
+    std::array<uint8_t, 6> peerEffectiveHead{};
+    if (MacToUInt64(hello.headMac) != 0) {
+        memcpy(peerEffectiveHead.data(), hello.headMac, 6);
+    } else {
+        memcpy(peerEffectiveHead.data(), hello.source, 6);
+    }
+
+    const bool peerHeadIsSelf =
+        memcmp(peerEffectiveHead.data(), selfMac_.data(), 6) == 0;
+
+    // Ring: a structural head sees its own MAC return on its INPUT jack, so the
+    // head it seeded traveled the whole loop back. Because inheritance carries
+    // that MAC unchallenged, this latches for ANY head regardless of MAC value.
+    if (!ringLatched && peerHeadIsSelf && getChainRole() == ChainRole::HEAD) {
+        ringLatched = true;
+        if (ringClosedCallback) ringClosedCallback();
+        return;
+    }
+
+    // A device never inherits its own MAC as a head (that is what "I am head"
+    // encodes as an absent head_mac); the ring case above already handled it.
+    if (peerHeadIsSelf) return;
+
+    if (memcmp(peerEffectiveHead.data(), effectiveHead().data(), 6) == 0) return;
+
+    // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
+    // it. The new head then propagates in our own HELLO.
+    chainHeadState.store(packHead(peerEffectiveHead.data(), false));
+}
+
+void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
+    // Any ring-link drop opens the ring for this device: a closed loop is broken
+    // whether the break is upstream (INPUT) or downstream (OUTPUT). Clearing this
+    // only on INPUT drop left an OUTPUT-side break reporting RING forever.
+    ringLatched = false;
+
+    // Only the upstream (INPUT) peer supplies our inherited head, so only its loss
+    // severs the head supply and must clear the inherited head (the phantom-head
+    // bug), re-deriving the effective head to our own MAC. A downstream (OUTPUT)
+    // drop leaves the upstream head supply intact.
+    if (port == SerialIdentifier::INPUT_JACK &&
+        (chainHeadState.load() & HEAD_MAC_MASK) != 0) {
+        chainHeadState.store(0);
+    }
+}
+
+void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
+    const ChainRole role = getChainRole();
+    if (role == lastChainRole) return;
+    lastChainRole = role;
+    if (chainRoleChangeCallback) chainRoleChangeCallback(role);
 }
