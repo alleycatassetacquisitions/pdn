@@ -326,9 +326,6 @@ private:
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM (#156).
         uint8_t peerChainRole = 0;
-        // Last head advertised in this peer's HELLO; a change mid-exchange re-sends
-        // our context to the new head. The link SM does not model headMac.
-        std::array<uint8_t, 6> lastHeadMac{};
     };
     std::array<JackHelloLink, kNumPorts> helloByPort_;
     bool helloConnectivityEnabled = false;

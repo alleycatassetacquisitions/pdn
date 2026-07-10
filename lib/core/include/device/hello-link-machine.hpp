@@ -164,8 +164,7 @@ public:
         return currentState ? currentState->getStateId() : HELLO_LINK_IDLE;
     }
 
-    /// The peer this link tracks (last HELLO source); all-zero while Idle. #157
-    /// matches a received context back to its jack through this.
+    /// The peer this link tracks (last HELLO source); all-zero while Idle.
     const std::array<uint8_t, 6>& peer() const { return context.peerMac; }
 
 private:

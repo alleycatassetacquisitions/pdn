@@ -37,8 +37,7 @@ struct PlayerProfile {
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.
-// chainRole is recorded by the receiver for the device chain SM (#156); this
-// issue does not act on it.
+// chainRole is recorded by the receiver for the device chain SM (#156).
 struct PdnConnectionContext {
     uint8_t seqId;
     uint8_t chainRole;

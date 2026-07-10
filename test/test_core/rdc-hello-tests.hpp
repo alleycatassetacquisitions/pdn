@@ -339,36 +339,6 @@ inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
 }
 
 // (d) A headMac change mid-exchange cancels the in-flight send and re-initiates.
-inline void rdcContextHeadChangeReinitiates(RDCHelloTests* suite) {
-    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    int contextSends = 0;
-    ON_CALL(*suite->device.mockPeerComms,
-            sendData(_, PktType::kPdnConnectionContext, _, _))
-        .WillByDefault(testing::DoAll(
-            testing::InvokeWithoutArgs([&contextSends]() { contextSends++; }),
-            Return(1)));
-
-    // First HELLO: head all-zero. Opens the exchange (one send).
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
-    suite->rdc.sync(&suite->device);  // drive Idle->Connecting; fires onContextRequest
-    ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
-    const int sendsAfterFirst = contextSends;
-    ASSERT_EQ(sendsAfterFirst, 1);
-
-    // Second HELLO from the same source, now carrying a non-zero head: the
-    // exchange re-initiates (cancel + fresh send), the jack stays CONNECTING.
-    HelloPayload hello{};
-    memcpy(hello.source, peer, 6);
-    hello.deviceType = static_cast<uint8_t>(DeviceType::PDN);
-    hello.headMac[0] = 0xCC;
-    suite->deliverHello(suite->outJack, encodeFramed(hello));
-
-    EXPECT_EQ(contextSends, sendsAfterFirst + 1);
-    EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-}
 
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.

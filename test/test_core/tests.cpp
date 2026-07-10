@@ -1328,10 +1328,6 @@ TEST_F(RDCHelloTests, contextInputJackReplies) {
     rdcContextInputJackReplies(this);
 }
 
-TEST_F(RDCHelloTests, contextHeadChangeReinitiates) {
-    rdcContextHeadChangeReinitiates(this);
-}
-
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
 }

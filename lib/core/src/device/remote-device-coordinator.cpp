@@ -678,18 +678,7 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     // The machine records the peer MAC and, for a first HELLO on an Idle OUT jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
     JackHelloLink& link = helloByPort_[portIndex(jack)];
-    const bool headChanged = memcmp(link.lastHeadMac.data(), hello.headMac, 6) != 0;
-    memcpy(link.lastHeadMac.data(), hello.headMac, 6);
     if (link.machine) link.machine->onHelloReceived(hello);
-
-    // A head change while the OUT-jack exchange is still mid-flight re-sends our
-    // context to the new head. The initial send is driven by onContextRequest as
-    // the link enters Connecting; the machine does not model headMac, so this
-    // re-send stays here.
-    if (headChanged && jack == SerialIdentifier::OUTPUT_JACK && link.machine &&
-        link.machine->currentStateId() == HELLO_LINK_CONNECTING) {
-        initiateContextExchange(jack);
-    }
 }
 
 ReliableChannelBase* RemoteDeviceCoordinator::selfContextChannel() const {
@@ -746,10 +735,11 @@ bool RemoteDeviceCoordinator::findJackForMac(const uint8_t* mac, SerialIdentifie
 void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                                                 uint8_t chainRole, const uint8_t* profile,
                                                 size_t len) {
-    registerPeer(fromMac);
     SerialIdentifier jack;
     if (!findJackForMac(fromMac, jack)) return;
-    // Recorded for the device chain SM (#156); not acted on here.
+    // Register only after a jack matches: an unmatched or late context (its link
+    // already timed out to IDLE) must not leak a peer slot we never send to.
+    registerPeer(fromMac);
     helloByPort_[portIndex(jack)].peerChainRole = chainRole;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     // Output initiates, input replies: a peer that arrived on an input jack sent
