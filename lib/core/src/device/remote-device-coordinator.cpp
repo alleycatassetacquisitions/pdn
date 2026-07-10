@@ -678,8 +678,19 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
 
     // The machine records the peer MAC and, for a first HELLO on an Idle OUT jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
-    HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
-    if (machine) machine->onHelloReceived(hello);
+    JackHelloLink& link = helloByPort_[portIndex(jack)];
+    const bool headChanged = memcmp(link.lastHeadMac.data(), hello.headMac, 6) != 0;
+    memcpy(link.lastHeadMac.data(), hello.headMac, 6);
+    if (link.machine) link.machine->onHelloReceived(hello);
+
+    // A head change while the OUT-jack exchange is still mid-flight re-sends our
+    // context to the new head. The initial send is driven by onContextRequest as
+    // the link enters Connecting; the machine does not model headMac, so this
+    // re-send stays here.
+    if (headChanged && jack == SerialIdentifier::OUTPUT_JACK && link.machine &&
+        link.machine->currentStateId() == HELLO_LINK_CONNECTING) {
+        initiateContextExchange(jack);
+    }
 }
 
 ReliableChannelBase* RemoteDeviceCoordinator::selfContextChannel() const {

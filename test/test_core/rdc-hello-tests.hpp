@@ -252,6 +252,7 @@ inline void rdcContextSendClearedBySendSuccess(RDCHelloTests* suite) {
             Return(1)));
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);  // drive Idle->Connecting; fires onContextRequest
     ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
     ASSERT_EQ(sentPayload.size(), sizeof(PdnConnectionContext));
 
@@ -285,6 +286,7 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     // The OUT jack must already know the peer MAC (from its HELLO) for the
     // received context to match a jack.
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);  // drive Idle->Connecting; fires onContextRequest
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
@@ -294,6 +296,7 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/2, /*userId=*/4242, /*seqId=*/9);
     suite->rdc.getReliableTransport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
     EXPECT_EQ(cbCount, 1);
     EXPECT_EQ(cbJack, SerialIdentifier::OUTPUT_JACK);
@@ -319,6 +322,7 @@ inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
 
     // Peer arrives on the INPUT jack; an in-jack HELLO must NOT initiate a send.
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);  // drive Idle->Connecting (input jack: no send)
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
     ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
@@ -327,6 +331,7 @@ inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
     suite->rdc.getReliableTransport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
@@ -346,6 +351,7 @@ inline void rdcContextHeadChangeReinitiates(RDCHelloTests* suite) {
 
     // First HELLO: head all-zero. Opens the exchange (one send).
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);  // drive Idle->Connecting; fires onContextRequest
     ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
     const int sendsAfterFirst = contextSends;
     ASSERT_EQ(sendsAfterFirst, 1);
