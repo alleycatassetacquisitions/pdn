@@ -371,6 +371,35 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 }
 
+// A context that beats its own HELLO (arrives while the jack is still IDLE) must be
+// buffered and applied when the jack connects, not dropped — else the link half-opens.
+inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    // Context arrives BEFORE any HELLO: the input jack is still Idle, so it can't be
+    // completed yet — but it must be held, not discarded.
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->rdc.getReliableTransport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    // The HELLO finally arrives: the jack connects and the buffered context completes
+    // it (no re-send from the peer needed).
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);  // Idle->Connecting drains the buffer
+    suite->rdc.sync(&suite->device);  // commit Connecting->Connected
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+}
+
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.
 inline void rdcHelloByteModeSuppressesStringAssembly() {

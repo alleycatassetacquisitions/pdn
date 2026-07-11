@@ -342,16 +342,44 @@ private:
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
 
-    // A jack entering Connecting initiates: register the peer as a radio slot, then
-    // reliably send this device's context (skipped if our other jack already has a
-    // send pending to that same peer, as in a 2-node ring).
+    // A context (ESP-NOW) can beat its own HELLO (serial) and arrive before any jack
+    // is CONNECTING for that MAC. Rather than drop it, hold it here and apply it when
+    // the jack connects. Bounded + TTL'd on purpose: an on-channel attacker who knows
+    // our MAC can spray contexts from fabricated sources, so the fixed cap is the OOM
+    // guard and the short TTL clears junk; the worst it can do is evict a genuine
+    // early-arrival (that link then half-opens, same as with no buffer). Legitimate
+    // occupancy is at most one per jack.
+    static constexpr size_t CONTEXT_BUFFER_SLOTS = 8;
+    static constexpr unsigned long CONTEXT_BUFFER_TTL_MS = HELLO_SILENT_LINK_MS;
+    struct BufferedContext {
+        std::array<uint8_t, 6> mac{};
+        DeviceType peerType = DeviceType::UNKNOWN;
+        uint8_t chainRole = 0;
+        std::array<uint8_t, sizeof(PlayerProfile)> profile{};
+        size_t len = 0;
+        unsigned long arrivedAtMs = 0;
+        bool valid = false;
+    };
+    std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer_;
+
+    // A jack entering Connecting initiates: apply any context buffered for its peer,
+    // register the peer as a radio slot, then reliably send this device's context
+    // (skipped if our other jack already has a send pending to that same peer).
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
-    // A received peer context: register, record chainRole, hand off the profile
-    // opaquely, match the MAC to its jack(s), and complete each jack's exchange.
+    // Route a received peer context: complete every CONNECTING jack for its MAC, or
+    // buffer it if none is CONNECTING yet (its HELLO hasn't arrived).
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                            uint8_t chainRole, const uint8_t* profile, size_t len);
+    // Completes every CONNECTING jack whose peer is `fromMac`; true if any matched.
+    bool applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
+                             uint8_t chainRole, const uint8_t* profile, size_t len);
+    // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.
+    void bufferContext(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+                       const uint8_t* profile, size_t len);
+    // Applies and clears any buffered context for `mac` now that its jack connects.
+    void drainBufferedContext(const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task

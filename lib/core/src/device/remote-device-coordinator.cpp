@@ -686,6 +686,10 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
     HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
     if (machine == nullptr) return;
     const uint8_t* mac = machine->peer().data();
+    // Apply any context that beat this jack's HELLO and was buffered while it was
+    // still Idle. Runs for every jack entering Connecting, before the send-collapse
+    // below, so the second jack of a 2-node ring still gets its buffered context.
+    drainBufferedContext(mac);
     // In a 2-node ring both our jacks face the same peer and connect in the same
     // tick; our context is identical on each, so one copy suffices. Skip if a send
     // to this MAC is already pending rather than putting a second frame on the air
@@ -722,9 +726,21 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
                                                 uint8_t chainRole, const uint8_t* profile,
                                                 size_t len) {
     // Every jack sends its own context on connecting, so receiving the peer's just
-    // completes our matching jack(s); there is no reply. A 2-node ring points both
-    // our jacks at the same peer, so one context completes both. The peer is already
-    // a radio slot (registered when our jack initiated), so nothing to register here.
+    // completes our matching jack(s); there is no reply. A context can beat its own
+    // HELLO (ESP-NOW vs serial) and land before any jack is CONNECTING for this MAC;
+    // hold it and apply it when the jack connects rather than discarding it.
+    if (!applyContextToJacks(fromMac, peerType, chainRole, profile, len)) {
+        bufferContext(fromMac, peerType, chainRole, profile, len);
+    }
+}
+
+bool RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
+                                                  uint8_t chainRole, const uint8_t* profile,
+                                                  size_t len) {
+    // A 2-node ring points both our jacks at the same peer, so one context completes
+    // both. The peer is already a radio slot (registered when our jack initiated), so
+    // nothing to register here.
+    bool applied = false;
     for (SerialIdentifier port : HELLO_JACKS) {
         HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
@@ -732,6 +748,50 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
         helloByPort_[portIndex(port)].peerChainRole = chainRole;
         if (contextReceivedCallback) contextReceivedCallback(port, peerType, profile, len);
         onContextExchangeComplete(port);
+        applied = true;
+    }
+    return applied;
+}
+
+void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType peerType,
+                                            uint8_t chainRole, const uint8_t* profile,
+                                            size_t len) {
+    const unsigned long now = nowMs();
+    BufferedContext* slot = nullptr;
+    BufferedContext* oldest = &contextBuffer_[0];
+    for (BufferedContext& e : contextBuffer_) {
+        if (e.valid && memcmp(e.mac.data(), fromMac, 6) == 0) {  // latest for a MAC wins
+            slot = &e;
+            break;
+        }
+        const bool reusable =
+            !e.valid || (now >= e.arrivedAtMs && now - e.arrivedAtMs > CONTEXT_BUFFER_TTL_MS);
+        if (reusable && slot == nullptr) slot = &e;
+        if (e.arrivedAtMs < oldest->arrivedAtMs) oldest = &e;
+    }
+    if (slot == nullptr) slot = oldest;  // full of fresh entries: evict the oldest
+
+    memcpy(slot->mac.data(), fromMac, 6);
+    slot->peerType = peerType;
+    slot->chainRole = chainRole;
+    slot->len = len < slot->profile.size() ? len : slot->profile.size();
+    memcpy(slot->profile.data(), profile, slot->len);
+    slot->arrivedAtMs = now;
+    slot->valid = true;
+}
+
+void RemoteDeviceCoordinator::drainBufferedContext(const uint8_t* mac) {
+    const unsigned long now = nowMs();
+    for (BufferedContext& e : contextBuffer_) {
+        if (!e.valid) continue;
+        if (now >= e.arrivedAtMs && now - e.arrivedAtMs > CONTEXT_BUFFER_TTL_MS) {
+            e.valid = false;  // expired before its jack ever connected (stale/attacker)
+            continue;
+        }
+        if (memcmp(e.mac.data(), mac, 6) != 0) continue;
+        if (applyContextToJacks(e.mac.data(), e.peerType, e.chainRole, e.profile.data(), e.len)) {
+            e.valid = false;
+        }
     }
 }
 
