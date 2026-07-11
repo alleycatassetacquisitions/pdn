@@ -3,7 +3,7 @@
 
 ShootoutProposal::ShootoutProposal(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_PROPOSAL)
-    , LoopBreakAbortState(ctx.shootoutManager)
+    , ShootoutAwareState(ctx.shootoutManager)
     , chainDuelManager_(ctx.chainDuelManager) {}
 
 void ShootoutProposal::onStateMounted(PDN* pdn) {
@@ -25,11 +25,11 @@ void ShootoutProposal::onStateMounted(PDN* pdn) {
 
 void ShootoutProposal::onStateLoop(PDN* pdn) {
     shootoutManager->sync();
-    auto p = shootoutManager->getPhase();
+    bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
+    tickAbortGuard(loopBroken);
+    ShootoutManager::Phase p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
     if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
-    bool loopBroken = chainDuelManager_ && !chainDuelManager_->isLoop();
-    if (tickAbortGuard(loopBroken)) shouldGoToAborted_ = true;
 }
 
 void ShootoutProposal::onStateDismounted(PDN* pdn) {

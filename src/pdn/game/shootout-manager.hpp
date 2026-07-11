@@ -106,8 +106,7 @@ public:
     void resetToIdle();
 
     // Broadcast ABORT to the ring (bracket/confirmedSet), tear down, and land
-    // in Phase::ABORTED. Public so a settled ring-break guard can abort the
-    // whole tournament visibly; idempotent (early-returns when already ABORTED).
+    // in Phase::ABORTED. Idempotent: early-returns when already ABORTED.
     void abortTournament();
 
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;

@@ -21,7 +21,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "game/loop-break-abort-state.hpp"
+#include "game/shootout-aware-state.hpp"
 
 /// Bundle of the shared game-wide managers a state may need. Built once by
 /// Quickdraw::populateStateMap and handed to every state so a new manager is a
@@ -411,7 +411,7 @@ private:
     bool shouldRetryUpload = false;
 };
 
-class ShootoutProposal : public TypedState<PDN>, public LoopBreakAbortState {
+class ShootoutProposal : public TypedState<PDN>, public ShootoutAwareState {
 public:
     explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -427,7 +427,7 @@ private:
     bool shouldGoToAborted_ = false;
 };
 
-class ShootoutBracketReveal : public TypedState<PDN>, public LoopBreakAbortState {
+class ShootoutBracketReveal : public TypedState<PDN>, public ShootoutAwareState {
 public:
     explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
