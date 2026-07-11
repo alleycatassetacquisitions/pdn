@@ -152,6 +152,14 @@ public:
     // A HELLO stamps liveness on every state; it only opens a new link while Idle.
     // The self-echo / all-zero reject happens upstream in the RDC (it owns selfMac).
     void onHelloReceived(const HelloPayload& hello) {
+        // A live link hearing a different source MAC means the peer was swapped
+        // before the silent-link watchdog fired. Tear down to Idle first — its
+        // mount resets the parser and fires onLinkDown — so the old link's chain
+        // state is gone before this same HELLO opens the fresh link below.
+        if (currentState && currentState->getStateId() != HELLO_LINK_IDLE &&
+            memcmp(context.peerMac.data(), hello.source, 6) != 0) {
+            skipToState(nullptr, 0);
+        }
         context.lastHelloMs = context.nowMs();
         memcpy(context.peerMac.data(), hello.source, 6);
         if (currentState && currentState->getStateId() == HELLO_LINK_IDLE) {
@@ -170,20 +178,6 @@ public:
     int currentStateId() const {
         return currentState ? currentState->getStateId() : HELLO_LINK_IDLE;
     }
-
-    // True when a live (non-Idle) link hears a HELLO from a MAC other than the
-    // peer it is tracking: the peer was physically swapped before the silent-link
-    // watchdog could fire.
-    bool tracksDifferentPeer(const uint8_t* source) const {
-        return currentState && currentState->getStateId() != HELLO_LINK_IDLE &&
-               memcmp(context.peerMac.data(), source, 6) != 0;
-    }
-
-    // Tear the link down to Idle immediately: dismounts the live state (leaving
-    // Connected fires the disconnect) then mounts Idle, whose onStateMounted resets
-    // the parser. Used on a peer swap so the new peer opens a fresh link within the
-    // same HELLO, keeping the teardown-before-readopt order ring/head clearing needs.
-    void forceIdle() { skipToState(nullptr, 0); }
 
 private:
     HelloLinkContext context;

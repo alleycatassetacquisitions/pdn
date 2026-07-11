@@ -341,7 +341,6 @@ private:
 
     static uint64_t packHead(const uint8_t* mac, bool confirmed);
     static void unpackMac(uint64_t value, uint8_t* out);
-    std::array<uint8_t, 6> effectiveHead() const;
     void applyUpstreamHead(const HelloPayload& hello);
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();

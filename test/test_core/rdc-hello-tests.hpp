@@ -350,7 +350,8 @@ inline void rdcChainInheritsAndReadvertisesHead(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
 
-    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
     ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), head, 6));
 
@@ -366,8 +367,8 @@ inline void rdcChainInheritsAndReadvertisesHead(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), upstream, 6));
 }
 
-// KEY REGRESSION: a structural head whose MAC is NOT the lowest still latches the
-// ring, because inheritance carries its own MAC around the loop unchallenged.
+// A structural head whose MAC is NOT the lowest still latches the ring, because
+// inheritance carries its own MAC around the loop unchallenged.
 inline void rdcChainNonLowestHeadDetectsRing(RDCHelloTests* suite) {
     int ringClosedCount = 0;
     suite->rdc.setOnRingClosed([&]() { ringClosedCount++; });
@@ -478,8 +479,8 @@ inline void rdcChainRingOpensWhenReturnedHeadChanges(RDCHelloTests* suite) {
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
                 suite->helloFrame(0xB1));
     const uint8_t upstream[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
-    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, suite->localMac));
-    suite->rdc.sync(&suite->device);
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, suite->localMac));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
 
     // Same upstream source, now advertising itself as head (absent head_mac).
@@ -551,8 +552,12 @@ inline void rdcChainPeerSwapClearsStaleRing(RDCHelloTests* suite) {
     const uint8_t peerB[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x02};
     const uint8_t foreignHead[6] = {0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC};
     suite->deliverHello(suite->inJack, chainHelloFrame(peerB, foreignHead));
-
     EXPECT_NE(suite->rdc.getChainRole(), ChainRole::RING);
+
+    // getHeadMac only surfaces the adopted head once the fresh link completes.
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    suite->rdc.sync(&suite->device);
     ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), foreignHead, 6));
 }
@@ -607,8 +612,6 @@ inline void rdcChainTwoNodeRingCloses() {
     // Cable 1: A.out -> B.in. B inherits A as its head.
     A.rdc.emitHello();
     pump(A.out, B.in);
-    ASSERT_NE(B.rdc.getHeadMac(), nullptr);
-    EXPECT_EQ(0, memcmp(B.rdc.getHeadMac(), macA, 6));
     B.rdc.sync(&B.device);
 
     // A.out hears B on the return leg; bring both ends to Connected so A is the
@@ -622,6 +625,8 @@ inline void rdcChainTwoNodeRingCloses() {
     B.rdc.sync(&B.device);
     ASSERT_EQ(A.rdc.getChainRole(), ChainRole::HEAD);
     ASSERT_EQ(B.rdc.getChainRole(), ChainRole::CHILD);
+    ASSERT_NE(B.rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(B.rdc.getHeadMac(), macA, 6));
 
     // Cable 2 closes the ring: B.out -> A.in carries B's HELLO advertising head=A.
     B.out.clearOutput();
