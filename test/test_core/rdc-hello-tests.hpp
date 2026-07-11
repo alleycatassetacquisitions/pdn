@@ -535,6 +535,86 @@ inline void rdc2NodeRingSingleJackDropKeepsPeerSlot(RDCHelloTests* suite) {
     EXPECT_EQ(removed, 1);
 }
 
+// Link death must cancel the pending context send along with the radio slot: a
+// surviving retry re-registers its target inside the driver, re-adding (and thus
+// permanently leaking) the slot that was just released.
+inline void rdcLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int contextSends = 0;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&contextSends]() { contextSends++; }), Return(1)));
+
+    // Send goes out but is never acked, so it sits pending on the Resender.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
+
+    // The exchange never completes; the link dies.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_FALSE(suite->rdc.isContextSendPending(peer));
+
+    // Pumping the retransmit timers after death must produce no further sends.
+    const int sendsAtDeath = contextSends;
+    for (int i = 0; i < 4; ++i) {
+        suite->fakeClock->advance(400);
+        suite->rdc.sync(&suite->device);
+    }
+    EXPECT_EQ(contextSends, sendsAtDeath);
+}
+
+// A replug right after a failed exchange must run a fresh full exchange: register
+// the slot again and send our context again (the dead attempt's pending entry must
+// not short-circuit the new one), ending CONNECTED.
+inline void rdcReplugAfterFailedExchangeRecovers(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    int adds = 0;
+    int removes = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::InvokeWithoutArgs([&adds]() { adds++; }), Return(0)));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::InvokeWithoutArgs([&removes]() { removes++; }), Return(0)));
+    int contextSends = 0;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&contextSends]() { contextSends++; }), Return(1)));
+
+    // First exchange: send never acked, link dies with the send still un-acked.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(removes, 1);
+    const int sendsBeforeReplug = contextSends;
+    const int addsBeforeReplug = adds;
+
+    // Replug: the fresh exchange must re-register and re-send, then complete.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(adds, addsBeforeReplug + 1);
+    EXPECT_EQ(contextSends, sendsBeforeReplug + 1);
+
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(removes, 1);
+}
+
 // Half-open recovery: we are CONNECTED but the peer never got our context (lost
 // app-side, or it rebooted). Its retry arrives from a MAC our CONNECTED jack already
 // tracks; we must resend our context so its cycle can complete, and stay CONNECTED.

@@ -1345,6 +1345,12 @@ TEST_F(RDCHelloTests, twoNodeRingSingleJackDropKeepsPeerSlot) {
 TEST_F(RDCHelloTests, connectedPeerRetryTriggersContextResend) {
     rdcConnectedPeerRetryTriggersContextResend(this);
 }
+TEST_F(RDCHelloTests, linkDeathCancelsPendingContextSend) {
+    rdcLinkDeathCancelsPendingContextSend(this);
+}
+TEST_F(RDCHelloTests, replugAfterFailedExchangeRecovers) {
+    rdcReplugAfterFailedExchangeRecovers(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();

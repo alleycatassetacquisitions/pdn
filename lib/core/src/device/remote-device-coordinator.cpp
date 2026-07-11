@@ -691,6 +691,10 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
     HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
     if (machine == nullptr) return;
     const uint8_t* mac = machine->peer().data();
+    // Radio slot first (the driver add is idempotent): the drain below can announce
+    // the peer to game code, and a pending send from our other jack skips the send
+    // path entirely — neither may run before the peer has its ESP-NOW slot.
+    registerPeer(mac);
     // Apply any context that beat this jack's HELLO and was cached while it was still
     // Idle. Runs for every jack entering Connecting, before the send-collapse below,
     // so the second jack of a 2-node ring still gets the cached context.
@@ -700,7 +704,6 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
     // to this MAC is already pending rather than putting a second frame on the air
     // (the Resender transmits each send immediately, so it would NOT be collapsed).
     if (isContextSendPending(mac)) return;
-    registerPeer(mac);
     sendSelfContext(mac);
 }
 
@@ -840,6 +843,11 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
             if (memcmp(m.data(), mac, 6) == 0) return;
         }
     }
+    // Drop the context retries with the slot: a retransmit re-registers its target
+    // inside the driver (EnsurePeerIsRegistered), which would re-add the slot just
+    // removed and leak it. cancel() is silent — no abandon callback fires.
+    if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
+    if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
     unregisterPeer(mac);
 }
 
