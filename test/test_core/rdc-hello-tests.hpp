@@ -719,6 +719,31 @@ inline void rdcConnectedRetryResendThrottled(RDCHelloTests* suite) {
     EXPECT_EQ(contextSends, 3);
 }
 
+// The departed peer's chainRole must not survive link death: #156 reads
+// getPeerChainRole during the NEXT peer's CONNECTING window, and the header
+// promises 0 until that peer's context arrives.
+inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/2, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 2);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 0);
+}
+
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.
 inline void rdcHelloByteModeSuppressesStringAssembly() {

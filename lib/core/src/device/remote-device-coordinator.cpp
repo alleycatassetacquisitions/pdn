@@ -838,6 +838,11 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
 }
 
 void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac) {
+    // Per-jack residue clears unconditionally: the keep-slot guards below are
+    // per-MAC, and the next peer on this jack must not inherit the departed
+    // peer's chainRole during its CONNECTING window (#156 reads it then).
+    helloByPort_[portIndex(jack)].peerChainRole = 0;
+    helloByPort_[portIndex(jack)].lastContextResendMs = 0;
     // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
     // one-cable disconnect would silently break wireless for the still-connected
     // link, so any other jack tracking this MAC keeps the slot alive.
