@@ -633,3 +633,78 @@ inline void rdcChainTwoNodeRingCloses() {
 
     SimpleTimer::setPlatformClock(nullptr);
 }
+
+// Symmetric double-latch: both devices of a 2-ring latch RING in the same
+// exchange (each hears its own MAC return before reading the other's claim).
+// Lower MAC wins the head conflict: only the higher-MAC device stands down, the
+// lower keeps its latch, and ringClosed never re-fires once settled.
+inline void rdcChainDualLatchSettlesByLowerMac() {
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+
+    const uint8_t macA[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x02};  // lower: keeps latch
+    const uint8_t macB[6] = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x03};
+    ChainRingNode A(macA);
+    ChainRingNode B(macB);
+
+    auto pump = [](NativeSerialDriver& from, NativeSerialDriver& to) {
+        const std::string bytes = from.getOutput();
+        from.clearOutput();
+        if (bytes.empty()) return;
+        to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
+        to.exec();
+    };
+    auto deliver = [](NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
+        jack.injectBytes(frame);
+        jack.exec();
+    };
+
+    // Bring both OUTPUT jacks to Connected: each hears the other's HELLO on the
+    // return leg of its own out-cable.
+    B.rdc.emitHello();
+    pump(B.in, A.out);
+    A.rdc.sync(&A.device);
+    A.rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    A.rdc.sync(&A.device);
+    A.rdc.emitHello();
+    pump(A.in, B.out);
+    B.rdc.sync(&B.device);
+    B.rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    B.rdc.sync(&B.device);
+    A.out.clearOutput();
+    A.in.clearOutput();
+    B.out.clearOutput();
+    B.in.clearOutput();
+
+    // Both latch in one exchange: each INPUT delivers the device's own MAC as
+    // the returned head while the other side is doing the same.
+    deliver(A.in, chainHelloFrame(macB, macA));
+    deliver(B.in, chainHelloFrame(macA, macB));
+    ASSERT_EQ(A.rdc.getChainRole(), ChainRole::RING);
+    ASSERT_EQ(B.rdc.getChainRole(), ChainRole::RING);
+    ASSERT_EQ(A.ringClosedCount, 1);
+    ASSERT_EQ(B.ringClosedCount, 1);
+
+    // Emit-before-deliver models the real concurrency: both HELLOs are in
+    // flight before either side processes one. Must converge, not oscillate.
+    for (int i = 0; i < 20; ++i) {
+        A.rdc.emitHello();
+        B.rdc.emitHello();
+        pump(A.out, B.in);
+        pump(B.out, A.in);
+        A.rdc.sync(&A.device);
+        B.rdc.sync(&B.device);
+        A.in.clearOutput();
+        A.out.clearOutput();
+        B.in.clearOutput();
+        B.out.clearOutput();
+    }
+
+    EXPECT_EQ(A.ringClosedCount, 1);
+    EXPECT_EQ(B.ringClosedCount, 1);
+    EXPECT_EQ(A.rdc.getChainRole(), ChainRole::RING);
+    EXPECT_NE(B.rdc.getChainRole(), ChainRole::RING);
+
+    SimpleTimer::setPlatformClock(nullptr);
+}

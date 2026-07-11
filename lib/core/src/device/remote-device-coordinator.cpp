@@ -766,11 +766,14 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     const bool peerHeadIsSelf =
         memcmp(peerEffectiveHead.data(), selfMac_.data(), 6) == 0;
 
-    // A latched ring hears its own seeded head return on INPUT every cycle. When
-    // INPUT instead delivers a different head, the loop no longer closes through
-    // us — an upstream link broke, possibly one not adjacent to this device — so
-    // open the ring and fall through to adopt the new upstream head.
+    // A latched ring hears its own seeded head return on INPUT every cycle. A
+    // different head arriving there is a head conflict: an upstream break, or a
+    // second latched head (symmetric 2-ring boot, two heads merging). Lower MAC
+    // wins (#144): stand down only for a lower head — a higher one self-corrects
+    // off our HELLO. Unlatching unconditionally lets two latched heads depose
+    // each other and re-latch in lockstep, re-firing ringClosed every cycle.
     if (ringLatched && !peerHeadIsSelf) {
+        if (MacToUInt64(peerEffectiveHead.data()) > MacToUInt64(selfMac_.data())) return;
         ringLatched = false;
     }
 

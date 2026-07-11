@@ -1360,6 +1360,9 @@ TEST_F(RDCHelloTests, chainPeerSwapClearsStaleRing) {
 TEST(RDCHelloStandalone, chainTwoNodeRingCloses) {
     rdcChainTwoNodeRingCloses();
 }
+TEST(RDCHelloStandalone, chainDualLatchSettlesByLowerMac) {
+    rdcChainDualLatchSettlesByLowerMac();
+}
 
 // ============================================
 // CHAIN DUEL MANAGER TESTS
