@@ -32,7 +32,6 @@ struct HelloLinkContext {
     std::function<unsigned long()> nowMs;
     std::function<void(SerialIdentifier)> onContextRequest;   // OUT jack only
     std::function<void(SerialIdentifier, bool)> onJackChange;  // connect / disconnect
-    std::function<void()> resetParser;                         // on link death
     std::function<void()> onLinkDown;                          // fires on every Idle mount
 
     unsigned long silentLinkMs = 100;
@@ -56,10 +55,9 @@ public:
     void onStateMounted(Device*) override {
         transitionToConnectingState = false;
         // Entering Idle means the link is down (init, silent-link/context timeout, or
-        // a peer swap): drop any half-read frame so the next device's bytes can't
-        // merge into a stale partial left by the peer that just left, and let the
-        // owner tear down any chain state hanging off the dead link.
-        if (context->resetParser) context->resetParser();
+        // a peer swap): the owner drops any half-read frame so the next device's
+        // bytes can't merge into a stale partial left by the peer that just left,
+        // and tears down any chain state hanging off the dead link.
         if (context->onLinkDown) context->onLinkDown();
     }
 
@@ -113,8 +111,8 @@ public:
         if (context->onJackChange) context->onJackChange(context->jack, true);
     }
 
-    // Leaving Connected means the link died: fire the disconnect. The parser reset
-    // for a dropped link lives in HelloIdleState (every teardown enters Idle).
+    // Leaving Connected means the link died: fire the disconnect. Teardown itself
+    // (onLinkDown) lives in HelloIdleState — every link-death path enters Idle.
     void onStateDismounted(Device*) override {
         if (context->onJackChange) context->onJackChange(context->jack, false);
     }
@@ -154,8 +152,8 @@ public:
     void onHelloReceived(const HelloPayload& hello) {
         // A live link hearing a different source MAC means the peer was swapped
         // before the silent-link watchdog fired. Tear down to Idle first — its
-        // mount resets the parser and fires onLinkDown — so the old link's chain
-        // state is gone before this same HELLO opens the fresh link below.
+        // mount fires onLinkDown — so the old link's parser and chain state are
+        // gone before this same HELLO opens the fresh link below.
         if (currentState && currentState->getStateId() != HELLO_LINK_IDLE &&
             memcmp(context.peerMac.data(), hello.source, 6) != 0) {
             skipToState(nullptr, 0);

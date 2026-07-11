@@ -600,14 +600,12 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
             if (jackChangeCallback) jackChangeCallback(j, connected);
         };
-        context.resetParser = [this, port] {
+        // Every link-death path mounts Idle; the initial mount fires this too,
+        // a no-op on zero state.
+        context.onLinkDown = [this, port] {
             helloByPort_[portIndex(port)].parser.requestReset();
+            onLinkLost(port);
         };
-        // Idle is the single teardown point: every link-death path (silent link,
-        // context timeout, peer swap) mounts Idle, so the chain state hanging off
-        // the link — ring latch, inherited head — is cleared exactly there. The
-        // initial mount fires it too, a no-op on zero state.
-        context.onLinkDown = [this, port] { onLinkLost(port); };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
         context.contextTimeoutMs = CONTEXT_EXCHANGE_TIMEOUT_MS;
         link.machine = new HelloLinkMachine(std::move(context));
