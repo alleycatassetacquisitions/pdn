@@ -386,6 +386,9 @@ private:
     // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
     // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
     void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
+    // Link death on `jack`: release the peer's radio slot unless another jack or a
+    // daisy chain still references the MAC (2-node ring keeps the slot).
+    void releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task

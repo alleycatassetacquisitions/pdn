@@ -30,9 +30,12 @@ enum HelloLinkStateId {
 struct HelloLinkContext {
     SerialIdentifier jack{};
     std::function<unsigned long()> nowMs;
-    std::function<void(SerialIdentifier)> onContextRequest;   // OUT jack only
+    std::function<void(SerialIdentifier)> onContextRequest;    // OUT jack only
     std::function<void(SerialIdentifier, bool)> onJackChange;  // connect / disconnect
     std::function<void()> resetParser;                         // on link death
+    // Fired once per link death with the peer the link was tracking; both the
+    // Connected silent-link edge and the Connecting timeout converge on Idle.
+    std::function<void(SerialIdentifier, const std::array<uint8_t, 6>&)> onLinkDown;
 
     unsigned long silentLinkMs = 100;
     unsigned long contextTimeoutMs = 500;
@@ -50,9 +53,21 @@ struct HelloLinkContext {
 
 class HelloIdleState : public State {
 public:
-    explicit HelloIdleState(HelloLinkContext* context) : State(HELLO_LINK_IDLE), context(context) {}
+    explicit HelloIdleState(HelloLinkContext* context)
+        : State(HELLO_LINK_IDLE)
+        , context(context) {}
 
-    void onStateMounted(Device*) override { transitionToConnectingState = false; }
+    // Every teardown (silent link or context timeout) converges on Idle, so this is
+    // the one seam where a tracked peer is released. The initial mount sees an
+    // all-zero peerMac and fires nothing; clearing keeps peer() true to its contract.
+    void onStateMounted(Device*) override {
+        transitionToConnectingState = false;
+        const std::array<uint8_t, 6> zero{};
+        if (context->peerMac != zero) {
+            if (context->onLinkDown) context->onLinkDown(context->jack, context->peerMac);
+            context->peerMac = zero;
+        }
+    }
 
     void arm() { transitionToConnectingState = true; }
     bool transitionToConnecting() { return transitionToConnectingState; }

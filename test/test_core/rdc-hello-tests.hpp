@@ -450,6 +450,91 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     EXPECT_EQ(inCb, 1);
 }
 
+// Every link death must release the peer's ESP-NOW slot (the radio hard-fails past
+// its peer cap, so leaked slots eventually block all new connections): both the
+// Connected silent-link edge and the Connecting context-timeout edge.
+inline void rdcLinkDeathReleasesPeerSlot(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t secondPeer[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    int removed = 0;
+    std::array<uint8_t, 6> removedMac{};
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::Invoke([&](const uint8_t* mac) {
+                removed++;
+                memcpy(removedMac.data(), mac, 6);
+            }),
+            Return(0)));
+
+    // Connected -> Idle (silent link) releases the slot.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(removed, 0);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(removed, 1);
+    EXPECT_EQ(0, memcmp(removedMac.data(), peer, 6));
+
+    // Connecting -> Idle (context exchange never completes) releases too.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xC1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(removed, 2);
+    EXPECT_EQ(0, memcmp(removedMac.data(), secondPeer, 6));
+}
+
+// A 2-node ring has the same MAC on both jacks: dropping ONE cable must NOT release
+// the ESP-NOW slot the still-connected jack depends on; dropping the second one must.
+inline void rdc2NodeRingSingleJackDropKeepsPeerSlot(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    int removed = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::InvokeWithoutArgs([&removed]() { removed++; }), Return(0)));
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+
+    // One cable dies: only the INPUT jack keeps hearing HELLOs across the gap.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(removed, 0);  // the surviving link still needs the radio slot
+
+    // The second cable dies too: now the slot is released.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(removed, 1);
+}
+
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.
 inline void rdcHelloByteModeSuppressesStringAssembly() {

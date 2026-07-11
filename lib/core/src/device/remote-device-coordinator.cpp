@@ -636,6 +636,9 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.resetParser = [this, port] {
             helloByPort_[portIndex(port)].parser.requestReset();
         };
+        context.onLinkDown = [this](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
+            releaseHelloPeer(j, mac.data());
+        };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
         context.contextTimeoutMs = CONTEXT_EXCHANGE_TIMEOUT_MS;
         link.machine = new HelloLinkMachine(std::move(context));
@@ -802,6 +805,26 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
         // per-jack keeps the context callback firing exactly once per jack. TTL clears it.
         completeJackContext(jack, e.peerType, e.chainRole, e.profile.data(), e.len);
     }
+}
+
+void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac) {
+    // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
+    // one-cable disconnect would silently break wireless for the still-connected
+    // link, so any other jack tracking this MAC keeps the slot alive.
+    for (SerialIdentifier port : HELLO_JACKS) {
+        if (port == jack) continue;
+        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
+        if (memcmp(machine->peer().data(), mac, 6) == 0) return;
+    }
+    // Same guard removeDaisyChainedPeer applies in reverse: a MAC still reachable
+    // through a daisy chain keeps its slot.
+    for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
+        for (const std::array<uint8_t, 6>& m : chain) {
+            if (memcmp(m.data(), mac, 6) == 0) return;
+        }
+    }
+    unregisterPeer(mac);
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {

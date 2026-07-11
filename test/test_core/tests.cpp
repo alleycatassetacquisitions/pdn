@@ -1336,6 +1336,12 @@ TEST_F(RDCHelloTests, cachedContextCompletesBoth2NodeRingJacks) {
 TEST_F(RDCHelloTests, contextInputJackInitiates) {
     rdcContextInputJackInitiates(this);
 }
+TEST_F(RDCHelloTests, linkDeathReleasesPeerSlot) {
+    rdcLinkDeathReleasesPeerSlot(this);
+}
+TEST_F(RDCHelloTests, twoNodeRingSingleJackDropKeepsPeerSlot) {
+    rdc2NodeRingSingleJackDropKeepsPeerSlot(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
