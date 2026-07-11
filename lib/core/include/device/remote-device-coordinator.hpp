@@ -134,6 +134,11 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE (#157).
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
+    // A ring latch is evidence-based: it survives a higher-MAC head claim only
+    // while this device's own MAC keeps returning on INPUT within this window.
+    // Sized above the worst-case claim-propagation transient (~18 hops at the
+    // 20ms HELLO cadence).
+    static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = 500;
 
     enum class HelloLinkState { IDLE,
                                 CONNECTING,
@@ -334,6 +339,9 @@ private:
     // Latched when this structural head sees its own MAC return on the INPUT jack;
     // cleared when any ring link drops. Dominates getChainRole().
     bool ringLatched = false;
+    // Last time the own-MAC head returned on INPUT while latched (seeded at
+    // closure): the ring-latch evidence stamp checked against RING_EVIDENCE_TIMEOUT_MS.
+    unsigned long lastSelfHeadReturnMs = 0;
     // Stable storage backing getHeadMac()'s returned pointer.
     mutable std::array<uint8_t, 6> headMacScratch{};
     // Last role reported to chainRoleChangeCallback, for edge-triggered firing.

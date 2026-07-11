@@ -742,14 +742,25 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     const bool peerHeadIsSelf =
         memcmp(peerEffectiveHead.data(), selfMac_.data(), 6) == 0;
 
-    // A latched ring hears its own seeded head return on INPUT every cycle. A
-    // different head arriving there is a head conflict: an upstream break, or a
-    // second latched head (symmetric 2-ring boot, two heads merging). Lower MAC
-    // wins (#144): stand down only for a lower head — a higher one self-corrects
-    // off our HELLO. Unlatching unconditionally lets two latched heads depose
-    // each other and re-latch in lockstep, re-firing ringClosed every cycle.
+    // A latched ring hears its own seeded head return on INPUT every cycle; that
+    // return IS the evidence the loop still closes through us, so stamp it.
+    if (ringLatched && peerHeadIsSelf) lastSelfHeadReturnMs = nowMs();
+
+    // A different head on INPUT while latched is a head conflict: a second
+    // latched head (symmetric 2-ring boot, two heads merging) or a replacement
+    // head propagating hop-by-hop after a break elsewhere in the loop. Lower MAC
+    // wins (#144): stand down at once for a lower head — unlatching
+    // unconditionally lets two latched heads depose each other and re-latch in
+    // lockstep, re-firing ringClosed every cycle. For a higher head, hold the
+    // latch only while self-returns are fresh: in a merge transient our own
+    // claim keeps circulating and refreshing the stamp, but after a physical
+    // break it can no longer complete the loop, so the evidence times out and
+    // the new head must be adopted.
     if (ringLatched && !peerHeadIsSelf) {
-        if (MacToUInt64(peerEffectiveHead.data()) > MacToUInt64(selfMac_.data())) return;
+        if (MacToUInt64(peerEffectiveHead.data()) > MacToUInt64(selfMac_.data()) &&
+            nowMs() - lastSelfHeadReturnMs <= RING_EVIDENCE_TIMEOUT_MS) {
+            return;
+        }
         ringLatched = false;
     }
 
@@ -761,6 +772,9 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     if (!ringLatched && peerHeadIsSelf &&
         getHelloLinkState(SerialIdentifier::OUTPUT_JACK) == HelloLinkState::CONNECTED) {
         ringLatched = true;
+        // Seed the evidence stamp at closure so a break immediately after still
+        // has a valid baseline to time out from.
+        lastSelfHeadReturnMs = nowMs();
         // Our own MAC came back, so we ARE the head: drop any head adopted while the
         // ring was forming, or we would sit in RING advertising a stale foreign head.
         chainHeadState.store(0);

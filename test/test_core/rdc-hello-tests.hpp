@@ -562,6 +562,47 @@ inline void rdcChainPeerSwapClearsStaleRing(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), foreignHead, 6));
 }
 
+// Non-adjacent break where the replacement head has a HIGHER MAC than ours:
+// lower-MAC stand-down alone would hold the latch forever. The latch is
+// evidence-based — once our own MAC stops returning on INPUT for the evidence
+// window, the device must stand down and adopt the propagated head.
+inline void rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    const uint8_t upstream[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, suite->localMac));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    const uint8_t higherHead[6] = {0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE};
+
+    // Inside the evidence window a higher claim reads as a merge transient:
+    // the latch holds.
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, higherHead));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+
+    // Both links stay alive at HELLO cadence but no self-return ever arrives;
+    // past the window the latch must yield.
+    unsigned long elapsed = 0;
+    while (elapsed <= RemoteDeviceCoordinator::RING_EVIDENCE_TIMEOUT_MS) {
+        suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        elapsed += RemoteDeviceCoordinator::HELLO_CADENCE_MS;
+        suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+        suite->deliverHello(suite->inJack, chainHelloFrame(upstream, higherHead));
+        suite->rdc.sync(&suite->device);
+    }
+
+    EXPECT_NE(suite->rdc.getChainRole(), ChainRole::RING);
+    ASSERT_NE(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(0, memcmp(suite->rdc.getHeadMac(), higherHead, 6));
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    HelloPayload emitted = parseEmittedHello(suite->outJack.getOutput());
+    EXPECT_EQ(0, memcmp(emitted.headMac, higherHead, 6));
+}
+
 // One node bundling an RDC, its device and jacks, for the two-live-RDC ring test.
 struct ChainRingNode {
     explicit ChainRingNode(const uint8_t m[6]) {
@@ -691,25 +732,35 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
     ASSERT_EQ(A.ringClosedCount, 1);
     ASSERT_EQ(B.ringClosedCount, 1);
 
+    // Complete both INPUT links so advancing time below exercises only the ring
+    // evidence window, not the context-exchange timeout.
+    A.rdc.sync(&A.device);
+    A.rdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    A.rdc.sync(&A.device);
+    B.rdc.sync(&B.device);
+    B.rdc.onContextExchangeComplete(SerialIdentifier::INPUT_JACK);
+    B.rdc.sync(&B.device);
+
     // Emit-before-deliver models the real concurrency: both HELLOs are in
-    // flight before either side processes one. Must converge, not oscillate.
-    for (int i = 0; i < 20; ++i) {
+    // flight before either side processes one. Must converge, not oscillate,
+    // and running past the evidence window pins that the survivor's own
+    // self-returns keep its latch alive.
+    for (int i = 0; i < 40; ++i) {
+        clock.advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
         A.rdc.emitHello();
         B.rdc.emitHello();
         pump(A.out, B.in);
         pump(B.out, A.in);
+        pump(A.in, B.out);  // reverse legs keep the OUT jacks alive
+        pump(B.in, A.out);
         A.rdc.sync(&A.device);
         B.rdc.sync(&B.device);
-        A.in.clearOutput();
-        A.out.clearOutput();
-        B.in.clearOutput();
-        B.out.clearOutput();
     }
 
     EXPECT_EQ(A.ringClosedCount, 1);
     EXPECT_EQ(B.ringClosedCount, 1);
     EXPECT_EQ(A.rdc.getChainRole(), ChainRole::RING);
-    EXPECT_NE(B.rdc.getChainRole(), ChainRole::RING);
+    EXPECT_EQ(B.rdc.getChainRole(), ChainRole::CHILD);
 
     SimpleTimer::setPlatformClock(nullptr);
 }

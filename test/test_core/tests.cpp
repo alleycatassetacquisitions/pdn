@@ -1363,6 +1363,9 @@ TEST(RDCHelloStandalone, chainTwoNodeRingCloses) {
 TEST(RDCHelloStandalone, chainDualLatchSettlesByLowerMac) {
     rdcChainDualLatchSettlesByLowerMac();
 }
+TEST_F(RDCHelloTests, chainRingYieldsToHigherHeadAfterEvidenceTimeout) {
+    rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(this);
+}
 
 // ============================================
 // CHAIN DUEL MANAGER TESTS
