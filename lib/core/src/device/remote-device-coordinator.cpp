@@ -675,7 +675,7 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     if (MacToUInt64(hello.source) == 0) return;
     if (memcmp(hello.source, selfMac_.data(), 6) == 0) return;
 
-    // The machine records the peer MAC and, for a first HELLO on an Idle OUT jack,
+    // The machine records the peer MAC and, for a first HELLO on any Idle jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
     JackHelloLink& link = helloByPort_[portIndex(jack)];
     if (link.machine) link.machine->onHelloReceived(hello);
@@ -686,10 +686,12 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
     HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
     if (machine == nullptr) return;
     const uint8_t* mac = machine->peer().data();
+    // In a 2-node ring both our jacks face the same peer and connect in the same
+    // tick; our context is identical on each, so one copy suffices. Skip if a send
+    // to this MAC is already pending rather than putting a second frame on the air
+    // (the Resender transmits each send immediately, so it would NOT be collapsed).
+    if (isContextSendPending(mac)) return;
     registerPeer(mac);
-    // No explicit cancel: the channel's SUPERSEDE_PER_TARGET drops any prior unacked
-    // send to this MAC when the new one goes out (e.g. our other jack's send to the
-    // same peer in a 2-node ring).
     sendSelfContext(mac);
 }
 
@@ -720,21 +722,13 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
                                                 uint8_t chainRole, const uint8_t* profile,
                                                 size_t len) {
     // Every jack sends its own context on connecting, so receiving the peer's just
-    // completes our side; there is no reply. A 2-node ring cables the SAME peer to
-    // both jacks, so one context completes both links (SUPERSEDE_PER_TARGET already
-    // collapsed our two sends to that peer into one). Complete every jack still
-    // mid-exchange with this MAC, not just the first, or the other opens the ring.
-    bool matched = false;
+    // completes our matching jack(s); there is no reply. A 2-node ring points both
+    // our jacks at the same peer, so one context completes both. The peer is already
+    // a radio slot (registered when our jack initiated), so nothing to register here.
     for (SerialIdentifier port : HELLO_JACKS) {
         HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
         if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
-        if (!matched) {
-            matched = true;
-            // Register only after a jack matches, so an unmatched/late context can't
-            // leak a peer slot we never send to.
-            registerPeer(fromMac);
-        }
         helloByPort_[portIndex(port)].peerChainRole = chainRole;
         if (contextReceivedCallback) contextReceivedCallback(port, peerType, profile, len);
         onContextExchangeComplete(port);

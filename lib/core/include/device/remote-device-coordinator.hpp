@@ -152,7 +152,7 @@ public:
     }
 
     /// Supplies this device's outgoing player profile, forwarded verbatim in the
-    /// context this device sends to a new OUT-jack peer. Opaque to RDC.
+    /// context this device sends to a new peer on any jack. Opaque to RDC.
     void setSelfPlayerProfile(const PlayerProfile& profile) {
         selfPlayerProfile = profile;
     }
@@ -342,8 +342,9 @@ private:
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
 
-    // OUT jack initiates: register the peer as a radio slot, then send this
-    // device's context reliably. Re-callable to re-send after a headMac change.
+    // A jack entering Connecting initiates: register the peer as a radio slot, then
+    // reliably send this device's context (skipped if our other jack already has a
+    // send pending to that same peer, as in a 2-node ring).
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);

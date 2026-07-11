@@ -345,6 +345,10 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
 
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int contextSends = 0;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::InvokeWithoutArgs([&contextSends]() { contextSends++; }), Return(1)));
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
@@ -353,6 +357,8 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    // Both jacks face the same peer, but our context goes out ONCE, not twice.
+    EXPECT_EQ(contextSends, 1);
 
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
     suite->rdc.getReliableTransport()->deliverIncoming(
