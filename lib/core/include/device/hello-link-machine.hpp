@@ -70,10 +70,10 @@ public:
     void onStateMounted(Device*) override {
         connectingSinceMs = context->nowMs();
         transitionToConnectedState = false;
-        // Output-jack-initiates: only the OUT jack requests the context exchange.
-        if (context->jack == SerialIdentifier::OUTPUT_JACK && context->onContextRequest) {
-            context->onContextRequest(context->jack);
-        }
+        // Every jack initiates its own context on connecting and completes when the
+        // peer's arrives; there is no initiator/replier asymmetry, so two devices
+        // whose jacks face each other (a 2-node ring) can't ping-pong.
+        if (context->onContextRequest) context->onContextRequest(context->jack);
     }
 
     void markContextComplete() { transitionToConnectedState = true; }

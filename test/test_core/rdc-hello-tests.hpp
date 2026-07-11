@@ -206,9 +206,9 @@ inline void rdcHelloEmitProducesFramesOnBothJacks(RDCHelloTests* suite) {
     }
 }
 
-// (e) A new HELLO MAC on the OUT jack sends this device's context (pending
-// entry created); the IN jack does not initiate one.
-inline void rdcHelloOutputJackInitiatesContext(RDCHelloTests* suite) {
+// (e) A new HELLO MAC on EITHER jack sends this device's context (pending entry
+// created): every jack initiates its own context on connecting.
+inline void rdcHelloEveryJackInitiatesContext(RDCHelloTests* suite) {
     const uint8_t outPeer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t inPeer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
@@ -217,7 +217,7 @@ inline void rdcHelloOutputJackInitiatesContext(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
 
     EXPECT_TRUE(suite->rdc.isContextSendPending(outPeer));
-    EXPECT_FALSE(suite->rdc.isContextSendPending(inPeer));
+    EXPECT_TRUE(suite->rdc.isContextSendPending(inPeer));
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
@@ -309,10 +309,10 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     EXPECT_EQ(suite->lastConnectJack, SerialIdentifier::OUTPUT_JACK);
 }
 
-// (f) Output initiates, input replies: a context arriving on an INPUT jack
-// completes that jack AND sends our context back, so the initiator's out-jack
-// can also complete. Without the reply the initiator loops CONNECTING->IDLE.
-inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
+// (f) Every jack initiates: a HELLO on the INPUT jack sends our context just like
+// the OUT jack does, and receiving the peer's context completes that jack. No
+// reply step, so two devices whose jacks face each other can't ping-pong.
+inline void rdcContextInputJackInitiates(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
@@ -320,14 +320,14 @@ inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
         .Times(testing::AnyNumber());
 
-    // Peer arrives on the INPUT jack; an in-jack HELLO must NOT initiate a send.
+    // Peer arrives on the INPUT jack; the jack initiates its own context on connecting.
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
-    suite->rdc.sync(&suite->device);  // drive Idle->Connecting (input jack: no send)
+    suite->rdc.sync(&suite->device);  // drive Idle->Connecting; input jack initiates
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-    ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
+    ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
 
-    // Receiving the peer's context completes the input jack AND replies.
+    // Receiving the peer's context completes the input jack; nothing is sent back.
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
     suite->rdc.getReliableTransport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
@@ -335,7 +335,6 @@ inline void rdcContextInputJackReplies(RDCHelloTests* suite) {
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_TRUE(suite->rdc.isContextSendPending(peer));  // reply was sent
 }
 
 // A 2-node ring cables the same peer to BOTH jacks. One received context must
@@ -365,8 +364,6 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 }
-
-// (d) A headMac change mid-exchange cancels the in-flight send and re-initiates.
 
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.

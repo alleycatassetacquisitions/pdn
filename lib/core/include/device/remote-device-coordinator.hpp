@@ -347,13 +347,10 @@ private:
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
-    // Base channel for this device's own context type (nullptr before init).
-    ReliableChannelBase* selfContextChannel() const;
     // A received peer context: register, record chainRole, hand off the profile
-    // opaquely, match the MAC to its jack, and complete that jack's exchange.
+    // opaquely, match the MAC to its jack(s), and complete each jack's exchange.
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                            uint8_t chainRole, const uint8_t* profile, size_t len);
-    // Jack whose HELLO link currently names `mac`, or false if none.
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task

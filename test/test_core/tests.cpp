@@ -1312,8 +1312,8 @@ TEST_F(RDCHelloTests, emitProducesFramesOnBothJacks) {
     rdcHelloEmitProducesFramesOnBothJacks(this);
 }
 
-TEST_F(RDCHelloTests, outputJackInitiatesContext) {
-    rdcHelloOutputJackInitiatesContext(this);
+TEST_F(RDCHelloTests, everyJackInitiatesContext) {
+    rdcHelloEveryJackInitiatesContext(this);
 }
 
 TEST_F(RDCHelloTests, contextSendClearedBySendSuccess) {
@@ -1327,8 +1327,8 @@ TEST_F(RDCHelloTests, contextReceiveConnectsJack) {
 TEST_F(RDCHelloTests, contextCompletesBothJacksForSamePeer) {
     rdcContextCompletesBothJacksForSamePeer(this);
 }
-TEST_F(RDCHelloTests, contextInputJackReplies) {
-    rdcContextInputJackReplies(this);
+TEST_F(RDCHelloTests, contextInputJackInitiates) {
+    rdcContextInputJackInitiates(this);
 }
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
