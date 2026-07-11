@@ -535,6 +535,57 @@ inline void rdc2NodeRingSingleJackDropKeepsPeerSlot(RDCHelloTests* suite) {
     EXPECT_EQ(removed, 1);
 }
 
+// Half-open recovery: we are CONNECTED but the peer never got our context (lost
+// app-side, or it rebooted). Its retry arrives from a MAC our CONNECTED jack already
+// tracks; we must resend our context so its cycle can complete, and stay CONNECTED.
+inline void rdcConnectedPeerRetryTriggersContextResend(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t stranger[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int contextSends = 0;
+    std::vector<uint8_t> sentPayload;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::Invoke([&](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+                contextSends++;
+                sentPayload.assign(data, data + len);
+            }),
+            Return(1)));
+
+    // Full connect on the OUT jack; SEND_SUCCESS clears our pending send.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(contextSends, 1);
+    suite->transport()->onSendResult(
+        PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
+    ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
+
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(contextSends, 1);
+
+    // The peer retries (fresh seqId): we resend our context and stay CONNECTED.
+    std::vector<uint8_t> retry = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/4);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, retry.data(), retry.size());
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(contextSends, 2);
+    EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+
+    // A context from a MAC no jack tracks is buffered only — no resend to strangers.
+    std::vector<uint8_t> unknown = pdnContextBytes(/*chainRole=*/1, /*userId=*/9, /*seqId=*/5);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, stranger, unknown.data(), unknown.size());
+    EXPECT_EQ(contextSends, 2);
+}
+
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.
 inline void rdcHelloByteModeSuppressesStringAssembly() {

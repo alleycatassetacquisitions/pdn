@@ -732,7 +732,7 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
                                                 uint8_t chainRole, const uint8_t* profile,
                                                 size_t len) {
     // Every jack sends its own context on connecting, so receiving the peer's just
-    // completes our matching jack(s); there is no reply. Cache it keyed by MAC AND
+    // completes our matching jack(s); no reply in the normal exchange. Cache it keyed by MAC AND
     // apply it now: caching (not only applying) covers a jack that reaches CONNECTING
     // AFTER this arrives. That happens two ways — a context beats its own HELLO
     // (ESP-NOW vs serial) so no jack is CONNECTING yet, and in a 2-node ring the two
@@ -748,11 +748,27 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     // Live receive path: a 2-node ring points both our jacks at the same peer with
     // both already CONNECTING, so one context completes both. The peer is already a
     // radio slot (registered when our jack initiated), so nothing to register here.
+    bool appliedToConnectingJack = false;
     for (SerialIdentifier port : HELLO_JACKS) {
         HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
         if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
         completeJackContext(port, peerType, chainRole, profile, len);
+        appliedToConnectingJack = true;
+    }
+    if (appliedToConnectingJack) return;
+
+    // A context from a MAC a CONNECTED jack already tracks means the peer is still
+    // cycling CONNECTING — our earlier context was lost app-side (SEND_SUCCESS is
+    // MAC-ack only) or the peer rebooted and its first resend was deduped. Resend
+    // ours so its cycle completes. No ping-pong: only the CONNECTING side retries,
+    // and it stops once this lands.
+    for (SerialIdentifier port : HELLO_JACKS) {
+        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
+        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
+        if (!isContextSendPending(fromMac)) sendSelfContext(fromMac);
+        return;
     }
 }
 
