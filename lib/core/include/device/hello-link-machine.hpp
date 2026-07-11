@@ -30,7 +30,7 @@ enum HelloLinkStateId {
 struct HelloLinkContext {
     SerialIdentifier jack{};
     std::function<unsigned long()> nowMs;
-    std::function<void(SerialIdentifier)> onContextRequest;    // OUT jack only
+    std::function<void(SerialIdentifier)> onContextRequest;    // every jack, on entering Connecting
     std::function<void(SerialIdentifier, bool)> onJackChange;  // connect / disconnect
     std::function<void()> resetParser;                         // on link death
     // Fired once per link death with the peer the link was tracking; both the

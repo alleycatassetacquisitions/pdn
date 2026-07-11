@@ -707,7 +707,7 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
 void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
     // Each device describes itself, so the payload is chosen by THIS device's kind,
     // not the peer's. chainRole 0 = unresolved: the device chain SM (#156) fills it
-    // once it learns this device's position; out of scope here.
+    // once it learns this device's position.
     if (selfDeviceType == DeviceType::FDN) {
         if (fdnContextChannel == nullptr) return;
         FdnConnectionContext ctx{};

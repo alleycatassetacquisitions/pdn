@@ -223,9 +223,7 @@ private:
         void* context;
     };
 
-    // A send whose SEND_SUCCESS is reported on the next exec(), mirroring the
-    // esp32 driver's deferred dispatch so the reliable transport's ack is driven
-    // the same way in the sim (and never re-enters Resender::send mid-transmit).
+    // A send whose SEND_SUCCESS is reported on the next exec() (see send()/exec()).
     struct DeferredSendResult {
         PktType type;
         uint8_t dst[6];
