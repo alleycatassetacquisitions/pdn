@@ -179,6 +179,14 @@ public:
         return currentState ? currentState->getStateId() : HELLO_LINK_IDLE;
     }
 
+    /// True in the window between the exchange completing and the Connecting ->
+    /// Connected commit (which lands at the end of the next tick); the jack still
+    /// reports Connecting there, so callers use this to spot the duplicate.
+    bool didMarkContextComplete() const {
+        return currentState && currentState->getStateId() == HELLO_LINK_CONNECTING &&
+               static_cast<HelloConnectingState*>(currentState)->transitionToConnected();
+    }
+
     /// The peer this link tracks (last HELLO source); all-zero while Idle.
     const std::array<uint8_t, 6>& peer() const { return context.peerMac; }
 

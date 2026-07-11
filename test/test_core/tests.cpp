@@ -1357,6 +1357,9 @@ TEST_F(RDCHelloTests, connectedRetryResendThrottled) {
 TEST_F(RDCHelloTests, linkDeathClearsPeerChainRole) {
     rdcLinkDeathClearsPeerChainRole(this);
 }
+TEST_F(RDCHelloTests, duplicateContextSameTickFiresCallbackOnce) {
+    rdcDuplicateContextSameTickFiresCallbackOnce(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();

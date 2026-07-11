@@ -744,6 +744,36 @@ inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 0);
 }
 
+// Two fresh-seqId contexts from the same MAC in the same tick (before the
+// Connecting -> Connected commit) must fire the game context callback once, not
+// twice: the jack still reports CONNECTING in that window.
+inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int callbacks = 0;
+    suite->rdc.setOnContextReceived(
+        [&](SerialIdentifier, DeviceType, const uint8_t*, size_t) { callbacks++; });
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    std::vector<uint8_t> first = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    std::vector<uint8_t> second = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/4);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, first.data(), first.size());
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, second.data(), second.size());
+    EXPECT_EQ(callbacks, 1);
+
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(callbacks, 1);
+}
+
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.
 inline void rdcHelloByteModeSuppressesStringAssembly() {

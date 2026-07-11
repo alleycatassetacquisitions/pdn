@@ -789,6 +789,11 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
 void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
                                                   uint8_t chainRole, const uint8_t* profile,
                                                   size_t len) {
+    // A second fresh-seqId context can land before the Connecting -> Connected
+    // commit while the jack still reports CONNECTING; the game callback must
+    // fire exactly once per connect.
+    HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
+    if (machine != nullptr && machine->didMarkContextComplete()) return;
     helloByPort_[portIndex(jack)].peerChainRole = chainRole;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
