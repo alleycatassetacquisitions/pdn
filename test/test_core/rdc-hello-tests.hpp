@@ -25,6 +25,33 @@ using ::testing::Return;
 // into the SerialFrameParser. Single-threaded via setExternalConnectivityTask —
 // the test calls emitHello()/sync() itself instead of the FreeRTOS task.
 
+// Radio mock defaults shared by the fixture and the standalone ring nodes:
+// sends and peer-table ops succeed, the device reports `mac` as its own.
+inline void wireRadioDefaults(MockDevice& device, uint8_t* mac) {
+    ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+    ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
+    ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
+    ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
+    ON_CALL(*device.mockPeerComms, getPeerCommsState())
+        .WillByDefault(Return(PeerCommsState::CONNECTED));
+}
+
+// One direction of a cable: drains `from`'s emitted bytes into `to`'s RX and
+// runs the real exec() pump.
+inline void pumpCable(NativeSerialDriver& from, NativeSerialDriver& to) {
+    const std::string bytes = from.getOutput();
+    from.clearOutput();
+    if (bytes.empty()) return;
+    to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
+    to.exec();
+}
+
+// Pushes a frame into a jack's RX and drains it via the real exec() pump.
+inline void deliverFrame(NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
+    jack.injectBytes(frame);
+    jack.exec();
+}
+
 class RDCHelloTests : public testing::Test {
 public:
     /// Fake clock, mocked radio, native jacks swapped in, RDC in HELLO mode with
@@ -34,12 +61,7 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(localMac));
-        ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*device.mockPeerComms, getPeerCommsState())
-            .WillByDefault(Return(PeerCommsState::CONNECTED));
+        wireRadioDefaults(device, localMac);
 
         device.serialManager->setOutputJack(&outJack);
         device.serialManager->setInputJack(&inJack);
@@ -80,8 +102,7 @@ public:
 
     /// Pushes a frame into a jack's RX and drains it via the real exec() pump.
     void deliverHello(NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
-        jack.injectBytes(frame);
-        jack.exec();
+        deliverFrame(jack, frame);
     }
 
     MockDevice device;
@@ -607,12 +628,7 @@ inline void rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(RDCHelloTests* su
 struct ChainRingNode {
     explicit ChainRingNode(const uint8_t m[6]) {
         memcpy(mac, m, 6);
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
-        ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*device.mockPeerComms, getPeerCommsState())
-            .WillByDefault(Return(PeerCommsState::CONNECTED));
+        wireRadioDefaults(device, mac);
         device.serialManager->setOutputJack(&out);
         device.serialManager->setInputJack(&in);
         rdc.setExternalConnectivityTask(true);
@@ -642,23 +658,15 @@ inline void rdcChainTwoNodeRingCloses() {
     ChainRingNode A(macA);
     ChainRingNode B(macB);
 
-    auto pump = [](NativeSerialDriver& from, NativeSerialDriver& to) {
-        const std::string bytes = from.getOutput();
-        from.clearOutput();
-        if (bytes.empty()) return;
-        to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
-        to.exec();
-    };
-
     // Cable 1: A.out -> B.in. B inherits A as its head.
     A.rdc.emitHello();
-    pump(A.out, B.in);
+    pumpCable(A.out, B.in);
     B.rdc.sync(&B.device);
 
     // A.out hears B on the return leg; bring both ends to Connected so A is the
     // structural HEAD and B a CHILD.
     B.rdc.emitHello();
-    pump(B.in, A.out);
+    pumpCable(B.in, A.out);
     A.rdc.sync(&A.device);
     A.rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     A.rdc.sync(&A.device);
@@ -672,7 +680,7 @@ inline void rdcChainTwoNodeRingCloses() {
     // Cable 2 closes the ring: B.out -> A.in carries B's HELLO advertising head=A.
     B.out.clearOutput();
     B.rdc.emitHello();
-    pump(B.out, A.in);
+    pumpCable(B.out, A.in);
 
     EXPECT_EQ(A.ringClosedCount, 1);
     EXPECT_EQ(A.rdc.getChainRole(), ChainRole::RING);
@@ -694,27 +702,15 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
     ChainRingNode A(macA);
     ChainRingNode B(macB);
 
-    auto pump = [](NativeSerialDriver& from, NativeSerialDriver& to) {
-        const std::string bytes = from.getOutput();
-        from.clearOutput();
-        if (bytes.empty()) return;
-        to.injectBytes(std::vector<uint8_t>(bytes.begin(), bytes.end()));
-        to.exec();
-    };
-    auto deliver = [](NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
-        jack.injectBytes(frame);
-        jack.exec();
-    };
-
     // Bring both OUTPUT jacks to Connected: each hears the other's HELLO on the
     // return leg of its own out-cable.
     B.rdc.emitHello();
-    pump(B.in, A.out);
+    pumpCable(B.in, A.out);
     A.rdc.sync(&A.device);
     A.rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     A.rdc.sync(&A.device);
     A.rdc.emitHello();
-    pump(A.in, B.out);
+    pumpCable(A.in, B.out);
     B.rdc.sync(&B.device);
     B.rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     B.rdc.sync(&B.device);
@@ -725,8 +721,8 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
 
     // Both latch in one exchange: each INPUT delivers the device's own MAC as
     // the returned head while the other side is doing the same.
-    deliver(A.in, chainHelloFrame(macB, macA));
-    deliver(B.in, chainHelloFrame(macA, macB));
+    deliverFrame(A.in, chainHelloFrame(macB, macA));
+    deliverFrame(B.in, chainHelloFrame(macA, macB));
     ASSERT_EQ(A.rdc.getChainRole(), ChainRole::RING);
     ASSERT_EQ(B.rdc.getChainRole(), ChainRole::RING);
     ASSERT_EQ(A.ringClosedCount, 1);
@@ -749,10 +745,10 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
         clock.advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
         A.rdc.emitHello();
         B.rdc.emitHello();
-        pump(A.out, B.in);
-        pump(B.out, A.in);
-        pump(A.in, B.out);  // reverse legs keep the OUT jacks alive
-        pump(B.in, A.out);
+        pumpCable(A.out, B.in);
+        pumpCable(B.out, A.in);
+        pumpCable(A.in, B.out);  // reverse legs keep the OUT jacks alive
+        pumpCable(B.in, A.out);
         A.rdc.sync(&A.device);
         B.rdc.sync(&B.device);
     }
