@@ -21,6 +21,7 @@
 class Device;
 class HandshakeApp;
 class HelloLinkMachine;
+class RDCHelloTests;  // drives the context exchange via the owned transport in tests
 
 enum class PortStatus {
     DISCONNECTED = 0,  // No Connection. Handshake is in Idle state.
@@ -46,6 +47,10 @@ struct PortState {
 };
 
 class RemoteDeviceCoordinator {
+    // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
+    // a radio; the transport stays out of the public API.
+    friend class RDCHelloTests;
+
 public:
     /// Fires on a per-jack connect (true) / disconnect (false) transition.
     using JackChangeCallback = std::function<void(SerialIdentifier jack, bool connected)>;
@@ -165,11 +170,6 @@ public:
 
     /// True while a context send to `mac` is still awaiting its SEND_SUCCESS.
     bool isContextSendPending(const uint8_t* mac) const;
-
-    /// The reliable transport driving the context exchange. Exposed so tests can
-    /// inject SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming)
-    /// without a radio.
-    ReliableTransport* getReliableTransport() { return transport; }
 
     /// Wires byte callbacks + parsers on every present jack, quiesces the
     /// handshake, and (unless external) spawns the emit task. Idempotent.
@@ -368,18 +368,24 @@ private:
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
-    // Route a received peer context: complete every CONNECTING jack for its MAC, or
-    // buffer it if none is CONNECTING yet (its HELLO hasn't arrived).
+    // Route a received peer context: cache it keyed by MAC, then complete every jack
+    // already CONNECTING for that MAC. Caching also serves a jack that reaches
+    // CONNECTING after this arrives (early context, or a 2-node ring's second jack).
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                            uint8_t chainRole, const uint8_t* profile, size_t len);
-    // Completes every CONNECTING jack whose peer is `fromMac`; true if any matched.
-    bool applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
+    // Completes every jack currently CONNECTING to `fromMac` (live receive path).
+    void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
                              uint8_t chainRole, const uint8_t* profile, size_t len);
+    // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
+    // so the context callback fires exactly once per jack.
+    void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+                             const uint8_t* profile, size_t len);
     // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.
     void bufferContext(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                        const uint8_t* profile, size_t len);
-    // Applies and clears any buffered context for `mac` now that its jack connects.
-    void drainBufferedContext(const uint8_t* mac);
+    // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
+    // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
+    void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task

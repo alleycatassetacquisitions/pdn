@@ -1330,6 +1330,9 @@ TEST_F(RDCHelloTests, contextCompletesBothJacksForSamePeer) {
 TEST_F(RDCHelloTests, contextBeforeConnectingIsBufferedAndApplied) {
     rdcContextBeforeConnectingIsBufferedAndApplied(this);
 }
+TEST_F(RDCHelloTests, cachedContextCompletesBoth2NodeRingJacks) {
+    rdcCachedContextCompletesBoth2NodeRingJacks(this);
+}
 TEST_F(RDCHelloTests, contextInputJackInitiates) {
     rdcContextInputJackInitiates(this);
 }

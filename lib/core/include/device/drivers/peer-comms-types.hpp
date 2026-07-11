@@ -37,7 +37,8 @@ struct PlayerProfile {
 } __attribute__((packed));
 
 // PDN-to-neighbour connection context. seqId is stamped by the ReliableChannel.
-// chainRole is recorded by the receiver for the device chain SM (#156).
+// chainRole is recorded by the receiver for the device chain SM (#156). The peer's
+// device kind arrives out-of-band in HELLO and picks which context struct to decode.
 struct PdnConnectionContext {
     uint8_t seqId;
     uint8_t chainRole;
@@ -50,7 +51,7 @@ struct FdnProfile {
     uint8_t reserved;
 } __attribute__((packed));
 
-// FDN-to-neighbour connection context; mirrors PdnConnectionContext.
+// FDN-to-neighbour connection context; same header as PdnConnectionContext, FDN body.
 struct FdnConnectionContext {
     uint8_t seqId;
     uint8_t chainRole;

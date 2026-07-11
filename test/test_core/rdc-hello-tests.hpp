@@ -83,6 +83,11 @@ public:
         jack.exec();
     }
 
+    /// The RDC's owned transport, reached via friendship so a test can inject
+    /// SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
+    /// radio. Not part of the production API.
+    ReliableTransport* transport() { return rdc.transport; }
+
     MockDevice device;
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
@@ -222,8 +227,8 @@ inline void rdcHelloEveryJackInitiatesContext(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
 
-// A PdnConnectionContext carrying the given chainRole + userId, serialized to
-// its wire bytes for deliverIncoming.
+// A PdnConnectionContext carrying the given chainRole + userId, serialized to its
+// wire bytes for deliverIncoming.
 inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, uint8_t seqId) {
     PdnConnectionContext ctx{};
     ctx.seqId = seqId;
@@ -256,7 +261,7 @@ inline void rdcContextSendClearedBySendSuccess(RDCHelloTests* suite) {
     ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
     ASSERT_EQ(sentPayload.size(), sizeof(PdnConnectionContext));
 
-    suite->rdc.getReliableTransport()->onSendResult(
+    suite->transport()->onSendResult(
         PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
 
     EXPECT_FALSE(suite->rdc.isContextSendPending(peer));
@@ -294,7 +299,7 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
         .Times(testing::AnyNumber());
 
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/2, /*userId=*/4242, /*seqId=*/9);
-    suite->rdc.getReliableTransport()->deliverIncoming(
+    suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
@@ -329,7 +334,7 @@ inline void rdcContextInputJackInitiates(RDCHelloTests* suite) {
 
     // Receiving the peer's context completes the input jack; nothing is sent back.
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
-    suite->rdc.getReliableTransport()->deliverIncoming(
+    suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
@@ -361,7 +366,7 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
     EXPECT_EQ(contextSends, 1);
 
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
-    suite->rdc.getReliableTransport()->deliverIncoming(
+    suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
 
@@ -384,7 +389,7 @@ inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite)
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
-    suite->rdc.getReliableTransport()->deliverIncoming(
+    suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
@@ -398,6 +403,51 @@ inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite)
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+}
+
+// A 2-node ring (same peer on BOTH jacks) whose context beats both HELLOs: it is
+// cached while both jacks are still IDLE, then the jacks enter CONNECTING one at a
+// time (sync drives OUTPUT before INPUT). The first to connect must NOT consume the
+// cache out from under the second — both links must reach CONNECTED, and each jack's
+// context callback must fire exactly once. Regression: a per-arrival consume left the
+// second jack CONNECTING until it silent-linked to IDLE, half-opening the ring.
+inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    int outCb = 0;
+    int inCb = 0;
+    suite->rdc.setOnContextReceived(
+        [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+            if (jack == SerialIdentifier::OUTPUT_JACK) outCb++;
+            else if (jack == SerialIdentifier::INPUT_JACK) inCb++;
+        });
+
+    // Context arrives before EITHER jack is CONNECTING: both are Idle, so it is cached.
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+
+    // Both HELLOs arrive from the same peer; one sync drives both jacks Idle->Connecting
+    // (OUTPUT first). OUTPUT drains the cache, and INPUT — connecting right after — must
+    // still find it.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);  // both drain the cache as they connect
+    suite->rdc.sync(&suite->device);  // commit Connecting->Connected
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(outCb, 1);
+    EXPECT_EQ(inCb, 1);
 }
 
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
