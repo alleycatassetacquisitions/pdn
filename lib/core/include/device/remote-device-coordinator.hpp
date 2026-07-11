@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <vector>
 #include "device/serial-manager.hpp"
@@ -121,8 +122,7 @@ public:
     virtual const uint8_t* getHeadMac() const;
 
     /// Head-only chain member roster; empty for a child or standalone device.
-    /// STUB: always empty.
-    virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const { return {}; }
+    virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const;
 
     /// Registers the per-jack connect/disconnect observer. The disconnect fires
     /// before chain-state teardown, so handlers must not read chain state here;
@@ -351,6 +351,9 @@ private:
     ReliableTransport* transport = nullptr;
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
+    ReliableChannel<ConnectionAnnouncePayload>* connectionAnnounceChannel = nullptr;
+    ReliableChannel<DisconnectReportPayload>* disconnectReportChannel = nullptr;
+    ReliableChannel<HeadTransferPayload>* headTransferChannel = nullptr;
 
     // A context (ESP-NOW) can beat its own HELLO (serial) and arrive before any jack
     // is CONNECTING for that MAC. Rather than drop it, hold it here and apply it when
@@ -442,4 +445,22 @@ private:
     void applyUpstreamHead(const HelloPayload& hello);
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
+
+    // ---- Head roster (#158) ----
+    // member MAC -> its direct upstream MAC. Head-only by construction: every
+    // receive handler drops roster traffic while an upstream head is held.
+    std::map<std::array<uint8_t, 6>, std::array<uint8_t, 6>> chainRoster;
+    // Send ConnectionAnnounce{INPUT peer} to the held head, once the upstream
+    // context exchange has completed. No-op for a head/ring/standalone device.
+    void maybeAnnounceToHead();
+    // OUTPUT (downstream) link death: report to the head, or edit the roster in
+    // place when this device IS the head (never a packet to self).
+    void reportDownstreamLoss(const uint8_t* lostMac);
+    // Drop `mac` and every member whose upstream chain passes through it.
+    void removeChainMemberSubtree(const uint8_t* mac);
+    // Demotion handoff: unicast the roster to the successor head, then clear it.
+    void transferRosterTo(const uint8_t* newHeadMac);
+    void onConnectionAnnounce(const uint8_t* fromMac, const ConnectionAnnouncePayload& announce);
+    void onDisconnectReport(const DisconnectReportPayload& report);
+    void onHeadTransfer(const uint8_t* fromMac, const HeadTransferPayload& transfer);
 };

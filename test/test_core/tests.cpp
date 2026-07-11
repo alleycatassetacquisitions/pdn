@@ -1365,6 +1365,28 @@ TEST_F(RDCHelloTests, duplicateContextSameTickFiresCallbackOnce) {
     rdcDuplicateContextSameTickFiresCallbackOnce(this);
 }
 
+TEST_F(RDCHelloTests, joinAnnouncesToHeadAndGatesConfirmed) {
+    rdcJoinAnnouncesToHeadAndGatesConfirmed(this);
+}
+TEST_F(RDCHelloTests, headChangeDropsConfirmedAndReannounces) {
+    rdcHeadChangeDropsConfirmedAndReannounces(this);
+}
+TEST_F(RDCHelloTests, headBuildsAndPrunesRoster) {
+    rdcHeadBuildsAndPrunesRoster(this);
+}
+TEST_F(RDCHelloTests, childReportsDownstreamLossToHead) {
+    rdcChildReportsDownstreamLossToHead(this);
+}
+TEST_F(RDCHelloTests, ringLatchedNeverAnnouncesOrReportsToSelf) {
+    rdcRingLatchedNeverAnnouncesOrReportsToSelf(this);
+}
+TEST_F(RDCHelloTests, demotedHeadTransfersRoster) {
+    rdcDemotedHeadTransfersRoster(this);
+}
+TEST_F(RDCHelloTests, headTransferReceiveMergesAndPrunes) {
+    rdcHeadTransferReceiveMergesAndPrunes(this);
+}
+
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
 }
