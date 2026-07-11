@@ -666,6 +666,59 @@ inline void rdcConnectedPeerRetryTriggersContextResend(RDCHelloTests* suite) {
     EXPECT_EQ(contextSends, 2);
 }
 
+// Two CONNECTED sides can answer each other's recovery resends forever (every send
+// stamps a fresh seqId, so dedup never brakes), so the resend is throttled to one
+// per exchange window, per jack.
+inline void rdcConnectedRetryResendThrottled(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int contextSends = 0;
+    std::vector<uint8_t> sentPayload;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::Invoke([&](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+                contextSends++;
+                sentPayload.assign(data, data + len);
+            }),
+            Return(1)));
+
+    // Full connect, initial send acked.
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(contextSends, 1);
+    suite->transport()->onSendResult(
+        PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+
+    // First retry resends; ack it so pending cannot mask the throttle.
+    std::vector<uint8_t> retry1 = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/4);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, retry1.data(), retry1.size());
+    ASSERT_EQ(contextSends, 2);
+    suite->transport()->onSendResult(
+        PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
+    ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
+
+    // Second retry inside the window: throttled, exactly one resend total.
+    std::vector<uint8_t> retry2 = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/5);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, retry2.data(), retry2.size());
+    EXPECT_EQ(contextSends, 2);
+
+    // Window expired: a genuine still-CONNECTING peer's next cycle resends again.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    std::vector<uint8_t> retry3 = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/6);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, retry3.data(), retry3.size());
+    EXPECT_EQ(contextSends, 3);
+}
+
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
 // NOT assemble strings; with no byte callback the legacy string path is intact.
 inline void rdcHelloByteModeSuppressesStringAssembly() {

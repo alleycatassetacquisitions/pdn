@@ -767,10 +767,21 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     // ours so its cycle completes. No ping-pong: only the CONNECTING side retries,
     // and it stops once this lands.
     for (SerialIdentifier port : HELLO_JACKS) {
-        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
-        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
-        if (!isContextSendPending(fromMac)) sendSelfContext(fromMac);
+        JackHelloLink& link = helloByPort_[portIndex(port)];
+        if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
+            continue;
+        if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
+        // Throttle to one resend per exchange window: every send stamps a fresh
+        // seqId, so dedup can't brake two CONNECTED sides answering each other —
+        // unthrottled they'd volley at radio RTT until link death.
+        const unsigned long now = nowMs();
+        if (link.lastContextResendMs != 0 && now >= link.lastContextResendMs &&
+            now - link.lastContextResendMs < CONTEXT_EXCHANGE_TIMEOUT_MS)
+            return;
+        if (!isContextSendPending(fromMac)) {
+            sendSelfContext(fromMac);
+            link.lastContextResendMs = now;
+        }
         return;
     }
 }

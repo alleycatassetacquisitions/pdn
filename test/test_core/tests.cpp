@@ -1351,6 +1351,9 @@ TEST_F(RDCHelloTests, linkDeathCancelsPendingContextSend) {
 TEST_F(RDCHelloTests, replugAfterFailedExchangeRecovers) {
     rdcReplugAfterFailedExchangeRecovers(this);
 }
+TEST_F(RDCHelloTests, connectedRetryResendThrottled) {
+    rdcConnectedRetryResendThrottled(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();

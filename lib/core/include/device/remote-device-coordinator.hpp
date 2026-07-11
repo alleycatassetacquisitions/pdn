@@ -326,6 +326,9 @@ private:
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM (#156).
         uint8_t peerChainRole = 0;
+        // Last recovery resend to this jack's peer (0 = never); throttles the
+        // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
+        unsigned long lastContextResendMs = 0;
     };
     std::array<JackHelloLink, kNumPorts> helloByPort_;
     bool helloConnectivityEnabled = false;
