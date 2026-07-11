@@ -728,17 +728,14 @@ const uint8_t* RemoteDeviceCoordinator::getHeadMac() const {
 
 void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     // The upstream peer's effective head: its advertised headMac if it has one,
-    // else its own MAC (meaning the peer is itself the head). No MAC comparison,
-    // no min-election — the head's MAC flows down the chain unchallenged.
-    std::array<uint8_t, 6> peerEffectiveHead{};
-    if (MacToUInt64(hello.headMac) != 0) {
-        memcpy(peerEffectiveHead.data(), hello.headMac, 6);
-    } else {
-        memcpy(peerEffectiveHead.data(), hello.source, 6);
-    }
+    // else its own MAC (meaning the peer is itself the head). Inheritance is not
+    // an election — the head's MAC flows down the chain unchallenged; MACs are
+    // compared only to break the latched-head conflict below.
+    const uint8_t* peerEffectiveHead =
+        MacToUInt64(hello.headMac) != 0 ? hello.headMac : hello.source;
 
     const bool peerHeadIsSelf =
-        memcmp(peerEffectiveHead.data(), selfMac_.data(), 6) == 0;
+        memcmp(peerEffectiveHead, selfMac_.data(), 6) == 0;
 
     // A latched ring hears its own seeded head return on INPUT every cycle; that
     // return IS the evidence the loop still closes through us, so stamp it.
@@ -755,7 +752,7 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     // break it can no longer complete the loop, so the evidence times out and
     // the new head must be adopted.
     if (ringLatched && !peerHeadIsSelf) {
-        if (MacToUInt64(peerEffectiveHead.data()) > MacToUInt64(selfMac_.data()) &&
+        if (MacToUInt64(peerEffectiveHead) > MacToUInt64(selfMac_.data()) &&
             nowMs() - lastSelfHeadReturnMs <= RING_EVIDENCE_TIMEOUT_MS) {
             return;
         }
@@ -784,11 +781,11 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     // encodes as an absent head_mac); the ring case above already handled it.
     if (peerHeadIsSelf) return;
 
-    if ((chainHeadState.load() & HEAD_MAC_MASK) == MacToUInt64(peerEffectiveHead.data())) return;
+    if ((chainHeadState.load() & HEAD_MAC_MASK) == MacToUInt64(peerEffectiveHead)) return;
 
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
     // it. The new head then propagates in our own HELLO.
-    chainHeadState.store(packHead(peerEffectiveHead.data(), false));
+    chainHeadState.store(packHead(peerEffectiveHead, false));
 }
 
 void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {

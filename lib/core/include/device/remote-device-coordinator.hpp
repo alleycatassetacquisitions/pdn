@@ -103,22 +103,24 @@ public:
     /// Reachable via either jack (direct peer or daisy-chained).
     virtual bool canReachPeer(const uint8_t* mac) const;
 
-    // ---- Chain-level surface (#154). Stubs until the connection-state
-    // machines land (#155-#159): they return the standalone defaults so the
-    // game layer can compile and wire against the final shape now. ----
+    // ---- Chain-level surface (#154) ----
 
     /// This device's chain role, derived from jack presence plus the ring latch.
     virtual ChainRole getChainRole() const;
 
     /// The chain head's MAC, or nullptr when this device is the head or
-    /// standalone.
+    /// standalone. Also nullptr for a CHILD during re-convergence: after an
+    /// OUTPUT-side ring break the latch clears while INPUT stays connected, and
+    /// no replacement head has propagated yet.
     virtual const uint8_t* getHeadMac() const;
 
     /// Head-only chain member roster; empty for a child or standalone device.
     /// STUB: always empty.
     virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const { return {}; }
 
-    /// Registers the per-jack connect/disconnect observer.
+    /// Registers the per-jack connect/disconnect observer. The disconnect fires
+    /// before chain-state teardown, so handlers must not read chain state here;
+    /// consistent chain facts arrive via setOnChainRoleChange.
     void setOnJackChange(JackChangeCallback callback) {
         jackChangeCallback = std::move(callback);
     }
