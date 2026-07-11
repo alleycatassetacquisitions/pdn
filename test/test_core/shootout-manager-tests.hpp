@@ -816,8 +816,8 @@ inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* su
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
     EXPECT_FALSE(state.transitionToAborted());
 
-    // Persistent loss past the debounce window aborts the tournament: ABORT
-    // broadcast to the ring, Phase::ABORTED, aborted screen.
+    // Persistent loss past the debounce window sets Phase::ABORTED and fires
+    // transitionToAborted.
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);  // start debounce
     suite->fakeClock->advance(2000);  // well past any reasonable debounce window

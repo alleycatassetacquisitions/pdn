@@ -426,7 +426,6 @@ public:
     bool transitionToAborted();
 
 private:
-    ChainDuelManager* chainDuelManager_;
     bool shouldGoToReveal_ = false;
     bool shouldGoToAborted_ = false;
 };
@@ -443,7 +442,6 @@ public:
     bool transitionToAborted();
 
 private:
-    ChainDuelManager* chainDuelManager_;
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
     bool shouldGoToAborted_ = false;
