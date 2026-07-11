@@ -103,6 +103,7 @@ template <class P>
 class ReliableChannel : public ReliableChannelBase {
 public:
     using OnReceive = std::function<void(const uint8_t* fromMac, const P&)>;
+    using OnDelivered = std::function<void(uint8_t seqId, const uint8_t* toMac)>;
 
     /// See ReliableChannelBase; the payload struct P is the wire format.
     ReliableChannel(WirelessManager* wirelessManager,
@@ -163,6 +164,9 @@ public:
         std::memcpy(&p, data, sizeof(P));
         if (p.seqId == 0) return;  // fire-and-forget, no pending entry to clear
         resender->onAck(packetType, p.seqId, toMac);
+        // SEND_SUCCESS is this design's delivery signal (no ack round-trip). A
+        // late radio duplicate can re-fire it, so handlers must be idempotent.
+        if (onDeliveredCallback) onDeliveredCallback(p.seqId, toMac);
     }
 
     /// This channel's payload struct size, for the transport's claim guard.
@@ -171,6 +175,10 @@ public:
     /// Registers the decoded-payload handler.
     void onReceive(OnReceive cb) { onReceiveCallback = std::move(cb); }
 
+    /// Registers the SEND_SUCCESS observer (see onSendResult).
+    void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
+
 private:
     OnReceive onReceiveCallback;
+    OnDelivered onDeliveredCallback;
 };

@@ -21,6 +21,9 @@ enum class PktType : uint8_t {
     kFdnConnect = 14,
     kPdnConnectionContext = 15,
     kFdnConnectionContext = 16,
+    kConnectionAnnounce = 17,
+    kDisconnectReport = 18,
+    kHeadTransfer = 19,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -110,4 +113,32 @@ struct ShootoutAckPayload
 {
     ShootoutCmd cmd;
     uint8_t     seqId;
+} __attribute__((packed));
+
+// ---- Head roster management (#158) ----
+// Point-to-point ReliableChannel payloads; the chain head is the sole consumer.
+// seqId is stamped by the channel on send.
+
+constexpr uint8_t kMaxChainMembers = 18;
+
+// Sent by a newly joined member directly to the head it read from its upstream
+// neighbour's HELLO. upstreamMac names the sender's direct upstream (INPUT) peer.
+struct ConnectionAnnouncePayload {
+    uint8_t seqId;
+    uint8_t upstreamMac[6];
+} __attribute__((packed));
+
+// Sent to the head by the upstream neighbour of a departed member — the only
+// node that observes the HELLO timeout of a non-adjacent (to the head) link.
+struct DisconnectReportPayload {
+    uint8_t seqId;
+    uint8_t disconnectedMac[6];
+} __attribute__((packed));
+
+// Sent once by a demoted head to its successor; the only place a member list
+// ever travels, and it is a single unicast.
+struct HeadTransferPayload {
+    uint8_t seqId;
+    uint8_t memberCount;
+    uint8_t memberMacs[kMaxChainMembers][6];
 } __attribute__((packed));
