@@ -1584,11 +1584,11 @@ inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* su
     EXPECT_TRUE(duelReturnsToIdle(received, suite->ctx.shootoutManager));
 }
 
-// Regression: while a shootout is live, duelReturnsToIdle must both
-// suppress the idle-return and leave the disconnect debounce frozen. Sampling
-// persistence advances that debounce, so sampling it mid-tournament aged the
-// timer and let a duelist snap to Idle the instant the shootout ended instead
-// of after a fresh window. The predicate must not be sampled while active.
+// Regression: while a shootout is live, duelReturnsToIdle must suppress the
+// idle-return AND reset the disconnect debounce. The debounce ages on wall
+// clock even when unsampled, so a run started before or during the tournament
+// would otherwise fire the instant the shootout ends; a fresh full window
+// must be required instead.
 inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* suite) {
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
                              &suite->device.fakeRemoteDeviceCoordinator,
@@ -1609,8 +1609,29 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     suite->fakeClock->advance(2000);
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
 
-    // Tournament ends. A frozen debounce means one tick does not bail; a fresh
-    // full window is still required.
+    // Tournament ends. One tick does not bail; a fresh full window is still
+    // required.
+    shootout.resetToIdle();
+    ASSERT_FALSE(shootout.active());
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    suite->fakeClock->advance(2000);
+    EXPECT_TRUE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+
+    // Ordering 2: the debounce starts BEFORE the tournament activates and
+    // expires on wall clock while it is live. Without the in-flight reset the
+    // first sample after the shootout ends snaps straight to Idle.
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+    suite->device.fakeRemoteDeviceCoordinator.setPortStatus(
+        SerialIdentifier::OUTPUT_JACK, PortStatus::DISCONNECTED);
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));  // start debounce
+    suite->fakeClock->advance(2000);
+
+    shootout.startProposal();
+    ASSERT_TRUE(shootout.active());
+    EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));
+
     shootout.resetToIdle();
     ASSERT_FALSE(shootout.active());
     EXPECT_FALSE(duelReturnsToIdle(countdown, suite->ctx.shootoutManager));

@@ -180,11 +180,15 @@ private:
 
 /// A duel state returns to Idle on a persistent disconnect, but never while a
 /// tournament is live — the shootout's own PEER_LOST/ABORT teardown owns that
-/// path. Short-circuit so persistence is not sampled mid-tournament: sampling it
-/// advances the disconnect debounce, which would let a duelist snap to Idle the
-/// instant the shootout ends instead of after a fresh window.
+/// path. The debounce ages on wall clock even when unsampled, so a run started
+/// before the tournament went live would fire the instant the shootout ends;
+/// reset it while active so a fresh full window is always required afterward.
 inline bool duelReturnsToIdle(ConnectState<PDN>& duel, ShootoutManager* shootout) {
-    return !(shootout && shootout->active()) && duel.isPersistentlyDisconnected();
+    if (shootout && shootout->active()) {
+        duel.resetDisconnectDebounce();
+        return false;
+    }
+    return duel.isPersistentlyDisconnected();
 }
 
 class DuelCountdown : public ConnectState<PDN> {
