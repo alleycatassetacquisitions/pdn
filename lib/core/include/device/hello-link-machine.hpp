@@ -33,6 +33,7 @@ struct HelloLinkContext {
     std::function<void(SerialIdentifier)> onContextRequest;   // OUT jack only
     std::function<void(SerialIdentifier, bool)> onJackChange;  // connect / disconnect
     std::function<void()> resetParser;                         // on link death
+    std::function<void()> onLinkDown;                          // fires on every Idle mount
 
     unsigned long silentLinkMs = 100;
     unsigned long contextTimeoutMs = 500;
@@ -56,8 +57,10 @@ public:
         transitionToConnectingState = false;
         // Entering Idle means the link is down (init, silent-link/context timeout, or
         // a peer swap): drop any half-read frame so the next device's bytes can't
-        // merge into a stale partial left by the peer that just left.
+        // merge into a stale partial left by the peer that just left, and let the
+        // owner tear down any chain state hanging off the dead link.
         if (context->resetParser) context->resetParser();
+        if (context->onLinkDown) context->onLinkDown();
     }
 
     void arm() { transitionToConnectingState = true; }

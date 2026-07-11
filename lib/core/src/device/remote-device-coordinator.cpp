@@ -210,18 +210,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         // it stays dormant here too until HELLO drives its own peer identity (#157).
         for (SerialIdentifier port : HELLO_JACKS) {
             HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
-            if (!machine) continue;
-            const int before = machine->currentStateId();
-            machine->onStateLoop(PDN);
-            // A link falling back to Idle (silent-link or context-exchange timeout)
-            // opens the ring and severs an inherited head. onLinkLost clears that
-            // chain state on the teardown edge; the machine's disconnect callback
-            // only fires from Connected, so a Connecting-side drop would otherwise
-            // leave a stale ring latched.
-            if (before != HELLO_LINK_IDLE &&
-                machine->currentStateId() == HELLO_LINK_IDLE) {
-                onLinkLost(port);
-            }
+            if (machine) machine->onStateLoop(PDN);
         }
         maybeFireChainRoleChange();
         return;
@@ -614,6 +603,11 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.resetParser = [this, port] {
             helloByPort_[portIndex(port)].parser.requestReset();
         };
+        // Idle is the single teardown point: every link-death path (silent link,
+        // context timeout, peer swap) mounts Idle, so the chain state hanging off
+        // the link — ring latch, inherited head — is cleared exactly there. The
+        // initial mount fires it too, a no-op on zero state.
+        context.onLinkDown = [this, port] { onLinkLost(port); };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
         context.contextTimeoutMs = CONTEXT_EXCHANGE_TIMEOUT_MS;
         link.machine = new HelloLinkMachine(std::move(context));
@@ -667,7 +661,6 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
         // peer opens a fresh link below; teardown must precede re-adoption.
         if (machine->tracksDifferentPeer(hello.source)) {
             machine->forceIdle();
-            onLinkLost(jack);
         }
         machine->onHelloReceived(hello);
     }
