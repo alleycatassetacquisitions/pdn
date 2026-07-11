@@ -135,8 +135,8 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     // its receive path live (the transport installs the driver rx handler). The
     // abandon callback is a no-op: an unreachable peer's jack link self-heals to
     // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
-    // The peer's device kind is known from HELLO before the context lands and picks
-    // which channel decodes it; RDC forwards the profile bytes opaquely either way.
+    // The packet's PktType alone picks which channel decodes a context; the
+    // HELLO deviceType is not consulted. RDC forwards the profile bytes opaquely.
     transport = new ReliableTransport(wirelessManager);
     pdnContextChannel = transport->channel<PdnConnectionContext>(
         PktType::kPdnConnectionContext, [](uint8_t, const uint8_t*) {});
@@ -810,8 +810,7 @@ void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType p
             slot = &e;
             break;
         }
-        const bool reusable =
-            !e.valid || (now >= e.arrivedAtMs && now - e.arrivedAtMs > CONTEXT_BUFFER_TTL_MS);
+        const bool reusable = !e.valid || e.isExpiredAt(now);
         if (reusable && slot == nullptr) slot = &e;
         if (e.arrivedAtMs < oldest->arrivedAtMs) oldest = &e;
     }
@@ -830,7 +829,7 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
     const unsigned long now = nowMs();
     for (BufferedContext& e : contextBuffer_) {
         if (!e.valid) continue;
-        if (now >= e.arrivedAtMs && now - e.arrivedAtMs > CONTEXT_BUFFER_TTL_MS) {
+        if (e.isExpiredAt(now)) {
             e.valid = false;  // expired before its jack ever connected (stale/attacker)
             continue;
         }
@@ -857,8 +856,7 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
         if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
         if (memcmp(machine->peer().data(), mac, 6) == 0) return;
     }
-    // Same guard removeDaisyChainedPeer applies in reverse: a MAC still reachable
-    // through a daisy chain keeps its slot.
+    // A MAC still routed through a daisy chain keeps its slot too.
     for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
         for (const std::array<uint8_t, 6>& m : chain) {
             if (memcmp(m.data(), mac, 6) == 0) return;

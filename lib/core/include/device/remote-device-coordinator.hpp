@@ -353,6 +353,8 @@ private:
     // early-arrival (that link then half-opens, same as with no buffer). Legitimate
     // occupancy is at most one per jack.
     static constexpr size_t CONTEXT_BUFFER_SLOTS = 8;
+    // TTL = silent-link window on purpose: a live peer's HELLO lands inside that
+    // window, so a context older than it can never pair with a connecting jack.
     static constexpr unsigned long CONTEXT_BUFFER_TTL_MS = HELLO_SILENT_LINK_MS;
     struct BufferedContext {
         std::array<uint8_t, 6> mac{};
@@ -362,6 +364,9 @@ private:
         size_t len = 0;
         unsigned long arrivedAtMs = 0;
         bool valid = false;
+        bool isExpiredAt(unsigned long now) const {
+            return now >= arrivedAtMs && now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
+        }
     };
     std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer_;
 
@@ -371,9 +376,7 @@ private:
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
-    // Route a received peer context: cache it keyed by MAC, then complete every jack
-    // already CONNECTING for that MAC. Caching also serves a jack that reaches
-    // CONNECTING after this arrives (early context, or a 2-node ring's second jack).
+    // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
                            uint8_t chainRole, const uint8_t* profile, size_t len);
     // Completes every jack currently CONNECTING to `fromMac` (live receive path).
