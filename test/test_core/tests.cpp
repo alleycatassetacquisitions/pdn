@@ -25,6 +25,7 @@
 #include "reliable-channel-tests.hpp"
 #include "direct-peer-table-tests.hpp"
 #include "reliable-transport-tests.hpp"
+#include "connect-state-callback-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1414,6 +1415,41 @@ TEST(RDCHelloStandalone, chainDualLatchSettlesByLowerMac) {
 }
 TEST_F(RDCHelloTests, chainRingYieldsToHigherHeadAfterEvidenceTimeout) {
     rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(this);
+}
+
+// ============================================
+// CONNECTSTATE PER-JACK CALLBACK TESTS (#165)
+// ============================================
+
+TEST_F(ConnectStateCallbackTests, connectEventCarriesContext) {
+    connectStateConnectEventCarriesContext(this);
+}
+TEST_F(ConnectStateCallbackTests, disconnectEventHasNoContext) {
+    connectStateDisconnectEventHasNoContext(this);
+}
+TEST_F(ConnectStateCallbackTests, eventsReachOnlyMountedState) {
+    connectStateEventsReachOnlyMountedState(this);
+}
+TEST_F(ConnectStateCallbackTests, reconnectWithoutContextDeliversNullopt) {
+    connectStateReconnectWithoutContextDeliversNullopt(this);
+}
+TEST_F(ConnectStateCallbackTests, idleArmsSymbolFromFdnContext) {
+    connectStateIdleArmsSymbolFromFdnContext(this);
+}
+TEST_F(ConnectStateCallbackTests, idleIgnoresFdnOnSecondaryJack) {
+    connectStateIdleIgnoresFdnOnSecondaryJack(this);
+}
+TEST_F(ConnectStateCallbackTests, idleFdnIgnoredWhileMatchInitialized) {
+    connectStateIdleFdnIgnoredWhileMatchInitialized(this);
+}
+TEST_F(ConnectStateCallbackTests, mountReplayDeliversSnapshot) {
+    connectStateMountReplayDeliversSnapshot(this);
+}
+TEST_F(ConnectStateCallbackTests, quickdrawDtorClearsRdcCallbacks) {
+    connectStateQuickdrawDtorClearsRdcCallbacks(this);
+}
+TEST_F(ConnectStateCallbackTests, replayFiresOncePerMount) {
+    connectStateReplayFiresOncePerMount(this);
 }
 
 // ============================================

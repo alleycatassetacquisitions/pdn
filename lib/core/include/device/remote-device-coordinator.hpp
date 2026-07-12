@@ -50,6 +50,9 @@ class RemoteDeviceCoordinator {
     // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
     // a radio; the transport stays out of the public API.
     friend class RDCHelloTests;
+    // Reads the callback slots to verify ~Quickdraw cleared its this-capturing
+    // observers (the use-after-free it prevents is not otherwise observable).
+    friend class ConnectStateCallbackTests;
 
 public:
     /// Fires on a per-jack connect (true) / disconnect (false) transition.
@@ -182,6 +185,9 @@ public:
     /// handshake, and (unless external) spawns the emit task. Idempotent.
     void enableHelloConnectivity();
 
+    /// True once enableHelloConnectivity() wired the HELLO link machinery.
+    bool isHelloConnectivityEnabled() const { return helloConnectivityEnabled; }
+
     /// Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
     /// drives emitHello() and the per-jack link machines (via sync()) on one thread.
     void setExternalConnectivityTask(bool external) { externalConnectivityTask = external; }
@@ -307,8 +313,8 @@ private:
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager_ = nullptr;
-    std::function<void()> chainChangeCallback_;
-    std::function<void(const uint8_t*)> peerLostCallback_;
+    std::function<void()> chainChangeCallback;
+    std::function<void(const uint8_t*)> peerLostCallback;
     AnnouncementEmitCallback announcementEmitCallback_;
 
     // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
