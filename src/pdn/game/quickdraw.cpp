@@ -394,16 +394,12 @@ void Quickdraw::populateStateMap() {
             std::bind(&DuelCountdown::shallWeBattle, duelCountdown),
             duel));
 
-    {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelCountdown->addTransition(
-            new StateTransition(
-                [duelCountdown, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelCountdown->disconnectedBackToIdle();
-                },
-                idle));
-    }
+    duelCountdown->addTransition(
+        new StateTransition(
+            [this, duelCountdown]() {
+                return duelReturnsToIdle(*duelCountdown, shootoutManager_);
+            },
+            idle));
 
     duel->addTransition(
         new StateTransition(
@@ -430,32 +426,24 @@ void Quickdraw::populateStateMap() {
             std::bind(&Duel::transitionToDuelPushed, duel),
             duelPushed));
 
-    {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelPushed->addTransition(
-            new StateTransition(
-                [duelPushed, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelPushed->disconnectedBackToIdle();
-                },
-                idle));
-    }
+    duelPushed->addTransition(
+        new StateTransition(
+            [this, duelPushed]() {
+                return duelReturnsToIdle(*duelPushed, shootoutManager_);
+            },
+            idle));
 
     duelPushed->addTransition(
         new StateTransition(
             std::bind(&DuelPushed::transitionToDuelResult, duelPushed),
             duelResult));
 
-    {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelReceivedResult->addTransition(
-            new StateTransition(
-                [duelReceivedResult, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelReceivedResult->disconnectedBackToIdle();
-                },
-                idle));
-    }
+    duelReceivedResult->addTransition(
+        new StateTransition(
+            [this, duelReceivedResult]() {
+                return duelReturnsToIdle(*duelReceivedResult, shootoutManager_);
+            },
+            idle));
 
     duelReceivedResult->addTransition(
         new StateTransition(
@@ -512,10 +500,6 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&ShootoutProposal::transitionToAborted, shProposal),
             shAborted));
-    shProposal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutProposal::transitionToIdle, shProposal),
-            idle));
 
     shBracketReveal->addTransition(
         new StateTransition(
@@ -529,10 +513,6 @@ void Quickdraw::populateStateMap() {
         new StateTransition(
             std::bind(&ShootoutBracketReveal::transitionToAborted, shBracketReveal),
             shAborted));
-    shBracketReveal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutBracketReveal::transitionToIdle, shBracketReveal),
-            idle));
 
     shSpectator->addTransition(
         new StateTransition(

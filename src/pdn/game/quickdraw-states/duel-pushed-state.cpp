@@ -49,10 +49,6 @@ bool DuelPushed::isAuxRequired() {
     return !player->isHunter();
 }
 
-bool DuelPushed::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
-}
-
 bool DuelPushed::transitionToDuelResult() {
     return matchManager->matchResultsAreIn() || gracePeriodTimer.expired();
 }

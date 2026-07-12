@@ -1044,6 +1044,10 @@ TEST_F(StateCleanupTests, duelReceivedResultDebouncesTransientDisconnect) {
     duelReceivedResultDebouncesTransientDisconnect(this);
 }
 
+TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
+    countdownFreezesDisconnectDebounceDuringShootout(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================

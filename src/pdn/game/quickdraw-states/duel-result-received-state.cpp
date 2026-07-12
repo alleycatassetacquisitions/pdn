@@ -62,10 +62,6 @@ bool DuelReceivedResult::transitionToDuelResult() {
     return matchManager->matchResultsAreIn() || transitionToDuelResultState;
 }
 
-bool DuelReceivedResult::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
-}
-
 bool DuelReceivedResult::isPrimaryRequired() {
     return player->isHunter();
 }

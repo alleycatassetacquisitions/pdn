@@ -107,10 +107,6 @@ bool DuelCountdown::shallWeBattle() {
     return doBattle;
 }
 
-bool DuelCountdown::disconnectedBackToIdle() {
-    return isPersistentlyDisconnected();
-}
-
 bool DuelCountdown::isPrimaryRequired() {
     return player->isHunter();
 }
