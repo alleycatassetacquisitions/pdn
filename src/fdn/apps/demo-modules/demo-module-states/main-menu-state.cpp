@@ -56,6 +56,7 @@ void MainMenuState::onStateLoop(FDN* fdn) {
         sendGameSelectToConnectedPeers(fdn);
         gameSelectResendTimer.setTimer(kGameSelectResendIntervalMs);
     }
+
 }
 
 void MainMenuState::onStateDismounted(FDN* fdn) {
@@ -89,6 +90,10 @@ void MainMenuState::onControllerCommandReceived(ControllerCommand command) {
     if (command.command != ControllerCmd::INTERACTION_REQUEST || !command.wifiMacAddrValid) {
         return;
     }
+
+    LOG_W(TAG, "ControllerCmd: button=%d interaction=%d",
+          static_cast<int>(command.buttonId),
+          static_cast<int>(command.interactionId));
 
     controllerWirelessManager->setMacPeer(command.wifiMacAddr);
 

@@ -23,8 +23,26 @@ enum class PktType : uint8_t
     kControllerCommand = 15,
     kGameSelect = 16,
     kGameResponse = 17,
+    kPeripheralCommand = 18,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
+
+// ---- Peripheral command protocol (FDN → PDN) ----
+
+enum class PeripheralCmd : uint8_t {
+    DISPLAY_GLYPH     = 0,
+    BLINK_HAPTIC      = 1,
+    BLINK_LED         = 2,
+    DISPLAY_ANIMATION = 3,
+    CLEAR_DISPLAY     = 4,
+    CLEAR_LEDS        = 5,
+};
+
+struct PeripheralCommandPacket {
+    PeripheralCmd command;
+    uint8_t param1;   // glyph/animation ID or duration high byte (100 ms units)
+    uint8_t param2;   // duration low byte (100 ms units)
+} __attribute__((packed));
 
 struct DataPktHdr
 {

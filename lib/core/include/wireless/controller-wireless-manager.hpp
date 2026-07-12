@@ -5,6 +5,7 @@
 #include <map>
 
 #include "device/drivers/button.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/wireless-manager.hpp"
 
@@ -135,6 +136,13 @@ public:
 
     int sendGameResponsePacket(GameResponseId responseId);
 
+    // FDN → PDN peripheral commands (Phase 3)
+    int sendPeripheralCommandPacket(PeripheralCmd command, uint8_t param1, uint8_t param2);
+    int processPeripheralCommand(const uint8_t* macAddress, const uint8_t* data, size_t dataLen);
+    void setPeripheralCommandReceivedCallback(
+        const std::function<void(PeripheralCmd, uint8_t, uint8_t)>& callback);
+    void clearPeripheralCallback();
+
     void setMacPeer(const uint8_t* macAddress);
 
     void setControllerCommandReceivedCallback(
@@ -155,4 +163,5 @@ private:
     std::map<SerialIdentifier, std::function<void(const ControllerCommand&)>> controllerCommandReceivedCallbacks;
     std::function<void(const GameSelectCommand&)> gameSelectReceivedCallback;
     std::function<void(const GameResponseCommand&)> gameResponseReceivedCallback;
+    std::function<void(PeripheralCmd, uint8_t, uint8_t)> peripheralCommandReceivedCallback;
 };

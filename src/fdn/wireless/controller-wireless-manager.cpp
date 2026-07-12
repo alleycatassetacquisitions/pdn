@@ -263,4 +263,53 @@ void ControllerWirelessManager::clearCallback() {
     controllerCommandReceivedCallbacks.clear();
     gameSelectReceivedCallback = nullptr;
     gameResponseReceivedCallback = nullptr;
+    peripheralCommandReceivedCallback = nullptr;
+}
+
+int ControllerWirelessManager::sendPeripheralCommandPacket(
+    PeripheralCmd command, uint8_t param1, uint8_t param2) {
+    PeripheralCommandPacket packet{command, param1, param2};
+
+    LOG_W(CWM_TAG,
+          "TX peripheral command %d to %s (p1=%u p2=%u)",
+          static_cast<int>(command),
+          MacToString(macPeer),
+          param1, param2);
+
+    return wirelessManager->sendEspNowData(
+        macPeer,
+        PktType::kPeripheralCommand,
+        reinterpret_cast<const uint8_t*>(&packet),
+        sizeof(packet));
+}
+
+int ControllerWirelessManager::processPeripheralCommand(
+    const uint8_t* macAddress, const uint8_t* data, size_t dataLen) {
+    if (dataLen < sizeof(PeripheralCommandPacket)) {
+        LOG_E(CWM_TAG, "RX peripheral pkt bad len: got %u expected %u",
+              static_cast<unsigned>(dataLen),
+              static_cast<unsigned>(sizeof(PeripheralCommandPacket)));
+        return -1;
+    }
+
+    const auto* packet = reinterpret_cast<const PeripheralCommandPacket*>(data);
+
+    LOG_W(CWM_TAG, "RX peripheral command %d from %s (p1=%u p2=%u)",
+          static_cast<int>(packet->command),
+          macAddress ? MacToString(macAddress) : "(null)",
+          packet->param1, packet->param2);
+
+    if (peripheralCommandReceivedCallback) {
+        peripheralCommandReceivedCallback(packet->command, packet->param1, packet->param2);
+    }
+    return 1;
+}
+
+void ControllerWirelessManager::setPeripheralCommandReceivedCallback(
+    const std::function<void(PeripheralCmd, uint8_t, uint8_t)>& callback) {
+    peripheralCommandReceivedCallback = callback;
+}
+
+void ControllerWirelessManager::clearPeripheralCallback() {
+    peripheralCommandReceivedCallback = nullptr;
 }

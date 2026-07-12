@@ -8,6 +8,7 @@
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/controller-wireless-manager.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 
 enum ControllerStateId {
     CONTROLLER_SELECT,
@@ -141,8 +142,21 @@ private:
     ControllerWirelessManager* controllerWirelessManager;
     ButtonIdentifier lastPressedButton = ButtonIdentifier::PRIMARY_BUTTON;
 
+    struct PendingPeripheral {
+        bool         hasPending = false;
+        PeripheralCmd command;
+        uint8_t       param1;
+        uint8_t       param2;
+    };
+
     // Pre-allocated callback contexts: [0..6] primary button, [7..13] secondary button
     ButtonCallbackCtx buttonCtxs_[2 * kNumInteractions];
 
+    PendingPeripheral pendingPeripheral_;
+    SimpleTimer       hapticBlinkTimer_;
+    SimpleTimer       ledBlinkTimer_;
+
     void onGameResponseCommandReceived(GameResponseCommand command);
+    void onPeripheralCommandReceived(PeripheralCmd command, uint8_t param1, uint8_t param2);
+    void executePeripheralCommand(PDN* pdn, PeripheralCmd command, uint8_t param1, uint8_t param2);
 };

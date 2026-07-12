@@ -129,6 +129,14 @@ void setupEspNow(
         },
         controllerWirelessManager
     );
+
+    peerCommsDriver->setPacketHandler(
+        PktType::kPeripheralCommand,
+        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
+            ((ControllerWirelessManager*)userArg)->processPeripheralCommand(srcAddr, data, len);
+        },
+        controllerWirelessManager
+    );
 }
 
 void setup() {
