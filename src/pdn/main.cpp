@@ -12,7 +12,7 @@
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
-#include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
+#include "device/drivers/esp32-s3/ssd-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 
 #include "pdn-constants.hpp"
@@ -48,7 +48,7 @@ WifiConfig* wifiConfig = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
-SSD1306U8G2Driver* displayDriver = nullptr;
+SsdU8G2Driver* displayDriver = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
 WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>* lightDriver = nullptr;
@@ -117,7 +117,7 @@ void setup() {
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Now construct remaining drivers (safe to use logging and timers now)
-    displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
+    displayDriver = new SsdU8G2Driver(DISPLAY_DRIVER_NAME, DisplayType::SSD1306, displayCS, displayDC, displayRST);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
     lightDriver = new WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>(LIGHT_DRIVER_NAME, numDisplayLights, numGripLights);

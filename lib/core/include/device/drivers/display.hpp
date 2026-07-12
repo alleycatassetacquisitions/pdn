@@ -35,12 +35,14 @@ public:
         return this;
     }
 
+    virtual void renderInstructions(DisplayRender render) = 0;
+
     virtual Display* whiteScreen() = 0;
 
     virtual Display* whiteScreenLeftHalf() = 0;
 
     virtual Display* whiteScreenRightHalf() = 0;
 
-private:
-    Cursor cursor_;
+protected:
+    Cursor calculateCursorPosition(DrawCoordinates coordinates);
 };

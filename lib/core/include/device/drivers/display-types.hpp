@@ -5,6 +5,11 @@
 constexpr int DISPLAY_INSTRUCTION_CAPACITY = 20;
 constexpr int DISPLAY_TEXT_CAPACITY = 32;
 
+enum class DisplayType {
+    SSD1306,
+    SSD1309,
+};
+
 enum class Anchor {
     LEADING,
     CENTER,
@@ -55,17 +60,24 @@ struct GlyphPayload {
     DrawCoordinates coordinates;
 };
 
-struct RawPayload {
-    const uint8_t* data;
-    DrawCoordinates coordinates;
-};
-
 struct DrawInstruction {
     DrawType drawType;
     union {
         ImagePayload imagePayload;
         TextPayload textPayload;
         GlyphPayload glyphPayload;
-        RawPayload rawPayload;
     };
+};
+
+class DisplayRender {
+public:
+    virtual ~DisplayRender() = default;
+
+    DisplayRender* addInstruction(DrawInstruction instruction) {
+        instructions.push_back(instruction);
+        return this;
+    }
+
+private:
+    std::vector<DrawInstruction> instructions;
 };

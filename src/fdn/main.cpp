@@ -12,7 +12,7 @@
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
-#include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
+#include "device/drivers/esp32-s3/ssd-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 
 #include "fdn-constants.hpp"
@@ -47,7 +47,7 @@ WifiConfig* wifiConfig = nullptr;
 
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;
-SSD1309U8G2Driver* displayDriver         = nullptr;
+SsdU8G2Driver* displayDriver         = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver   = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* tertiaryButtonDriver  = nullptr;
@@ -117,8 +117,8 @@ void setup() {
     esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Remaining drivers (safe to log now)
-    displayDriver = new SSD1309U8G2Driver(
-        DISPLAY_DRIVER_NAME, fdnDisplayCS, fdnDisplayDC, fdnDisplayRST);
+    displayDriver = new SsdU8G2Driver(
+        DISPLAY_DRIVER_NAME, DisplayType::SSD1309, fdnDisplayCS, fdnDisplayDC, fdnDisplayRST);
     primaryButtonDriver   = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME,   fdnPrimaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, fdnSecondaryButtonPin);
     tertiaryButtonDriver  = new Esp32S31ButtonDriver(TERTIARY_BUTTON_DRIVER_NAME,  fdnTertiaryButtonPin);
