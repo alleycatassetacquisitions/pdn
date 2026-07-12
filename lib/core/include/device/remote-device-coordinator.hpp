@@ -109,22 +109,24 @@ public:
     /// Reachable via either jack (direct peer or daisy-chained).
     virtual bool canReachPeer(const uint8_t* mac) const;
 
-    // ---- Chain-level surface (#154). Stubs until the connection-state
-    // machines land (#155-#159): they return the standalone defaults so the
-    // game layer can compile and wire against the final shape now. ----
+    // ---- Chain-level surface (#154) ----
 
-    /// This device's chain role. STUB: always STANDALONE.
-    virtual ChainRole getChainRole() const { return ChainRole::STANDALONE; }
+    /// This device's chain role, derived from jack presence plus the ring latch.
+    virtual ChainRole getChainRole() const;
 
     /// The chain head's MAC, or nullptr when this device is the head or
-    /// standalone. STUB: always nullptr.
-    virtual const uint8_t* getHeadMac() const { return nullptr; }
+    /// standalone. Also nullptr for a CHILD during re-convergence: after an
+    /// OUTPUT-side ring break the latch clears while INPUT stays connected, and
+    /// no replacement head has propagated yet.
+    virtual const uint8_t* getHeadMac() const;
 
     /// Head-only chain member roster; empty for a child or standalone device.
     /// STUB: always empty.
     virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const { return {}; }
 
-    /// Registers the per-jack connect/disconnect observer.
+    /// Registers the per-jack connect/disconnect observer. The disconnect fires
+    /// before chain-state teardown, so handlers must not read chain state here;
+    /// consistent chain facts arrive via setOnChainRoleChange.
     void setOnJackChange(JackChangeCallback callback) {
         jackChangeCallback = std::move(callback);
     }
@@ -140,6 +142,11 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE (#157).
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
+    // A ring latch is evidence-based: it survives a higher-MAC head claim only
+    // while this device's own MAC keeps returning on INPUT within this window.
+    // Sized above the worst-case claim-propagation transient (~18 hops at the
+    // 20ms HELLO cadence).
+    static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = 500;
 
     enum class HelloLinkState { IDLE,
                                 CONNECTING,
@@ -411,4 +418,28 @@ private:
     void onHelloReceived(SerialIdentifier jack, const HelloPayload& hello);
     PortStatus mapHelloLinkToStatus(SerialIdentifier port) const;
     static unsigned long nowMs();
+
+    // ---- Device-level chain state machine (#156) ----
+    // headMac (48 bits) + a confirmed bit packed into one atomic: the emit task
+    // reads it while the main loop writes it. confirmed is wired but always 0
+    // until #157's context exchange populates it.
+    static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
+    static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
+    std::atomic<uint64_t> chainHeadState{0};
+    // Latched when this structural head sees its own MAC return on the INPUT jack;
+    // cleared when any ring link drops. Dominates getChainRole().
+    bool ringLatched = false;
+    // Last time the own-MAC head returned on INPUT while latched (seeded at
+    // closure): the ring-latch evidence stamp checked against RING_EVIDENCE_TIMEOUT_MS.
+    unsigned long lastSelfHeadReturnMs = 0;
+    // Stable storage backing getHeadMac()'s returned pointer.
+    mutable std::array<uint8_t, 6> headMacScratch{};
+    // Last role reported to chainRoleChangeCallback, for edge-triggered firing.
+    ChainRole lastChainRole = ChainRole::STANDALONE;
+
+    static uint64_t packHead(const uint8_t* mac, bool confirmed);
+    static void unpackMac(uint64_t value, uint8_t* out);
+    void applyUpstreamHead(const HelloPayload& hello);
+    void onLinkLost(SerialIdentifier port);
+    void maybeFireChainRoleChange();
 };

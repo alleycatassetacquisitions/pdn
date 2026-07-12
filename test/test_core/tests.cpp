@@ -1373,6 +1373,49 @@ TEST(RDCHelloStandalone, syncSkipsHandshakeOnStateLoop) {
     rdcHelloSyncSkipsHandshakeOnStateLoop();
 }
 
+TEST_F(RDCHelloTests, chainRoleReadsJackPresence) {
+    rdcChainRoleReadsJackPresence(this);
+}
+TEST_F(RDCHelloTests, chainInheritsAndReadvertisesHead) {
+    rdcChainInheritsAndReadvertisesHead(this);
+}
+TEST_F(RDCHelloTests, chainNonLowestHeadDetectsRing) {
+    rdcChainNonLowestHeadDetectsRing(this);
+}
+TEST_F(RDCHelloTests, chainHeadTransferClearsInheritedHead) {
+    rdcChainHeadTransferClearsInheritedHead(this);
+}
+TEST_F(RDCHelloTests, chainPhantomHeadClearedOnSupplierLoss) {
+    rdcChainPhantomHeadClearedOnSupplierLoss(this);
+}
+TEST_F(RDCHelloTests, chainRingOpensOnInputDrop) {
+    rdcChainRingOpensOnInputDrop(this);
+}
+TEST_F(RDCHelloTests, chainRingOpensOnOutputDrop) {
+    rdcChainRingOpensOnOutputDrop(this);
+}
+TEST_F(RDCHelloTests, chainRingOpensWhenReturnedHeadChanges) {
+    rdcChainRingOpensWhenReturnedHeadChanges(this);
+}
+TEST_F(RDCHelloTests, chainRingLatchesOnMergeWithConnectedInput) {
+    rdcChainRingLatchesOnMergeWithConnectedInput(this);
+}
+TEST_F(RDCHelloTests, chainSecondaryJackLossKeepsRing) {
+    rdcChainSecondaryJackLossKeepsRing(this);
+}
+TEST_F(RDCHelloTests, chainPeerSwapClearsStaleRing) {
+    rdcChainPeerSwapClearsStaleRing(this);
+}
+TEST(RDCHelloStandalone, chainTwoNodeRingCloses) {
+    rdcChainTwoNodeRingCloses();
+}
+TEST(RDCHelloStandalone, chainDualLatchSettlesByLowerMac) {
+    rdcChainDualLatchSettlesByLowerMac();
+}
+TEST_F(RDCHelloTests, chainRingYieldsToHigherHeadAfterEvidenceTimeout) {
+    rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(this);
+}
+
 // ============================================
 // CHAIN DUEL MANAGER TESTS
 // ============================================
