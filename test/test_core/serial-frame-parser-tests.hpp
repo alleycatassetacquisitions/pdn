@@ -213,6 +213,23 @@ TEST_F(SerialFrameParserTests, midFrameTimeoutResets) {
     EXPECT_EQ(frameCount, 1);
 }
 
+TEST_F(SerialFrameParserTests, backwardClockKeepsPartialFrameAlive) {
+    // A feed observing now < lastByteMs (backwards clock step) must clamp the
+    // timeout gap to 0: unsigned subtraction would read as a huge stall and
+    // throw away a partial frame that is actually mid-flight.
+    int frameCount = 0;
+    parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
+
+    std::vector<uint8_t> frame = buildFrame(OP_HELLO, helloPayload());
+    parser.feed(frame.data(), 6);
+    EXPECT_EQ(frameCount, 0);
+
+    // Clock steps backwards relative to the partial's stamp.
+    fakeClock->setTime(999);
+    parser.feed(frame.data() + 6, frame.size() - 6);
+    EXPECT_EQ(frameCount, 1);
+}
+
 TEST_F(SerialFrameParserTests, requestResetClearsPartialFrameAtNextFeed) {
     // The cross-thread reset used when a jack is declared dead: mid-frame state
     // from the dying connection must not corrupt the next device to plug in.
