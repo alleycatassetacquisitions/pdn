@@ -1213,9 +1213,9 @@ void RemoteDeviceCoordinator::transferRosterTo(const uint8_t* newHeadMac) {
     if (chainRoster.empty() || headTransferChannel == nullptr) return;
     HeadTransferPayload transfer{};
     for (const auto& entry : chainRoster) {
-        // Cannot trip while both insert paths cap at kMaxChainMembers; kept as
+        // Cannot trip while both insert paths cap at MAX_CHAIN_MEMBERS; kept as
         // the payload array's hard bound.
-        if (transfer.memberCount >= kMaxChainMembers) break;
+        if (transfer.memberCount >= MAX_CHAIN_MEMBERS) break;
         memcpy(transfer.memberMacs[transfer.memberCount], entry.first.data(), 6);
         transfer.memberCount++;
     }
@@ -1237,8 +1237,8 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
     memcpy(member.data(), fromMac, 6);
     memcpy(upstream.data(), announce.upstreamMac, 6);
     const bool isNew = chainRoster.count(member) == 0;
-    if (isNew && chainRoster.size() >= kMaxChainMembers) {
-        LOG_W("RDC", "chain roster full (%u); dropping announce", kMaxChainMembers);
+    if (isNew && chainRoster.size() >= MAX_CHAIN_MEMBERS) {
+        LOG_W("RDC", "chain roster full (%u); dropping announce", MAX_CHAIN_MEMBERS);
         return;
     }
     if (!isNew && chainRoster[member] == upstream) return;  // resend duplicate
@@ -1278,14 +1278,14 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* fromMac,
     std::array<uint8_t, 6> upstream;
     memcpy(upstream.data(), fromMac, 6);
     const uint8_t count =
-        transfer.memberCount <= kMaxChainMembers ? transfer.memberCount : kMaxChainMembers;
+        transfer.memberCount <= MAX_CHAIN_MEMBERS ? transfer.memberCount : MAX_CHAIN_MEMBERS;
     bool changed = false;
     for (uint8_t i = 0; i < count; ++i) {
         std::array<uint8_t, 6> member;
         memcpy(member.data(), transfer.memberMacs[i], 6);
         if (memcmp(member.data(), selfMac.data(), 6) == 0) continue;  // never roster self
         if (chainRoster.count(member) != 0) continue;
-        if (chainRoster.size() >= kMaxChainMembers) break;
+        if (chainRoster.size() >= MAX_CHAIN_MEMBERS) break;
         chainRoster[member] = upstream;
         changed = true;
     }

@@ -1354,7 +1354,7 @@ inline std::vector<uint8_t> headTransferBytes(const std::vector<std::array<uint8
     HeadTransferPayload payload{};
     payload.seqId = seqId;
     payload.memberCount = static_cast<uint8_t>(macs.size());
-    for (size_t i = 0; i < macs.size() && i < kMaxChainMembers; ++i) {
+    for (size_t i = 0; i < macs.size() && i < MAX_CHAIN_MEMBERS; ++i) {
         memcpy(payload.memberMacs[i], macs[i].data(), 6);
     }
     std::vector<uint8_t> bytes(sizeof(payload));

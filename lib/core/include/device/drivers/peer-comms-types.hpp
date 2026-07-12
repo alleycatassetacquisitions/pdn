@@ -119,7 +119,7 @@ struct ShootoutAckPayload
 // Point-to-point ReliableChannel payloads; the chain head is the sole consumer.
 // seqId is stamped by the channel on send.
 
-constexpr uint8_t kMaxChainMembers = 18;
+constexpr uint8_t MAX_CHAIN_MEMBERS = 18;
 
 // Sent by a newly joined member directly to the head it read from its upstream
 // neighbour's HELLO. upstreamMac names the sender's direct upstream (INPUT) peer.
@@ -140,5 +140,5 @@ struct DisconnectReportPayload {
 struct HeadTransferPayload {
     uint8_t seqId;
     uint8_t memberCount;
-    uint8_t memberMacs[kMaxChainMembers][6];
+    uint8_t memberMacs[MAX_CHAIN_MEMBERS][6];
 } __attribute__((packed));
