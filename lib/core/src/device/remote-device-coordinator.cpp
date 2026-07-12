@@ -1094,7 +1094,7 @@ void RemoteDeviceCoordinator::releaseHeadPeer(uint64_t headMac48) {
     // Same keep-slot guards as releaseHelloPeer: an adjacent link or a daisy
     // record still using this MAC keeps the radio slot alive.
     for (SerialIdentifier port : HELLO_JACKS) {
-        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
         if (memcmp(machine->peer().data(), mac, 6) == 0) return;
     }
@@ -1148,7 +1148,7 @@ void RemoteDeviceCoordinator::maybeAnnounceToHead() {
     // latched ring, which stores no head). Nothing to announce, no self-sends.
     if (headMac48 == 0) return;
     const HelloLinkMachine* upstream =
-        helloByPort_[portIndex(SerialIdentifier::INPUT_JACK)].machine;
+        helloByPort[portIndex(SerialIdentifier::INPUT_JACK)].machine;
     if (upstream == nullptr) return;
     // The announce names the upstream neighbour, so it is only meaningful once
     // the upstream exchange completed (#144 ordering: announce, then confirmed).
@@ -1250,7 +1250,7 @@ void RemoteDeviceCoordinator::onDisconnectReport(const DisconnectReportPayload& 
     // Trust boundary: no report may name this device. A member that lost the
     // link to its own head sends nothing, so a self-referential report is
     // bogus — and honoring it would erase the whole roster via the subtree walk.
-    if (memcmp(report.disconnectedMac, selfMac_.data(), 6) == 0) return;
+    if (memcmp(report.disconnectedMac, selfMac.data(), 6) == 0) return;
     if (!isRosterAuthority()) {
         // Head propagation is hop-by-hop, so a just-demoted head can still be
         // addressed under the old regime. Unlike the announce path there is no
@@ -1283,7 +1283,7 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* fromMac,
     for (uint8_t i = 0; i < count; ++i) {
         std::array<uint8_t, 6> member;
         memcpy(member.data(), transfer.memberMacs[i], 6);
-        if (memcmp(member.data(), selfMac_.data(), 6) == 0) continue;  // never roster self
+        if (memcmp(member.data(), selfMac.data(), 6) == 0) continue;  // never roster self
         if (chainRoster.count(member) != 0) continue;
         if (chainRoster.size() >= kMaxChainMembers) break;
         chainRoster[member] = upstream;
