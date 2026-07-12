@@ -784,7 +784,7 @@ inline void localRDCDisconnectIsIdempotent(ShootoutManagerTests* suite) {
 // ShootoutProposal must NOT exit to Idle on a single-tick !isLoop() blip —
 // cable nudges flicker isLoop() for one loop iteration, and the original code
 // wiped tournament state on every tick that read false. Debounce requires the
-// loss to persist for kLoopBreakDebounceMs before treating it as a real break.
+// loss to persist for LOOP_BREAK_DEBOUNCE_MS before treating it as a real break.
 inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())

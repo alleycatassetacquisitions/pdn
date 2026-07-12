@@ -105,8 +105,8 @@ public:
     // broken after TOURNAMENT_END or ABORTED.
     void resetToIdle();
 
-    // Broadcast ABORT to the ring (bracket/confirmedSet), tear down, and land
-    // in Phase::ABORTED. Idempotent: early-returns when already ABORTED.
+    /// Broadcast ABORT to the ring (bracket/confirmedSet), tear down, and land
+    /// in Phase::ABORTED. Idempotent: early-returns when already ABORTED.
     void abortTournament();
 
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
