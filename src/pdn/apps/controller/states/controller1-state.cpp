@@ -24,29 +24,29 @@ void Controller1State::onStateMounted(PDN* pdn) {
     display->drawCenteredText(kStateLabel, 32);
     display->render();
 
-    pdn->getPrimaryButton()->setButtonPress(
-        [](void *ctx) {
-            static_cast<Controller1State*>(ctx)
-                ->controllerWirelessManager
-                ->sendControllerCommandPacket(
-                    ControllerCmd::INTERACTION_REQUEST,
-                    ButtonIdentifier::PRIMARY_BUTTON,
-                    ButtonInteraction::CLICK,
-                    SerialIdentifier::OUTPUT_JACK
-                );
-        }, this, ButtonInteraction::CLICK);
+    // Register all ButtonInteraction types for both buttons.
+    // Each interaction gets its own ButtonCallbackCtx so the callback knows
+    // which interaction to forward to the FDN.
+    static parameterizedCallbackFunction kDispatch = [](void* ctx) {
+        auto* bctx = static_cast<ButtonCallbackCtx*>(ctx);
+        bctx->state->sendButtonMessage(bctx->buttonId, bctx->interaction);
+    };
 
-    pdn->getSecondaryButton()->setButtonPress(
-        [](void *ctx) {
-            static_cast<Controller1State*>(ctx)
-                ->controllerWirelessManager
-                ->sendControllerCommandPacket(
-                    ControllerCmd::INTERACTION_REQUEST,
-                    ButtonIdentifier::SECONDARY_BUTTON,
-                    ButtonInteraction::CLICK,
-                    SerialIdentifier::OUTPUT_JACK
-                );
-        }, this, ButtonInteraction::CLICK);
+    Button* buttons[2] = {pdn->getPrimaryButton(), pdn->getSecondaryButton()};
+    ButtonIdentifier ids[2] = {ButtonIdentifier::PRIMARY_BUTTON, ButtonIdentifier::SECONDARY_BUTTON};
+
+    for (int b = 0; b < 2; ++b) {
+        for (int i = 0; i < kNumInteractions; ++i) {
+            auto interaction = static_cast<ButtonInteraction>(i);
+            // DURING_LONG_PRESS fires every loop tick while held — sending a
+            // packet on every tick floods the wireless channel and crashes both
+            // devices. Skip it; LONG_PRESS (fires once) is sufficient.
+            if (interaction == ButtonInteraction::DURING_LONG_PRESS) continue;
+            int ctxIdx = b * kNumInteractions + i;
+            buttonCtxs_[ctxIdx] = {this, ids[b], interaction};
+            buttons[b]->setButtonPress(kDispatch, &buttonCtxs_[ctxIdx], interaction);
+        }
+    }
 
     controllerWirelessManager->setGameResponseReceivedCallback(std::bind(&Controller1State::onGameResponseCommandReceived, this, std::placeholders::_1));
 }

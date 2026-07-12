@@ -125,10 +125,24 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
 
+    void sendButtonMessage(ButtonIdentifier buttonId, ButtonInteraction interaction);
+
 private:
+    // Context struct passed as void* to parameterized button callbacks.
+    // Stores enough information to call sendButtonMessage with the correct interaction.
+    struct ButtonCallbackCtx {
+        Controller1State* state;
+        ButtonIdentifier  buttonId;
+        ButtonInteraction interaction;
+    };
+
+    static constexpr int kNumInteractions = static_cast<int>(ButtonInteraction::BUTTON_INTERACTION_COUNT);
+
     ControllerWirelessManager* controllerWirelessManager;
     ButtonIdentifier lastPressedButton = ButtonIdentifier::PRIMARY_BUTTON;
-    
-    void sendButtonMessage(ButtonIdentifier buttonId, ButtonInteraction interaction);
+
+    // Pre-allocated callback contexts: [0..6] primary button, [7..13] secondary button
+    ButtonCallbackCtx buttonCtxs_[2 * kNumInteractions];
+
     void onGameResponseCommandReceived(GameResponseCommand command);
 };
