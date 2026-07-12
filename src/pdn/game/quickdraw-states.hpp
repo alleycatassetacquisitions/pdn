@@ -21,6 +21,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
+#include "game/shootout-aware-state.hpp"
 
 /// Bundle of the shared game-wide managers a state may need. Built once by
 /// Quickdraw::populateStateMap and handed to every state so a new manager is a
@@ -177,7 +178,18 @@ private:
     bool isAuxRequired() override;
 };
 
-
+/// A duel state returns to Idle on a persistent disconnect, but never while a
+/// tournament is live — the shootout's own PEER_LOST/ABORT teardown owns that
+/// path. The debounce ages on wall clock even when unsampled, so a run started
+/// before the tournament went live would fire the instant the shootout ends;
+/// reset it while active so a fresh full window is always required afterward.
+inline bool duelReturnsToIdle(ConnectState<PDN>& duel, ShootoutManager* shootout) {
+    if (shootout && shootout->active()) {
+        duel.resetDisconnectDebounce();
+        return false;
+    }
+    return duel.isPersistentlyDisconnected();
+}
 
 class DuelCountdown : public ConnectState<PDN> {
 public:
@@ -188,7 +200,6 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool shallWeBattle();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -285,7 +296,6 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -306,7 +316,6 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToDuelResult();
-    bool disconnectedBackToIdle();
 
     bool isPrimaryRequired() override;
     bool isAuxRequired() override;
@@ -406,9 +415,7 @@ private:
     bool shouldRetryUpload = false;
 };
 
-static constexpr unsigned long kLoopBreakDebounceMs = 500;
-
-class ShootoutProposal : public TypedState<PDN> {
+class ShootoutProposal : public TypedState<PDN>, public ShootoutAwareState {
 public:
     explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -416,19 +423,14 @@ public:
     void onStateDismounted(PDN* pdn) override;
 
     bool transitionToBracketReveal();
-    bool transitionToIdle();
     bool transitionToAborted();
 
 private:
-    ShootoutManager* shootout_;
-    ChainDuelManager* chainDuelManager_;
     bool shouldGoToReveal_ = false;
-    bool shouldGoToIdle_ = false;
     bool shouldGoToAborted_ = false;
-    DebouncedCondition loopBreakDebounce_;
 };
 
-class ShootoutBracketReveal : public TypedState<PDN> {
+class ShootoutBracketReveal : public TypedState<PDN>, public ShootoutAwareState {
 public:
     explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -438,16 +440,11 @@ public:
     bool transitionToDuelCountdown();
     bool transitionToSpectator();
     bool transitionToAborted();
-    bool transitionToIdle();
 
 private:
-    ShootoutManager* shootout_;
-    ChainDuelManager* chainDuelManager_;
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
     bool shouldGoToAborted_ = false;
-    bool shouldGoToIdle_ = false;
-    DebouncedCondition loopBreakDebounce_;
 };
 
 class ShootoutSpectator : public TypedState<PDN> {

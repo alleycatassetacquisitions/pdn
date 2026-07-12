@@ -784,7 +784,7 @@ inline void localRDCDisconnectIsIdempotent(ShootoutManagerTests* suite) {
 // ShootoutProposal must NOT exit to Idle on a single-tick !isLoop() blip —
 // cable nudges flicker isLoop() for one loop iteration, and the original code
 // wiped tournament state on every tick that read false. Debounce requires the
-// loss to persist for kLoopBreakDebounceMs before treating it as a real break.
+// loss to persist for LOOP_BREAK_DEBOUNCE_MS before treating it as a real break.
 inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
@@ -808,21 +808,22 @@ inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* su
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
     // Loop returns within debounce window — debounce cleared, phase intact.
     fakeCdm.setIsLoop(true);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
-    // Persistent loss past the debounce window — now reset to IDLE fires.
+    // Persistent loss past the debounce window sets Phase::ABORTED and fires
+    // transitionToAborted.
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);  // start debounce
     suite->fakeClock->advance(2000);  // well past any reasonable debounce window
     state.onStateLoop(nullptr);
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
-    EXPECT_TRUE(state.transitionToIdle());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+    EXPECT_TRUE(state.transitionToAborted());
 }
 
 // Same debounce contract on ShootoutBracketReveal (tournament state is more
@@ -853,17 +854,17 @@ inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTest
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
     fakeCdm.setIsLoop(true);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_FALSE(state.transitionToIdle());
+    EXPECT_FALSE(state.transitionToAborted());
 
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     suite->fakeClock->advance(2000);
     state.onStateLoop(nullptr);
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
-    EXPECT_TRUE(state.transitionToIdle());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+    EXPECT_TRUE(state.transitionToAborted());
 }

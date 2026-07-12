@@ -51,6 +51,18 @@ public:
             }
             pending.pop();
         }
+
+        // Fire deferred SEND_SUCCESS callbacks (drives the reliable transport's
+        // ack, exactly as the esp32 driver does from its exec()).
+        while (!sendResultQueue.empty()) {
+            DeferredSendResult& r = sendResultQueue.front();
+            auto it = sendStatusHandlers.find(r.type);
+            if (it != sendStatusHandlers.end()) {
+                it->second.callback(r.dst, r.data.data(), r.data.size(), true,
+                                    it->second.context);
+            }
+            sendResultQueue.pop();
+        }
     }
 
     void connect() override {
@@ -89,6 +101,17 @@ public:
         addToHistory(entry);
         
         NativePeerBroker::getInstance().sendPacket(macAddress_, dst, packetType, data, length);
+
+        // Report SEND_SUCCESS on the next exec() (never inline: that would
+        // re-enter Resender::send mid-transmit). The sim's broker delivery is
+        // reliable, so every send succeeds.
+        if (sendStatusHandlers.count(packetType)) {
+            DeferredSendResult r;
+            r.type = packetType;
+            memcpy(r.dst, dst, 6);
+            r.data.assign(data, data + length);
+            sendResultQueue.push(std::move(r));
+        }
         return 0; // Success
     }
 
@@ -98,6 +121,17 @@ public:
 
     void clearPacketHandler(PktType packetType) override {
         handlers_.erase(packetType);
+    }
+
+    /// Registers the SEND_SUCCESS/SEND_FAIL observer for a PktType; the sim
+    /// reports success for every send on the next exec().
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        sendStatusHandlers[packetType] = {callback, ctx};
+    }
+
+    /// Drops the send-status observer for a PktType.
+    void clearSendStatusHandler(PktType packetType) override {
+        sendStatusHandlers.erase(packetType);
     }
 
     const uint8_t* getGlobalBroadcastAddress() override {
@@ -187,7 +221,21 @@ private:
         std::vector<uint8_t> data;
     };
 
+    struct SendStatusEntry {
+        PeerCommsInterface::SendStatusCallback callback;
+        void* context;
+    };
+
+    // A send whose SEND_SUCCESS is reported on the next exec() (see send()/exec()).
+    struct DeferredSendResult {
+        PktType type;
+        uint8_t dst[6];
+        std::vector<uint8_t> data;
+    };
+
     std::map<PktType, HandlerEntry> handlers_;
+    std::map<PktType, SendStatusEntry> sendStatusHandlers;
+    std::queue<DeferredSendResult> sendResultQueue;
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];

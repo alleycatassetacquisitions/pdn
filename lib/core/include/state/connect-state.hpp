@@ -33,6 +33,12 @@ public:
         return disconnectDebounce_.heldFor(!isConnected(), kDisconnectDebounceMs);
     }
 
+    /// Restart the disconnect window: the next isPersistentlyDisconnected()
+    /// requires a fresh full debounce regardless of any run already in flight.
+    void resetDisconnectDebounce() {
+        disconnectDebounce_.reset();
+    }
+
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 

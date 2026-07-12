@@ -67,6 +67,8 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     delete inputPortHandshake;
     delete outputPortHandshake;
     delete secondaryInputPortHandshake;
+    // Owns the channels; deletes them and their driver rx bindings.
+    delete transport;
 }
 
 
@@ -128,6 +130,34 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         },
         this
     );
+
+    // One device-level channel per device-type PktType. Claiming a channel makes
+    // its receive path live (the transport installs the driver rx handler). The
+    // abandon callback is a no-op: an unreachable peer's jack link self-heals to
+    // IDLE via the context-exchange timeout (HelloConnectingState, contextTimeoutMs).
+    // The packet's PktType alone picks which channel decodes a context; the
+    // HELLO deviceType is not consulted. RDC forwards the profile bytes opaquely.
+    transport = new ReliableTransport(wirelessManager);
+    pdnContextChannel = transport->channel<PdnConnectionContext>(
+        PktType::kPdnConnectionContext, [](uint8_t, const uint8_t*) {});
+    if (pdnContextChannel != nullptr) {
+        pdnContextChannel->onReceive(
+            [this](const uint8_t* fromMac, const PdnConnectionContext& ctx) {
+                onContextReceived(fromMac, DeviceType::PDN, ctx.chainRole,
+                                  reinterpret_cast<const uint8_t*>(&ctx.player),
+                                  sizeof(ctx.player));
+            });
+    }
+    fdnContextChannel = transport->channel<FdnConnectionContext>(
+        PktType::kFdnConnectionContext, [](uint8_t, const uint8_t*) {});
+    if (fdnContextChannel != nullptr) {
+        fdnContextChannel->onReceive(
+            [this](const uint8_t* fromMac, const FdnConnectionContext& ctx) {
+                onContextReceived(fromMac, DeviceType::FDN, ctx.chainRole,
+                                  reinterpret_cast<const uint8_t*>(&ctx.fdn),
+                                  sizeof(ctx.fdn));
+            });
+    }
 }
 
 std::vector<SerialIdentifier> RemoteDeviceCoordinator::activePorts() const {
@@ -203,6 +233,10 @@ void RemoteDeviceCoordinator::processChainAnnouncementPacket(const uint8_t* from
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
+    // Platform-loop-owns-the-pump: drive reliable-transport retransmits/abandon
+    // here every tick. Game managers must not pump it.
+    if (transport != nullptr) transport->sync();
+
     if (helloConnectivityEnabled) {
         // The handshake is quiesced on HELLO jacks: skipping its onStateLoop is
         // what keeps it off the UART (it neither consumes RX nor writes TX). The
@@ -212,7 +246,6 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
             if (machine) machine->onStateLoop(PDN);
         }
-        maybeFireChainRoleChange();
         return;
     }
 
@@ -595,15 +628,16 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
         context.jack = port;
         context.nowMs = [] { return RemoteDeviceCoordinator::nowMs(); };
         context.onContextRequest = [this](SerialIdentifier j) {
-            if (contextRequestCallback) contextRequestCallback(j);
+            initiateContextExchange(j);
         };
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
             if (jackChangeCallback) jackChangeCallback(j, connected);
         };
-        // Every link-death path mounts Idle; the initial mount fires this too,
-        // a no-op on zero state.
-        context.onLinkDown = [this, port] {
+        // Every link-death path mounts Idle; the initial mount fires this too, a
+        // no-op on zero state.
+        context.onLinkDown = [this, port](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
             helloByPort[portIndex(port)].parser.requestReset();
+            if (MacToUInt64(mac.data()) != 0) releaseHelloPeer(j, mac.data());
             onLinkLost(port);
         };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
@@ -651,8 +685,10 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     if (MacToUInt64(hello.source) == 0) return;
     if (memcmp(hello.source, selfMac.data(), 6) == 0) return;
 
-    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
-    if (machine) machine->onHelloReceived(hello);
+    // The machine records the peer MAC and, for a first HELLO on any Idle jack,
+    // fires onContextRequest -> initiateContextExchange as it enters Connecting.
+    JackHelloLink& link = helloByPort[portIndex(jack)];
+    if (link.machine) link.machine->onHelloReceived(hello);
 
     // Head inheritance + ring detection are directional: only the upstream (INPUT)
     // jack drives them, so the head's MAC cascades downstream. The FDN secondary
@@ -661,6 +697,189 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
         applyUpstreamHead(hello);
     }
     maybeFireChainRoleChange();
+}
+
+void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
+    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
+    if (machine == nullptr) return;
+    const uint8_t* mac = machine->peer().data();
+    // Radio slot first (the driver add is idempotent): the drain below can announce
+    // the peer to game code, and a pending send from our other jack skips the send
+    // path entirely — neither may run before the peer has its ESP-NOW slot.
+    registerPeer(mac);
+    // Apply any context that beat this jack's HELLO and was cached while it was still
+    // Idle. Runs for every jack entering Connecting, before the send-collapse below,
+    // so the second jack of a 2-node ring still gets the cached context.
+    drainBufferedContext(jack, mac);
+    // In a 2-node ring both our jacks face the same peer and connect in the same
+    // tick; our context is identical on each, so one copy suffices. Skip if a send
+    // to this MAC is already pending rather than putting a second frame on the air
+    // (the Resender transmits each send immediately, so it would NOT be collapsed).
+    if (isContextSendPending(mac)) return;
+    sendSelfContext(mac);
+}
+
+void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
+    // Each device describes itself, so the payload is chosen by THIS device's kind,
+    // not the peer's. chainRole 0 = unresolved: the device chain SM (#156) fills it
+    // once it learns this device's position.
+    if (selfDeviceType == DeviceType::FDN) {
+        if (fdnContextChannel == nullptr) return;
+        FdnConnectionContext ctx{};
+        ctx.chainRole = 0;
+        fdnContextChannel->sendReliable(mac, ctx);
+        return;
+    }
+    if (pdnContextChannel == nullptr) return;
+    PdnConnectionContext ctx{};
+    ctx.chainRole = 0;
+    ctx.player = selfPlayerProfile;
+    pdnContextChannel->sendReliable(mac, ctx);
+}
+
+bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {
+    if (pdnContextChannel != nullptr && pdnContextChannel->isPending(mac)) return true;
+    if (fdnContextChannel != nullptr && fdnContextChannel->isPending(mac)) return true;
+    return false;
+}
+
+void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceType peerType,
+                                                uint8_t chainRole, const uint8_t* profile,
+                                                size_t len) {
+    // Every jack sends its own context on connecting, so receiving the peer's just
+    // completes our matching jack(s); no reply in the normal exchange. Cache it keyed by MAC AND
+    // apply it now: caching (not only applying) covers a jack that reaches CONNECTING
+    // AFTER this arrives. That happens two ways — a context beats its own HELLO
+    // (ESP-NOW vs serial) so no jack is CONNECTING yet, and in a 2-node ring the two
+    // jacks facing this peer enter CONNECTING one tick apart (sync() drives them in
+    // order), so the later jack must still find the context. The TTL clears the cache.
+    bufferContext(fromMac, peerType, chainRole, profile, len);
+    applyContextToJacks(fromMac, peerType, chainRole, profile, len);
+}
+
+void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
+                                                  uint8_t chainRole, const uint8_t* profile,
+                                                  size_t len) {
+    // Live receive path: a 2-node ring points both our jacks at the same peer with
+    // both already CONNECTING, so one context completes both. The peer is already a
+    // radio slot (registered when our jack initiated), so nothing to register here.
+    bool appliedToConnectingJack = false;
+    for (SerialIdentifier port : HELLO_JACKS) {
+        HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
+        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
+        completeJackContext(port, peerType, chainRole, profile, len);
+        appliedToConnectingJack = true;
+    }
+    if (appliedToConnectingJack) return;
+
+    // A context from a MAC a CONNECTED jack already tracks means the peer is still
+    // cycling CONNECTING — our earlier context was lost app-side (SEND_SUCCESS is
+    // MAC-ack only) or the peer rebooted and its first resend was deduped. Resend
+    // ours so its cycle completes. No ping-pong: only the CONNECTING side retries,
+    // and it stops once this lands.
+    for (SerialIdentifier port : HELLO_JACKS) {
+        JackHelloLink& link = helloByPort[portIndex(port)];
+        if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
+            continue;
+        if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
+        // Throttle to one resend per exchange window: every send stamps a fresh
+        // seqId, so dedup can't brake two CONNECTED sides answering each other —
+        // unthrottled they'd volley at radio RTT until link death.
+        const unsigned long now = nowMs();
+        if (link.lastContextResendMs != 0 && now >= link.lastContextResendMs &&
+            now - link.lastContextResendMs < CONTEXT_EXCHANGE_TIMEOUT_MS)
+            return;
+        if (!isContextSendPending(fromMac)) {
+            sendSelfContext(fromMac);
+            link.lastContextResendMs = now;
+        }
+        return;
+    }
+}
+
+void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
+                                                  uint8_t chainRole, const uint8_t* profile,
+                                                  size_t len) {
+    // A second fresh-seqId context can land before the Connecting -> Connected
+    // commit while the jack still reports CONNECTING; the game callback must
+    // fire exactly once per connect.
+    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
+    if (machine != nullptr && machine->didMarkContextComplete()) return;
+    helloByPort[portIndex(jack)].peerChainRole = chainRole;
+    if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
+    onContextExchangeComplete(jack);
+}
+
+void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType peerType,
+                                            uint8_t chainRole, const uint8_t* profile,
+                                            size_t len) {
+    const unsigned long now = nowMs();
+    BufferedContext* slot = nullptr;
+    BufferedContext* oldest = &contextBuffer[0];
+    for (BufferedContext& e : contextBuffer) {
+        if (e.valid && memcmp(e.mac.data(), fromMac, 6) == 0) {  // latest for a MAC wins
+            slot = &e;
+            break;
+        }
+        const bool reusable = !e.valid || e.isExpiredAt(now);
+        if (reusable && slot == nullptr) slot = &e;
+        if (e.arrivedAtMs < oldest->arrivedAtMs) oldest = &e;
+    }
+    if (slot == nullptr) slot = oldest;  // full of fresh entries: evict the oldest
+
+    memcpy(slot->mac.data(), fromMac, 6);
+    slot->peerType = peerType;
+    slot->chainRole = chainRole;
+    slot->len = len < slot->profile.size() ? len : slot->profile.size();
+    memcpy(slot->profile.data(), profile, slot->len);
+    slot->arrivedAtMs = now;
+    slot->valid = true;
+}
+
+void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const uint8_t* mac) {
+    const unsigned long now = nowMs();
+    for (BufferedContext& e : contextBuffer) {
+        if (!e.valid) continue;
+        if (e.isExpiredAt(now)) {
+            e.valid = false;  // expired before its jack ever connected (stale/attacker)
+            continue;
+        }
+        if (memcmp(e.mac.data(), mac, 6) != 0) continue;
+        // Apply to THIS jack only, and leave the entry valid: the peer's other jack (a
+        // 2-node ring) drains its own copy when it connects a tick later. Applying
+        // per-jack keeps the context callback firing exactly once per jack. TTL clears it.
+        completeJackContext(jack, e.peerType, e.chainRole, e.profile.data(), e.len);
+    }
+}
+
+void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac) {
+    // Per-jack residue clears unconditionally: the keep-slot guards below are
+    // per-MAC, and the next peer on this jack must not inherit the departed
+    // peer's chainRole during its CONNECTING window (#156 reads it then).
+    helloByPort[portIndex(jack)].peerChainRole = 0;
+    helloByPort[portIndex(jack)].lastContextResendMs = 0;
+    // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
+    // one-cable disconnect would silently break wireless for the still-connected
+    // link, so any other jack tracking this MAC keeps the slot alive.
+    for (SerialIdentifier port : HELLO_JACKS) {
+        if (port == jack) continue;
+        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
+        if (memcmp(machine->peer().data(), mac, 6) == 0) return;
+    }
+    // A MAC still routed through a daisy chain keeps its slot too.
+    for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
+        for (const std::array<uint8_t, 6>& m : chain) {
+            if (memcmp(m.data(), mac, 6) == 0) return;
+        }
+    }
+    // Drop the context retries with the slot: a retransmit re-registers its target
+    // inside the driver (EnsurePeerIsRegistered), which would re-add the slot just
+    // removed and leak it. cancel() is silent — no abandon callback fires.
+    if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
+    if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
+    unregisterPeer(mac);
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
@@ -688,8 +907,6 @@ PortStatus RemoteDeviceCoordinator::mapHelloLinkToStatus(SerialIdentifier port) 
         default:                    return PortStatus::DISCONNECTED;
     }
 }
-
-// ---- Device-level chain state machine (#156) ----
 
 uint64_t RemoteDeviceCoordinator::packHead(const uint8_t* mac, bool confirmed) {
     uint64_t value = MacToUInt64(mac) & HEAD_MAC_MASK;
