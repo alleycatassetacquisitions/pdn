@@ -1607,8 +1607,8 @@ inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
 }
 
 // A ring's closing cable dying is the OUTPUT link to the device's own head;
-// reporting that "loss" would name the head itself, and the head's subtree walk
-// would then erase every member still physically chained beneath it.
+// reporting that "loss" would name the head itself. The head rejects such a
+// report at its trust boundary, so sending one would only be dead traffic.
 inline void rdcOutputLossOfOwnHeadSendsNoReport(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};

@@ -173,8 +173,8 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         // SEND_SUCCESS on the announce IS its delivery signal (#144): only then
         // may the HELLO confirmed bit rise. A head change mid-flight makes an
         // older announce's delivery stale — the re-announce to the current head
-        // is what gates confirmed — so both the seqId and the destination must
-        // still match the announce most recently sent.
+        // is what gates confirmed — so the seqId must match the latest announce
+        // sent AND the destination must still be the head currently held.
         connectionAnnounceChannel->setOnDelivered([this](uint8_t seqId, const uint8_t* toMac) {
             if (seqId != pendingAnnounceSeqId) return;
             const uint64_t head = chainHeadState.load();
@@ -1150,8 +1150,7 @@ bool RemoteDeviceCoordinator::isRosterAuthority() const {
 
 std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::getChainMembers() const {
     // A RING device is its own head, so it serves its roster like a HEAD does.
-    const ChainRole role = getChainRole();
-    if (role == ChainRole::CHILD || role == ChainRole::STANDALONE) return {};
+    if (!isRosterAuthority()) return {};
     std::vector<std::array<uint8_t, 6>> members;
     members.reserve(chainRoster.size());
     for (const auto& entry : chainRoster)
@@ -1238,8 +1237,8 @@ void RemoteDeviceCoordinator::transferRosterTo(const uint8_t* newHeadMac) {
     if (chainRoster.empty() || headTransferChannel == nullptr) return;
     HeadTransferPayload transfer{};
     for (const auto& entry : chainRoster) {
-        // Cannot trip while both insert paths cap at MAX_CHAIN_MEMBERS; kept as
-        // the payload array's hard bound.
+        // Both insert paths cap at MAX_CHAIN_MEMBERS; this bounds the payload
+        // array regardless.
         if (transfer.memberCount >= MAX_CHAIN_MEMBERS) break;
         memcpy(transfer.memberMacs[transfer.memberCount], entry.first.data(), 6);
         transfer.memberCount++;
@@ -1276,7 +1275,10 @@ void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
     // Trust boundary: no report may name this device. A member that lost the
     // link to its own head sends nothing, so a self-referential report is
     // bogus — and honoring it would erase the whole roster via the subtree walk.
-    if (memcmp(report.disconnectedMac, selfMac.data(), 6) == 0) return;
+    if (memcmp(report.disconnectedMac, selfMac.data(), 6) == 0) {
+        LOG_W("RDC", "dropping self-referential disconnect report");
+        return;
+    }
     if (!isRosterAuthority()) {
         // Head propagation is hop-by-hop, so a just-demoted head can still be
         // addressed under the old regime; forward the edit to the head now
@@ -1305,6 +1307,12 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* fromMac,
     // which names its true upstream and must not be flattened onto fromMac.
     std::array<uint8_t, 6> upstream;
     memcpy(upstream.data(), fromMac, 6);
+    if (transfer.memberCount > MAX_CHAIN_MEMBERS) {
+        // Every sender caps at MAX_CHAIN_MEMBERS, so an oversized count means a
+        // corrupt frame; the clamp bounds the array walk either way.
+        LOG_W("RDC", "head transfer memberCount %u exceeds cap %u; clamping",
+              (unsigned)transfer.memberCount, (unsigned)MAX_CHAIN_MEMBERS);
+    }
     const uint8_t count =
         transfer.memberCount <= MAX_CHAIN_MEMBERS ? transfer.memberCount : MAX_CHAIN_MEMBERS;
     bool changed = false;
