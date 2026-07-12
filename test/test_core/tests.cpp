@@ -1312,8 +1312,53 @@ TEST_F(RDCHelloTests, emitProducesFramesOnBothJacks) {
     rdcHelloEmitProducesFramesOnBothJacks(this);
 }
 
-TEST_F(RDCHelloTests, outputJackInitiatesContext) {
-    rdcHelloOutputJackInitiatesContext(this);
+TEST_F(RDCHelloTests, everyJackInitiatesContext) {
+    rdcHelloEveryJackInitiatesContext(this);
+}
+
+TEST_F(RDCHelloTests, contextSendClearedBySendSuccess) {
+    rdcContextSendClearedBySendSuccess(this);
+}
+
+TEST_F(RDCHelloTests, contextReceiveConnectsJack) {
+    rdcContextReceiveConnectsJack(this);
+}
+
+TEST_F(RDCHelloTests, contextCompletesBothJacksForSamePeer) {
+    rdcContextCompletesBothJacksForSamePeer(this);
+}
+TEST_F(RDCHelloTests, contextBeforeConnectingIsBufferedAndApplied) {
+    rdcContextBeforeConnectingIsBufferedAndApplied(this);
+}
+TEST_F(RDCHelloTests, cachedContextCompletesBoth2NodeRingJacks) {
+    rdcCachedContextCompletesBoth2NodeRingJacks(this);
+}
+TEST_F(RDCHelloTests, contextInputJackInitiates) {
+    rdcContextInputJackInitiates(this);
+}
+TEST_F(RDCHelloTests, linkDeathReleasesPeerSlot) {
+    rdcLinkDeathReleasesPeerSlot(this);
+}
+TEST_F(RDCHelloTests, twoNodeRingSingleJackDropKeepsPeerSlot) {
+    rdc2NodeRingSingleJackDropKeepsPeerSlot(this);
+}
+TEST_F(RDCHelloTests, connectedPeerRetryTriggersContextResend) {
+    rdcConnectedPeerRetryTriggersContextResend(this);
+}
+TEST_F(RDCHelloTests, linkDeathCancelsPendingContextSend) {
+    rdcLinkDeathCancelsPendingContextSend(this);
+}
+TEST_F(RDCHelloTests, replugAfterFailedExchangeRecovers) {
+    rdcReplugAfterFailedExchangeRecovers(this);
+}
+TEST_F(RDCHelloTests, connectedRetryResendThrottled) {
+    rdcConnectedRetryResendThrottled(this);
+}
+TEST_F(RDCHelloTests, linkDeathClearsPeerChainRole) {
+    rdcLinkDeathClearsPeerChainRole(this);
+}
+TEST_F(RDCHelloTests, duplicateContextSameTickFiresCallbackOnce) {
+    rdcDuplicateContextSameTickFiresCallbackOnce(this);
 }
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {

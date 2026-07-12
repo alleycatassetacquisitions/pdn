@@ -10,6 +10,7 @@
 #include "device/serial-frame-parser.hpp"
 #include "utils/simple-timer.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
+#include "wireless/reliable-transport.hpp"
 #include "device/device-type.hpp"
 
 #ifndef NATIVE_BUILD
@@ -20,6 +21,7 @@
 class Device;
 class HandshakeApp;
 class HelloLinkMachine;
+class RDCHelloTests;  // drives the context exchange via the owned transport in tests
 
 enum class PortStatus {
     DISCONNECTED = 0,  // No Connection. Handshake is in Idle state.
@@ -45,6 +47,10 @@ struct PortState {
 };
 
 class RemoteDeviceCoordinator {
+    // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
+    // a radio; the transport stays out of the public API.
+    friend class RDCHelloTests;
+
 public:
     /// Fires on a per-jack connect (true) / disconnect (false) transition.
     using JackChangeCallback = std::function<void(SerialIdentifier jack, bool connected)>;
@@ -139,13 +145,31 @@ public:
                                 CONNECTING,
                                 CONNECTED };
 
-    // Fires on the OUT jack when a new HELLO source appears: the output jack
-    // initiates the context request (#157 placeholder). The IN jacks never do.
-    using ContextRequestCallback = std::function<void(SerialIdentifier jack)>;
-    /// Registers the output-jack context-request initiator (#157 placeholder).
-    void setOnContextRequest(ContextRequestCallback callback) {
-        contextRequestCallback = std::move(callback);
+    /// Hands a received peer context to the game layer opaquely: the jack it
+    /// arrived on, the peer's device kind, and the raw profile bytes
+    /// (PlayerProfile for PDN, FdnProfile for FDN). RDC never interprets them.
+    using ContextReceivedCallback =
+        std::function<void(SerialIdentifier jack, DeviceType peerType,
+                           const uint8_t* profile, size_t len)>;
+    /// Registers the opaque peer-context consumer.
+    void setOnContextReceived(ContextReceivedCallback callback) {
+        contextReceivedCallback = std::move(callback);
     }
+
+    /// Supplies this device's outgoing player profile, forwarded verbatim in the
+    /// context this device sends to a new peer on any jack. Opaque to RDC.
+    void setSelfPlayerProfile(const PlayerProfile& profile) {
+        selfPlayerProfile = profile;
+    }
+
+    /// The chainRole recorded from the peer's context on `jack`; 0 until one
+    /// arrives. Recorded for the device chain SM (#156), not acted on here.
+    uint8_t getPeerChainRole(SerialIdentifier jack) const {
+        return helloByPort[portIndex(jack)].peerChainRole;
+    }
+
+    /// True while a context send to `mac` is still awaiting its SEND_SUCCESS.
+    bool isContextSendPending(const uint8_t* mac) const;
 
     /// Wires byte callbacks + parsers on every present jack, quiesces the
     /// handshake, and (unless external) spawns the emit task. Idempotent.
@@ -300,13 +324,77 @@ private:
     struct JackHelloLink {
         SerialFrameParser parser;  // non-copyable; default-constructed in place
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
+        // Recorded from the peer's received context; consumed by the chain SM (#156).
+        uint8_t peerChainRole = 0;
+        // Last recovery resend to this jack's peer (0 = never); throttles the
+        // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
+        unsigned long lastContextResendMs = 0;
     };
-    std::array<JackHelloLink, kNumPorts> helloByPort_;
+    std::array<JackHelloLink, kNumPorts> helloByPort;
     bool helloConnectivityEnabled = false;
     bool externalConnectivityTask = false;
-    ContextRequestCallback contextRequestCallback;
-    std::array<uint8_t, 6> selfMac_{};
+    ContextReceivedCallback contextReceivedCallback;
+    PlayerProfile selfPlayerProfile{};
+    std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
+
+    // Owned reliable transport + one context channel per device-type PktType.
+    // Device-level, not per-jack: on receive the source MAC is matched back to a
+    // jack. Constructed in initialize() once the WirelessManager is known.
+    ReliableTransport* transport = nullptr;
+    ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
+    ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
+
+    // A context (ESP-NOW) can beat its own HELLO (serial) and arrive before any jack
+    // is CONNECTING for that MAC. Rather than drop it, hold it here and apply it when
+    // the jack connects. Bounded + TTL'd on purpose: an on-channel attacker who knows
+    // our MAC can spray contexts from fabricated sources, so the fixed cap is the OOM
+    // guard and the short TTL clears junk; the worst it can do is evict a genuine
+    // early-arrival (that link then half-opens, same as with no buffer). Legitimate
+    // occupancy is at most one per jack.
+    static constexpr size_t CONTEXT_BUFFER_SLOTS = 8;
+    // TTL = silent-link window on purpose: a live peer's HELLO lands inside that
+    // window, so a context older than it can never pair with a connecting jack.
+    static constexpr unsigned long CONTEXT_BUFFER_TTL_MS = HELLO_SILENT_LINK_MS;
+    struct BufferedContext {
+        std::array<uint8_t, 6> mac{};
+        DeviceType peerType = DeviceType::UNKNOWN;
+        uint8_t chainRole = 0;
+        std::array<uint8_t, sizeof(PlayerProfile)> profile{};
+        size_t len = 0;
+        unsigned long arrivedAtMs = 0;
+        bool valid = false;
+        bool isExpiredAt(unsigned long now) const {
+            return now >= arrivedAtMs && now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
+        }
+    };
+    std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer;
+
+    // A jack entering Connecting initiates: apply any context buffered for its peer,
+    // register the peer as a radio slot, then reliably send this device's context
+    // (skipped if our other jack already has a send pending to that same peer).
+    void initiateContextExchange(SerialIdentifier jack);
+    // Serialize + reliably send this device's context to `mac` per selfDeviceType.
+    void sendSelfContext(const uint8_t* mac);
+    // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
+    void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
+                           uint8_t chainRole, const uint8_t* profile, size_t len);
+    // Completes every jack currently CONNECTING to `fromMac` (live receive path).
+    void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
+                             uint8_t chainRole, const uint8_t* profile, size_t len);
+    // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
+    // so the context callback fires exactly once per jack.
+    void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+                             const uint8_t* profile, size_t len);
+    // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.
+    void bufferContext(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+                       const uint8_t* profile, size_t len);
+    // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
+    // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
+    void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
+    // Link death on `jack`: release the peer's radio slot unless another jack or a
+    // daisy chain still references the MAC (2-node ring keeps the slot).
+    void releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
     // Cooperative stop: the destructor sets stopRequested and waits for the task
