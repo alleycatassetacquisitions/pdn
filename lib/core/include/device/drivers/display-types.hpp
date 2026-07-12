@@ -15,6 +15,7 @@ enum class DrawType {
     TEXT,
     GLYPH,
     IMAGE,
+    RAW
 };
 
 struct Cursor {
@@ -54,11 +55,17 @@ struct GlyphPayload {
     DrawCoordinates coordinates;
 };
 
+struct RawPayload {
+    const uint8_t* data;
+    DrawCoordinates coordinates;
+};
+
 struct DrawInstruction {
     DrawType drawType;
     union {
         ImagePayload imagePayload;
         TextPayload textPayload;
         GlyphPayload glyphPayload;
+        RawPayload rawPayload;
     };
 };
