@@ -48,9 +48,10 @@ using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 // Binary framing because the jacks are physically unreliable (TRS contacts,
 // partial insertion): a corrupted delimited string still parses as *some*
 // string, while a frame failing CRC is dropped and the preamble resyncs.
-// feed() runs on the UART event task; requestReset() is callable from the main
-// loop and is honored at the start of the next feed(), so the parser's
-// std::vector state is only ever mutated by the feeding thread.
+// feed() runs on the main loop today (the driver's exec() polls RX and fires
+// the byte callback inline). requestReset() is an atomic flag honored at the
+// start of the next feed(), so parser state stays single-owner even if
+// feeding ever moves onto a UART event task.
 class SerialFrameParser {
 public:
     /// Consumes one burst of raw serial bytes; fires the frame handler for

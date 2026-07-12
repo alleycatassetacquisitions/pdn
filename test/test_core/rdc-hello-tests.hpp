@@ -151,9 +151,8 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
 
-// The UART task can stamp lastHelloMs just after the main loop reads now, so
-// the watchdog can observe now < lastHelloMs; the gap must clamp to 0, not
-// underflow to ~ULONG_MAX and kill a live link (#173).
+// A watchdog read observing now < lastHelloMs (backwards clock step) must
+// clamp the gap to 0, not underflow to ~ULONG_MAX and kill a live link (#173).
 inline void rdcHelloWatchdogClampsClockRaceToZero(RDCHelloTests* suite) {
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);

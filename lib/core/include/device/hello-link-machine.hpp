@@ -44,8 +44,10 @@ struct HelloLinkContext {
     unsigned long lastHelloMs = 0;
     std::array<uint8_t, 6> peerMac{};  // source MAC last heard; consumed by #157
 
-    // Silent-link gap with the unsigned-underflow clamp: the UART task can stamp
-    // lastHelloMs just after now is read, so now - lastHelloMs would wrap to ~UINT_MAX.
+    // Silent-link gap with a defensive underflow clamp: HELLO processing is
+    // main-loop-only today, but any backwards step between stamp and read (a
+    // clock swap in tests, a future task split) would wrap now - lastHelloMs
+    // to ~ULONG_MAX and kill a live link.
     unsigned long sinceHello() const {
         const unsigned long now = nowMs();
         return now >= lastHelloMs ? now - lastHelloMs : 0;
