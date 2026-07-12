@@ -19,7 +19,9 @@ void Controller::onStateMounted(Device* device) {
         TypedStateMachine<PDN>::onStateMounted(device);
         return;
     }
-    skipToState(device, kSymbolStateIndex);
+    // On re-entry (e.g. after a brief Quickdraw detour), resume directly at
+    // Controller1 — symbol matching is already done and should not restart.
+    skipToState(device, kController1StateIndex);
 }
 
 void Controller::populateStateMap() {

@@ -23,8 +23,11 @@ void DemoModule::onStateMounted(Device* device) {
 void DemoModule::populateStateMap() {
     auto* mainMenuState = new MainMenuState(controllerWirelessManager);
     auto* tutorialState = new TutorialState();
-    auto* gameState = new GameState();
-    auto* scoringState = new ScoringState();
+    auto* gameState = new GameState(&primaryScore, &secondaryScore,
+                                    &primaryScoreLabel, &secondaryScoreLabel);
+    auto* scoringState = new ScoringState(controllerWirelessManager,
+                                          &primaryScore, &secondaryScore,
+                                          &primaryScoreLabel, &secondaryScoreLabel);
 
     mainMenuState->addTransition(new StateTransition(
         std::bind(&MainMenuState::transitionToTutorial, mainMenuState),

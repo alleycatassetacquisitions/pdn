@@ -15,7 +15,10 @@ public:
         : ConnectState<PDN>(remoteDeviceCoordinator, -1) {}
 
     bool isPrimaryRequired() override { return true; }
-    bool isAuxRequired() override { return true; }
+    // The demo module PDN only uses a single cable (OUTPUT_JACK to FDN).
+    // Requiring the aux jack would cause the disconnect policy to fire spuriously
+    // and eject the PDN from Controller mode mid-game.
+    bool isAuxRequired() override { return false; }
 };
 
 class Controller : public TypedStateMachine<PDN> {
@@ -31,7 +34,8 @@ public:
     void onStateMounted(Device* device) override;
 
 private:
-    static constexpr int kSymbolStateIndex = 0;
+    static constexpr int kSymbolStateIndex     = 0;
+    static constexpr int kController1StateIndex = 2;
     Player* player;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     SymbolWirelessManager* symbolWirelessManager;

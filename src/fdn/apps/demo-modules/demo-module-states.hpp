@@ -4,6 +4,8 @@
 #include "device/fdn.hpp"
 #include "device/drivers/display.hpp"
 #include "wireless/controller-wireless-manager.hpp"
+#include "utils/simple-timer.hpp"
+#include <string>
 
 enum DemoModuleStateId {
     MAIN_MENU,
@@ -56,10 +58,14 @@ public:
     bool transitionToGame();
 
 private:
+    static constexpr unsigned long kGameSelectResendIntervalMs = 2000;
+
     ControllerWirelessManager* controllerWirelessManager;
     bool transitionToTutorialState = false;
     bool transitionToGameState = false;
+    SimpleTimer gameSelectResendTimer;
 
+    void sendGameSelectToConnectedPeers(FDN* fdn);
     void onControllerCommandReceived(ControllerCommand command);
 };
 
@@ -77,7 +83,8 @@ public:
 
 class GameState : public TypedState<FDN> {
 public:
-    explicit GameState();
+    explicit GameState(int* primaryScore, int* secondaryScore,
+                       const std::string* primaryLabel, const std::string* secondaryLabel);
     ~GameState();
 
     void onStateMounted(FDN* fdn) override;
@@ -85,11 +92,26 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToScoring();
+
+private:
+    int* primaryScore_;
+    int* secondaryScore_;
+    const std::string* primaryLabel_;
+    const std::string* secondaryLabel_;
+
+    static constexpr unsigned long kGameDurationMs = 5000;
+
+    bool transitionToScoringState = false;
+    SimpleTimer gameDurationTimer_;
+
+    void onControllerCommandReceived(ControllerCommand command);
 };
 
 class ScoringState : public TypedState<FDN> {
 public:
-    explicit ScoringState();
+    explicit ScoringState(ControllerWirelessManager* controllerWirelessManager,
+                          int* primaryScore, int* secondaryScore,
+                          const std::string* primaryLabel, const std::string* secondaryLabel);
     ~ScoringState();
 
     void onStateMounted(FDN* fdn) override;
@@ -97,4 +119,31 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToMainMenu();
+
+private:
+    enum class ScoringPhase { SHOW_SCORE, NAME_ENTRY, THANKS, FAREWELL };
+
+    static constexpr int           kNumNameChars        = 3;
+    static constexpr char          kFirstChar           = 'A';
+    static constexpr char          kLastChar            = 'Z';
+    static constexpr unsigned long kShowScoreDurationMs = 3000;
+    static constexpr unsigned long kThanksDurationMs    = 3000;
+    static constexpr unsigned long kFarewellDurationMs  = 3000;
+
+    ControllerWirelessManager* controllerWirelessManager_;
+    int* primaryScore_;
+    int* secondaryScore_;
+    const std::string* primaryLabel_;
+    const std::string* secondaryLabel_;
+
+    ScoringPhase phase_       = ScoringPhase::SHOW_SCORE;
+    SimpleTimer  phaseTimer_;
+    char nameChars_[kNumNameChars] = {'A', 'A', 'A'};
+    int  currentColumn_       = 0;
+    bool readyToTransition_   = false;
+
+    void renderScoreIntroScreen(FDN* fdn);
+    void renderScoringScreen(FDN* fdn);
+    void renderMessageScreen(FDN* fdn, const char* line1, const char* line2 = nullptr, const char* line3 = nullptr);
+    void onControllerCommandReceived(ControllerCommand command);
 };

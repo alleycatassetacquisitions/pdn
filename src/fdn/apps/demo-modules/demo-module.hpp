@@ -6,6 +6,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "wireless/controller-wireless-manager.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include <string>
 
 class DemoModuleDisconnectPolicy : public FDNConnectState {
 public:
@@ -24,6 +25,12 @@ public:
     void populateStateMap() override;
 
     void onStateMounted(Device* device) override;
+
+    // App-level score variables shared between GameState and ScoringState.
+    int primaryScore = 0;
+    int secondaryScore = 0;
+    std::string primaryScoreLabel = "P1";
+    std::string secondaryScoreLabel = "P2";
 
 private:
     static constexpr int kMainMenuStateIndex = 0;
