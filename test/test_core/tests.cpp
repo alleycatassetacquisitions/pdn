@@ -1386,6 +1386,30 @@ TEST_F(RDCHelloTests, demotedHeadTransfersRoster) {
 TEST_F(RDCHelloTests, headTransferReceiveMergesAndPrunes) {
     rdcHeadTransferReceiveMergesAndPrunes(this);
 }
+TEST_F(RDCHelloTests, outputLossOfOwnHeadSendsNoReport) {
+    rdcOutputLossOfOwnHeadSendsNoReport(this);
+}
+TEST_F(RDCHelloTests, headIgnoresSelfDisconnectReport) {
+    rdcHeadIgnoresSelfDisconnectReport(this);
+}
+TEST_F(RDCHelloTests, headTransferDoesNotOverwriteAnnouncedUpstream) {
+    rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(this);
+}
+TEST_F(RDCHelloTests, demotedDeviceForwardsDisconnectReport) {
+    rdcDemotedDeviceForwardsDisconnectReport(this);
+}
+TEST_F(RDCHelloTests, standaloneIgnoresLateRosterTraffic) {
+    rdcStandaloneIgnoresLateRosterTraffic(this);
+}
+TEST_F(RDCHelloTests, headDirectChildLossClearsWholeRoster) {
+    rdcHeadDirectChildLossClearsWholeRoster(this);
+}
+TEST_F(RDCHelloTests, staleAnnounceDeliveryDoesNotConfirm) {
+    rdcStaleAnnounceDeliveryDoesNotConfirm(this);
+}
+TEST_F(RDCHelloTests, headAdoptionManagesRadioSlot) {
+    rdcHeadAdoptionManagesRadioSlot(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();

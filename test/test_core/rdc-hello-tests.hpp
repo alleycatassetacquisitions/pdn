@@ -1606,6 +1606,273 @@ inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
     EXPECT_TRUE(suite->rdc.getChainMembers().empty());
 }
 
+// A ring's closing cable dying is the OUTPUT link to the device's own head;
+// reporting that "loss" would name the head itself, and the head's subtree walk
+// would then erase every member still physically chained beneath it.
+inline void rdcOutputLossOfOwnHeadSendsNoReport(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture report;
+    captureSends(suite, PktType::kDisconnectReport, report);
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    // The OUTPUT peer IS the head: this device closes the loop back to it.
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                chainHelloFrame(head, nullptr));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+
+    // Only the closing cable dies; the upstream HELLO stays fresh.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    EXPECT_EQ(report.count, 0);
+}
+
+// Belt at the trust boundary: an inbound report naming this device would wipe
+// the whole roster via the subtree walk, so it is dropped outright.
+inline void rdcHeadIgnoresSelfDisconnectReport(RDCHelloTests* suite) {
+    const uint8_t c1[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t c2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int membershipChanges = 0;
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    std::vector<uint8_t> a1 = announceBytes(suite->localMac, 1);
+    std::vector<uint8_t> a2 = announceBytes(c1, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c1, a1.data(), a1.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, c2, a2.data(), a2.size());
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 2u);
+    ASSERT_EQ(membershipChanges, 2);
+
+    std::vector<uint8_t> selfReport = disconnectReportBytes(suite->localMac, 1);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, c1,
+                                        selfReport.data(), selfReport.size());
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 2u);
+    EXPECT_EQ(membershipChanges, 2);
+}
+
+// A member's own post-merge announce names its true upstream; a HeadTransfer
+// arriving later (reliable send, subject to backoff) must not flatten that
+// edge onto the demoted head, or the member gets pruned with the wrong subtree.
+inline void rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(RDCHelloTests* suite) {
+    const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t member[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    // The member's announce lands first, recording its true upstream (b1).
+    std::vector<uint8_t> a1 = announceBytes(b1, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, member, a1.data(), a1.size());
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 1u);
+
+    // The demoted head's transfer arrives late, listing the same member.
+    std::array<uint8_t, 6> m{};
+    memcpy(m.data(), member, 6);
+    std::vector<uint8_t> handoff = headTransferBytes({m}, 5);
+    suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
+                                        handoff.data(), handoff.size());
+
+    // The demoted head departing must not take the member with it: the member's
+    // recorded upstream is still b1.
+    std::vector<uint8_t> report = disconnectReportBytes(oldHead, 1);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, b1,
+                                        report.data(), report.size());
+    std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
+    ASSERT_EQ(members.size(), 1u);
+    EXPECT_EQ(0, memcmp(members[0].data(), member, 6));
+}
+
+// Head propagation is hop-by-hop, so a report can be addressed to a device
+// that was just demoted; it forwards the edit to the head it now holds
+// instead of dropping it (the announce path self-heals on head change, the
+// report path has no equivalent retry).
+inline void rdcDemotedDeviceForwardsDisconnectReport(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t lost[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t reporter[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture forwarded;
+    captureSends(suite, PktType::kDisconnectReport, forwarded);
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+
+    std::vector<uint8_t> report = disconnectReportBytes(lost, 1);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, reporter,
+                                        report.data(), report.size());
+    ASSERT_EQ(forwarded.count, 1);
+    EXPECT_EQ(0, memcmp(forwarded.lastDst.data(), head, 6));
+    DisconnectReportPayload sent{};
+    ASSERT_EQ(forwarded.lastPayload.size(), sizeof(sent));
+    memcpy(&sent, forwarded.lastPayload.data(), sizeof(sent));
+    EXPECT_EQ(0, memcmp(sent.disconnectedMac, lost, 6));
+}
+
+// An ex-head is STANDALONE, not a roster authority: late Resender retries from
+// its dead chain must not seed entries that resurface when it heads again.
+inline void rdcStandaloneIgnoresLateRosterTraffic(RDCHelloTests* suite) {
+    const uint8_t m1[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t m2[6] = {0xA2, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int membershipChanges = 0;
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
+
+    std::vector<uint8_t> late = announceBytes(oldHead, 3);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, m1, late.data(), late.size());
+    std::array<uint8_t, 6> m{};
+    memcpy(m.data(), m2, 6);
+    std::vector<uint8_t> handoff = headTransferBytes({m}, 4);
+    suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
+                                        handoff.data(), handoff.size());
+    EXPECT_EQ(membershipChanges, 0);
+
+    // Heading a fresh chain later must start from an empty roster.
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+    EXPECT_TRUE(suite->rdc.getChainMembers().empty());
+}
+
+// A head losing its one OUTPUT link loses the entire chain, including members
+// whose recorded upstream path went gappy — a subtree walk from the direct
+// child alone would leave those behind as phantoms for the next chain.
+inline void rdcHeadDirectChildLossClearsWholeRoster(RDCHelloTests* suite) {
+    const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t gapped[6] = {0xD7, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t unknownUpstream[6] = {0xEE, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    std::vector<uint8_t> a1 = announceBytes(suite->localMac, 1);
+    std::vector<uint8_t> a2 = announceBytes(unknownUpstream, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, b1, a1.data(), a1.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, gapped, a2.data(), a2.size());
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 2u);
+
+    // The direct child's cable dies.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    // Re-heading a chain must not resurface the gapped member.
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+    EXPECT_TRUE(suite->rdc.getChainMembers().empty());
+}
+
+// A late SEND_SUCCESS for a superseded announce (head flapped away and back,
+// so destination alone can't tell them apart) must not raise confirmed: only
+// the most recently sent announce's delivery counts.
+inline void rdcStaleAnnounceDeliveryDoesNotConfirm(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t h1[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t h2[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture announce;
+    captureSends(suite, PktType::kConnectionAnnounce, announce);
+
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, h1));
+    suite->rdc.sync(&suite->device);
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, upstream, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(announce.count, 1);
+    std::vector<uint8_t> staleAnnounce = announce.lastPayload;
+
+    // Head flaps to h2 and back to h1: two more announces supersede the first.
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, h2));
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, h1));
+    ASSERT_EQ(announce.count, 3);
+
+    // The first announce's SEND_SUCCESS straggles in: same destination, stale seqId.
+    suite->transport()->onSendResult(PktType::kConnectionAnnounce, h1,
+                                     staleAnnounce.data(), staleAnnounce.size(), true);
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 0);
+
+    suite->transport()->onSendResult(PktType::kConnectionAnnounce, h1,
+                                     announce.lastPayload.data(),
+                                     announce.lastPayload.size(), true);
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 1);
+}
+
+// The held head is a unicast target that is usually not an adjacent HELLO
+// peer, so head adoption must claim its radio slot and a head change or link
+// loss must release it — without touching a head that is also the jack peer.
+inline void rdcHeadAdoptionManagesRadioSlot(RDCHelloTests* suite) {
+    const uint8_t peerIsHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t newHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
+
+    std::vector<std::array<uint8_t, 6>> added;
+    std::vector<std::array<uint8_t, 6>> removed;
+    ON_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .WillByDefault(testing::DoAll(
+            testing::Invoke([&added](const uint8_t* mac) {
+                added.emplace_back();
+                memcpy(added.back().data(), mac, 6);
+            }),
+            Return(0)));
+    ON_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillByDefault(testing::DoAll(
+            testing::Invoke([&removed](const uint8_t* mac) {
+                removed.emplace_back();
+                memcpy(removed.back().data(), mac, 6);
+            }),
+            Return(0)));
+    auto contains = [](const std::vector<std::array<uint8_t, 6>>& macs, const uint8_t* mac) {
+        for (const std::array<uint8_t, 6>& m : macs)
+            if (memcmp(m.data(), mac, 6) == 0) return true;
+        return false;
+    };
+
+    // The INPUT peer is itself the head: adjacent, slot claimed by the link.
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(peerIsHead, nullptr));
+    EXPECT_TRUE(contains(added, peerIsHead));
+
+    // The upstream re-advertises a farther head: claim it, keep the jack peer.
+    suite->deliverHello(suite->inJack, chainHelloFrame(peerIsHead, newHead));
+    EXPECT_TRUE(contains(added, newHead));
+    EXPECT_FALSE(contains(removed, peerIsHead));
+
+    // The link dies: the jack peer's slot and the held head's slot both go.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    EXPECT_TRUE(contains(removed, peerIsHead));
+    EXPECT_TRUE(contains(removed, newHead));
+}
+
 // Receiving a transfer merges the members under the demoted head as their
 // effective upstream, so a later loss of the demoted head prunes that subtree.
 inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {

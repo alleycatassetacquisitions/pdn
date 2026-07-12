@@ -445,16 +445,23 @@ private:
     void applyUpstreamHead(const HelloPayload& hello);
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
+    // Drops a former head's radio slot (and its dead roster retries) unless an
+    // adjacent link or daisy record still uses the MAC.
+    void releaseHeadPeer(uint64_t headMac48);
 
     // ---- Head roster (#158) ----
-    // member MAC -> its direct upstream MAC. Head-only by construction: every
-    // receive handler drops roster traffic while an upstream head is held.
+    // member MAC -> its direct upstream MAC. Only the roster authority (see
+    // isRosterAuthority) accepts roster traffic or serves getChainMembers.
     std::map<std::array<uint8_t, 6>, std::array<uint8_t, 6>> chainRoster;
+    // seqId of the announce most recently sent; delivery of any earlier one is
+    // stale and must not raise the confirmed bit.
+    uint8_t pendingAnnounceSeqId = 0;
+    bool isRosterAuthority() const;
     // Send ConnectionAnnounce{INPUT peer} to the held head, once the upstream
     // context exchange has completed. No-op for a head/ring/standalone device.
     void maybeAnnounceToHead();
-    // OUTPUT (downstream) link death: report to the head, or edit the roster in
-    // place when this device IS the head (never a packet to self).
+    // OUTPUT (downstream) link death: report to the head (unless the lost link
+    // IS the head), or clear the roster when this device is the head.
     void reportDownstreamLoss(const uint8_t* lostMac);
     // Drop `mac` and every member whose upstream chain passes through it.
     void removeChainMemberSubtree(const uint8_t* mac);
