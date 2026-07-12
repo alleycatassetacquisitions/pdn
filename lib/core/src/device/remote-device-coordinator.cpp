@@ -60,8 +60,8 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
         for (SerialIdentifier port : HELLO_JACKS) {
             HWSerialWrapper* hw = jackWrapper(port);
             if (hw != nullptr) hw->setByteCallback(nullptr);
-            delete helloByPort_[portIndex(port)].machine;
-            helloByPort_[portIndex(port)].machine = nullptr;
+            delete helloByPort[portIndex(port)].machine;
+            helloByPort[portIndex(port)].machine = nullptr;
         }
     }
     delete inputPortHandshake;
@@ -243,7 +243,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         // chain-announcement machinery below rides handshake CONNECTED state, so
         // it stays dormant here too until HELLO drives its own peer identity (#157).
         for (SerialIdentifier port : HELLO_JACKS) {
-            HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+            HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
             if (machine) machine->onStateLoop(PDN);
         }
         return;
@@ -610,18 +610,18 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
 
     if (wirelessManager_ != nullptr) {
         const uint8_t* mac = wirelessManager_->getMacAddress();
-        if (mac != nullptr) memcpy(selfMac_.data(), mac, 6);
+        if (mac != nullptr) memcpy(selfMac.data(), mac, 6);
     }
 
     for (SerialIdentifier port : HELLO_JACKS) {
         HWSerialWrapper* hw = jackWrapper(port);
         if (hw == nullptr) continue;
-        JackHelloLink& link = helloByPort_[portIndex(port)];
+        JackHelloLink& link = helloByPort[portIndex(port)];
         link.parser.setHelloFrameHandler(
             [this, port](const HelloPayload& hello) { onHelloReceived(port, hello); });
         // exec() runs on the main loop, so the parser is fed single-threaded.
         hw->setByteCallback([this, port](uint8_t b) {
-            helloByPort_[portIndex(port)].parser.feed(&b, 1);
+            helloByPort[portIndex(port)].parser.feed(&b, 1);
         });
 
         HelloLinkContext context;
@@ -634,7 +634,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             if (jackChangeCallback) jackChangeCallback(j, connected);
         };
         context.resetParser = [this, port] {
-            helloByPort_[portIndex(port)].parser.requestReset();
+            helloByPort[portIndex(port)].parser.requestReset();
         };
         context.onLinkDown = [this](SerialIdentifier j, const std::array<uint8_t, 6>& mac) {
             releaseHelloPeer(j, mac.data());
@@ -657,7 +657,7 @@ void RemoteDeviceCoordinator::emitHello() {
     if (!helloConnectivityEnabled) return;
 
     HelloPayload hello{};
-    memcpy(hello.source, selfMac_.data(), 6);
+    memcpy(hello.source, selfMac.data(), 6);
     hello.deviceType = static_cast<uint8_t>(selfDeviceType);
     // headMac stays zero and confirmed stays 0 until the device chain SM (#156)
     // learns the head and completes its context exchange.
@@ -678,17 +678,17 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     // self-HELLO must never keep a dead cable "alive" or fake a peer. The RDC owns
     // selfMac, so this guard stays here rather than in the link SM.
     if (MacToUInt64(hello.source) == 0) return;
-    if (memcmp(hello.source, selfMac_.data(), 6) == 0) return;
+    if (memcmp(hello.source, selfMac.data(), 6) == 0) return;
 
     // The machine records the peer MAC and, for a first HELLO on any Idle jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
-    JackHelloLink& link = helloByPort_[portIndex(jack)];
+    JackHelloLink& link = helloByPort[portIndex(jack)];
     if (link.machine) link.machine->onHelloReceived(hello);
 }
 
 
 void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
-    HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
+    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
     if (machine == nullptr) return;
     const uint8_t* mac = machine->peer().data();
     // Radio slot first (the driver add is idempotent): the drain below can announce
@@ -753,7 +753,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     // radio slot (registered when our jack initiated), so nothing to register here.
     bool appliedToConnectingJack = false;
     for (SerialIdentifier port : HELLO_JACKS) {
-        HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
         if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
         completeJackContext(port, peerType, chainRole, profile, len);
@@ -767,7 +767,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     // ours so its cycle completes. No ping-pong: only the CONNECTING side retries,
     // and it stops once this lands.
     for (SerialIdentifier port : HELLO_JACKS) {
-        JackHelloLink& link = helloByPort_[portIndex(port)];
+        JackHelloLink& link = helloByPort[portIndex(port)];
         if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
             continue;
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
@@ -792,9 +792,9 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     // A second fresh-seqId context can land before the Connecting -> Connected
     // commit while the jack still reports CONNECTING; the game callback must
     // fire exactly once per connect.
-    HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
+    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
     if (machine != nullptr && machine->didMarkContextComplete()) return;
-    helloByPort_[portIndex(jack)].peerChainRole = chainRole;
+    helloByPort[portIndex(jack)].peerChainRole = chainRole;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
 }
@@ -804,8 +804,8 @@ void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType p
                                             size_t len) {
     const unsigned long now = nowMs();
     BufferedContext* slot = nullptr;
-    BufferedContext* oldest = &contextBuffer_[0];
-    for (BufferedContext& e : contextBuffer_) {
+    BufferedContext* oldest = &contextBuffer[0];
+    for (BufferedContext& e : contextBuffer) {
         if (e.valid && memcmp(e.mac.data(), fromMac, 6) == 0) {  // latest for a MAC wins
             slot = &e;
             break;
@@ -827,7 +827,7 @@ void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType p
 
 void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const uint8_t* mac) {
     const unsigned long now = nowMs();
-    for (BufferedContext& e : contextBuffer_) {
+    for (BufferedContext& e : contextBuffer) {
         if (!e.valid) continue;
         if (e.isExpiredAt(now)) {
             e.valid = false;  // expired before its jack ever connected (stale/attacker)
@@ -845,14 +845,14 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // Per-jack residue clears unconditionally: the keep-slot guards below are
     // per-MAC, and the next peer on this jack must not inherit the departed
     // peer's chainRole during its CONNECTING window (#156 reads it then).
-    helloByPort_[portIndex(jack)].peerChainRole = 0;
-    helloByPort_[portIndex(jack)].lastContextResendMs = 0;
+    helloByPort[portIndex(jack)].peerChainRole = 0;
+    helloByPort[portIndex(jack)].lastContextResendMs = 0;
     // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
     // one-cable disconnect would silently break wireless for the still-connected
     // link, so any other jack tracking this MAC keeps the slot alive.
     for (SerialIdentifier port : HELLO_JACKS) {
         if (port == jack) continue;
-        const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
         if (memcmp(machine->peer().data(), mac, 6) == 0) return;
     }
@@ -871,13 +871,13 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
-    HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
+    HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
     if (machine) machine->onContextExchangeComplete();
 }
 
 RemoteDeviceCoordinator::HelloLinkState
 RemoteDeviceCoordinator::getHelloLinkState(SerialIdentifier jack) const {
-    const HelloLinkMachine* machine = helloByPort_[portIndex(jack)].machine;
+    const HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
     if (machine == nullptr) return HelloLinkState::IDLE;
     switch (machine->currentStateId()) {
         case HELLO_LINK_CONNECTED:  return HelloLinkState::CONNECTED;
@@ -887,7 +887,7 @@ RemoteDeviceCoordinator::getHelloLinkState(SerialIdentifier jack) const {
 }
 
 PortStatus RemoteDeviceCoordinator::mapHelloLinkToStatus(SerialIdentifier port) const {
-    const HelloLinkMachine* machine = helloByPort_[portIndex(port)].machine;
+    const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
     if (machine == nullptr) return PortStatus::DISCONNECTED;
     switch (machine->currentStateId()) {
         case HELLO_LINK_CONNECTED:  return PortStatus::CONNECTED;

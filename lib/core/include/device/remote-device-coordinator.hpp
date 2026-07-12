@@ -165,7 +165,7 @@ public:
     /// The chainRole recorded from the peer's context on `jack`; 0 until one
     /// arrives. Recorded for the device chain SM (#156), not acted on here.
     uint8_t getPeerChainRole(SerialIdentifier jack) const {
-        return helloByPort_[portIndex(jack)].peerChainRole;
+        return helloByPort[portIndex(jack)].peerChainRole;
     }
 
     /// True while a context send to `mac` is still awaiting its SEND_SUCCESS.
@@ -330,12 +330,12 @@ private:
         // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
         unsigned long lastContextResendMs = 0;
     };
-    std::array<JackHelloLink, kNumPorts> helloByPort_;
+    std::array<JackHelloLink, kNumPorts> helloByPort;
     bool helloConnectivityEnabled = false;
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
     PlayerProfile selfPlayerProfile{};
-    std::array<uint8_t, 6> selfMac_{};
+    std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 
     // Owned reliable transport + one context channel per device-type PktType.
@@ -368,7 +368,7 @@ private:
             return now >= arrivedAtMs && now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
         }
     };
-    std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer_;
+    std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer;
 
     // A jack entering Connecting initiates: apply any context buffered for its peer,
     // register the peer as a radio slot, then reliably send this device's context
