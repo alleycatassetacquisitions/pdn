@@ -1,12 +1,17 @@
 #pragma once
 
 #include "state/state.hpp"
+#include "state/jack-connection-state.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/debounced-condition.hpp"
+#include <functional>
 
 template<typename DeviceT>
 class ConnectState : public TypedState<DeviceT> {
 public:
+    /// Per-jack connection event observer, invoked while this state is current.
+    using JackChangeCallback = std::function<void(SerialIdentifier, const JackConnectionState&)>;
+
     /// Binds the state to the coordinator whose jack statuses it watches.
     ConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator, int stateId)
         : TypedState<DeviceT>(stateId), remoteDeviceCoordinator(remoteDeviceCoordinator) {}
@@ -39,6 +44,22 @@ public:
         disconnectDebounce_.reset();
     }
 
+    /// Registers the observer onJackEvent() forwards to. One slot per state
+    /// instance; registering again replaces the previous observer. Handlers
+    /// may see the same connected snapshot again on remount (mount replay)
+    /// and must be idempotent to a repeat. Replay arrives after the newly
+    /// mounted state's first loop tick, and self-transitions do not re-replay.
+    void setOnJackChange(JackChangeCallback callback) {
+        jackChangeCallback = std::move(callback);
+    }
+
+    /// Dispatcher entry point: hands one jack event to the registered observer.
+    void onJackEvent(SerialIdentifier jack, const JackConnectionState& state) override {
+        if (jackChangeCallback) {
+            jackChangeCallback(jack, state);
+        }
+    }
+
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 
@@ -56,4 +77,5 @@ private:
 
     static constexpr unsigned long kDisconnectDebounceMs = 500;
     DebouncedCondition disconnectDebounce_;
+    JackChangeCallback jackChangeCallback;
 };

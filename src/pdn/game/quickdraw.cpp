@@ -2,6 +2,7 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -105,6 +106,60 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
             shootoutManager_->onLocalRDCDisconnect(lostMac);
         }
     });
+
+    // Both callbacks fire only from the HELLO link machinery, and mount replay
+    // is gated on it too, so this dispatch is inert while production runs the
+    // handshake path (until #159/#160).
+    remoteDeviceCoordinator->setOnContextReceived(
+        [this](SerialIdentifier jack, DeviceType peerType, const uint8_t* profile, size_t len) {
+            onJackContextReceived(jack, peerType, profile, len);
+        });
+    remoteDeviceCoordinator->setOnJackChange(
+        [this](SerialIdentifier jack, bool connected) {
+            onJackConnectionChanged(jack, connected);
+        });
+}
+
+void Quickdraw::onJackContextReceived(SerialIdentifier jack, DeviceType peerType,
+                                      const uint8_t* profile, size_t len) {
+    ConnectionContext context;
+    context.peerType = peerType;
+    // chainRole is not part of this callback's payload; the RDC records it per
+    // jack before firing, so read it back from there.
+    context.chainRole = remoteDeviceCoordinator->getPeerChainRole(jack);
+    context.profileLen = std::min(len, context.profile.size());
+    memcpy(context.profile.data(), profile, context.profileLen);
+    jackContexts[static_cast<size_t>(jack)] = context;
+}
+
+void Quickdraw::onJackConnectionChanged(SerialIdentifier jack, bool connected) {
+    if (!connected) {
+        jackContexts[static_cast<size_t>(jack)].reset();
+    }
+    if (currentState == nullptr) {
+        return;
+    }
+    JackConnectionState snapshot;
+    snapshot.connected = connected;
+    snapshot.context = jackContexts[static_cast<size_t>(jack)];
+    currentState->onJackEvent(jack, snapshot);
+}
+
+void Quickdraw::replayConnectedJacks() {
+    // getPortStatus reads handshake state while HELLO is off, so replaying
+    // there would fabricate connected=true events whose context never comes;
+    // jack events exist only under HELLO connectivity (#159).
+    if (!remoteDeviceCoordinator->isHelloConnectivityEnabled()) {
+        return;
+    }
+    // Only currently-connected jacks are replayed: an all-disconnected
+    // snapshot carries no information for a fresh mount.
+    for (size_t i = 0; i < SERIAL_JACK_COUNT; i++) {
+        SerialIdentifier jack = static_cast<SerialIdentifier>(i);
+        if (remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED) {
+            onJackConnectionChanged(jack, true);
+        }
+    }
 }
 
 void Quickdraw::onChainStateChanged() {
@@ -160,6 +215,21 @@ void Quickdraw::onStateLoop(Device *PDN) {
     }
 
     StateMachine::onStateLoop(PDN);
+
+    // JackConnectionState is state, not an edge: a state mounted after a jack
+    // connected must not stay blind until the next connect/disconnect event,
+    // so each fresh mount gets the current per-jack snapshot replayed.
+    if (currentState != lastDispatchedState) {
+        lastDispatchedState = currentState;
+        replayConnectedJacks();
+    }
+}
+
+void Quickdraw::onStateDismounted(Device* device) {
+    StateMachine::onStateDismounted(device);
+    // Without this, remounting the app into the same state pointer would look
+    // like no change and skip the jack snapshot replay.
+    lastDispatchedState = nullptr;
 }
 
 void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
@@ -271,6 +341,13 @@ void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t
 
 Quickdraw::~Quickdraw() {
     player = nullptr;
+    // The constructor's RDC callbacks capture `this`, and the coordinator
+    // outlives this app (device-owned; tests destroy Quickdraw first) — left
+    // installed they would call into a destroyed object.
+    remoteDeviceCoordinator->setChainChangeCallback(nullptr);
+    remoteDeviceCoordinator->setPeerLostCallback(nullptr);
+    remoteDeviceCoordinator->setOnContextReceived(nullptr);
+    remoteDeviceCoordinator->setOnJackChange(nullptr);
     remoteDeviceCoordinator = nullptr;
     if (quickdrawWirelessManager) {
         quickdrawWirelessManager->clearCallbacks();

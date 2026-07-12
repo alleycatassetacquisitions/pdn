@@ -23,6 +23,17 @@ Idle::Idle(const GameContext& ctx)
     this->chainDuelManager = ctx.chainDuelManager;
 }
 
+// Under HELLO connectivity the peer's kind arrives with the connect event;
+// getPeerDeviceType() reads the quiesced handshake there and stays UNKNOWN.
+// Overridden (not registered via setOnJackChange) so an external observer
+// taking the one callback slot cannot sever the arming logic.
+void Idle::onJackEvent(SerialIdentifier jack, const JackConnectionState& state) {
+    if (jack != SerialIdentifier::INPUT_JACK_SECONDARY && !matchInitialized && state.connected && state.context.has_value() && state.context->peerType == DeviceType::FDN) {
+        transitionToSymbolState = true;
+    }
+    ConnectState<PDN>::onJackEvent(jack, state);
+}
+
 Idle::~Idle() {
     player = nullptr;
     matchManager = nullptr;
@@ -91,6 +102,8 @@ void Idle::onStateLoop(PDN* pdn) {
         }
     }
 
+    // Handshake-path peer-kind poll; under HELLO connectivity the onJackEvent
+    // override sets this flag instead. Dies with the handshake (#160).
     if (!matchInitialized && (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN
     || getPeerDeviceType(SerialIdentifier::INPUT_JACK) == DeviceType::FDN)) {
         transitionToSymbolState = true;

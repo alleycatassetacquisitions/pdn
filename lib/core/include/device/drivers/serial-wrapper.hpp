@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <functional>
@@ -16,6 +17,10 @@ enum class SerialIdentifier {
     INPUT_JACK = 1,
     INPUT_JACK_SECONDARY = 2,
 };
+
+/// Number of SerialIdentifier enumerators; sizes per-jack arrays.
+constexpr size_t SERIAL_JACK_COUNT =
+    static_cast<size_t>(SerialIdentifier::INPUT_JACK_SECONDARY) + 1;
 
 class HWSerialWrapper {
     public:
