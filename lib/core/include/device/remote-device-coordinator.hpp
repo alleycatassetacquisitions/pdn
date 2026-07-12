@@ -308,11 +308,11 @@ private:
         SerialFrameParser parser;  // non-copyable; default-constructed in place
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
     };
-    std::array<JackHelloLink, kNumPorts> helloByPort_;
+    std::array<JackHelloLink, kNumPorts> helloByPort;
     bool helloConnectivityEnabled = false;
     bool externalConnectivityTask = false;
     ContextRequestCallback contextRequestCallback;
-    std::array<uint8_t, 6> selfMac_{};
+    std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
