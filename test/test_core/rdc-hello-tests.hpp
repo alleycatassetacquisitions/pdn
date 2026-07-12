@@ -626,6 +626,7 @@ inline void rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(RDCHelloTests* su
 
 // One node bundling an RDC, its device and jacks, for the two-live-RDC ring test.
 struct ChainRingNode {
+    /// Wires the node's RDC to its own jacks under the given MAC.
     explicit ChainRingNode(const uint8_t m[6]) {
         memcpy(mac, m, 6);
         wireRadioDefaults(device, mac);

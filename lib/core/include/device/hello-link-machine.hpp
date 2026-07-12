@@ -50,8 +50,10 @@ struct HelloLinkContext {
 
 class HelloIdleState : public State {
 public:
+    /// Binds the shared per-jack context; the machine owns the state.
     explicit HelloIdleState(HelloLinkContext* context) : State(HELLO_LINK_IDLE), context(context) {}
 
+    /// Idle mount = link down: resets the parser and releases the tracked peer.
     void onStateMounted(Device*) override {
         transitionToConnectingState = false;
         // Entering Idle means the link is down (init, silent-link/context timeout, or
