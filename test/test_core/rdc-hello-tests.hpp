@@ -1699,8 +1699,7 @@ inline void rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(RDCHelloTests* suit
 
 // Head propagation is hop-by-hop, so a report can be addressed to a device
 // that was just demoted; it forwards the edit to the head it now holds
-// instead of dropping it (the announce path self-heals on head change, the
-// report path has no equivalent retry).
+// instead of dropping it.
 inline void rdcDemotedDeviceForwardsDisconnectReport(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
@@ -1871,6 +1870,137 @@ inline void rdcHeadAdoptionManagesRadioSlot(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     EXPECT_TRUE(contains(removed, peerIsHead));
     EXPECT_TRUE(contains(removed, newHead));
+}
+
+// The held head keeping its radio slot must not keep the dead jack's context
+// retries: with the INPUT peer itself the held head, link death keeps the slot
+// in releaseHelloPeer, then onLinkLost unregisters it — a surviving context
+// retry would re-register the slot inside the driver and leak it permanently.
+inline void rdcInputHeadLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
+
+    // The INPUT peer advertises no head, so it IS the head this device adopts.
+    suite->deliverHello(suite->inJack, chainHelloFrame(peer, nullptr));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_TRUE(suite->rdc.isContextSendPending(peer));
+
+    // The exchange never completes (no SEND_SUCCESS); the link dies.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    EXPECT_FALSE(suite->rdc.isContextSendPending(peer));
+}
+
+// Reports are distinct events, not current state: two reports forwarded to the
+// same head back to back (routine when a demoted device relays two children's
+// reports in one tick) must EACH keep a retry slot, so both retransmit while
+// undelivered. A per-target supersede would erase the first report's slot.
+inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t lost1[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t lost2[6] = {0xD2, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t reporter1[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t reporter2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture forwarded;
+    captureSends(suite, PktType::kDisconnectReport, forwarded);
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+
+    std::vector<uint8_t> r1 = disconnectReportBytes(lost1, 1);
+    std::vector<uint8_t> r2 = disconnectReportBytes(lost2, 1);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, reporter1,
+                                        r1.data(), r1.size());
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, reporter2,
+                                        r2.data(), r2.size());
+    ASSERT_EQ(forwarded.count, 2);
+
+    // Neither delivery is confirmed; the next backoff tick must retransmit BOTH.
+    // Keep the upstream link alive across the advance: an INPUT silent-link
+    // would clear the head and cancel the very retries under test.
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, head));
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(forwarded.count, 4);
+}
+
+// A head change cancels the in-flight report to the old head (releaseHeadPeer),
+// and nothing else re-sends it — unlike the announce path, which re-announces.
+// The pending report must follow the head: re-sent to the successor, and, once
+// delivered, never re-sent again on a later head change.
+inline void rdcPendingReportResentOnHeadChange(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t h1[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t h2[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
+    const uint8_t h3[6] = {0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5};
+    const uint8_t downstream[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture report;
+    captureSends(suite, PktType::kDisconnectReport, report);
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, h1));
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xD1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+
+    // Downstream dies: report goes to h1, but its delivery is never confirmed.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, h1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(report.count, 1);
+    ASSERT_EQ(0, memcmp(report.lastDst.data(), h1, 6));
+
+    // Head changes to h2: the undelivered report must chase the successor.
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, h2));
+    ASSERT_EQ(report.count, 2);
+    EXPECT_EQ(0, memcmp(report.lastDst.data(), h2, 6));
+    DisconnectReportPayload resent{};
+    ASSERT_EQ(report.lastPayload.size(), sizeof(resent));
+    memcpy(&resent, report.lastPayload.data(), sizeof(resent));
+    EXPECT_EQ(0, memcmp(resent.disconnectedMac, downstream, 6));
+
+    // Delivery lands; a later head change must NOT re-send the settled report.
+    suite->transport()->onSendResult(PktType::kDisconnectReport, h2,
+                                     report.lastPayload.data(),
+                                     report.lastPayload.size(), true);
+    suite->deliverHello(suite->inJack, chainHelloFrame(upstream, h3));
+    EXPECT_EQ(report.count, 2);
+}
+
+// During a head transient two mutually-stale non-authorities can each hold the
+// other as head; forwarding a report back to the device it arrived from would
+// bounce it between them, each hop accumulating a fresh pending retry entry.
+inline void rdcReportFromHeldHeadNotForwardedBack(RDCHelloTests* suite) {
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t lost[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture forwarded;
+    captureSends(suite, PktType::kDisconnectReport, forwarded);
+
+    // The INPUT peer advertises no head, so it IS the head this device holds.
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(head, nullptr));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+
+    std::vector<uint8_t> report = disconnectReportBytes(lost, 1);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, head,
+                                        report.data(), report.size());
+    EXPECT_EQ(forwarded.count, 0);
 }
 
 // Receiving a transfer merges the members under the demoted head as their

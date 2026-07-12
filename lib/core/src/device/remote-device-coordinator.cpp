@@ -183,13 +183,22 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
             chainHeadState.store(head | CONFIRMED_BIT);
         });
     }
+    // KEEP_DISTINCT: each report is a distinct event, not current state. A
+    // demoted device routinely forwards two children's reports to the same head
+    // in one tick; per-target supersede would erase the first one's retry slot.
     disconnectReportChannel = transport->channel<DisconnectReportPayload>(
-        PktType::kDisconnectReport);
+        PktType::kDisconnectReport, {}, Resender::SendMode::KEEP_DISTINCT);
     if (disconnectReportChannel != nullptr) {
         disconnectReportChannel->onReceive(
-            [this](const uint8_t*, const DisconnectReportPayload& report) {
-                onDisconnectReport(report);
+            [this](const uint8_t* fromMac, const DisconnectReportPayload& report) {
+                onDisconnectReport(fromMac, report);
             });
+        // Only the newest report is tracked for the head-change re-send; an
+        // older report's late delivery must not clear the newer pending one.
+        disconnectReportChannel->setOnDelivered([this](uint8_t seqId, const uint8_t*) {
+            if (seqId != pendingReportSeqId) return;
+            pendingReportMac.fill(0);
+        });
     }
     headTransferChannel = transport->channel<HeadTransferPayload>(
         PktType::kHeadTransfer);
@@ -922,14 +931,16 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
             if (memcmp(m.data(), mac, 6) == 0) return;
         }
     }
+    // A peer past the other-jack scan has left this jack entirely, so its
+    // context retries are dead regardless of whether the slot survives below: a
+    // retransmit re-registers its target inside the driver (EnsurePeerIsRegistered),
+    // which would re-add a released slot and leak it. cancel() is silent — no
+    // abandon callback fires.
+    if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
+    if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
     // The held head keeps its slot: it stays the roster unicast target even
     // when it is no longer adjacent (adjacency is what just ended here).
     if ((chainHeadState.load() & HEAD_MAC_MASK) == MacToUInt64(mac)) return;
-    // Drop the context retries with the slot: a retransmit re-registers its target
-    // inside the driver (EnsurePeerIsRegistered), which would re-add the slot just
-    // removed and leak it. cancel() is silent — no abandon callback fires.
-    if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
-    if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
     unregisterPeer(mac);
 }
 
@@ -1066,6 +1077,13 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     // confirmed can rise again.
     transferRosterTo(peerEffectiveHead);
     maybeAnnounceToHead();
+    // releaseHeadPeer below cancels the report channel to the old head, and
+    // nothing else re-triggers a report (the announce path re-announces, the
+    // report path has no equivalent), so an undelivered report must chase the
+    // successor head or its member stays a phantom in that roster.
+    if (MacToUInt64(pendingReportMac.data()) != 0) {
+        sendDisconnectReport(peerEffectiveHead, pendingReportMac.data());
+    }
     releaseHeadPeer(previousHead);
 }
 
@@ -1177,15 +1195,22 @@ void RemoteDeviceCoordinator::reportDownstreamLoss(const uint8_t* lostMac) {
         return;
     }
     // Losing the cable to our own head (a ring's closing link) strands nobody:
-    // every member is still chained beneath the head, and a report naming the
-    // head's own MAC would make it prune its entire roster.
+    // every member is still chained beneath the head. Suppressing the
+    // head-naming report here is the outer of two guards — it avoids dead
+    // traffic; the head's own self-report reject is the trust boundary.
     if (headMac48 == MacToUInt64(lostMac)) return;
-    if (disconnectReportChannel == nullptr) return;
     uint8_t headMac[6];
     unpackMac(headMac48, headMac);
+    sendDisconnectReport(headMac, lostMac);
+}
+
+void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
+                                                   const uint8_t* lostMac) {
+    if (disconnectReportChannel == nullptr) return;
     DisconnectReportPayload report{};
     memcpy(report.disconnectedMac, lostMac, 6);
-    disconnectReportChannel->sendReliable(headMac, report);
+    pendingReportSeqId = disconnectReportChannel->sendReliable(headMac, report);
+    memcpy(pendingReportMac.data(), lostMac, 6);
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
@@ -1246,22 +1271,25 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
     if (membershipChangeCallback) membershipChangeCallback();
 }
 
-void RemoteDeviceCoordinator::onDisconnectReport(const DisconnectReportPayload& report) {
+void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
+                                                 const DisconnectReportPayload& report) {
     // Trust boundary: no report may name this device. A member that lost the
     // link to its own head sends nothing, so a self-referential report is
     // bogus — and honoring it would erase the whole roster via the subtree walk.
     if (memcmp(report.disconnectedMac, selfMac.data(), 6) == 0) return;
     if (!isRosterAuthority()) {
         // Head propagation is hop-by-hop, so a just-demoted head can still be
-        // addressed under the old regime. Unlike the announce path there is no
-        // re-send on head change, so forward the edit to the head now held
-        // rather than dropping it.
+        // addressed under the old regime; forward the edit to the head now
+        // held rather than dropping it.
         const uint64_t headMac48 = chainHeadState.load() & HEAD_MAC_MASK;
-        if (headMac48 != 0 && disconnectReportChannel != nullptr) {
-            uint8_t headMac[6];
-            unpackMac(headMac48, headMac);
-            disconnectReportChannel->sendReliable(headMac, report);
-        }
+        // Never forward a report back to the device it arrived from: during a
+        // head transient two mutually-stale non-authorities can each hold the
+        // other as head and bounce the report between them, and with
+        // KEEP_DISTINCT every hop would pile up a fresh pending retry entry.
+        if (headMac48 == 0 || headMac48 == MacToUInt64(fromMac)) return;
+        uint8_t headMac[6];
+        unpackMac(headMac48, headMac);
+        sendDisconnectReport(headMac, report.disconnectedMac);
         return;
     }
     removeChainMemberSubtree(report.disconnectedMac);

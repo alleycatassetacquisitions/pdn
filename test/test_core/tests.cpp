@@ -1410,6 +1410,18 @@ TEST_F(RDCHelloTests, staleAnnounceDeliveryDoesNotConfirm) {
 TEST_F(RDCHelloTests, headAdoptionManagesRadioSlot) {
     rdcHeadAdoptionManagesRadioSlot(this);
 }
+TEST_F(RDCHelloTests, inputHeadLinkDeathCancelsPendingContextSend) {
+    rdcInputHeadLinkDeathCancelsPendingContextSend(this);
+}
+TEST_F(RDCHelloTests, backToBackReportsBothRetryToHead) {
+    rdcBackToBackReportsBothRetryToHead(this);
+}
+TEST_F(RDCHelloTests, pendingReportResentOnHeadChange) {
+    rdcPendingReportResentOnHeadChange(this);
+}
+TEST_F(RDCHelloTests, reportFromHeldHeadNotForwardedBack) {
+    rdcReportFromHeldHeadNotForwardedBack(this);
+}
 
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
