@@ -54,14 +54,14 @@ public:
 
         // Fire deferred SEND_SUCCESS callbacks (drives the reliable transport's
         // ack, exactly as the esp32 driver does from its exec()).
-        while (!sendResultQueue_.empty()) {
-            auto& r = sendResultQueue_.front();
-            auto it = sendStatusHandlers_.find(r.type);
-            if (it != sendStatusHandlers_.end()) {
+        while (!sendResultQueue.empty()) {
+            DeferredSendResult& r = sendResultQueue.front();
+            auto it = sendStatusHandlers.find(r.type);
+            if (it != sendStatusHandlers.end()) {
                 it->second.callback(r.dst, r.data.data(), r.data.size(), true,
                                     it->second.context);
             }
-            sendResultQueue_.pop();
+            sendResultQueue.pop();
         }
     }
 
@@ -105,12 +105,12 @@ public:
         // Report SEND_SUCCESS on the next exec() (never inline: that would
         // re-enter Resender::send mid-transmit). The sim's broker delivery is
         // reliable, so every send succeeds.
-        if (sendStatusHandlers_.count(packetType)) {
+        if (sendStatusHandlers.count(packetType)) {
             DeferredSendResult r;
             r.type = packetType;
             memcpy(r.dst, dst, 6);
             r.data.assign(data, data + length);
-            sendResultQueue_.push(std::move(r));
+            sendResultQueue.push(std::move(r));
         }
         return 0; // Success
     }
@@ -123,12 +123,15 @@ public:
         handlers_.erase(packetType);
     }
 
+    /// Registers the SEND_SUCCESS/SEND_FAIL observer for a PktType; the sim
+    /// reports success for every send on the next exec().
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
-        sendStatusHandlers_[packetType] = {callback, ctx};
+        sendStatusHandlers[packetType] = {callback, ctx};
     }
 
+    /// Drops the send-status observer for a PktType.
     void clearSendStatusHandler(PktType packetType) override {
-        sendStatusHandlers_.erase(packetType);
+        sendStatusHandlers.erase(packetType);
     }
 
     const uint8_t* getGlobalBroadcastAddress() override {
@@ -231,8 +234,8 @@ private:
     };
 
     std::map<PktType, HandlerEntry> handlers_;
-    std::map<PktType, SendStatusEntry> sendStatusHandlers_;
-    std::queue<DeferredSendResult> sendResultQueue_;
+    std::map<PktType, SendStatusEntry> sendStatusHandlers;
+    std::queue<DeferredSendResult> sendResultQueue;
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];

@@ -53,13 +53,14 @@ struct HelloLinkContext {
 
 class HelloIdleState : public State {
 public:
+    /// Binds the shared per-jack context; the machine owns the state.
     explicit HelloIdleState(HelloLinkContext* context)
         : State(HELLO_LINK_IDLE)
         , context(context) {}
 
-    // Every teardown (silent link or context timeout) converges on Idle, so this is
-    // the one seam where a tracked peer is released. The initial mount sees an
-    // all-zero peerMac and fires nothing; clearing keeps peer() true to its contract.
+    /// Every teardown (silent link or context timeout) converges on Idle, so this is
+    /// the one seam where a tracked peer is released. The initial mount sees an
+    /// all-zero peerMac and fires nothing; clearing keeps peer() true to its contract.
     void onStateMounted(Device*) override {
         transitionToConnectingState = false;
         const std::array<uint8_t, 6> zero{};
