@@ -68,16 +68,15 @@ void SymbolState::onStateMounted(PDN* pdn) {
 
     pdn->getLightManager()->stopAnimation();
 
-    LEDState allWhite;
+    LEDState idleState;
     for (int i = 0; i < 9; ++i) {
-        allWhite.leftLights[i]  = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
-        allWhite.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+        idleState.leftLights[i]  = LEDState::SingleLEDState(LEDColor(0, 180, 255), 80);
+        idleState.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 180, 255), 80);
     }
-    allWhite.transmitLight = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
 
     cfg.loop = true;
-    cfg.speed = 255;  // AnimationConfig::speed is uint8_t
-    cfg.initialState = allWhite;
+    cfg.speed = 255;
+    cfg.initialState = idleState;
     
 }
 
@@ -185,10 +184,14 @@ void SymbolState::cycleSymbol() {
 }
 
 void SymbolState::renderSymbolDisplay(PDN* pdn) {
-    pdn->getDisplay()->invalidateScreen();
-    pdn->getDisplay()->setGlyphMode(FontMode::SYMBOL_GLYPH)->renderGlyph(
-        player->getSymbol()->getSymbolGlyph(), 48, 48);
-    pdn->getDisplay()->render();
+    pdn->getDisplay()
+        ->invalidateScreen()
+        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+        ->drawText("<", 6, 32)
+        ->drawText(">", 108, 32)
+        ->setGlyphMode(FontMode::SYMBOL_GLYPH)
+        ->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48)
+        ->render();
 }
 
 void SymbolState::applySteadySymbolLights(PDN* pdn) {

@@ -140,7 +140,6 @@ private:
     static constexpr int kNumInteractions = static_cast<int>(ButtonInteraction::BUTTON_INTERACTION_COUNT);
 
     ControllerWirelessManager* controllerWirelessManager;
-    ButtonIdentifier lastPressedButton = ButtonIdentifier::PRIMARY_BUTTON;
 
     struct PendingPeripheral {
         bool         hasPending = false;
@@ -156,7 +155,6 @@ private:
     SimpleTimer       hapticBlinkTimer_;
     SimpleTimer       ledBlinkTimer_;
 
-    void onGameResponseCommandReceived(GameResponseCommand command);
     void onPeripheralCommandReceived(PeripheralCmd command, uint8_t param1, uint8_t param2);
     void executePeripheralCommand(PDN* pdn, PeripheralCmd command, uint8_t param1, uint8_t param2);
 };

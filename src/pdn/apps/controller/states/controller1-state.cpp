@@ -62,22 +62,12 @@ void Controller1State::onStateMounted(PDN* pdn) {
         }
     }
 
-    controllerWirelessManager->setGameResponseReceivedCallback(
-        std::bind(&Controller1State::onGameResponseCommandReceived, this, std::placeholders::_1));
-
     controllerWirelessManager->setPeripheralCommandReceivedCallback(
         std::bind(&Controller1State::onPeripheralCommandReceived, this,
                   std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 }
 
 void Controller1State::onStateLoop(PDN* pdn) {
-    if (lastPressedButton == ButtonIdentifier::PRIMARY_BUTTON) {
-        pdn->getDisplay()->invalidateScreen()->setGlyphMode(FontMode::TEXT)->drawCenteredText("top", 32)->render();
-    }
-    else if (lastPressedButton == ButtonIdentifier::SECONDARY_BUTTON) {
-        pdn->getDisplay()->invalidateScreen()->setGlyphMode(FontMode::TEXT)->drawCenteredText("bottom", 32)->render();
-    }
-
     if (pendingPeripheral_.hasPending) {
         pendingPeripheral_.hasPending = false;
         executePeripheralCommand(pdn,
@@ -210,7 +200,6 @@ void Controller1State::executePeripheralCommand(PDN* pdn,
 
 void Controller1State::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "Dismounted");
-    controllerWirelessManager->clearCallback();
     controllerWirelessManager->clearPeripheralCallback();
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
@@ -227,15 +216,6 @@ void Controller1State::onStateDismounted(PDN* pdn) {
 
 void Controller1State::sendButtonMessage(ButtonIdentifier buttonId, ButtonInteraction interaction) {
     controllerWirelessManager->sendControllerCommandPacket(ControllerCmd::INTERACTION_REQUEST, buttonId, interaction, SerialIdentifier::OUTPUT_JACK);
-}
-
-void Controller1State::onGameResponseCommandReceived(GameResponseCommand command) {
-    if (command.responseId == GameResponseId::TOP_BUTTON_PRESSED) {
-        lastPressedButton = ButtonIdentifier::PRIMARY_BUTTON;
-    }
-    else if (command.responseId == GameResponseId::BOTTOM_BUTTON_PRESSED) {
-        lastPressedButton = ButtonIdentifier::SECONDARY_BUTTON;
-    }
 }
 
 void Controller1State::onPeripheralCommandReceived(PeripheralCmd command,
