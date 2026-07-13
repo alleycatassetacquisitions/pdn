@@ -1,20 +1,7 @@
 #pragma once
 
 #include "image.hpp"
-
-struct Cursor {
-    int x = 0;
-    int y = 0;
-};
-
-enum class FontMode {
-    TEXT,
-    NUMBER_GLYPH,
-    LOADING_GLYPH,
-    TEXT_INVERTED_SMALL,
-    TEXT_INVERTED_LARGE,
-    SYMBOL_GLYPH
-};
+#include "display-types.hpp"
 
 class Display {
 public:
