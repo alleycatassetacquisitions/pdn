@@ -28,6 +28,8 @@ public:
     // Pixel width of the given text in the current font/glyph mode.
     virtual int getTextWidth(const char* text) = 0;
 
+    virtual int getTextHeight() = 0;
+
     virtual int getWidth() = 0;
 
     Display* drawCenteredText(const char* text, int y) {
@@ -44,5 +46,14 @@ public:
     virtual Display* whiteScreenRightHalf() = 0;
 
 protected:
-    Cursor calculateCursorPosition(DrawCoordinates coordinates);
+    void processTextInstruction(TextPayload instruction);
+    void processImageInstruction(ImagePayload instruction);
+    void processButtonInstruction(ButtonPayload instruction);
+
+    int calculateTextX(TextPayload instruction);
+    int calculateTextY(TextPayload instruction);
+    int calculateButtonX(ButtonPayload instruction);
+    int calculateButtonY(ButtonPayload instruction);
+    int calculateImageX(ImagePayload instruction);
+    int calculateImageY(ImagePayload instruction);
 };

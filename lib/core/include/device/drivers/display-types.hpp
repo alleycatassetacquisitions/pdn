@@ -1,6 +1,7 @@
 #pragma once
 
 #include "image.hpp"
+#include <vector>
 
 constexpr int DISPLAY_INSTRUCTION_CAPACITY = 20;
 constexpr int DISPLAY_TEXT_CAPACITY = 32;
@@ -8,19 +9,6 @@ constexpr int DISPLAY_TEXT_CAPACITY = 32;
 enum class DisplayType {
     SSD1306,
     SSD1309,
-};
-
-enum class Anchor {
-    LEADING,
-    CENTER,
-    TRAILING,
-};
-
-enum class DrawType {
-    TEXT,
-    GLYPH,
-    IMAGE,
-    RAW
 };
 
 struct Cursor {
@@ -37,11 +25,31 @@ enum class FontMode {
     SYMBOL_GLYPH
 };
 
+enum class HAnchor {
+    LEFT,
+    CENTER_LEFT,
+    CENTER,
+    CENTER_RIGHT,
+    RIGHT,
+};
+
+enum class VAnchor {
+    TOP,
+    CENTER,
+    BOTTOM
+};
+
+enum class DrawType {
+    TEXT,
+    IMAGE,
+    BUTTON
+};
+
 struct DrawCoordinates {
     int x = 0;
     int y = 0;
-    Anchor xAnchor = Anchor::LEADING;
-    Anchor yAnchor = Anchor::LEADING;
+    HAnchor xAnchor = HAnchor::LEFT;
+    VAnchor yAnchor = VAnchor::TOP;
 };
 
 struct ImagePayload {
@@ -53,11 +61,14 @@ struct TextPayload {
     const char* text;
     DrawCoordinates coordinates;
     FontMode fontMode;
+
 };
 
-struct GlyphPayload {
-    const char* unicodeForGlyph;
+struct ButtonPayload {
+    const char* text;
     DrawCoordinates coordinates;
+    FontMode fontMode;
+    bool isUTF8 = false;
 };
 
 struct DrawInstruction {
@@ -65,19 +76,49 @@ struct DrawInstruction {
     union {
         ImagePayload imagePayload;
         TextPayload textPayload;
-        GlyphPayload glyphPayload;
+        ButtonPayload buttonPayload;
     };
+
+    DrawInstruction(TextPayload textPayload) : drawType(DrawType::TEXT), textPayload(textPayload) {}
+    DrawInstruction(ImagePayload imagePayload) : drawType(DrawType::IMAGE), imagePayload(imagePayload) {}
+    DrawInstruction(ButtonPayload buttonPayload) : drawType(DrawType::BUTTON), buttonPayload(buttonPayload) {}
 };
 
 class DisplayRender {
 public:
-    virtual ~DisplayRender() = default;
-
-    DisplayRender* addInstruction(DrawInstruction instruction) {
-        instructions.push_back(instruction);
-        return this;
+    DisplayRender() {
+        instructions.reserve(DISPLAY_INSTRUCTION_CAPACITY);
     }
 
-private:
+    virtual ~DisplayRender() = default;
+
+    int addText(TextPayload text) {
+        if (instructions.size() >= DISPLAY_INSTRUCTION_CAPACITY) {
+            return -1;
+        }
+        instructions.emplace_back(DrawInstruction(text));
+        return instructions.size() - 1;
+    }
+
+    int addImage(ImagePayload image) {
+        if (instructions.size() >= DISPLAY_INSTRUCTION_CAPACITY) {
+            return -1;
+        }
+        instructions.emplace_back(DrawInstruction(image));
+        return instructions.size() - 1;
+    }
+
+    int addButton(ButtonPayload button) {
+        if (instructions.size() >= DISPLAY_INSTRUCTION_CAPACITY) {
+            return -1;
+        }
+        instructions.emplace_back(DrawInstruction(button));
+        return instructions.size() - 1;
+    }
+
+    void clearInstructions() {
+        instructions.erase(instructions.begin(), instructions.end());
+    }
+
     std::vector<DrawInstruction> instructions;
 };
