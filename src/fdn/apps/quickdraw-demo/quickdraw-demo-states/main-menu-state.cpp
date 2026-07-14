@@ -4,7 +4,8 @@
 
 namespace {
 static const char* TAG = "MainMenuState";
-static const char* kGameTitle = "QUICKDRAW";
+static const char* kGameTitleLine1 = "QUICKDRAW";
+static const char* kGameTitleLine2 = "PRACTICE";
 }
 
 MainMenuState::MainMenuState(ControllerWirelessManager* controllerWirelessManager)
@@ -15,7 +16,7 @@ MainMenuState::~MainMenuState() {}
 
 void MainMenuState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    renderMainMenuScreen(fdn, kGameTitle);
+    renderMainMenuScreen(fdn, kGameTitleLine1, kGameTitleLine2);
 
     RemoteDeviceCoordinator* remoteDeviceCoordinator = fdn->getRemoteDeviceCoordinator();
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
@@ -54,7 +55,7 @@ void MainMenuState::onStateMounted(FDN* fdn) {
 }
 
 void MainMenuState::onStateLoop(FDN* fdn) {
-    renderMainMenuScreen(fdn, kGameTitle);
+    renderMainMenuScreen(fdn, kGameTitleLine1, kGameTitleLine2);
 }
 
 void MainMenuState::onStateDismounted(FDN* fdn) {

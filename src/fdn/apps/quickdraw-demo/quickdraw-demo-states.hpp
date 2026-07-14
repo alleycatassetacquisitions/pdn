@@ -27,19 +27,21 @@ inline int centeredTextXInHalf(Display* display, const char* text, int halfCente
     return halfCenterX - display->getTextWidth(text) / 2;
 }
 
-inline void renderMainMenuScreen(FDN* fdn, const char* gameTitle) {
+inline void renderMainMenuScreen(FDN* fdn, const char* gameTitleLine1, const char* gameTitleLine2) {
     static constexpr const char* kTutorialOption = "TUTORIAL";
     static constexpr const char* kPlayOption = "PLAY";
 
     constexpr int kLeftButtonCenterX  = 32;
     constexpr int kRightButtonCenterX = 96;
-    constexpr int kTitleY             = 28;
+    constexpr int kTitleLine1Y        = 20;
+    constexpr int kTitleLine2Y        = 36;
     constexpr int kOptionsY           = 56;
 
     Display* d = fdn->getDisplay();
     d->invalidateScreen()
         ->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)
-        ->drawCenteredText(gameTitle, kTitleY)
+        ->drawCenteredText(gameTitleLine1, kTitleLine1Y)
+        ->drawCenteredText(gameTitleLine2, kTitleLine2Y)
         ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
         ->drawText(kTutorialOption, centeredTextXInHalf(d, kTutorialOption, kLeftButtonCenterX), kOptionsY)
         ->drawText(kPlayOption, centeredTextXInHalf(d, kPlayOption, kRightButtonCenterX), kOptionsY)
