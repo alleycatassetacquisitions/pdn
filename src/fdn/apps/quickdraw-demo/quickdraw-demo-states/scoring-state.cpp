@@ -3,7 +3,13 @@
 
 namespace {
 static const char* TAG = "ScoringState";
-}
+
+constexpr int kLeftButtonCenterX  = 32;
+constexpr int kRightButtonCenterX = 96;
+constexpr int kTitleY             = 12;
+constexpr int kNameY              = 36;
+constexpr int kButtonHintY        = 60;
+}  // namespace
 
 ScoringState::ScoringState(ControllerWirelessManager* controllerWirelessManager,
                              int* primaryScore, int* secondaryScore,
@@ -19,6 +25,7 @@ ScoringState::~ScoringState() {}
 
 void ScoringState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
+    fdn_ = fdn;
 
     for (int i = 0; i < kNumNameChars; i++) {
         nameChars_[i] = kFirstChar;
@@ -34,15 +41,18 @@ void ScoringState::onStateMounted(FDN* fdn) {
         auto* ss = static_cast<ScoringState*>(ctx);
         if (ss->phase_ != ScoringPhase::NAME_ENTRY) return;
         ss->currentColumn_ = (ss->currentColumn_ - 1 + kNumNameChars) % kNumNameChars;
+        ss->resetNameEntryInactivityTimer();
     };
     parameterizedCallbackFunction onSecondary = [](void* ctx) {
         auto* ss = static_cast<ScoringState*>(ctx);
         if (ss->phase_ != ScoringPhase::NAME_ENTRY) return;
         ss->currentColumn_ = (ss->currentColumn_ + 1) % kNumNameChars;
+        ss->resetNameEntryInactivityTimer();
     };
     parameterizedCallbackFunction onTertiary = [](void* ctx) {
         auto* ss = static_cast<ScoringState*>(ctx);
         if (ss->phase_ != ScoringPhase::NAME_ENTRY) return;
+        ss->endNameEntry(ss->fdn_);
         ss->phase_ = ScoringPhase::THANKS;
         ss->phaseTimer_.setTimer(kThanksDurationMs);
     };
@@ -64,13 +74,17 @@ void ScoringState::onStateLoop(FDN* fdn) {
         case ScoringPhase::SHOW_SCORE:
             renderScoreIntroScreen(fdn);
             if (phaseTimer_.expired()) {
-                phase_ = ScoringPhase::NAME_ENTRY;
-                phaseTimer_.invalidate();
+                beginNameEntry(fdn);
             }
             break;
 
         case ScoringPhase::NAME_ENTRY:
             renderScoringScreen(fdn);
+            if (inactivityTimer_.expired()) {
+                LOG_W(TAG, "Name entry timed out — returning to main menu");
+                endNameEntry(fdn);
+                readyToTransition_ = true;
+            }
             break;
 
         case ScoringPhase::THANKS:
@@ -96,6 +110,9 @@ void ScoringState::onStateDismounted(FDN* fdn) {
           primaryScore_ ? *primaryScore_ : 0,
           secondaryScore_ ? *secondaryScore_ : 0);
 
+    endNameEntry(fdn);
+    fdn_ = nullptr;
+
     fdn->getPrimaryButton()->removeButtonCallbacks();
     fdn->getSecondaryButton()->removeButtonCallbacks();
     fdn->getTertiaryButton()->removeButtonCallbacks();
@@ -104,6 +121,23 @@ void ScoringState::onStateDismounted(FDN* fdn) {
 
 bool ScoringState::transitionToMainMenu() {
     return readyToTransition_;
+}
+
+void ScoringState::beginNameEntry(FDN* fdn) {
+    phase_ = ScoringPhase::NAME_ENTRY;
+    phaseTimer_.invalidate();
+    resetNameEntryInactivityTimer();
+}
+
+void ScoringState::endNameEntry(FDN* fdn) {
+    (void)fdn;
+    inactivityTimer_.invalidate();
+}
+
+void ScoringState::resetNameEntryInactivityTimer() {
+    if (phase_ == ScoringPhase::NAME_ENTRY) {
+        inactivityTimer_.setTimer(kNameEntryInactivityTimeoutMs);
+    }
 }
 
 void ScoringState::renderScoreIntroScreen(FDN* fdn) {
@@ -154,10 +188,15 @@ void ScoringState::renderScoringScreen(FDN* fdn) {
         }
     }
 
-    fdn->getDisplay()
-        ->invalidateScreen()
+    Display* d = fdn->getDisplay();
+    d->invalidateScreen()
+        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+        ->drawCenteredText("ENTER NAME", kTitleY)
         ->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)
-        ->drawCenteredText(nameLine.c_str(), 40)
+        ->drawCenteredText(nameLine.c_str(), kNameY)
+        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
+        ->drawText("<", centeredTextXInHalf(d, "<", kLeftButtonCenterX), kButtonHintY)
+        ->drawText(">", centeredTextXInHalf(d, ">", kRightButtonCenterX), kButtonHintY)
         ->render();
 }
 
@@ -166,11 +205,13 @@ void ScoringState::onControllerCommandReceived(ControllerCommand command) {
     if (phase_ != ScoringPhase::NAME_ENTRY) return;
     if (command.interactionId != ButtonInteraction::PRESS) return;
 
+    resetNameEntryInactivityTimer();
+
     if (command.buttonId == ButtonIdentifier::PRIMARY_BUTTON) {
         char& c = nameChars_[currentColumn_];
-        c = (c >= kLastChar) ? kFirstChar : static_cast<char>(c + 1);
+        c = (c <= kFirstChar) ? kLastChar : static_cast<char>(c - 1);
     } else if (command.buttonId == ButtonIdentifier::SECONDARY_BUTTON) {
         char& c = nameChars_[currentColumn_];
-        c = (c <= kFirstChar) ? kLastChar : static_cast<char>(c - 1);
+        c = (c >= kLastChar) ? kFirstChar : static_cast<char>(c + 1);
     }
 }
