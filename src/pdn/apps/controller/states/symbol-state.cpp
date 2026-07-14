@@ -59,24 +59,19 @@ void SymbolState::onStateMounted(PDN* pdn) {
         static_cast<SymbolState*>(ctx)->cycleSymbol();
     };
 
-    pdn->getPrimaryButton()->setButtonPress(cycleSymbolPress, this, ButtonInteraction::CLICK);
-    pdn->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::CLICK);
+    pdn->getPrimaryButton()->setButtonPress(cycleSymbolPress, this, ButtonInteraction::PRESS);
+    pdn->getSecondaryButton()->setButtonPress(sendSymbolToFDN, this, ButtonInteraction::PRESS);
 
     symbolWirelessManager->setPacketReceivedCallback(
         std::bind(&SymbolState::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
 
     pdn->getLightManager()->stopAnimation();
-
-    LEDState idleState;
-    for (int i = 0; i < 9; ++i) {
-        idleState.leftLights[i]  = LEDState::SingleLEDState(LEDColor(0, 180, 255), 80);
-        idleState.rightLights[i] = LEDState::SingleLEDState(LEDColor(0, 180, 255), 80);
-    }
+    pdn->getLightManager()->clear();
 
     cfg.loop = true;
     cfg.speed = 255;
-    cfg.initialState = idleState;
+    // cfg.initialState remains default (all LEDs off)
     
 }
 
@@ -186,9 +181,9 @@ void SymbolState::cycleSymbol() {
 void SymbolState::renderSymbolDisplay(PDN* pdn) {
     pdn->getDisplay()
         ->invalidateScreen()
-        ->setGlyphMode(FontMode::TEXT_INVERTED_SMALL)
-        ->drawText("<", 6, 32)
-        ->drawText(">", 108, 32)
+        ->setGlyphMode(FontMode::TEXT_INVERTED_LARGE)
+        ->drawText("<", 6, 36)
+        ->drawText(">", 108, 36)
         ->setGlyphMode(FontMode::SYMBOL_GLYPH)
         ->renderGlyph(player->getSymbol()->getSymbolGlyph(), 48, 48)
         ->render();

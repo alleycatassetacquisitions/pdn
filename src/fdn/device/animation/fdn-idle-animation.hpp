@@ -3,8 +3,8 @@
 #include "device/animation/animation-base.hpp"
 
 // Gentle breathing animation on FDN LEDs.
-// leftLights[0-8]  → fin lights
-// rightLights[0-8] → first 9 recess lights
+// leftLights[0-8]  → fin lights   (hunter green — one player side)
+// rightLights[0-8] → first 9 recess lights (bounty orange — other player side)
 class FDNIdleAnimation : public AnimationBase {
 public:
     FDNIdleAnimation() = default;
@@ -30,10 +30,12 @@ protected:
             if (step_-- == 0) { step_ = 0; goingUp_ = true; }
         }
 
-        static constexpr LEDColor kColor(0, 180, 255);
+        // Hunter green on fin lights, bounty orange on recess lights — matching PDN role palettes.
+        static constexpr LEDColor kHunter(0, 200, 100);
+        static constexpr LEDColor kBounty(237, 75, 0);
         for (uint8_t i = 0; i < 9; ++i) {
-            currentState_.leftLights[i]  = LEDState::SingleLEDState(kColor, brightness_);
-            currentState_.rightLights[i] = LEDState::SingleLEDState(kColor, brightness_ / 2);
+            currentState_.leftLights[i]  = LEDState::SingleLEDState(kHunter, brightness_);
+            currentState_.rightLights[i] = LEDState::SingleLEDState(kBounty, brightness_ / 2);
         }
         return currentState_;
     }

@@ -32,6 +32,10 @@ public:
         return disconnectDebounce_.heldFor(!isConnected(), kDisconnectDebounceMs);
     }
 
+    // Reset the disconnect debounce so a stale elapsed timer from a previous
+    // session cannot fire on the very first tick of a fresh app mount.
+    void resetDebounce() { disconnectDebounce_.reset(); }
+
 protected:
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
 

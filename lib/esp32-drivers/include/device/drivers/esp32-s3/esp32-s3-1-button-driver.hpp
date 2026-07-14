@@ -84,6 +84,18 @@ class Esp32S31ButtonDriver : public ButtonDriverInterface {
     }
 
     void removeButtonCallbacks() override {
+        // Overwrite every callback slot with a no-op before resetting the
+        // state machine. OneButton's reset() only clears timing state — it
+        // does not detach the stored function pointers, so stale handlers
+        // from a previous state would otherwise keep firing.
+        static parameterizedCallbackFunction kNoop = [](void*) {};
+        button.attachPress(kNoop, nullptr);
+        button.attachClick(kNoop, nullptr);
+        button.attachDoubleClick(kNoop, nullptr);
+        button.attachMultiClick(kNoop, nullptr);
+        button.attachLongPressStart(kNoop, nullptr);
+        button.attachDuringLongPress(kNoop, nullptr);
+        button.attachLongPressStop(kNoop, nullptr);
         button.reset();
     }
 

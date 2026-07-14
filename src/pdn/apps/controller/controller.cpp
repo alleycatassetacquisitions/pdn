@@ -19,9 +19,19 @@ void Controller::onStateMounted(Device* device) {
         TypedStateMachine<PDN>::onStateMounted(device);
         return;
     }
-    // On re-entry (e.g. after a brief Quickdraw detour), resume directly at
-    // Controller1 — symbol matching is already done and should not restart.
-    skipToState(device, kController1StateIndex);
+    // On re-entry, always restart symbol matching — the FDN resets to
+    // symbol-lock after each session, so the PDN must go through symbol
+    // exchange again. Use skipToState so populateStateMap is NOT called
+    // a second time (it would duplicate every state in the map).
+    //
+    // Also reset the disconnect debounce. When the previous session ended via
+    // a disconnect, the debounce timer is left in an elapsed state. If the FDN
+    // port isn't yet CONNECTED in the RDC on the first loop tick after mount,
+    // isPersistentlyDisconnected() would immediately return true (the timer is
+    // already expired) and kick the app back to QUICKDRAW before the FDN can
+    // re-register, causing rapid mount/dismount cycles on reconnection.
+    disconnectPolicy.resetDebounce();
+    skipToState(device, kSymbolStateIndex);
 }
 
 void Controller::populateStateMap() {

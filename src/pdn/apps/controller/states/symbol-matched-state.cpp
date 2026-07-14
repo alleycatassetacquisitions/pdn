@@ -1,45 +1,11 @@
 #include "apps/controller/controller-states.hpp"
 #include "device/device.hpp"
 #include "device/drivers/logger.hpp"
-#include "device/animation/animation-base.hpp"
 #include "game/quickdraw-resources.hpp"
-#include <random>
+#include "device/animation/hunter-win-animation.hpp"
+#include "device/animation/bounty-win-animation.hpp"
 
 static const char* TAG = "SymbolMatched";
-
-namespace {
-
-class MatchSuccessAnimation : public AnimationBase {
-protected:
-    void onInit() override {
-        currentState_ = config_.initialState;
-        currentState_.clear();
-    }
-
-    LEDState onAnimate() override {
-        for (uint8_t i = 0; i < 9; ++i) {
-            currentState_.leftLights[i].brightness =
-                static_cast<uint8_t>(currentState_.leftLights[i].brightness * 92 / 100);
-            currentState_.rightLights[i].brightness =
-                static_cast<uint8_t>(currentState_.rightLights[i].brightness * 92 / 100);
-        }
-        static constexpr LEDColor kWhite(255, 255, 255);
-        static constexpr LEDColor kGold(255, 180, 0);
-        if (rng_() % 3 == 0) {
-            uint8_t idx  = static_cast<uint8_t>(rng_() % 9);
-            bool    left = (rng_() % 2 == 0);
-            LEDColor col = (rng_() % 2 == 0) ? kWhite : kGold;
-            if (left) currentState_.leftLights[idx]  = LEDState::SingleLEDState(col, 255);
-            else      currentState_.rightLights[idx] = LEDState::SingleLEDState(col, 255);
-        }
-        return currentState_;
-    }
-
-private:
-    std::minstd_rand rng_{42};
-};
-
-}  // namespace
 
 SymbolMatchedState::SymbolMatchedState(Player* player, RemoteDeviceCoordinator* remoteDeviceCoordinator, SymbolWirelessManager* symbolWirelessManager, ControllerWirelessManager* controllerWirelessManager) : ConnectState<PDN>(remoteDeviceCoordinator, SYMBOL_MATCHED) {
     this->player = player;
@@ -68,12 +34,15 @@ void SymbolMatchedState::onStateMounted(PDN* pdn) {
         std::bind(&SymbolMatchedState::onSymbolMatchCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::OUTPUT_JACK);
 
+    AnimationBase* animation = player->isHunter()
+        ? (AnimationBase*)new HunterWinAnimation()
+        : (AnimationBase*)new BountyWinAnimation();
     cfg.loop = true;
-    cfg.speed = 20;
+    cfg.speed = 16;
     cfg.initialState = LEDState();
     cfg.loopDelayMs = 0;
 
-    pdn->getLightManager()->startAnimation(new MatchSuccessAnimation(), cfg);
+    pdn->getLightManager()->startAnimation(animation, cfg);
 
     if (getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::FDN) {
         const uint8_t* fdnMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
