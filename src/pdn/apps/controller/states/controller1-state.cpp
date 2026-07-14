@@ -13,7 +13,6 @@
 
 namespace {
 static const char* TAG = "Controller1State";
-static const char* kStateLabel = "CONTROLLER 1";
 
 class TransmitOnAnimation : public AnimationBase {
 protected:
@@ -33,10 +32,7 @@ Controller1State::~Controller1State() {
 
 void Controller1State::onStateMounted(PDN* pdn) {
     LOG_W(TAG, "Mounted");
-    auto* display = pdn->getDisplay();
-    display->invalidateScreen()->setGlyphMode(FontMode::TEXT);
-    display->drawCenteredText(kStateLabel, 32);
-    display->render();
+    pdn->getDisplay()->invalidateScreen()->render();
 
     // Register all ButtonInteraction types for both buttons.
     // Each interaction gets its own ButtonCallbackCtx so the callback knows
