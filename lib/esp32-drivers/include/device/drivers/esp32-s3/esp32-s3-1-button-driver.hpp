@@ -14,6 +14,9 @@ class Esp32S31ButtonDriver : public ButtonDriverInterface {
     ~Esp32S31ButtonDriver() override = default;
 
     int initialize() override {
+        // Negative debounce: detect presses immediately (no leading-edge
+        // delay) while still debouncing releases to filter mechanical noise.
+        button.setDebounceMs(-20);
         return 0;
     }
 

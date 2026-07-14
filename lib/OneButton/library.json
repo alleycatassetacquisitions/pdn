@@ -1,0 +1,19 @@
+{
+  "name": "OneButton",
+  "version": "2.6.2",
+  "keywords": "arduino, button, pushbutton",
+  "description": "Patched local copy: press callback fires on every physical press, including subsequent presses within a multi-click sequence.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mathertel/OneButton"
+  },
+  "authors": {
+    "name": "Matthias Hertel",
+    "email": "mathertel@hotmail.com",
+    "url": "https://www.mathertel.de/impressum.aspx"
+  },
+  "license": "BSD-3-Clause",
+  "homepage": "http://www.mathertel.de/Arduino/OneButtonLibrary.aspx",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
