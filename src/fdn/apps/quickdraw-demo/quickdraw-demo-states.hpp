@@ -1,9 +1,12 @@
 #pragma once
 
+#include "apps/quickdraw-demo/quickdraw-practice.hpp"
 #include "state/state.hpp"
 #include "device/fdn.hpp"
 #include "device/drivers/display.hpp"
 #include "wireless/controller-wireless-manager.hpp"
+#include "utils/simple-timer.hpp"
+#include <string>
 
 enum QuickdrawDemoStateId {
     MAIN_MENU,
@@ -65,7 +68,7 @@ private:
 
 class TutorialState : public TypedState<FDN> {
 public:
-    explicit TutorialState();
+    explicit TutorialState(ControllerWirelessManager* controllerWirelessManager);
     ~TutorialState();
 
     void onStateMounted(FDN* fdn) override;
@@ -73,11 +76,49 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToMainMenu();
+
+private:
+    enum class Phase {
+        INTRO_1,
+        INTRO_2,
+        INTRO_3,
+        RULE_1,
+        RULE_2,
+        RULE_3,
+        READY,
+        COUNTDOWN,
+        TRY_AGAIN,
+        WIN_OUTRO_1,
+        WIN_OUTRO_2,
+    };
+
+    ControllerWirelessManager* controllerWirelessManager_;
+    QuickdrawPracticeSession session_;
+    Phase phase_ = Phase::INTRO_1;
+    bool showingOutcome_ = false;
+    bool transitionToMainMenuState_ = false;
+    bool pendingBottomButton_ = false;
+    SimpleTimer messageTimer_;
+
+    static constexpr unsigned long kMessageAutoAdvanceMs = 3000;
+
+    static bool isMessagePhase(Phase phase);
+    static bool phaseWaitsForButton(Phase phase);
+
+    void showCurrentMessage(FDN* fdn);
+    void restartMessageTimer();
+    void advanceMessagePhase(FDN* fdn);
+    void onControllerCommandReceived(ControllerCommand command);
+    void handleBottomButton(FDN* fdn);
+    void beginReadyCountdown(FDN* fdn);
+    void handleMatchOutcome(FDN* fdn);
 };
 
 class GameState : public TypedState<FDN> {
 public:
-    explicit GameState();
+    explicit GameState(ControllerWirelessManager* controllerWirelessManager,
+                       int* primaryScore,
+                       int* secondaryScore);
     ~GameState();
 
     void onStateMounted(FDN* fdn) override;
@@ -85,11 +126,37 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToScoring();
+
+private:
+    ControllerWirelessManager* controllerWirelessManager_;
+    int* primaryScore_;
+    int* secondaryScore_;
+    QuickdrawPracticeSession session_;
+
+    int winCount_ = 0;
+    unsigned long reactionTimeTotalMs_ = 0;
+    int reactionSampleCount_ = 0;
+    bool showingOutcome_ = false;
+    bool showingRoundResult_ = false;
+    bool transitionToScoringState_ = false;
+    QuickdrawPracticeOutcome lastOutcome_ = QuickdrawPracticeOutcome::NONE;
+    unsigned long lastReactionMs_ = 0;
+    SimpleTimer roundResultTimer_;
+
+    static constexpr unsigned long kRoundResultDisplayMs =
+        QuickdrawCountdown::kRoundResultDurationMs;
+
+    void startNextMatch(FDN* fdn);
+    void onControllerCommandReceived(ControllerCommand command);
+    void handleMatchOutcome(FDN* fdn);
+    void finalizeScores();
 };
 
 class ScoringState : public TypedState<FDN> {
 public:
-    explicit ScoringState();
+    explicit ScoringState(ControllerWirelessManager* controllerWirelessManager,
+                          int* primaryScore, int* secondaryScore,
+                          const std::string* primaryLabel, const std::string* secondaryLabel);
     ~ScoringState();
 
     void onStateMounted(FDN* fdn) override;
@@ -97,4 +164,31 @@ public:
     void onStateDismounted(FDN* fdn) override;
 
     bool transitionToMainMenu();
+
+private:
+    enum class ScoringPhase { SHOW_SCORE, NAME_ENTRY, THANKS, FAREWELL };
+
+    static constexpr int           kNumNameChars        = 3;
+    static constexpr char          kFirstChar           = 'A';
+    static constexpr char          kLastChar            = 'Z';
+    static constexpr unsigned long kShowScoreDurationMs = 3000;
+    static constexpr unsigned long kThanksDurationMs    = 3000;
+    static constexpr unsigned long kFarewellDurationMs  = 3000;
+
+    ControllerWirelessManager* controllerWirelessManager_;
+    int* primaryScore_;
+    int* secondaryScore_;
+    const std::string* primaryLabel_;
+    const std::string* secondaryLabel_;
+
+    ScoringPhase phase_       = ScoringPhase::SHOW_SCORE;
+    SimpleTimer  phaseTimer_;
+    char nameChars_[kNumNameChars] = {'A', 'A', 'A'};
+    int  currentColumn_       = 0;
+    bool readyToTransition_   = false;
+
+    void renderScoreIntroScreen(FDN* fdn);
+    void renderScoringScreen(FDN* fdn);
+    void renderMessageScreen(FDN* fdn, const char* line1, const char* line2 = nullptr, const char* line3 = nullptr);
+    void onControllerCommandReceived(ControllerCommand command);
 };

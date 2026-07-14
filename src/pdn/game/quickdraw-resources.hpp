@@ -298,31 +298,9 @@ static void renderLoadingScreen(Display* display) {
     display->render();
 }
 
-static const LEDState COUNTDOWN_THREE_STATE = LEDState();
+#include "game/quickdraw-countdown.hpp"
 
-static const LEDState COUNTDOWN_TWO_STATE = [](){
-    LEDState state;
-    for(int i = 3; i < 5; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-    }
-    return state;
-}();
-
-static const LEDState COUNTDOWN_ONE_STATE = [](){
-    LEDState state;
-    for(int i = 3; i < 7; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-    }
-    return state;
-}();
-
-static const LEDState COUNTDOWN_DUEL_STATE = [](){
-    LEDState state;
-    for(int i = 3; i < 9; i++) {
-        state.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-        state.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 255);
-    }
-    return state;
-}();
+static const LEDState& COUNTDOWN_THREE_STATE = QuickdrawCountdown::threeLedState();
+static const LEDState& COUNTDOWN_TWO_STATE = QuickdrawCountdown::twoLedState();
+static const LEDState& COUNTDOWN_ONE_STATE = QuickdrawCountdown::oneLedState();
+static const LEDState& COUNTDOWN_DUEL_STATE = QuickdrawCountdown::drawLedState();

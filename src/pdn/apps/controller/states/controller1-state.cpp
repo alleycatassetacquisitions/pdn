@@ -7,8 +7,11 @@
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
+#include "device/animation/countdown-animation.hpp"
 #include "device/animation/hunter-win-animation.hpp"
 #include "device/animation/bounty-win-animation.hpp"
+#include "device/animation/lose-animation.hpp"
+#include "game/quickdraw-countdown.hpp"
 #include "symbol.hpp"
 
 namespace {
@@ -170,6 +173,36 @@ void Controller1State::executePeripheralCommand(PDN* pdn,
             } else if (param1 == 4) {
                 // BountyWinAnimation — uses its own hardcoded bounty colors
                 pdn->getLightManager()->startAnimation(new BountyWinAnimation(), cfg);
+
+            } else if (param1 == static_cast<uint8_t>(QuickdrawCountdown::PeripheralAnimationId::COUNTDOWN)) {
+                cfg.loop = false;
+                cfg.speed = 16;
+                cfg.loopDelayMs = 0;
+                switch (param2) {
+                    case static_cast<uint8_t>(QuickdrawCountdown::Step::THREE):
+                        cfg.initialState = QuickdrawCountdown::threeLedState();
+                        break;
+                    case static_cast<uint8_t>(QuickdrawCountdown::Step::TWO):
+                        cfg.initialState = QuickdrawCountdown::twoLedState();
+                        break;
+                    case static_cast<uint8_t>(QuickdrawCountdown::Step::ONE):
+                        cfg.initialState = QuickdrawCountdown::oneLedState();
+                        break;
+                    case static_cast<uint8_t>(QuickdrawCountdown::Step::DRAW):
+                        cfg.initialState = QuickdrawCountdown::drawLedState();
+                        break;
+                    default:
+                        cfg.initialState = QuickdrawCountdown::threeLedState();
+                        break;
+                }
+                pdn->getLightManager()->startAnimation(new CountdownAnimation(), cfg);
+
+            } else if (param1 == static_cast<uint8_t>(QuickdrawCountdown::PeripheralAnimationId::LOSE)) {
+                cfg.loop = true;
+                cfg.speed = 16;
+                cfg.loopDelayMs = 0;
+                cfg.initialState = LEDState();
+                pdn->getLightManager()->startAnimation(new LoseAnimation(), cfg);
 
             } else {
                 LOG_W(TAG, "Unknown animation id=%u", param1);
