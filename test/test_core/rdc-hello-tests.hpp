@@ -2135,6 +2135,44 @@ inline void rdcAnnounceEvictsStaleUpstreamClaimant(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(members[0].data(), memberD, 6));
 }
 
+// At a full roster, a new member announcing an upstream a stale claimant still
+// holds must be admitted: eviction runs before the capacity check, so freeing
+// the stale slot lets the fresh claim land instead of being dropped as full.
+inline void rdcFullRosterEvictsStaleThenAdmits(RDCHelloTests* suite) {
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    // Fill to capacity with a flat roster: member i hangs off its own distinct
+    // upstream, so no member is another's subtree.
+    uint8_t staleUpstream[6] = {0x80, 0x02, 0x03, 0x04, 0x05, 0x06};
+    uint8_t staleMember[6] = {0x30, 0x02, 0x03, 0x04, 0x05, 0x06};
+    for (uint8_t i = 0; i < MAX_CHAIN_MEMBERS; ++i) {
+        uint8_t member[6] = {static_cast<uint8_t>(0x30 + i), 0x02, 0x03, 0x04, 0x05, 0x06};
+        uint8_t upstream[6] = {static_cast<uint8_t>(0x80 + i), 0x02, 0x03, 0x04, 0x05, 0x06};
+        std::vector<uint8_t> a = announceBytes(upstream, 1);
+        suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, member, a.data(), a.size());
+    }
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+
+    // A new member claims the stale member's upstream at a full roster.
+    uint8_t newMember[6] = {0xFE, 0x02, 0x03, 0x04, 0x05, 0x06};
+    std::vector<uint8_t> a = announceBytes(staleUpstream, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, newMember, a.data(), a.size());
+
+    std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
+    EXPECT_EQ(members.size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+    bool hasNew = false;
+    bool hasStale = false;
+    for (const auto& m : members) {
+        if (memcmp(m.data(), newMember, 6) == 0) hasNew = true;
+        if (memcmp(m.data(), staleMember, 6) == 0) hasStale = true;
+    }
+    EXPECT_TRUE(hasNew);
+    EXPECT_FALSE(hasStale);
+}
+
 // A resend of the SAME member's announce (fresh seqId, same content) is not a
 // competing claim and must evict nobody.
 inline void rdcDuplicateReannounceDoesNotEvict(RDCHelloTests* suite) {
@@ -2164,7 +2202,7 @@ inline void rdcDuplicateReannounceDoesNotEvict(RDCHelloTests* suite) {
 // A stale head-transfer snapshot must not re-fork an upstream a fresher announce
 // already claimed: Y announces Y->b1, then a demoted head's older transfer lists
 // X->b1 (X absent). The transfer is skipped, so b1 keeps its one downstream and
-// the roster stays a list. Without the upstreamHeldByOther skip, X inserts and
+// the roster stays a list. Without the isUpstreamHeldByOther skip, X inserts and
 // b1 forks.
 inline void rdcStaleTransferDoesNotReforkClaimedUpstream(RDCHelloTests* suite) {
     const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};

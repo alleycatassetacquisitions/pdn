@@ -1131,8 +1131,11 @@ void RemoteDeviceCoordinator::releaseHeadPeer(uint64_t headMac48) {
             if (memcmp(m.data(), mac, 6) == 0) return;
         }
     }
-    // Roster retries to a departed head are dead traffic; drop them with the
-    // slot so a retransmit can't re-register it inside the driver.
+    // Past the keep-slot guards: the head truly departed (no adjacent link or
+    // daisy record still names it). Only on this actual-release path are its
+    // roster retries dead traffic; drop them with the slot so a retransmit can't
+    // re-register it inside the driver. When a keep-slot guard retained the slot
+    // above, the retries are left to self-heal (a seqId bump ignores late acks).
     if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(mac);
     if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(mac);
     if (headTransferChannel != nullptr) headTransferChannel->cancel(mac);
@@ -1226,8 +1229,9 @@ void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
     // Everything downstream of the departed MAC is unreachable too. Forks are
-    // impossible by construction (transfers carry true upstreams, announces
-    // evict stale claimants), so this walk is a list traversal that finds at
+    // impossible by construction (transfers skip a member whose upstream slot is
+    // already held via isUpstreamHeldByOther, announces evict stale claimants),
+    // so this walk is a list traversal that finds at
     // most one child per step by scanning — no reverse index kept. Tolerating
     // multiple children anyway is cheap defense. `gone` doubles as the frontier.
     std::vector<std::array<uint8_t, 6>> gone;
@@ -1277,12 +1281,15 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
     memcpy(member.data(), fromMac, 6);
     memcpy(upstream.data(), announce.upstreamMac, 6);
     const bool isNew = chainRoster.count(member) == 0;
+    if (!isNew && chainRoster[member] == upstream) return;  // resend duplicate
+    // Evict before the capacity check: a new member claiming an upstream a stale
+    // claimant still occupies would otherwise be dropped at a full roster even
+    // though eviction frees the slot. Re-read size after the eviction.
+    evictStaleUpstreamClaimant(member, upstream);
     if (isNew && chainRoster.size() >= MAX_CHAIN_MEMBERS) {
         LOG_W("RDC", "chain roster full (%u); dropping announce", MAX_CHAIN_MEMBERS);
         return;
     }
-    if (!isNew && chainRoster[member] == upstream) return;  // resend duplicate
-    evictStaleUpstreamClaimant(member, upstream);
     chainRoster[member] = upstream;
     if (membershipChangeCallback) membershipChangeCallback();
 }
@@ -1305,7 +1312,7 @@ void RemoteDeviceCoordinator::evictStaleUpstreamClaimant(
     }
 }
 
-bool RemoteDeviceCoordinator::upstreamHeldByOther(
+bool RemoteDeviceCoordinator::isUpstreamHeldByOther(
     const std::array<uint8_t, 6>& upstream, const std::array<uint8_t, 6>& member) const {
     for (const auto& entry : chainRoster) {
         if (entry.second == upstream && entry.first != member) return true;
@@ -1366,7 +1373,7 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* /*fromMac*/,
         memcpy(upstream.data(), transfer.upstreamMacs[i], 6);
         if (memcmp(member.data(), selfMac.data(), 6) == 0) continue;  // never roster self
         if (chainRoster.count(member) != 0) continue;
-        if (upstreamHeldByOther(upstream, member)) continue;
+        if (isUpstreamHeldByOther(upstream, member)) continue;
         if (chainRoster.size() >= MAX_CHAIN_MEMBERS) break;
         chainRoster[member] = upstream;
         changed = true;

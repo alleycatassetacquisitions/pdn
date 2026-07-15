@@ -482,8 +482,8 @@ private:
                                     const std::array<uint8_t, 6>& upstream);
     // True when some member other than `member` already holds `upstream`. The
     // transfer path queries this to skip (not evict) a colliding insert.
-    bool upstreamHeldByOther(const std::array<uint8_t, 6>& upstream,
-                             const std::array<uint8_t, 6>& member) const;
+    bool isUpstreamHeldByOther(const std::array<uint8_t, 6>& upstream,
+                               const std::array<uint8_t, 6>& member) const;
     // Demotion handoff: unicast the roster to the successor head, then clear it.
     void transferRosterTo(const uint8_t* newHeadMac);
     void onConnectionAnnounce(const uint8_t* fromMac, const ConnectionAnnouncePayload& announce);

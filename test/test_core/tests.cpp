@@ -1389,6 +1389,9 @@ TEST_F(RDCHelloTests, headTransferReceiveMergesAndPrunes) {
 TEST_F(RDCHelloTests, announceEvictsStaleUpstreamClaimant) {
     rdcAnnounceEvictsStaleUpstreamClaimant(this);
 }
+TEST_F(RDCHelloTests, fullRosterEvictsStaleThenAdmits) {
+    rdcFullRosterEvictsStaleThenAdmits(this);
+}
 TEST_F(RDCHelloTests, duplicateReannounceDoesNotEvict) {
     rdcDuplicateReannounceDoesNotEvict(this);
 }
