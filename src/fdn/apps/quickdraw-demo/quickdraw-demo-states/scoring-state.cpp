@@ -1,5 +1,6 @@
 #include "apps/quickdraw-demo/quickdraw-demo-states.hpp"
 #include "device/drivers/logger.hpp"
+#include "game/peripheral-glyphs.hpp"
 
 namespace {
 static const char* TAG = "ScoringState";
@@ -127,11 +128,17 @@ void ScoringState::beginNameEntry(FDN* fdn) {
     phase_ = ScoringPhase::NAME_ENTRY;
     phaseTimer_.invalidate();
     resetNameEntryInactivityTimer();
+    controllerWirelessManager_->sendPeripheralCommandPacket(
+        PeripheralCmd::DISPLAY_GLYPH,
+        static_cast<uint8_t>(PeripheralGlyphId::SCORING),
+        0);
 }
 
 void ScoringState::endNameEntry(FDN* fdn) {
     (void)fdn;
     inactivityTimer_.invalidate();
+    controllerWirelessManager_->sendPeripheralCommandPacket(
+        PeripheralCmd::CLEAR_DISPLAY, 0, 0);
 }
 
 void ScoringState::resetNameEntryInactivityTimer() {

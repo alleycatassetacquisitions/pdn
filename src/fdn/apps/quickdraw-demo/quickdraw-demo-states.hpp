@@ -102,7 +102,7 @@ private:
     bool pendingBottomButton_ = false;
     SimpleTimer messageTimer_;
 
-    static constexpr unsigned long kMessageAutoAdvanceMs = 3000;
+    static constexpr unsigned long kMessageAutoAdvanceMs = 5000;
 
     static bool isMessagePhase(Phase phase);
     static bool phaseWaitsForButton(Phase phase);
