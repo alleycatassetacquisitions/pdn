@@ -151,6 +151,27 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
 
+// A watchdog read observing now < lastHelloMs (backwards clock step) must
+// clamp the gap to 0, not underflow to ~ULONG_MAX and kill a live link (#173).
+inline void rdcHelloWatchdogClampsClockRaceToZero(RDCHelloTests* suite) {
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    // now (999) behind the stamp (1000): the racing-stamp shape.
+    suite->fakeClock->setTime(999);
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    // The clamp must not have defanged the watchdog: a real silent gap still kills.
+    suite->fakeClock->setTime(1000 + RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+}
+
 // (a) A HELLO from a new MAC drives that jack Idle -> Connecting.
 inline void rdcHelloNewMacDrivesConnecting(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),

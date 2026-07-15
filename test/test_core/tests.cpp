@@ -1311,6 +1311,9 @@ TEST_F(RDCHelloTests, contextCompleteConnects) {
 TEST_F(RDCHelloTests, silentLinkDisconnects) {
     rdcHelloSilentLinkDisconnects(this);
 }
+TEST_F(RDCHelloTests, watchdogClampsClockRaceToZero) {
+    rdcHelloWatchdogClampsClockRaceToZero(this);
+}
 
 TEST_F(RDCHelloTests, emitProducesFramesOnBothJacks) {
     rdcHelloEmitProducesFramesOnBothJacks(this);
