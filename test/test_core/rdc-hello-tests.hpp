@@ -1349,13 +1349,16 @@ inline std::vector<uint8_t> disconnectReportBytes(const uint8_t* mac, uint8_t se
     return bytes;
 }
 
-inline std::vector<uint8_t> headTransferBytes(const std::vector<std::array<uint8_t, 6>>& macs,
-                                              uint8_t seqId) {
+// Each entry is a (member, upstream) pair mirroring the roster edge it carries.
+inline std::vector<uint8_t> headTransferBytes(
+    const std::vector<std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>>>& entries,
+    uint8_t seqId) {
     HeadTransferPayload payload{};
     payload.seqId = seqId;
-    payload.memberCount = static_cast<uint8_t>(macs.size());
-    for (size_t i = 0; i < macs.size() && i < MAX_CHAIN_MEMBERS; ++i) {
-        memcpy(payload.memberMacs[i], macs[i].data(), 6);
+    payload.memberCount = static_cast<uint8_t>(entries.size());
+    for (size_t i = 0; i < entries.size() && i < MAX_CHAIN_MEMBERS; ++i) {
+        memcpy(payload.memberMacs[i], entries[i].first.data(), 6);
+        memcpy(payload.upstreamMacs[i], entries[i].second.data(), 6);
     }
     std::vector<uint8_t> bytes(sizeof(payload));
     memcpy(bytes.data(), &payload, sizeof(payload));
@@ -1602,6 +1605,9 @@ inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
     // Map order is byte-lexicographic: memberA (0xA1...) precedes memberB (0xB2...).
     EXPECT_EQ(0, memcmp(sent.memberMacs[0], memberA, 6));
     EXPECT_EQ(0, memcmp(sent.memberMacs[1], memberB, 6));
+    // Each member travels with its recorded upstream, preserving chain order.
+    EXPECT_EQ(0, memcmp(sent.upstreamMacs[0], suite->localMac, 6));
+    EXPECT_EQ(0, memcmp(sent.upstreamMacs[1], memberA, 6));
     EXPECT_EQ(membershipChanges, 3);
     EXPECT_TRUE(suite->rdc.getChainMembers().empty());
 }
@@ -1680,10 +1686,13 @@ inline void rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(RDCHelloTests* suit
     suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, member, a1.data(), a1.size());
     ASSERT_EQ(suite->rdc.getChainMembers().size(), 1u);
 
-    // The demoted head's transfer arrives late, listing the same member.
+    // The demoted head's transfer arrives late, listing the same member under
+    // its stale pre-merge upstream (the demoted head itself).
     std::array<uint8_t, 6> m{};
+    std::array<uint8_t, 6> staleUpstream{};
     memcpy(m.data(), member, 6);
-    std::vector<uint8_t> handoff = headTransferBytes({m}, 5);
+    memcpy(staleUpstream.data(), oldHead, 6);
+    std::vector<uint8_t> handoff = headTransferBytes({{m, staleUpstream}}, 5);
     suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
                                         handoff.data(), handoff.size());
 
@@ -1740,8 +1749,10 @@ inline void rdcStandaloneIgnoresLateRosterTraffic(RDCHelloTests* suite) {
     std::vector<uint8_t> late = announceBytes(oldHead, 3);
     suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, m1, late.data(), late.size());
     std::array<uint8_t, 6> m{};
+    std::array<uint8_t, 6> mUpstream{};
     memcpy(m.data(), m2, 6);
-    std::vector<uint8_t> handoff = headTransferBytes({m}, 4);
+    memcpy(mUpstream.data(), oldHead, 6);
+    std::vector<uint8_t> handoff = headTransferBytes({{m, mUpstream}}, 4);
     suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
                                         handoff.data(), handoff.size());
     EXPECT_EQ(membershipChanges, 0);
@@ -2003,12 +2014,14 @@ inline void rdcReportFromHeldHeadNotForwardedBack(RDCHelloTests* suite) {
     EXPECT_EQ(forwarded.count, 0);
 }
 
-// Receiving a transfer merges the members under the demoted head as their
-// effective upstream, so a later loss of the demoted head prunes that subtree.
+// Receiving a transfer records each member under its TRUE upstream from the
+// payload, so a mid-chain transferred member departing prunes exactly its
+// downstream tail — not the whole transferred set, and not just itself.
 inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {
     const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberA[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberB[6] = {0xB2, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberC[6] = {0xC3, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int membershipChanges = 0;
@@ -2017,20 +2030,125 @@ inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
 
+    // Transferred chain: oldHead <- A <- B <- C, each pair naming the true edge.
+    std::array<uint8_t, 6> old{};
     std::array<uint8_t, 6> a{};
     std::array<uint8_t, 6> b{};
+    std::array<uint8_t, 6> c{};
+    memcpy(old.data(), oldHead, 6);
     memcpy(a.data(), memberA, 6);
     memcpy(b.data(), memberB, 6);
-    std::vector<uint8_t> handoff = headTransferBytes({a, b}, 5);
+    memcpy(c.data(), memberC, 6);
+    std::vector<uint8_t> handoff = headTransferBytes({{a, old}, {b, a}, {c, b}}, 5);
     suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
                                         handoff.data(), handoff.size());
     EXPECT_EQ(membershipChanges, 1);
-    EXPECT_EQ(suite->rdc.getChainMembers().size(), 2u);
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 3u);
 
-    // The demoted head departs: its whole transferred subtree goes with it.
-    std::vector<uint8_t> report = disconnectReportBytes(oldHead, 1);
+    // Mid-chain B departs: C hangs off B and goes too; A stays.
+    std::vector<uint8_t> report = disconnectReportBytes(memberB, 1);
     suite->transport()->deliverIncoming(PktType::kDisconnectReport, memberA,
                                         report.data(), report.size());
     EXPECT_EQ(membershipChanges, 2);
+    std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
+    ASSERT_EQ(members.size(), 1u);
+    EXPECT_EQ(0, memcmp(members[0].data(), memberA, 6));
+
+    // The demoted head departs: the rest of its transferred subtree follows.
+    std::vector<uint8_t> headLoss = disconnectReportBytes(oldHead, 2);
+    suite->transport()->deliverIncoming(PktType::kDisconnectReport, memberA,
+                                        headLoss.data(), headLoss.size());
+    EXPECT_EQ(membershipChanges, 3);
     EXPECT_TRUE(suite->rdc.getChainMembers().empty());
+}
+
+// One OUTPUT jack means one downstream: a fresh announce claiming an upstream
+// another member already recorded evicts the stale claimant and its subtree.
+inline void rdcAnnounceEvictsStaleUpstreamClaimant(RDCHelloTests* suite) {
+    const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberC[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberD[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberE[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    // Roster: C hangs off b1, E hangs off C.
+    std::vector<uint8_t> a1 = announceBytes(b1, 1);
+    std::vector<uint8_t> a2 = announceBytes(memberC, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberC, a1.data(), a1.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberE, a2.data(), a2.size());
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 2u);
+
+    // D now claims b1: C was unplugged (its report may still be in flight), so
+    // C and its subtree leave and D is the sole downstream of b1.
+    std::vector<uint8_t> a3 = announceBytes(b1, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberD, a3.data(), a3.size());
+    std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
+    ASSERT_EQ(members.size(), 1u);
+    EXPECT_EQ(0, memcmp(members[0].data(), memberD, 6));
+}
+
+// A resend of the SAME member's announce (fresh seqId, same content) is not a
+// competing claim and must evict nobody.
+inline void rdcDuplicateReannounceDoesNotEvict(RDCHelloTests* suite) {
+    const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberC[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberE[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    int membershipChanges = 0;
+    suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    std::vector<uint8_t> a1 = announceBytes(b1, 1);
+    std::vector<uint8_t> a2 = announceBytes(memberC, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberC, a1.data(), a1.size());
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberE, a2.data(), a2.size());
+    ASSERT_EQ(membershipChanges, 2);
+
+    std::vector<uint8_t> dup = announceBytes(b1, 2);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberC, dup.data(), dup.size());
+    EXPECT_EQ(membershipChanges, 2);
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 2u);
+}
+
+// A stale head-transfer snapshot must not re-fork an upstream a fresher announce
+// already claimed: Y announces Y->b1, then a demoted head's older transfer lists
+// X->b1 (X absent). The transfer is skipped, so b1 keeps its one downstream and
+// the roster stays a list. Without the upstreamHeldByOther skip, X inserts and
+// b1 forks.
+inline void rdcStaleTransferDoesNotReforkClaimedUpstream(RDCHelloTests* suite) {
+    const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberY[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t memberX[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    // Y is the current, fresher claimant of b1.
+    std::vector<uint8_t> ay = announceBytes(b1, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, memberY, ay.data(), ay.size());
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 1u);
+
+    // A stale transfer arrives listing X on the same upstream b1.
+    std::array<uint8_t, 6> x{};
+    std::array<uint8_t, 6> up{};
+    memcpy(x.data(), memberX, 6);
+    memcpy(up.data(), b1, 6);
+    std::vector<uint8_t> handoff = headTransferBytes({{x, up}}, 5);
+    suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
+                                        handoff.data(), handoff.size());
+
+    // b1 still has exactly one downstream, and it is Y not X.
+    std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
+    ASSERT_EQ(members.size(), 1u);
+    EXPECT_EQ(0, memcmp(members[0].data(), memberY, 6));
 }

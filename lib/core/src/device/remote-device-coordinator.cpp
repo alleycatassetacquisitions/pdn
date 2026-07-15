@@ -1213,8 +1213,11 @@ void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {
-    // Everything downstream of the departed MAC is unreachable too: walk the
-    // upstream links to a fixpoint. `gone` doubles as the BFS frontier.
+    // Everything downstream of the departed MAC is unreachable too. Forks are
+    // impossible by construction (transfers carry true upstreams, announces
+    // evict stale claimants), so this walk is a list traversal that finds at
+    // most one child per step by scanning — no reverse index kept. Tolerating
+    // multiple children anyway is cheap defense. `gone` doubles as the frontier.
     std::vector<std::array<uint8_t, 6>> gone;
     gone.emplace_back();
     memcpy(gone.back().data(), mac, 6);
@@ -1241,6 +1244,7 @@ void RemoteDeviceCoordinator::transferRosterTo(const uint8_t* newHeadMac) {
         // array regardless.
         if (transfer.memberCount >= MAX_CHAIN_MEMBERS) break;
         memcpy(transfer.memberMacs[transfer.memberCount], entry.first.data(), 6);
+        memcpy(transfer.upstreamMacs[transfer.memberCount], entry.second.data(), 6);
         transfer.memberCount++;
     }
     headTransferChannel->sendReliable(newHeadMac, transfer);
@@ -1266,8 +1270,35 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
         return;
     }
     if (!isNew && chainRoster[member] == upstream) return;  // resend duplicate
+    evictStaleUpstreamClaimant(member, upstream);
     chainRoster[member] = upstream;
     if (membershipChangeCallback) membershipChangeCallback();
+}
+
+void RemoteDeviceCoordinator::evictStaleUpstreamClaimant(
+    const std::array<uint8_t, 6>& member, const std::array<uint8_t, 6>& upstream) {
+    // Hardware invariant: one OUTPUT jack means one downstream, so at most one
+    // member can hang off any upstream. A fresh announce claiming an upstream
+    // some OTHER member already recorded proves the old claimant unplugged
+    // (its departure report may still be in flight); drop it and its subtree.
+    // Only announces evict — a head-transfer snapshot is older than any
+    // announce and must not displace one.
+    for (const auto& entry : chainRoster) {
+        // entry.first == member guards self-eviction (wiping our own subtree);
+        // the caller's duplicate check makes it unreachable today, kept so the
+        // helper stays correct independent of caller ordering.
+        if (entry.second != upstream || entry.first == member) continue;
+        removeChainMemberSubtree(entry.first.data());
+        return;
+    }
+}
+
+bool RemoteDeviceCoordinator::upstreamHeldByOther(
+    const std::array<uint8_t, 6>& upstream, const std::array<uint8_t, 6>& member) const {
+    for (const auto& entry : chainRoster) {
+        if (entry.second == upstream && entry.first != member) return true;
+    }
+    return false;
 }
 
 void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
@@ -1297,16 +1328,9 @@ void RemoteDeviceCoordinator::onDisconnectReport(const uint8_t* fromMac,
     removeChainMemberSubtree(report.disconnectedMac);
 }
 
-void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* fromMac,
+void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* /*fromMac*/,
                                              const HeadTransferPayload& transfer) {
     if (!isRosterAuthority()) return;
-    // The demoted head now sits between this head and its old subtree, so it is
-    // the transferred members' effective upstream here; transitive removal then
-    // drops that subtree if the demoted head itself departs. Insert-only: an
-    // entry already present came from the member's own post-merge announce,
-    // which names its true upstream and must not be flattened onto fromMac.
-    std::array<uint8_t, 6> upstream;
-    memcpy(upstream.data(), fromMac, 6);
     if (transfer.memberCount > MAX_CHAIN_MEMBERS) {
         // Every sender caps at MAX_CHAIN_MEMBERS, so an oversized count means a
         // corrupt frame; the clamp bounds the array walk either way.
@@ -1315,12 +1339,22 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* fromMac,
     }
     const uint8_t count =
         transfer.memberCount <= MAX_CHAIN_MEMBERS ? transfer.memberCount : MAX_CHAIN_MEMBERS;
+    // Each pair carries the member's true recorded upstream, so the transferred
+    // chain keeps its order and a mid-chain departure prunes exactly its tail.
+    // A transfer snapshot is older than any announce, so it never displaces one:
+    // it is skipped when the member already exists, or when its upstream slot is
+    // already claimed by another member (a fresher announce that reached us
+    // first). That skip, paired with the announce-side eviction, keeps the
+    // one-downstream invariant true so a stale post-replug snapshot cannot fork.
     bool changed = false;
     for (uint8_t i = 0; i < count; ++i) {
         std::array<uint8_t, 6> member;
+        std::array<uint8_t, 6> upstream;
         memcpy(member.data(), transfer.memberMacs[i], 6);
+        memcpy(upstream.data(), transfer.upstreamMacs[i], 6);
         if (memcmp(member.data(), selfMac.data(), 6) == 0) continue;  // never roster self
         if (chainRoster.count(member) != 0) continue;
+        if (upstreamHeldByOther(upstream, member)) continue;
         if (chainRoster.size() >= MAX_CHAIN_MEMBERS) break;
         chainRoster[member] = upstream;
         changed = true;

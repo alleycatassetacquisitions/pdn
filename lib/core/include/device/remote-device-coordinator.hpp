@@ -475,6 +475,15 @@ private:
     void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac);
     // Drop `mac` and every member whose upstream chain passes through it.
     void removeChainMemberSubtree(const uint8_t* mac);
+    // One OUTPUT jack means one downstream: when `member` announces `upstream`,
+    // any OTHER member still recorded on that upstream is stale — remove it
+    // and its subtree before the new claim lands.
+    void evictStaleUpstreamClaimant(const std::array<uint8_t, 6>& member,
+                                    const std::array<uint8_t, 6>& upstream);
+    // True when some member other than `member` already holds `upstream`. The
+    // transfer path queries this to skip (not evict) a colliding insert.
+    bool upstreamHeldByOther(const std::array<uint8_t, 6>& upstream,
+                             const std::array<uint8_t, 6>& member) const;
     // Demotion handoff: unicast the roster to the successor head, then clear it.
     void transferRosterTo(const uint8_t* newHeadMac);
     void onConnectionAnnounce(const uint8_t* fromMac, const ConnectionAnnouncePayload& announce);

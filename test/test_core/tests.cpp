@@ -1386,6 +1386,15 @@ TEST_F(RDCHelloTests, demotedHeadTransfersRoster) {
 TEST_F(RDCHelloTests, headTransferReceiveMergesAndPrunes) {
     rdcHeadTransferReceiveMergesAndPrunes(this);
 }
+TEST_F(RDCHelloTests, announceEvictsStaleUpstreamClaimant) {
+    rdcAnnounceEvictsStaleUpstreamClaimant(this);
+}
+TEST_F(RDCHelloTests, duplicateReannounceDoesNotEvict) {
+    rdcDuplicateReannounceDoesNotEvict(this);
+}
+TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
+    rdcStaleTransferDoesNotReforkClaimedUpstream(this);
+}
 TEST_F(RDCHelloTests, outputLossOfOwnHeadSendsNoReport) {
     rdcOutputLossOfOwnHeadSendsNoReport(this);
 }

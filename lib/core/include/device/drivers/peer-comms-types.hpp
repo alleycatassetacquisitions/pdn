@@ -136,9 +136,16 @@ struct DisconnectReportPayload {
 } __attribute__((packed));
 
 // Sent once by a demoted head to its successor; the only place a member list
-// ever travels, and it is a single unicast.
+// ever travels, and it is a single unicast. Entries are (member, upstream)
+// pairs — memberMacs[i]'s recorded direct upstream is upstreamMacs[i] — so the
+// receiver keeps the chain's true order instead of flattening every
+// transferred member onto the demoted head. At MAX_CHAIN_MEMBERS=18 this is
+// 218 bytes. The ceiling is the driver's reliable-payload budget
+// (MAX_PKT_DATA_SIZE, the uint8_t length header, ~253 bytes), asserted where
+// the driver includes this header; raising MAX_CHAIN_MEMBERS past ~20 trips it.
 struct HeadTransferPayload {
     uint8_t seqId;
     uint8_t memberCount;
     uint8_t memberMacs[MAX_CHAIN_MEMBERS][6];
+    uint8_t upstreamMacs[MAX_CHAIN_MEMBERS][6];
 } __attribute__((packed));
