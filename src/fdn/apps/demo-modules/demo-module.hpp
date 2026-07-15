@@ -29,8 +29,11 @@ public:
     // App-level score variables shared between GameState and ScoringState.
     int primaryScore = 0;
     int secondaryScore = 0;
-    std::string primaryScoreLabel = "P1";
-    std::string secondaryScoreLabel = "P2";
+    std::string primaryScoreLabel = "SCORE";
+    std::string secondaryScoreLabel = "AVG MS";
+    bool dualScoreDisplay = false;
+    std::string thanksMessageLine2 = "PLAYING!";
+    bool showFarewellMessage = true;
 
 private:
     static constexpr int kMainMenuStateIndex = 0;

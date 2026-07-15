@@ -27,7 +27,9 @@ void DemoModule::populateStateMap() {
                                     &primaryScoreLabel, &secondaryScoreLabel);
     auto* scoringState = new ScoringState(controllerWirelessManager,
                                           &primaryScore, &secondaryScore,
-                                          &primaryScoreLabel, &secondaryScoreLabel);
+                                          &primaryScoreLabel, &secondaryScoreLabel,
+                                          &thanksMessageLine2, dualScoreDisplay,
+                                          showFarewellMessage);
 
     mainMenuState->addTransition(new StateTransition(
         std::bind(&MainMenuState::transitionToTutorial, mainMenuState),

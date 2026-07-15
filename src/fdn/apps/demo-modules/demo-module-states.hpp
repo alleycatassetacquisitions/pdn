@@ -111,7 +111,10 @@ class ScoringState : public TypedState<FDN> {
 public:
     explicit ScoringState(ControllerWirelessManager* controllerWirelessManager,
                           int* primaryScore, int* secondaryScore,
-                          const std::string* primaryLabel, const std::string* secondaryLabel);
+                          const std::string* primaryLabel, const std::string* secondaryLabel,
+                          const std::string* thanksMessageLine2,
+                          bool dualScoreDisplay,
+                          bool showFarewellMessage);
     ~ScoringState();
 
     void onStateMounted(FDN* fdn) override;
@@ -126,24 +129,33 @@ private:
     static constexpr int           kNumNameChars        = 3;
     static constexpr char          kFirstChar           = 'A';
     static constexpr char          kLastChar            = 'Z';
-    static constexpr unsigned long kShowScoreDurationMs = 3000;
-    static constexpr unsigned long kThanksDurationMs    = 3000;
-    static constexpr unsigned long kFarewellDurationMs  = 3000;
+    static constexpr unsigned long kShowScoreDurationMs            = 3000;
+    static constexpr unsigned long kThanksDurationMs             = 3000;
+    static constexpr unsigned long kFarewellDurationMs           = 3000;
+    static constexpr unsigned long kNameEntryInactivityTimeoutMs = 30000;
 
     ControllerWirelessManager* controllerWirelessManager_;
     int* primaryScore_;
     int* secondaryScore_;
     const std::string* primaryLabel_;
     const std::string* secondaryLabel_;
+    const std::string* thanksMessageLine2_;
+    bool dualScoreDisplay_;
+    bool showFarewellMessage_;
 
     ScoringPhase phase_       = ScoringPhase::SHOW_SCORE;
     SimpleTimer  phaseTimer_;
+    SimpleTimer  inactivityTimer_;
     char nameChars_[kNumNameChars] = {'A', 'A', 'A'};
     int  currentColumn_       = 0;
     bool readyToTransition_   = false;
+    FDN* fdn_                 = nullptr;
 
     void renderScoreIntroScreen(FDN* fdn);
     void renderScoringScreen(FDN* fdn);
     void renderMessageScreen(FDN* fdn, const char* line1, const char* line2 = nullptr, const char* line3 = nullptr);
     void onControllerCommandReceived(ControllerCommand command);
+    void resetNameEntryInactivityTimer();
+    void beginNameEntry(FDN* fdn);
+    void endNameEntry(FDN* fdn);
 };
