@@ -1053,6 +1053,11 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         // ring was forming, or we would sit in RING advertising a stale foreign head.
         const uint64_t formingHead = chainHeadState.load() & HEAD_MAC_MASK;
         chainHeadState.store(0);
+        // A downstream-loss report is owed only while we remain a child under a
+        // head; becoming our own head voids it, so drop the pending re-send state
+        // before releaseHeadPeer silently cancels the in-flight report.
+        pendingReportMac.fill(0);
+        pendingReportSeqId = 0;
         releaseHeadPeer(formingHead);
         if (ringClosedCallback) ringClosedCallback();
         return;
@@ -1101,6 +1106,11 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
     if (port == SerialIdentifier::INPUT_JACK) {
         const uint64_t lostHead = chainHeadState.load() & HEAD_MAC_MASK;
         chainHeadState.store(0);
+        // A downstream-loss report is owed only while we remain a child under a
+        // head; becoming our own head voids it, so drop the pending re-send state
+        // before releaseHeadPeer silently cancels the in-flight report.
+        pendingReportMac.fill(0);
+        pendingReportSeqId = 0;
         releaseHeadPeer(lostHead);
     }
 }
@@ -1209,7 +1219,9 @@ void RemoteDeviceCoordinator::sendDisconnectReport(const uint8_t* headMac,
     DisconnectReportPayload report{};
     memcpy(report.disconnectedMac, lostMac, 6);
     pendingReportSeqId = disconnectReportChannel->sendReliable(headMac, report);
-    memcpy(pendingReportMac.data(), lostMac, 6);
+    // The successor-chase re-send passes pendingReportMac.data() back in as
+    // lostMac; skip the self-copy (overlapping memcpy is UB).
+    if (lostMac != pendingReportMac.data()) memcpy(pendingReportMac.data(), lostMac, 6);
 }
 
 void RemoteDeviceCoordinator::removeChainMemberSubtree(const uint8_t* mac) {

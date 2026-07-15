@@ -1428,6 +1428,9 @@ TEST_F(RDCHelloTests, backToBackReportsBothRetryToHead) {
 TEST_F(RDCHelloTests, pendingReportResentOnHeadChange) {
     rdcPendingReportResentOnHeadChange(this);
 }
+TEST_F(RDCHelloTests, pendingReportVoidedByBecomingHead) {
+    rdcPendingReportVoidedByBecomingHead(this);
+}
 TEST_F(RDCHelloTests, reportFromHeldHeadNotForwardedBack) {
     rdcReportFromHeldHeadNotForwardedBack(this);
 }
