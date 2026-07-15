@@ -89,7 +89,7 @@ void ScoringState::onStateLoop(FDN* fdn) {
             break;
 
         case ScoringPhase::THANKS:
-            renderMessageScreen(fdn, "THANKS FOR", "QUICKDRAWING!");
+            renderMessageScreen(fdn, "THANKS FOR", "QUICKDRAWIN!");
             if (phaseTimer_.expired()) {
                 phase_ = ScoringPhase::FAREWELL;
                 phaseTimer_.setTimer(kFarewellDurationMs);
