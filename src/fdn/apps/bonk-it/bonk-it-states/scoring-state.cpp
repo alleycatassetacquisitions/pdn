@@ -1,5 +1,6 @@
 #include "apps/bonk-it/bonk-it-states.hpp"
 #include "device/drivers/logger.hpp"
+#include "game/peripheral-glyphs.hpp"
 
 namespace {
 static const char* TAG = "ScoringState";
@@ -47,6 +48,8 @@ void ScoringState::onStateMounted(FDN* fdn) {
     parameterizedCallbackFunction onTertiary = [](void* ctx) {
         auto* ss = static_cast<ScoringState*>(ctx);
         if (ss->phase_ != ScoringPhase::NAME_ENTRY) return;
+        ss->controllerWirelessManager_->sendPeripheralCommandPacket(
+            PeripheralCmd::CLEAR_DISPLAY, 0, 0);
         ss->phase_ = ScoringPhase::THANKS;
         ss->phaseTimer_.setTimer(kThanksDurationMs);
     };
@@ -70,6 +73,10 @@ void ScoringState::onStateLoop(FDN* fdn) {
             if (phaseTimer_.expired()) {
                 phase_ = ScoringPhase::NAME_ENTRY;
                 phaseTimer_.invalidate();
+                controllerWirelessManager_->sendPeripheralCommandPacket(
+                    PeripheralCmd::DISPLAY_GLYPH,
+                    static_cast<uint8_t>(PeripheralGlyphId::SCORING),
+                    0);
             }
             break;
 

@@ -11,6 +11,7 @@
 #include "device/animation/bounty-win-animation.hpp"
 #include "device/animation/lose-animation.hpp"
 #include "game/bonk-it-peripheral.hpp"
+#include "game/peripheral-glyphs.hpp"
 #include "symbol.hpp"
 
 namespace {
@@ -94,13 +95,16 @@ void Controller1State::executePeripheralCommand(PDN* pdn,
                                                 uint8_t param2) {
     switch (command) {
         case PeripheralCmd::DISPLAY_GLYPH: {
-            // param1 = SymbolId — convert to glyph unicode string via Symbol helper
-            Symbol sym;
-            sym.setSymbolId(static_cast<SymbolId>(param1));
+            const char* glyph = PeripheralGlyphs::glyphForId(param1);
+            if (!glyph) {
+                Symbol sym;
+                sym.setSymbolId(static_cast<SymbolId>(param1));
+                glyph = sym.getSymbolGlyph();
+            }
             pdn->getDisplay()
                 ->invalidateScreen()
                 ->setGlyphMode(FontMode::SYMBOL_GLYPH)
-                ->renderGlyph(sym.getSymbolGlyph(), 48, 48)
+                ->renderGlyph(glyph, 48, 48)
                 ->render();
             break;
         }
