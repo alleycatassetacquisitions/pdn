@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <optional>
 #include <vector>
 #include "device/serial-manager.hpp"
@@ -121,8 +122,7 @@ public:
     virtual const uint8_t* getHeadMac() const;
 
     /// Head-only chain member roster; empty for a child or standalone device.
-    /// STUB: always empty.
-    virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const { return {}; }
+    virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const;
 
     /// Registers the per-jack connect/disconnect observer. The disconnect fires
     /// before chain-state teardown, so handlers must not read chain state here;
@@ -351,6 +351,9 @@ private:
     ReliableTransport* transport = nullptr;
     ReliableChannel<PdnConnectionContext>* pdnContextChannel = nullptr;
     ReliableChannel<FdnConnectionContext>* fdnContextChannel = nullptr;
+    ReliableChannel<ConnectionAnnouncePayload>* connectionAnnounceChannel = nullptr;
+    ReliableChannel<DisconnectReportPayload>* disconnectReportChannel = nullptr;
+    ReliableChannel<HeadTransferPayload>* headTransferChannel = nullptr;
 
     // A context (ESP-NOW) can beat its own HELLO (serial) and arrive before any jack
     // is CONNECTING for that MAC. Rather than drop it, hold it here and apply it when
@@ -442,4 +445,48 @@ private:
     void applyUpstreamHead(const HelloPayload& hello);
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
+    // Drops a former head's radio slot (and its dead roster retries) unless an
+    // adjacent link or daisy record still uses the MAC.
+    void releaseHeadPeer(uint64_t headMac48);
+
+    // ---- Head roster (#158) ----
+    // member MAC -> its direct upstream MAC. Only the roster authority (see
+    // isRosterAuthority) accepts roster traffic or serves getChainMembers.
+    std::map<std::array<uint8_t, 6>, std::array<uint8_t, 6>> chainRoster;
+    // seqId of the announce most recently sent; delivery of any earlier one is
+    // stale and must not raise the confirmed bit.
+    uint8_t pendingAnnounceSeqId = 0;
+    // disconnectedMac of the report most recently sent whose delivery is not yet
+    // confirmed (all-zero = none). A head change cancels the in-flight report to
+    // the old head, and unlike the announce path nothing re-triggers it, so
+    // applyUpstreamHead re-sends it to the successor — otherwise the departed
+    // member stays a phantom in the new head's roster.
+    std::array<uint8_t, 6> pendingReportMac{};
+    uint8_t pendingReportSeqId = 0;
+    bool isRosterAuthority() const;
+    // Send ConnectionAnnounce{INPUT peer} to the held head, once the upstream
+    // context exchange has completed. No-op for a head/ring/standalone device.
+    void maybeAnnounceToHead();
+    // OUTPUT (downstream) link death: report to the head (unless the lost link
+    // IS the head), or clear the roster when this device is the head.
+    void reportDownstreamLoss(const uint8_t* lostMac);
+    // Reliable-send a DisconnectReport naming `lostMac` to `headMac`, tracking
+    // it as the pending report until its delivery is confirmed.
+    void sendDisconnectReport(const uint8_t* headMac, const uint8_t* lostMac);
+    // Drop `mac` and every member whose upstream chain passes through it.
+    void removeChainMemberSubtree(const uint8_t* mac);
+    // One OUTPUT jack means one downstream: when `member` announces `upstream`,
+    // any OTHER member still recorded on that upstream is stale — remove it
+    // and its subtree before the new claim lands.
+    void evictStaleUpstreamClaimant(const std::array<uint8_t, 6>& member,
+                                    const std::array<uint8_t, 6>& upstream);
+    // True when some member other than `member` already holds `upstream`. The
+    // transfer path queries this to skip (not evict) a colliding insert.
+    bool isUpstreamHeldByOther(const std::array<uint8_t, 6>& upstream,
+                               const std::array<uint8_t, 6>& member) const;
+    // Demotion handoff: unicast the roster to the successor head, then clear it.
+    void transferRosterTo(const uint8_t* newHeadMac);
+    void onConnectionAnnounce(const uint8_t* fromMac, const ConnectionAnnouncePayload& announce);
+    void onDisconnectReport(const uint8_t* fromMac, const DisconnectReportPayload& report);
+    void onHeadTransfer(const uint8_t* fromMac, const HeadTransferPayload& transfer);
 };

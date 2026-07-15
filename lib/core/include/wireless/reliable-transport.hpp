@@ -47,7 +47,7 @@ public:
     /// The returned pointer stays owned by the transport.
     template <class P>
     ReliableChannel<P>* channel(PktType type,
-                                ReliableChannelBase::OnAbandon onAbandon,
+                                ReliableChannelBase::OnAbandon onAbandon = {},
                                 Resender::SendMode sendMode = Resender::SendMode::SUPERSEDE_PER_TARGET) {
         std::map<PktType, ReliableChannelBase*>::iterator it = registry.find(type);
         if (it != registry.end()) {

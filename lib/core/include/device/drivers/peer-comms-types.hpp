@@ -21,6 +21,9 @@ enum class PktType : uint8_t {
     kFdnConnect = 14,
     kPdnConnectionContext = 15,
     kFdnConnectionContext = 16,
+    kConnectionAnnounce = 17,
+    kDisconnectReport = 18,
+    kHeadTransfer = 19,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -110,4 +113,39 @@ struct ShootoutAckPayload
 {
     ShootoutCmd cmd;
     uint8_t     seqId;
+} __attribute__((packed));
+
+// ---- Head roster management (#158) ----
+// Point-to-point ReliableChannel payloads; the chain head is the sole consumer.
+// seqId is stamped by the channel on send.
+
+constexpr uint8_t MAX_CHAIN_MEMBERS = 18;
+
+// Sent by a newly joined member directly to the head it read from its upstream
+// neighbour's HELLO. upstreamMac names the sender's direct upstream (INPUT) peer.
+struct ConnectionAnnouncePayload {
+    uint8_t seqId;
+    uint8_t upstreamMac[6];
+} __attribute__((packed));
+
+// Sent to the head by the upstream neighbour of a departed member — the only
+// node that observes the HELLO timeout of a non-adjacent (to the head) link.
+struct DisconnectReportPayload {
+    uint8_t seqId;
+    uint8_t disconnectedMac[6];
+} __attribute__((packed));
+
+// Sent once by a demoted head to its successor; the only place a member list
+// ever travels, and it is a single unicast. Entries are (member, upstream)
+// pairs — memberMacs[i]'s recorded direct upstream is upstreamMacs[i] — so the
+// receiver keeps the chain's true order instead of flattening every
+// transferred member onto the demoted head. At MAX_CHAIN_MEMBERS=18 this is
+// 218 bytes. The ceiling is the driver's reliable-payload budget
+// (MAX_PKT_DATA_SIZE, the uint8_t length header, ~253 bytes), asserted where
+// the driver includes this header; raising MAX_CHAIN_MEMBERS past ~20 trips it.
+struct HeadTransferPayload {
+    uint8_t seqId;
+    uint8_t memberCount;
+    uint8_t memberMacs[MAX_CHAIN_MEMBERS][6];
+    uint8_t upstreamMacs[MAX_CHAIN_MEMBERS][6];
 } __attribute__((packed));

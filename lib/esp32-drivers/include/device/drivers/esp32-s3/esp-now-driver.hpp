@@ -32,6 +32,13 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 constexpr size_t MAX_PKT_DATA_SIZE =
     std::numeric_limits<decltype(DataPktHdr::pktLen)>::max() - sizeof(DataPktHdr);
 
+// The head-roster handoff is the largest reliable payload and grows with
+// MAX_CHAIN_MEMBERS (#218 raises it). A cap bump that overflows this budget
+// must break the build here, not silently fail sendData at runtime.
+static_assert(sizeof(HeadTransferPayload) <= MAX_PKT_DATA_SIZE,
+              "HeadTransferPayload exceeds the reliable-payload budget; "
+              "lower MAX_CHAIN_MEMBERS or split the transfer across frames");
+
 //Singleton class that handles communication over ESP-NOW protocol.
 class EspNowManager : public PeerCommsDriverInterface
 {

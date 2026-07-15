@@ -1365,6 +1365,79 @@ TEST_F(RDCHelloTests, duplicateContextSameTickFiresCallbackOnce) {
     rdcDuplicateContextSameTickFiresCallbackOnce(this);
 }
 
+TEST_F(RDCHelloTests, joinAnnouncesToHeadAndGatesConfirmed) {
+    rdcJoinAnnouncesToHeadAndGatesConfirmed(this);
+}
+TEST_F(RDCHelloTests, headChangeDropsConfirmedAndReannounces) {
+    rdcHeadChangeDropsConfirmedAndReannounces(this);
+}
+TEST_F(RDCHelloTests, headBuildsAndPrunesRoster) {
+    rdcHeadBuildsAndPrunesRoster(this);
+}
+TEST_F(RDCHelloTests, childReportsDownstreamLossToHead) {
+    rdcChildReportsDownstreamLossToHead(this);
+}
+TEST_F(RDCHelloTests, ringLatchedNeverAnnouncesOrReportsToSelf) {
+    rdcRingLatchedNeverAnnouncesOrReportsToSelf(this);
+}
+TEST_F(RDCHelloTests, demotedHeadTransfersRoster) {
+    rdcDemotedHeadTransfersRoster(this);
+}
+TEST_F(RDCHelloTests, headTransferReceiveMergesAndPrunes) {
+    rdcHeadTransferReceiveMergesAndPrunes(this);
+}
+TEST_F(RDCHelloTests, announceEvictsStaleUpstreamClaimant) {
+    rdcAnnounceEvictsStaleUpstreamClaimant(this);
+}
+TEST_F(RDCHelloTests, fullRosterEvictsStaleThenAdmits) {
+    rdcFullRosterEvictsStaleThenAdmits(this);
+}
+TEST_F(RDCHelloTests, duplicateReannounceDoesNotEvict) {
+    rdcDuplicateReannounceDoesNotEvict(this);
+}
+TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
+    rdcStaleTransferDoesNotReforkClaimedUpstream(this);
+}
+TEST_F(RDCHelloTests, outputLossOfOwnHeadSendsNoReport) {
+    rdcOutputLossOfOwnHeadSendsNoReport(this);
+}
+TEST_F(RDCHelloTests, headIgnoresSelfDisconnectReport) {
+    rdcHeadIgnoresSelfDisconnectReport(this);
+}
+TEST_F(RDCHelloTests, headTransferDoesNotOverwriteAnnouncedUpstream) {
+    rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(this);
+}
+TEST_F(RDCHelloTests, demotedDeviceForwardsDisconnectReport) {
+    rdcDemotedDeviceForwardsDisconnectReport(this);
+}
+TEST_F(RDCHelloTests, standaloneIgnoresLateRosterTraffic) {
+    rdcStandaloneIgnoresLateRosterTraffic(this);
+}
+TEST_F(RDCHelloTests, headDirectChildLossClearsWholeRoster) {
+    rdcHeadDirectChildLossClearsWholeRoster(this);
+}
+TEST_F(RDCHelloTests, staleAnnounceDeliveryDoesNotConfirm) {
+    rdcStaleAnnounceDeliveryDoesNotConfirm(this);
+}
+TEST_F(RDCHelloTests, headAdoptionManagesRadioSlot) {
+    rdcHeadAdoptionManagesRadioSlot(this);
+}
+TEST_F(RDCHelloTests, inputHeadLinkDeathCancelsPendingContextSend) {
+    rdcInputHeadLinkDeathCancelsPendingContextSend(this);
+}
+TEST_F(RDCHelloTests, backToBackReportsBothRetryToHead) {
+    rdcBackToBackReportsBothRetryToHead(this);
+}
+TEST_F(RDCHelloTests, pendingReportResentOnHeadChange) {
+    rdcPendingReportResentOnHeadChange(this);
+}
+TEST_F(RDCHelloTests, pendingReportVoidedByBecomingHead) {
+    rdcPendingReportVoidedByBecomingHead(this);
+}
+TEST_F(RDCHelloTests, reportFromHeldHeadNotForwardedBack) {
+    rdcReportFromHeldHeadNotForwardedBack(this);
+}
+
 TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
 }
