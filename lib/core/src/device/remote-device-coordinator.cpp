@@ -276,8 +276,8 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
                     emitAnnouncementVia(otherPort, {});
                 }
             }
-            if (peerLostCallback_) {
-                peerLostCallback_(prev->data());
+            if (peerLostCallback) {
+                peerLostCallback(prev->data());
             }
             notifyDisconnect();
         }
@@ -453,11 +453,11 @@ std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::peersReachableVia(S
 }
 
 void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
-    chainChangeCallback_ = callback;
+    chainChangeCallback = std::move(callback);
 }
 
 void RemoteDeviceCoordinator::setPeerLostCallback(std::function<void(const uint8_t*)> callback) {
-    peerLostCallback_ = callback;
+    peerLostCallback = std::move(callback);
 }
 
 void RemoteDeviceCoordinator::setAnnouncementEmitCallback(AnnouncementEmitCallback callback) {
@@ -560,15 +560,15 @@ void RemoteDeviceCoordinator::registerPeer(const uint8_t* macAddress) {
 }
 
 void RemoteDeviceCoordinator::notifyConnect() {
-    if (chainChangeCallback_) chainChangeCallback_();
+    if (chainChangeCallback) chainChangeCallback();
 }
 
 void RemoteDeviceCoordinator::notifyDisconnect() {
-    if (chainChangeCallback_) chainChangeCallback_();
+    if (chainChangeCallback) chainChangeCallback();
 }
 
 void RemoteDeviceCoordinator::notifyDaisyChained() {
-    if (chainChangeCallback_) chainChangeCallback_();
+    if (chainChangeCallback) chainChangeCallback();
 }
 
 void RemoteDeviceCoordinator::unregisterPeer(const uint8_t* macAddress) {

@@ -13,6 +13,8 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
+#include <array>
+#include <optional>
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -36,9 +38,23 @@ public:
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onStateLoop(Device *PDN) override;
+    /// Clears replay tracking so a remount of this app replays jack snapshots.
+    void onStateDismounted(Device* device) override;
 
 private:
     void onChainStateChanged();
+
+    // RDC per-jack event dispatch (#165): cache the latest peer context per
+    // jack and forward each connect/disconnect to the current state. Fires
+    // only under HELLO connectivity (#159).
+    void onJackContextReceived(SerialIdentifier jack, DeviceType peerType,
+                               const uint8_t* profile, size_t len);
+    void onJackConnectionChanged(SerialIdentifier jack, bool connected);
+    void replayConnectedJacks();
+
+    std::array<std::optional<ConnectionContext>, SERIAL_JACK_COUNT> jackContexts;
+    // Last state that received a jack replay; a change means a fresh mount.
+    State* lastDispatchedState = nullptr;
 
     std::vector<Match> matches;
     int numMatches = 0;

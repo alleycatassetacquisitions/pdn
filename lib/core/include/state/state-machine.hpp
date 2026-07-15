@@ -76,6 +76,18 @@ public:
 
     virtual void populateStateMap() = 0;
 
+    /// Skip to the state with the given id, bypassing transitions. False when
+    /// no state has that id. Ids are the stable handle; positional indices
+    /// shift when populateStateMap reorders.
+    bool skipToStateById(Device* device, int stateId) {
+        for (size_t i = 0; i < stateMap.size(); i++) {
+            if (stateMap[i]->getStateId() == stateId) {
+                return skipToState(device, static_cast<int>(i));
+            }
+        }
+        return false;
+    }
+
     void checkStateTransitions() {
         newState = currentState->checkTransitions();
         stateChangeReady = (newState != nullptr);

@@ -10,6 +10,11 @@
 
 class State;
 class Device;
+// Full definitions live in device/drivers/serial-wrapper.hpp and
+// jack-connection-state.hpp; only jack-observing states (ConnectState) need
+// them, and pulling packed radio structs into every state TU is not worth it.
+enum class SerialIdentifier;
+struct JackConnectionState;
 
 /*
  * A State transition is a tuple that holds a condition as well as
@@ -109,6 +114,10 @@ public:
     int getStateId() const { return name.id; }
 
     virtual bool isTerminalState() { return false; }
+
+    /// Per-jack connect/disconnect delivery from the app's dispatcher; the
+    /// default ignores it so only states that observe jacks need to override.
+    virtual void onJackEvent(SerialIdentifier jack, const JackConnectionState& state) {}
 
     // --- Device*-typed user API ---
     // Override these in derived classes.
