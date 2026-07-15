@@ -34,6 +34,12 @@ void LightManager::startAnimation(AnimationBase* animation, AnimationConfig conf
     }
 }
 
+void LightManager::setAnimationSpeed(uint8_t speedMs) {
+    if (currentAnimation) {
+        static_cast<AnimationBase*>(currentAnimation)->setFrameSpeed(speedMs);
+    }
+}
+
 void LightManager::stopAnimation() {
     if (currentAnimation) {
         currentAnimation->stop();

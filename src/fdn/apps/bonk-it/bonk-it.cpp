@@ -2,8 +2,8 @@
 #include "apps/bonk-it/bonk-it-states.hpp"
 
 BonkIt::BonkIt(int stateId,
-                       RemoteDeviceCoordinator* remoteDeviceCoordinator,
-                       ControllerWirelessManager* controllerWirelessManager)
+               RemoteDeviceCoordinator* remoteDeviceCoordinator,
+               ControllerWirelessManager* controllerWirelessManager)
     : TypedStateMachine<FDN>(stateId)
     , disconnectPolicy(remoteDeviceCoordinator)
     , controllerWirelessManager(controllerWirelessManager) {}
@@ -20,9 +20,10 @@ void BonkIt::onStateMounted(Device* device) {
 
 void BonkIt::populateStateMap() {
     auto* mainMenuState = new MainMenuState(controllerWirelessManager);
-    auto* tutorialState = new TutorialState();
-    auto* gameState = new GameState();
-    auto* scoringState = new ScoringState();
+    auto* tutorialState = new TutorialState(controllerWirelessManager);
+    auto* gameState = new GameState(controllerWirelessManager, &primaryScore);
+    auto* scoringState = new ScoringState(controllerWirelessManager,
+                                          &primaryScore, &primaryScoreLabel);
 
     mainMenuState->addTransition(new StateTransition(
         std::bind(&MainMenuState::transitionToTutorial, mainMenuState),

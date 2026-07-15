@@ -61,6 +61,9 @@ void MainMenuState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
     transitionToTutorialState = false;
     transitionToGameState = false;
+    fdn->getPrimaryButton()->removeButtonCallbacks();
+    fdn->getSecondaryButton()->removeButtonCallbacks();
+    controllerWirelessManager->clearCallback();
 }
 
 bool MainMenuState::transitionToTutorial() {

@@ -29,6 +29,7 @@ public:
     
     // Animation control
     void startAnimation(AnimationBase* animation, AnimationConfig config);
+    void setAnimationSpeed(uint8_t speedMs);
     void stopAnimation();
     void pauseAnimation();
     void resumeAnimation();

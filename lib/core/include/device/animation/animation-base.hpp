@@ -61,6 +61,11 @@ public:
     
     bool isPaused() const override { return isPaused_; }
 
+    void setFrameSpeed(uint8_t speedMs) {
+        config_.speed = speedMs;
+        frameTimer_.setTimer(speedMs);
+    }
+
 protected:
     // Override these in derived classes
     virtual void onInit() = 0;
