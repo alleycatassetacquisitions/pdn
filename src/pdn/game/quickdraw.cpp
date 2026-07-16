@@ -477,12 +477,12 @@ void Quickdraw::populateStateMap() {
     win->addTransition(
         new StateTransition(
             std::bind(&Win::resetGame, win),
-            uploadMatches));
+            awakenSequence));
 
     lose->addTransition(
         new StateTransition(
             std::bind(&Lose::resetGame, lose),
-            uploadMatches));
+            awakenSequence));
 
     uploadMatches->addTransition(
         new StateTransition(
