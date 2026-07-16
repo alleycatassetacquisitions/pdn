@@ -52,18 +52,18 @@ void PlayerRegistrationApp::populateStateMap() {
             std::bind(&ConfirmOfflineState::transitionToPlayerRegistration, confirmOffline),
             playerRegistration));
 
-    chooseRole->addTransition(
-        new StateTransition(
-            std::bind(&ChooseRoleState::transitionToWelcomeMessage, chooseRole),
-            welcomeMessageState));
+    // chooseRole->addTransition(
+    //     new StateTransition(
+    //         std::bind(&ChooseRoleState::transitionToWelcomeMessage, chooseRole),
+    //         welcomeMessageState));
 
-    stateMap.push_back(playerRegistration);
-    stateMap.push_back(fetchUserDataState);
-    stateMap.push_back(confirmOffline);
+    // stateMap.push_back(playerRegistration);
+    // stateMap.push_back(fetchUserDataState);
+    // stateMap.push_back(confirmOffline);
     stateMap.push_back(chooseRole);
-    stateMap.push_back(welcomeMessageState);
+    // stateMap.push_back(welcomeMessageState);
 }
 
 bool PlayerRegistrationApp::readyForGameplay() {
-    return (currentState->getStateId() == PlayerRegistrationStateId::WELCOME_MESSAGE && static_cast<WelcomeMessage*>(currentState)->transitionToGameplay());
+    return (currentState->getStateId() == PlayerRegistrationStateId::CHOOSE_ROLE && static_cast<ChooseRoleState*>(currentState)->transitionToWelcomeMessage());
 }
