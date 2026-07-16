@@ -5,6 +5,35 @@
 #include <U8g2lib.h>
 #include <Arduino.h>
 
+constexpr int BUTTON_PADDING = 2;
+
+/*
+* u8g2's draw color and font mode interact in a non-intuitive fashion.
+* These enums are meant to help clarify what's happening.
+* DrawColor::BLACK means text or draw operations will set the pixels to black (or off, or 0)
+* DrawColor::WHITE means text or draw operations will set the pixels to white (or on, or 1)
+* DrawColor::XOR means text or draw operations will set the pixels to the inverse of the current pixel value.
+*            XOR means that if text is written on a half white, half black background, the resulting text
+*            will be black over the white, and white over the black background.
+*
+* FontMode::SOLID_BACKGROUND && DrawColor::BLACK -> Black Text, with the bounding box filled with white pixels.
+* FontMode::SOLID_BACKGROUND && DrawColor::WHITE -> White Text, with the bounding box filled with black pixels.
+* FontMode::SOLID_BACKGROUND && DrawColor::XOR -> Needs Testing, but I believe draws text the inverse color of the background, with the background staying the same color.
+* FontMode::TRANSPARENT_BACKGROUND && DrawColor::BLACK -> Black Text. The background is not modified.
+* FontMode::TRANSPARENT_BACKGROUND && DrawColor::WHITE -> White Text. The background is not modified.
+* FontMode::TRANSPARENT_BACKGROUND && DrawColor::XOR -> Inverse color of the background. The background is not modified.
+*/
+enum class DrawColor {
+    BLACK = 0, // Set the pixels being rendered to black.
+    WHITE = 1, // Set the pixels being rendered to white.
+    XOR = 2, // Set the pixels being rendered to the inverse of the current pixel value.
+};
+
+enum class FontMode {
+    SOLID_BACKGROUND = 0, //When text is written, the bounding box is filled with the inverse color of the text.
+    TRANSPARENT_BACKGROUND = 1, //When text is written, only the pixels of the text are modified.
+};
+
 class SsdU8G2Driver : public DisplayDriverInterface {
 public:
     explicit SsdU8G2Driver(const std::string& name, DisplayType displayType, uint8_t csPin, uint8_t dcPin, uint8_t rstPin)
@@ -92,7 +121,7 @@ public:
     }
 
     Display* drawButton(const char *text, int xCenter, int yCenter) override {
-        screen->drawButtonUTF8(xCenter, yCenter, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, 2, 2, text);
+        screen->drawButtonUTF8(xCenter, yCenter, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, BUTTON_PADDING, BUTTON_PADDING, text);
         return this;
     }
 
@@ -201,7 +230,7 @@ void processButtonInstruction(ButtonPayload instruction) {
     Cursor cursor;
     cursor.x = calculateButtonX(instruction);
     cursor.y = calculateButtonY(instruction);
-    screen->drawButtonUTF8(cursor.x, cursor.y, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, 2, 2, instruction.text);
+    screen->drawButtonUTF8(cursor.x, cursor.y, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, BUTTON_PADDING, BUTTON_PADDING, instruction.text);
 }
 
 void processImageInstruction(ImagePayload instruction) {
@@ -248,7 +277,7 @@ int calculateTextY(TextPayload instruction) {
 int calculateButtonX(ButtonPayload instruction) {
     switch (instruction.coordinates.xAnchor) {
         case HAnchor::LEFT:
-            return instruction.coordinates.x + 2 + getTextWidth(instruction.text)/2;
+            return instruction.coordinates.x + BUTTON_PADDING + getTextWidth(instruction.text)/2;
         case HAnchor::CENTER_LEFT:
             return getWidth()/4;
         case HAnchor::CENTER:
@@ -256,18 +285,18 @@ int calculateButtonX(ButtonPayload instruction) {
         case HAnchor::CENTER_RIGHT:
             return getWidth()/4*3;
         case HAnchor::RIGHT:
-            return screen->getDisplayWidth() - (instruction.coordinates.x + getTextWidth(instruction.text)/2 + 2);
+            return screen->getDisplayWidth() - (instruction.coordinates.x + getTextWidth(instruction.text)/2 + BUTTON_PADDING);
     }
 }
 
 int calculateButtonY(ButtonPayload instruction) {
     switch (instruction.coordinates.yAnchor) {
         case VAnchor::TOP:
-            return instruction.coordinates.y + getTextHeight()/2 + 2;
+            return instruction.coordinates.y + getTextHeight()/2 + BUTTON_PADDING;
         case VAnchor::CENTER:
             return screen->getDisplayHeight() / 2;
         case VAnchor::BOTTOM:
-            return screen->getDisplayHeight() - (instruction.coordinates.y + getTextHeight()/2 + 2);
+            return screen->getDisplayHeight() - (instruction.coordinates.y + getTextHeight()/2 + BUTTON_PADDING);
     }
 }
 
