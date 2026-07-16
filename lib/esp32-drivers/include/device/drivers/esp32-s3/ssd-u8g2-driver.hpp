@@ -1,0 +1,332 @@
+#pragma once
+
+#include "device/drivers/driver-interface.hpp"
+#include "device/drivers/display-types.hpp"
+#include <U8g2lib.h>
+#include <Arduino.h>
+
+constexpr int BUTTON_PADDING = 2;
+
+/*
+* u8g2's draw color and font mode interact in a non-intuitive fashion.
+* These enums are meant to help clarify what's happening.
+* DrawColor::BLACK means text or draw operations will set the pixels to black (or off, or 0)
+* DrawColor::WHITE means text or draw operations will set the pixels to white (or on, or 1)
+* DrawColor::XOR means text or draw operations will set the pixels to the inverse of the current pixel value.
+*            XOR means that if text is written on a half white, half black background, the resulting text
+*            will be black over the white, and white over the black background.
+*
+* FontMode::SOLID_BACKGROUND && DrawColor::BLACK -> Black Text, with the bounding box filled with white pixels.
+* FontMode::SOLID_BACKGROUND && DrawColor::WHITE -> White Text, with the bounding box filled with black pixels.
+* FontMode::SOLID_BACKGROUND && DrawColor::XOR -> Needs Testing, but I believe draws text the inverse color of the background, with the background staying the same color.
+* FontMode::TRANSPARENT_BACKGROUND && DrawColor::BLACK -> Black Text. The background is not modified.
+* FontMode::TRANSPARENT_BACKGROUND && DrawColor::WHITE -> White Text. The background is not modified.
+* FontMode::TRANSPARENT_BACKGROUND && DrawColor::XOR -> Inverse color of the background. The background is not modified.
+*/
+enum class DrawColor {
+    BLACK = 0, // Set the pixels being rendered to black.
+    WHITE = 1, // Set the pixels being rendered to white.
+    XOR = 2, // Set the pixels being rendered to the inverse of the current pixel value.
+};
+
+enum class FontMode {
+    SOLID_BACKGROUND = 0, //When text is written, the bounding box is filled with the inverse color of the text.
+    TRANSPARENT_BACKGROUND = 1, //When text is written, only the pixels of the text are modified.
+};
+
+class SsdU8G2Driver : public DisplayDriverInterface {
+public:
+    explicit SsdU8G2Driver(const std::string& name, DisplayType displayType, uint8_t csPin, uint8_t dcPin, uint8_t rstPin)
+        : DisplayDriverInterface(name), csPin(csPin), dcPin(dcPin) {
+        switch (displayType) {
+            case DisplayType::SSD1306:
+                screen = new U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI(U8G2_R0, csPin, dcPin, rstPin);
+                break;
+            case DisplayType::SSD1309:
+                // NONAME0 vs NONAME2: u8g2's SSD1309 128x64 "NONAME2" build adds a +2 column address
+                // offset (u8x8: default_x_offset=2) for 132-px-wide internal RAM. Use NONAME0 when the
+                // panel maps buffer column 0 to the left edge; NONAME2 otherwise — wrong choice shows a
+                // ghost/fixed column and wrong half-screen split.
+                screen = new U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI(U8G2_R0, csPin, dcPin, rstPin);
+                break;
+        }
+        pinMode(csPin, OUTPUT);
+        pinMode(dcPin, OUTPUT);
+        digitalWrite(csPin, 0);
+        digitalWrite(dcPin, 0);
+    }
+
+    ~SsdU8G2Driver() override {
+        delete screen;
+        screen = nullptr;
+    }
+
+    int initialize() override {
+        screen->begin();
+        screen->clearBuffer();
+        screen->setContrast(175);
+        screen->setFont(u8g2_font_tenfatguys_tf);
+        screen->setFontMode(1);
+        screen->enableUTF8Print();
+
+        return 0;
+    }
+
+    void exec() override {
+        // Display updates happen on render(), no periodic execution needed
+    }
+
+    Display* invalidateScreen() override {
+        screen->clearBuffer();
+        return this;
+    }
+
+    void render() override {
+        screen->sendBuffer();
+    }
+
+    Display* drawText(const char *text) override {
+        screen->drawStr(0, 8, text);
+        return this;
+    }
+
+    Display* drawText(const char *text, int xStart, int yStart) override {
+        screen->drawStr(xStart, yStart, text);
+        return this;
+    }
+
+    Display* drawImage(Image image, int xStart, int yStart) override {
+        int x = image.defaultStartX;
+        int y = image.defaultStartY;
+
+        if (xStart != -1) {
+            x = xStart;
+        }
+        if (yStart != -1) {
+            y = yStart;
+        }
+
+        screen->drawXBMP(x, y, image.width, image.height, image.rawImage);
+        return this;
+    }
+
+    Display* drawImage(Image image) override {
+        drawImage(image, -1, -1);
+        return this;
+    }
+
+    Display* renderGlyph(const char* unicodeForGlyph, int x, int y) override {
+        screen->drawUTF8(x, y, unicodeForGlyph);
+        return this;
+    }
+
+    Display* drawButton(const char *text, int xCenter, int yCenter) override {
+        screen->drawButtonUTF8(xCenter, yCenter, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, BUTTON_PADDING, BUTTON_PADDING, text);
+        return this;
+    }
+
+    int getTextWidth(const char* text) override {
+        if (text == nullptr) return 0;
+        return static_cast<int>(screen->getUTF8Width(text));
+    }
+
+    int getTextHeight() override {
+        return static_cast<int>(screen->getMaxCharHeight());
+    }
+
+    int getWidth() override { return 128; }
+
+    void reset() {
+        screen->clearBuffer();
+        screen->clearDisplay();
+    }
+
+    Display* setGlyphMode(FontMode mode) override {
+        switch (mode) {
+            case FontMode::TEXT:
+                screen->setFont(u8g2_font_tenfatguys_tr);
+                screen->setDrawColor(1);
+                screen->setFontMode(0);
+                break;
+            case FontMode::NUMBER_GLYPH:
+                screen->setFont(u8g2_font_twelvedings_t_all);
+                screen->setDrawColor(1);
+                screen->setFontMode(0);
+                break;
+            case FontMode::LOADING_GLYPH:
+                screen->setFont(u8g2_font_unifont_t_76);
+                screen->setDrawColor(1);
+                screen->setFontMode(0);
+                break;
+            case FontMode::TEXT_INVERTED_SMALL:
+                screen->setFont(u8g2_font_tenthinnerguys_t_all);
+                screen->setDrawColor(2);
+                screen->setFontMode(1);
+                break;
+            case FontMode::TEXT_INVERTED_LARGE:
+                screen->setFont(u8g2_font_tenfatguys_tr);
+                screen->setDrawColor(2);
+                screen->setFontMode(1);
+                break;
+            case FontMode::SYMBOL_GLYPH:
+                screen->setFont(u8g2_font_open_iconic_all_4x_t);
+                screen->setDrawColor(2);
+                screen->setFontMode(1);
+                break;
+        }
+        return this;
+    }
+
+    Display* whiteScreen() override {
+        screen->clearBuffer();
+        screen->setFontMode(0);
+        screen->setDrawColor(1);
+        screen->drawBox(0, 0, screen->getDisplayWidth(), screen->getDisplayHeight());
+        return this;
+    }
+
+    Display* whiteScreenLeftHalf() override {
+        screen->setFontMode(0);
+        screen->setDrawColor(1);
+        screen->drawBox(0, 0, screen->getDisplayWidth() / 2, screen->getDisplayHeight());
+        return this;
+    }
+
+    Display* whiteScreenRightHalf() override {
+        screen->setFontMode(0);
+        screen->setDrawColor(1);
+        screen->drawBox(screen->getDisplayWidth() / 2, 0, screen->getDisplayWidth() / 2, screen->getDisplayHeight());
+        return this;
+    }
+
+    void renderInstructions(DisplayRender screenRender) override {
+        invalidateScreen();
+        for (const auto& instruction : screenRender.instructions) {
+            switch (instruction.drawType) {
+                case DrawType::TEXT:
+                    processTextInstruction(instruction.textPayload);
+                    break;
+                case DrawType::IMAGE:
+                    processImageInstruction(instruction.imagePayload);
+                    break;
+                case DrawType::BUTTON:
+                    processButtonInstruction(instruction.buttonPayload);
+                    break;
+            }
+        }
+        render();
+    }
+
+void processTextInstruction(TextPayload instruction) {
+    setGlyphMode(instruction.fontMode);
+    Cursor cursor;
+    cursor.x = calculateTextX(instruction);
+    cursor.y = calculateTextY(instruction);
+    screen->drawUTF8(cursor.x, cursor.y, instruction.text);
+}
+
+void processButtonInstruction(ButtonPayload instruction) {
+    setGlyphMode(instruction.fontMode);
+    Cursor cursor;
+    cursor.x = calculateButtonX(instruction);
+    cursor.y = calculateButtonY(instruction);
+    screen->drawButtonUTF8(cursor.x, cursor.y, U8G2_BTN_BW2 | U8G2_BTN_HCENTER | U8G2_BTN_INV, 0, BUTTON_PADDING, BUTTON_PADDING, instruction.text);
+}
+
+void processImageInstruction(ImagePayload instruction) {
+    Cursor cursor;
+    cursor.x = calculateImageX(instruction);
+    cursor.y = calculateImageY(instruction);
+    screen->drawXBM(cursor.x, cursor.y, instruction.image.width, instruction.image.height, instruction.image.rawImage);
+}
+
+
+/*
+* u8g2's coordinate system for drawing is pretty funky.
+* When drawing text, the x,y coordinate corresponds to the bottom left corner of the text.
+* When drawing buttons, the x,y coordinate corresponds to the center of the button.
+* When drawing images, the x,y coordinate corresponds to the top left corner of the image.
+* These calculation functions allow us to provide flexible anchors and offsets for positioning any asset.
+*/
+int calculateTextX(TextPayload instruction) {
+    switch (instruction.coordinates.xAnchor) {
+        case HAnchor::LEFT:
+            return instruction.coordinates.x;
+        case HAnchor::CENTER_LEFT:
+            return getWidth()/4 - (getTextWidth(instruction.text) / 2);
+        case HAnchor::CENTER:
+            return (screen->getDisplayWidth() - getTextWidth(instruction.text)) / 2;
+        case HAnchor::CENTER_RIGHT:
+            return getWidth()/4*3 - (getTextWidth(instruction.text) / 2);
+        case HAnchor::RIGHT:
+            return screen->getDisplayWidth() - (instruction.coordinates.x + getTextWidth(instruction.text));
+    }
+};
+
+int calculateTextY(TextPayload instruction) {
+    switch (instruction.coordinates.yAnchor) {
+        case VAnchor::TOP:
+            return instruction.coordinates.y + getTextHeight();
+        case VAnchor::CENTER:
+            return (screen->getDisplayHeight() + getTextHeight()) / 2;
+        case VAnchor::BOTTOM:
+            return screen->getDisplayHeight() - (instruction.coordinates.y);
+    }
+}
+
+int calculateButtonX(ButtonPayload instruction) {
+    switch (instruction.coordinates.xAnchor) {
+        case HAnchor::LEFT:
+            return instruction.coordinates.x + BUTTON_PADDING + getTextWidth(instruction.text)/2;
+        case HAnchor::CENTER_LEFT:
+            return getWidth()/4;
+        case HAnchor::CENTER:
+            return screen->getDisplayWidth() / 2;
+        case HAnchor::CENTER_RIGHT:
+            return getWidth()/4*3;
+        case HAnchor::RIGHT:
+            return screen->getDisplayWidth() - (instruction.coordinates.x + getTextWidth(instruction.text)/2 + BUTTON_PADDING);
+    }
+}
+
+int calculateButtonY(ButtonPayload instruction) {
+    switch (instruction.coordinates.yAnchor) {
+        case VAnchor::TOP:
+            return instruction.coordinates.y + getTextHeight()/2 + BUTTON_PADDING;
+        case VAnchor::CENTER:
+            return screen->getDisplayHeight() / 2;
+        case VAnchor::BOTTOM:
+            return screen->getDisplayHeight() - (instruction.coordinates.y + getTextHeight()/2 + BUTTON_PADDING);
+    }
+}
+
+int calculateImageX(ImagePayload instruction) {
+    switch (instruction.coordinates.xAnchor) {
+        case HAnchor::LEFT:
+            return instruction.coordinates.x;
+        case HAnchor::CENTER_LEFT:
+            return (getWidth()/4 - (instruction.image.width / 2));
+        case HAnchor::CENTER:
+            return (getWidth() - instruction.image.width) / 2;
+        case HAnchor::CENTER_RIGHT:
+            return (getWidth()/4*3 - (instruction.image.width / 2));
+        case HAnchor::RIGHT:
+            return getWidth() - (instruction.coordinates.x + instruction.image.width);
+    }
+}
+
+int calculateImageY(ImagePayload instruction) {
+    switch (instruction.coordinates.yAnchor) {
+        case VAnchor::TOP:
+            return instruction.coordinates.y;
+        case VAnchor::CENTER:
+            return (screen->getDisplayHeight() - instruction.image.height) / 2;
+        case VAnchor::BOTTOM:
+            return screen->getDisplayHeight() - (instruction.coordinates.y + instruction.image.height);
+    }
+}
+private:
+    U8G2* screen = nullptr;
+    uint8_t csPin;
+    uint8_t dcPin;
+};
