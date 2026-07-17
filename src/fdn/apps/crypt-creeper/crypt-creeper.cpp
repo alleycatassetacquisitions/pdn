@@ -19,28 +19,28 @@ void CryptCreeper::onStateMounted(Device* device) {
 }
 
 void CryptCreeper::populateStateMap() {
-    auto* mainMenuState = new MainMenuState(controllerWirelessManager);
-    auto* tutorialState = new TutorialState();
-    auto* gameState = new GameState();
-    auto* scoringState = new ScoringState();
+    auto* mainMenuState = new CryptCreeperMainMenuState(controllerWirelessManager);
+    auto* tutorialState = new CryptCreeperTutorialState(controllerWirelessManager);
+    auto* gameState = new CryptCreeperGameState(controllerWirelessManager, &elapsedMs_);
+    auto* scoringState = new CryptCreeperScoringState(controllerWirelessManager, &elapsedMs_);
 
     mainMenuState->addTransition(new StateTransition(
-        std::bind(&MainMenuState::transitionToTutorial, mainMenuState),
+        std::bind(&CryptCreeperMainMenuState::transitionToTutorial, mainMenuState),
         tutorialState));
     mainMenuState->addTransition(new StateTransition(
-        std::bind(&MainMenuState::transitionToGame, mainMenuState),
+        std::bind(&CryptCreeperMainMenuState::transitionToGame, mainMenuState),
         gameState));
 
     tutorialState->addTransition(new StateTransition(
-        std::bind(&TutorialState::transitionToMainMenu, tutorialState),
+        std::bind(&CryptCreeperTutorialState::transitionToMainMenu, tutorialState),
         mainMenuState));
 
     gameState->addTransition(new StateTransition(
-        std::bind(&GameState::transitionToScoring, gameState),
+        std::bind(&CryptCreeperGameState::transitionToScoring, gameState),
         scoringState));
 
     scoringState->addTransition(new StateTransition(
-        std::bind(&ScoringState::transitionToMainMenu, scoringState),
+        std::bind(&CryptCreeperScoringState::transitionToMainMenu, scoringState),
         mainMenuState));
 
     stateMap.push_back(mainMenuState);

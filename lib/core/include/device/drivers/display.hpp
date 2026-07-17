@@ -13,7 +13,8 @@ enum class FontMode {
     LOADING_GLYPH,
     TEXT_INVERTED_SMALL,
     TEXT_INVERTED_LARGE,
-    SYMBOL_GLYPH
+    SYMBOL_GLYPH,
+    GRID_SYMBOL_GLYPH,  // Open Iconic 2x (16x16), fits maze grid cells
 };
 
 class Display {

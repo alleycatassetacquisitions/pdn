@@ -3,19 +3,20 @@
 #include "device/drivers/logger.hpp"
 
 namespace {
-static const char* TAG = "MainMenuState";
-static const char* kGameTitle = "CRYPT CREEPER";
+static const char* TAG = "CryptCreeperMainMenuState";
+static const char* kGameTitleLine1 = "CRYPT";
+static const char* kGameTitleLine2 = "CREEPER";
 }
 
-MainMenuState::MainMenuState(ControllerWirelessManager* controllerWirelessManager)
+CryptCreeperMainMenuState::CryptCreeperMainMenuState(ControllerWirelessManager* controllerWirelessManager)
     : TypedState<FDN>(CryptCreeperStateId::MAIN_MENU)
     , controllerWirelessManager(controllerWirelessManager) {}
 
-MainMenuState::~MainMenuState() {}
+CryptCreeperMainMenuState::~CryptCreeperMainMenuState() {}
 
-void MainMenuState::onStateMounted(FDN* fdn) {
+void CryptCreeperMainMenuState::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    renderMainMenuScreen(fdn, kGameTitle);
+    renderMainMenuScreen(fdn, kGameTitleLine1, kGameTitleLine2);
 
     RemoteDeviceCoordinator* remoteDeviceCoordinator = fdn->getRemoteDeviceCoordinator();
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
@@ -27,15 +28,15 @@ void MainMenuState::onStateMounted(FDN* fdn) {
     }
 
     controllerWirelessManager->setControllerCommandReceivedCallback(
-        std::bind(&MainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
+        std::bind(&CryptCreeperMainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::INPUT_JACK);
 
     controllerWirelessManager->setControllerCommandReceivedCallback(
-        std::bind(&MainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
+        std::bind(&CryptCreeperMainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
         SerialIdentifier::INPUT_JACK_SECONDARY);
 
     parameterizedCallbackFunction onPrimaryButtonPressed = [](void* ctx) {
-        static_cast<MainMenuState*>(ctx)->transitionToTutorialState = true;
+        static_cast<CryptCreeperMainMenuState*>(ctx)->transitionToTutorialState = true;
     };
 
     fdn->getPrimaryButton()->setButtonPress(
@@ -44,7 +45,7 @@ void MainMenuState::onStateMounted(FDN* fdn) {
         ButtonInteraction::PRESS);
 
     parameterizedCallbackFunction onSecondaryButtonPressed = [](void* ctx) {
-        static_cast<MainMenuState*>(ctx)->transitionToGameState = true;
+        static_cast<CryptCreeperMainMenuState*>(ctx)->transitionToGameState = true;
     };
 
     fdn->getSecondaryButton()->setButtonPress(
@@ -53,25 +54,25 @@ void MainMenuState::onStateMounted(FDN* fdn) {
         ButtonInteraction::PRESS);
 }
 
-void MainMenuState::onStateLoop(FDN* fdn) {
-    renderMainMenuScreen(fdn, kGameTitle);
+void CryptCreeperMainMenuState::onStateLoop(FDN* fdn) {
+    renderMainMenuScreen(fdn, kGameTitleLine1, kGameTitleLine2);
 }
 
-void MainMenuState::onStateDismounted(FDN* fdn) {
+void CryptCreeperMainMenuState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
     transitionToTutorialState = false;
     transitionToGameState = false;
 }
 
-bool MainMenuState::transitionToTutorial() {
+bool CryptCreeperMainMenuState::transitionToTutorial() {
     return transitionToTutorialState;
 }
 
-bool MainMenuState::transitionToGame() {
+bool CryptCreeperMainMenuState::transitionToGame() {
     return transitionToGameState;
 }
 
-void MainMenuState::onControllerCommandReceived(ControllerCommand command) {
+void CryptCreeperMainMenuState::onControllerCommandReceived(ControllerCommand command) {
     if (command.command != ControllerCmd::INTERACTION_REQUEST || !command.wifiMacAddrValid) {
         return;
     }

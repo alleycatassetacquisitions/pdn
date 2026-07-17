@@ -127,6 +127,12 @@ public:
                 screen.setDrawColor(2);
                 screen.setFontMode(1);
                 break;
+            case FontMode::GRID_SYMBOL_GLYPH:
+                screen.enableUTF8Print();
+                screen.setFont(u8g2_font_open_iconic_all_2x_t);
+                screen.setDrawColor(1);
+                screen.setFontMode(0);
+                break;
         }
         return this;
     }

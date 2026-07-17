@@ -28,4 +28,5 @@ private:
     static constexpr int kMainMenuStateIndex = 0;
     CryptCreeperDisconnectPolicy disconnectPolicy;
     ControllerWirelessManager* controllerWirelessManager;
+    unsigned long elapsedMs_ = 0;
 };

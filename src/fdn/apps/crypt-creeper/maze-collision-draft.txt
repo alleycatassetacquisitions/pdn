@@ -1,0 +1,133 @@
+Crypt Creeper — collision grid as the code sees it
+========================================================
+
+Legend:
+  X = wall (cannot walk)
+  space = corridor (can walk)
+
+Grid: 4 rows x 8 columns
+  Rows numbered 1-4 top to bottom (matches your row 1 = top)
+  Cols numbered 1-8 left to right (matches your col 1 = left)
+
+Source: src/fdn/apps/crypt-creeper/maze-pages.hpp (walls[] bitmasks)
+Edit this file and send it back — we'll sync maze-pages.hpp to match.
+
+========================================================
+
+PAGE 1
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X X X
+row 2:  X X X X X X X X
+row 3:  X              
+row 4:  X X X X X X X X
+
+Portals / notes (code today):
+  - start (3,2)
+  - exit RIGHT (any row on col 8 corridor)
+
+PAGE 2
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X   X X
+row 2:  X X X X X   X X
+row 3:              X X
+row 4:  X X X X X X X X
+
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X X X
+row 2:  X O            
+row 3:  X X X X X x X X
+row 4:  X X X X X X X X
+
+Portals / notes (code today):
+  - enter LEFT from page 1
+  - exit UP at (1,6) col 6 -> page 3
+
+PAGE 3
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X   X   X X
+row 2:          X   X X
+row 3:  X X X X X   X X
+row 4:  X X X X X   X X
+
+Portals / notes (code today):
+  - enter DOWN from page 2 at (4,6) -> spawns (4,6)
+  - exit UP at (1,6) -> page 4
+  - exit LEFT at (2,1) -> page 5 (after return from page 4)
+  - enter DOWN from page 4 at (1,4) -> spawns (1,4)
+
+PAGE 4
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X X X
+row 2:  X X X       X X
+row 3:  X X X   X   X X
+row 4:  X X X   X   X X
+
+Portals / notes (code today):
+  - enter from page 3
+  - exit DOWN at (4,4) -> page 3
+
+PAGE 5
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X X X
+row 2:  X X X X X      
+row 3:  X X         X X
+row 4:        X X X X X      
+
+
+
+Portals / notes (code today):
+  - enter RIGHT from page 3 at (2,8)
+  - exit LEFT at (4,1) -> page 6
+
+PAGE 6
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X       X X
+row 2:  X X X   X   X X
+row 3:          X   X X
+row 4:  X X X X X      
+
+Portals / notes (code today):
+  - enter RIGHT from page 5 at (4,8)
+  - exit LEFT at (3,1) -> page 7
+
+PAGE 7
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X X X
+row 2:  X X X X X X X X
+row 3:  X X X X X X    
+row 4:  X X X X X X   X
+
+Portals / notes (code today):
+  - enter RIGHT from page 6 at (3,8)
+  - exit DOWN at (4,7) -> page 8
+
+PAGE 8
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X   X
+row 2:        X X X   X
+row 3:  X X           X
+row 4:  X X X X X X X X
+
+Portals / notes (code today):
+  - enter UP from page 7 at (1,7)
+  - exit LEFT at (2,1) -> page 9
+
+PAGE 9
+--------------------
+    col: 1 2 3 4 5 6 7 8
+row 1:  X X X X X X X X
+row 2:  X O            
+row 3:  X X X X X X X X
+row 4:  X X X X X X X X
+
+Portals / notes (code today):
+  - enter RIGHT from page 8 at (2,8)
+  - goal at (2,2)

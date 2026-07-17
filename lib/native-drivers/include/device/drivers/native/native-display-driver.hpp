@@ -236,6 +236,7 @@ public:
             case FontMode::TEXT_INVERTED_SMALL: return "INV_SM";
             case FontMode::TEXT_INVERTED_LARGE: return "INV_LG";
             case FontMode::SYMBOL_GLYPH: return "SYMBOL";
+            case FontMode::GRID_SYMBOL_GLYPH: return "GRID_SYM";
             default: return "?";
         }
     }
