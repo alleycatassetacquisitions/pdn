@@ -236,8 +236,14 @@ public:
             case FontMode::TEXT_INVERTED_SMALL: return "INV_SM";
             case FontMode::TEXT_INVERTED_LARGE: return "INV_LG";
             case FontMode::SYMBOL_GLYPH: return "SYMBOL";
+            case FontMode::ARCADE_1: return "ARCADE_1";
             default: return "?";
         }
+    }
+
+    Display* drawFilledCircle(int x, int y, int radius) override {
+        fillCircle(x, y, radius);
+        return this;
     }
     
     /**
@@ -405,6 +411,32 @@ private:
             for (int i = x; i < xEnd; i++) {
                 setPixel(i, j, true);
             }
+        }
+    }
+
+    void fillCircle(int cx, int cy, int r) {
+        if (r < 1) {
+            return;
+        }
+        int x = 0;
+        int y = r;
+        int d = 3 - 2 * r;
+        while (x <= y) {
+            for (int i = cx - x; i <= cx + x; i++) {
+                setPixel(i, cy + y, true);
+                setPixel(i, cy - y, true);
+            }
+            for (int i = cx - y; i <= cx + y; i++) {
+                setPixel(i, cy + x, true);
+                setPixel(i, cy - x, true);
+            }
+            if (d < 0) {
+                d = d + 4 * x + 6;
+            } else {
+                d = d + 4 * (x - y) + 10;
+                y--;
+            }
+            x++;
         }
     }
     

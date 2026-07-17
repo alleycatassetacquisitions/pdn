@@ -101,6 +101,7 @@ public:
     MOCK_METHOD(Display*, drawImage, (Image, int, int), (override));
     MOCK_METHOD(int, getTextWidth, (const char*), (override));
     MOCK_METHOD(int, getWidth, (), (override));
+    MOCK_METHOD(Display*, drawFilledCircle, (int, int, int), (override));
     MOCK_METHOD(Display*, whiteScreen, (), (override));
     MOCK_METHOD(Display*, whiteScreenLeftHalf, (), (override));
     MOCK_METHOD(Display*, whiteScreenRightHalf, (), (override));

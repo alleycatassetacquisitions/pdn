@@ -6,6 +6,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "wireless/controller-wireless-manager.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include <string>
 
 class FloatyBoatDisconnectPolicy : public FDNConnectState {
 public:
@@ -23,6 +24,9 @@ public:
     void populateStateMap() override;
 
     void onStateMounted(Device* device) override;
+
+    int primaryScore = 0;
+    std::string primaryScoreLabel = "SCORE";
 
 private:
     static constexpr int kMainMenuStateIndex = 0;

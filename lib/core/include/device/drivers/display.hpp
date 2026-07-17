@@ -13,7 +13,8 @@ enum class FontMode {
     LOADING_GLYPH,
     TEXT_INVERTED_SMALL,
     TEXT_INVERTED_LARGE,
-    SYMBOL_GLYPH
+    SYMBOL_GLYPH,
+    ARCADE_1,  // cu12 symbols — boat/barrier glyphs for Floaty Boat
 };
 
 class Display {
@@ -47,6 +48,8 @@ public:
         drawText(text, (getWidth() - getTextWidth(text)) / 2, y);
         return this;
     }
+
+    virtual Display* drawFilledCircle(int x, int y, int radius) = 0;
 
     virtual Display* whiteScreen() = 0;
 

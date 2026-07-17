@@ -13,10 +13,7 @@ MainMenuState::MainMenuState(ControllerWirelessManager* controllerWirelessManage
 
 MainMenuState::~MainMenuState() {}
 
-void MainMenuState::onStateMounted(FDN* fdn) {
-    LOG_W(TAG, "Mounted");
-    renderMainMenuScreen(fdn, kGameTitle);
-
+void MainMenuState::sendGameSelectToConnectedPeers(FDN* fdn) {
     RemoteDeviceCoordinator* remoteDeviceCoordinator = fdn->getRemoteDeviceCoordinator();
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
         const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
@@ -25,6 +22,14 @@ void MainMenuState::onStateMounted(FDN* fdn) {
             controllerWirelessManager->sendGameSelectPacket(GameSelectId::CONTROLLER_1);
         }
     }
+}
+
+void MainMenuState::onStateMounted(FDN* fdn) {
+    LOG_W(TAG, "Mounted");
+    renderMainMenuScreen(fdn, kGameTitle);
+
+    sendGameSelectToConnectedPeers(fdn);
+    gameSelectResendTimer.setTimer(kGameSelectResendIntervalMs);
 
     controllerWirelessManager->setControllerCommandReceivedCallback(
         std::bind(&MainMenuState::onControllerCommandReceived, this, std::placeholders::_1),
@@ -54,6 +59,10 @@ void MainMenuState::onStateMounted(FDN* fdn) {
 }
 
 void MainMenuState::onStateLoop(FDN* fdn) {
+    if (gameSelectResendTimer.expired()) {
+        sendGameSelectToConnectedPeers(fdn);
+        gameSelectResendTimer.setTimer(kGameSelectResendIntervalMs);
+    }
     renderMainMenuScreen(fdn, kGameTitle);
 }
 
@@ -61,6 +70,10 @@ void MainMenuState::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
     transitionToTutorialState = false;
     transitionToGameState = false;
+    gameSelectResendTimer.invalidate();
+    fdn->getPrimaryButton()->removeButtonCallbacks();
+    fdn->getSecondaryButton()->removeButtonCallbacks();
+    controllerWirelessManager->clearCallback();
 }
 
 bool MainMenuState::transitionToTutorial() {

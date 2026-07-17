@@ -127,7 +127,22 @@ public:
                 screen.setDrawColor(2);
                 screen.setFontMode(1);
                 break;
+            case FontMode::ARCADE_1:
+                screen.enableUTF8Print();
+                screen.setFont(u8g2_font_cu12_h_symbols);
+                screen.setFontMode(1);
+                screen.setDrawColor(2);
+                break;
         }
+        return this;
+    }
+
+    Display* drawFilledCircle(int x, int y, int radius) override {
+        if (radius < 1) {
+            return this;
+        }
+        screen.setDrawColor(1);
+        screen.drawDisc(x, y, radius, U8G2_DRAW_ALL);
         return this;
     }
 
