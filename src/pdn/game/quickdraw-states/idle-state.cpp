@@ -77,9 +77,7 @@ void Idle::onStateLoop(PDN* pdn) {
     ShootoutManager* shMgr = matchManager->getShootoutManager();
     bool shootoutActive = shMgr && shMgr->active();
     if (!shootoutActive && isConnected()) {
-        if (chainDuelManager->canInitiateMatch()
-            && getPeerDeviceType(SerialIdentifier::OUTPUT_JACK) == DeviceType::PDN
-            && player->isHunter()) {
+        if (chainDuelManager->canInitiateMatch()) {
             if (!matchInitialized) {
                 const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(SerialIdentifier::OUTPUT_JACK);
                 if (peerMac != nullptr) {

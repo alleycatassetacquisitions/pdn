@@ -90,9 +90,9 @@ public:
 
 private:
     RetryStats retryStats_;
-    Player* player_;
-    WirelessManager* wirelessManager_;
-    RemoteDeviceCoordinator* rdc_;
+    Player* player;
+    WirelessManager* wirelessManager;
+    RemoteDeviceCoordinator* rdc;
 
     SerialIdentifier opponentJack() const;
     SerialIdentifier supporterJack() const;

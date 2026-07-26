@@ -1,9 +1,11 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <iostream>
 #include <cstdint>
+#include "device/drivers/peer-comms-types.hpp"
 #include "symbol.hpp"
 
 enum class Allegiance {
@@ -15,11 +17,14 @@ enum class Allegiance {
 
 class Player {
 public:
+    /// Fires after the hunter/bounty role flips.
+    using RoleChangedCallback = std::function<void()>;
+
     Player() = default;
     ~Player() = default;
-    
+
     Player(const std::string& id, Allegiance allegiance, bool isHunter);
-    
+
     std::string toJson() const;
 
     void fromJson(const std::string &json);
@@ -29,6 +34,16 @@ public:
     void setIsHunter(bool isHunter);
 
     void toggleHunter();
+
+    /// Registers the role-flip observer (one slot). Fires only on an actual
+    /// flip, never on a set that reasserts the current role.
+    void setOnRoleChanged(RoleChangedCallback callback);
+
+    /// This player as the packed profile peers receive in the connection
+    /// context. userId is 0xFFFF while the player id is not wholly numeric
+    /// (registration has not completed); faction and name truncate to the
+    /// fixed wire widths.
+    PlayerProfile toProfile() const;
 
     Allegiance getAllegiance() const;
 
@@ -85,6 +100,12 @@ public:
     void addReactionTime(unsigned long reactionTime);
 
 private:
+    // Sole write path for `hunter`, so every flip notifies exactly once no
+    // matter which public setter produced it.
+    void applyRole(bool isHunter);
+
+    RoleChangedCallback roleChangedCallback;
+
     std::string id = "default";
     std::string name = "";
     std::string allegianceStr = "none";

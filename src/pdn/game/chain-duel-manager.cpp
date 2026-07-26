@@ -3,18 +3,17 @@
 
 #define TAG "CDM"
 
-ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc) {
-    this->player_ = player;
-    this->wirelessManager_ = wirelessManager;
-    this->rdc_ = rdc;
-}
+ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc)
+    : player(player)
+    , wirelessManager(wirelessManager)
+    , rdc(rdc) {}
 
 SerialIdentifier ChainDuelManager::opponentJack() const {
-    return player_->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
+    return player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
 }
 
 SerialIdentifier ChainDuelManager::supporterJack() const {
-    return player_->isHunter() ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
+    return player->isHunter() ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
 }
 
 std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const {
@@ -22,8 +21,8 @@ std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const 
 }
 
 bool ChainDuelManager::isLoop() const {
-    PortState oState = rdc_->getPortState(opponentJack());
-    PortState sState = rdc_->getPortState(supporterJack());
+    PortState oState = rdc->getPortState(opponentJack());
+    PortState sState = rdc->getPortState(supporterJack());
     for (const auto& oPeer : oState.peerMacAddresses) {
         for (const auto& sPeer : sState.peerMacAddresses) {
             if (memcmp(oPeer.data(), sPeer.data(), 6) == 0) return true;
@@ -35,7 +34,7 @@ bool ChainDuelManager::isLoop() const {
 bool ChainDuelManager::isSupporter() const {
     auto opponentRole = peerIsHunter(opponentJack());
     if (!opponentRole.has_value()) return false;
-    if (*opponentRole != player_->isHunter()) return false;
+    if (*opponentRole != player->isHunter()) return false;
     return !isLoop();
 }
 
@@ -47,20 +46,28 @@ bool ChainDuelManager::isChampion() const {
 }
 
 bool ChainDuelManager::canInitiateMatch() const {
-    if (!player_->isHunter()) return false;
-    auto opponentRole = peerIsHunter(opponentJack());
+    if (!player->isHunter()) return false;
+    // A closed ring is the shootout's topology; no 1v1 pairing forms inside one.
+    if (isLoop()) return false;
+    // Half-open gate. Connected means the context exchange completed in both
+    // directions, so the peer is listening; a jack that only reached Connecting
+    // has a peer MAC off one HELLO and may have no return path at all, and a
+    // match pushed across it strands the initiator waiting for an ack.
+    if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
+    if (rdc->getPeerDeviceType(opponentJack()) != DeviceType::PDN) return false;
+    std::optional<bool> opponentRole = peerIsHunter(opponentJack());
     if (!opponentRole.has_value()) return false;
-    return *opponentRole != player_->isHunter();
+    return *opponentRole != player->isHunter();
 }
 
 std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() const {
     if (isLoop()) return {};
-    PortState state = rdc_->getPortState(supporterJack());
+    PortState state = rdc->getPortState(supporterJack());
     return state.peerMacAddresses;
 }
 
 bool ChainDuelManager::isKnownGameEventSender(const uint8_t* fromMac) const {
-    PortState oState = rdc_->getPortState(opponentJack());
+    PortState oState = rdc->getPortState(opponentJack());
     for (const auto& peer : oState.peerMacAddresses) {
         if (memcmp(peer.data(), fromMac, 6) == 0) return true;
     }
@@ -113,7 +120,7 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
             retryStats_.sends++;
         }
 
-        wirelessManager_->sendEspNowData(
+        wirelessManager->sendEspNowData(
             peerMac.data(),
             PktType::kChainGameEvent,
             reinterpret_cast<const uint8_t*>(&payload),
@@ -125,7 +132,7 @@ void ChainDuelManager::sendGameEventAck(const uint8_t* toMac, uint8_t seqId) {
     if (toMac == nullptr || seqId == 0) return;
     ChainGameEventAckPayload ack{};
     ack.seqId = seqId;
-    wirelessManager_->sendEspNowData(
+    wirelessManager->sendEspNowData(
         toMac, PktType::kChainGameEventAck,
         reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
 }
@@ -145,7 +152,7 @@ void ChainDuelManager::onChainGameEventAckReceived(const uint8_t* fromMac, uint8
 void ChainDuelManager::sendConfirm() {
     if (!championMac_.has_value()) return;
 
-    const uint8_t* selfMac = wirelessManager_->getMacAddress();
+    const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) return;
 
     ChainConfirmPayload payload{};
@@ -153,7 +160,7 @@ void ChainDuelManager::sendConfirm() {
     payload.seqId = nextConfirmSeqId_++;
     if (nextConfirmSeqId_ == 0) nextConfirmSeqId_ = 1;
 
-    wirelessManager_->sendEspNowData(
+    wirelessManager->sendEspNowData(
         championMac_->data(),
         PktType::kChainConfirm,
         reinterpret_cast<const uint8_t*>(&payload),
@@ -184,7 +191,7 @@ void ChainDuelManager::onConfirmReceived(
 }
 
 void ChainDuelManager::onChainStateChanged() {
-    PortState sState = rdc_->getPortState(supporterJack());
+    PortState sState = rdc->getPortState(supporterJack());
     size_t count = sState.peerMacAddresses.size();
     if (lastSupporterChainCount_ > 0 && count == 0) {
         clearSupporterConfirms();
@@ -193,14 +200,14 @@ void ChainDuelManager::onChainStateChanged() {
 
     // Drop cached peer roles for any port that no longer has a direct peer.
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-        if (rdc_->getPeerMac(port) == nullptr) {
+        if (rdc->getPeerMac(port) == nullptr) {
             peerRoleByPort_[port == SerialIdentifier::INPUT_JACK ? 0 : 1].reset();
         }
     }
 
     // Re-evaluate championMac_. If I'm now champion, self-assign.
     if (isChampion()) {
-        const uint8_t* selfMac = wirelessManager_->getMacAddress();
+        const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr) {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
@@ -208,14 +215,14 @@ void ChainDuelManager::onChainStateChanged() {
                 championMac_ = selfArr;
                 broadcastRoleAndChampion();
                 // Track that we just announced to our current supporter-jack peer.
-                const uint8_t* supporterPeer = rdc_->getPeerMac(supporterJack());
+                const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
                 if (supporterPeer != nullptr) {
                     std::array<uint8_t, 6> cur;
                     memcpy(cur.data(), supporterPeer, 6);
                     lastAnnouncedSupporterJackMac_ = cur;
                 }
                 // Announce role to opponent-jack peer if new.
-                const uint8_t* opponentPeer = rdc_->getPeerMac(opponentJack());
+                const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
                 if (opponentPeer != nullptr) {
                     std::array<uint8_t, 6> cur;
                     memcpy(cur.data(), opponentPeer, 6);
@@ -233,7 +240,7 @@ void ChainDuelManager::onChainStateChanged() {
     // invalidate it — the real champion's announce will repopulate via
     // onRoleAnnounceReceived.
     if (isSupporter() && championMac_.has_value()) {
-        const uint8_t* selfMac = wirelessManager_->getMacAddress();
+        const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr && memcmp(championMac_->data(), selfMac, 6) == 0) {
             championMac_.reset();
         }
@@ -243,7 +250,7 @@ void ChainDuelManager::onChainStateChanged() {
     // broadcast the current championMac to it. Guard against re-firing on every
     // chain-state event (which would cause packet storms and destabilize the
     // serial heartbeat timing).
-    const uint8_t* supporterPeer = rdc_->getPeerMac(supporterJack());
+    const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
     if (championMac_.has_value() && supporterPeer != nullptr) {
         std::array<uint8_t, 6> cur;
         memcpy(cur.data(), supporterPeer, 6);
@@ -256,7 +263,7 @@ void ChainDuelManager::onChainStateChanged() {
     }
 
     // Announce our role to the opponent-jack peer if it has changed.
-    const uint8_t* opponentPeer = rdc_->getPeerMac(opponentJack());
+    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer != nullptr) {
         std::array<uint8_t, 6> cur;
         memcpy(cur.data(), opponentPeer, 6);
@@ -302,7 +309,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     bool fromOpponentJack = false;
     bool fromKnownDirectPeer = false;
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-        const uint8_t* directMac = rdc_->getPeerMac(port);
+        const uint8_t* directMac = rdc->getPeerMac(port);
         if (directMac != nullptr && memcmp(directMac, fromMac, 6) == 0) {
             setPeerRole(port, role == 1);
             fromKnownDirectPeer = true;
@@ -319,7 +326,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
 
     RoleAnnounceAckPayload ack{};
     ack.seqId = seqId;
-    wirelessManager_->sendEspNowData(
+    wirelessManager->sendEspNowData(
         fromMac, PktType::kRoleAnnounceAck,
         reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
 
@@ -327,14 +334,14 @@ void ChainDuelManager::onRoleAnnounceReceived(
     // championMac_. Opposite-role senders are dueling opponents, not chain
     // parents — their championMac is irrelevant.
     if (!fromOpponentJack) return;
-    if (role != (player_->isHunter() ? 1u : 0u)) return;
+    if (role != (player->isHunter() ? 1u : 0u)) return;
 
     // 3. Register champion as ESP-NOW peer (only if it's not our own MAC).
-    const uint8_t* selfMac = wirelessManager_->getMacAddress();
+    const uint8_t* selfMac = wirelessManager->getMacAddress();
     bool championIsSelf = (selfMac != nullptr &&
                            memcmp(selfMac, championMac, 6) == 0);
     if (!championIsSelf) {
-        rdc_->registerPeer(championMac);
+        rdc->registerPeer(championMac);
     }
 
     // 4. Update championMac_ and cascade if changed. On change, release the
@@ -351,7 +358,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
         if (!oldIsSelf) {
             bool oldStillInChain = false;
             for (SerialIdentifier p : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-                PortState ps = rdc_->getPortState(p);
+                PortState ps = rdc->getPortState(p);
                 for (const auto& m : ps.peerMacAddresses) {
                     if (memcmp(m.data(), oldMac.data(), 6) == 0) {
                         oldStillInChain = true;
@@ -361,7 +368,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
                 if (oldStillInChain) break;
             }
             if (!oldStillInChain) {
-                rdc_->unregisterPeer(oldMac.data());
+                rdc->unregisterPeer(oldMac.data());
             }
         }
     }
@@ -374,14 +381,14 @@ void ChainDuelManager::onRoleAnnounceReceived(
 void ChainDuelManager::broadcastRoleAndChampion() {
     if (!championMac_.has_value()) return;
 
-    const uint8_t* supporterPeer = rdc_->getPeerMac(supporterJack());
+    const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
     if (supporterPeer == nullptr) return;
 
     uint8_t seqId = nextRoleAnnounceSeqId_++;
     if (nextRoleAnnounceSeqId_ == 0) nextRoleAnnounceSeqId_ = 1;
 
     RoleAnnouncePayload payload{};
-    payload.role = player_->isHunter() ? 1 : 0;
+    payload.role = player->isHunter() ? 1 : 0;
     memcpy(payload.championMac, championMac_->data(), 6);
     payload.seqId = seqId;
 
@@ -394,7 +401,7 @@ void ChainDuelManager::broadcastRoleAndChampion() {
     pending_.timer.setTimer(kAckTimeoutMs);
     retryStats_.sends++;
 
-    wirelessManager_->sendEspNowData(
+    wirelessManager->sendEspNowData(
         supporterPeer, PktType::kRoleAnnounce,
         reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
 }
@@ -408,21 +415,21 @@ void ChainDuelManager::broadcastRoleAndChampion() {
 // would double the airtime cost of every chain change; the relaxed model is
 // acceptable given the healing path.
 void ChainDuelManager::sendRoleToOpponentJack() {
-    const uint8_t* opponentPeer = rdc_->getPeerMac(opponentJack());
+    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer == nullptr) return;
 
     uint8_t seqId = nextRoleAnnounceSeqId_++;
     if (nextRoleAnnounceSeqId_ == 0) nextRoleAnnounceSeqId_ = 1;
 
     RoleAnnouncePayload payload{};
-    payload.role = player_->isHunter() ? 1 : 0;
+    payload.role = player->isHunter() ? 1 : 0;
     // championMac is a placeholder — receiver ignores unless same-role peer.
     if (championMac_.has_value()) {
         memcpy(payload.championMac, championMac_->data(), 6);
     }
     payload.seqId = seqId;
 
-    wirelessManager_->sendEspNowData(
+    wirelessManager->sendEspNowData(
         opponentPeer, PktType::kRoleAnnounce,
         reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
 }
@@ -454,7 +461,7 @@ void ChainDuelManager::sync() {
             payload.role = pending_.role;
             memcpy(payload.championMac, pending_.championMac.data(), 6);
             payload.seqId = pending_.seqId;
-            wirelessManager_->sendEspNowData(
+            wirelessManager->sendEspNowData(
                 pending_.targetMac.data(), PktType::kRoleAnnounce,
                 reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
             // Exponential backoff between retransmits: 200, 400, 800ms
@@ -487,7 +494,7 @@ void ChainDuelManager::sync() {
         ChainGameEventPayload payload{};
         payload.event_type = pending.eventType;
         payload.seqId = pending.seqId;
-        wirelessManager_->sendEspNowData(
+        wirelessManager->sendEspNowData(
             pending.targetMac.data(), PktType::kChainGameEvent,
             reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
         pending.timer.setTimer(kAckTimeoutMs << pending.retries);

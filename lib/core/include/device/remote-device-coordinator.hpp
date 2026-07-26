@@ -184,11 +184,23 @@ public:
         contextReceivedCallback = std::move(callback);
     }
 
-    /// Supplies this device's outgoing player profile, forwarded verbatim in the
-    /// context this device sends to a new peer on any jack. Opaque to RDC.
-    void setSelfPlayerProfile(const PlayerProfile& profile) {
-        selfPlayerProfile = profile;
+    /// Yields this device's outgoing player profile, forwarded verbatim in the
+    /// context this device sends. Opaque to RDC.
+    using SelfProfileProvider = std::function<PlayerProfile()>;
+
+    /// Registers the outgoing-profile source. A provider rather than a stored
+    /// copy because the id, name, faction and role each settle at a different
+    /// point in registration: reading at send time keeps a context honest
+    /// without every one of those setters having to re-push here.
+    void setSelfProfileProvider(SelfProfileProvider provider) {
+        selfProfileProvider = std::move(provider);
     }
+
+    /// Queues a fresh context to the peer on every Connected jack. The exchange
+    /// is otherwise once-per-connect, so a profile field a peer acts on (the
+    /// hunter/bounty role) changing on an already-open link has to push itself
+    /// or the peer keeps acting on the stale value until the next replug.
+    void resendContext();
 
     /// The chainRole recorded from the peer's context on `jack`; 0 until one
     /// arrives. Recorded for the device chain SM (#156), not acted on here.
@@ -381,7 +393,7 @@ private:
     bool helloConnectivityEnabled = false;
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
-    PlayerProfile selfPlayerProfile{};
+    SelfProfileProvider selfProfileProvider;
     std::array<uint8_t, 6> selfMac{};
     DeviceType selfDeviceType = DeviceType::UNKNOWN;
 

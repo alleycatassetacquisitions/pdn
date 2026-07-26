@@ -496,6 +496,14 @@ TEST_F(PlayerTestSuite, jsonRoundTripWithBountyRole) {
     playerJsonRoundTripWithBountyRole(player);
 }
 
+TEST_F(PlayerTestSuite, roleChangeFiresOnlyOnFlip) {
+    playerRoleChangeFiresOnlyOnFlip(player);
+}
+
+TEST_F(PlayerTestSuite, profileCarriesRoleAndIdentity) {
+    playerProfileCarriesRoleAndIdentity(player);
+}
+
 TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
     playerStatsIncrementCorrectly(player);
 }
@@ -1418,6 +1426,12 @@ TEST_F(RDCHelloTests, replugAfterFailedExchangeRecovers) {
 TEST_F(RDCHelloTests, connectedRetryResendThrottled) {
     rdcConnectedRetryResendThrottled(this);
 }
+TEST_F(RDCHelloTests, resendContextPushesCurrentProfile) {
+    rdcResendContextPushesCurrentProfile(this);
+}
+TEST_F(RDCHelloTests, resendContextSkipsUnconnectedJacks) {
+    rdcResendContextSkipsUnconnectedJacks(this);
+}
 TEST_F(RDCHelloTests, linkDeathClearsPeerChainRole) {
     rdcLinkDeathClearsPeerChainRole(this);
 }
@@ -1578,6 +1592,10 @@ TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
 
 TEST_F(ChainDuelManagerTests, roleDerivationWithChampionTopology) {
     cdmRoleDerivationWithChampionTopology(this);
+}
+
+TEST_F(ChainDuelManagerTests, canInitiateMatchRequiresConnectedOpponentJack) {
+    cdmCanInitiateMatchRequiresConnectedOpponentJack(this);
 }
 
 TEST_F(ChainDuelManagerTests, canInitiateMatchFalseForBounty) {

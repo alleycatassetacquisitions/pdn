@@ -134,6 +134,31 @@ inline void cdmRoleDerivationWithChampionTopology(ChainDuelManagerTests* suite) 
     EXPECT_FALSE(cdm2.getSupporterChainPeers().empty());
 }
 
+// Half-open gate (#162): a jack that only reached CONNECTING knows its peer MAC
+// from one serial frame but has no proven return path, and a match pushed across
+// it strands the initiator waiting for an ack that never comes. Only a CONNECTED
+// opponent jack opens the gate.
+inline void cdmCanInitiateMatchRequiresConnectedOpponentJack(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+
+    // One serial frame: the OUTPUT jack knows the peer MAC and its PDN kind, but
+    // the connection is still half-open.
+    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
+    suite->rdc.sync(&suite->device);
+    cdm.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);  // bounty opponent
+
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
+    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+    EXPECT_FALSE(cdm.canInitiateMatch());
+
+    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    EXPECT_TRUE(cdm.canInitiateMatch());
+}
+
 // Bounties never initiate matches regardless of topology
 inline void cdmCanInitiateMatchFalseForBounty(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(false);

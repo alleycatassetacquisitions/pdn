@@ -1,7 +1,9 @@
 #include "game/player.hpp"
 #include <memory>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <utility>
 #include <ArduinoJson.h>
 #include "wireless/mac-functions.hpp"
 
@@ -45,7 +47,7 @@ void Player::fromJson(const std::string &json) {
       if (doc["faction"].is<const char*>()) {
         faction = doc["faction"].as<std::string>();
       }
-      hunter = doc["hunter"];
+      applyRole(doc["hunter"].as<bool>());
     } else {
       // Serial.println("Failed to parse JSON");
     }
@@ -53,12 +55,38 @@ void Player::fromJson(const std::string &json) {
 
 void Player::toggleHunter()
 {
-  hunter = !hunter;
+    applyRole(!hunter);
 }
 
-void Player::setIsHunter(bool isHunter) 
-{
-  hunter = isHunter;
+void Player::setIsHunter(bool isHunter) {
+    applyRole(isHunter);
+}
+
+void Player::applyRole(bool isHunter) {
+    if (hunter == isHunter) return;
+    hunter = isHunter;
+    if (roleChangedCallback) roleChangedCallback();
+}
+
+void Player::setOnRoleChanged(RoleChangedCallback callback) {
+    roleChangedCallback = std::move(callback);
+}
+
+PlayerProfile Player::toProfile() const {
+    PlayerProfile profile{};
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(id.c_str(), &end, 10);
+    // A non-numeric id ("default", or a name) means registration has not
+    // completed; 0xFFFF is the unregistered player-id sentinel peers expect.
+    profile.userId = (!id.empty() && end != nullptr && *end == '\0')
+                         ? static_cast<uint16_t>(parsed)
+                         : 0xFFFF;
+    profile.gameRole = hunter ? 1 : 0;
+    profile.allegiance = static_cast<uint8_t>(allegiance);
+    // snprintf both truncates to the fixed wire width and NUL-terminates.
+    std::snprintf(profile.faction, sizeof(profile.faction), "%s", faction.c_str());
+    std::snprintf(profile.name, sizeof(profile.name), "%s", name.c_str());
+    return profile;
 }
 
 void Player::clearUserID()

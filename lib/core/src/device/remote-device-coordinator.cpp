@@ -820,8 +820,21 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
     if (pdnContextChannel == nullptr) return;
     PdnConnectionContext ctx{};
     ctx.chainRole = 0;
-    ctx.player = selfPlayerProfile;
+    if (selfProfileProvider) ctx.player = selfProfileProvider();
     pdnContextChannel->sendReliable(mac, ctx);
+}
+
+void RemoteDeviceCoordinator::resendContext() {
+    for (SerialIdentifier port : HELLO_JACKS) {
+        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
+        const uint8_t* mac = machine->peer().data();
+        // A 2-node ring faces the same peer on both jacks, and one copy completes
+        // both: the pending entry the first jack leaves collapses the second,
+        // exactly as on the initiate path.
+        if (isContextSendPending(mac)) continue;
+        sendSelfContext(mac);
+    }
 }
 
 bool RemoteDeviceCoordinator::isContextSendPending(const uint8_t* mac) const {

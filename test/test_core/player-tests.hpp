@@ -165,3 +165,60 @@ inline void playerReactionTimeAverageCalculatesCorrectly(Player* player) {
     EXPECT_EQ(player->getLastReactionTime(), 400);
     EXPECT_EQ(player->getAverageReactionTime(), 300); // (200+300+400)/3
 }
+
+// ============================================
+// Role Change + Outgoing Profile Tests
+// ============================================
+
+// The role-flip observer is what drives the connection-context re-broadcast, so
+// it must fire on every real flip and stay silent on a set that reasserts the
+// current role — an idle re-registration would otherwise put a redundant frame
+// on the air for every peer.
+inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
+    int flips = 0;
+    player->setIsHunter(true);
+    player->setOnRoleChanged([&flips]() { flips++; });
+
+    player->setIsHunter(true);
+    EXPECT_EQ(flips, 0);
+
+    player->setIsHunter(false);
+    EXPECT_EQ(flips, 1);
+    EXPECT_FALSE(player->isHunter());
+
+    player->toggleHunter();
+    EXPECT_EQ(flips, 2);
+    EXPECT_TRUE(player->isHunter());
+
+    // A fetched profile is the other role write path and must notify too.
+    Player source("1234", Allegiance::HELIX, false);
+    player->fromJson(source.toJson());
+    EXPECT_EQ(flips, 3);
+    EXPECT_FALSE(player->isHunter());
+}
+
+// toProfile is what a peer decodes out of the connection context, so gameRole
+// must track the live role and an unregistered id must read as the sentinel
+// rather than as player 0.
+inline void playerProfileCarriesRoleAndIdentity(Player* player) {
+    PlayerProfile unregistered = player->toProfile();
+    EXPECT_EQ(unregistered.userId, 0xFFFF);
+
+    char testId[] = "4242";
+    player->setUserID(testId);
+    player->setName("A-very-long-player-name");
+    player->setFaction("LongFactionName");
+    player->setAllegiance(Allegiance::HELIX);
+    player->setIsHunter(true);
+
+    PlayerProfile hunter = player->toProfile();
+    EXPECT_EQ(hunter.userId, 4242);
+    EXPECT_EQ(hunter.gameRole, 1);
+    EXPECT_EQ(hunter.allegiance, static_cast<uint8_t>(Allegiance::HELIX));
+    // Truncated to the fixed wire widths and still NUL-terminated.
+    EXPECT_EQ(std::string(hunter.name), "A-very-long-pla");
+    EXPECT_EQ(std::string(hunter.faction), "LongFac");
+
+    player->setIsHunter(false);
+    EXPECT_EQ(player->toProfile().gameRole, 0);
+}

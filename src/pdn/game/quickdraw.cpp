@@ -105,6 +105,17 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
             shootoutManager_->onLocalRDCDisconnect(lostMac);
         }
     });
+
+    // The Player is the authority on this device's identity; RDC only carries it.
+    remoteDeviceCoordinator->setSelfProfileProvider([this]() -> PlayerProfile {
+        return this->player->toProfile();
+    });
+
+    // Registration flips hunter/bounty long after the jacks came up, and the
+    // context exchange only runs on connect, so the flip has to push itself.
+    this->player->setOnRoleChanged([this]() {
+        remoteDeviceCoordinator->resendContext();
+    });
 }
 
 void Quickdraw::onChainStateChanged() {
@@ -270,6 +281,10 @@ void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t
 }
 
 Quickdraw::~Quickdraw() {
+    // Both callbacks capture `this` and are held by objects that outlive this
+    // state machine, so they must be dropped before the capture dangles.
+    if (player) player->setOnRoleChanged(nullptr);
+    if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
     player = nullptr;
     // The coordinator and the wireless manager are device-owned and outlive this
     // app, so every slot holding `this` has to be emptied here. kSymbolMatchCommand
