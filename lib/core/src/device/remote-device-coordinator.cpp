@@ -290,6 +290,12 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
             HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
             if (machine) machine->onStateLoop(PDN);
         }
+        // Edge-trigger the role observer here, after the links have settled, rather
+        // than at each site that can move the role: a link commits to CONNECTED in
+        // the loop above, dies through the Idle mount inside it, and latches a ring
+        // during HELLO parsing between ticks. Polling the derived role once per tick
+        // catches all three; per-site firing drops whichever site is forgotten.
+        maybeFireChainRoleChange();
         return;
     }
 
@@ -548,6 +554,19 @@ PortStatus RemoteDeviceCoordinator::mapHandshakeStateToStatus(SerialIdentifier p
 }
 
 const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier port) const {
+    // Same split as getPortStatus: under HELLO the peer identity lives on the
+    // per-jack link machine, and the quiesced handshake's peer table is never
+    // populated, so reading it there would report every jack as peerless.
+    if (isHelloJack(port)) {
+        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+        // An Idle jack has no peer. It can already hold the MAC that arms next
+        // tick's commit to Connecting, and serving that would contradict the same
+        // jack reporting DISCONNECTED.
+        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) {
+            return nullptr;
+        }
+        return machine->peer().data();
+    }
     const Peer* peer = handshakeWirelessManager.getMacPeer(port);
     return peer ? peer->macAddr.data() : nullptr;
 }
@@ -755,7 +774,6 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     if (jack == SerialIdentifier::INPUT_JACK) {
         applyUpstreamHead(hello);
     }
-    maybeFireChainRoleChange();
 }
 
 void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
@@ -875,6 +893,12 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     // is not exactly sizeof(P), so both callers pass a compile-time size that fits.
     link.peerProfileLen = std::min(len, link.peerProfile.size());
     memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
+    // Lift the peer's userId onto the port and nothing else: PlayerProfile leads
+    // with it, and an FDN profile carries no id at all. memcpy because the bytes
+    // arrive from a packed struct / byte buffer with no alignment guarantee.
+    if (peerType == DeviceType::PDN && link.peerProfileLen >= sizeof(link.peerUserId)) {
+        memcpy(&link.peerUserId, link.peerProfile.data(), sizeof(link.peerUserId));
+    }
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
     // The upstream exchange completing is the join moment: announce to the head (#158).
@@ -929,6 +953,7 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // peer's chainRole during its CONNECTING window (#156 reads it then).
     helloByPort[portIndex(jack)].peerChainRole = 0;
     helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
+    helloByPort[portIndex(jack)].peerUserId = PEER_USER_ID_NONE;
     helloByPort[portIndex(jack)].peerProfileLen = 0;
     // Defence in depth: the zeroed length already hides the bytes from
     // getPeerProfile, but a departed peer's identity should not sit in RAM.

@@ -91,8 +91,13 @@ public:
     /// Status plus the peer MACs reachable via the port.
     PortState getPortState(SerialIdentifier port);
 
+    /// No peer id known: an FDN peer, an unregistered player, or no peer at all.
+    static constexpr uint16_t PEER_USER_ID_NONE = 0xFFFF;
+
     /**
-     * Returns a pointer to the peer's MAC address for the given port, or nullptr if no peer is connected.
+     * Returns a pointer to the port's direct peer MAC address, or nullptr when the
+     * port tracks no peer. Known from the first HELLO, so it is served from
+     * CONNECTING onward, not only once CONNECTED.
      * Prefer this over getPortState() when only the MAC address is needed.
      */
     virtual const uint8_t* getPeerMac(SerialIdentifier port) const;
@@ -100,10 +105,11 @@ public:
     /// The direct peer's hardware kind (PDN/FDN) for the given port.
     virtual DeviceType getPeerDeviceType(SerialIdentifier port) const;
 
-    /// The direct peer's 4-digit player id for the given port; 0xFFFF when
-    /// unregistered or no peer. STUB until the context exchange lands (#157):
-    /// always 0xFFFF.
-    virtual uint16_t getPeerUserId(SerialIdentifier port) const { return 0xFFFF; }
+    /// The direct peer's 4-digit player id for the given port, lifted from the
+    /// PlayerProfile its context exchange delivered; PEER_USER_ID_NONE until then.
+    virtual uint16_t getPeerUserId(SerialIdentifier port) const {
+        return helloByPort[portIndex(port)].peerUserId;
+    }
 
     /// Returns true iff `mac` matches the direct peer on either jack.
     virtual bool isDirectPeer(const uint8_t* mac) const;
@@ -361,6 +367,9 @@ private:
         DeviceType peerDeviceType = DeviceType::UNKNOWN;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
         size_t peerProfileLen = 0;
+        // The only PlayerProfile field lifted onto the port surface; the rest of
+        // the profile stays opaque and reaches the game layer as raw bytes.
+        uint16_t peerUserId = PEER_USER_ID_NONE;
         // Last recovery resend to this jack's peer (0 = never); throttles the
         // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
         unsigned long lastContextResendMs = 0;

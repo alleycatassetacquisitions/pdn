@@ -1550,6 +1550,26 @@ TEST_F(RDCHelloTests, chainRingYieldsToHigherHeadAfterEvidenceTimeout) {
 }
 
 // ============================================
+// RDC PUBLIC API SURFACE (#159)
+// ============================================
+
+TEST_F(RDCHelloTests, peerMacReadsHelloLink) {
+    rdcPeerMacReadsHelloLink(this);
+}
+TEST_F(RDCHelloTests, peerUserIdLiftedFromContext) {
+    rdcPeerUserIdLiftedFromContext(this);
+}
+TEST_F(RDCHelloTests, peerUserIdAbsentForFdnContext) {
+    rdcPeerUserIdAbsentForFdnContext(this);
+}
+TEST_F(RDCHelloTests, chainRoleChangeFiresOnConnectAndLinkDeath) {
+    rdcChainRoleChangeFiresOnConnectAndLinkDeath(this);
+}
+TEST_F(RDCHelloTests, chainRoleChangeReportsRingLatch) {
+    rdcChainRoleChangeReportsRingLatch(this);
+}
+
+// ============================================
 // CHAIN DUEL MANAGER TESTS
 // ============================================
 
