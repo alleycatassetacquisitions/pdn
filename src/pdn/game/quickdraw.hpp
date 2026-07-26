@@ -54,15 +54,15 @@ private:
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
-    ShootoutManager* shootoutManager_ = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing
     // the serial port gives a rolling view of retry-machine health. Parseable
     // by scripts/chain_status.sh (prefix: "STATS").
-    SimpleTimer statsLogTimer_;
+    SimpleTimer statsLogTimer;
     static constexpr unsigned long kStatsLogIntervalMs = 5000;
 
     // Diagnostic: track isLoop() transitions to expose ring re-formation timing.
-    bool lastIsLoop_ = false;
+    bool lastIsLoop = false;
 };

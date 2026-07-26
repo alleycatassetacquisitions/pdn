@@ -17,9 +17,11 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
-    this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
-    this->shootoutManager_->setMatchManager(matchManager);
-    matchManager->setShootoutManager(shootoutManager_);
+    // Reads chainDuelManager, which this constructor assigns in the body: hoisting
+    // this into the member-initializer list would read it uninitialized.
+    this->shootoutManager = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);  // NOLINT(cppcoreguidelines-prefer-member-initializer)
+    this->shootoutManager->setMatchManager(matchManager);
+    matchManager->setShootoutManager(shootoutManager);
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
     matchManager->setBoostProvider([this]() -> unsigned long {
@@ -101,8 +103,8 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     });
 
     remoteDeviceCoordinator->setPeerLostCallback([this](const uint8_t* lostMac) {
-        if (shootoutManager_ && shootoutManager_->active()) {
-            shootoutManager_->onLocalRDCDisconnect(lostMac);
+        if (shootoutManager && shootoutManager->active()) {
+            shootoutManager->onLocalRDCDisconnect(lostMac);
         }
     });
 
@@ -144,15 +146,15 @@ void Quickdraw::onStateLoop(Device* pdn) {
 
     if (chainDuelManager) {
         bool loopNow = chainDuelManager->isLoop();
-        if (loopNow != lastIsLoop_) {
-            LOG_W("CDM", "isLoop %d -> %d", (int)lastIsLoop_, (int)loopNow);
-            lastIsLoop_ = loopNow;
+        if (loopNow != lastIsLoop) {
+            LOG_W("CDM", "isLoop %d -> %d", (int)lastIsLoop, (int)loopNow);
+            lastIsLoop = loopNow;
         }
     }
 
-    if (!statsLogTimer_.isRunning()) {
-        statsLogTimer_.setTimer(kStatsLogIntervalMs);
-    } else if (statsLogTimer_.expired()) {
+    if (!statsLogTimer.isRunning()) {
+        statsLogTimer.setTimer(kStatsLogIntervalMs);
+    } else if (statsLogTimer.expired()) {
         if (remoteDeviceCoordinator != nullptr && chainDuelManager != nullptr) {
             auto r = remoteDeviceCoordinator->getRetryStats();
             auto c = chainDuelManager->getRetryStats();
@@ -167,7 +169,7 @@ void Quickdraw::onStateLoop(Device* pdn) {
                 (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
                 (unsigned)c.ackCount, cMean);
         }
-        statsLogTimer_.setTimer(kStatsLogIntervalMs);
+        statsLogTimer.setTimer(kStatsLogIntervalMs);
     }
 
     StateMachine::onStateLoop(pdn);
@@ -208,7 +210,7 @@ void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data
 }
 
 void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager_ || dataLen < 2) return;
+    if (!shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
@@ -219,7 +221,7 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
             if (payloadLen < 6) break;
             const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
                 ? reinterpret_cast<const char*>(payload + 6) : nullptr;
-            shootoutManager_->onConfirmReceived(payload, name);
+            shootoutManager->onConfirmReceived(payload, name);
             break;
         }
         case ShootoutCmd::BRACKET: {
@@ -234,46 +236,46 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
                 memcpy(mac.data(), payload + 1 + 6 * i, 6);
                 bracket.push_back(mac);
             }
-            shootoutManager_->onBracketReceived(bracket, seqId);
+            shootoutManager->onBracketReceived(bracket, seqId);
             break;
         }
         case ShootoutCmd::MATCH_START:
             if (payloadLen >= 13)
-                shootoutManager_->onMatchStartReceived(payload, payload + 6, payload[12], seqId);
+                shootoutManager->onMatchStartReceived(payload, payload + 6, payload[12], seqId);
             break;
         case ShootoutCmd::MATCH_RESULT:
             if (payloadLen >= 13)
-                shootoutManager_->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
+                shootoutManager->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
             break;
         case ShootoutCmd::TOURNAMENT_END:
-            if (payloadLen >= 6) shootoutManager_->onTournamentEndReceived(payload, seqId);
+            if (payloadLen >= 6) shootoutManager->onTournamentEndReceived(payload, seqId);
             break;
         case ShootoutCmd::PEER_LOST:
-            if (payloadLen >= 6) shootoutManager_->onPeerLostReceived(payload);
+            if (payloadLen >= 6) shootoutManager->onPeerLostReceived(payload);
             break;
         case ShootoutCmd::ABORT:
-            shootoutManager_->onAbortReceived();
+            shootoutManager->onAbortReceived();
             break;
     }
 }
 
 void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager_ || dataLen < 2) return;
+    if (!shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
     switch (cmd) {
         case ShootoutCmd::BRACKET:
-            shootoutManager_->onBracketAckReceived(fromMac, seqId);
+            shootoutManager->onBracketAckReceived(fromMac, seqId);
             break;
         case ShootoutCmd::MATCH_START:
-            shootoutManager_->onMatchStartAckReceived(fromMac, seqId);
+            shootoutManager->onMatchStartAckReceived(fromMac, seqId);
             break;
         case ShootoutCmd::MATCH_RESULT:
-            shootoutManager_->onMatchResultAckReceived(fromMac, seqId);
+            shootoutManager->onMatchResultAckReceived(fromMac, seqId);
             break;
         case ShootoutCmd::TOURNAMENT_END:
-            shootoutManager_->onTournamentEndAckReceived(fromMac, seqId);
+            shootoutManager->onTournamentEndAckReceived(fromMac, seqId);
             break;
         default:
             break;
@@ -308,8 +310,8 @@ Quickdraw::~Quickdraw() {
     symbolWirelessManager = nullptr;
     delete chainDuelManager;
     chainDuelManager = nullptr;
-    delete shootoutManager_;
-    shootoutManager_ = nullptr;
+    delete shootoutManager;
+    shootoutManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
@@ -322,7 +324,7 @@ void Quickdraw::populateStateMap() {
     ctx.matchManager = matchManager;
     ctx.remoteDeviceCoordinator = remoteDeviceCoordinator;
     ctx.chainDuelManager = chainDuelManager;
-    ctx.shootoutManager = shootoutManager_;
+    ctx.shootoutManager = shootoutManager;
     ctx.quickdrawWirelessManager = quickdrawWirelessManager;
     ctx.symbolWirelessManager = symbolWirelessManager;
     ctx.wirelessManager = wirelessManager;
@@ -376,7 +378,7 @@ void Quickdraw::populateStateMap() {
     // (tournament) would be silently demoted to a 1v1 duel.
     {
         ChainDuelManager* cdm = chainDuelManager;
-        ShootoutManager* shMgr = shootoutManager_;
+        ShootoutManager* shMgr = shootoutManager;
         idle->addTransition(
             new StateTransition(
                 [cdm, shMgr]() {
@@ -398,7 +400,7 @@ void Quickdraw::populateStateMap() {
             supporterReady));
 
     {
-        ShootoutManager* shMgr = shootoutManager_;
+        ShootoutManager* shMgr = shootoutManager;
         auto phaseIsAborted = [shMgr]() {
             return shMgr && shMgr->getPhase() == ShootoutManager::Phase::ABORTED;
         };
@@ -424,7 +426,7 @@ void Quickdraw::populateStateMap() {
     duelCountdown->addTransition(
         new StateTransition(
             [this, duelCountdown]() {
-                return duelReturnsToIdle(*duelCountdown, shootoutManager_);
+                return duelReturnsToIdle(*duelCountdown, shootoutManager);
             },
             idle));
 
@@ -456,7 +458,7 @@ void Quickdraw::populateStateMap() {
     duelPushed->addTransition(
         new StateTransition(
             [this, duelPushed]() {
-                return duelReturnsToIdle(*duelPushed, shootoutManager_);
+                return duelReturnsToIdle(*duelPushed, shootoutManager);
             },
             idle));
 
@@ -468,7 +470,7 @@ void Quickdraw::populateStateMap() {
     duelReceivedResult->addTransition(
         new StateTransition(
             [this, duelReceivedResult]() {
-                return duelReturnsToIdle(*duelReceivedResult, shootoutManager_);
+                return duelReturnsToIdle(*duelReceivedResult, shootoutManager);
             },
             idle));
 
