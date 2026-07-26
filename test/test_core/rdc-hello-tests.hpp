@@ -127,6 +127,16 @@ public:
     SerialIdentifier lastDisconnectJack = SerialIdentifier::OUTPUT_JACK;
 };
 
+// Drives a jack Idle -> Connecting -> Connected. Each transition commits on a
+// sync() tick, and the context exchange only advances a Connecting link.
+inline void connectJack(RDCHelloTests* suite, NativeSerialDriver& jack,
+                        SerialIdentifier id, const std::vector<uint8_t>& firstHello) {
+    suite->deliverHello(jack, firstHello);
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(id);
+    suite->rdc.sync(&suite->device);
+}
+
 // A looped-back own HELLO or an all-zero-source (open-jack) HELLO must not open a
 // link: on real hardware the output TX pin bleeds back through the TRS contacts,
 // and treating that as a peer would keep a dead cable "alive". A genuine distinct
@@ -139,7 +149,8 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
 
     HelloPayload self{};
-    for (int i = 0; i < 6; ++i) self.source[i] = suite->localMac[i];
+    for (int i = 0; i < 6; ++i)
+        self.source[i] = suite->localMac[i];
     self.deviceType = static_cast<uint8_t>(DeviceType::PDN);
     suite->deliverHello(suite->outJack, encodeFramed(self));
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
@@ -465,8 +476,10 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     int inCb = 0;
     suite->rdc.setOnContextReceived(
         [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
-            if (jack == SerialIdentifier::OUTPUT_JACK) outCb++;
-            else if (jack == SerialIdentifier::INPUT_JACK) inCb++;
+            if (jack == SerialIdentifier::OUTPUT_JACK)
+                outCb++;
+            else if (jack == SerialIdentifier::INPUT_JACK)
+                inCb++;
         });
 
     // Context arrives before EITHER jack is CONNECTING: both are Idle, so it is cached.
@@ -580,12 +593,9 @@ inline void rdc2NodeRingSingleJackDropKeepsPeerSlot(RDCHelloTests* suite) {
 }
 
 // A different source MAC on a still-CONNECTED jack means the cable was swapped
-// inside the silent-link window. The old link must be torn down BEFORE the new
-// MAC is recorded: teardown releases whatever peer the link is tracking, so
-// ordering it after the overwrite releases the ARRIVING peer's freshly-taken
-// radio slot and leaks the departed one — reliable sends to the new partner then
-// fail on a device that looks connected. The game layer sees a real
-// disconnect/connect pair, not a silent handover.
+// inside the silent-link window. Teardown must run BEFORE the new MAC is
+// recorded: it releases whatever peer the link tracks, so overwriting first
+// releases the arriving peer's fresh slot and leaks the departed one.
 inline void rdcPeerSwapReleasesOldSlotThenAdoptsNew(RDCHelloTests* suite) {
     const uint8_t departing[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t arriving[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -609,10 +619,7 @@ inline void rdcPeerSwapReleasesOldSlotThenAdoptsNew(RDCHelloTests* suite) {
             }),
             Return(0)));
 
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
-    suite->rdc.sync(&suite->device);
-    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
     ASSERT_EQ(suite->connectCount, 1);
     ASSERT_EQ(added.size(), 1u);
     ASSERT_EQ(0, memcmp(added[0].data(), departing, 6));
@@ -637,17 +644,11 @@ inline void rdcPeerSwapReleasesOldSlotThenAdoptsNew(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 }
 
-// A jack declared dead mid-frame must drop the half-read frame. The parser's own
-// stall timeout cannot cover this: every arriving byte refreshes it, so a flaky
-// TRS contact that dribbles bytes while whole HELLOs stop arriving keeps the
-// partial frame alive and the silent-link watchdog is the only thing that fires.
-// The surviving prefix would then splice onto the bytes of whatever plugs in
-// next and forge a CRC-valid HELLO no device ever sent.
+// Link death must drop the half-read frame: the parser's 50ms stall window is
+// refreshed by every arriving byte, so a dribbling contact keeps the prefix alive
+// to splice onto the next device's bytes into a CRC-valid HELLO nobody sent.
 inline void rdcJackDeathDropsHalfReadFrame(RDCHelloTests* suite) {
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
-    suite->rdc.sync(&suite->device);
-    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 
@@ -1000,16 +1001,6 @@ inline HelloPayload parseEmittedHello(const std::string& out) {
     std::vector<uint8_t> bytes(out.begin(), out.end());
     parser.feed(bytes.data(), bytes.size());
     return got;
-}
-
-// Drives a jack Idle -> Connecting -> Connected. Each transition commits on a
-// sync() tick, and the context exchange only advances a Connecting link.
-inline void connectJack(RDCHelloTests* suite, NativeSerialDriver& jack,
-                        SerialIdentifier id, const std::vector<uint8_t>& firstHello) {
-    suite->deliverHello(jack, firstHello);
-    suite->rdc.sync(&suite->device);
-    suite->rdc.onContextExchangeComplete(id);
-    suite->rdc.sync(&suite->device);
 }
 
 // Chain role is a local read of jack presence: OUTPUT connected = HEAD, INPUT
