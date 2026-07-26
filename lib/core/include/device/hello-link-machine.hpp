@@ -42,7 +42,7 @@ struct HelloLinkContext {
     unsigned long contextTimeoutMs = 500;
 
     unsigned long lastHelloMs = 0;
-    std::array<uint8_t, 6> peerMac{};  // source MAC last heard; consumed by #157
+    std::array<uint8_t, 6> peerMac{};  // source MAC last heard; the owner's per-jack peer identity
 
     // Silent-link gap with a defensive underflow clamp: HELLO processing is
     // main-loop-only today, but any backwards step between stamp and read (a
@@ -176,7 +176,7 @@ public:
         }
     }
 
-    // #157 drives this when the context exchange completes; only meaningful while
+    // Driven when the context exchange completes; only meaningful while
     // Connecting (mirrors the enum's state guard).
     void onContextExchangeComplete() {
         if (currentState && currentState->getStateId() == HELLO_LINK_CONNECTING) {

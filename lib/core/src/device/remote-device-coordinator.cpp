@@ -284,17 +284,15 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     if (helloConnectivityEnabled) {
         // The handshake is quiesced on HELLO jacks: skipping its onStateLoop is
         // what keeps it off the UART (it neither consumes RX nor writes TX). The
-        // chain-announcement machinery below rides handshake CONNECTED state, so
-        // it stays dormant here too until HELLO drives its own peer identity (#157).
+        // chain-announcement machinery below rides the handshake peer table, so it
+        // stays dormant here too.
         for (SerialIdentifier port : HELLO_JACKS) {
             HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
             if (machine) machine->onStateLoop(PDN);
         }
-        // Edge-trigger the role observer here, after the links have settled, rather
-        // than at each site that can move the role: a link commits to CONNECTED in
-        // the loop above, dies through the Idle mount inside it, and latches a ring
-        // during HELLO parsing between ticks. Polling the derived role once per tick
-        // catches all three; per-site firing drops whichever site is forgotten.
+        // Three separate sites move the derived role: a link commits to CONNECTED in
+        // the loop above, dies through the Idle mount inside it, or latches a ring
+        // during HELLO parsing between ticks. Poll once per tick to catch all three.
         maybeFireChainRoleChange();
         return;
     }
@@ -740,7 +738,8 @@ void RemoteDeviceCoordinator::emitHello() {
     hello.deviceType = static_cast<uint8_t>(selfDeviceType);
     // Single atomic load: the main loop is the sole writer, so one snapshot of the
     // packed head/confirmed word is internally consistent. All-zero headMac means
-    // "I am the head/standalone". confirmed stays 0 until #157's context exchange.
+    // "I am the head/standalone"; confirmed rises only once the announce to that
+    // head is delivered.
     const uint64_t head = chainHeadState.load();
     const uint64_t mac48 = head & HEAD_MAC_MASK;
     if (mac48 != 0) unpackMac(mac48, hello.headMac);

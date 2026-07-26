@@ -2276,7 +2276,7 @@ inline void rdcPeerMacReadsHelloLink(RDCHelloTests* suite) {
     ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
     EXPECT_EQ(0, memcmp(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), outPeer, 6));
     EXPECT_TRUE(suite->rdc.isDirectPeer(outPeer));
-    // The other jack has its own peer, unaffected.
+    // Per-jack: the OUTPUT peer must not show up on the INPUT jack.
     EXPECT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
 
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);

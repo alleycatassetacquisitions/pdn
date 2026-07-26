@@ -153,7 +153,7 @@ public:
 
     static constexpr unsigned long HELLO_CADENCE_MS = 20;
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
-    // A link stuck mid-context-exchange past this falls back to IDLE (#157).
+    // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only
     // while this device's own MAC keeps returning on INPUT within this window.
@@ -226,8 +226,8 @@ public:
     void connectivityTaskBody();
 #endif
 
-    /// #157 drives this once the context exchange completes: CONNECTING->CONNECTED
-    /// and fires the jack-connect observer.
+    /// Driven by a completed context exchange: CONNECTING->CONNECTED, whose mount
+    /// fires the jack-connect observer.
     void onContextExchangeComplete(SerialIdentifier jack);
 
     /// This jack's HELLO link state (observability / tests).
@@ -461,8 +461,8 @@ private:
 
     // ---- Device-level chain state machine (#156) ----
     // headMac (48 bits) + a confirmed bit packed into one atomic: the emit task
-    // reads it while the main loop writes it. confirmed is wired but always 0
-    // until #157's context exchange populates it.
+    // reads it while the main loop writes it. The confirmed bit rises only when the
+    // announce to the head currently held is delivered.
     static constexpr uint64_t HEAD_MAC_MASK = 0xFFFFFFFFFFFFULL;
     static constexpr uint64_t CONFIRMED_BIT = 1ULL << 48;
     std::atomic<uint64_t> chainHeadState{0};
