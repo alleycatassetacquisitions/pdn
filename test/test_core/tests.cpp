@@ -1341,6 +1341,18 @@ TEST_F(RDCTests, connectStateSkipsReplayWhenHelloOff) {
     connectStateSkipsReplayWhenHelloOff(this);
 }
 
+TEST_F(ConnectStateTests, connectCarriesPeerContext) {
+    connectStateConnectCarriesPeerContext(this);
+}
+
+TEST_F(ConnectStateTests, replayCarriesPeerContext) {
+    connectStateReplayCarriesPeerContext(this);
+}
+
+TEST_F(ConnectStateTests, disconnectCarriesNoContext) {
+    connectStateDisconnectCarriesNoContext(this);
+}
+
 TEST_F(RDCHelloTests, silentLinkDisconnects) {
     rdcHelloSilentLinkDisconnects(this);
 }

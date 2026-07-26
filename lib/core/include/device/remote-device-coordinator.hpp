@@ -152,6 +152,11 @@ public:
                                 CONNECTING,
                                 CONNECTED };
 
+    // Sized to the larger of the two context profiles so a stored profile is never
+    // truncated; both are packed wire structs, so sizeof is the wire length.
+    static constexpr size_t MAX_PEER_PROFILE_BYTES =
+        sizeof(PlayerProfile) > sizeof(FdnProfile) ? sizeof(PlayerProfile) : sizeof(FdnProfile);
+
     /// Hands a received peer context to the game layer opaquely: the jack it
     /// arrived on, the peer's device kind, and the raw profile bytes
     /// (PlayerProfile for PDN, FdnProfile for FDN). RDC never interprets them.
@@ -173,6 +178,15 @@ public:
     /// arrives. Recorded for the device chain SM (#156), not acted on here.
     uint8_t getPeerChainRole(SerialIdentifier jack) const {
         return helloByPort[portIndex(jack)].peerChainRole;
+    }
+
+    /// The peer's opaque profile bytes on `jack`, or nullptr before its context
+    /// arrives. PlayerProfile for a PDN peer, FdnProfile for an FDN one; which it
+    /// is comes from getPeerDeviceType. RDC never interprets them.
+    const uint8_t* getPeerProfile(SerialIdentifier jack, size_t& length) const {
+        const JackHelloLink& link = helloByPort[portIndex(jack)];
+        length = link.peerProfileLen;
+        return link.peerProfileLen == 0 ? nullptr : link.peerProfile.data();
     }
 
     /// True while a context send to `mac` is still awaiting its SEND_SUCCESS.
@@ -339,6 +353,14 @@ private:
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM (#156).
         uint8_t peerChainRole = 0;
+        // From the HELLO deviceType byte, so known from the first frame (Connecting)
+        // rather than waiting on the context exchange.
+        DeviceType peerDeviceType = DeviceType::UNKNOWN;
+        // The peer's opaque profile bytes from its context. RDC never reads inside
+        // them; it holds them so a game state mounting later still gets the peer's
+        // identity instead of only whoever was mounted when the context landed.
+        std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
+        size_t peerProfileLen = 0;
         // Last recovery resend to this jack's peer (0 = never); throttles the
         // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
         unsigned long lastContextResendMs = 0;

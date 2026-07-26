@@ -37,6 +37,12 @@ public:
         // mountedCount > dismountedCount when this landed, i.e. the state was
         // mounted — which for a replayed event means the mount hook had run.
         bool afterMountHook = false;
+        bool hadContext = false;
+        DeviceType peerType = DeviceType::UNKNOWN;
+        uint8_t chainRole = 0;
+        // Copied, not aliased: the pointer handed to the callback is only valid
+        // for that call, so keeping it would dangle by assertion time.
+        std::vector<uint8_t> profile;
     };
 
     std::vector<Event> events;
@@ -49,11 +55,18 @@ public:
     void onStateDismounted(Device*) override { dismountedCount++; }
 
     /// Records the delivered event so the assertions can read it back.
-    void onJackChange(SerialIdentifier jack, bool connected) override {
+    void onJackChange(SerialIdentifier jack, const JackConnectionState& state) override {
         Event event;
         event.jack = jack;
-        event.connected = connected;
+        event.connected = state.connected;
         event.afterMountHook = mountedCount > dismountedCount;
+        event.hadContext = state.context.has_value();
+        if (state.context.has_value()) {
+            event.peerType = state.context->peerType;
+            event.chainRole = state.context->chainRole;
+            event.profile.assign(state.context->profile,
+                                 state.context->profile + state.context->profileLen);
+        }
         events.push_back(event);
     }
 
@@ -110,6 +123,55 @@ inline void connectStateMountedReceivesJackConnect(RDCHelloTests* suite) {
     ASSERT_EQ(state.events.size(), 1u);
     EXPECT_EQ(state.events[0].jack, SerialIdentifier::OUTPUT_JACK);
     EXPECT_TRUE(state.events[0].connected);
+}
+
+// The connect carries the peer context: kind from the HELLO byte, chainRole and
+// the opaque profile from the exchange. This is what lets a state read the peer's
+// game role at connection time instead of polling for it.
+inline void connectStateConnectCarriesPeerContext(RDCHelloTests* suite) {
+    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
+    mountState(&state, &suite->device);
+
+    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+
+    ASSERT_EQ(state.events.size(), 1u);
+    ASSERT_TRUE(state.events[0].hadContext) << "the connect arrived without a context";
+    EXPECT_EQ(state.events[0].peerType, DeviceType::PDN);
+    EXPECT_EQ(state.events[0].chainRole, 4);
+    ASSERT_EQ(state.events[0].profile.size(), sizeof(PlayerProfile));
+    PlayerProfile decoded{};
+    memcpy(&decoded, state.events[0].profile.data(), sizeof(decoded));
+    EXPECT_EQ(decoded.userId, 1234) << "the profile bytes were not the peer's";
+}
+
+// A mount after the context already landed still gets it, because the context is
+// read at dispatch rather than captured by whoever was mounted when it arrived.
+inline void connectStateReplayCarriesPeerContext(RDCHelloTests* suite) {
+    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+
+    RecordingConnectState late(&suite->rdc, /*stateId=*/1);
+    mountState(&late, &suite->device);
+
+    ASSERT_EQ(late.events.size(), 1u);
+    ASSERT_TRUE(late.events[0].hadContext) << "a late mount lost the peer context";
+    EXPECT_EQ(late.events[0].peerType, DeviceType::PDN);
+    EXPECT_EQ(late.events[0].chainRole, 4);
+}
+
+// A disconnect carries no context: the link is mid-teardown, so the peer facts
+// still describe the peer that just left.
+inline void connectStateDisconnectCarriesNoContext(RDCHelloTests* suite) {
+    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
+    mountState(&state, &suite->device);
+    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    ASSERT_EQ(state.events.size(), 1u);
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(state.events.size(), 2u);
+    EXPECT_FALSE(state.events[1].connected);
+    EXPECT_FALSE(state.events[1].hadContext);
 }
 
 // The disconnect reaches the state too, not just the connect.
@@ -181,18 +243,24 @@ inline void connectStateReplaysOnlyConnectedJacks(RDCHelloTests* suite) {
     EXPECT_EQ(afterRevival.events.size(), 1u) << "the revived jack was not replayed";
 }
 
-// The chainRole goes with the link, so the next peer on that jack cannot inherit
-// the departed one's. getPeerDeviceType is deliberately not asserted here: under
-// HELLO it reads the quiesced handshake table and is UNKNOWN before the link dies
-// as well as after, so the assertion could not fail.
+// The peer facts go with the link, so the next peer on that jack cannot inherit
+// the departed one's. Each fact is asserted set before it is asserted cleared,
+// or "cleared" would also pass against a fact that was never stored.
 inline void connectStatePeerFactsClearedOnDisconnect(RDCHelloTests* suite) {
     connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
     ASSERT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 4);
+    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+    size_t profileLen = 0;
+    ASSERT_NE(suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, profileLen), nullptr);
 
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 0);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK),
+              DeviceType::UNKNOWN);
+    EXPECT_EQ(suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, profileLen), nullptr);
+    EXPECT_EQ(profileLen, 0u);
 }
 
 // The replay is gated on HELLO because only the link machine emits jack edges.

@@ -515,6 +515,11 @@ void RemoteDeviceCoordinator::setAnnouncementEmitCallback(AnnouncementEmitCallba
 }
 
 DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier port) const {
+    // Same split getPortStatus makes: when HELLO owns the jack the handshake peer
+    // table is never populated, so the kind comes from the HELLO byte instead.
+    if (isHelloJack(port)) {
+        return helloByPort[portIndex(port)].peerDeviceType;
+    }
     const Peer* macPeer = handshakeWirelessManager.getMacPeer(port);
     return macPeer ? macPeer->deviceType : DeviceType::UNKNOWN;
 }
@@ -743,6 +748,12 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     // The machine records the peer MAC and, for a first HELLO on any Idle jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
     JackHelloLink& link = helloByPort[portIndex(jack)];
+    // Off the wire, so clamp: an unrecognised deviceType reads as UNKNOWN rather
+    // than a value no switch in the game layer handles.
+    link.peerDeviceType = (hello.deviceType == static_cast<uint8_t>(DeviceType::PDN) ||
+                           hello.deviceType == static_cast<uint8_t>(DeviceType::FDN))
+                              ? static_cast<DeviceType>(hello.deviceType)
+                              : DeviceType::UNKNOWN;
     if (link.machine) link.machine->onHelloReceived(hello);
 
     // Head inheritance + ring detection are directional: only the upstream (INPUT)
@@ -861,7 +872,17 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     // fire exactly once per connect.
     HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
     if (machine != nullptr && machine->didMarkContextComplete()) return;
-    helloByPort[portIndex(jack)].peerChainRole = chainRole;
+    JackHelloLink& link = helloByPort[portIndex(jack)];
+    link.peerChainRole = chainRole;
+    // Held per jack so a state mounting after the context landed still sees the
+    // peer's identity. Clamped: the length is decoder-supplied, and a profile
+    // longer than the buffer is stored truncated rather than overrunning it.
+    link.peerProfileLen = len > MAX_PEER_PROFILE_BYTES ? MAX_PEER_PROFILE_BYTES : len;
+    if (profile != nullptr && link.peerProfileLen > 0) {
+        memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
+    } else {
+        link.peerProfileLen = 0;
+    }
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
     // The upstream exchange completing is the join moment: announce to the head (#158).
@@ -915,6 +936,8 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // per-MAC, and the next peer on this jack must not inherit the departed
     // peer's chainRole during its CONNECTING window (#156 reads it then).
     helloByPort[portIndex(jack)].peerChainRole = 0;
+    helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
+    helloByPort[portIndex(jack)].peerProfileLen = 0;
     helloByPort[portIndex(jack)].lastContextResendMs = 0;
     // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
     // one-cable disconnect would silently break wireless for the still-connected

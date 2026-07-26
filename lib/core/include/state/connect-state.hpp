@@ -4,6 +4,27 @@
 #include "device/remote-device-coordinator.hpp"
 #include "utils/debounced-condition.hpp"
 
+#include <optional>
+
+/// The peer's self-description on one jack. `profile` points into coordinator
+/// storage owned by the jack's link, so it is valid only for the duration of the
+/// onJackChange call. Opaque here: `peerType` says which struct `profile` holds,
+/// and the game layer decodes it.
+struct ConnectionContext {
+    DeviceType peerType = DeviceType::UNKNOWN;
+    uint8_t chainRole = 0;
+    const uint8_t* profile = nullptr;
+    size_t profileLen = 0;
+};
+
+/// A jack's connection plus, on a connect, the peer context if one has arrived.
+/// Absent on a disconnect, and absent on a connect whose context exchange has not
+/// completed yet, so a handler must treat it as optional rather than assuming.
+struct JackConnectionState {
+    bool connected = false;
+    std::optional<ConnectionContext> context;
+};
+
 /*
  * The coordinator's observer slot is single. This relies on StateMachine
  * dismounting the outgoing state before mounting the incoming one, which hands
@@ -35,12 +56,11 @@ public:
     /// delivered, so reset per-jack state in onStateDismounted rather than waiting
     /// for a clear.
     ///
-    /// Peer facts are not passed. getPeerChainRole(jack) is the accessor that
-    /// tracks these edges; it still describes the departing peer on a disconnect,
-    /// which fires before teardown (see setOnJackChange). getPeerDeviceType and
-    /// getPeerMac are not usable from here: they read the handshake peer table,
-    /// which HELLO quiesces. #159 re-sources them onto the link.
-    virtual void onJackChange(SerialIdentifier jack, bool connected) {}
+    /// The context is read at dispatch time rather than captured when it arrived,
+    /// so a state mounted long after the peer connected still gets it. getPeerMac
+    /// remains unusable from here: it reads the handshake peer table, which HELLO
+    /// quiesces (#159 re-sources it onto the link).
+    virtual void onJackChange(SerialIdentifier jack, const JackConnectionState& state) {}
 
     /// The direct peer's hardware kind on the given port.
     DeviceType getPeerDeviceType(SerialIdentifier port) const {
@@ -95,9 +115,27 @@ private:
     void subscribe() {
         remoteDeviceCoordinator->setOnJackChange(
             [this](SerialIdentifier jack, bool connected) {
-                onJackChange(jack, connected);
+                onJackChange(jack, buildJackState(jack, connected));
             });
         subscribed = true;
+    }
+
+    // On a disconnect the link is mid-teardown, so the peer facts still describe
+    // whoever just left; handing them over as a live context would invite acting
+    // on a departed peer.
+    JackConnectionState buildJackState(SerialIdentifier jack, bool connected) const {
+        JackConnectionState state;
+        state.connected = connected;
+        if (!connected) return state;
+
+        ConnectionContext context;
+        context.peerType = remoteDeviceCoordinator->getPeerDeviceType(jack);
+        context.chainRole = remoteDeviceCoordinator->getPeerChainRole(jack);
+        context.profile = remoteDeviceCoordinator->getPeerProfile(jack, context.profileLen);
+        // No profile means the context exchange has not completed; the connect is
+        // still real, so report it without one rather than withholding the event.
+        if (context.profile != nullptr) state.context = context;
+        return state;
     }
 
     void unsubscribe() {
@@ -113,7 +151,7 @@ private:
         for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK,
                                       SerialIdentifier::INPUT_JACK,
                                       SerialIdentifier::INPUT_JACK_SECONDARY}) {
-            if (isJackConnected(jack)) onJackChange(jack, true);
+            if (isJackConnected(jack)) onJackChange(jack, buildJackState(jack, true));
         }
     }
 
