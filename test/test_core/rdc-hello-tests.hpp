@@ -579,6 +579,100 @@ inline void rdc2NodeRingSingleJackDropKeepsPeerSlot(RDCHelloTests* suite) {
     EXPECT_EQ(removed, 1);
 }
 
+// A different source MAC on a still-CONNECTED jack means the cable was swapped
+// inside the silent-link window. The old link must be torn down BEFORE the new
+// MAC is recorded: teardown releases whatever peer the link is tracking, so
+// ordering it after the overwrite releases the ARRIVING peer's freshly-taken
+// radio slot and leaks the departed one — reliable sends to the new partner then
+// fail on a device that looks connected. The game layer sees a real
+// disconnect/connect pair, not a silent handover.
+inline void rdcPeerSwapReleasesOldSlotThenAdoptsNew(RDCHelloTests* suite) {
+    const uint8_t departing[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t arriving[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    std::vector<std::array<uint8_t, 6>> added;
+    std::vector<std::array<uint8_t, 6>> removed;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::Invoke([&added](const uint8_t* mac) {
+                std::array<uint8_t, 6> entry{};
+                memcpy(entry.data(), mac, 6);
+                added.push_back(entry);
+            }),
+            Return(0)));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::Invoke([&removed](const uint8_t* mac) {
+                std::array<uint8_t, 6> entry{};
+                memcpy(entry.data(), mac, 6);
+                removed.push_back(entry);
+            }),
+            Return(0)));
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->connectCount, 1);
+    ASSERT_EQ(added.size(), 1u);
+    ASSERT_EQ(0, memcmp(added[0].data(), departing, 6));
+    added.clear();
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->disconnectCount, 1);
+    EXPECT_EQ(suite->lastDisconnectJack, SerialIdentifier::OUTPUT_JACK);
+    ASSERT_EQ(removed.size(), 1u);
+    EXPECT_EQ(0, memcmp(removed[0].data(), departing, 6));
+    ASSERT_EQ(added.size(), 1u);
+    EXPECT_EQ(0, memcmp(added[0].data(), arriving, 6));
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+
+    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->connectCount, 2);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+}
+
+// A jack declared dead mid-frame must drop the half-read frame. The parser's own
+// stall timeout cannot cover this: every arriving byte refreshes it, so a flaky
+// TRS contact that dribbles bytes while whole HELLOs stop arriving keeps the
+// partial frame alive and the silent-link watchdog is the only thing that fires.
+// The surviving prefix would then splice onto the bytes of whatever plugs in
+// next and forge a CRC-valid HELLO no device ever sent.
+inline void rdcJackDeathDropsHalfReadFrame(RDCHelloTests* suite) {
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+
+    // Everything but the trailing CRC of a HELLO from a second peer, fed one tick
+    // before the link dies so the parser's own stall window is nowhere near
+    // expiring when the tail lands.
+    const std::vector<uint8_t> frame = suite->helloFrame(0xC1);
+    const size_t crcStart = frame.size() - 2;
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS);
+    deliverFrame(suite->outJack,
+                 std::vector<uint8_t>(frame.begin(), frame.begin() + crcStart));
+
+    suite->fakeClock->advance(1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+
+    deliverFrame(suite->outJack,
+                 std::vector<uint8_t>(frame.begin() + crcStart, frame.end()));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+}
+
 // Link death must cancel the pending context send along with the radio slot: a
 // surviving retry re-registers its target inside the driver, re-adding (and thus
 // permanently leaking) the slot that was just released.

@@ -1414,6 +1414,12 @@ TEST_F(RDCHelloTests, linkDeathReleasesPeerSlot) {
 TEST_F(RDCHelloTests, twoNodeRingSingleJackDropKeepsPeerSlot) {
     rdc2NodeRingSingleJackDropKeepsPeerSlot(this);
 }
+TEST_F(RDCHelloTests, peerSwapReleasesOldSlotThenAdoptsNew) {
+    rdcPeerSwapReleasesOldSlotThenAdoptsNew(this);
+}
+TEST_F(RDCHelloTests, jackDeathDropsHalfReadFrame) {
+    rdcJackDeathDropsHalfReadFrame(this);
+}
 TEST_F(RDCHelloTests, connectedPeerRetryTriggersContextResend) {
     rdcConnectedPeerRetryTriggersContextResend(this);
 }
