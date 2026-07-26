@@ -2657,3 +2657,81 @@ inline void rdcResendContextSendsOncePerPeer(RDCHelloTests* suite) {
 
     EXPECT_EQ(contextSends.size(), beforeResend + 1);
 }
+
+// The cap now sits at the event envelope, not at a v1 frame: a chain longer than
+// the old 18 must roster in full, and its whole roster must still hand off in one
+// HeadTransfer frame (the frame budget is asserted at compile time in the driver).
+inline void rdcRosterHoldsFullEventChain(RDCHelloTests* suite) {
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    ASSERT_GT(MAX_CHAIN_MEMBERS, 18) << "cap must exceed the retired v1-frame value";
+    for (uint8_t i = 0; i < MAX_CHAIN_MEMBERS; ++i) {
+        uint8_t member[6] = {0x30, static_cast<uint8_t>(i), 0x03, 0x04, 0x05, 0x06};
+        uint8_t upstream[6] = {0x80, static_cast<uint8_t>(i), 0x03, 0x04, 0x05, 0x06};
+        std::vector<uint8_t> a = announceBytes(upstream, 1);
+        suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, member,
+                                            a.data(), a.size());
+    }
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+}
+
+// Overflow contract, head side: past the cap the announce is dropped and the
+// member never joins the roster. The member's own HELLO confirmed bit still rises
+// (SEND_SUCCESS already fired on a frame the head then discarded) — the head
+// cannot observe or correct that, which is why the cap sits past any real chain.
+inline void rdcAnnounceOverCapIsDroppedNotAdmitted(RDCHelloTests* suite) {
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    for (uint8_t i = 0; i < MAX_CHAIN_MEMBERS; ++i) {
+        uint8_t member[6] = {0x30, static_cast<uint8_t>(i), 0x03, 0x04, 0x05, 0x06};
+        uint8_t upstream[6] = {0x80, static_cast<uint8_t>(i), 0x03, 0x04, 0x05, 0x06};
+        std::vector<uint8_t> a = announceBytes(upstream, 1);
+        suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, member,
+                                            a.data(), a.size());
+    }
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+
+    // One past the cap, on an upstream no existing member claims (so eviction
+    // cannot free a slot for it).
+    const uint8_t overflowMember[6] = {0xFE, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t freeUpstream[6] = {0xFD, 0x02, 0x03, 0x04, 0x05, 0x06};
+    std::vector<uint8_t> a = announceBytes(freeUpstream, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, overflowMember,
+                                        a.data(), a.size());
+
+    std::vector<std::array<uint8_t, 6>> members = suite->rdc.getChainMembers();
+    EXPECT_EQ(members.size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+    bool admitted = false;
+    for (const auto& m : members) {
+        if (memcmp(m.data(), overflowMember, 6) == 0) admitted = true;
+    }
+    EXPECT_FALSE(admitted);
+}
+
+// A full-cap roster travels in one HeadTransfer payload, so a successor inherits
+// every member instead of the first 18.
+inline void rdcHeadTransferCarriesFullCapRoster(RDCHelloTests* suite) {
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
+    std::vector<std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>>> entries;
+    for (uint8_t i = 0; i < MAX_CHAIN_MEMBERS; ++i) {
+        std::array<uint8_t, 6> member = {0x40, i, 0x03, 0x04, 0x05, 0x06};
+        std::array<uint8_t, 6> upstream = {0x90, i, 0x03, 0x04, 0x05, 0x06};
+        entries.push_back({member, upstream});
+    }
+    std::vector<uint8_t> handoff = headTransferBytes(entries, 5);
+    suite->transport()->deliverIncoming(PktType::kHeadTransfer, oldHead,
+                                        handoff.data(), handoff.size());
+
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), static_cast<size_t>(MAX_CHAIN_MEMBERS));
+}

@@ -170,6 +170,9 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
         // older announce's delivery stale — the re-announce to the current head
         // is what gates confirmed — so the seqId must match the latest announce
         // sent AND the destination must still be the head currently held.
+        // confirmed therefore means "the head's radio took it", not "the head
+        // admitted me": a roster at MAX_CHAIN_MEMBERS drops the announce after
+        // the ack.
         connectionAnnounceChannel->setOnDelivered([this](uint8_t seqId, const uint8_t* toMac) {
             if (seqId != pendingAnnounceSeqId) return;
             const uint64_t head = chainHeadState.load();
@@ -1369,7 +1372,13 @@ void RemoteDeviceCoordinator::onConnectionAnnounce(const uint8_t* fromMac,
     // though eviction frees the slot. Re-read size after the eviction.
     evictStaleUpstreamClaimant(member, upstream);
     if (isNew && chainRoster.size() >= MAX_CHAIN_MEMBERS) {
-        LOG_W("RDC", "chain roster full (%u); dropping announce", MAX_CHAIN_MEMBERS);
+        // The member cannot be told: its announce already drew SEND_SUCCESS, so
+        // its HELLO confirmed bit reads 1 while it is absent from this roster
+        // (see MAX_CHAIN_MEMBERS). Loud because the cap sits past any real chain
+        // — reaching it means the roster is being fed by something else.
+        LOG_E("RDC", "chain roster full (%u); dropping announce from %s, which "
+                     "will still read as confirmed",
+              MAX_CHAIN_MEMBERS, MacToString(fromMac));
         return;
     }
     chainRoster[member] = upstream;
@@ -1456,6 +1465,9 @@ void RemoteDeviceCoordinator::onHeadTransfer(const uint8_t* /*fromMac*/,
         if (memcmp(member.data(), selfMac.data(), 6) == 0) continue;  // never roster self
         if (chainRoster.count(member) != 0) continue;
         if (isUpstreamHeldByOther(upstream, member)) continue;
+        // Unlike the announce path this drop is self-healing: the head change that
+        // triggered the transfer clears each member's confirmed bit and makes it
+        // re-announce, so a member cut here comes back under its own announce.
         if (chainRoster.size() >= MAX_CHAIN_MEMBERS) break;
         chainRoster[member] = upstream;
         changed = true;

@@ -64,8 +64,10 @@ struct FdnConnectionContext {
 
 struct DataPktHdr
 {
-    //Total packet length including header
-    uint8_t pktLen;
+    // Total packet length including header. Wide enough for a full ESP-NOW v2
+    // frame: the fleet is single-firmware on IDF 5.5, so every link negotiates
+    // v2 and a payload can exceed 255 bytes.
+    uint16_t pktLen;
     PktType packetType;
 } __attribute__((packed));
 
@@ -120,7 +122,17 @@ struct ShootoutAckPayload
 // Point-to-point ReliableChannel payloads; the chain head is the sole consumer.
 // seqId is stamped by the channel on send.
 
-constexpr uint8_t MAX_CHAIN_MEMBERS = 18;
+// Head-roster capacity, sized to the event envelope rather than to a frame:
+// a single ESP-NOW v2 HeadTransfer frame holds well over a hundred (member,
+// upstream) pairs, so the old 18 (one v1 250-byte frame) no longer binds.
+//
+// Overflow contract: past this cap the head drops the announce, and the member
+// cannot learn that. SEND_SUCCESS on the announce is the only delivery signal
+// the no-ack design has, and the radio acks a frame the head then discards, so
+// the member's HELLO confirmed bit rises while it is absent from the roster.
+// The cap is set past any real chain so the divergence is unreachable in
+// practice; closing it would need an admission reply the design excludes.
+constexpr uint8_t MAX_CHAIN_MEMBERS = 64;
 
 // Sent by a newly joined member directly to the head it read from its upstream
 // neighbour's HELLO. upstreamMac names the sender's direct upstream (INPUT) peer.
@@ -140,10 +152,10 @@ struct DisconnectReportPayload {
 // ever travels, and it is a single unicast. Entries are (member, upstream)
 // pairs — memberMacs[i]'s recorded direct upstream is upstreamMacs[i] — so the
 // receiver keeps the chain's true order instead of flattening every
-// transferred member onto the demoted head. At MAX_CHAIN_MEMBERS=18 this is
-// 218 bytes. The ceiling is the driver's reliable-payload budget
-// (MAX_PKT_DATA_SIZE, the uint8_t length header, ~253 bytes), asserted where
-// the driver includes this header; raising MAX_CHAIN_MEMBERS past ~20 trips it.
+// transferred member onto the demoted head. At MAX_CHAIN_MEMBERS=64 this is
+// 770 bytes. The ceiling is the driver's reliable-payload budget
+// (MAX_PKT_DATA_SIZE, one ESP-NOW v2 frame), asserted where the driver includes
+// this header.
 struct HeadTransferPayload {
     uint8_t seqId;
     uint8_t memberCount;

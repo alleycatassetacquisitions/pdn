@@ -7,6 +7,7 @@
 #include "game/player.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
 
@@ -121,10 +122,10 @@ public:
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
     static constexpr unsigned long kMatchWatchdogMs = 10000;
-    // Absolute upper bound on bracket size. RDC peer-table capacity and
-    // kMaxChainPeersPerPort=18 cap real hardware tournaments well below this;
-    // value is a packet-validation clamp to reject malformed BRACKET packets.
-    static constexpr uint8_t kMaxBracketSize = 32;
+    // Packet-validation clamp on an inbound BRACKET's member count. A ring can
+    // hold as many devices as the chain does, so it tracks MAX_CHAIN_MEMBERS;
+    // one ESP-NOW v2 frame carries that bracket several times over.
+    static constexpr uint8_t MAX_BRACKET_SIZE = MAX_CHAIN_MEMBERS;
 
 private:
     struct BracketPending {

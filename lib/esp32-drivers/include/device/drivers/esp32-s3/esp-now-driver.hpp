@@ -24,17 +24,19 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // Max application payload per frame. ESP-NOW v2.0 (IDF 5.x, all-S3 targets)
 // carries up to 1470 bytes in a single frame, so every packet type fits in
 // one send — no multi-frame clustering.
-// The payload ceiling is whatever DataPktHdr::pktLen can hold (it stores the
-// total packet length), minus the header. ESP-NOW v2 frames are far larger,
-// but the length field is the real ceiling: a payload above this would overflow
-// pktLen and deliver a corrupt short buffer. Derived from the field's type so
-// it follows automatically if pktLen ever widens.
-constexpr size_t MAX_PKT_DATA_SIZE =
-    std::numeric_limits<decltype(DataPktHdr::pktLen)>::max() - sizeof(DataPktHdr);
+// The payload ceiling is one ESP-NOW v2 frame minus the header: the radio, not
+// the length field, is what binds now.
+constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr);
+
+// pktLen carries the total packet length on the wire, so it has to be able to
+// express a full frame or a large payload would arrive as a corrupt short buffer.
+static_assert(ESP_NOW_MAX_DATA_LEN_V2 <=
+                  std::numeric_limits<decltype(DataPktHdr::pktLen)>::max(),
+              "DataPktHdr::pktLen cannot express a full ESP-NOW v2 frame");
 
 // The head-roster handoff is the largest reliable payload and grows with
-// MAX_CHAIN_MEMBERS (#218 raises it). A cap bump that overflows this budget
-// must break the build here, not silently fail sendData at runtime.
+// MAX_CHAIN_MEMBERS. A cap bump that overflows this budget must break the build
+// here, not silently fail sendData at runtime.
 static_assert(sizeof(HeadTransferPayload) <= MAX_PKT_DATA_SIZE,
               "HeadTransferPayload exceeds the reliable-payload budget; "
               "lower MAX_CHAIN_MEMBERS or split the transfer across frames");

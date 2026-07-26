@@ -227,7 +227,7 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
         case ShootoutCmd::BRACKET: {
             if (payloadLen < 1) break;
             uint8_t count = payload[0];
-            if (count > ShootoutManager::kMaxBracketSize) break;
+            if (count > ShootoutManager::MAX_BRACKET_SIZE) break;
             if (payloadLen < 1 + 6 * static_cast<size_t>(count)) break;
             std::vector<std::array<uint8_t, 6>> bracket;
             bracket.reserve(count);

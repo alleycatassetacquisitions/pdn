@@ -1478,6 +1478,15 @@ TEST_F(RDCHelloTests, fullRosterEvictsStaleThenAdmits) {
 TEST_F(RDCHelloTests, duplicateReannounceDoesNotEvict) {
     rdcDuplicateReannounceDoesNotEvict(this);
 }
+TEST_F(RDCHelloTests, rosterHoldsFullEventChain) {
+    rdcRosterHoldsFullEventChain(this);
+}
+TEST_F(RDCHelloTests, announceOverCapIsDroppedNotAdmitted) {
+    rdcAnnounceOverCapIsDroppedNotAdmitted(this);
+}
+TEST_F(RDCHelloTests, headTransferCarriesFullCapRoster) {
+    rdcHeadTransferCarriesFullCapRoster(this);
+}
 TEST_F(RDCHelloTests, staleTransferDoesNotReforkClaimedUpstream) {
     rdcStaleTransferDoesNotReforkClaimedUpstream(this);
 }
