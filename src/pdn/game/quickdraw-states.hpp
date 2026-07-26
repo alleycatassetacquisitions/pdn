@@ -111,18 +111,12 @@ public:
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
-    /// Arms the symbol-match transition on an FDN connect (see definition).
-    void onJackEvent(SerialIdentifier jack, const JackConnectionState& state) override;
     bool transitionToDuelCountdown();
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
 
 private:
-    // Lets the fixture force matchInitialized to exercise the FDN-connect
-    // guard without driving a full handshake-path match initiation.
-    friend class ConnectStateCallbackTests;
-
     Player *player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -137,8 +131,6 @@ private:
 
     SimpleTimer matchInitializationTimer;
     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
-
-    bool transitionToSymbolState = false;
 
     // void serialEventCallbacks(const std::string& message);
 };

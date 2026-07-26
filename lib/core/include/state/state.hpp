@@ -10,11 +10,6 @@
 
 class State;
 class Device;
-// Full definitions live in device/drivers/serial-wrapper.hpp and
-// jack-connection-state.hpp; only jack-observing states (ConnectState) need
-// them, and pulling packed radio structs into every state TU is not worth it.
-enum class SerialIdentifier;
-struct JackConnectionState;
 
 /*
  * A State transition is a tuple that holds a condition as well as
@@ -115,10 +110,6 @@ public:
 
     virtual bool isTerminalState() { return false; }
 
-    /// Per-jack connect/disconnect delivery from the app's dispatcher; the
-    /// default ignores it so only states that observe jacks need to override.
-    virtual void onJackEvent(SerialIdentifier jack, const JackConnectionState& state) {}
-
     // --- Device*-typed user API ---
     // Override these in derived classes.
     virtual void onStateMounted(Device* device) {}
@@ -155,6 +146,10 @@ private:
  * the typed onStateMounted(DeviceT*) / onStateLoop(DeviceT*) / onStateDismounted(DeviceT*)
  * API — no manual casting needed and no accidental bridge override is possible.
  *
+ * An intermediate base that must run its own code around every subclass's
+ * mount/dismount (ConnectState) overrides afterMount/beforeDismount rather than
+ * the bridge, which keeps the single cast and the accidental-override guard.
+ *
  * Usage:
  *   class IdleState : public TypedState<PDN> {
  *       void onStateMounted(PDN* pdn) override { ... }
@@ -174,16 +169,27 @@ public:
     virtual void onStateLoop(DeviceT* device) {}
     virtual void onStateDismounted(DeviceT* device) {}
 
+protected:
+    // Bracket the subclass's own hooks. Ordering is the contract: afterMount runs
+    // once onStateMounted has initialized the subclass, beforeDismount while it is
+    // still live. For intermediate bases only, not concrete states.
+    virtual void afterMount(DeviceT* device) {}
+    virtual void beforeDismount(DeviceT* device) {}
+
 private:
     // Private final bridge — casts once and forwards to the typed user API above.
     // State implementers cannot override or call these.
     void mount(Device* device) final {
-        onStateMounted(static_cast<DeviceT*>(device));
+        DeviceT* typed = static_cast<DeviceT*>(device);
+        onStateMounted(typed);
+        afterMount(typed);
     }
     void loop(Device* device) final {
         onStateLoop(static_cast<DeviceT*>(device));
     }
     void dismount(Device* device) final {
-        onStateDismounted(static_cast<DeviceT*>(device));
+        DeviceT* typed = static_cast<DeviceT*>(device);
+        beforeDismount(typed);
+        onStateDismounted(typed);
     }
 };

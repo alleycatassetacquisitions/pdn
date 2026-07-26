@@ -51,9 +51,6 @@ class RemoteDeviceCoordinator {
     // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
     // a radio; the transport stays out of the public API.
     friend class RDCHelloTests;
-    // Reads the callback slots to verify ~Quickdraw cleared its this-capturing
-    // observers (the use-after-free it prevents is not otherwise observable).
-    friend class ConnectStateCallbackTests;
 
 public:
     /// Fires on a per-jack connect (true) / disconnect (false) transition.
@@ -137,9 +134,9 @@ public:
     // ---- Per-jack HELLO connectivity (#155) ----
     // HELLO is the serial discovery/liveness beacon that replaces the string
     // handshake (deleted by #160). Each jack runs an independent link SM fed by
-    // the real exec()-driven RX byte pump. Off by default: production stays on
-    // the handshake until the context exchange (#157) and device chain SM (#156)
-    // land, since nothing drives CONNECTING->CONNECTED before then.
+    // the real exec()-driven RX byte pump. Off by default and not yet switched on:
+    // the context exchange (#157) and device chain SM (#156) have landed, but no
+    // caller under src/ enables it, so production still runs the handshake.
 
     static constexpr unsigned long HELLO_CADENCE_MS = 20;
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
@@ -185,7 +182,10 @@ public:
     /// handshake, and (unless external) spawns the emit task. Idempotent.
     void enableHelloConnectivity();
 
-    /// True once enableHelloConnectivity() wired the HELLO link machinery.
+    /// True once enableHelloConnectivity() has run. Consumers of the jack observer
+    /// gate on this: the link machine is the only emitter of jack edges, so with
+    /// HELLO off the port statuses come from the handshake instead and no edge
+    /// will ever follow them.
     bool isHelloConnectivityEnabled() const { return helloConnectivityEnabled; }
 
     /// Native/test hook: suppress the FreeRTOS emit-task spawn so the caller

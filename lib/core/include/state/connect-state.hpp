@@ -1,32 +1,54 @@
 #pragma once
 
 #include "state/state.hpp"
-#include "state/jack-connection-state.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "utils/debounced-condition.hpp"
-#include <functional>
 
-template<typename DeviceT>
+/*
+ * The coordinator's observer slot is single. This relies on StateMachine
+ * dismounting the outgoing state before mounting the incoming one, which hands
+ * the slot over cleanly; a second ConnectState mounted without that dismount
+ * would take the slot and leave the first one permanently deaf.
+ */
+template <typename DeviceT>
 class ConnectState : public TypedState<DeviceT> {
 public:
-    /// Per-jack connection event observer, invoked while this state is current.
-    using JackChangeCallback = std::function<void(SerialIdentifier, const JackConnectionState&)>;
-
     /// Binds the state to the coordinator whose jack statuses it watches.
     ConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator, int stateId)
-        : TypedState<DeviceT>(stateId), remoteDeviceCoordinator(remoteDeviceCoordinator) {}
+        : TypedState<DeviceT>(stateId)
+        , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
 
     /// Non-owning; just drops the coordinator pointer.
-    virtual ~ConnectState() {
+    ~ConnectState() override {
+        // App teardown deletes states without dismounting them, which would leave a
+        // `this`-bound lambda in the device-owned coordinator. `subscribed` is false
+        // after a normal dismount, so this cannot clear a successor's slot.
+        if (subscribed) unsubscribe();
         remoteDeviceCoordinator = nullptr;
     }
 
+    /// A jack this device owns connected or disconnected, plus a replay of each
+    /// already-connected jack at mount.
+    ///
+    /// Handlers must tolerate re-receiving an event they already acted on, and
+    /// only *connected* jacks are replayed — a disconnect between tenures is never
+    /// delivered, so reset per-jack state in onStateDismounted rather than waiting
+    /// for a clear.
+    ///
+    /// Peer facts are not passed. getPeerChainRole(jack) is the accessor that
+    /// tracks these edges; it still describes the departing peer on a disconnect,
+    /// which fires before teardown (see setOnJackChange). getPeerDeviceType and
+    /// getPeerMac are not usable from here: they read the handshake peer table,
+    /// which HELLO quiesces. #159 re-sources them onto the link.
+    virtual void onJackChange(SerialIdentifier jack, bool connected) {}
+
     /// The direct peer's hardware kind on the given port.
-    const DeviceType getPeerDeviceType(SerialIdentifier port) const {
+    DeviceType getPeerDeviceType(SerialIdentifier port) const {
         return remoteDeviceCoordinator->getPeerDeviceType(port);
     }
 
-    /// True when every jack this state requires reports CONNECTED.
+    /// True when ANY jack this state requires reports CONNECTED. A state that
+    /// requires two jacks is "connected" on either one, not both.
     bool isConnected() {
         return (isPrimaryRequired() && isJackConnected(SerialIdentifier::OUTPUT_JACK)) ||
                (isAuxRequired() && isJackConnected(SerialIdentifier::INPUT_JACK)) ||
@@ -35,29 +57,13 @@ public:
 
     /// isConnected() has been false for the full debounce window.
     bool isPersistentlyDisconnected() {
-        return disconnectDebounce_.heldFor(!isConnected(), kDisconnectDebounceMs);
+        return disconnectDebounce.heldFor(!isConnected(), DISCONNECT_DEBOUNCE_MS);
     }
 
     /// Restart the disconnect window: the next isPersistentlyDisconnected()
     /// requires a fresh full debounce regardless of any run already in flight.
     void resetDisconnectDebounce() {
-        disconnectDebounce_.reset();
-    }
-
-    /// Registers the observer onJackEvent() forwards to. One slot per state
-    /// instance; registering again replaces the previous observer. Handlers
-    /// may see the same connected snapshot again on remount (mount replay)
-    /// and must be idempotent to a repeat. Replay arrives after the newly
-    /// mounted state's first loop tick, and self-transitions do not re-replay.
-    void setOnJackChange(JackChangeCallback callback) {
-        jackChangeCallback = std::move(callback);
-    }
-
-    /// Dispatcher entry point: hands one jack event to the registered observer.
-    void onJackEvent(SerialIdentifier jack, const JackConnectionState& state) override {
-        if (jackChangeCallback) {
-            jackChangeCallback(jack, state);
-        }
+        disconnectDebounce.reset();
     }
 
 protected:
@@ -70,12 +76,53 @@ protected:
     virtual bool isSecondaryRequired() { return false; }
 
 private:
+    // TypedState brackets the subclass hooks with these, so the replay lands after
+    // the subclass's own mount hook rather than reaching members it has not set up.
+    void afterMount(DeviceT* device) final {
+        subscribe();
+        replayConnectedJacks();
+    }
+
+    // A dismounted state must stop receiving; the next mounted state may not be a
+    // ConnectState, and nothing else would clear the slot. Guarded on `subscribed`
+    // for the same reason the destructor is: never clear a slot we do not hold.
+    void beforeDismount(DeviceT* device) final {
+        if (subscribed) unsubscribe();
+    }
+
+    // setChainChangeCallback and setPeerLostCallback are already claimed by the
+    // app (Quickdraw), so a state must not take those.
+    void subscribe() {
+        remoteDeviceCoordinator->setOnJackChange(
+            [this](SerialIdentifier jack, bool connected) {
+                onJackChange(jack, connected);
+            });
+        subscribed = true;
+    }
+
+    void unsubscribe() {
+        remoteDeviceCoordinator->setOnJackChange(nullptr);
+        subscribed = false;
+    }
+
+    void replayConnectedJacks() {
+        // Jack edges come only from the HELLO link machine, while getPortStatus
+        // falls back to handshake state when HELLO is off. Replaying there would
+        // deliver a connect whose matching disconnect can never arrive.
+        if (!remoteDeviceCoordinator->isHelloConnectivityEnabled()) return;
+        for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK,
+                                      SerialIdentifier::INPUT_JACK,
+                                      SerialIdentifier::INPUT_JACK_SECONDARY}) {
+            if (isJackConnected(jack)) onJackChange(jack, true);
+        }
+    }
+
     /// True when the given jack's port status is CONNECTED.
     bool isJackConnected(SerialIdentifier jack) const {
         return remoteDeviceCoordinator->getPortStatus(jack) == PortStatus::CONNECTED;
     }
 
-    static constexpr unsigned long kDisconnectDebounceMs = 500;
-    DebouncedCondition disconnectDebounce_;
-    JackChangeCallback jackChangeCallback;
+    static constexpr unsigned long DISCONNECT_DEBOUNCE_MS = 500;
+    DebouncedCondition disconnectDebounce;
+    bool subscribed = false;
 };

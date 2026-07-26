@@ -17,6 +17,7 @@
 #include "hwm-tests.hpp"
 #include "rdc-tests.hpp"
 #include "rdc-hello-tests.hpp"
+#include "connect-state-callback-tests.hpp"
 #include "chain-duel-manager-tests.hpp"
 #include "chain-duel-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
@@ -25,7 +26,6 @@
 #include "reliable-channel-tests.hpp"
 #include "direct-peer-table-tests.hpp"
 #include "reliable-transport-tests.hpp"
-#include "connect-state-callback-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1309,6 +1309,38 @@ TEST_F(RDCHelloTests, contextCompleteConnects) {
     rdcHelloContextCompleteConnects(this);
 }
 
+TEST_F(ConnectStateTests, mountedStateReceivesJackConnect) {
+    connectStateMountedReceivesJackConnect(this);
+}
+
+TEST_F(ConnectStateTests, receivesDisconnect) {
+    connectStateReceivesDisconnect(this);
+}
+
+TEST_F(ConnectStateTests, dismountedStopsReceiving) {
+    connectStateDismountedStopsReceiving(this);
+}
+
+TEST_F(ConnectStateTests, replaysConnectedJackAtMount) {
+    connectStateReplaysConnectedJackAtMount(this);
+}
+
+TEST_F(ConnectStateTests, replaysOnlyConnectedJacks) {
+    connectStateReplaysOnlyConnectedJacks(this);
+}
+
+TEST_F(ConnectStateTests, peerFactsClearedOnDisconnect) {
+    connectStatePeerFactsClearedOnDisconnect(this);
+}
+
+TEST_F(ConnectStateTests, destructorReleasesSlot) {
+    connectStateDestructorReleasesSlot(this);
+}
+
+TEST_F(RDCTests, connectStateSkipsReplayWhenHelloOff) {
+    connectStateSkipsReplayWhenHelloOff(this);
+}
+
 TEST_F(RDCHelloTests, silentLinkDisconnects) {
     rdcHelloSilentLinkDisconnects(this);
 }
@@ -1491,41 +1523,6 @@ TEST(RDCHelloStandalone, chainDualLatchSettlesByLowerMac) {
 }
 TEST_F(RDCHelloTests, chainRingYieldsToHigherHeadAfterEvidenceTimeout) {
     rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(this);
-}
-
-// ============================================
-// CONNECTSTATE PER-JACK CALLBACK TESTS (#165)
-// ============================================
-
-TEST_F(ConnectStateCallbackTests, connectEventCarriesContext) {
-    connectStateConnectEventCarriesContext(this);
-}
-TEST_F(ConnectStateCallbackTests, disconnectEventHasNoContext) {
-    connectStateDisconnectEventHasNoContext(this);
-}
-TEST_F(ConnectStateCallbackTests, eventsReachOnlyMountedState) {
-    connectStateEventsReachOnlyMountedState(this);
-}
-TEST_F(ConnectStateCallbackTests, reconnectWithoutContextDeliversNullopt) {
-    connectStateReconnectWithoutContextDeliversNullopt(this);
-}
-TEST_F(ConnectStateCallbackTests, idleArmsSymbolFromFdnContext) {
-    connectStateIdleArmsSymbolFromFdnContext(this);
-}
-TEST_F(ConnectStateCallbackTests, idleIgnoresFdnOnSecondaryJack) {
-    connectStateIdleIgnoresFdnOnSecondaryJack(this);
-}
-TEST_F(ConnectStateCallbackTests, idleFdnIgnoredWhileMatchInitialized) {
-    connectStateIdleFdnIgnoredWhileMatchInitialized(this);
-}
-TEST_F(ConnectStateCallbackTests, mountReplayDeliversSnapshot) {
-    connectStateMountReplayDeliversSnapshot(this);
-}
-TEST_F(ConnectStateCallbackTests, quickdrawDtorClearsRdcCallbacks) {
-    connectStateQuickdrawDtorClearsRdcCallbacks(this);
-}
-TEST_F(ConnectStateCallbackTests, replayFiresOncePerMount) {
-    connectStateReplayFiresOncePerMount(this);
 }
 
 // ============================================
