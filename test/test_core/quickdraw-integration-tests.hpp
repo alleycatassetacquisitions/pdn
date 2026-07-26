@@ -541,9 +541,9 @@ public:
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockHaptics, getIntensity()).WillByDefault(Return(0));
-        ON_CALL(storage, write(_, _)).WillByDefault(Return(100));
-        ON_CALL(storage, writeUChar(_, _)).WillByDefault(Return(1));
-        ON_CALL(storage, readUChar(_, _)).WillByDefault(Return(0));
+        ON_CALL(storage, write(_, _, _)).WillByDefault(Return(100));
+        ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(Return(1));
+        ON_CALL(storage, readUChar(_, _, _)).WillByDefault(Return(0));
     }
 
     MockDevice device;

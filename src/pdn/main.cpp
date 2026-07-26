@@ -14,6 +14,7 @@
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -45,6 +46,8 @@
 
 WifiConfig* wifiConfig = nullptr;
 
+CrashLogger* crashLogger = nullptr;
+
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
@@ -56,7 +59,7 @@ Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
 Esp32S3HttpClient* httpClientDriver = nullptr;
-EspNowManager* peerCommsDriver = nullptr;
+EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
 
@@ -105,7 +108,7 @@ void setupEspNow(
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial) delay(100);
+    // Do not block on Serial — USB CDC may have no host in the field; setup must run anyway.
 
     // Construct drivers FIRST (before anything that might use logging or timers)
     loggerDriver = new Esp32S3Logger(LOGGER_DRIVER_NAME);
@@ -127,9 +130,9 @@ void setup() {
     
     // WiFi credentials are compile-time constants from build flags
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
-    peerCommsDriver = EspNowManager::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, PREF_NAMESPACE);
+    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -170,7 +173,11 @@ void setup() {
     
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
-    
+
+    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger->capture();
+    crashLogger->transmitPending();
+
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
     
     pdn->getDisplay()->
@@ -188,5 +195,8 @@ void setup() {
 }
 
 void loop() {
+    if (crashLogger != nullptr) {
+        crashLogger->pollSerialCommand();
+    }
     pdn->loop();
 }

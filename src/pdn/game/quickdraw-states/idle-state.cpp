@@ -73,6 +73,10 @@ void Idle::onStateLoop(PDN* pdn) {
         displayIsDirty = false;
     }
 
+    if(isConnected()) {
+        abort();
+    }
+
     ShootoutManager* shMgr = matchManager->getShootoutManager();
     bool shootoutActive = shMgr && shMgr->active();
     if (!shootoutActive && isConnected()) {

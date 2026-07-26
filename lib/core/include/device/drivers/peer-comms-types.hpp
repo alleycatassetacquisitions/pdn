@@ -20,6 +20,7 @@ enum class PktType : uint8_t
     kShootoutCommandAck = 12,
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
+    kCrashLog = 15,
     kNumPacketTypes //Not a real packet type, DO NOT USE
 };
 

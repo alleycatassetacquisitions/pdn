@@ -85,14 +85,13 @@ private:
 
 class StubStorage : public StorageInterface {
 public:
-    size_t write(const std::string&, const std::string&) override { return 0; }
-    std::string read(const std::string&,
-                     const std::string& def) override { return def; }
-    bool remove(const std::string&) override { return true; }
-    bool clear() override { return true; }
+    size_t write(const std::string&, const std::string&, const std::string&) override { return 0; }
+    std::string read(const std::string&, const std::string&, const std::string& def) override { return def; }
+    bool remove(const std::string&, const std::string&) override { return true; }
+    bool clear(const std::string&) override { return true; }
     void end() override {}
-    uint8_t readUChar(const std::string&, uint8_t def) override { return def; }
-    size_t writeUChar(const std::string&, uint8_t) override { return 0; }
+    uint8_t readUChar(const std::string&, const std::string&, uint8_t def) override { return def; }
+    size_t writeUChar(const std::string&, const std::string&, uint8_t) override { return 0; }
 };
 
 class StubHttpClient : public HttpClientInterface {
