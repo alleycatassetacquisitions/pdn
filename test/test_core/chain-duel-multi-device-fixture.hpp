@@ -288,8 +288,7 @@ protected:
     void dispatch(const PendingPacket& p) {
         // A broadcast frame lands on every node in range except its sender,
         // which is what the radio does with the permanent broadcast peer.
-        static const std::array<uint8_t, 6> BROADCAST_MAC = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        if (p.toMac == BROADCAST_MAC) {
+        if (memcmp(p.toMac.data(), MockDevice::BROADCAST_MAC, 6) == 0) {
             for (size_t i = 0; i < nodes.size(); ++i) {
                 if (i == p.fromIndex) continue;
                 PendingPacket unicast = p;

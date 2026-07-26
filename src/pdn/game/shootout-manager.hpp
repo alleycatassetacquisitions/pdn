@@ -151,12 +151,14 @@ private:
     uint8_t nextSeqId();
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
                             const uint8_t* mac);
-    // True when mac takes part in this device's tournament: the formed bracket
-    // when there is one, otherwise the confirmed set or the physical loop.
+    // Any of the three, because which set knows the ring depends on the phase:
+    // the bracket after reveal, the confirmed set during the proposal, the
+    // physical loop before either exists. A follower's bracket is not a subset
+    // of its confirmed set, so none of the three subsumes the others.
     bool isRingMember(const uint8_t* mac) const;
     void broadcastCommand(const uint8_t* packet, size_t len);
-    void sendToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
-                     const uint8_t* packet, size_t len);
+    void broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
+                         const uint8_t* packet, size_t len);
     void sendReliablyToPeers(std::vector<BracketPending>& pending,
                              const std::vector<std::array<uint8_t, 6>>& peers,
                              const uint8_t* packet, size_t len);

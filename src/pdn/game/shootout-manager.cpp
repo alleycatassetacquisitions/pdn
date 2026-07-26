@@ -96,29 +96,24 @@ void ShootoutManager::broadcastCommand(const uint8_t* packet, size_t len) {
                                     PktType::kShootoutCommand, packet, len);
 }
 
-void ShootoutManager::sendToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
-                                  const uint8_t* packet, size_t len) {
+void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
+                                      const uint8_t* packet, size_t len) {
     // A ring fan-out is one broadcast frame, not one unicast per member: the
     // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
-    // ring larger than that at all, whereas the broadcast slot is registered
-    // once at radio init. Receivers drop commands naming MACs outside their own
-    // ring, which is the filtering the destination address used to provide.
+    // ring larger than that at all, whereas the broadcast slot is registered once
+    // at radio init. Receivers must drop commands naming MACs outside their own ring.
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    bool hasPeer = false;
-    for (const std::array<uint8_t, 6>& m : peers) {
-        if (selfMac == nullptr || memcmp(m.data(), selfMac, 6) != 0) {
-            hasPeer = true;
-            break;
-        }
+    if (!std::any_of(peers.begin(), peers.end(), [selfMac](const std::array<uint8_t, 6>& m) {
+            return selfMac == nullptr || memcmp(m.data(), selfMac, 6) != 0;
+        })) {
+        return;
     }
-    if (!hasPeer) return;
     broadcastCommand(packet, len);
 }
 
 void ShootoutManager::sendReliablyToPeers(std::vector<BracketPending>& pending,
                                           const std::vector<std::array<uint8_t, 6>>& peers,
                                           const uint8_t* packet, size_t len) {
-    sendToPeers(peers, packet, len);
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     pending.clear();
     for (const std::array<uint8_t, 6>& m : peers) {
@@ -128,18 +123,12 @@ void ShootoutManager::sendReliablyToPeers(std::vector<BracketPending>& pending,
         p.timer.setTimer(ackTimeoutForRetry(0));
         pending.push_back(p);
     }
+    if (!pending.empty()) broadcastCommand(packet, len);
 }
 
 bool ShootoutManager::retryPendingRound(std::vector<BracketPending>& pending,
                                         const uint8_t* packet, size_t len) {
-    bool anyExpired = false;
-    for (BracketPending& p : pending) {
-        if (p.timer.expired()) {
-            anyExpired = true;
-            break;
-        }
-    }
-    if (!anyExpired) return false;
+    if (std::none_of(pending.begin(), pending.end(), [](BracketPending& p) { return p.timer.expired(); })) return false;
 
     bool exhausted = false;
     for (auto it = pending.begin(); it != pending.end();) {
@@ -267,14 +256,7 @@ void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name
     // Fast path: already-confirmed peers bypass the loop-membership scan (this
     // is the common case during 1Hz rebroadcasts — the gate only needs to
     // block first-time stray CONFIRMs from outside the ring).
-    if (!hasConfirmed(fromMac)) {
-        auto members = getLoopMembers();
-        bool inLoop = false;
-        for (const auto& m : members) {
-            if (memcmp(m.data(), fromMac, 6) == 0) { inLoop = true; break; }
-        }
-        if (!inLoop) return;
-    }
+    if (!hasConfirmed(fromMac) && !containsMac(getLoopMembers(), fromMac)) return;
     recordName(fromMac, name);
     bool added = !hasConfirmed(fromMac);
     if (added) {
@@ -427,7 +409,7 @@ void ShootoutManager::abortTournament() {
     packet[0] = static_cast<uint8_t>(ShootoutCmd::ABORT);
     packet[1] = 0;
     const std::vector<std::array<uint8_t, 6>>& targets = bracket.empty() ? confirmedSet : bracket;
-    sendToPeers(targets, packet, sizeof(packet));
+    broadcastToRing(targets, packet, sizeof(packet));
 
     resetToIdle();
     phase = Phase::ABORTED;
@@ -447,7 +429,7 @@ void ShootoutManager::sendLocalConfirm() {
         memcpy(&payload[8], n.data(), copyLen);
     }
 
-    sendToPeers(getLoopMembers(), payload, sizeof(payload));
+    broadcastToRing(getLoopMembers(), payload, sizeof(payload));
     confirmRebroadcastTimer.setTimer(kConfirmRebroadcastMs);
 }
 
@@ -560,7 +542,7 @@ void ShootoutManager::onLocalRDCDisconnect(const uint8_t* lostMac) {
     packet[1] = 0;
     memcpy(&packet[2], lostMac, 6);
     const std::vector<std::array<uint8_t, 6>>& targets = bracket.empty() ? confirmedSet : bracket;
-    sendToPeers(targets, packet, sizeof(packet));
+    broadcastToRing(targets, packet, sizeof(packet));
     // Locally observed: this device's own jack went quiet, so no ring filter.
     applyPeerLoss(lostMac);
 }
@@ -809,9 +791,8 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seq
 }
 
 void ShootoutManager::onAbortReceived(const uint8_t* fromMac) {
-    // ABORT carries no MACs of its own, so the sender is the only thing that
-    // identifies the ring it belongs to. Without this a neighbouring ring's
-    // abort would tear down every tournament in radio range.
+    // Without this filter a neighbouring ring's abort would tear down every
+    // tournament in radio range.
     if (!isRingMember(fromMac)) return;
     if (phase == Phase::ABORTED || phase == Phase::IDLE) return;
     resetToIdle();
@@ -823,10 +804,7 @@ std::vector<std::array<uint8_t, 6>> ShootoutManager::buildLoopMemberSet() const 
 
     std::vector<std::array<uint8_t, 6>> out;
     auto addUnique = [&out](const uint8_t* mac) {
-        if (mac == nullptr) return;
-        for (const auto& existing : out) {
-            if (memcmp(existing.data(), mac, 6) == 0) return;
-        }
+        if (mac == nullptr || containsMac(out, mac)) return;
         std::array<uint8_t, 6> copy;
         memcpy(copy.data(), mac, 6);
         out.push_back(copy);

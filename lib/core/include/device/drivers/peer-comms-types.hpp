@@ -122,9 +122,9 @@ struct ShootoutAckPayload
 // Point-to-point ReliableChannel payloads; the chain head is the sole consumer.
 // seqId is stamped by the channel on send.
 
-// Head-roster capacity, sized to the event envelope rather than to a frame:
-// a single ESP-NOW v2 HeadTransfer frame holds well over a hundred (member,
-// upstream) pairs, so the old 18 (one v1 250-byte frame) no longer binds.
+// Head-roster capacity, sized to the event envelope rather than to a frame: a
+// single ESP-NOW v2 HeadTransfer frame holds well over a hundred (member,
+// upstream) pairs, so framing is not what bounds this.
 //
 // Overflow contract: past this cap the head drops the announce, and the member
 // cannot learn that. SEND_SUCCESS on the announce is the only delivery signal

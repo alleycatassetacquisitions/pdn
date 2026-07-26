@@ -24,8 +24,6 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 // Max application payload per frame. ESP-NOW v2.0 (IDF 5.x, all-S3 targets)
 // carries up to 1470 bytes in a single frame, so every packet type fits in
 // one send — no multi-frame clustering.
-// The payload ceiling is one ESP-NOW v2 frame minus the header: the radio, not
-// the length field, is what binds now.
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr);
 
 // pktLen carries the total packet length on the wire, so it has to be able to

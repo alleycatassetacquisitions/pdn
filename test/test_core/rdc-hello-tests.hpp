@@ -2658,9 +2658,9 @@ inline void rdcResendContextSendsOncePerPeer(RDCHelloTests* suite) {
     EXPECT_EQ(contextSends.size(), beforeResend + 1);
 }
 
-// The cap now sits at the event envelope, not at a v1 frame: a chain longer than
-// the old 18 must roster in full, and its whole roster must still hand off in one
-// HeadTransfer frame (the frame budget is asserted at compile time in the driver).
+// The cap sits at the event envelope, not at a v1 frame: a chain filled to the cap
+// must roster in full, and its whole roster must still hand off in one HeadTransfer
+// frame (the frame budget is asserted at compile time in the driver).
 inline void rdcRosterHoldsFullEventChain(RDCHelloTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
 
