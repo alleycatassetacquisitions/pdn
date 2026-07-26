@@ -389,6 +389,19 @@ private:
 
         const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
+        // pktLen comes off the wire and is what bounds the copy handed to the packet
+        // handlers, so it has to agree with what the radio actually delivered.
+        // sendData is the sole writer and sets the two equal. Below the header size it
+        // would also underflow handleSinglePacket's subtraction to about SIZE_MAX.
+        if (pktHdr->pktLen < sizeof(DataPktHdr) ||
+            static_cast<size_t>(pktHdr->pktLen) != static_cast<size_t>(data_len)) {
+            LOG_E("ENC", "Declared pktLen %u disagrees with received %i from %X:%X:%X:%X:%X:%X\n",
+                  pktHdr->pktLen, data_len,
+                  esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2],
+                  esp_now_info->src_addr[3], esp_now_info->src_addr[4], esp_now_info->src_addr[5]);
+            return;
+        }
+
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
