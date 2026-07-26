@@ -40,8 +40,9 @@ public:
         bool hadContext = false;
         DeviceType peerType = DeviceType::UNKNOWN;
         uint8_t chainRole = 0;
-        // Copied, not aliased: the pointer handed to the callback is only valid
-        // for that call, so keeping it would dangle by assertion time.
+        // Copied, not aliased: the coordinator overwrites the pointed-to bytes on
+        // the next context for that jack and zeroes them on link death, so holding
+        // the pointer would read whatever landed after the event.
         std::vector<uint8_t> profile;
     };
 
@@ -263,6 +264,28 @@ inline void connectStatePeerFactsClearedOnDisconnect(RDCHelloTests* suite) {
     EXPECT_EQ(profileLen, 0u);
 }
 
+// A swap frame tears the old link down to Idle before it opens the new one, and
+// that teardown clears the jack's peer facts. The new peer's kind has to survive
+// it, or the jack can reach CONNECTED reporting UNKNOWN.
+inline void rdcHelloPeerDeviceTypeSurvivesPeerSwap(RDCHelloTests* suite) {
+    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+
+    HelloPayload swapped{};
+    swapped.source[0] = 0xB1;
+    swapped.source[1] = 0x02;
+    swapped.source[2] = 0x03;
+    swapped.source[3] = 0x04;
+    swapped.source[4] = 0x05;
+    swapped.source[5] = 0x06;
+    swapped.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    suite->deliverHello(suite->outJack, encodeFramed(swapped));
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::FDN)
+        << "the swap teardown clobbered the incoming peer's kind";
+}
+
 // The replay is gated on HELLO because only the link machine emits jack edges.
 // With the handshake driving connectivity the port reads CONNECTED, but replaying
 // it would hand out a connect that no disconnect can ever follow.
@@ -271,7 +294,9 @@ inline void connectStateSkipsReplayWhenHelloOff(RDCTests* suite) {
     suite->rdc.sync(&suite->device);
     suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
     suite->rdc.sync(&suite->device);
-    ASSERT_FALSE(suite->rdc.isHelloConnectivityEnabled());
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE)
+        << "no link machine, so no edge source for this jack";
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
 
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);

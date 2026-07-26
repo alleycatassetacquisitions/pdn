@@ -748,13 +748,15 @@ void RemoteDeviceCoordinator::onHelloReceived(SerialIdentifier jack, const Hello
     // The machine records the peer MAC and, for a first HELLO on any Idle jack,
     // fires onContextRequest -> initiateContextExchange as it enters Connecting.
     JackHelloLink& link = helloByPort[portIndex(jack)];
-    // Off the wire, so clamp: an unrecognised deviceType reads as UNKNOWN rather
-    // than a value no switch in the game layer handles.
+    if (link.machine) link.machine->onHelloReceived(hello);
+    // After the machine, never before: a swap frame tears the old link down to
+    // Idle on its way in, and that mount clears this jack's peer facts. Writing
+    // first would hand the incoming peer the departing one's cleared kind.
+    // Clamped because it is off the wire; an unrecognised value reads UNKNOWN.
     link.peerDeviceType = (hello.deviceType == static_cast<uint8_t>(DeviceType::PDN) ||
                            hello.deviceType == static_cast<uint8_t>(DeviceType::FDN))
                               ? static_cast<DeviceType>(hello.deviceType)
                               : DeviceType::UNKNOWN;
-    if (link.machine) link.machine->onHelloReceived(hello);
 
     // Head inheritance + ring detection are directional: only the upstream (INPUT)
     // jack drives them, so the head's MAC cascades downstream. The FDN secondary
@@ -874,10 +876,9 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     if (machine != nullptr && machine->didMarkContextComplete()) return;
     JackHelloLink& link = helloByPort[portIndex(jack)];
     link.peerChainRole = chainRole;
-    // Held per jack so a state mounting after the context landed still sees the
-    // peer's identity. Clamped: the length is decoder-supplied, and a profile
-    // longer than the buffer is stored truncated rather than overrunning it.
-    link.peerProfileLen = len > MAX_PEER_PROFILE_BYTES ? MAX_PEER_PROFILE_BYTES : len;
+    // The bound is belt-and-braces: ReliableChannel rejects any frame whose length
+    // is not exactly sizeof(P), so both callers pass a compile-time size that fits.
+    link.peerProfileLen = std::min(len, link.peerProfile.size());
     if (profile != nullptr && link.peerProfileLen > 0) {
         memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
     } else {
@@ -938,6 +939,9 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     helloByPort[portIndex(jack)].peerChainRole = 0;
     helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
     helloByPort[portIndex(jack)].peerProfileLen = 0;
+    // Zeroed, not just length-reset: the next peer's profile may be shorter, and
+    // the tail would otherwise still hold the departed peer's identity bytes.
+    helloByPort[portIndex(jack)].peerProfile.fill(0);
     helloByPort[portIndex(jack)].lastContextResendMs = 0;
     // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
     // one-cable disconnect would silently break wireless for the still-connected

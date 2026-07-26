@@ -1341,6 +1341,10 @@ TEST_F(RDCTests, connectStateSkipsReplayWhenHelloOff) {
     connectStateSkipsReplayWhenHelloOff(this);
 }
 
+TEST_F(ConnectStateTests, peerDeviceTypeSurvivesPeerSwap) {
+    rdcHelloPeerDeviceTypeSurvivesPeerSwap(this);
+}
+
 TEST_F(ConnectStateTests, connectCarriesPeerContext) {
     connectStateConnectCarriesPeerContext(this);
 }

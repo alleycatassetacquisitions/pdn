@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -132,11 +133,11 @@ public:
     }
 
     // ---- Per-jack HELLO connectivity (#155) ----
-    // HELLO is the serial discovery/liveness beacon that replaces the string
-    // handshake (deleted by #160). Each jack runs an independent link SM fed by
-    // the real exec()-driven RX byte pump. Off by default and not yet switched on:
-    // the context exchange (#157) and device chain SM (#156) have landed, but no
-    // caller under src/ enables it, so production still runs the handshake.
+    // HELLO is the serial discovery/liveness beacon that will replace the string
+    // handshake (#160 deletes it). Each jack runs an independent link SM fed by the
+    // real exec()-driven RX byte pump. Off by default and not yet switched on: the
+    // context exchange (#157) and device chain SM (#156) have landed, but no caller
+    // under src/ enables it, so production still runs the handshake.
 
     static constexpr unsigned long HELLO_CADENCE_MS = 20;
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
@@ -153,9 +154,11 @@ public:
                                 CONNECTED };
 
     // Sized to the larger of the two context profiles so a stored profile is never
-    // truncated; both are packed wire structs, so sizeof is the wire length.
+    // truncated; both are packed wire structs, so sizeof is the wire length. Every
+    // profile buffer in this class uses it, so the two stores cannot drift apart
+    // the day FdnProfile grows past PlayerProfile.
     static constexpr size_t MAX_PEER_PROFILE_BYTES =
-        sizeof(PlayerProfile) > sizeof(FdnProfile) ? sizeof(PlayerProfile) : sizeof(FdnProfile);
+        std::max(sizeof(PlayerProfile), sizeof(FdnProfile));
 
     /// Hands a received peer context to the game layer opaquely: the jack it
     /// arrived on, the peer's device kind, and the raw profile bytes
@@ -182,7 +185,9 @@ public:
 
     /// The peer's opaque profile bytes on `jack`, or nullptr before its context
     /// arrives. PlayerProfile for a PDN peer, FdnProfile for an FDN one; which it
-    /// is comes from getPeerDeviceType. RDC never interprets them.
+    /// is comes from getPeerDeviceType. RDC never interprets them. Held per jack
+    /// rather than only forwarded on arrival, so a state mounting later still gets
+    /// the peer's identity instead of only whoever was mounted at the time.
     const uint8_t* getPeerProfile(SerialIdentifier jack, size_t& length) const {
         const JackHelloLink& link = helloByPort[portIndex(jack)];
         length = link.peerProfileLen;
@@ -195,12 +200,6 @@ public:
     /// Wires byte callbacks + parsers on every present jack, quiesces the
     /// handshake, and (unless external) spawns the emit task. Idempotent.
     void enableHelloConnectivity();
-
-    /// True once enableHelloConnectivity() has run. Consumers of the jack observer
-    /// gate on this: the link machine is the only emitter of jack edges, so with
-    /// HELLO off the port statuses come from the handshake instead and no edge
-    /// will ever follow them.
-    bool isHelloConnectivityEnabled() const { return helloConnectivityEnabled; }
 
     /// Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
     /// drives emitHello() and the per-jack link machines (via sync()) on one thread.
@@ -356,9 +355,6 @@ private:
         // From the HELLO deviceType byte, so known from the first frame (Connecting)
         // rather than waiting on the context exchange.
         DeviceType peerDeviceType = DeviceType::UNKNOWN;
-        // The peer's opaque profile bytes from its context. RDC never reads inside
-        // them; it holds them so a game state mounting later still gets the peer's
-        // identity instead of only whoever was mounted when the context landed.
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
         size_t peerProfileLen = 0;
         // Last recovery resend to this jack's peer (0 = never); throttles the
@@ -398,7 +394,7 @@ private:
         std::array<uint8_t, 6> mac{};
         DeviceType peerType = DeviceType::UNKNOWN;
         uint8_t chainRole = 0;
-        std::array<uint8_t, sizeof(PlayerProfile)> profile{};
+        std::array<uint8_t, MAX_PEER_PROFILE_BYTES> profile{};
         size_t len = 0;
         unsigned long arrivedAtMs = 0;
         bool valid = false;
