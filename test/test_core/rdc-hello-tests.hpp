@@ -1329,6 +1329,80 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
     SimpleTimer::setPlatformClock(nullptr);
 }
 
+// A faulty TRRS cable with one dead conductor: B's HELLO reaches A's INPUT jack
+// while A's HELLO reaches nobody, so B never opens a link and never sends its
+// context. A must not be left a ghost child of a peer that has never heard of
+// it. The edge that has to fire is the context-exchange timeout, NOT the liveness
+// watchdog: B's HELLO keeps arriving at cadence, so the silent-link gap never
+// grows past its window and only the incomplete exchange can end the link.
+inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+
+    const uint8_t macA[6] = {0xAA, 0x00, 0x00, 0x00, 0x00, 0x02};
+    const uint8_t macB[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x03};
+    ChainRingNode A(macA);
+    ChainRingNode B(macB);
+
+    // The one live conductor, B.out -> A.in: A hears an upstream peer and opens a
+    // link, but stays STANDALONE — CHILD demands a CONNECTED input.
+    B.rdc.emitHello();
+    pumpCable(B.out, A.in);
+    A.rdc.sync(&A.device);
+    B.rdc.sync(&B.device);
+    ASSERT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(A.rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTING);
+    ASSERT_EQ(A.rdc.getChainRole(), ChainRole::STANDALONE);
+
+    // Hold the link at HELLO cadence right up to the context timeout.
+    unsigned long connectingMs = 0;
+    while (connectingMs < RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS) {
+        clock.advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        connectingMs += RemoteDeviceCoordinator::HELLO_CADENCE_MS;
+        A.rdc.emitHello();
+        B.rdc.emitHello();
+        pumpCable(B.out, A.in);
+        A.in.clearOutput();  // the cut conductor: A's frames reach no one
+        A.rdc.sync(&A.device);
+        B.rdc.sync(&B.device);
+        ASSERT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+                  RemoteDeviceCoordinator::HelloLinkState::CONNECTING)
+            << "connecting for " << connectingMs << "ms";
+    }
+
+    // One cadence step past the timeout ends it, with the HELLO still fresh.
+    clock.advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+    B.rdc.emitHello();
+    pumpCable(B.out, A.in);
+    A.rdc.sync(&A.device);
+
+    EXPECT_EQ(A.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(A.rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(A.rdc.getChainRole(), ChainRole::STANDALONE);
+    EXPECT_EQ(A.rdc.getHeadMac(), nullptr);
+    // The head adopted from that HELLO is off the wire too: A must stop telling
+    // its downstream it sits under B.
+    A.out.clearOutput();
+    A.rdc.emitHello();
+    HelloPayload emitted = parseEmittedHello(A.out.getOutput());
+    EXPECT_EQ(0, memcmp(emitted.source, macA, 6));  // a frame really was parsed
+    EXPECT_EQ(MacToUInt64(emitted.headMac), 0u);
+
+    // B heard nothing the whole time, so it never left its own chain.
+    EXPECT_EQ(B.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(B.rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(B.rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(B.rdc.getChainRole(), ChainRole::STANDALONE);
+    EXPECT_EQ(B.ringClosedCount, 0);
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
 // ============================================
 // Head roster management (#158)
 // ============================================
