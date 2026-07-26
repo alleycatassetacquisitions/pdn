@@ -76,13 +76,43 @@ uint8_t ShootoutManager::nextSeqId() {
     return id;
 }
 
+bool ShootoutManager::containsMac(const std::vector<std::array<uint8_t, 6>>& set,
+                                  const uint8_t* mac) {
+    if (mac == nullptr) return false;
+    for (const std::array<uint8_t, 6>& entry : set) {
+        if (memcmp(entry.data(), mac, 6) == 0) return true;
+    }
+    return false;
+}
+
+bool ShootoutManager::isRingMember(const uint8_t* mac) const {
+    if (containsMac(bracket, mac)) return true;
+    if (containsMac(confirmedSet, mac)) return true;
+    return containsMac(getLoopMembers(), mac);
+}
+
+void ShootoutManager::broadcastCommand(const uint8_t* packet, size_t len) {
+    wirelessManager->sendEspNowData(wirelessManager->getBroadcastAddress(),
+                                    PktType::kShootoutCommand, packet, len);
+}
+
 void ShootoutManager::sendToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
                                   const uint8_t* packet, size_t len) {
+    // A ring fan-out is one broadcast frame, not one unicast per member: the
+    // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
+    // ring larger than that at all, whereas the broadcast slot is registered
+    // once at radio init. Receivers drop commands naming MACs outside their own
+    // ring, which is the filtering the destination address used to provide.
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    for (const auto& m : peers) {
-        if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
-        wirelessManager->sendEspNowData(m.data(), PktType::kShootoutCommand, packet, len);
+    bool hasPeer = false;
+    for (const std::array<uint8_t, 6>& m : peers) {
+        if (selfMac == nullptr || memcmp(m.data(), selfMac, 6) != 0) {
+            hasPeer = true;
+            break;
+        }
     }
+    if (!hasPeer) return;
+    broadcastCommand(packet, len);
 }
 
 void ShootoutManager::sendReliablyToPeers(std::vector<BracketPending>& pending,
@@ -91,13 +121,46 @@ void ShootoutManager::sendReliablyToPeers(std::vector<BracketPending>& pending,
     sendToPeers(peers, packet, len);
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     pending.clear();
-    for (const auto& m : peers) {
+    for (const std::array<uint8_t, 6>& m : peers) {
         if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
         BracketPending p;
         p.peer = m;
         p.timer.setTimer(ackTimeoutForRetry(0));
         pending.push_back(p);
     }
+}
+
+bool ShootoutManager::retryPendingRound(std::vector<BracketPending>& pending,
+                                        const uint8_t* packet, size_t len) {
+    bool anyExpired = false;
+    for (BracketPending& p : pending) {
+        if (p.timer.expired()) {
+            anyExpired = true;
+            break;
+        }
+    }
+    if (!anyExpired) return false;
+
+    bool exhausted = false;
+    for (auto it = pending.begin(); it != pending.end();) {
+        if (it->retries >= kMaxShootoutAckRetries) {
+            LOG_W(TAG, "shootout ack retries exhausted for %s", MacToString(it->peer.data()));
+            it = pending.erase(it);
+            exhausted = true;
+        } else {
+            ++it;
+        }
+    }
+    if (pending.empty()) return exhausted;
+
+    // One frame covers every member still owing an ack; a per-peer unicast
+    // retry would need a peer-table slot each.
+    broadcastCommand(packet, len);
+    for (BracketPending& p : pending) {
+        p.retries++;
+        p.timer.setTimer(ackTimeoutForRetry(p.retries));
+    }
+    return exhausted;
 }
 
 void ShootoutManager::eraseFromPending(std::vector<BracketPending>& pending,
@@ -255,10 +318,7 @@ std::string ShootoutManager::getNameForMac(const uint8_t* mac) const {
 }
 
 bool ShootoutManager::hasConfirmed(const uint8_t* mac) const {
-    for (const auto& existing : confirmedSet) {
-        if (memcmp(existing.data(), mac, 6) == 0) return true;
-    }
-    return false;
+    return containsMac(confirmedSet, mac);
 }
 
 bool ShootoutManager::allMembersConfirmed() const {
@@ -358,21 +418,6 @@ void ShootoutManager::onBracketAckReceived(const uint8_t* fromMac, uint8_t seqId
     eraseFromPending(bracketPendingAcks, fromMac);
 }
 
-bool ShootoutManager::retryBracketForPeer(BracketPending& p) {
-    if (p.retries >= kMaxShootoutAckRetries) {
-        // Caller is iterating bracketPendingAcks; don't abort here (that
-        // clears the vector and invalidates the iterator). Signal and let
-        // the caller abort after exiting the loop.
-        return true;
-    }
-    auto packet = buildBracketPacket();
-    wirelessManager->sendEspNowData(p.peer.data(), PktType::kShootoutCommand,
-                                    packet.data(), packet.size());
-    p.retries++;
-    p.timer.setTimer(ackTimeoutForRetry(p.retries));
-    return false;
-}
-
 void ShootoutManager::abortTournament() {
     if (phase == Phase::ABORTED) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase));
@@ -416,16 +461,15 @@ void ShootoutManager::sync() {
         }
     }
 
-    bool shouldAbort = false;
-    for (auto& p : bracketPendingAcks) {
-        if (p.timer.expired()) {
-            if (retryBracketForPeer(p)) {
-                shouldAbort = true;
-                break;
-            }
+    if (!bracketPendingAcks.empty()) {
+        std::vector<uint8_t> packet = buildBracketPacket();
+        // A member that never acks the bracket would sit out the tournament it
+        // is physically wired into, so an exhausted budget aborts rather than
+        // dropping that member.
+        if (retryPendingRound(bracketPendingAcks, packet.data(), packet.size())) {
+            abortTournament();
         }
     }
-    if (shouldAbort) abortTournament();
 
     maybeStartNextMatch();
 
@@ -440,44 +484,14 @@ void ShootoutManager::sync() {
         packet[0] = static_cast<uint8_t>(ShootoutCmd::TOURNAMENT_END);
         packet[1] = lastTournamentEndSeqId;
         memcpy(&packet[2], tournamentWinner.data(), 6);
-        for (auto it = tournamentEndPendingAcks.begin();
-             it != tournamentEndPendingAcks.end();) {
-            if (!it->timer.expired()) { ++it; continue; }
-            if (it->retries >= kMaxShootoutAckRetries) {
-                LOG_W(TAG, "TOURNAMENT_END retries exhausted for %s",
-                      MacToString(it->peer.data()));
-                it = tournamentEndPendingAcks.erase(it);
-                continue;
-            }
-            wirelessManager->sendEspNowData(it->peer.data(),
-                                            PktType::kShootoutCommand,
-                                            packet, sizeof(packet));
-            it->retries++;
-            it->timer.setTimer(ackTimeoutForRetry(it->retries));
-            ++it;
-        }
+        retryPendingRound(tournamentEndPendingAcks, packet, sizeof(packet));
     }
 
     if (!matchResultPendingAcks.empty()) {
-        auto packet = buildMatchResultPacket(
+        std::vector<uint8_t> packet = buildMatchResultPacket(
             lastMatchResult.winner.data(), lastMatchResult.loser.data(),
             lastMatchResult.matchIndex);
-        for (auto it = matchResultPendingAcks.begin();
-             it != matchResultPendingAcks.end();) {
-            if (!it->timer.expired()) { ++it; continue; }
-            if (it->retries >= kMaxShootoutAckRetries) {
-                LOG_W(TAG, "MATCH_RESULT retries exhausted for %s",
-                      MacToString(it->peer.data()));
-                it = matchResultPendingAcks.erase(it);
-                continue;
-            }
-            wirelessManager->sendEspNowData(it->peer.data(),
-                                            PktType::kShootoutCommand,
-                                            packet.data(), packet.size());
-            it->retries++;
-            it->timer.setTimer(ackTimeoutForRetry(it->retries));
-            ++it;
-        }
+        retryPendingRound(matchResultPendingAcks, packet.data(), packet.size());
     }
 }
 
@@ -547,11 +561,19 @@ void ShootoutManager::onLocalRDCDisconnect(const uint8_t* lostMac) {
     memcpy(&packet[2], lostMac, 6);
     const std::vector<std::array<uint8_t, 6>>& targets = bracket.empty() ? confirmedSet : bracket;
     sendToPeers(targets, packet, sizeof(packet));
-    onPeerLostReceived(lostMac);
+    // Locally observed: this device's own jack went quiet, so no ring filter.
+    applyPeerLoss(lostMac);
 }
 
 void ShootoutManager::onPeerLostReceived(const uint8_t* lostMac) {
-    LOG_W(TAG, "onPeerLostReceived %s phase=%d",
+    // A broadcast PEER_LOST reaches every ring in range; only a loss inside ours
+    // may end our tournament.
+    if (!isRingMember(lostMac)) return;
+    applyPeerLoss(lostMac);
+}
+
+void ShootoutManager::applyPeerLoss(const uint8_t* lostMac) {
+    LOG_W(TAG, "applyPeerLoss %s phase=%d",
           MacToString(lostMac), static_cast<int>(phase));
     if (phase == Phase::IDLE || phase == Phase::ABORTED || phase == Phase::ENDED) return;
     if (rdc && rdc->canReachPeer(lostMac)) return;
@@ -608,6 +630,10 @@ std::array<uint8_t, 6> ShootoutManager::lowestMacIn(
 void ShootoutManager::onBracketReceived(
     const std::vector<std::array<uint8_t, 6>>& offeredBracket, uint8_t seqId) {
     if (isCoordinator()) return;
+    // A broadcast bracket reaches every ring in radio range; the roster itself
+    // says whether it is ours. Ack nothing we are not part of, or a neighbouring
+    // ring's coordinator would count us as one of its members.
+    if (!containsMac(offeredBracket, wirelessManager->getMacAddress())) return;
     if (seqId != 0 && seqId == lastObservedBracketSeqId) {
         std::array<uint8_t, 6> coord = lowestMacIn(offeredBracket);
         sendShootoutAck(ShootoutCmd::BRACKET, seqId, coord.data());
@@ -626,6 +652,9 @@ void ShootoutManager::onMatchStartReceived(
     const uint8_t* duelistA, const uint8_t* duelistB,
     uint8_t matchIndex, uint8_t seqId) {
     if (isCoordinator()) return;
+    // Both duelists come from our own bracket, so a pair naming anyone outside
+    // it belongs to another ring's broadcast.
+    if (!containsMac(bracket, duelistA) || !containsMac(bracket, duelistB)) return;
     if (seqId != 0 && seqId == lastObservedMatchStartSeqId) {
         sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
         return;
@@ -657,10 +686,7 @@ void ShootoutManager::sendShootoutAck(ShootoutCmd cmd, uint8_t seqId, const uint
 }
 
 bool ShootoutManager::isEliminated(const uint8_t* mac) const {
-    for (const auto& m : eliminated) {
-        if (memcmp(m.data(), mac, 6) == 0) return true;
-    }
-    return false;
+    return containsMac(eliminated, mac);
 }
 
 void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* loser) {
@@ -715,6 +741,10 @@ void ShootoutManager::reportLocalWin() {
 void ShootoutManager::onMatchResultReceived(
     const uint8_t* winner, const uint8_t* loser,
     uint8_t matchIndex, uint8_t seqId, const uint8_t* fromMac) {
+    // Winner and loser are both drawn from our own bracket, so a result naming
+    // anyone outside it came from another ring's broadcast — and must not be
+    // acked, or that ring's sender stops retrying to its real audience.
+    if (!containsMac(bracket, winner) || !containsMac(bracket, loser)) return;
     // Always ack so the sender stops retrying, even when this is a duplicate.
     sendShootoutAck(ShootoutCmd::MATCH_RESULT, seqId, fromMac);
     // Dedup by loser-MAC rather than seqId: non-coord senders have independent
@@ -763,6 +793,9 @@ void ShootoutManager::onTournamentEndAckReceived(const uint8_t* fromMac, uint8_t
 }
 
 void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seqId) {
+    // The winner is a member of our bracket; anyone else won another ring's
+    // tournament and must not end ours.
+    if (!containsMac(bracket, winner)) return;
     if (seqId != 0 && seqId == lastObservedTournamentEndSeqId) {
         auto coord = getCoordinatorMac();
         sendShootoutAck(ShootoutCmd::TOURNAMENT_END, seqId, coord.data());
@@ -775,7 +808,11 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seq
     sendShootoutAck(ShootoutCmd::TOURNAMENT_END, seqId, coord.data());
 }
 
-void ShootoutManager::onAbortReceived() {
+void ShootoutManager::onAbortReceived(const uint8_t* fromMac) {
+    // ABORT carries no MACs of its own, so the sender is the only thing that
+    // identifies the ring it belongs to. Without this a neighbouring ring's
+    // abort would tear down every tournament in radio range.
+    if (!isRingMember(fromMac)) return;
     if (phase == Phase::ABORTED || phase == Phase::IDLE) return;
     resetToIdle();
     phase = Phase::ABORTED;

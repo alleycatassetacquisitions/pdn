@@ -296,6 +296,8 @@ public:
 
 class MockDevice : public PDN {
 public:
+    static constexpr uint8_t BROADCAST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
     MockDevice() : PDN() {
         // Initialize mock pointers
         mockDisplay = new MockDisplay();
@@ -308,6 +310,10 @@ public:
         lightManager = new LightManager(fakeLightStrip);
         serialManager = new SerialManager(&outputJackSerial, &inputJackSerial);
         wirelessManager = new WirelessManager(mockPeerComms, mockHttpClient);
+        // The real driver registers a permanent broadcast peer at radio init and
+        // hands its address back here; broadcast fan-out is unreachable without it.
+        ON_CALL(*mockPeerComms, getGlobalBroadcastAddress())
+            .WillByDefault(testing::Return(BROADCAST_MAC));
     }
 
     ~MockDevice() {

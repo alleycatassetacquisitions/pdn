@@ -286,6 +286,18 @@ protected:
     }
 
     void dispatch(const PendingPacket& p) {
+        // A broadcast frame lands on every node in range except its sender,
+        // which is what the radio does with the permanent broadcast peer.
+        static const std::array<uint8_t, 6> BROADCAST_MAC = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        if (p.toMac == BROADCAST_MAC) {
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                if (i == p.fromIndex) continue;
+                PendingPacket unicast = p;
+                memcpy(unicast.toMac.data(), nodes[i]->mac, 6);
+                dispatch(unicast);
+            }
+            return;
+        }
         size_t toIdx = indexOfMac(p.toMac.data());
         if (toIdx == SIZE_MAX) return;  // MAC unknown — drop (mirrors real ESP-NOW gating).
 
@@ -466,7 +478,7 @@ protected:
                         if (payloadLen >= 6) m->onPeerLostReceived(payload);
                         break;
                     case ShootoutCmd::ABORT:
-                        m->onAbortReceived();
+                        m->onAbortReceived(fromMac);
                         break;
                 }
             },

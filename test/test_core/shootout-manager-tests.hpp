@@ -149,16 +149,26 @@ inline void coordinatorBroadcastsBracketOnAdvance(ShootoutManagerTests* suite) {
     };
     suite->shootout->setLoopMembersForTest(members);
 
-    EXPECT_CALL(*suite->device.mockPeerComms,
-        sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .Times(testing::AtLeast(2))
-        .WillRepeatedly(testing::Return(1));
+    // The fan-out is a single broadcast frame, not one unicast per member, and
+    // it still owes an ack from each of the two peers.
+    std::vector<std::array<uint8_t, 6>> destinations;
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
+        .WillByDefault(testing::Invoke(
+            [&destinations](const uint8_t* dst, PktType, const uint8_t*, const size_t) {
+                std::array<uint8_t, 6> mac{};
+                memcpy(mac.data(), dst, 6);
+                destinations.push_back(mac);
+                return 1;
+            }));
 
     suite->shootout->startProposal();
     for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
     suite->shootout->confirmLocal();
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
     EXPECT_EQ(suite->shootout->getBracketPendingAckCount(), 2u);
+    ASSERT_EQ(destinations.size(), 1u);
+    EXPECT_EQ(memcmp(destinations[0].data(), MockDevice::BROADCAST_MAC, 6), 0);
 }
 
 inline void bracketAckClearsPendingForThatPeer(ShootoutManagerTests* suite) {
@@ -867,4 +877,148 @@ inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTest
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
     EXPECT_TRUE(state.transitionToAborted());
+}
+
+// The ESP-NOW peer table holds 20 entries, so a unicast fan-out cannot address a
+// larger ring at all. One broadcast frame reaches every member regardless of
+// ring size, while each member still owes its own unicast ack.
+inline void bracketFanOutIsOneFrameBeyondPeerTable(ShootoutManagerTests* suite) {
+    constexpr size_t RING_SIZE = 30;
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+
+    std::vector<std::array<uint8_t, 6>> members;
+    for (size_t i = 0; i < RING_SIZE; i++) {
+        members.push_back({static_cast<uint8_t>(0x01 + i), 0, 0, 0, 0, 0});
+    }
+    suite->shootout->setLoopMembersForTest(members);
+
+    std::vector<std::array<uint8_t, 6>> destinations;
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
+        .WillByDefault(testing::Invoke(
+            [&destinations](const uint8_t* dst, PktType, const uint8_t*, const size_t) {
+                std::array<uint8_t, 6> mac{};
+                memcpy(mac.data(), dst, 6);
+                destinations.push_back(mac);
+                return 1;
+            }));
+
+    suite->shootout->startProposal();
+    for (auto& m : members)
+        suite->shootout->onConfirmReceived(m.data());
+
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_EQ(suite->shootout->getBracket().size(), RING_SIZE);
+    EXPECT_EQ(suite->shootout->getBracketPendingAckCount(), RING_SIZE - 1);
+    ASSERT_EQ(destinations.size(), 1u);
+    EXPECT_EQ(memcmp(destinations[0].data(), MockDevice::BROADCAST_MAC, 6), 0);
+}
+
+// A retry round is one frame for every member still owing an ack, not one frame
+// each: per-peer retries would spend a peer-table slot per member.
+inline void bracketRetryIsOneFramePerRound(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    std::vector<std::array<uint8_t, 6>> members = {
+        {0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}, {0x03, 0, 0, 0, 0, 0}, {0x04, 0, 0, 0, 0, 0}};
+    suite->shootout->setLoopMembersForTest(members);
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->startProposal();
+    for (auto& m : members)
+        suite->shootout->onConfirmReceived(m.data());
+    ASSERT_EQ(suite->shootout->getBracketPendingAckCount(), 3u);
+
+    int sends = 0;
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
+        .WillByDefault(testing::Invoke(
+            [&sends](const uint8_t*, PktType, const uint8_t*, const size_t) {
+                sends++;
+                return 1;
+            }));
+
+    // First backoff is ackTimeoutForRetry(0) = 100ms and every pending entry was
+    // armed together, so one round covers all three.
+    suite->fakeClock->advance(150);
+    suite->shootout->sync();
+    EXPECT_EQ(sends, 1);
+    EXPECT_EQ(suite->shootout->getBracketPendingAckCount(), 3u);
+}
+
+// Rings share the radio channel, so a broadcast bracket lands on devices that
+// are not in it. A device absent from the roster must neither adopt it nor ack
+// it — an ack would enrol it in a neighbouring ring's tournament.
+inline void foreignBracketIsNeitherAdoptedNorAcked(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x0A, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+    suite->shootout->setLoopMembersForTest({{0x0A, 0, 0, 0, 0, 0}, {0x0B, 0, 0, 0, 0, 0}});
+    suite->shootout->startProposal();
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
+        .Times(0);
+
+    suite->shootout->onBracketReceived({{0x01, 0, 0, 0, 0, 0},
+                                        {0x02, 0, 0, 0, 0, 0},
+                                        {0x03, 0, 0, 0, 0, 0}},
+                                       1);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+    EXPECT_TRUE(suite->shootout->getBracket().empty());
+}
+
+// Every other shootout command is broadcast too, so each must ignore a sender or
+// a named MAC from outside this device's ring. Without this a neighbouring ring
+// could start matches in, or abort, a tournament it has no part in.
+inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> alienA = {0xA1, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> alienB = {0xA2, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({coord, me, other});
+    suite->shootout->startProposal();
+    for (auto& m : {coord, me, other})
+        suite->shootout->onConfirmReceived(m.data());
+    suite->shootout->onBracketReceived({me, other, coord}, 1);
+    suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 2);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+    ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
+
+    suite->shootout->onMatchStartReceived(alienA.data(), alienB.data(), 5, 3);
+    EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
+    EXPECT_TRUE(suite->shootout->isLocalDuelist());
+
+    suite->shootout->onMatchResultReceived(alienA.data(), alienB.data(), 5, 4, alienA.data());
+    EXPECT_FALSE(suite->shootout->isEliminated(alienB.data()));
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    suite->shootout->onPeerLostReceived(alienA.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    suite->shootout->onTournamentEndReceived(alienA.data(), 5);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    suite->shootout->onAbortReceived(alienA.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    // A ring member's ABORT still lands.
+    suite->shootout->onAbortReceived(coord.data());
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }

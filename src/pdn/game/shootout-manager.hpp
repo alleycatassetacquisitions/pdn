@@ -93,6 +93,8 @@ public:
     bool isEliminated(const uint8_t* mac) const;
 
     void onLocalRDCDisconnect(const uint8_t* lostMac);
+    /// Tears down on a peer's PEER_LOST, after checking the named MAC is one of
+    /// this device's ring members.
     void onPeerLostReceived(const uint8_t* lostMac);
     uint8_t getLastMatchStartSeqId() const;
 
@@ -101,7 +103,10 @@ public:
     size_t getTournamentEndPendingAckCount() const;
     /// seqId of the TOURNAMENT_END this device most recently sent.
     uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
-    void onAbortReceived();
+    /// Tears down on a peer's ABORT. fromMac identifies the sending ring: the
+    /// command carries no MACs of its own, and a broadcast reaches every ring
+    /// in radio range.
+    void onAbortReceived(const uint8_t* fromMac);
     std::array<uint8_t, 6> getTournamentWinner() const;
 
     // Reset all tournament state back to IDLE phase so a subsequent loop
@@ -143,6 +148,12 @@ private:
     void primeMatchManagerForMatch();
 
     uint8_t nextSeqId();
+    static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
+                            const uint8_t* mac);
+    // True when mac takes part in this device's tournament: the formed bracket
+    // when there is one, otherwise the confirmed set or the physical loop.
+    bool isRingMember(const uint8_t* mac) const;
+    void broadcastCommand(const uint8_t* packet, size_t len);
     void sendToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
                      const uint8_t* packet, size_t len);
     void sendReliablyToPeers(std::vector<BracketPending>& pending,
@@ -150,6 +161,11 @@ private:
                              const uint8_t* packet, size_t len);
     static void eraseFromPending(std::vector<BracketPending>& pending,
                                  const uint8_t* fromMac);
+    // Re-broadcasts `packet` once when any pending ack has timed out, advancing
+    // every surviving entry's retry counter. Drops entries whose budget is
+    // spent and returns true if any was dropped.
+    bool retryPendingRound(std::vector<BracketPending>& pending,
+                           const uint8_t* packet, size_t len);
 
     std::vector<std::array<uint8_t, 6>> testLoopMembers;
     bool testLoopMembersOverride = false;
@@ -178,9 +194,6 @@ private:
     static constexpr uint8_t kMaxShootoutAckRetries = 3;
 
     void sendBracketToPeers();
-    // Returns true iff the retry budget is exhausted for this peer and the
-    // caller should abort the tournament after exiting its iteration.
-    bool retryBracketForPeer(BracketPending& p);
     std::vector<uint8_t> buildBracketPacket() const;
     static std::array<uint8_t, 6> lowestMacIn(
         const std::vector<std::array<uint8_t, 6>>& set);
@@ -206,6 +219,9 @@ private:
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
+    // Ends the tournament for a departed participant. Callers own the question of
+    // whether the MAC is one of ours; a locally observed jack loss already is.
+    void applyPeerLoss(const uint8_t* lostMac);
     bool isActiveDuelist(const uint8_t* mac) const;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;

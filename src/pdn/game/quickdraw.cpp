@@ -254,7 +254,7 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
             if (payloadLen >= 6) shootoutManager->onPeerLostReceived(payload);
             break;
         case ShootoutCmd::ABORT:
-            shootoutManager->onAbortReceived();
+            shootoutManager->onAbortReceived(fromMac);
             break;
     }
 }
