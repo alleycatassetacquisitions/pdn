@@ -3,7 +3,11 @@
 #include <string>
 
 // Serial communication speed shared by all serial drivers and the handshake protocol.
-constexpr uint16_t BAUDRATE = 19200;
+// uint32_t, not uint16_t: common rates above 65535 (115200 among them) wrap in 16
+// bits and would silently configure the UART for a different speed.
+constexpr uint32_t BAUDRATE = 19200;
+static_assert(static_cast<decltype(BAUDRATE)>(115200) == 115200,
+              "BAUDRATE type cannot express 115200; in 16 bits it wraps to 49664");
 
 // Heartbeat token sent on the serial line to keep connections alive.
 inline const std::string SERIAL_HEARTBEAT = "hb";
