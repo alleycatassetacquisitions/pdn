@@ -49,10 +49,11 @@ bool ChainDuelManager::canInitiateMatch() const {
     if (!player->isHunter()) return false;
     // A closed ring is the shootout's topology; no 1v1 pairing forms inside one.
     if (isLoop()) return false;
-    // Half-open gate. Connected means the context exchange completed in both
-    // directions, so the peer is listening; a jack that only reached Connecting
-    // has a peer MAC off one HELLO and may have no return path at all, and a
-    // match pushed across it strands the initiator waiting for an ack.
+    // Half-open gate. Connected means the peer answered over the radio — the
+    // handshake's EXCHANGE_ID round trip, or the peer's context landing on a HELLO
+    // link — so a path back exists. A jack that only reached Connecting has a peer
+    // MAC off one inbound serial frame and nothing proving the peer can answer, and
+    // a match pushed across it strands the initiator waiting for an ack.
     if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
     if (rdc->getPeerDeviceType(opponentJack()) != DeviceType::PDN) return false;
     std::optional<bool> opponentRole = peerIsHunter(opponentJack());

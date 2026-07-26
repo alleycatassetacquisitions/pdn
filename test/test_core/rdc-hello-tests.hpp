@@ -2458,9 +2458,7 @@ inline PlayerProfile profileFromContextBytes(const std::vector<uint8_t>& bytes) 
 // #162: a hunter/bounty flip on an already-Connected link must put a fresh
 // context on the air, and that context must carry the CURRENT profile — the
 // exchange otherwise runs once per connect, so the peer would keep acting on the
-// role it learned at plug-in until the cable is pulled. Also covers the profile
-// source itself: an unwired provider is what made the whole exchange ship 28
-// zero bytes.
+// role it learned at plug-in until the cable is pulled.
 inline void rdcResendContextPushesCurrentProfile(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
