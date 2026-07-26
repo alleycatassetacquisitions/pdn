@@ -40,9 +40,6 @@ public:
         bool hadContext = false;
         DeviceType peerType = DeviceType::UNKNOWN;
         uint8_t chainRole = 0;
-        // Copied, not aliased: the coordinator overwrites the pointed-to bytes on
-        // the next context for that jack and zeroes them on link death, so holding
-        // the pointer would read whatever landed after the event.
         std::vector<uint8_t> profile;
     };
 
@@ -50,13 +47,24 @@ public:
     int mountedCount = 0;
     int dismountedCount = 0;
 
-    /// Counts mounts so a replayed event can be shown to land after this ran.
-    void onStateMounted(Device*) override { mountedCount++; }
+    /// Registers the recorder and counts mounts, so a replayed event can be shown
+    /// to land after this ran. Registration belongs here: the mount replay runs
+    /// after the subclass's own mount hook.
+    void onStateMounted(Device*) override {
+        mountedCount++;
+        setOnJackChange([this](SerialIdentifier jack, const JackConnectionState& state) {
+            record(jack, state);
+        });
+    }
     /// Counts dismounts; paired with mountedCount to tell mounted from not.
     void onStateDismounted(Device*) override { dismountedCount++; }
 
-    /// Records the delivered event so the assertions can read it back.
-    void onJackChange(SerialIdentifier jack, const JackConnectionState& state) override {
+protected:
+    bool isPrimaryRequired() override { return true; }
+    bool isAuxRequired() override { return true; }
+
+private:
+    void record(SerialIdentifier jack, const JackConnectionState& state) {
         Event event;
         event.jack = jack;
         event.connected = state.connected;
@@ -65,11 +73,33 @@ public:
         if (state.context.has_value()) {
             event.peerType = state.context->peerType;
             event.chainRole = state.context->chainRole;
-            event.profile.assign(state.context->profile,
-                                 state.context->profile + state.context->profileLen);
+            event.profile.assign(state.context->profile.begin(),
+                                 state.context->profile.begin() + state.context->profileLen);
         }
         events.push_back(event);
     }
+};
+
+// Registers from its constructor, which is the shape the #145 design sketch uses.
+// Counts only, because what is under test is that one registration reaches every
+// tenure rather than what the payload carries.
+class ConstructorRegisteredConnectState : public ConnectState<Device> {
+public:
+    /// Binds the coordinator and registers the handler in one step.
+    ConstructorRegisteredConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
+                                      int stateId)
+        : ConnectState<Device>(remoteDeviceCoordinator, stateId) {
+        setOnJackChange([this](SerialIdentifier, const JackConnectionState& state) {
+            if (state.connected) {
+                connects++;
+            } else {
+                disconnects++;
+            }
+        });
+    }
+
+    int connects = 0;
+    int disconnects = 0;
 
 protected:
     bool isPrimaryRequired() override { return true; }
@@ -126,9 +156,9 @@ inline void connectStateMountedReceivesJackConnect(RDCHelloTests* suite) {
     EXPECT_TRUE(state.events[0].connected);
 }
 
-// The connect carries the peer context: kind from the HELLO byte, chainRole and
-// the opaque profile from the exchange. This is what lets a state read the peer's
-// game role at connection time instead of polling for it.
+// The connect carries the peer context: kind, chainRole and the opaque profile,
+// all from the exchange. This is what lets a state read the peer's game role at
+// connection time instead of polling for it.
 inline void connectStateConnectCarriesPeerContext(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
@@ -159,8 +189,8 @@ inline void connectStateReplayCarriesPeerContext(RDCHelloTests* suite) {
     EXPECT_EQ(late.events[0].chainRole, 4);
 }
 
-// A disconnect carries no context: the link is mid-teardown, so the peer facts
-// still describe the peer that just left.
+// A disconnect carries no context, so a handler cannot mistake the departed peer's
+// facts — which the link is still holding at that instant — for a live peer's.
 inline void connectStateDisconnectCarriesNoContext(RDCHelloTests* suite) {
     RecordingConnectState state(&suite->rdc, /*stateId=*/1);
     mountState(&state, &suite->device);
@@ -264,12 +294,63 @@ inline void connectStatePeerFactsClearedOnDisconnect(RDCHelloTests* suite) {
     EXPECT_EQ(profileLen, 0u);
 }
 
-// A swap frame tears the old link down to Idle before it opens the new one, and
-// that teardown clears the jack's peer facts. The new peer's kind has to survive
-// it, or the jack can reach CONNECTED reporting UNKNOWN.
-inline void rdcHelloPeerDeviceTypeSurvivesPeerSwap(RDCHelloTests* suite) {
+// One registration made in the constructor reaches the mount replay, the live
+// disconnect, and a second tenure after a dismount/remount. This is the usage the
+// #145 sketch documents, so it has to hold without re-registering per mount.
+inline void connectStateConstructorRegistrationCoversEveryTenure(RDCHelloTests* suite) {
     connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
-    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
+
+    ConstructorRegisteredConnectState state(&suite->rdc, /*stateId=*/1);
+    mountState(&state, &suite->device);
+    ASSERT_EQ(state.connects, 1) << "the mount replay missed a constructor registration";
+
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(state.disconnects, 1) << "the live disconnect missed it";
+
+    dismountState(&state, &suite->device);
+    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234, /*seqId=*/10);
+    mountState(&state, &suite->device);
+
+    EXPECT_EQ(state.connects, 2) << "the registration did not survive a remount";
+}
+
+// A registered handler stops firing once it is cleared, so a state can drop an
+// observer whose captures are about to die.
+inline void connectStateClearedHandlerStopsReceiving(RDCHelloTests* suite) {
+    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
+    mountState(&state, &suite->device);
+    connectOutJack(suite, /*chainRole=*/4, /*userId=*/1234);
+    ASSERT_EQ(state.events.size(), 1u);
+
+    state.setOnJackChange(nullptr);
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(state.events.size(), 1u) << "a cleared handler still fired";
+}
+
+// The peer's kind comes from the context channel that decoded it, not the HELLO
+// deviceType byte. The two travel over different transports and can disagree, and
+// a consumer casting the profile bytes needs the kind that produced them. A swap
+// leaves the jack UNKNOWN until the new peer's own context lands.
+inline void rdcHelloPeerDeviceTypeComesFromContextChannel(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    HelloPayload lying{};
+    memcpy(lying.source, peer, 6);
+    lying.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    suite->deliverHello(suite->outJack, encodeFramed(lying));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
+        << "the HELLO byte set the kind";
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/4, /*userId=*/1234, /*seqId=*/9);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN)
+        << "the kind did not come from the channel that decoded the context";
 
     HelloPayload swapped{};
     swapped.source[0] = 0xB1;
@@ -278,12 +359,11 @@ inline void rdcHelloPeerDeviceTypeSurvivesPeerSwap(RDCHelloTests* suite) {
     swapped.source[3] = 0x04;
     swapped.source[4] = 0x05;
     swapped.source[5] = 0x06;
-    swapped.deviceType = static_cast<uint8_t>(DeviceType::FDN);
+    swapped.deviceType = static_cast<uint8_t>(DeviceType::PDN);
     suite->deliverHello(suite->outJack, encodeFramed(swapped));
     suite->rdc.sync(&suite->device);
-
-    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::FDN)
-        << "the swap teardown clobbered the incoming peer's kind";
+    EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
+        << "the departed peer's kind survived the swap";
 }
 
 // The replay is gated on HELLO because only the link machine emits jack edges.

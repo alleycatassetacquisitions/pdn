@@ -146,9 +146,10 @@ private:
  * the typed onStateMounted(DeviceT*) / onStateLoop(DeviceT*) / onStateDismounted(DeviceT*)
  * API — no manual casting needed and no accidental bridge override is possible.
  *
- * An intermediate base that must run its own code around every subclass's
- * mount/dismount (ConnectState) overrides afterMount/beforeDismount rather than
- * the bridge, which keeps the single cast and the accidental-override guard.
+ * An intermediate base (ConnectState) that must run code around every subclass's
+ * mount and dismount uses afterMount/beforeDismount. Overriding onStateMounted
+ * instead would be silently shadowed by the concrete subclass's own override
+ * unless every subclass remembered to chain to it.
  *
  * Usage:
  *   class IdleState : public TypedState<PDN> {

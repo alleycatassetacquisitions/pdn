@@ -1341,8 +1341,16 @@ TEST_F(RDCTests, connectStateSkipsReplayWhenHelloOff) {
     connectStateSkipsReplayWhenHelloOff(this);
 }
 
-TEST_F(ConnectStateTests, peerDeviceTypeSurvivesPeerSwap) {
-    rdcHelloPeerDeviceTypeSurvivesPeerSwap(this);
+TEST_F(ConnectStateTests, constructorRegistrationCoversEveryTenure) {
+    connectStateConstructorRegistrationCoversEveryTenure(this);
+}
+
+TEST_F(ConnectStateTests, clearedHandlerStopsReceiving) {
+    connectStateClearedHandlerStopsReceiving(this);
+}
+
+TEST_F(ConnectStateTests, peerDeviceTypeComesFromContextChannel) {
+    rdcHelloPeerDeviceTypeComesFromContextChannel(this);
 }
 
 TEST_F(ConnectStateTests, connectCarriesPeerContext) {

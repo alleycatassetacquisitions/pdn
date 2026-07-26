@@ -135,9 +135,15 @@ public:
     // ---- Per-jack HELLO connectivity (#155) ----
     // HELLO is the serial discovery/liveness beacon that will replace the string
     // handshake (#160 deletes it). Each jack runs an independent link SM fed by the
-    // real exec()-driven RX byte pump. Off by default and not yet switched on: the
-    // context exchange (#157) and device chain SM (#156) have landed, but no caller
-    // under src/ enables it, so production still runs the handshake.
+    // real exec()-driven RX byte pump. No caller under src/ enables it, so
+    // production still runs the handshake.
+
+    // The jacks that can carry a HELLO link, in the order sync() drives them.
+    static constexpr std::array<SerialIdentifier, 3> HELLO_JACKS = {
+        SerialIdentifier::OUTPUT_JACK,
+        SerialIdentifier::INPUT_JACK,
+        SerialIdentifier::INPUT_JACK_SECONDARY,
+    };
 
     static constexpr unsigned long HELLO_CADENCE_MS = 20;
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
@@ -154,9 +160,7 @@ public:
                                 CONNECTED };
 
     // Sized to the larger of the two context profiles so a stored profile is never
-    // truncated; both are packed wire structs, so sizeof is the wire length. Every
-    // profile buffer in this class uses it, so the two stores cannot drift apart
-    // the day FdnProfile grows past PlayerProfile.
+    // truncated; both are packed wire structs, so sizeof is the wire length.
     static constexpr size_t MAX_PEER_PROFILE_BYTES =
         std::max(sizeof(PlayerProfile), sizeof(FdnProfile));
 
@@ -352,8 +356,8 @@ private:
         HelloLinkMachine* machine = nullptr;  // per-jack link SM; owned, deleted in dtor
         // Recorded from the peer's received context; consumed by the chain SM (#156).
         uint8_t peerChainRole = 0;
-        // From the HELLO deviceType byte, so known from the first frame (Connecting)
-        // rather than waiting on the context exchange.
+        // Which context channel the peer's context arrived on, so the kind and the
+        // profile bytes below always describe the same peer and the same moment.
         DeviceType peerDeviceType = DeviceType::UNKNOWN;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
         size_t peerProfileLen = 0;
