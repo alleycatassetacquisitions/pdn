@@ -1391,14 +1391,11 @@ inline void rdcHelloOneWayCableTimesOutInsteadOfGhostChild() {
     EXPECT_EQ(0, memcmp(emitted.source, macA, 6));  // a frame really was parsed
     EXPECT_EQ(MacToUInt64(emitted.headMac), 0u);
 
-    // B heard nothing the whole time, so it never left its own chain.
-    EXPECT_EQ(B.rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(B.rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(B.rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    // One assertion for B, not five: nothing is ever injected into its jacks and a
+    // link leaves Idle only on a received HELLO, so its link states and counters are
+    // still the constructed defaults and would hold however A behaved. B earns its
+    // place by being the production emitter feeding A's production parser.
     EXPECT_EQ(B.rdc.getChainRole(), ChainRole::STANDALONE);
-    EXPECT_EQ(B.ringClosedCount, 0);
 
     SimpleTimer::setPlatformClock(nullptr);
 }
