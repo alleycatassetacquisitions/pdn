@@ -294,6 +294,9 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
         // Three separate sites move the derived role: a link commits to CONNECTED in
         // the loop above, dies through the Idle mount inside it, or latches a ring
         // during HELLO parsing between ticks. Poll once per tick to catch all three.
+        // onRingClosed keeps firing at its own decision site (it is the shootout
+        // coordinator claim point), so a ring closure and the RING role it implies
+        // can be up to one tick apart.
         maybeFireChainRoleChange();
         return;
     }
@@ -702,6 +705,10 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             initiateContextExchange(j);
         };
         context.onJackChange = [this](SerialIdentifier j, bool connected) {
+            // The upstream link reaching Connected is the moment its advertised
+            // head becomes adoptable, and the game layer must see the resulting
+            // chain state on the connect it is told about — so adopt first (#158).
+            if (connected && j == SerialIdentifier::INPUT_JACK) adoptUpstreamHead();
             // Copied before the call: a handler that reacts by dismounting its own
             // state clears this slot, which would destroy the std::function whose
             // operator() frame is still live.
@@ -899,8 +906,6 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     link.peerUserId = peerUserId;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
-    // The upstream exchange completing is the join moment: announce to the head (#158).
-    if (jack == SerialIdentifier::INPUT_JACK) maybeAnnounceToHead();
 }
 
 void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType peerType,
@@ -1036,10 +1041,6 @@ ChainRole RemoteDeviceCoordinator::getChainRole() const {
 }
 
 const uint8_t* RemoteDeviceCoordinator::getHeadMac() const {
-    // A head adopted from a first HELLO whose link never finished connecting must
-    // not leak through the role: HEAD and STANDALONE promise "no head above us".
-    const ChainRole role = getChainRole();
-    if (role == ChainRole::HEAD || role == ChainRole::STANDALONE) return nullptr;
     const uint64_t mac48 = chainHeadState.load() & HEAD_MAC_MASK;
     if (mac48 == 0) return nullptr;
     unpackMac(mac48, headMacScratch.data());
@@ -1109,27 +1110,42 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
     // encodes as an absent head_mac); the ring case above already handled it.
     if (peerHeadIsSelf) return;
 
+    // Record what the upstream claims and let the link machine decide whether it
+    // counts: a HELLO is one-way evidence, adoption is not.
+    memcpy(upstreamAdvertisedHead.data(), peerEffectiveHead, 6);
+    adoptUpstreamHead();
+}
+
+void RemoteDeviceCoordinator::adoptUpstreamHead() {
+    // The INPUT link machine is the single authority on whether an upstream is
+    // real. A one-way cable delivers its HELLOs forever while this side never
+    // establishes; adopting off those would advertise a head no downstream can
+    // reach and hand this device's roster to a peer that cannot answer.
+    if (getHelloLinkState(SerialIdentifier::INPUT_JACK) != HelloLinkState::CONNECTED) return;
+    const uint64_t newHead = MacToUInt64(upstreamAdvertisedHead.data());
+    if (newHead == 0) return;
     const uint64_t previousHead = chainHeadState.load() & HEAD_MAC_MASK;
-    if (previousHead == MacToUInt64(peerEffectiveHead)) return;
+    if (previousHead == newHead) return;
+    const uint8_t* headMac = upstreamAdvertisedHead.data();
 
     // The head is a unicast target (announce/report/transfer) that is usually
     // not an adjacent HELLO peer, so its radio slot is managed here: claim the
     // successor's before any send below, drop the predecessor's after.
-    registerPeer(peerEffectiveHead);
+    registerPeer(headMac);
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
     // it. The new head then propagates in our own HELLO.
-    chainHeadState.store(packHead(peerEffectiveHead, false));
+    chainHeadState.store(packHead(headMac, false));
     // A demoted head hands its roster to the successor (#158); for a plain child
     // the roster is empty and this no-ops. Then announce under the new head so
     // confirmed can rise again.
-    transferRosterTo(peerEffectiveHead);
+    transferRosterTo(headMac);
     maybeAnnounceToHead();
     // releaseHeadPeer below cancels the report channel to the old head, and
     // nothing else re-triggers a report (the announce path re-announces, the
     // report path has no equivalent), so an undelivered report must chase the
     // successor head or its member stays a phantom in that roster.
     if (MacToUInt64(pendingReportMac.data()) != 0) {
-        sendDisconnectReport(peerEffectiveHead, pendingReportMac.data());
+        sendDisconnectReport(headMac, pendingReportMac.data());
     }
     releaseHeadPeer(previousHead);
 }
@@ -1148,6 +1164,9 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
     if (port == SerialIdentifier::INPUT_JACK) {
         const uint64_t lostHead = chainHeadState.load() & HEAD_MAC_MASK;
         chainHeadState.store(0);
+        // The departed peer's claim dies with it, or the next upstream to reach
+        // Connected would be adopted as whatever this one last advertised.
+        upstreamAdvertisedHead.fill(0);
         // A downstream-loss report is owed only while we remain a child under a
         // head. Becoming our own head voids it: clear the pending re-send state so
         // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
@@ -1219,15 +1238,11 @@ void RemoteDeviceCoordinator::maybeAnnounceToHead() {
     // No upstream head held: this device IS its chain's head (or standalone, or a
     // latched ring, which stores no head). Nothing to announce, no self-sends.
     if (headMac48 == 0) return;
+    // The announce names the upstream neighbour, which is known because a head is
+    // only ever held while that link is Connected (adoptUpstreamHead).
     const HelloLinkMachine* upstream =
         helloByPort[portIndex(SerialIdentifier::INPUT_JACK)].machine;
     if (upstream == nullptr) return;
-    // The announce names the upstream neighbour, so it is only meaningful once
-    // the upstream exchange completed (#144 ordering: announce, then confirmed).
-    if (upstream->currentStateId() != HELLO_LINK_CONNECTED &&
-        !upstream->didMarkContextComplete()) {
-        return;
-    }
     uint8_t headMac[6];
     unpackMac(headMac48, headMac);
     ConnectionAnnouncePayload announce{};

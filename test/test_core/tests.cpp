@@ -1568,6 +1568,9 @@ TEST_F(RDCHelloTests, chainRoleChangeFiresOnConnectAndLinkDeath) {
 TEST_F(RDCHelloTests, chainRoleChangeReportsRingLatch) {
     rdcChainRoleChangeReportsRingLatch(this);
 }
+TEST_F(RDCHelloTests, unprovenUpstreamIsNeverAdopted) {
+    rdcUnprovenUpstreamIsNeverAdopted(this);
+}
 
 // ============================================
 // CHAIN DUEL MANAGER TESTS

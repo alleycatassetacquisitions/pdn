@@ -1593,7 +1593,7 @@ inline void rdcRingLatchedNeverAnnouncesOrReportsToSelf(RDCHelloTests* suite) {
 }
 
 // Demotion: a head that adopts a new head above it hands its roster over in a
-// single unicast and clears it locally.
+// single unicast and clears it locally — once the link to that new head is up.
 inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
     const uint8_t memberA[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberB[6] = {0xB2, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -1614,8 +1614,10 @@ inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getChainMembers().size(), 2u);
     ASSERT_EQ(membershipChanges, 2);
 
-    // A standalone head plugs in above: its HELLO makes it our effective head.
-    suite->deliverHello(suite->inJack, chainHelloFrame(newHead, nullptr));
+    // A standalone head plugs in above and its link establishes: it becomes this
+    // device's effective head.
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(newHead, nullptr));
 
     ASSERT_EQ(transfer.count, 1);
     EXPECT_EQ(0, memcmp(transfer.lastDst.data(), newHead, 6));
@@ -2399,4 +2401,49 @@ inline void rdcChainRoleChangeReportsRingLatch(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(roles.size(), 3u);
     EXPECT_EQ(roles[2], ChainRole::CHILD);
+}
+
+// A one-way cable: the upstream's HELLOs arrive but this device's own side of the
+// exchange never completes, so its link cycles Connecting -> Idle forever. That
+// upstream is unproven, and a head with a roster must not act on it — no head
+// advertised downstream, no roster shipped to a peer that cannot answer.
+inline void rdcUnprovenUpstreamIsNeverAdopted(RDCHelloTests* suite) {
+    const uint8_t deafUpstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t member[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
+    RosterSendCapture transfer;
+    captureSends(suite, PktType::kHeadTransfer, transfer);
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    std::vector<uint8_t> join = announceBytes(suite->localMac, 1);
+    suite->transport()->deliverIncoming(PktType::kConnectionAnnounce, member,
+                                        join.data(), join.size());
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+    ASSERT_EQ(suite->rdc.getChainMembers().size(), 1u);
+
+    // Past two full context-exchange timeouts, so the INPUT link has cycled back
+    // to Idle and re-armed more than once.
+    unsigned long elapsed = 0;
+    while (elapsed <= 2 * RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS) {
+        suite->deliverHello(suite->inJack, chainHelloFrame(deafUpstream, nullptr));
+        suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+        suite->rdc.sync(&suite->device);
+        suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        elapsed += RemoteDeviceCoordinator::HELLO_CADENCE_MS;
+    }
+
+    EXPECT_NE(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+    EXPECT_EQ(suite->rdc.getChainMembers().size(), 1u);
+    EXPECT_EQ(suite->rdc.getHeadMac(), nullptr);
+    EXPECT_EQ(transfer.count, 0);
+
+    // Nothing downstream may be told to route to that peer either.
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    const uint8_t zero[6] = {0, 0, 0, 0, 0, 0};
+    EXPECT_EQ(0, memcmp(parseEmittedHello(suite->outJack.getOutput()).headMac, zero, 6));
 }

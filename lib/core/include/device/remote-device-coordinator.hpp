@@ -133,8 +133,9 @@ public:
     /// Head-only chain member roster; empty for a child or standalone device.
     virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const;
 
-    /// Registers the per-jack connect/disconnect observer. The disconnect fires
-    /// before chain-state teardown, so handlers must not read chain state here;
+    /// Registers the per-jack connect/disconnect observer. The connect fires
+    /// after the chain state it implies is in place; the disconnect fires BEFORE
+    /// chain-state teardown, so handlers must not read chain state there —
     /// consistent chain facts arrive via setOnChainRoleChange.
     void setOnJackChange(JackChangeCallback callback) {
         jackChangeCallback = std::move(callback);
@@ -479,10 +480,19 @@ private:
     mutable std::array<uint8_t, 6> headMacScratch{};
     // Last role reported to chainRoleChangeCallback, for edge-triggered firing.
     ChainRole lastChainRole = ChainRole::STANDALONE;
+    // The effective head the INPUT peer last advertised (all-zero = none), kept
+    // apart from chainHeadState: a HELLO can advertise a head long before the
+    // link carrying it is established, and only the latter may be acted on.
+    std::array<uint8_t, 6> upstreamAdvertisedHead{};
 
     static uint64_t packHead(const uint8_t* mac, bool confirmed);
     static void unpackMac(uint64_t value, uint8_t* out);
+    // Ring detection and the latched-head conflict, driven by any INPUT HELLO;
+    // taking on a foreign head is left to adoptUpstreamHead.
     void applyUpstreamHead(const HelloPayload& hello);
+    // Adopts upstreamAdvertisedHead once the INPUT link reports CONNECTED: claims
+    // the head's radio slot, hands over the roster, announces. No-op before that.
+    void adoptUpstreamHead();
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
     // Drops a former head's radio slot (and its dead roster retries) unless an
