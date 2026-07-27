@@ -2455,6 +2455,13 @@ inline PlayerProfile profileFromContextBytes(const std::vector<uint8_t>& bytes) 
     return ctx.player;
 }
 
+// Reads the sender's chainRole back out of a captured PdnConnectionContext frame.
+inline uint8_t chainRoleFromContextBytes(const std::vector<uint8_t>& bytes) {
+    PdnConnectionContext ctx{};
+    memcpy(&ctx, bytes.data(), sizeof(ctx) < bytes.size() ? sizeof(ctx) : bytes.size());
+    return ctx.chainRole;
+}
+
 // Captures every outbound PdnConnectionContext frame's exact bytes, and lets the
 // caller vary the profile the RDC reads at send time.
 inline void captureContextSends(RDCHelloTests* suite, std::vector<std::vector<uint8_t>>* sends) {
@@ -2593,6 +2600,36 @@ inline void rdcResendContextSupersedesUnackedSend(RDCHelloTests* suite) {
 
     ASSERT_EQ(contextSends.size(), 2u);
     EXPECT_EQ(profileFromContextBytes(contextSends[1]).gameRole, 1);
+}
+
+// The context tells a neighbour where this device sits in the chain, so the field
+// has to come from the live topology: the connect-time frame goes out with no link
+// up yet (STANDALONE), and once the OUT jack is Connected this device is the HEAD.
+inline void rdcContextCarriesOwnChainRole(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    std::vector<std::vector<uint8_t>> contextSends;
+    captureContextSends(suite, &contextSends);
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(contextSends.size(), 1u);
+    EXPECT_EQ(chainRoleFromContextBytes(contextSends[0]),
+              static_cast<uint8_t>(ChainRole::STANDALONE));
+    suite->transport()->onSendResult(PktType::kPdnConnectionContext, peer,
+                                     contextSends[0].data(), contextSends[0].size(), true);
+
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/0, /*userId=*/7, /*seqId=*/3);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    suite->rdc.resendContext();
+
+    ASSERT_EQ(contextSends.size(), 2u);
+    EXPECT_EQ(chainRoleFromContextBytes(contextSends[1]),
+              static_cast<uint8_t>(ChainRole::HEAD));
 }
 
 // A 2-node ring points both jacks at one peer, and one frame reaches it however

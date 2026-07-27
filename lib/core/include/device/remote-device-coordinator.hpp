@@ -202,8 +202,9 @@ public:
     /// or the peer keeps acting on the stale value until the next replug.
     void resendContext();
 
-    /// The chainRole recorded from the peer's context on `jack`; 0 until one
-    /// arrives. Recorded for the device chain SM (#156), not acted on here.
+    /// The peer's own ChainRole as of the context it sent on `jack`, recorded but
+    /// not acted on here. 0 before any context arrives, which is also STANDALONE:
+    /// a peer whose only link is the one still connecting reports exactly that.
     uint8_t getPeerChainRole(SerialIdentifier jack) const {
         return helloByPort[portIndex(jack)].peerChainRole;
     }
