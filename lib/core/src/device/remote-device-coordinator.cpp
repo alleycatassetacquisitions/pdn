@@ -405,10 +405,13 @@ PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
 PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
     std::vector<std::array<uint8_t, 6>> peerAddresses;
 
-    const Peer* macPeer = handshakeWirelessManager.getMacPeer(port);
-
-    if (macPeer != nullptr) {
-        peerAddresses.push_back(macPeer->macAddr);
+    // Composed from getPeerMac so a jack cannot report one direct peer here and a
+    // different one there; it owns the HELLO / handshake split.
+    const uint8_t* directPeer = getPeerMac(port);
+    if (directPeer != nullptr) {
+        std::array<uint8_t, 6> mac;
+        memcpy(mac.data(), directPeer, 6);
+        peerAddresses.push_back(mac);
     }
 
     const auto& daisyChained = daisyChainedByPort_[portIndex(port)];
@@ -963,9 +966,8 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // link, so any other jack tracking this MAC keeps the slot alive.
     for (SerialIdentifier port : HELLO_JACKS) {
         if (port == jack) continue;
-        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
-        if (memcmp(machine->peer().data(), mac, 6) == 0) return;
+        const uint8_t* peer = getPeerMac(port);
+        if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
     }
     // A MAC still routed through a daisy chain keeps its slot too.
     for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
@@ -1166,9 +1168,8 @@ void RemoteDeviceCoordinator::releaseHeadPeer(uint64_t headMac48) {
     // Same keep-slot guards as releaseHelloPeer: an adjacent link or a daisy
     // record still using this MAC keeps the radio slot alive.
     for (SerialIdentifier port : HELLO_JACKS) {
-        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) continue;
-        if (memcmp(machine->peer().data(), mac, 6) == 0) return;
+        const uint8_t* peer = getPeerMac(port);
+        if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
     }
     for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
         for (const std::array<uint8_t, 6>& m : chain) {

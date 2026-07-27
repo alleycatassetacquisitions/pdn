@@ -15,7 +15,6 @@ struct DirectPeer {
     std::array<uint8_t, 6> macAddr;
     SerialIdentifier sid;
     DeviceType deviceType;
-    uint16_t userId = 0xFFFF;  // 4-digit player code; 0xFFFF = not yet registered
 };
 
 // Tracks the direct cable peer on each jack and owns the ESP-NOW peer slot

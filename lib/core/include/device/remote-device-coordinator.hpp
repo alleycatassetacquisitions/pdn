@@ -107,7 +107,9 @@ public:
 
     /// The direct peer's 4-digit player id for the given port, lifted from the
     /// PlayerProfile its context exchange delivered; PEER_USER_ID_NONE until then.
+    /// Gated on getPeerMac so the two never disagree about the port having a peer.
     virtual uint16_t getPeerUserId(SerialIdentifier port) const {
+        if (getPeerMac(port) == nullptr) return PEER_USER_ID_NONE;
         return helloByPort[portIndex(port)].peerUserId;
     }
 
