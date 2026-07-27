@@ -1432,6 +1432,12 @@ TEST_F(RDCHelloTests, resendContextPushesCurrentProfile) {
 TEST_F(RDCHelloTests, resendContextSkipsUnconnectedJacks) {
     rdcResendContextSkipsUnconnectedJacks(this);
 }
+TEST_F(RDCHelloTests, resendContextSupersedesUnackedSend) {
+    rdcResendContextSupersedesUnackedSend(this);
+}
+TEST_F(RDCHelloTests, resendContextSendsOncePerPeer) {
+    rdcResendContextSendsOncePerPeer(this);
+}
 TEST_F(RDCHelloTests, linkDeathClearsPeerChainRole) {
     rdcLinkDeathClearsPeerChainRole(this);
 }

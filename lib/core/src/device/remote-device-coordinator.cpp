@@ -825,14 +825,25 @@ void RemoteDeviceCoordinator::sendSelfContext(const uint8_t* mac) {
 }
 
 void RemoteDeviceCoordinator::resendContext() {
+    // No pending-send guard, unlike the initiate path: there the queued payload is
+    // the one we would re-queue, here it is the STALE one this call exists to
+    // replace. The context channels supersede per target, so the fresh send drops
+    // the unacked entry and its old bytes.
+    std::array<std::array<uint8_t, 6>, kNumPorts> alreadySent{};
+    size_t sentCount = 0;
     for (SerialIdentifier port : HELLO_JACKS) {
         const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
         if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
         const uint8_t* mac = machine->peer().data();
-        // A 2-node ring faces the same peer on both jacks, and one copy completes
-        // both: the pending entry the first jack leaves collapses the second,
-        // exactly as on the initiate path.
-        if (isContextSendPending(mac)) continue;
+        // A 2-node ring faces the same peer on more than one jack and one copy
+        // covers them all. Every MAC covered so far is checked, not just the last
+        // one: the jacks sharing a peer need not be adjacent in HELLO_JACKS.
+        bool covered = false;
+        for (size_t i = 0; i < sentCount; ++i) {
+            if (memcmp(alreadySent[i].data(), mac, 6) == 0) covered = true;
+        }
+        if (covered) continue;
+        memcpy(alreadySent[sentCount++].data(), mac, 6);
         sendSelfContext(mac);
     }
 }
