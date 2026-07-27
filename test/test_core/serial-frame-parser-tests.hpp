@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "device/remote-device-coordinator.hpp"
 #include "device/serial-frame-parser.hpp"
 #include "utility-tests.hpp"
 #include "utils/simple-timer.hpp"
@@ -211,6 +212,48 @@ TEST_F(SerialFrameParserTests, midFrameTimeoutResets) {
 
     feed(buildFrame(OP_HELLO, helloPayload()));
     EXPECT_EQ(frameCount, 1);
+}
+
+TEST_F(SerialFrameParserTests, truncatedFrameCostsOnlyItsOwnFrame) {
+    int frameCount = 0;
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
+
+    // The regime the wire actually produces: a frame cut short, then the next
+    // HELLO one cadence later. 20ms never trips the 50ms mid-frame timeout, and
+    // the driver drains the whole RX FIFO in one loop so the two frames can
+    // arrive with no gap at all. The short frame therefore eats the start of the
+    // good one, and only re-scanning the bytes it swallowed recovers the good
+    // frame — otherwise one dropped byte costs two frames, not one.
+    std::vector<uint8_t> truncated = buildFrame(OP_HELLO, helloPayload(0x01));
+    truncated.resize(truncated.size() - 3);
+    feed(truncated);
+
+    fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+    feed(buildFrame(OP_HELLO, helloPayload(0xA2)));
+
+    ASSERT_EQ(frameCount, 1);
+    EXPECT_EQ(got.source[0], 0xA2);
+}
+
+TEST_F(SerialFrameParserTests, droppedPayloadByteCostsOnlyItsOwnFrame) {
+    int frameCount = 0;
+    HelloPayload got{};
+    parser.setHelloFrameHandler([&](const HelloPayload& h) { got = h; ++frameCount; });
+
+    // One byte lost mid-payload: the frame keeps its preamble but is a byte
+    // short, so it reads two bytes of the next frame as its CRC. The bytes it
+    // swallowed end in the next frame's 0xAA, so the replay must leave the
+    // parser mid-preamble for the 0x55 that arrives after it.
+    std::vector<uint8_t> shortByOne = buildFrame(OP_HELLO, helloPayload(0x01));
+    shortByOne.erase(shortByOne.begin() + 8);
+    feed(shortByOne);
+
+    fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+    feed(buildFrame(OP_HELLO, helloPayload(0xA3)));
+
+    ASSERT_EQ(frameCount, 1);
+    EXPECT_EQ(got.source[0], 0xA3);
 }
 
 TEST_F(SerialFrameParserTests, backwardClockKeepsPartialFrameAlive) {

@@ -98,6 +98,8 @@ private:
 
     void resetParser();
     void checkTimeout();
+    void consumeByte(uint8_t b);
+    void resyncFromConsumedBytes();
     static size_t opcodePayloadLen(uint8_t opcode);
     static unsigned long nowMs();
 };
