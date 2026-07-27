@@ -369,8 +369,8 @@ private:
         DeviceType peerDeviceType = DeviceType::UNKNOWN;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> peerProfile{};
         size_t peerProfileLen = 0;
-        // The only PlayerProfile field lifted onto the port surface; the rest of
-        // the profile stays opaque and reaches the game layer as raw bytes.
+        // The only profile field lifted onto the port surface; the profile itself
+        // stays opaque and reaches the game layer as raw bytes.
         uint16_t peerUserId = PEER_USER_ID_NONE;
         // Last recovery resend to this jack's peer (0 = never); throttles the
         // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
@@ -409,6 +409,7 @@ private:
         std::array<uint8_t, 6> mac{};
         DeviceType peerType = DeviceType::UNKNOWN;
         uint8_t chainRole = 0;
+        uint16_t peerUserId = PEER_USER_ID_NONE;
         std::array<uint8_t, MAX_PEER_PROFILE_BYTES> profile{};
         size_t len = 0;
         unsigned long arrivedAtMs = 0;
@@ -426,18 +427,18 @@ private:
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
     // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
-    void onContextReceived(const uint8_t* fromMac, DeviceType peerType,
-                           uint8_t chainRole, const uint8_t* profile, size_t len);
+    void onContextReceived(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+                           uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Completes every jack currently CONNECTING to `fromMac` (live receive path).
-    void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
-                             uint8_t chainRole, const uint8_t* profile, size_t len);
+    void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
+                             uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
     // so the context callback fires exactly once per jack.
     void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
-                             const uint8_t* profile, size_t len);
+                             uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.
     void bufferContext(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
-                       const uint8_t* profile, size_t len);
+                       uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
     // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
     void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
