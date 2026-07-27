@@ -344,12 +344,12 @@ private:
 
     void serializeRecord(const CrashRecord& rec, char* buf, size_t bufSize) const {
         JsonDocument doc;
-        doc["id"]   = rec.crashNumber;
-        doc["ts"]   = rec.timestamp;
-        doc["rr"]   = rec.resetReason;
-        doc["pc"]   = rec.programCounter;
-        doc["ec"]   = rec.exceptionCause;
-        doc["task"] = rec.taskName;
+        doc["id"]              = rec.crashNumber;
+        doc["timestamp"]       = rec.timestamp;
+        doc["resetReason"]     = rec.resetReason;
+        doc["programCounter"]  = rec.programCounter;
+        doc["exceptionCause"]  = rec.exceptionCause;
+        doc["task"]            = rec.taskName;
         serializeJson(doc, buf, bufSize);
     }
 
@@ -358,11 +358,11 @@ private:
         DeserializationError err = deserializeJson(doc, jsonStr.c_str());
         if (err) return false;
 
-        out.crashNumber    = doc["id"]   | 0u;
-        out.timestamp      = doc["ts"]   | 0u;
-        out.resetReason    = doc["rr"]   | static_cast<uint8_t>(0);
-        out.programCounter = doc["pc"]   | 0u;
-        out.exceptionCause = doc["ec"]   | 0u;
+        out.crashNumber    = doc["id"] | 0u;
+        out.timestamp      = doc["timestamp"] | doc["ts"] | 0u;
+        out.resetReason    = doc["resetReason"] | doc["rr"] | static_cast<uint8_t>(0);
+        out.programCounter = doc["programCounter"] | doc["pc"] | 0u;
+        out.exceptionCause = doc["exceptionCause"] | doc["ec"] | 0u;
         const char* task   = doc["task"] | "unknown";
         strncpy(out.taskName, task, TASK_NAME_LENGTH - 1);
         out.taskName[TASK_NAME_LENGTH - 1] = '\0';
