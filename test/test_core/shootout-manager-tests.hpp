@@ -80,8 +80,8 @@ inline void confirmRebroadcastsEverySecondDuringProposal(ShootoutManagerTests* s
 }
 
 // Coordinator is whoever the RDC handed the ring-closed event to, not whoever
-// holds the lowest MAC. Self here is the lowest of the three and still is not
-// coordinator until the claim, which is the point of the redesign.
+// holds the lowest MAC: self here is the lowest of the three and still is not
+// coordinator until the claim.
 inline void coordinatorIsTheRingClosureClaimant(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
@@ -142,9 +142,9 @@ inline void ringClosedClaimAnnouncesRosterToMembers(ShootoutManagerTests* suite)
     }
 }
 
-// A member has no local ring signal to poll in the post-BEACON design: the
-// coordinator's broadcast is what puts it into proposal, and a roster it is
-// absent from belongs to a neighbouring ring.
+// A member has no local ring signal to poll: the coordinator's broadcast is
+// what puts it into proposal, and a roster it is absent from belongs to a
+// neighbouring ring.
 inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
@@ -261,8 +261,8 @@ inline void laggingRosterDoesNotRunSoloTournament(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
     EXPECT_TRUE(suite->shootout->getBracket().empty());
 
-    // The absent member's announce lands; the next re-announce round picks it up
-    // and the frame it sends now names that member, which is what lets it in.
+    // The absent member's announce lands, and the next re-announce round names it
+    // in the frame.
     suite->shootout->setLoopMembersForTest({me, peer});
     suite->fakeClock->advance(ShootoutManager::kConfirmRebroadcastMs + 100);
     suite->shootout->sync();

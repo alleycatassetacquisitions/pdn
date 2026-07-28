@@ -244,8 +244,7 @@ void Quickdraw::onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, s
 }
 
 namespace {
-// [count, count * 6-byte MAC] — the body BRACKET and RING_CLOSED share. Returns
-// false on a truncated or over-long list.
+// [count, count * 6-byte MAC] — the body BRACKET and RING_CLOSED share.
 bool decodeMacList(const uint8_t* payload, size_t payloadLen,
                    std::vector<std::array<uint8_t, 6>>& out) {
     if (payloadLen < 1) return false;

@@ -86,8 +86,7 @@ public:
     void onMatchStartAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     /// Adopts a bracket announced by the coordinator and acks it. A bracket from
-    /// a lower-MAC coordinator also demotes this device (see the merge-collision
-    /// stand-down in the implementation).
+    /// a lower-MAC coordinator also demotes this device.
     void onBracketReceived(const uint8_t* fromMac,
                            const std::vector<std::array<uint8_t, 6>>& offeredBracket,
                            uint8_t seqId);
@@ -159,9 +158,9 @@ private:
     Phase phase = Phase::IDLE;
 
     void primeMatchManagerForMatch();
-    // Wipes everything scoped to one tournament. resetToIdle() adds the ring
-    // anchor on top; startProposal() does not, because the ring closure that
-    // drove the mount established that anchor moments earlier.
+    // resetToIdle() clears the ring anchor on top of this; startProposal() does
+    // not, because the ring closure that drove the mount established it moments
+    // earlier.
     void resetTournamentState();
 
     uint8_t nextSeqId();
@@ -220,7 +219,11 @@ private:
     static constexpr uint8_t kMaxShootoutAckRetries = 3;
 
     void sendBracketToPeers();
-    std::vector<uint8_t> buildBracketPacket() const;
+    // [cmd, seqId, count, count * 6-byte MAC] — the frame BRACKET and
+    // RING_CLOSED share.
+    std::vector<uint8_t> buildMacListPacket(
+        ShootoutCmd cmd, uint8_t seqId,
+        const std::vector<std::array<uint8_t, 6>>& macs) const;
 
     // Anchored at ring closure: self on the head that detected it, the sender on
     // every other member. All-zero means no ring has closed yet.

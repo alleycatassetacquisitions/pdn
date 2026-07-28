@@ -190,8 +190,8 @@ std::vector<std::array<uint8_t, 6>> ShootoutManager::getLoopMembers() const {
 void ShootoutManager::resetToIdle() {
     LOG_W(TAG, "resetToIdle from phase=%d", static_cast<int>(phase));
     resetTournamentState();
-    // The ring anchor goes too: this is the ring-open / terminal-screen exit, and
-    // an ex-coordinator that kept the anchor would ignore the next ring's bracket.
+    // Ring-open / terminal-screen exit: an ex-coordinator that kept the anchor
+    // would ignore the next ring's bracket.
     memset(coordinatorMac.data(), 0, 6);
     ringMembers.clear();
     ringClosedRebroadcastTimer.invalidate();
@@ -271,14 +271,8 @@ bool ShootoutManager::shouldEnterProposal() const {
 }
 
 void ShootoutManager::sendRingClosed() {
-    std::vector<uint8_t> packet;
-    packet.push_back(static_cast<uint8_t>(ShootoutCmd::RING_CLOSED));
     // seqId 0: receipt is idempotent and deduped by phase, so no ack round-trip.
-    packet.push_back(0);
-    packet.push_back(static_cast<uint8_t>(ringMembers.size()));
-    for (const std::array<uint8_t, 6>& m : ringMembers) {
-        packet.insert(packet.end(), m.begin(), m.end());
-    }
+    std::vector<uint8_t> packet = buildMacListPacket(ShootoutCmd::RING_CLOSED, 0, ringMembers);
     broadcastToRing(ringMembers, packet.data(), packet.size());
     ringClosedRebroadcastTimer.setTimer(kConfirmRebroadcastMs);
 }
@@ -362,10 +356,8 @@ bool ShootoutManager::hasConfirmed(const uint8_t* mac) const {
 
 bool ShootoutManager::allMembersConfirmed() const {
     auto members = getLoopMembers();
-    // A ring is two devices at minimum. The head's roster fills from announces
-    // that can still be in flight when the ring closes, and advancing on a
-    // one-entry roster would run a solo tournament that declares this device the
-    // winner the instant it starts.
+    // Roster announces can still be in flight when the ring closes; a one-entry
+    // roster would run a solo tournament this device wins the instant it starts.
     if (members.size() < 2) return false;
     for (const auto& m : members) {
         if (!hasConfirmed(m.data())) return false;
@@ -436,12 +428,14 @@ unsigned long ShootoutManager::ackTimeoutForRetry(uint8_t retries) {
     return kAckBackoffMs[retries];
 }
 
-std::vector<uint8_t> ShootoutManager::buildBracketPacket() const {
+std::vector<uint8_t> ShootoutManager::buildMacListPacket(
+    ShootoutCmd cmd, uint8_t seqId,
+    const std::vector<std::array<uint8_t, 6>>& macs) const {
     std::vector<uint8_t> packet;
-    packet.push_back(static_cast<uint8_t>(ShootoutCmd::BRACKET));
-    packet.push_back(lastBracketSeqId);
-    packet.push_back(static_cast<uint8_t>(bracket.size()));
-    for (const auto& m : bracket) {
+    packet.push_back(static_cast<uint8_t>(cmd));
+    packet.push_back(seqId);
+    packet.push_back(static_cast<uint8_t>(macs.size()));
+    for (const std::array<uint8_t, 6>& m : macs) {
         packet.insert(packet.end(), m.begin(), m.end());
     }
     return packet;
@@ -450,7 +444,8 @@ std::vector<uint8_t> ShootoutManager::buildBracketPacket() const {
 void ShootoutManager::sendBracketToPeers() {
     if (bracket.empty()) return;
     lastBracketSeqId = nextSeqId();
-    auto packet = buildBracketPacket();
+    std::vector<uint8_t> packet =
+        buildMacListPacket(ShootoutCmd::BRACKET, lastBracketSeqId, bracket);
     sendReliablyToPeers(bracketPendingAcks, bracket, packet.data(), packet.size());
 }
 
@@ -494,9 +489,8 @@ void ShootoutManager::sendLocalConfirm() {
 
 void ShootoutManager::sync() {
     // A member that missed the closure frame stays in Idle with nothing to poll,
-    // while the coordinator waits on a confirm it will never get. Re-announce
-    // until the whole roster has confirmed; RING_CLOSED needs no ack because a
-    // repeat is a no-op once the member is out of Phase::IDLE.
+    // while the coordinator waits on a confirm it will never get. No ack needed:
+    // a repeat is a no-op once the member is out of Phase::IDLE.
     if (phase == Phase::PROPOSAL && ringClosedRebroadcastTimer.expired() &&
         isCoordinator() && !allMembersConfirmed()) {
         // Re-read the roster: a member whose announce to the head was still in
@@ -515,7 +509,8 @@ void ShootoutManager::sync() {
     }
 
     if (!bracketPendingAcks.empty()) {
-        std::vector<uint8_t> packet = buildBracketPacket();
+        std::vector<uint8_t> packet =
+            buildMacListPacket(ShootoutCmd::BRACKET, lastBracketSeqId, bracket);
         // A member that never acks the bracket would sit out the tournament it
         // is physically wired into, so an exhausted budget aborts rather than
         // dropping that member.
@@ -880,8 +875,8 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac) {
 
 std::vector<std::array<uint8_t, 6>> ShootoutManager::buildLoopMemberSet() const {
     // The RDC serves a roster only where it is the authority, which inside a ring
-    // is the head that latched it. Everyone else holds the copy that head sent
-    // with RING_CLOSED rather than re-deriving the ring from its own two jacks.
+    // is the head that latched it. Every other member holds the copy that head
+    // sent with RING_CLOSED.
     if (rdc == nullptr || rdc->getChainRole() != ChainRole::RING) return ringMembers;
 
     std::vector<std::array<uint8_t, 6>> members = rdc->getChainMembers();

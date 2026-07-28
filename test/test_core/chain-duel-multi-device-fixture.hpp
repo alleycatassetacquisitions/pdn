@@ -203,10 +203,8 @@ public:
         }
     }
 
-    /// Ring closure the way production delivers it: the RDC fires its head-only
-    /// ring-closed callback on one node, which claims coordinator and announces
-    /// the roster; every other node enters proposal on that broadcast, where the
-    /// Idle -> ShootoutProposal transition mounts the state.
+    /// Ring closure the way production delivers it: the head's RDC callback, the
+    /// roster broadcast, then each member's Idle -> ShootoutProposal mount.
     ///
     /// The head's roster is injected because this fixture drives the legacy
     /// serial handshake, which never latches the RDC ring that would serve one.
