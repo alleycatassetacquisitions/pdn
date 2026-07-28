@@ -75,6 +75,14 @@ bool ChainDuelManager::isKnownGameEventSender(const uint8_t* fromMac) const {
     return false;
 }
 
+bool ChainDuelManager::isKnownConfirmRelay(const uint8_t* fromMac) const {
+    PortState sState = rdc->getPortState(supporterJack());
+    for (const auto& peer : sState.peerMacAddresses) {
+        if (memcmp(peer.data(), fromMac, 6) == 0) return true;
+    }
+    return false;
+}
+
 void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     if (!isChampion()) return;
 
@@ -185,25 +193,18 @@ void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
     confirmSent = false;
 }
 
-void ChainDuelManager::bufferConfirm(const uint8_t* originatorMac) {
-    size_t count = bufferedConfirmCount.load();
-    if (count >= MAX_BUFFERED_CONFIRMS) return;
+void ChainDuelManager::recordConfirm(const uint8_t* originatorMac) {
+    size_t count = receivedConfirmCount.load();
     for (size_t i = 0; i < count; i++) {
-        if (memcmp(bufferedConfirms[i].data(), originatorMac, 6) == 0) return;
+        if (memcmp(receivedConfirms[i].data(), originatorMac, 6) == 0) return;
     }
-    memcpy(bufferedConfirms[count].data(), originatorMac, 6);
-    bufferedConfirmCount.store(count + 1);
-}
-
-void ChainDuelManager::drainBufferedConfirms() {
-    size_t count = bufferedConfirmCount.exchange(0);
-    if (count == 0) return;
-    // Iterating a copy: a rejected entry re-buffers into the member array from
-    // index 0 and would otherwise overwrite entries not yet re-offered.
-    std::array<std::array<uint8_t, 6>, MAX_BUFFERED_CONFIRMS> held = bufferedConfirms;
-    for (size_t i = 0; i < count && i < MAX_BUFFERED_CONFIRMS; i++) {
-        onConfirmReceived(held[i].data(), held[i].data(), 0);
+    if (count < MAX_RECEIVED_CONFIRMS) {
+        memcpy(receivedConfirms[count].data(), originatorMac, 6);
+        receivedConfirmCount.store(count + 1);
+        return;
     }
+    memcpy(receivedConfirms[receivedConfirmWrite].data(), originatorMac, 6);
+    receivedConfirmWrite = (receivedConfirmWrite + 1) % MAX_RECEIVED_CONFIRMS;
 }
 
 void ChainDuelManager::onConfirmReceived(
@@ -211,28 +212,11 @@ void ChainDuelManager::onConfirmReceived(
     const uint8_t* originatorMac,
     uint8_t seqId) {
     (void)fromMac; (void)seqId;
-    if (!isChampion()) {
-        bufferConfirm(originatorMac);
-        return;
-    }
-
-    auto peers = getSupporterChainPeers();
-    bool isMember = false;
-    for (const auto& peer : peers) {
-        if (memcmp(peer.data(), originatorMac, 6) == 0) { isMember = true; break; }
-    }
-    if (!isMember) {
-        bufferConfirm(originatorMac);
-        return;
-    }
-
-    for (const auto& existing : confirmedSupporters_) {
-        if (memcmp(existing.data(), originatorMac, 6) == 0) return;
-    }
-    std::array<uint8_t, 6> macArr;
-    memcpy(macArr.data(), originatorMac, 6);
-    confirmedSupporters_.push_back(macArr);
-    boostMs_ = confirmedSupporters_.size() * BOOST_PER_SUPPORTER_MS;
+    // Recorded unconditionally. Whether this originator is a chain member, and
+    // whether we are the champion who gets to count it, are both read live in
+    // getConfirmedSupporterCount — neither is knowable for certain at the moment
+    // a press arrives.
+    recordConfirm(originatorMac);
 }
 
 void ChainDuelManager::onChainStateChanged() {
@@ -242,10 +226,6 @@ void ChainDuelManager::onChainStateChanged() {
     // device unplugged mid-round and patched into another chain would re-send a
     // press it made to a champion it no longer follows.
     if (!isSupporter()) confirmSent = false;
-
-    // The roster is as settled as it gets right here, so anything held back for
-    // want of a roster entry gets its second look.
-    drainBufferedConfirms();
 }
 
 void ChainDuelManager::applyChainStateChange() {
@@ -339,17 +319,28 @@ void ChainDuelManager::setPeerRole(SerialIdentifier port, bool isHunter) {
 }
 
 unsigned long ChainDuelManager::getBoostMs() const {
-    return boostMs_;
+    return getConfirmedSupporterCount() * BOOST_PER_SUPPORTER_MS;
 }
 
 size_t ChainDuelManager::getConfirmedSupporterCount() const {
-    return confirmedSupporters_.size();
+    if (!isChampion()) return 0;
+    std::vector<std::array<uint8_t, 6>> peers = getSupporterChainPeers();
+    size_t count = receivedConfirmCount.load();
+    size_t confirmed = 0;
+    for (size_t i = 0; i < count; i++) {
+        for (const std::array<uint8_t, 6>& peer : peers) {
+            if (memcmp(peer.data(), receivedConfirms[i].data(), 6) == 0) {
+                confirmed++;
+                break;
+            }
+        }
+    }
+    return confirmed;
 }
 
 void ChainDuelManager::clearSupporterConfirms() {
-    confirmedSupporters_.clear();
-    boostMs_ = 0;
-    bufferedConfirmCount.store(0);
+    receivedConfirmCount.store(0);
+    receivedConfirmWrite = 0;
 }
 
 const uint8_t* ChainDuelManager::getChampionMac() const {

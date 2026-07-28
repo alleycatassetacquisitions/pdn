@@ -1665,6 +1665,10 @@ TEST_F(ChainDuelManagerTests, confirmBufferedUntilOriginatorJoinsChain) {
     cdmConfirmBufferedUntilOriginatorJoinsChain(this);
 }
 
+TEST_F(ChainDuelManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
+    cdmStrangerConfirmsCannotSilenceRealSupporter(this);
+}
+
 TEST_F(ChainDuelManagerTests, confirmResentWhenChampionChanges) {
     cdmConfirmResentWhenChampionChanges(this);
 }

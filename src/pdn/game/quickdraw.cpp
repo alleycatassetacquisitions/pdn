@@ -219,6 +219,11 @@ void Quickdraw::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t*
 void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (dataLen != sizeof(ChainConfirmPayload)) return;
     if (!chainDuelManager) return;
+    // Confirms relay hop by hop, so the sender must be a peer we can reach on
+    // the supporter side. originatorMac stays unvalidated on purpose — it names
+    // a device further up the chain that we have no direct link to — which is
+    // why the count intersects it against the roster rather than trusting it.
+    if (!chainDuelManager->isKnownConfirmRelay(fromMac)) return;
     const ChainConfirmPayload* payload = reinterpret_cast<const ChainConfirmPayload*>(data);
     chainDuelManager->onConfirmReceived(fromMac, payload->originatorMac, payload->seqId);
 }

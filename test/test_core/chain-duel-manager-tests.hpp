@@ -355,6 +355,38 @@ inline void cdmConfirmBufferedUntilOriginatorJoinsChain(ChainDuelManagerTests* s
     EXPECT_EQ(cdm.getBoostMs(), ChainDuelManager::BOOST_PER_SUPPORTER_MS);
 }
 
+// Saturating the confirm slots with strangers must not silence a real supporter.
+// The slots are fixed and the packet handler cannot prove an originator is a
+// member, so anything on the channel can fill them; refusing new entries when
+// full, or holding rejected entries forever, would turn that into a mute button
+// for the whole round.
+inline void cdmStrangerConfirmsCannotSilenceRealSupporter(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+    ASSERT_TRUE(cdm.isChampion());
+
+    // Twice the slot count, none of them ever in the roster.
+    for (int i = 0; i < 36; i++) {
+        uint8_t stranger[6] = {0xEE, 0xEE, 0xEE, 0xEE,
+                               static_cast<uint8_t>(i), static_cast<uint8_t>(i)};
+        cdm.onConfirmReceived(suite->supporterMac, stranger, 1);
+    }
+    ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+
+    // A genuine multi-hop supporter presses afterwards and joins the roster.
+    uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+    cdm.onConfirmReceived(suite->supporterMac, realMac, 1);
+    std::array<uint8_t, 6> realArr;
+    memcpy(realArr.data(), realMac, 6);
+    suite->rdc.onChainAnnouncementReceived(
+        suite->supporterMac, SerialIdentifier::INPUT_JACK, {realArr});
+    cdm.onChainStateChanged();
+
+    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(cdm.getBoostMs(), ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+}
+
 // Head transfer swaps the champion under a supporter that already pressed. The
 // standing confirm has to follow it or the press buys no boost.
 inline void cdmConfirmResentWhenChampionChanges(ChainDuelManagerTests* suite) {
