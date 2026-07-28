@@ -16,7 +16,12 @@
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 
-constexpr size_t  TASK_NAME_LENGTH  = 16;
+#ifndef FIRMWARE_COMMIT_HASH
+#define FIRMWARE_COMMIT_HASH "unknown"
+#endif
+
+constexpr size_t  TASK_NAME_LENGTH   = 16;
+constexpr size_t  COMMIT_HASH_LENGTH = 9;
 constexpr uint8_t MAX_CRASH_ENTRIES = 10;
 
 /** NVS namespace for persisted crash records (shared with Esp32S3PrefsDriver registration). */
@@ -36,6 +41,7 @@ struct CrashRecord {
     uint32_t programCounter;
     uint32_t exceptionCause;
     char taskName[TASK_NAME_LENGTH];
+    char commitHash[COMMIT_HASH_LENGTH];
 };
 
 struct CrashPacket {
@@ -45,6 +51,7 @@ struct CrashPacket {
     uint32_t programCounter;
     uint32_t exceptionCause;
     char     taskName[TASK_NAME_LENGTH];
+    char     commitHash[COMMIT_HASH_LENGTH];
 } __attribute__((packed));
 
 /**
@@ -99,10 +106,12 @@ public:
             strncpy(rec.taskName, "unknown", TASK_NAME_LENGTH - 1);
         }
 
+        copyBuildCommitHash(rec.commitHash);
+
         persistRecord(rec);
-        LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u pc=0x%08X ec=%u task=%s",
+        LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u pc=0x%08X ec=%u task=%s commit=%s",
               static_cast<unsigned long>(rec.crashNumber),
-              rec.resetReason, rec.programCounter, rec.exceptionCause, rec.taskName);
+              rec.resetReason, rec.programCounter, rec.exceptionCause, rec.taskName, rec.commitHash);
 
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
@@ -145,7 +154,7 @@ public:
             const char* status = (n <= sentSeq) ? "sent   " : "pending";
 
             usbMonitorPrintf(
-                "[#%lu][%s] reason=%-2u %-12s | ts=%ums | pc=0x%08X | ec=%-2u %-18s | task=%s\n",
+                "[#%lu][%s] reason=%-2u %-12s | ts=%ums | pc=0x%08X | ec=%-2u %-18s | task=%s | commit=%s\n",
                 static_cast<unsigned long>(rec.crashNumber),
                 status,
                 rec.resetReason,
@@ -154,7 +163,8 @@ public:
                 rec.programCounter,
                 rec.exceptionCause,
                 exceptionCauseName(rec.exceptionCause),
-                rec.taskName
+                rec.taskName,
+                rec.commitHash[0] != '\0' ? rec.commitHash : "unknown"
             );
         }
 
@@ -327,7 +337,7 @@ private:
         char slotKey[12];
         snprintf(slotKey, sizeof(slotKey), "rec_%u", static_cast<unsigned>(crashNumber % MAX_CRASH_ENTRIES));
 
-        char jsonBuf[280];
+        char jsonBuf[360];
         serializeRecord(rec, jsonBuf, sizeof(jsonBuf));
         prefsDriver->write(CRASH_LOG_NAMESPACE, std::string(slotKey), std::string(jsonBuf));
         writeCrashSeq(crashNumber);
@@ -349,7 +359,8 @@ private:
         doc["resetReason"]     = rec.resetReason;
         doc["programCounter"]  = rec.programCounter;
         doc["exceptionCause"]  = rec.exceptionCause;
-        doc["task"]            = rec.taskName;
+        doc["task"]        = rec.taskName;
+        doc["commitHash"]  = rec.commitHash;
         serializeJson(doc, buf, bufSize);
     }
 
@@ -366,7 +377,15 @@ private:
         const char* task   = doc["task"] | "unknown";
         strncpy(out.taskName, task, TASK_NAME_LENGTH - 1);
         out.taskName[TASK_NAME_LENGTH - 1] = '\0';
+        const char* commitHash = doc["commitHash"] | "";
+        strncpy(out.commitHash, commitHash, COMMIT_HASH_LENGTH - 1);
+        out.commitHash[COMMIT_HASH_LENGTH - 1] = '\0';
         return true;
+    }
+
+    static void copyBuildCommitHash(char* dest) {
+        strncpy(dest, FIRMWARE_COMMIT_HASH, COMMIT_HASH_LENGTH - 1);
+        dest[COMMIT_HASH_LENGTH - 1] = '\0';
     }
 
     void eraseCoreDumpAfterCapture(bool hadCoreDumpSummary) {
@@ -402,6 +421,7 @@ private:
             pkt.programCounter = rec.programCounter;
             pkt.exceptionCause = rec.exceptionCause;
             memcpy(pkt.taskName, rec.taskName, TASK_NAME_LENGTH);
+            memcpy(pkt.commitHash, rec.commitHash, COMMIT_HASH_LENGTH);
 
             const int result = espNowDriver->sendData(
                 PEER_BROADCAST_ADDR,
