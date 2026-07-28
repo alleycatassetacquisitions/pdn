@@ -78,10 +78,6 @@ bool ChainDuelManager::isKnownGameEventSender(const uint8_t* fromMac) const {
 void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     if (!isChampion()) return;
 
-    if (eventType == ChainGameEventType::COUNTDOWN) {
-        clearSupporterConfirms();
-    }
-
     // WIN/LOSS are state-terminal for the supporter UI and must arrive or
     // the supporter display sticks on a stale screen until the next chain
     // event. They get seqIds and retry tracking.
@@ -127,6 +123,12 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
             reinterpret_cast<const uint8_t*>(&payload),
             sizeof(payload));
     }
+
+    // The roll call is wiped after the sends, never before: a recipient list
+    // derived from it would silently drop every multi-hop supporter.
+    if (eventType == ChainGameEventType::COUNTDOWN) {
+        clearSupporterConfirms();
+    }
 }
 
 void ChainDuelManager::sendGameEventAck(const uint8_t* toMac, uint8_t seqId) {
@@ -151,6 +153,11 @@ void ChainDuelManager::onChainGameEventAckReceived(const uint8_t* fromMac, uint8
 }
 
 void ChainDuelManager::sendConfirm() {
+    // Latched before the champion check, not after: a press that lands before
+    // the role cascade has named a champion still has to reach whoever the
+    // cascade names, and that is what resendConfirm is for.
+    confirmSent = true;
+
     if (!championMac_.has_value()) return;
 
     const uint8_t* selfMac = wirelessManager->getMacAddress();
@@ -168,19 +175,56 @@ void ChainDuelManager::sendConfirm() {
         sizeof(payload));
 }
 
+void ChainDuelManager::resendConfirm() {
+    if (!confirmSent) return;
+    sendConfirm();
+}
+
+void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
+    if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
+    confirmSent = false;
+}
+
+void ChainDuelManager::bufferConfirm(const uint8_t* originatorMac) {
+    size_t count = bufferedConfirmCount.load();
+    if (count >= MAX_BUFFERED_CONFIRMS) return;
+    for (size_t i = 0; i < count; i++) {
+        if (memcmp(bufferedConfirms[i].data(), originatorMac, 6) == 0) return;
+    }
+    memcpy(bufferedConfirms[count].data(), originatorMac, 6);
+    bufferedConfirmCount.store(count + 1);
+}
+
+void ChainDuelManager::drainBufferedConfirms() {
+    size_t count = bufferedConfirmCount.exchange(0);
+    if (count == 0) return;
+    // Iterating a copy: a rejected entry re-buffers into the member array from
+    // index 0 and would otherwise overwrite entries not yet re-offered.
+    std::array<std::array<uint8_t, 6>, MAX_BUFFERED_CONFIRMS> held = bufferedConfirms;
+    for (size_t i = 0; i < count && i < MAX_BUFFERED_CONFIRMS; i++) {
+        onConfirmReceived(held[i].data(), held[i].data(), 0);
+    }
+}
+
 void ChainDuelManager::onConfirmReceived(
     const uint8_t* fromMac,
     const uint8_t* originatorMac,
     uint8_t seqId) {
     (void)fromMac; (void)seqId;
-    if (!isChampion()) return;
+    if (!isChampion()) {
+        bufferConfirm(originatorMac);
+        return;
+    }
 
     auto peers = getSupporterChainPeers();
     bool isMember = false;
     for (const auto& peer : peers) {
         if (memcmp(peer.data(), originatorMac, 6) == 0) { isMember = true; break; }
     }
-    if (!isMember) return;
+    if (!isMember) {
+        bufferConfirm(originatorMac);
+        return;
+    }
 
     for (const auto& existing : confirmedSupporters_) {
         if (memcmp(existing.data(), originatorMac, 6) == 0) return;
@@ -192,6 +236,19 @@ void ChainDuelManager::onConfirmReceived(
 }
 
 void ChainDuelManager::onChainStateChanged() {
+    applyChainStateChange();
+
+    // Leaving the supporter role voids the standing confirm. Without this, a
+    // device unplugged mid-round and patched into another chain would re-send a
+    // press it made to a champion it no longer follows.
+    if (!isSupporter()) confirmSent = false;
+
+    // The roster is as settled as it gets right here, so anything held back for
+    // want of a roster entry gets its second look.
+    drainBufferedConfirms();
+}
+
+void ChainDuelManager::applyChainStateChange() {
     PortState sState = rdc->getPortState(supporterJack());
     size_t count = sState.peerMacAddresses.size();
     if (lastSupporterChainCount_ > 0 && count == 0) {
@@ -292,6 +349,7 @@ size_t ChainDuelManager::getConfirmedSupporterCount() const {
 void ChainDuelManager::clearSupporterConfirms() {
     confirmedSupporters_.clear();
     boostMs_ = 0;
+    bufferedConfirmCount.store(0);
 }
 
 const uint8_t* ChainDuelManager::getChampionMac() const {
@@ -376,6 +434,10 @@ void ChainDuelManager::onRoleAnnounceReceived(
     championMac_ = newMac;
     if (changed) {
         broadcastRoleAndChampion();
+        // A head transfer swaps the champion without touching this device's own
+        // links, so nothing else here would tell the new champion that this
+        // supporter is already in.
+        resendConfirm();
     }
 }
 

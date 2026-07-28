@@ -102,6 +102,14 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         onChainStateChanged();
     });
 
+    // A role edge is the one signal a head transfer or coordinator handoff always
+    // produces; the direct peers either side of this device can be unchanged
+    // across one, leaving a confirmed supporter registered with a champion that
+    // no longer runs the duel.
+    remoteDeviceCoordinator->setOnChainRoleChange([this](ChainRole) {
+        if (chainDuelManager) chainDuelManager->resendConfirm();
+    });
+
     remoteDeviceCoordinator->setPeerLostCallback([this](const uint8_t* lostMac) {
         if (shootoutManager && shootoutManager->active()) {
             shootoutManager->onLocalRDCDisconnect(lostMac);
@@ -180,6 +188,12 @@ void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* da
     if (!chainDuelManager || !chainDuelManager->isKnownGameEventSender(fromMac)) return;
 
     const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
+
+    // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
+    // champion's roll call whether or not this device is watching for it, and a
+    // confirm still held here would then re-register a press for a round the
+    // supporter has not answered.
+    chainDuelManager->onChainGameEventReceived(payload->event_type);
 
     // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
     if (supporterReadyState != nullptr && currentState != nullptr
@@ -293,6 +307,7 @@ Quickdraw::~Quickdraw() {
     // is deliberately absent: its ctx is the symbol manager, which outlives
     // Quickdraw, so clearing it here would deafen a live consumer.
     remoteDeviceCoordinator->setChainChangeCallback(nullptr);
+    remoteDeviceCoordinator->setOnChainRoleChange(nullptr);
     remoteDeviceCoordinator->setPeerLostCallback(nullptr);
     remoteDeviceCoordinator = nullptr;
     for (PktType handled : {PktType::kChainGameEvent, PktType::kChainGameEventAck,

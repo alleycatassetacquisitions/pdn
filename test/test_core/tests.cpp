@@ -1661,6 +1661,26 @@ TEST_F(ChainDuelManagerTests, sendConfirmNoopWhenChampionMacInvalid) {
     cdmSendConfirmNoopWhenChampionMacInvalid(this);
 }
 
+TEST_F(ChainDuelManagerTests, confirmBufferedUntilOriginatorJoinsChain) {
+    cdmConfirmBufferedUntilOriginatorJoinsChain(this);
+}
+
+TEST_F(ChainDuelManagerTests, confirmResentWhenChampionChanges) {
+    cdmConfirmResentWhenChampionChanges(this);
+}
+
+TEST_F(ChainDuelManagerTests, countdownVoidsStandingConfirm) {
+    cdmCountdownVoidsStandingConfirm(this);
+}
+
+TEST_F(ChainDuelManagerTests, supporterRoleLossVoidsStandingConfirm) {
+    cdmSupporterRoleLossVoidsStandingConfirm(this);
+}
+
+TEST_F(ChainDuelManagerTests, championChangeWithoutPressSendsNoConfirm) {
+    cdmChampionChangeWithoutPressSendsNoConfirm(this);
+}
+
 TEST_F(ChainDuelManagerTests, roleAnnounceUpdatesChampionMac) {
     cdmRoleAnnounceUpdatesChampionMac(this);
 }

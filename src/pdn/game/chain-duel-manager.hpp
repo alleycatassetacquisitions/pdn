@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <optional>
 #include <vector>
 #include <cstdint>
@@ -40,6 +41,17 @@ public:
 
     void sendGameEventToSupporters(ChainGameEventType eventType);
     void sendConfirm();
+
+    /// Re-sends the confirm this device is standing on to whichever champion it
+    /// now holds. No-op until a press has produced one, so a topology event can
+    /// never register a supporter who never pressed.
+    void resendConfirm();
+
+    /// Supporter-side view of an inbound chain game event. A COUNTDOWN voids the
+    /// standing confirm: the champion wipes its roll call at that same moment, so
+    /// re-sending the old press would register a supporter for a round it has not
+    /// yet answered.
+    void onChainGameEventReceived(uint8_t eventType);
 
     // Supporter-side: ACK a received WIN/LOSS game event back to the
     // champion so it stops retransmitting. Called from Quickdraw's packet
@@ -97,6 +109,17 @@ private:
     SerialIdentifier opponentJack() const;
     SerialIdentifier supporterJack() const;
 
+    // The role/champion cascade. Wrapped by onChainStateChanged so every caller
+    // also gets the confirm bookkeeping that has to follow it.
+    void applyChainStateChange();
+
+    // Holds an originator whose confirm arrived before the topology could
+    // justify it; ignored when already held or when the buffer is full.
+    void bufferConfirm(const uint8_t* originatorMac);
+    // Re-offers every held originator to onConfirmReceived. Anything the
+    // topology still cannot justify lands straight back in the buffer.
+    void drainBufferedConfirms();
+
     // Returns the cached role of the direct peer on `port`, or nullopt if no
     // role announcement has been received from the current direct peer.
     std::optional<bool> peerIsHunter(SerialIdentifier port) const;
@@ -106,6 +129,22 @@ private:
     size_t lastSupporterChainCount_ = 0;
 
     uint8_t nextConfirmSeqId_ = 1;  // skip 0 as sentinel
+
+    // Set the moment a press produces a confirm, so the champion-changed and
+    // chain-settled triggers know there is something worth re-sending. Atomic:
+    // written from the radio task (COUNTDOWN arrival), read from the main loop.
+    std::atomic<bool> confirmSent{false};
+
+    // A confirm can beat the chain announcement that puts its originator in the
+    // roster, and the sender gets no signal that it was dropped, so its whole
+    // round of boost is lost. Held here instead and re-offered when the topology
+    // moves. Fixed slots with an atomic count rather than a vector: the radio
+    // task fills it while the main loop drains it, and a reallocation across
+    // that boundary is a crash. Junk from an on-channel stranger only occupies a
+    // slot until the next drain re-rejects it.
+    static constexpr size_t MAX_BUFFERED_CONFIRMS = 18;
+    std::array<std::array<uint8_t, 6>, MAX_BUFFERED_CONFIRMS> bufferedConfirms{};
+    std::atomic<size_t> bufferedConfirmCount{0};
 
     // Per-port direct peer role; cleared when the direct peer disconnects.
     std::array<std::optional<bool>, 2> peerRoleByPort_;

@@ -329,6 +329,163 @@ inline void cdmSendConfirmNoopWhenChampionMacInvalid(ChainDuelManagerTests* suit
     cdm.sendConfirm();
 }
 
+// A confirm can outrun the chain announcement that puts its originator in the
+// champion's supporter chain. Held rather than dropped, and admitted on the next
+// chain-state change — otherwise that supporter contributes nothing all round.
+inline void cdmConfirmBufferedUntilOriginatorJoinsChain(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+    ASSERT_TRUE(cdm.isChampion());
+
+    uint8_t multiHopMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+    cdm.onConfirmReceived(suite->supporterMac, multiHopMac, 1);
+    ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+
+    // The announcement lands: multiHopMac is now reachable behind the direct
+    // supporter-jack peer.
+    std::array<uint8_t, 6> multiHopArr;
+    memcpy(multiHopArr.data(), multiHopMac, 6);
+    suite->rdc.onChainAnnouncementReceived(
+        suite->supporterMac, SerialIdentifier::INPUT_JACK, {multiHopArr});
+
+    cdm.onChainStateChanged();
+
+    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
+    EXPECT_EQ(cdm.getBoostMs(), ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+}
+
+// Head transfer swaps the champion under a supporter that already pressed. The
+// standing confirm has to follow it or the press buys no boost.
+inline void cdmConfirmResentWhenChampionChanges(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounceAck, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    std::vector<std::array<uint8_t, 6>> confirmTargets;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainConfirm, _, sizeof(ChainConfirmPayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            std::array<uint8_t, 6> target;
+            memcpy(target.data(), mac, 6);
+            confirmTargets.push_back(target);
+            return 1;
+        });
+
+    uint8_t firstChampion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, firstChampion, 1);
+    ASSERT_TRUE(cdm.isSupporter());
+    cdm.sendConfirm();
+
+    uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, secondChampion, 2);
+
+    ASSERT_EQ(confirmTargets.size(), 2u);
+    EXPECT_EQ(memcmp(confirmTargets[0].data(), firstChampion, 6), 0);
+    EXPECT_EQ(memcmp(confirmTargets[1].data(), secondChampion, 6), 0);
+}
+
+// COUNTDOWN wipes the champion's roll call, so the press that preceded it is
+// spent. A champion change after one must not resurrect it.
+inline void cdmCountdownVoidsStandingConfirm(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounceAck, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int confirmsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainConfirm, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            confirmsSent++;
+            return 1;
+        });
+
+    uint8_t firstChampion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, firstChampion, 1);
+    ASSERT_TRUE(cdm.isSupporter());
+    cdm.sendConfirm();
+    ASSERT_EQ(confirmsSent, 1);
+
+    cdm.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
+
+    uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, secondChampion, 2);
+
+    EXPECT_EQ(confirmsSent, 1);
+}
+
+// Unplugging ends the round for this supporter. The press it made must not
+// follow it into whatever chain it is patched into next.
+inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    // Tearing the links down makes the RDC emit its own traffic; a catch-all
+    // fallback keeps that off the confirm counter below.
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int confirmsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainConfirm, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            confirmsSent++;
+            return 1;
+        });
+
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
+    ASSERT_TRUE(cdm.isSupporter());
+    cdm.sendConfirm();
+    ASSERT_EQ(confirmsSent, 1);
+
+    // Cable out on both jacks: the heartbeat lapses and the direct peers go.
+    suite->fakeClock->advance(5000);
+    suite->rdc.sync(&suite->device);
+    cdm.onChainStateChanged();
+    ASSERT_FALSE(cdm.isSupporter());
+
+    cdm.resendConfirm();
+    EXPECT_EQ(confirmsSent, 1);
+}
+
+// A supporter that never pressed holds nothing to re-send. Without this the
+// champion-changed trigger would register the whole chain as confirmed.
+inline void cdmChampionChangeWithoutPressSendsNoConfirm(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounceAck, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainConfirm, _, _))
+        .Times(0);
+
+    uint8_t firstChampion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, firstChampion, 1);
+    uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, secondChampion, 2);
+    cdm.resendConfirm();
+}
 
 // onRoleAnnounceReceived updates peerRoleByPort_ and championMac_, acks sender,
 // registers champion as ESP-NOW peer.
