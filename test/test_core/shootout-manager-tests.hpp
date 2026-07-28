@@ -234,6 +234,68 @@ inline void mergedRingCoordinatorStandsDownToLowerMac(ShootoutManagerTests* suit
     EXPECT_EQ(suite->shootout->getBracketPendingAckCount(), 0u);
 }
 
+// BRACKET is a broadcast, so an unrelated ring's tournament reaches us. Before
+// this guard the lower-MAC stand-down ran first and wiped a live tournament into
+// a state nothing recovers: no coordinator, no bracket, phase still
+// MATCH_IN_PROGRESS, and every restart path gated on isCoordinator().
+inline void foreignRingBracketLeavesLiveTournamentIntact(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x09, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x09, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> mine = {0x0A, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({me, mine});
+    suite->shootout->onRingClosed();
+    suite->shootout->startProposal();
+    suite->shootout->confirmLocal();
+    suite->shootout->onConfirmReceived(mine.data());
+    ASSERT_TRUE(suite->shootout->isCoordinator());
+    ASSERT_EQ(suite->shootout->getBracket().size(), 2u);
+
+    // A stranger ring, lower MAC than us, sharing no member with our bracket.
+    std::array<uint8_t, 6> stranger = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> strangerPeer = {0x02, 0, 0, 0, 0, 0};
+    suite->shootout->onBracketReceived(stranger.data(), {stranger, strangerPeer}, 7);
+
+    EXPECT_TRUE(suite->shootout->isCoordinator());
+    EXPECT_EQ(suite->shootout->getBracket().size(), 2u);
+    EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), selfMac, 6), 0);
+}
+
+// An abort from retry exhaustion drops the ring anchor with the cables still in
+// place, and the RDC latch is edge-triggered so it never fires again. The
+// coordinator has to notice the ring is still there and re-claim, or the whole
+// ring waits for someone to unplug.
+inline void abortedRingReclaimsWhileStillCabled(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    FakeRingRemoteDeviceCoordinator ringRdc;
+    ringRdc.chainMembers = {{0x02, 0, 0, 0, 0, 0}};
+    ShootoutManager ringShootout(&suite->player, suite->device.wirelessManager, &ringRdc);
+
+    ringShootout.onRingClosed();
+    ASSERT_TRUE(ringShootout.shouldEnterProposal());
+    ASSERT_TRUE(ringShootout.isCoordinator());
+
+    // Abort back to idle without touching a cable: the RDC latch stays set and
+    // is edge-triggered, so nothing re-fires it.
+    ringShootout.resetToIdle();
+    ASSERT_FALSE(ringShootout.shouldEnterProposal());
+    ASSERT_EQ(ringRdc.getChainRole(), ChainRole::RING);
+
+    ringShootout.sync();
+
+    EXPECT_TRUE(ringShootout.shouldEnterProposal());
+    EXPECT_TRUE(ringShootout.isCoordinator());
+}
+
 // The head's roster fills from announces that can still be in flight when the
 // ring closes. Claiming on a one-entry roster must not run a solo tournament;
 // the re-announce round picks the real members up and play proceeds.

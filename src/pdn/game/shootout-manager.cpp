@@ -488,6 +488,17 @@ void ShootoutManager::sendLocalConfirm() {
 }
 
 void ShootoutManager::sync() {
+    // An abort that came from retry exhaustion or an inbound ABORT drops the ring
+    // anchor while the cables are untouched, and the RDC latch is edge-triggered
+    // so it never fires again. Without this the whole ring sits idle until
+    // somebody unplugs. Only the coordinator latches RING — the RDC sets it on
+    // the device whose own MAC came back around — so this re-claims on exactly
+    // one device, and the members follow its re-announce.
+    if (phase == Phase::IDLE && ringMembers.empty() && rdc != nullptr &&
+        rdc->getChainRole() == ChainRole::RING) {
+        onRingClosed();
+    }
+
     // A member that missed the closure frame stays in Idle with nothing to poll,
     // while the coordinator waits on a confirm it will never get. No ack needed:
     // a repeat is a no-op once the member is out of Phase::IDLE.
@@ -666,16 +677,36 @@ void ShootoutManager::maybeStartNextMatch() {
     phase = Phase::MATCH_IN_PROGRESS;
 }
 
+// True when the two rosters name at least one device in common.
+static bool sharesAnyMember(const std::vector<std::array<uint8_t, 6>>& a,
+                            const std::vector<std::array<uint8_t, 6>>& b) {
+    for (const std::array<uint8_t, 6>& entry : a) {
+        for (const std::array<uint8_t, 6>& other : b) {
+            if (memcmp(entry.data(), other.data(), 6) == 0) return true;
+        }
+    }
+    return false;
+}
+
 void ShootoutManager::onBracketReceived(
     const uint8_t* fromMac, const std::vector<std::array<uint8_t, 6>>& offeredBracket,
     uint8_t seqId) {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
+    // BRACKET is a broadcast, so a tournament two rings away lands here too.
+    // Anything that neither names us nor overlaps our own bracket is somebody
+    // else's and must not touch our state — the stand-down below wipes the
+    // tournament, and nothing re-runs it once the phase has left IDLE.
+    const bool concernsUs =
+        containsMac(offeredBracket, selfMac) || sharesAnyMember(offeredBracket, bracket);
+    if (!concernsUs) return;
     if (isCoordinator()) {
         // Merge-collision tiebreaker: two rings that each closed and claimed a
         // head can be cabled together after both claimed. Lower MAC owns the
         // merged tournament, so a bracket from below us demotes this device into
         // a follower — dropping the self-built bracket, not just the anchor, or
-        // both sides keep running their own (split brain).
+        // both sides keep running their own (split brain). Overlap is what tells
+        // a merge from a stranger: merged rings share the members whose cables
+        // joined them.
         if (selfMac == nullptr || memcmp(fromMac, selfMac, 6) >= 0) return;
         LOG_W(TAG, "coordinator stand-down to %s", MacToString(fromMac));
         memset(coordinatorMac.data(), 0, 6);
