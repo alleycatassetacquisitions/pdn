@@ -1330,8 +1330,7 @@ inline void duelReceivedResultDebouncesTransientDisconnect(StateCleanupTests* su
 // must be required instead.
 inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* suite) {
     ShootoutManager shootout(suite->player, suite->device.wirelessManager,
-                             &suite->device.fakeRemoteDeviceCoordinator,
-                             suite->chainDuelManager);
+                             &suite->device.fakeRemoteDeviceCoordinator);
     shootout.startProposal();
     ASSERT_TRUE(shootout.active());
     suite->ctx.shootoutManager = &shootout;

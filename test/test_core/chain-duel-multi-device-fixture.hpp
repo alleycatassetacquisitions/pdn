@@ -127,9 +127,8 @@ public:
                                                           node->device->wirelessManager,
                                                           node->rdc.get());
             node->shootout = std::make_unique<ShootoutManager>(node->player.get(),
-                                                              node->device->wirelessManager,
-                                                              node->rdc.get(),
-                                                              node->cdm.get());
+                                                               node->device->wirelessManager,
+                                                               node->rdc.get());
             wireChainEventHandlers(*node);
             wireShootoutHandlers(*node);
 
@@ -201,6 +200,28 @@ public:
         for (size_t round = 0; round < nodes.size() + 8; ++round) {
             pumpHelloCycle();
             fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        }
+    }
+
+    /// Ring closure the way production delivers it: the RDC fires its head-only
+    /// ring-closed callback on one node, which claims coordinator and announces
+    /// the roster; every other node enters proposal on that broadcast, where the
+    /// Idle -> ShootoutProposal transition mounts the state.
+    ///
+    /// The head's roster is injected because this fixture drives the legacy
+    /// serial handshake, which never latches the RDC ring that would serve one.
+    void claimRingOn(size_t headIndex) {
+        std::vector<std::array<uint8_t, 6>> roster;
+        for (auto& n : nodes) {
+            std::array<uint8_t, 6> mac;
+            memcpy(mac.data(), n->mac, 6);
+            roster.push_back(mac);
+        }
+        nodes[headIndex]->shootout->setLoopMembersForTest(roster);
+        nodes[headIndex]->shootout->onRingClosed();
+        deliverAllPackets();
+        for (auto& n : nodes) {
+            if (n->shootout->shouldEnterProposal()) n->shootout->startProposal();
         }
     }
 
@@ -459,17 +480,22 @@ protected:
                         m->onConfirmReceived(payload, name);
                         break;
                     }
-                    case ShootoutCmd::BRACKET: {
+                    case ShootoutCmd::BRACKET:
+                    case ShootoutCmd::RING_CLOSED: {
                         if (payloadLen < 1) break;
                         uint8_t count = payload[0];
                         if (payloadLen < 1 + 6u * static_cast<size_t>(count)) break;
-                        std::vector<std::array<uint8_t, 6>> bracket;
+                        std::vector<std::array<uint8_t, 6>> macs;
                         for (uint8_t i = 0; i < count; i++) {
                             std::array<uint8_t, 6> mac;
                             memcpy(mac.data(), payload + 1 + 6 * i, 6);
-                            bracket.push_back(mac);
+                            macs.push_back(mac);
                         }
-                        m->onBracketReceived(bracket, seqId);
+                        if (cmd == ShootoutCmd::BRACKET) {
+                            m->onBracketReceived(fromMac, macs, seqId);
+                        } else {
+                            m->onRingClosedReceived(fromMac, macs);
+                        }
                         break;
                     }
                     case ShootoutCmd::MATCH_START:
@@ -714,12 +740,12 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
             << "node " << i << " does not see loop";
     }
 
-    // In the real flow, ShootoutProposal::onStateMounted calls startProposal
-    // when the Idle→ShootoutProposal transition fires. Simulate that here
-    // before dispatching button presses (confirmLocal).
+    suite->claimRingOn(0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        suite->node(i).shootout->startProposal();
+        EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
+            << "node " << i << " missed the ring-closed broadcast";
     }
+    EXPECT_TRUE(suite->node(0).shootout->isCoordinator());
 
     // Each device confirms. After four confirms propagate, every device
     // should reach BRACKET_REVEAL; the coordinator generates+broadcasts
@@ -775,9 +801,7 @@ inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite)
     suite->deliverAllPackets();
     suite->closeRing();
 
-    for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        suite->node(i).shootout->startProposal();
-    }
+    suite->claimRingOn(0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         suite->node(i).shootout->confirmLocal();
         suite->deliverAllPackets();
@@ -863,9 +887,7 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
         suite->node(i).player->setName(kNames[i]);
     }
 
-    for (size_t i = 0; i < suite->nodeCount(); ++i) {
-        suite->node(i).shootout->startProposal();
-    }
+    suite->claimRingOn(0);
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         suite->node(i).shootout->confirmLocal();
         suite->deliverAllPackets();
@@ -932,9 +954,7 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     suite->closeRing();
 
     auto runOne = [&]() {
-        for (size_t i = 0; i < suite->nodeCount(); ++i) {
-            suite->node(i).shootout->startProposal();
-        }
+        suite->claimRingOn(0);
         for (size_t i = 0; i < suite->nodeCount(); ++i) {
             suite->node(i).shootout->confirmLocal();
             suite->deliverAllPackets();
@@ -952,7 +972,10 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
         for (int m = 0; m < 6; ++m) {
             int duelistIdx = -1;
             for (size_t i = 0; i < suite->nodeCount(); ++i) {
-                if (suite->node(i).shootout->isLocalDuelist()) { duelistIdx = (int)i; break; }
+                if (suite->node(i).shootout->isLocalDuelist()) {
+                    duelistIdx = (int)i;
+                    break;
+                }
             }
             if (duelistIdx < 0) break;
             suite->node(duelistIdx).shootout->reportLocalWin();
@@ -963,7 +986,8 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
             bool anyEnded = false;
             for (size_t i = 0; i < suite->nodeCount(); ++i) {
                 if (suite->node(i).shootout->getPhase() == ShootoutManager::Phase::ENDED) {
-                    anyEnded = true; break;
+                    anyEnded = true;
+                    break;
                 }
             }
             if (anyEnded) break;
@@ -989,12 +1013,15 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         ASSERT_TRUE(suite->node(i).cdm->isLoop())
             << "post-reset loop broken on node " << i;
+    }
+
+    // Run tournament 2. runOne re-claims the ring, which is what re-seeds the
+    // loop-member set that resetToIdle just dropped.
+    int matchesTwo = runOne();
+    for (size_t i = 0; i < suite->nodeCount(); ++i) {
         ASSERT_EQ(suite->node(i).shootout->getLoopMembers().size(), 4u)
             << "loop members wrong on node " << i;
     }
-
-    // Run tournament 2.
-    int matchesTwo = runOne();
     EXPECT_EQ(matchesTwo, 3) << "tournament 2 did not run 3 matches";
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::ENDED)

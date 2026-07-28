@@ -5,7 +5,6 @@
 #include <optional>
 #include <vector>
 #include "game/player.hpp"
-#include "game/chain-duel-manager.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
@@ -30,8 +29,7 @@ public:
 
     ShootoutManager(Player* player,
                     WirelessManager* wirelessManager,
-                    RemoteDeviceCoordinator* rdc,
-                    ChainDuelManager* cdm);
+                    RemoteDeviceCoordinator* rdc);
     ~ShootoutManager() = default;
 
     /// Optional MatchManager injection. When set, Shootout primes the
@@ -48,6 +46,18 @@ public:
 
     // Test-only: override the loop-member set. Pass an empty vector to clear.
     void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
+
+    /// RDC ring-closed observer. The head that detected closure IS the
+    /// coordinator — there is no election — so this claims the role, snapshots
+    /// the ring roster and announces it to the other members.
+    void onRingClosed();
+    /// Inbound RING_CLOSED: adopt `fromMac` as coordinator and `members` as the
+    /// ring roster. The only proposal trigger a non-coordinator has.
+    void onRingClosedReceived(const uint8_t* fromMac,
+                              const std::vector<std::array<uint8_t, 6>>& members);
+    /// True once a ring closure has been observed and no tournament is running:
+    /// the Idle -> ShootoutProposal transition predicate.
+    bool shouldEnterProposal() const;
 
     void startProposal();
     void confirmLocal();
@@ -75,8 +85,11 @@ public:
     std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>> getCurrentMatchPair() const;
     void onMatchStartAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
-    /// Adopts a bracket announced by the coordinator and acks it.
-    void onBracketReceived(const std::vector<std::array<uint8_t, 6>>& offeredBracket,
+    /// Adopts a bracket announced by the coordinator and acks it. A bracket from
+    /// a lower-MAC coordinator also demotes this device (see the merge-collision
+    /// stand-down in the implementation).
+    void onBracketReceived(const uint8_t* fromMac,
+                           const std::vector<std::array<uint8_t, 6>>& offeredBracket,
                            uint8_t seqId);
     void onMatchStartReceived(const uint8_t* duelistA, const uint8_t* duelistB,
                               uint8_t matchIndex, uint8_t seqId);
@@ -142,11 +155,14 @@ private:
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* rdc;
-    ChainDuelManager* cdm;
     MatchManager* matchManager = nullptr;
     Phase phase = Phase::IDLE;
 
     void primeMatchManagerForMatch();
+    // Wipes everything scoped to one tournament. resetToIdle() adds the ring
+    // anchor on top; startProposal() does not, because the ring closure that
+    // drove the mount established that anchor moments earlier.
+    void resetTournamentState();
 
     uint8_t nextSeqId();
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
@@ -174,6 +190,13 @@ private:
     bool testLoopMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
 
+    // The ring roster as of closure. Read live from the RDC on the coordinator
+    // (the only device served a roster) and taken from its RING_CLOSED on every
+    // other member. Non-empty is also the "a ring closed" latch.
+    std::vector<std::array<uint8_t, 6>> ringMembers;
+    SimpleTimer ringClosedRebroadcastTimer;
+    void sendRingClosed();
+
     std::vector<NameEntry> names;
     void recordName(const uint8_t* mac, const char* name);
 
@@ -198,11 +221,9 @@ private:
 
     void sendBracketToPeers();
     std::vector<uint8_t> buildBracketPacket() const;
-    static std::array<uint8_t, 6> lowestMacIn(
-        const std::vector<std::array<uint8_t, 6>>& set);
 
-    // Stable post-bracket-formation. Used in place of lowestMacIn(bracket)
-    // which would otherwise rescan the bracket on every ack path.
+    // Anchored at ring closure: self on the head that detected it, the sender on
+    // every other member. All-zero means no ring has closed yet.
     std::array<uint8_t, 6> coordinatorMac{};
 
     std::array<uint8_t, 6> opponentMac{};

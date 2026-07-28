@@ -106,8 +106,7 @@ struct ChainGameEventAckPayload
     uint8_t seqId;
 } __attribute__((packed));
 
-enum class ShootoutCmd : uint8_t
-{
+enum class ShootoutCmd : uint8_t {
     CONFIRM = 0,
     BRACKET = 1,
     MATCH_START = 2,
@@ -115,6 +114,9 @@ enum class ShootoutCmd : uint8_t
     TOURNAMENT_END = 4,
     PEER_LOST = 5,
     ABORT = 6,
+    // Coordinator -> members on ring closure. Carries the ring roster because
+    // only the head's RDC serves one; every other member gets its copy here.
+    RING_CLOSED = 7,
 };
 
 struct ShootoutPacket

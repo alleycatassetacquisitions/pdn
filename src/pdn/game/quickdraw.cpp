@@ -17,9 +17,9 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
     this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
-    // Reads chainDuelManager, which this constructor assigns in the body: hoisting
-    // this into the member-initializer list would read it uninitialized.
-    this->shootoutManager = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);  // NOLINT(cppcoreguidelines-prefer-member-initializer)
+    // Reads wirelessManager and remoteDeviceCoordinator, both assigned in this
+    // body: an initializer-list hoist would read them uninitialized.
+    this->shootoutManager = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator);  // NOLINT(cppcoreguidelines-prefer-member-initializer)
     this->shootoutManager->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager);
 
@@ -120,6 +120,11 @@ Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quic
         if (shootoutManager && shootoutManager->active()) {
             shootoutManager->onLocalRDCDisconnect(lostMac);
         }
+    });
+
+    // Head-only, so whoever gets this call is the ring's coordinator.
+    remoteDeviceCoordinator->setOnRingClosed([this]() {
+        if (shootoutManager) shootoutManager->onRingClosed();
     });
 
     // The Player is the authority on this device's identity; RDC only carries it.
@@ -238,9 +243,28 @@ void Quickdraw::onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, s
     chainDuelManager->onChainJoinReceived(fromMac, payload->championMac);
 }
 
+namespace {
+// [count, count * 6-byte MAC] — the body BRACKET and RING_CLOSED share. Returns
+// false on a truncated or over-long list.
+bool decodeMacList(const uint8_t* payload, size_t payloadLen,
+                   std::vector<std::array<uint8_t, 6>>& out) {
+    if (payloadLen < 1) return false;
+    uint8_t count = payload[0];
+    if (count > ShootoutManager::MAX_BRACKET_SIZE) return false;
+    if (payloadLen < 1 + 6 * static_cast<size_t>(count)) return false;
+    out.reserve(count);
+    for (uint8_t i = 0; i < count; i++) {
+        std::array<uint8_t, 6> mac;
+        memcpy(mac.data(), payload + 1 + 6 * i, 6);
+        out.push_back(mac);
+    }
+    return true;
+}
+}  // namespace
+
 void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (!shootoutManager || dataLen < 2) return;
-    if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
+    if (data[0] > static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
     const uint8_t* payload = data + 2;
@@ -254,18 +278,15 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
             break;
         }
         case ShootoutCmd::BRACKET: {
-            if (payloadLen < 1) break;
-            uint8_t count = payload[0];
-            if (count > ShootoutManager::MAX_BRACKET_SIZE) break;
-            if (payloadLen < 1 + 6 * static_cast<size_t>(count)) break;
             std::vector<std::array<uint8_t, 6>> bracket;
-            bracket.reserve(count);
-            for (uint8_t i = 0; i < count; i++) {
-                std::array<uint8_t, 6> mac;
-                memcpy(mac.data(), payload + 1 + 6 * i, 6);
-                bracket.push_back(mac);
-            }
-            shootoutManager->onBracketReceived(bracket, seqId);
+            if (!decodeMacList(payload, payloadLen, bracket)) break;
+            shootoutManager->onBracketReceived(fromMac, bracket, seqId);
+            break;
+        }
+        case ShootoutCmd::RING_CLOSED: {
+            std::vector<std::array<uint8_t, 6>> members;
+            if (!decodeMacList(payload, payloadLen, members)) break;
+            shootoutManager->onRingClosedReceived(fromMac, members);
             break;
         }
         case ShootoutCmd::MATCH_START:
@@ -402,20 +423,16 @@ void Quickdraw::populateStateMap() {
             std::bind(&AwakenSequence::transitionToIdle, awakenSequence),
             idle));
 
-    // Auto-trigger Shootout when the chain closes into a loop. Priority over
-    // DuelCountdown/SupporterReady: in a closed ring, adjacent H-B pairs
-    // otherwise look like a normal duel initiation, and the ring intent
-    // (tournament) would be silently demoted to a 1v1 duel.
+    // Auto-trigger Shootout on ring closure — the coordinator's own RDC event,
+    // every other member's RING_CLOSED. Priority over DuelCountdown/
+    // SupporterReady: in a closed ring, adjacent H-B pairs otherwise look like a
+    // normal duel initiation, and the ring intent (tournament) would be silently
+    // demoted to a 1v1 duel.
     {
-        ChainDuelManager* cdm = chainDuelManager;
         ShootoutManager* shMgr = shootoutManager;
         idle->addTransition(
             new StateTransition(
-                [cdm, shMgr]() {
-                    bool loop = cdm && cdm->isLoop();
-                    bool shActive = shMgr && shMgr->active();
-                    return loop && shMgr && !shActive;
-                },
+                [shMgr]() { return shMgr && shMgr->shouldEnterProposal(); },
                 shProposal));
     }
 

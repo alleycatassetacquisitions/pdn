@@ -246,6 +246,19 @@ private:
     bool isLoop_ = true;
 };
 
+// Stand-in RDC reporting a latched ring plus a head roster without driving the
+// HELLO stack. Only the chain surface ShootoutManager reads is overridden.
+class FakeRingRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
+public:
+    /// The role this stand-in reports; RING by default.
+    ChainRole getChainRole() const override { return chainRole; }
+    /// The roster this stand-in serves, as a real head's RDC would.
+    std::vector<std::array<uint8_t, 6>> getChainMembers() const override { return chainMembers; }
+
+    ChainRole chainRole = ChainRole::RING;
+    std::vector<std::array<uint8_t, 6>> chainMembers;
+};
+
 // Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
 // Call deliverLastTo() to route the most-recently-captured packet to another manager's
 // processQuickdrawCommand(), exercising the real serialization/deserialization path.
