@@ -86,7 +86,7 @@ void SymbolState::onStateLoop(PDN* pdn) {
         hapticPulseActive = false;
     }
 
-    // Buffer animation must not block the main loop — handshake/sync needs to run every tick.
+    // Buffer animation must not block the main loop — sync needs to run every tick.
     if (bufferTimer.isRunning()) {
         if (bufferTimer.expired()) {
             bufferTimer.invalidate();

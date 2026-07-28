@@ -212,8 +212,8 @@ public:
         return nullptr;
     }
 
-    // Production RDC checks activePorts() (initialized handshake apps). The fake
-    // stubs peer MACs directly without standing up handshakes, so iterate ports here.
+    // Production RDC reads its per-jack link machines. The fake stubs peer MACs
+    // directly without standing any up, so iterate the ports here.
     bool isDirectPeer(const uint8_t* mac) const override {
         if (!mac) return false;
         for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
@@ -234,8 +234,8 @@ private:
     bool inputPeerSet = false;
 };
 
-// Stand-in CDM for tests that flip isLoop() without standing up the full
-// handshake stack. Used by ShootoutProposal/BracketReveal debounce tests.
+// Stand-in CDM for tests that flip isLoop() without standing up a real ring.
+// Used by ShootoutProposal/BracketReveal debounce tests.
 class FakeChainDuelManager : public ChainDuelManager {
 public:
     FakeChainDuelManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)

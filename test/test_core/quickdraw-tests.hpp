@@ -11,9 +11,6 @@
 #include "id-generator.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
-#include "apps/handshake/handshake.hpp"
-#include "apps/handshake/handshake-states.hpp"
-#include "wireless/handshake-wireless-manager.hpp"
 #include "utility-tests.hpp"
 #include "protocol-constants.hpp"
 
@@ -31,14 +28,6 @@ inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) 
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::INPUT_JACK, dummyMac);
     device.fakeRemoteDeviceCoordinator.setPeerMac(SerialIdentifier::OUTPUT_JACK, dummyMac);
     mm->setRemoteDeviceCoordinator(&device.fakeRemoteDeviceCoordinator);
-}
-
-inline Peer makeHSPeer(const uint8_t* mac, SerialIdentifier sid) {
-    Peer p;
-    std::copy(mac, mac + 6, p.macAddr.begin());
-    p.sid = sid;
-    p.deviceType = DeviceType::PDN;
-    return p;
 }
 
 static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -180,207 +169,6 @@ inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite
     suite->matchManager->listenForMatchEvents(ack);
 
     EXPECT_TRUE(suite->idleState->transitionToDuelCountdown());
-}
-
-// ============================================
-// Handshake State Tests
-// ============================================
-
-// Fixture: provides HandshakeWirelessManager and a fake WirelessManager for sending packets.
-class HandshakeStateTests : public testing::Test {
-public:
-    void SetUp() override {
-        fakeClock = new FakePlatformClock();
-        SimpleTimer::setPlatformClock(fakeClock);
-        fakeClock->setTime(1000);
-
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-
-        handshakeWirelessManager.initialize(device.wirelessManager);
-    }
-
-    void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
-        delete fakeClock;
-    }
-
-    // Simulate a remote device sending a HandshakePacket to this device.
-    // receivingJack is the opposite of the sender's jack (packets always travel OUTPUT<->INPUT).
-    void deliverPacket(int command, SerialIdentifier senderJack, int deviceType = 0) {
-        SerialIdentifier receivingJack = (senderJack == SerialIdentifier::OUTPUT_JACK)
-            ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
-        struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
-        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), deviceType, command };
-        uint8_t dummyMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-        handshakeWirelessManager.processHandshakeCommand(dummyMac,
-            reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
-    }
-
-    MockDevice device;
-    HandshakeWirelessManager handshakeWirelessManager;
-    FakePlatformClock* fakeClock;
-};
-
-// Test: OutputIdleState transitions when a valid MAC is received over serial
-inline void outputIdleTransitionsOnMacReceived(HandshakeStateTests* suite) {
-    OutputIdleState idleState(&suite->handshakeWirelessManager);
-    idleState.onStateMounted(&suite->device);
-
-    EXPECT_FALSE(idleState.transitionToOutputSendId());
-
-    // Simulate INPUT side sending its MAC+port+deviceType over the output jack serial
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-
-    EXPECT_TRUE(idleState.transitionToOutputSendId());
-
-    idleState.onStateDismounted(&suite->device);
-}
-
-// Test: OutputIdleState does not transition on unrelated serial messages
-inline void outputIdleIgnoresUnrelatedSerial(HandshakeStateTests* suite) {
-    OutputIdleState idleState(&suite->handshakeWirelessManager);
-    idleState.onStateMounted(&suite->device);
-
-    suite->device.outputJackSerial.stringCallback("HEARTBEAT");
-    EXPECT_FALSE(idleState.transitionToOutputSendId());
-
-    idleState.onStateDismounted(&suite->device);
-}
-
-// Test: OutputIdleState clears serial callback on dismount
-inline void outputIdleClearsCallbackOnDismount(HandshakeStateTests* suite) {
-    OutputIdleState idleState(&suite->handshakeWirelessManager);
-    idleState.onStateMounted(&suite->device);
-    idleState.onStateDismounted(&suite->device);
-
-    EXPECT_FALSE(idleState.transitionToOutputSendId());
-}
-
-// Test: OutputSendIdState sends EXCHANGE_ID on mount and transitions when ack arrives
-inline void outputSendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillRepeatedly(Return(1));
-
-    // Seed the MAC peer so sendPacket has a destination
-    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    suite->handshakeWirelessManager.setMacPeer(SerialIdentifier::OUTPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::OUTPUT_JACK));
-
-    OutputSendIdState sendIdState(&suite->handshakeWirelessManager);
-    sendIdState.onStateMounted(&suite->device);
-
-    EXPECT_FALSE(sendIdState.transitionToConnected());
-
-    // Simulate input replying with EXCHANGE_ID (input's OUTPUT_JACK becomes our INPUT_JACK after inversion)
-    suite->deliverPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-
-    EXPECT_TRUE(sendIdState.transitionToConnected());
-
-    sendIdState.onStateDismounted(&suite->device);
-}
-
-// Test: OutputSendIdState clears state on dismount
-inline void outputSendIdClearsOnDismount(HandshakeStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillRepeatedly(Return(1));
-
-    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    suite->handshakeWirelessManager.setMacPeer(SerialIdentifier::OUTPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::OUTPUT_JACK));
-
-    OutputSendIdState sendIdState(&suite->handshakeWirelessManager);
-    sendIdState.onStateMounted(&suite->device);
-
-    suite->deliverPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    EXPECT_TRUE(sendIdState.transitionToConnected());
-
-    sendIdState.onStateDismounted(&suite->device);
-    EXPECT_FALSE(sendIdState.transitionToConnected());
-}
-
-// Test: InputIdleState emits MAC over serial and transitions on EXCHANGE_ID command
-inline void inputIdleTransitionsOnExchangeId(HandshakeStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillRepeatedly(Return(1));
-
-    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
-        .WillByDefault(Return(nullptr));
-
-    InputIdleState idleState(&suite->handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
-    idleState.onStateMounted(&suite->device);
-
-    EXPECT_FALSE(idleState.transitionToSendId());
-
-    // Output sends EXCHANGE_ID to input (output's OUTPUT_JACK → our INPUT_JACK)
-    suite->deliverPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-
-    EXPECT_TRUE(idleState.transitionToSendId());
-
-    idleState.onStateDismounted(&suite->device);
-}
-
-// Test: InputSendIdState transitions only after receiving EXCHANGE_ID ack
-inline void inputSendIdTransitionsOnExchangeIdAck(HandshakeStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillRepeatedly(Return(1));
-
-    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    suite->handshakeWirelessManager.setMacPeer(SerialIdentifier::INPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::INPUT_JACK));
-
-    InputSendIdState sendIdState(&suite->handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
-    sendIdState.onStateMounted(&suite->device);
-
-    // Should NOT transition immediately after sending
-    EXPECT_FALSE(sendIdState.transitionToConnected());
-
-    // Output sends final EXCHANGE_ID ack (output's OUTPUT_JACK → our INPUT_JACK)
-    suite->deliverPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-
-    EXPECT_TRUE(sendIdState.transitionToConnected());
-
-    sendIdState.onStateDismounted(&suite->device);
-}
-
-// Test: InputSendIdState clears state on dismount
-inline void inputSendIdClearsOnDismount(HandshakeStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillRepeatedly(Return(1));
-
-    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    suite->handshakeWirelessManager.setMacPeer(SerialIdentifier::INPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::INPUT_JACK));
-
-    InputSendIdState sendIdState(&suite->handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
-    sendIdState.onStateMounted(&suite->device);
-
-    suite->deliverPacket(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-    EXPECT_TRUE(sendIdState.transitionToConnected());
-
-    sendIdState.onStateDismounted(&suite->device);
-    EXPECT_FALSE(sendIdState.transitionToConnected());
-}
-
-// Test: HandshakeApp output-jack path resets to idle on timeout
-inline void handshakeAppOutputJackTimeoutResetsToIdle(HandshakeStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
-        .WillRepeatedly(Return(1));
-
-    HandshakeApp handshakeApp(&suite->handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK);
-    handshakeApp.onStateMounted(&suite->device);
-
-    // Advance into PrimarySendId by delivering a MAC string over the output serial
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    handshakeApp.onStateLoop(&suite->device);
-
-    // Handshake timeout not yet reached
-    suite->fakeClock->advance(400);
-    handshakeApp.onStateLoop(&suite->device);
-
-    // Past the 500ms handshakeTimeout → should reset to idle
-    suite->fakeClock->advance(200);
-    handshakeApp.onStateLoop(&suite->device);
-
-    // After reset, HandshakeApp should be back in OutputIdleState (stateId == OUTPUT_IDLE_STATE)
-    EXPECT_EQ(handshakeApp.getCurrentState()->getStateId(), HandshakeStateId::OUTPUT_IDLE_STATE);
-
-    handshakeApp.onStateDismounted(&suite->device);
 }
 
 // ============================================
@@ -1361,23 +1149,6 @@ inline void cleanupCountdownStateInvalidatesTimer(StateCleanupTests* suite) {
     EXPECT_FALSE(countdownState.shallWeBattle());
 }
 
-// Test: OutputSendIdState clears wireless callbacks and transition flag on dismount
-inline void cleanupHandshakeClearsWirelessCallbacks(StateCleanupTests* suite) {
-    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-
-    HandshakeWirelessManager hwm;
-    hwm.initialize(suite->device.wirelessManager);
-    uint8_t peerMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    hwm.setMacPeer(SerialIdentifier::OUTPUT_JACK, makeHSPeer(peerMac, SerialIdentifier::OUTPUT_JACK));
-
-    OutputSendIdState outputState(&hwm);
-    outputState.onStateMounted(&suite->device);
-
-    outputState.onStateDismounted(&suite->device);
-
-    EXPECT_FALSE(outputState.transitionToConnected());
-}
-
 // Test: DuelResult state clears wireless callbacks on dismount
 inline void cleanupDuelResultClearsWirelessCallbacks(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
@@ -1431,38 +1202,6 @@ inline void cleanupMatchManagerClearsDuelState(StateCleanupTests* suite) {
     EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_FALSE(suite->matchManager->getHasPressedButton());
 }
-
-// ============================================
-// Connection Successful State Tests
-// ============================================
-
-class ConnectionSuccessfulTests : public testing::Test {
-public:
-    void SetUp() override {
-        fakeClock = new FakePlatformClock();
-        SimpleTimer::setPlatformClock(fakeClock);
-        fakeClock->setTime(1000);
-
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-
-        hwm.initialize(device.wirelessManager);
-        uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-        Peer peer;
-        std::copy(std::begin(mac), std::end(mac), peer.macAddr.begin());
-        peer.sid = SerialIdentifier::OUTPUT_JACK;
-        peer.deviceType = DeviceType::PDN;
-        hwm.setMacPeer(SerialIdentifier::OUTPUT_JACK, peer);
-    }
-
-    void TearDown() override {
-        SimpleTimer::setPlatformClock(nullptr);
-        delete fakeClock;
-    }
-
-    MockDevice device;
-    HandshakeWirelessManager hwm;
-    FakePlatformClock* fakeClock;
-};
 
 // ============================================
 // Duel State Callback Cleanup (new behaviours from refactor)
@@ -1707,20 +1446,4 @@ inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
         auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
         delete qd;
     }
-}
-
-// Test: HandshakeConnectedState transitions to idle on heartbeat timeout
-inline void connectionSuccessfulTransitionsAfterThreshold(ConnectionSuccessfulTests* suite) {
-    HandshakeConnectedState connectedState(&suite->hwm, SerialIdentifier::OUTPUT_JACK, HandshakeStateId::OUTPUT_CONNECTED_STATE);
-    connectedState.onStateMounted(&suite->device);
-
-    EXPECT_FALSE(connectedState.transitionToIdle());
-
-    // Advance past the firstHeartbeatTimeout (2000ms)
-    suite->fakeClock->advance(2100);
-    connectedState.onStateLoop(&suite->device);
-
-    EXPECT_TRUE(connectedState.transitionToIdle());
-
-    connectedState.onStateDismounted(&suite->device);
 }

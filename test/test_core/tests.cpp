@@ -14,8 +14,6 @@
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
-#include "hwm-tests.hpp"
-#include "rdc-tests.hpp"
 #include "rdc-hello-tests.hpp"
 #include "connect-state-callback-tests.hpp"
 #include "chain-duel-manager-tests.hpp"
@@ -813,46 +811,6 @@ TEST_F(IdleStateTests, transitionsToDuelCountdownWhenMatchIsReady) {
 }
 
 // ============================================
-// QUICKDRAW STATE TESTS - HANDSHAKE
-// ============================================
-
-TEST_F(HandshakeStateTests, outputIdleTransitionsOnMacReceived) {
-    outputIdleTransitionsOnMacReceived(this);
-}
-
-TEST_F(HandshakeStateTests, outputIdleIgnoresUnrelatedSerial) {
-    outputIdleIgnoresUnrelatedSerial(this);
-}
-
-TEST_F(HandshakeStateTests, outputIdleClearsCallbackOnDismount) {
-    outputIdleClearsCallbackOnDismount(this);
-}
-
-TEST_F(HandshakeStateTests, outputSendIdTransitionsOnExchangeIdAck) {
-    outputSendIdTransitionsOnExchangeIdAck(this);
-}
-
-TEST_F(HandshakeStateTests, outputSendIdClearsOnDismount) {
-    outputSendIdClearsOnDismount(this);
-}
-
-TEST_F(HandshakeStateTests, inputIdleTransitionsOnExchangeId) {
-    inputIdleTransitionsOnExchangeId(this);
-}
-
-TEST_F(HandshakeStateTests, inputSendIdTransitionsOnExchangeIdAck) {
-    inputSendIdTransitionsOnExchangeIdAck(this);
-}
-
-TEST_F(HandshakeStateTests, inputSendIdClearsOnDismount) {
-    inputSendIdClearsOnDismount(this);
-}
-
-TEST_F(HandshakeStateTests, handshakeAppOutputJackTimeoutResetsToIdle) {
-    handshakeAppOutputJackTimeoutResetsToIdle(this);
-}
-
-// ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
 
@@ -1013,10 +971,6 @@ TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
 }
 
-TEST_F(StateCleanupTests, handshakeClearsWirelessCallbacks) {
-    cleanupHandshakeClearsWirelessCallbacks(this);
-}
-
 TEST_F(StateCleanupTests, duelResultClearsWirelessCallbacks) {
     cleanupDuelResultClearsWirelessCallbacks(this);
 }
@@ -1060,10 +1014,6 @@ TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
 // ============================================
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================
-
-TEST_F(ConnectionSuccessfulTests, transitionsAfterThreshold) {
-    connectionSuccessfulTransitionsAfterThreshold(this);
-}
 
 TEST_F(QuickdrawLifecycleTests, ctorDtorDoesNotLeak) {
     quickdrawCtorDtorDoesNotLeak(this);
@@ -1166,142 +1116,6 @@ TEST_F(TwoDeviceSimulationTests, closeRaceCorrectWinner) {
 }
 
 // ============================================
-// QUICKDRAW INTEGRATION TESTS - HANDSHAKE
-// ============================================
-
-TEST_F(HandshakeIntegrationTests, completeBountyPerspective) {
-    handshakeCompleteBountyPerspective(this);
-}
-
-TEST_F(HandshakeIntegrationTests, completeHunterPerspective) {
-    handshakeCompleteHunterPerspective(this);
-}
-
-TEST_F(HandshakeIntegrationTests, twoDeviceFullFlow) {
-    handshakeTwoDeviceFullFlow(this);
-}
-
-TEST_F(HandshakeIntegrationTests, timeoutBeforeCompletion) {
-    handshakeTimeoutBeforeCompletion(this);
-}
-
-TEST_F(HandshakeIntegrationTests, rejectsInvalidPacketData) {
-    handshakeRejectsInvalidPacketData(this);
-}
-
-TEST_F(HandshakeIntegrationTests, ignoresUnexpectedCommands) {
-    handshakeIgnoresUnexpectedCommands(this);
-}
-
-TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
-    handshakeSetsOpponentMacAddress(this);
-}
-
-TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
-    handshakeMatchDataPropagatedCorrectly(this);
-}
-
-// ============================================
-// HWM UNIT TESTS
-// ============================================
-
-TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) {
-    hwmGetMacPeerReturnsNullWhenNotSet(this);
-}
-
-TEST_F(HWMUnitTests, getMacPeerReturnsCorrectMac) {
-    hwmGetMacPeerReturnsCorrectMac(this);
-}
-
-TEST_F(HWMUnitTests, removeMacPeerClearsEntry) {
-    hwmRemoveMacPeerClearsEntry(this);
-}
-
-TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) {
-    hwmSendPacketFailsWithNoPeer(this);
-}
-
-TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
-    hwmClearCallbacksRemovesAll(this);
-}
-
-TEST_F(HWMUnitTests, processRejectsNegativeCommand) {
-    hwmProcessRejectsNegativeCommand(this);
-}
-
-// ============================================
-// REMOTE DEVICE COORDINATOR TESTS
-// ============================================
-
-TEST_F(RDCTests, defaultStateIsDisconnectedOnAllPorts) {
-    rdcDefaultStateIsDisconnectedOnAllPorts(this);
-}
-
-TEST_F(RDCTests, outputPortConnectionLifecycle) {
-    rdcOutputPortConnectionLifecycle(this);
-}
-
-TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
-    rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
-}
-
-TEST_F(RDCTests, chainAnnouncementFiltersSelfMac) {
-    rdcChainAnnouncementFiltersSelfMac(this);
-}
-
-TEST_F(RDCTests, daisyChainCappedAtMaxPeers) {
-    rdcDaisyChainCappedAtMaxPeers(this);
-}
-
-TEST_F(RDCTests, disconnectWipesDaisyChainedPeers) {
-    rdcDisconnectWipesDaisyChainedPeers(this);
-}
-
-TEST_F(RDCTests, ignoresAnnouncementFromNonDirectPeer) {
-    rdcIgnoresAnnouncementFromNonDirectPeer(this);
-}
-
-TEST_F(RDCTests, chainChangeCallbackFiresOnDaisyAdded) {
-    rdcChainChangeCallbackFiresOnDaisyAdded(this);
-}
-
-TEST_F(RDCTests, doesNotEmitWhenOtherPortDisconnected) {
-    rdcDoesNotEmitWhenOtherPortDisconnected(this);
-}
-
-TEST_F(RDCTests, midChainEmitsForwardAndBackward) {
-    rdcMidChainEmitsForwardAndBackward(this);
-}
-
-TEST_F(RDCTests, duplicateAnnouncementDoesNotFireCallback) {
-    rdcDuplicateAnnouncementDoesNotFireCallback(this);
-}
-
-TEST_F(RDCTests, directPeerRegistrationEmitsBackwardAnnouncement) {
-    rdcDirectPeerRegistrationEmitsBackwardAnnouncement(this);
-}
-
-TEST_F(RDCTests, directPeerDropEmitsAnnouncement) {
-    rdcDirectPeerDropEmitsAnnouncement(this);
-}
-
-TEST_F(RDCTests, directPeerDropFiresPeerLostCallbackWithMac) {
-    rdcDirectPeerDropFiresPeerLostCallbackWithMac(this);
-}
-
-TEST_F(RDCTests, chainAnnouncementPacketHandlerUpdatesDaisyChain) {
-    rdcChainAnnouncementPacketHandlerUpdatesDaisyChain(this);
-}
-
-TEST_F(RDCTests, ackedAnnouncementDoesNotRetransmit) {
-    rdcAckedAnnouncementDoesNotRetransmit(this);
-}
-
-TEST_F(RDCTests, announcementAbandonedAfterMaxRetries) {
-    rdcAnnouncementAbandonedAfterMaxRetries(this);
-}
-
-// ============================================
 // RDC PER-JACK HELLO TESTS (#155)
 // ============================================
 
@@ -1343,10 +1157,6 @@ TEST_F(ConnectStateTests, peerFactsClearedOnDisconnect) {
 
 TEST_F(ConnectStateTests, destructorReleasesSlot) {
     connectStateDestructorReleasesSlot(this);
-}
-
-TEST_F(RDCTests, connectStateSkipsReplayWhenHelloOff) {
-    connectStateSkipsReplayWhenHelloOff(this);
 }
 
 TEST_F(ConnectStateTests, constructorRegistrationCoversEveryTenure) {
@@ -1540,10 +1350,6 @@ TEST(RDCHelloStandalone, byteModeSuppressesStringAssembly) {
     rdcHelloByteModeSuppressesStringAssembly();
 }
 
-TEST(RDCHelloStandalone, syncSkipsHandshakeOnStateLoop) {
-    rdcHelloSyncSkipsHandshakeOnStateLoop();
-}
-
 TEST_F(RDCHelloTests, chainRoleReadsJackPresence) {
     rdcChainRoleReadsJackPresence(this);
 }
@@ -1553,6 +1359,10 @@ TEST_F(RDCHelloTests, chainInheritsAndReadvertisesHead) {
 TEST_F(RDCHelloTests, chainNonLowestHeadDetectsRing) {
     rdcChainNonLowestHeadDetectsRing(this);
 }
+TEST_F(RDCHelloTests, ringClaimOverUnestablishedUpstreamIsIgnored) {
+    rdcRingClaimOverUnestablishedUpstreamIsIgnored(this);
+}
+
 TEST_F(RDCHelloTests, chainHeadTransferClearsInheritedHead) {
     rdcChainHeadTransferClearsInheritedHead(this);
 }
@@ -1580,6 +1390,10 @@ TEST_F(RDCHelloTests, chainPeerSwapClearsStaleRing) {
 TEST(RDCHelloStandalone, chainTwoNodeRingCloses) {
     rdcChainTwoNodeRingCloses();
 }
+TEST(RDCHelloStandalone, ringMembershipReachesEveryMember) {
+    rdcRingMembershipReachesEveryMember();
+}
+
 TEST(RDCHelloStandalone, chainDualLatchSettlesByLowerMac) {
     rdcChainDualLatchSettlesByLowerMac();
 }

@@ -46,12 +46,12 @@ public:
         return out;
     }
 
-    /// HELLO payload bytes: source mac[6] + deviceType[1] + headMac[6] + confirmed[1].
+    /// HELLO payload bytes: source mac[6] + deviceType[1] + headMac[6] + flags[1].
     std::vector<uint8_t> helloPayload(uint8_t firstMacByte = 0x10) {
         std::vector<uint8_t> p = {firstMacByte, 0x20, 0x30, 0x40, 0x50, 0x60,  // source
                                   0x01,                                        // deviceType
                                   0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF,          // headMac
-                                  0x00};                                       // confirmed
+                                  0x00};                                       // flags
         EXPECT_EQ(p.size(), HELLO_PAYLOAD_LEN);
         return p;
     }
@@ -78,7 +78,7 @@ TEST_F(SerialFrameParserTests, validFrameDecodesToHelloPayload) {
     EXPECT_EQ(got.deviceType, 0x01);
     EXPECT_EQ(got.headMac[0], 0xAA);
     EXPECT_EQ(got.headMac[5], 0xFF);
-    EXPECT_EQ(got.confirmed, 0x00);
+    EXPECT_EQ(got.flags, 0x00);
 }
 
 TEST_F(SerialFrameParserTests, decodeMapsEveryWireByteToItsField) {
@@ -86,7 +86,7 @@ TEST_F(SerialFrameParserTests, decodeMapsEveryWireByteToItsField) {
     // precomputed CRC-16/XMODEM of (opcode + payload). Pins the exact byte->field
     // mapping so a reordered or repacked struct fails here, not silently on the wire.
     // Layout: preamble 0xAA 0x55, OP_HELLO 0x00, source[6]=11..66, deviceType=01,
-    // headMac[6]=DE AD BE EF 00 01, confirmed=01, then CRC 0xDC48.
+    // headMac[6]=DE AD BE EF 00 01, flags=01, then CRC 0xDC48.
     const std::vector<uint8_t> frame = {0xAA, 0x55, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x01,
                                         0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x01, 0xDC, 0x48};
 
@@ -103,7 +103,7 @@ TEST_F(SerialFrameParserTests, decodeMapsEveryWireByteToItsField) {
         EXPECT_EQ(got.headMac[i], expectedHead[i]);
     }
     EXPECT_EQ(got.deviceType, 0x01);
-    EXPECT_EQ(got.confirmed, 0x01);
+    EXPECT_EQ(got.flags, 0x01);
 }
 
 TEST_F(SerialFrameParserTests, encodeFramedEmitsExactFrameBytes) {
@@ -117,7 +117,7 @@ TEST_F(SerialFrameParserTests, encodeFramedEmitsExactFrameBytes) {
         hello.headMac[i] = head[i];
     }
     hello.deviceType = 0x01;
-    hello.confirmed = 0x01;
+    hello.flags = 0x01;
 
     // Same bytes the decode oracle above pins: preamble, OP_HELLO, payload, CRC 0xDC48.
     const std::vector<uint8_t> expected = {0xAA, 0x55, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x01,
@@ -136,14 +136,14 @@ TEST_F(SerialFrameParserTests, encodeFramedRoundTripsThroughParser) {
     sent.source[0] = 0xA7;
     sent.deviceType = 0x02;
     sent.headMac[3] = 0x99;
-    sent.confirmed = 0x01;
+    sent.flags = 0x01;
     feed(encodeFramed(sent));
 
     ASSERT_EQ(frameCount, 1);
     EXPECT_EQ(got.source[0], 0xA7);
     EXPECT_EQ(got.deviceType, 0x02);
     EXPECT_EQ(got.headMac[3], 0x99);
-    EXPECT_EQ(got.confirmed, 0x01);
+    EXPECT_EQ(got.flags, 0x01);
 }
 
 TEST_F(SerialFrameParserTests, badCrcDropsFrame) {

@@ -5,7 +5,7 @@
 
 // Base class for FDN states that check for player connections.
 // FDN has two input jacks (INPUT_JACK and INPUT_JACK_SECONDARY) and no output jack.
-// isConnected() returns true when either input jack has a connected or daisy-chained peer.
+// isConnected() returns true when either input jack has a connected peer.
 class FDNConnectState : public ConnectState<FDN> {
 public:
     FDNConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator, int stateId)

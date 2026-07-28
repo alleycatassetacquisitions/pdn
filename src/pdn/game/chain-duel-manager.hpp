@@ -37,6 +37,12 @@ public:
     bool isSupporter() const;
     virtual bool isLoop() const;
     bool canInitiateMatch() const;
+    /// The supporters this champion can address: the direct supporter-jack peer
+    /// only. RDC lost multi-hop peer knowledge with the daisy-chain
+    /// announcements, so a supporter two or more hops away is no longer
+    /// enumerable here and contributes no boost — the head roster
+    /// (RDC::getChainMembers) is the surviving multi-hop source and the
+    /// champion is not the head.
     std::vector<std::array<uint8_t, 6>> getSupporterChainPeers() const;
 
     void sendGameEventToSupporters(ChainGameEventType eventType);
@@ -177,9 +183,8 @@ private:
     uint8_t nextRoleAnnounceSeqId_ = 1;
 
     // Champion-side pending WIN/LOSS game events awaiting per-supporter
-    // ACKs. Keyed by target MAC; one pending entry per supporter at a
-    // time. Size bounded by chain length (kMaxChainPeersPerPort = 18 in
-    // RDC, so ≤18 entries in practice).
+    // ACKs. Keyed by target MAC; one pending entry per supporter at a time,
+    // and getSupporterChainPeers now yields at most the direct peer.
     struct PendingGameEvent {
         std::array<uint8_t, 6> targetMac;
         uint8_t seqId;

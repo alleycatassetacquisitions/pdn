@@ -5,11 +5,9 @@
 // Each device owns its own MockDevice, RemoteDeviceCoordinator, Player, and
 // ChainDuelManager. Packets emitted via mockPeerComms->sendData(...) are
 // captured into a shared queue and routed by MAC to the target device's
-// per-type packet handler. Physical serial connectivity between adjacent
-// devices is simulated by driving the OutputIdleState's serial callback with
-// SEND_MAC_ADDRESS and then injecting the EXCHANGE_ID handshake packets
-// through each device's captured kHandshakeCommand handler (same pattern as
-// the existing RDCTests::deliverPacketViaRDC helper, but routed per-device).
+// per-type packet handler. Physical connectivity is the production HELLO path:
+// each node owns two native serial drivers, a "cable" pumps one node's emitted
+// bytes into the other's RX, and the real exec() drain feeds the RDC parser.
 //
 // Topology convention:
 //   The task describes wiring as "device i's OUTPUT to device i+1's INPUT",
@@ -20,9 +18,7 @@
 //   device 0 the natural "champion end", this fixture reverses the
 //   per-index wiring: device 0 has nothing on its OUTPUT, device 1's OUTPUT
 //   connects to device 0's INPUT, device 2's OUTPUT connects to device 1's
-//   INPUT, etc. The supporter-jack chain at device 0 therefore contains
-//   device 1 (direct) and device 2 (daisy), matching the A / S1 / S2
-//   arrangement used by chainDuelThreeDeviceConfirm.
+//   INPUT, etc.
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -32,6 +28,7 @@
 #include <cstring>
 
 #include "device-mock.hpp"
+#include "rdc-hello-tests.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "protocol-constants.hpp"
@@ -49,18 +46,18 @@ using ::testing::WithArgs;
 // A single node in the multi-device harness.
 struct MultiDeviceNode {
     std::unique_ptr<MockDevice> device;
+    // Declared before the RDC so they outlive it: ~RDC clears the byte callbacks
+    // it installed on them, as it does on hardware where the drivers are global.
+    NativeSerialDriver out{"md-out"};
+    NativeSerialDriver in{"md-in"};
     std::unique_ptr<RemoteDeviceCoordinator> rdc;
     std::unique_ptr<Player> player;
     std::unique_ptr<ChainDuelManager> cdm;
     std::unique_ptr<ShootoutManager> shootout;
 
     // Per-device captured handlers (one slot per PktType the fixture routes).
-    PeerCommsInterface::PacketCallback handshakeHandler = nullptr;
-    void* handshakeCtx = nullptr;
-    PeerCommsInterface::PacketCallback chainHandler = nullptr;
-    void* chainCtx = nullptr;
-    PeerCommsInterface::PacketCallback chainAckHandler = nullptr;
-    void* chainAckCtx = nullptr;
+    PeerCommsInterface::PacketCallback contextHandler = nullptr;
+    void* contextCtx = nullptr;
     PeerCommsInterface::PacketCallback roleAnnounceHandler = nullptr;
     void* roleAnnounceCtx = nullptr;
     PeerCommsInterface::PacketCallback roleAnnounceAckHandler = nullptr;
@@ -104,6 +101,7 @@ public:
     // established here — call connectLinearHunterChain() or drive
     // connections manually via connectOutputOf(i).
     void spawnDevices(size_t count) {
+        cables.clear();
         nodes.clear();
         nodes.reserve(count);
         for (size_t i = 0; i < count; ++i) {
@@ -117,6 +115,11 @@ public:
 
             wirePeerCommsMock(*node);
 
+            node->device->serialManager->setOutputJack(&node->out);
+            node->device->serialManager->setInputJack(&node->in);
+            // Single-threaded: the fixture emits HELLO itself instead of letting
+            // the RDC spawn its cadence task.
+            node->rdc->setExternalConnectivityTask(true);
             node->rdc->initialize(node->device->wirelessManager,
                                   node->device->serialManager,
                                   node->device.get());
@@ -139,8 +142,8 @@ public:
                 cdmRaw->onChainStateChanged();
             });
             // peerLostCallback intentionally unwired — advanceClock() expires
-            // handshake heartbeats and would fire it spuriously. Direct-path
-            // coverage lives in RDCTests + ShootoutManagerTests.
+            // HELLO liveness and would fire it spuriously. Direct-path coverage
+            // lives in RDCHelloTests + ShootoutManagerTests.
 
             nodes.push_back(std::move(node));
         }
@@ -163,44 +166,45 @@ public:
         }
     }
 
-    // Mirrors the wire format emitted by InputIdleState / OutputIdleState when
-    // a cable is plugged in. Tests drive the arrival directly by feeding this
-    // string to the receiving jack's serial callback.
-    std::string serialMacArrival(const uint8_t* peerMac, SerialIdentifier peerJack) {
-        return SEND_MAC_ADDRESS + MacToString(peerMac) + "#" +
-               std::to_string(static_cast<int>(peerJack)) +
-               "t" + std::to_string(static_cast<int>(DeviceType::PDN));
-    }
-
-    // Drive the full serial+wireless handshake so device i's OUTPUT jack is
-    // connected to device (i-1)'s INPUT jack. After this returns both nodes
-    // have CONNECTED port status for the respective jack and the other's MAC
-    // cached via HWM setMacPeer.
+    // Plugs a cable from device i's OUTPUT into device (i-1)'s INPUT, then runs
+    // the links until they settle. Both sides end CONNECTED via the real HELLO
+    // + ESP-NOW context exchange.
     void connectOutputToPrev(size_t i) {
         ASSERT_LT(i, nodes.size());
         ASSERT_GT(i, 0u);
-        MultiDeviceNode& lower = *nodes[i - 1];   // receives on INPUT_JACK
-        MultiDeviceNode& upper = *nodes[i];       // initiates on OUTPUT_JACK
+        cables.push_back({i, i - 1});
+        settleLinks();
+    }
 
-        // Upper's OUTPUT_IDLE waits for serial SEND_MAC_ADDRESS from lower.
-        upper.device->outputJackSerial.stringCallback(
-            serialMacArrival(lower.mac, SerialIdentifier::INPUT_JACK));
-        upper.rdc->sync(upper.device.get());
-
-        // Upper is now in OUTPUT_SEND_ID; it sent EXCHANGE_ID wirelessly to
-        // lower during sync. Pump that packet into lower.
+    /// One HELLO cycle across every plugged cable: emit on both jacks of every
+    /// node, move the bytes each cable carries, drain them through the real
+    /// exec() pump, then let each RDC and the radio queue catch up. Unpumped
+    /// jack output is dropped — an unplugged jack transmits into open air.
+    void pumpHelloCycle() {
+        for (auto& n : nodes)
+            n->rdc->emitHello();
+        for (const auto& cable : cables) {
+            MultiDeviceNode& upper = *nodes[cable.first];
+            MultiDeviceNode& lower = *nodes[cable.second];
+            pumpCable(upper.out, lower.in);
+            pumpCable(lower.in, upper.out);
+        }
+        for (auto& n : nodes) {
+            n->out.clearOutput();
+            n->in.clearOutput();
+        }
+        for (auto& n : nodes)
+            n->rdc->sync(n->device.get());
         deliverAllPackets();
+    }
 
-        // Lower's InputIdleState registered upper and moved to INPUT_SEND_ID,
-        // which itself sent EXCHANGE_ID back to upper. Pump.
-        lower.rdc->sync(lower.device.get());
-        upper.rdc->sync(upper.device.get());
-        deliverAllPackets();
-
-        // Final sync rounds — both sides commit CONNECTED.
-        lower.rdc->sync(lower.device.get());
-        upper.rdc->sync(upper.device.get());
-        deliverAllPackets();
+    /// Enough HELLO cycles for a fresh cable to reach CONNECTED and for the head
+    /// MAC (and any ring closure it implies) to propagate the length of the chain.
+    void settleLinks() {
+        for (size_t round = 0; round < nodes.size() + 8; ++round) {
+            pumpHelloCycle();
+            fakeClock->advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        }
     }
 
     // Advance clock on all devices lockstep.
@@ -209,43 +213,39 @@ public:
     }
 
     void syncAll() {
+        pumpHelloCycle();
         for (auto& n : nodes) {
-            n->rdc->sync(n->device.get());
             n->cdm->sync();
             n->shootout->sync();
         }
     }
 
-    // Close a linear chain into a ring by wiring the tail's INPUT into the
-    // head's OUTPUT. Mirroring on both endpoints matches real hardware, where
-    // plugging a cable produces a serial arrival at both ends — single-ended
-    // injection would leave the tail's InputIdleState without the event.
+    // Close a linear chain into a ring with the last cable: device 0's OUTPUT
+    // into the tail's INPUT.
     void closeRing() {
         ASSERT_GE(nodes.size(), 2u);
-        size_t tail = nodes.size() - 1;
-        MultiDeviceNode& head = *nodes[0];
-        MultiDeviceNode& tailNode = *nodes[tail];
-
-        head.device->outputJackSerial.stringCallback(
-            serialMacArrival(tailNode.mac, SerialIdentifier::INPUT_JACK));
-        if (tailNode.device->inputJackSerial.stringCallback) {
-            tailNode.device->inputJackSerial.stringCallback(
-                serialMacArrival(head.mac, SerialIdentifier::OUTPUT_JACK));
-        }
-        head.rdc->sync(head.device.get());
-        tailNode.rdc->sync(tailNode.device.get());
-        deliverAllPackets();
-
-        tailNode.rdc->sync(tailNode.device.get());
-        head.rdc->sync(head.device.get());
-        deliverAllPackets();
-
-        tailNode.rdc->sync(tailNode.device.get());
-        head.rdc->sync(head.device.get());
-        deliverAllPackets();
-
+        cables.push_back({0, nodes.size() - 1});
+        settleLinks();
         syncAll();
         deliverAllPackets();
+        seedRingRoster();
+    }
+
+    /// Hands every node the ring's member list. RDC ring DETECTION is local and
+    /// real here (the isLoop assertions below exercise it), but the member LIST
+    /// is head-only: the head's roster is the sole multi-hop source now that the
+    /// daisy-chain announcements are gone, and the coordinator broadcast that
+    /// hands it to followers is #169's. Until that lands, the tournament tests
+    /// below would be measuring a roster gap rather than the bracket they cover.
+    void seedRingRoster() {
+        std::vector<std::array<uint8_t, 6>> members;
+        for (auto& n : nodes) {
+            std::array<uint8_t, 6> mac;
+            memcpy(mac.data(), n->mac, 6);
+            members.push_back(mac);
+        }
+        for (auto& n : nodes)
+            n->shootout->setLoopMembersForTest(members);
     }
 
     // Pump all captured outgoing packets into the intended recipient's handlers
@@ -275,6 +275,8 @@ public:
 
 protected:
     std::vector<std::unique_ptr<MultiDeviceNode>> nodes;
+    // Plugged cables as (upper, lower): upper's OUTPUT into lower's INPUT.
+    std::vector<std::pair<size_t, size_t>> cables;
     std::queue<PendingPacket> pending;
     FakePlatformClock* fakeClock = nullptr;
 
@@ -306,9 +308,10 @@ protected:
         PeerCommsInterface::PacketCallback handler = nullptr;
         void* ctx = nullptr;
         switch (p.type) {
-            case PktType::kHandshakeCommand:     handler = target.handshakeHandler;        ctx = target.handshakeCtx; break;
-            case PktType::kChainAnnouncement:    handler = target.chainHandler;            ctx = target.chainCtx; break;
-            case PktType::kChainAnnouncementAck: handler = target.chainAckHandler;         ctx = target.chainAckCtx; break;
+            case PktType::kPdnConnectionContext:
+                handler = target.contextHandler;
+                ctx = target.contextCtx;
+                break;
             case PktType::kRoleAnnounce:         handler = target.roleAnnounceHandler;     ctx = target.roleAnnounceCtx; break;
             case PktType::kRoleAnnounceAck:      handler = target.roleAnnounceAckHandler;  ctx = target.roleAnnounceAckCtx; break;
             case PktType::kChainConfirm:         handler = target.chainConfirmHandler;     ctx = target.chainConfirmCtx; break;
@@ -345,17 +348,10 @@ protected:
 
         // Capture packet handlers as they are registered (RDC, then CDM-side
         // shims below). Each PktType saves into its own slot.
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kHandshakeCommand), _, _))
+        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.handshakeHandler = cb; n.handshakeCtx = ctx;
-            });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainAnnouncement), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.chainHandler = cb; n.chainCtx = ctx;
-            });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainAnnouncementAck), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.chainAckHandler = cb; n.chainAckCtx = ctx;
+                n.contextHandler = cb;
+                n.contextCtx = ctx;
             });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
@@ -550,9 +546,11 @@ inline void cdmMultiDeviceChainFormsAndElectsChampion(ChainDuelMultiDeviceFixtur
     EXPECT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
 }
 
-// H-H-H linear chain: after cascade, device 2 sendConfirm produces a
-// kChainConfirm addressed to device 0, which when routed through
-// deliverAllPackets hits d0's CDM and increments the boost.
+// H-H-H linear chain: the champion counts a confirm from the supporter on the
+// far end of its own cable, and ignores one from the supporter beyond that.
+// Multi-hop boost died with the daisy-chain announcements: the champion can no
+// longer enumerate anything past its direct peer, so it cannot place a distant
+// supporter. #144 moves that membership fact onto the head roster.
 inline void cdmMultiDeviceConfirmDeliveredToChampion(ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
@@ -579,9 +577,16 @@ inline void cdmMultiDeviceConfirmDeliveredToChampion(ChainDuelMultiDeviceFixture
     ASSERT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
     ASSERT_EQ(d0.cdm->getBoostMs(), 0u);
 
-    // D2 sends confirm — payload targets d0's MAC directly; fixture router
-    // delivers it to d0's kChainConfirm handler → CDM::onConfirmReceived.
+    // D2 is two hops from the champion. Its confirm still routes to d0 (it
+    // learned the champion MAC from the role cascade), but d0 cannot place it.
     d2.cdm->sendConfirm();
+    suite->deliverAllPackets();
+
+    EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 0u);
+    EXPECT_EQ(d0.cdm->getBoostMs(), 0u);
+
+    // D1 is on the champion's own cable, so its confirm counts.
+    d1.cdm->sendConfirm();
     suite->deliverAllPackets();
 
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 1u);

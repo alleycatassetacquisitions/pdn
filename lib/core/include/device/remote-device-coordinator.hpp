@@ -6,12 +6,11 @@
 #include <cstdint>
 #include <functional>
 #include <map>
-#include <optional>
 #include <vector>
 #include "device/serial-manager.hpp"
 #include "device/serial-frame-parser.hpp"
 #include "utils/simple-timer.hpp"
-#include "wireless/handshake-wireless-manager.hpp"
+#include "device/wireless-manager.hpp"
 #include "wireless/reliable-transport.hpp"
 #include "device/device-type.hpp"
 
@@ -21,18 +20,19 @@
 #endif
 
 class Device;
-class HandshakeApp;
 class HelloLinkMachine;
 class RDCHelloTests;  // drives the context exchange via the owned transport in tests
 
 enum class PortStatus {
-    DISCONNECTED = 0,  // No Connection. Handshake is in Idle state.
-    CONNECTING = 1,    // Port is NOT connected && NOT in handshake idle state.
+    DISCONNECTED = 0,  // No HELLO peer on the jack.
+    CONNECTING = 1,    // A HELLO peer is present, its context exchange unfinished.
     CONNECTED = 2,     // Port is connected to a peer.
 };
 
 // This device's position in the physical chain, derived from jack state:
-// head has no in-peer, a child has one, a ring is a chain whose ends met.
+// head has no in-peer, a child has one, RING is the head of a chain whose ends
+// met. RING is deliberately head-only — it is the roster/coordinator authority.
+// Ring MEMBERSHIP, which every device on the loop shares, is isInRing().
 // Device-level (not per-port): whether a connection makes this device a head
 // or child is a chain concern surfaced here, never a PortStatus.
 enum class ChainRole {
@@ -67,28 +67,29 @@ public:
 
     /// Inert until initialize().
     RemoteDeviceCoordinator();
-    /// Tears down the per-port handshake apps.
+    /// Stops the emit task, unhooks the jacks and frees the link machines.
     ~RemoteDeviceCoordinator();
 
     /**
-     * Initialize should create a HandshakeWirelessManager, as well as
-     * the handshake state machines. It should also
-     * register the handshakeWirelessManager's packet received callback.
+     * Claims the RDC packet channels, then brings HELLO connectivity up on
+     * every jack the SerialManager reports. Call once, before sync().
      */
     void initialize(WirelessManager* wirelessManager,
                     SerialManager* serialManager,
                     Device* PDN);
 
     /**
-     * Must be called every loop tick (from PDN::loop).
-     * Drives both handshake state machines.
+     * Must be called every loop tick (from PDN::loop). Pumps the reliable
+     * transport and drives each jack's HELLO link machine.
      */
     void sync(Device* PDN);
 
     /// Connection state of one jack (device-level chain facts live in
     /// getChainRole(), not here).
     virtual PortStatus getPortStatus(SerialIdentifier port);
-    /// Status plus the peer MACs reachable via the port.
+    /// Status plus this port's direct peer, if any. A jack holds one peer:
+    /// the multi-hop peer list the daisy-chain announcements used to fill is
+    /// gone with them, so this never carries more than one MAC.
     PortState getPortState(SerialIdentifier port);
 
     /// No peer id known: an FDN peer, an unregistered player, or no peer at all.
@@ -116,7 +117,11 @@ public:
     /// Returns true iff `mac` matches the direct peer on either jack.
     virtual bool isDirectPeer(const uint8_t* mac) const;
 
-    /// Reachable via either jack (direct peer or daisy-chained).
+    /// Reachable over a cable this device owns. Adjacency only: with the
+    /// daisy-chain announcements gone, RDC has no multi-hop peer knowledge, so
+    /// a member two hops away reads as unreachable here even though the chain
+    /// still carries it. The head roster (getChainMembers) is the multi-hop
+    /// source; a non-head device has none.
     virtual bool canReachPeer(const uint8_t* mac) const;
 
     // ---- Chain-level surface (#154) ----
@@ -133,6 +138,11 @@ public:
     /// Head-only chain member roster; empty for a child or standalone device.
     virtual std::vector<std::array<uint8_t, 6>> getChainMembers() const;
 
+    /// True on EVERY device sitting on a closed ring, not just the one that
+    /// detected the closure. The detecting device latches locally; the rest
+    /// learn it from the HELLO ring flag relayed down the chain.
+    virtual bool isInRing() const;
+
     /// Registers the per-jack connect/disconnect observer. The connect fires
     /// after the chain state it implies is in place; the disconnect fires BEFORE
     /// chain-state teardown, so handlers must not read chain state there —
@@ -142,10 +152,9 @@ public:
     }
 
     // ---- Per-jack HELLO connectivity (#155) ----
-    // HELLO is the serial discovery/liveness beacon that will replace the string
-    // handshake (#160 deletes it). Each jack runs an independent link SM fed by the
-    // real exec()-driven RX byte pump. No caller under src/ enables it, so
-    // production still runs the handshake.
+    // HELLO is the only thing serial carries: discovery, liveness and hop-by-hop
+    // chain context. Each jack runs an independent link SM fed by the real
+    // exec()-driven RX byte pump.
 
     // The jacks that can carry a HELLO link, in the order sync() drives them.
     static constexpr std::array<SerialIdentifier, 3> HELLO_JACKS = {
@@ -223,10 +232,6 @@ public:
     /// True while a context send to `mac` is still awaiting its SEND_SUCCESS.
     bool isContextSendPending(const uint8_t* mac) const;
 
-    /// Wires byte callbacks + parsers on every present jack, quiesces the
-    /// handshake, and (unless external) spawns the emit task. Idempotent.
-    void enableHelloConnectivity();
-
     /// Native/test hook: suppress the FreeRTOS emit-task spawn so the caller
     /// drives emitHello() and the per-jack link machines (via sync()) on one thread.
     void setExternalConnectivityTask(bool external) { externalConnectivityTask = external; }
@@ -264,113 +269,36 @@ public:
         ringClosedCallback = std::move(callback);
     }
 
-    /**
-     * Called when a chain announcement is received from a direct peer.
-     * Replaces the port's daisy-chained peer list with the announced list,
-     * filtering out self-MAC and the direct peer.
-     */
-    void onChainAnnouncementReceived(
-        const uint8_t* fromMac,
-        SerialIdentifier port,
-        const std::vector<std::array<uint8_t, 6>>& announcedPeers);
-
-    /// Registers the legacy any-chain-change observer.
+    /// Registers an observer for any jack connect/disconnect. Coarser than
+    /// setOnJackChange: it says the chain moved, not which jack or which way.
     void setChainChangeCallback(std::function<void()> callback);
 
-    /// Direct peer drops only; daisy-chained drops arrive via chain announcements.
+    /// Fires with the MAC of a direct peer whose link just died. Adjacent
+    /// losses only — nothing reports a departure further down the chain.
     void setPeerLostCallback(std::function<void(const uint8_t*)> callback);
-
-    /// Decodes and applies an inbound kChainAnnouncement packet.
-    void processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-
-    using AnnouncementEmitCallback = std::function<void(const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers)>;
-    /// Registers the outbound chain-announcement sender.
-    void setAnnouncementEmitCallback(AnnouncementEmitCallback callback);
-
-    /// Decodes and applies an inbound kChainAnnouncementAck packet.
-    void processChainAnnouncementAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
 
     /// Registers the MAC as an ESP-NOW peer slot.
     void registerPeer(const uint8_t* macAddress);
     /// Releases the MAC's ESP-NOW peer slot.
     void unregisterPeer(const uint8_t* macAddress);
 
-    // Retry / reliability observability. Cumulative since boot. For hardware
-    // validation tuning of ackTimeoutMs_ and maxRetries_ against the real
-    // deployment. ackLatencyMs / ackCount give mean RTT; abandons / (sends +
-    // retries) gives loss rate at the chain-announcement layer.
-    struct RetryStats {
-        uint32_t sends = 0;
-        uint32_t retries = 0;
-        uint32_t abandons = 0;
-        uint32_t ackLatencyMsSum = 0;
-        uint32_t ackCount = 0;
-    };
-    /// Cumulative chain-announcement retry counters (see RetryStats).
-    RetryStats getRetryStats() const { return retryStats_; }
-
 private:
-    RetryStats retryStats_;
     static constexpr size_t kNumPorts = 3;
-    std::array<std::vector<std::array<uint8_t, 6>>, kNumPorts> daisyChainedByPort_;
-    std::array<std::optional<std::array<uint8_t, 6>>, kNumPorts> previousDirectPeer_;
-    uint8_t nextAnnouncementId_ = 1;
-
-    struct PendingAnnouncement {
-        bool active = false;
-        uint8_t announcementId = 0;
-        uint8_t retries = 0;
-        std::vector<std::array<uint8_t, 6>> peers;
-        SimpleTimer timer;
-    };
-    std::array<PendingAnnouncement, kNumPorts> pendingByPort_;
-    static constexpr unsigned long ackTimeoutMs_ = 100;
-    static constexpr uint8_t maxRetries_ = 3;
-    // ESP-NOW peer-table capacity is 20 on ESP32-S3. Reserve margin for the
-    // direct peer on each jack, the champion registration on supporters, and
-    // brief transient registrations during chain reconfig.
-    static constexpr size_t kMaxChainPeersPerPort = 18;
-
-    void emitAnnouncementVia(SerialIdentifier viaPort, const std::vector<std::array<uint8_t, 6>>& peers);
-    std::vector<std::array<uint8_t, 6>> peersReachableVia(SerialIdentifier port);
 
     size_t portIndex(SerialIdentifier port) const;
 
-    void notifyDisconnect();
-    void notifyConnect();
-    void notifyDaisyChained();
-
-    /**
-     * handshake idle state - disconnected
-     * handshake send id state - connecting
-     * handshake connected state - connected
-     */
-    PortStatus mapHandshakeStateToStatus(SerialIdentifier port);
-
-    void addDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress);
-    void removeDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress);
+    void notifyChainChange();
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager_ = nullptr;
     std::function<void()> chainChangeCallback;
     std::function<void(const uint8_t*)> peerLostCallback;
-    AnnouncementEmitCallback announcementEmitCallback_;
 
     // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
     JackChangeCallback jackChangeCallback;
     ChainRoleChangeCallback chainRoleChangeCallback;
     MembershipChangeCallback membershipChangeCallback;
     RingClosedCallback ringClosedCallback;
-
-    HandshakeWirelessManager handshakeWirelessManager;
-
-    HandshakeApp* inputPortHandshake = nullptr;
-    HandshakeApp* outputPortHandshake = nullptr;
-    HandshakeApp* secondaryInputPortHandshake = nullptr;
-
-    // Returns the list of ports that have active handshake apps.
-    std::vector<SerialIdentifier> activePorts() const;
-    HandshakeApp* handshakeAppForPort(SerialIdentifier port) const;
 
     // ---- HELLO connectivity internals (#155) ----
     struct JackHelloLink {
@@ -391,7 +319,6 @@ private:
         unsigned long lastContextResendMs = 0;
     };
     std::array<JackHelloLink, kNumPorts> helloByPort;
-    bool helloConnectivityEnabled = false;
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
     SelfProfileProvider selfProfileProvider;
@@ -456,8 +383,8 @@ private:
     // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
     // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
     void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
-    // Link death on `jack`: release the peer's radio slot unless another jack or a
-    // daisy chain still references the MAC (2-node ring keeps the slot).
+    // Link death on `jack`: release the peer's radio slot unless another jack
+    // still references the MAC (2-node ring keeps the slot).
     void releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
@@ -470,8 +397,11 @@ private:
     static constexpr unsigned kConnectivityTaskPriority = 1;
 #endif
 
+    /// Wires byte callbacks + parsers on every present jack and (unless the
+    /// caller drives it) spawns the emit task. Called once, from initialize().
+    void enableHelloConnectivity();
+
     HWSerialWrapper* jackWrapper(SerialIdentifier port) const;
-    bool isHelloJack(SerialIdentifier port) const;
     void onHelloReceived(SerialIdentifier jack, const HelloPayload& hello);
     PortStatus mapHelloLinkToStatus(SerialIdentifier port) const;
     static unsigned long nowMs();
@@ -486,6 +416,12 @@ private:
     // Latched when this structural head sees its own MAC return on the INPUT jack;
     // cleared when any ring link drops. Dominates getChainRole().
     bool ringLatched = false;
+    // The ring flag the INPUT peer last advertised. Only the latching device can
+    // observe closure, so every other member learns it from upstream and relays
+    // it on. Relayed only while a head is held, which keeps the assertion
+    // single-sourced: the latching device holds no head, so its own flag is
+    // never fed back to it and a cleared latch drains round the loop.
+    bool upstreamRingClosed = false;
     // Last time the own-MAC head returned on INPUT while latched (seeded at
     // closure): the ring-latch evidence stamp checked against RING_EVIDENCE_TIMEOUT_MS.
     unsigned long lastSelfHeadReturnMs = 0;
@@ -509,7 +445,7 @@ private:
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
     // Drops a former head's radio slot (and its dead roster retries) unless an
-    // adjacent link or daisy record still uses the MAC.
+    // adjacent link still uses the MAC.
     void releaseHeadPeer(uint64_t headMac48);
 
     // ---- Head roster (#158) ----

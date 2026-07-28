@@ -14,7 +14,7 @@
  * castDevice() here is only for code inside the state machine class itself, for
  * example when Quickdraw::onStateMounted needs to call PDN-specific setup.
  *
- * Device-agnostic state machines (e.g. HandshakeApp) should inherit
+ * Device-agnostic state machines should inherit
  * StateMachine directly.
  */
 template<typename DeviceT>

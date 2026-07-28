@@ -133,7 +133,7 @@ void Quickdraw::onChainStateChanged() {
         chainDuelManager->onChainStateChanged();
     }
     // Shootout disconnects flow through setPeerLostCallback, not chain-state
-    // diffs — daisy chain announcements bounce in normal operation.
+    // diffs, which fire on every jack edge either way.
 }
 
 void Quickdraw::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
@@ -163,19 +163,14 @@ void Quickdraw::onStateLoop(Device* pdn) {
     if (!statsLogTimer.isRunning()) {
         statsLogTimer.setTimer(kStatsLogIntervalMs);
     } else if (statsLogTimer.expired()) {
-        if (remoteDeviceCoordinator != nullptr && chainDuelManager != nullptr) {
-            auto r = remoteDeviceCoordinator->getRetryStats();
+        if (chainDuelManager != nullptr) {
             auto c = chainDuelManager->getRetryStats();
-            unsigned long rMean = r.ackCount ? (r.ackLatencyMsSum / r.ackCount) : 0;
             unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
             // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2
             // which strips info-level calls.
-            LOG_W("STATS",
-                "RDC s=%u r=%u ab=%u ack=%u/%lums | CDM s=%u r=%u ab=%u ack=%u/%lums",
-                (unsigned)r.sends, (unsigned)r.retries, (unsigned)r.abandons,
-                (unsigned)r.ackCount, rMean,
-                (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
-                (unsigned)c.ackCount, cMean);
+            LOG_W("STATS", "CDM s=%u r=%u ab=%u ack=%u/%lums",
+                  (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
+                  (unsigned)c.ackCount, cMean);
         }
         statsLogTimer.setTimer(kStatsLogIntervalMs);
     }
@@ -349,7 +344,7 @@ void Quickdraw::populateStateMap() {
     ctx.symbolWirelessManager = symbolWirelessManager;
     ctx.wirelessManager = wirelessManager;
 
-    // Sub-state machines for player registration and handshake
+    // Sub-state machines for player registration
     PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(ctx);

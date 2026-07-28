@@ -1,17 +1,12 @@
 #include "device/remote-device-coordinator.hpp"
-#include "apps/handshake/handshake-states.hpp"
-#include "apps/handshake/handshake.hpp"
-#include "protocol-constants.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/serial-manager.hpp"
 #include "device/drivers/logger.hpp"
-#include "state/state-machine.hpp"
-#include "wireless/handshake-wireless-manager.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/hello-link-machine.hpp"
 
-RemoteDeviceCoordinator::RemoteDeviceCoordinator() : handshakeWirelessManager(HandshakeWirelessManager()) {}
+RemoteDeviceCoordinator::RemoteDeviceCoordinator() = default;
 
 #ifndef NATIVE_BUILD
 // Free entry point xTaskCreate can take directly; the loop lives in a member so
@@ -50,17 +45,12 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     // Drop the byte callbacks: they capture `this` and live on the externally
     // owned jacks, so a post-destruction exec() would otherwise call a lambda
     // over freed memory.
-    if (helloConnectivityEnabled) {
-        for (SerialIdentifier port : HELLO_JACKS) {
-            HWSerialWrapper* hw = jackWrapper(port);
-            if (hw != nullptr) hw->setByteCallback(nullptr);
-            delete helloByPort[portIndex(port)].machine;
-            helloByPort[portIndex(port)].machine = nullptr;
-        }
+    for (SerialIdentifier port : HELLO_JACKS) {
+        HWSerialWrapper* hw = jackWrapper(port);
+        if (hw != nullptr) hw->setByteCallback(nullptr);
+        delete helloByPort[portIndex(port)].machine;
+        helloByPort[portIndex(port)].machine = nullptr;
     }
-    delete inputPortHandshake;
-    delete outputPortHandshake;
-    delete secondaryInputPortHandshake;
     // Owns the channels; deletes them and their driver rx bindings.
     delete transport;
 }
@@ -72,58 +62,6 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     if (PDN != nullptr) {
         selfDeviceType = PDN->getDeviceType();
     }
-
-    handshakeWirelessManager.initialize(wirelessManager);
-
-    inputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
-    inputPortHandshake->initialize(PDN);
-
-    // Only create the output port handshake when an output serial jack is present.
-    // Devices like the FDN that have only input jacks will pass nullptr for outputJack.
-    if (serialManager->getOutputJack() != nullptr) {
-        outputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::OUTPUT_JACK);
-        outputPortHandshake->initialize(PDN);
-    }
-
-    // Optionally initialize secondary input port (used by FDN which has two input jacks).
-    if (serialManager->getSecondaryInputJack() != nullptr) {
-        secondaryInputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK_SECONDARY);
-        secondaryInputPortHandshake->initialize(PDN);
-    }
-
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kHandshakeCommand,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<HandshakeWirelessManager*>(ctx)->processHandshakeCommand(macAddress, data, dataLen);
-        },
-        &handshakeWirelessManager
-    );
-
-    announcementEmitCallback_ = [this](const uint8_t* toMac, uint8_t announcementId, const std::vector<std::array<uint8_t, 6>>& peers) {
-        std::vector<uint8_t> buf;
-        buf.push_back(announcementId);
-        buf.push_back(static_cast<uint8_t>(peers.size()));
-        for (const auto& mac : peers) {
-            buf.insert(buf.end(), mac.begin(), mac.end());
-        }
-        wirelessManager_->sendEspNowData(toMac, PktType::kChainAnnouncement, buf.data(), buf.size());
-    };
-
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainAnnouncement,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<RemoteDeviceCoordinator*>(ctx)->processChainAnnouncementPacket(macAddress, data, dataLen);
-        },
-        this
-    );
-
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainAnnouncementAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<RemoteDeviceCoordinator*>(ctx)->processChainAnnouncementAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
 
     // One device-level channel per device-type PktType. Claiming a channel makes
     // its receive path live (the transport installs the driver rx handler). The
@@ -206,78 +144,10 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
                 onHeadTransfer(fromMac, transfer);
             });
     }
-}
 
-std::vector<SerialIdentifier> RemoteDeviceCoordinator::activePorts() const {
-    std::vector<SerialIdentifier> ports;
-    if (inputPortHandshake)          ports.push_back(SerialIdentifier::INPUT_JACK);
-    if (outputPortHandshake)         ports.push_back(SerialIdentifier::OUTPUT_JACK);
-    if (secondaryInputPortHandshake) ports.push_back(SerialIdentifier::INPUT_JACK_SECONDARY);
-    return ports;
-}
-
-HandshakeApp* RemoteDeviceCoordinator::handshakeAppForPort(SerialIdentifier port) const {
-    switch (port) {
-        case SerialIdentifier::INPUT_JACK:           return inputPortHandshake;
-        case SerialIdentifier::OUTPUT_JACK:          return outputPortHandshake;
-        case SerialIdentifier::INPUT_JACK_SECONDARY: return secondaryInputPortHandshake;
-        default:                                     return nullptr;
-    }
-}
-
-void RemoteDeviceCoordinator::processChainAnnouncementAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen < 1) return;
-    uint8_t ackedId = data[0];
-
-    for (SerialIdentifier port : activePorts()) {
-        const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
-        if (directPeer == nullptr || memcmp(directPeer->macAddr.data(), fromMac, 6) != 0) continue;
-
-        PendingAnnouncement& pending = pendingByPort_[portIndex(port)];
-        if (pending.active && pending.announcementId == ackedId) {
-            retryStats_.ackLatencyMsSum += pending.timer.getElapsedTime();
-            retryStats_.ackCount++;
-            pending.active = false;
-            pending.timer.invalidate();
-            return;
-        }
-    }
-}
-
-void RemoteDeviceCoordinator::processChainAnnouncementPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    // Wire format: [id(1)][count(1)][mac(6)]*count
-    if (dataLen < 2) return;
-    uint8_t announcementId = data[0];
-    uint8_t peerCount = data[1];
-    if (dataLen != 2 + (size_t)peerCount * 6) return;
-
-    // Determine which port this sender is the direct peer of. Gate on the
-    // handshake having reached CONNECTED — announcements during CONNECTING
-    // would populate the daisy list while the port status is still
-    // transitioning, violating the StatusMatchesPeerList invariant.
-    SerialIdentifier port;
-    bool found = false;
-    for (SerialIdentifier candidate : activePorts()) {
-        const Peer* directPeer = handshakeWirelessManager.getMacPeer(candidate);
-        if (directPeer == nullptr) continue;
-        if (memcmp(directPeer->macAddr.data(), fromMac, 6) != 0) continue;
-        if (mapHandshakeStateToStatus(candidate) != PortStatus::CONNECTED) continue;
-        port = candidate;
-        found = true;
-        break;
-    }
-    if (!found) return;
-
-    std::vector<std::array<uint8_t, 6>> peers;
-    for (uint8_t i = 0; i < peerCount; i++) {
-        std::array<uint8_t, 6> mac;
-        memcpy(mac.data(), data + 2 + i * 6, 6);
-        peers.push_back(mac);
-    }
-
-    onChainAnnouncementReceived(fromMac, port, peers);
-
-    wirelessManager_->sendEspNowData(fromMac, PktType::kChainAnnouncementAck, &announcementId, 1);
+    // Last: the jacks start carrying HELLO only once every channel a link event
+    // can reach is claimed.
+    enableHelloConnectivity();
 }
 
 void RemoteDeviceCoordinator::sync(Device* PDN) {
@@ -285,108 +155,17 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     // here every tick. Game managers must not pump it.
     if (transport != nullptr) transport->sync();
 
-    if (helloConnectivityEnabled) {
-        // The handshake is quiesced on HELLO jacks: skipping its onStateLoop is
-        // what keeps it off the UART (it neither consumes RX nor writes TX). The
-        // chain-announcement machinery below rides the handshake peer table, so it
-        // stays dormant here too.
-        for (SerialIdentifier port : HELLO_JACKS) {
-            HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-            if (machine) machine->onStateLoop(PDN);
-        }
-        // Three separate sites move the derived role: a link commits to CONNECTED in
-        // the loop above, dies through the Idle mount inside it, or latches a ring
-        // during HELLO parsing between ticks. Poll once per tick to catch all three.
-        // onRingClosed keeps firing at its own decision site (it is the shootout
-        // coordinator claim point), so a ring closure and the RING role it implies
-        // can be up to one tick apart.
-        maybeFireChainRoleChange();
-        return;
+    for (SerialIdentifier port : HELLO_JACKS) {
+        HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+        if (machine) machine->onStateLoop(PDN);
     }
-
-    if (inputPortHandshake)          inputPortHandshake->onStateLoop(PDN);
-    if (outputPortHandshake)         outputPortHandshake->onStateLoop(PDN);
-    if (secondaryInputPortHandshake) secondaryInputPortHandshake->onStateLoop(PDN);
-
-    // Wipe daisy-chained peers for any port whose direct peer has dropped.
-    for (SerialIdentifier port : activePorts()) {
-        if (handshakeWirelessManager.getMacPeer(port) == nullptr) {
-            daisyChainedByPort_[portIndex(port)].clear();
-        }
-    }
-
-    // Detect direct peer registration transitions and emit chain announcements.
-    for (SerialIdentifier port : activePorts()) {
-        const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
-        auto& prev = previousDirectPeer_[portIndex(port)];
-        bool nowPresent = (directPeer != nullptr);
-        bool wasPresent = prev.has_value();
-
-        if (!nowPresent && wasPresent) {
-            // Notify the other ports about the disconnection
-            for (SerialIdentifier otherPort : activePorts()) {
-                if (otherPort == port) continue;
-                const Peer* otherDirect = handshakeWirelessManager.getMacPeer(otherPort);
-                if (otherDirect != nullptr) {
-                    emitAnnouncementVia(otherPort, {});
-                }
-            }
-            if (peerLostCallback) {
-                peerLostCallback(prev->data());
-            }
-            notifyDisconnect();
-        }
-
-        if (nowPresent && !wasPresent) {
-            registerPeer(directPeer->macAddr.data());
-            // Notify all other ports about the new direct peer.
-            for (SerialIdentifier otherPort : activePorts()) {
-                if (otherPort == port) continue;
-                const Peer* otherDirect = handshakeWirelessManager.getMacPeer(otherPort);
-                if (otherDirect != nullptr) {
-                    std::vector<std::array<uint8_t, 6>> forwardList;
-                    forwardList.push_back(directPeer->macAddr);
-                    for (const auto& mac : daisyChainedByPort_[portIndex(port)]) {
-                        forwardList.push_back(mac);
-                    }
-                    emitAnnouncementVia(otherPort, forwardList);
-                    emitAnnouncementVia(port, peersReachableVia(otherPort));
-                }
-            }
-            notifyConnect();
-        }
-
-        prev = nowPresent ? std::optional<std::array<uint8_t, 6>>{directPeer->macAddr}
-                          : std::nullopt;
-    }
-
-    // Retransmit any unacked pending announcements past the ack timeout.
-    for (SerialIdentifier port : activePorts()) {
-        PendingAnnouncement& pending = pendingByPort_[portIndex(port)];
-        if (pending.active && pending.timer.expired()) {
-            const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
-            if (directPeer != nullptr && announcementEmitCallback_ && pending.retries < maxRetries_) {
-                announcementEmitCallback_(directPeer->macAddr.data(), pending.announcementId, pending.peers);
-                pending.retries++;
-                pending.timer.setTimer(ackTimeoutMs_ << pending.retries);
-                retryStats_.retries++;
-            } else {
-                if (pending.retries >= maxRetries_ && directPeer != nullptr) {
-                    const uint8_t* t = directPeer->macAddr.data();
-                    LOG_W("RDC",
-                        "kChainAnnouncement abandoned after %u retries: target=%02X:%02X:%02X:%02X:%02X:%02X id=%u",
-                        (unsigned)maxRetries_,
-                        t[0], t[1], t[2], t[3], t[4], t[5],
-                        (unsigned)pending.announcementId);
-                    retryStats_.abandons++;
-                }
-                pending.active = false;
-                pending.retries = 0;
-                pending.peers.clear();
-                pending.timer.invalidate();
-            }
-        }
-    }
+    // Three separate sites move the derived role: a link commits to CONNECTED in
+    // the loop above, dies through the Idle mount inside it, or latches a ring
+    // during HELLO parsing between ticks. Poll once per tick to catch all three.
+    // onRingClosed keeps firing at its own decision site (it is the shootout
+    // coordinator claim point), so a ring closure and the RING role it implies
+    // can be up to one tick apart.
+    maybeFireChainRoleChange();
 }
 
 size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
@@ -399,21 +178,16 @@ size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
-    // When HELLO owns the jack, connectivity comes from its link SM, not the
-    // quiesced handshake.
-    if (isHelloJack(port)) {
-        return mapHelloLinkToStatus(port);
-    }
-    // A port is CONNECTED or it isn't; a daisy-chained peer does not upgrade its
-    // status. Chain position is a device-level fact (getChainRole()).
-    return mapHandshakeStateToStatus(port);
+    // A port is CONNECTED or it isn't. Chain position is a device-level fact
+    // (getChainRole()).
+    return mapHelloLinkToStatus(port);
 }
 
 PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
     std::vector<std::array<uint8_t, 6>> peerAddresses;
 
-    // Composed from getPeerMac so a jack cannot report one direct peer here and a
-    // different one there; it owns the HELLO / handshake split.
+    // Composed from getPeerMac so a jack cannot report one direct peer here and
+    // a different one there.
     const uint8_t* directPeer = getPeerMac(port);
     if (directPeer != nullptr) {
         std::array<uint8_t, 6> mac;
@@ -421,93 +195,7 @@ PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
         peerAddresses.push_back(mac);
     }
 
-    const auto& daisyChained = daisyChainedByPort_[portIndex(port)];
-    for (const auto& mac : daisyChained) {
-        peerAddresses.push_back(mac);
-    }
-
     return PortState{ port, getPortStatus(port), peerAddresses };
-}
-
-void RemoteDeviceCoordinator::onChainAnnouncementReceived(
-    const uint8_t* fromMac,
-    SerialIdentifier port,
-    const std::vector<std::array<uint8_t, 6>>& announcedPeers) {
-
-    const Peer* directPeer = handshakeWirelessManager.getMacPeer(port);
-    if (directPeer == nullptr || memcmp(directPeer->macAddr.data(), fromMac, 6) != 0) {
-        return;
-    }
-
-    const uint8_t* selfMac = wirelessManager_ ? wirelessManager_->getMacAddress() : nullptr;
-
-    std::vector<std::array<uint8_t, 6>> filtered;
-    for (const auto& mac : announcedPeers) {
-        if (memcmp(mac.data(), directPeer->macAddr.data(), 6) == 0) continue;
-        if (selfMac && memcmp(mac.data(), selfMac, 6) == 0) continue;
-        filtered.push_back(mac);
-    }
-
-    auto& chain = daisyChainedByPort_[portIndex(port)];
-    if (filtered == chain) {
-        return;
-    }
-
-    auto contains = [](const std::vector<std::array<uint8_t, 6>>& v,
-                       const std::array<uint8_t, 6>& m) {
-        for (const auto& e : v) if (e == m) return true;
-        return false;
-    };
-    std::vector<std::array<uint8_t, 6>> toRemove;
-    for (const auto& m : chain) if (!contains(filtered, m)) toRemove.push_back(m);
-    for (const auto& m : toRemove) removeDaisyChainedPeer(port, m.data());
-    for (const auto& m : filtered) if (!contains(chain, m)) addDaisyChainedPeer(port, m.data());
-
-    notifyDaisyChained();
-
-    // Forward propagation to all other ports with a direct peer.
-    for (SerialIdentifier otherPort : activePorts()) {
-        if (otherPort == port) continue;
-        const Peer* otherDirect = handshakeWirelessManager.getMacPeer(otherPort);
-        if (otherDirect != nullptr) {
-            std::vector<std::array<uint8_t, 6>> forwardList;
-            forwardList.push_back(directPeer->macAddr);
-            for (const auto& mac : filtered) {
-                forwardList.push_back(mac);
-            }
-            emitAnnouncementVia(otherPort, forwardList);
-        }
-    }
-}
-
-void RemoteDeviceCoordinator::emitAnnouncementVia(SerialIdentifier viaPort, const std::vector<std::array<uint8_t, 6>>& peers) {
-    const Peer* directPeer = handshakeWirelessManager.getMacPeer(viaPort);
-    if (directPeer == nullptr || !announcementEmitCallback_) return;
-
-    uint8_t id = nextAnnouncementId_++;
-    if (nextAnnouncementId_ == 0) nextAnnouncementId_ = 1;
-
-    PendingAnnouncement& pending = pendingByPort_[portIndex(viaPort)];
-    pending.active = true;
-    pending.announcementId = id;
-    pending.retries = 0;
-    pending.peers = peers;
-    pending.timer.setTimer(ackTimeoutMs_);
-    retryStats_.sends++;
-
-    announcementEmitCallback_(directPeer->macAddr.data(), id, peers);
-}
-
-std::vector<std::array<uint8_t, 6>> RemoteDeviceCoordinator::peersReachableVia(SerialIdentifier port) {
-    std::vector<std::array<uint8_t, 6>> result;
-    const Peer* direct = handshakeWirelessManager.getMacPeer(port);
-    if (direct != nullptr) {
-        result.push_back(direct->macAddr);
-        for (const auto& mac : daisyChainedByPort_[portIndex(port)]) {
-            result.push_back(mac);
-        }
-    }
-    return result;
 }
 
 void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
@@ -518,70 +206,26 @@ void RemoteDeviceCoordinator::setPeerLostCallback(std::function<void(const uint8
     peerLostCallback = std::move(callback);
 }
 
-void RemoteDeviceCoordinator::setAnnouncementEmitCallback(AnnouncementEmitCallback callback) {
-    announcementEmitCallback_ = callback;
-}
-
 DeviceType RemoteDeviceCoordinator::getPeerDeviceType(SerialIdentifier port) const {
-    // Same split getPortStatus makes: when HELLO owns the jack the handshake peer
-    // table is never populated, so the kind comes from the peer's context instead
-    // and reads UNKNOWN until that exchange completes.
-    if (isHelloJack(port)) {
-        return helloByPort[portIndex(port)].peerDeviceType;
-    }
-    const Peer* macPeer = handshakeWirelessManager.getMacPeer(port);
-    return macPeer ? macPeer->deviceType : DeviceType::UNKNOWN;
-}
-
-PortStatus RemoteDeviceCoordinator::mapHandshakeStateToStatus(SerialIdentifier port) {
-    HandshakeApp* app = handshakeAppForPort(port);
-
-    if (!app || !app->getCurrentState()) {
-        return PortStatus::DISCONNECTED;
-    }
-
-    int stateId = app->getCurrentState()->getStateId();
-
-    switch (stateId) {
-        case HandshakeStateId::OUTPUT_CONNECTED_STATE:
-        case HandshakeStateId::INPUT_CONNECTED_STATE:
-            return PortStatus::CONNECTED;
-
-        case HandshakeStateId::OUTPUT_SEND_ID_STATE:
-        case HandshakeStateId::INPUT_SEND_ID_STATE:
-            return PortStatus::CONNECTING;
-
-        case HandshakeStateId::OUTPUT_IDLE_STATE:
-        case HandshakeStateId::INPUT_IDLE_STATE:
-        default:
-            if (handshakeWirelessManager.getMacPeer(port) != nullptr) {
-                return PortStatus::CONNECTING;
-            }
-            return PortStatus::DISCONNECTED;
-    }
+    // The kind comes from the peer's context, so it reads UNKNOWN until that
+    // exchange completes.
+    return helloByPort[portIndex(port)].peerDeviceType;
 }
 
 const uint8_t* RemoteDeviceCoordinator::getPeerMac(SerialIdentifier port) const {
-    // Same split as getPortStatus: under HELLO the peer identity lives on the
-    // per-jack link machine, and the quiesced handshake's peer table is never
-    // populated, so reading it there would report every jack as peerless.
-    if (isHelloJack(port)) {
-        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-        // An Idle jack has no peer. It can already hold the MAC that arms next
-        // tick's commit to Connecting, and serving that would contradict the same
-        // jack reporting DISCONNECTED.
-        if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) {
-            return nullptr;
-        }
-        return machine->peer().data();
+    const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+    // An Idle jack has no peer. It can already hold the MAC that arms next
+    // tick's commit to Connecting, and serving that would contradict the same
+    // jack reporting DISCONNECTED.
+    if (machine == nullptr || machine->currentStateId() == HELLO_LINK_IDLE) {
+        return nullptr;
     }
-    const Peer* peer = handshakeWirelessManager.getMacPeer(port);
-    return peer ? peer->macAddr.data() : nullptr;
+    return machine->peer().data();
 }
 
 bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     if (!mac) return false;
-    for (SerialIdentifier port : activePorts()) {
+    for (SerialIdentifier port : HELLO_JACKS) {
         const uint8_t* peer = getPeerMac(port);
         if (peer && memcmp(peer, mac, 6) == 0) return true;
     }
@@ -589,45 +233,7 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
 }
 
 bool RemoteDeviceCoordinator::canReachPeer(const uint8_t* mac) const {
-    if (!mac) return false;
-    if (isDirectPeer(mac)) return true;
-    for (SerialIdentifier port : activePorts()) {
-        for (const auto& daisy : daisyChainedByPort_[portIndex(port)]) {
-            if (memcmp(daisy.data(), mac, 6) == 0) return true;
-        }
-    }
-    return false;
-}
-
-void RemoteDeviceCoordinator::addDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress) {
-    std::array<uint8_t, 6> mac;
-    memcpy(mac.data(), macAddress, 6);
-    auto& chain = daisyChainedByPort_[portIndex(port)];
-    for (const auto& existing : chain) {
-        if (existing == mac) return;
-    }
-    if (chain.size() >= kMaxChainPeersPerPort) return;
-    chain.push_back(mac);
-    registerPeer(macAddress);
-}
-
-void RemoteDeviceCoordinator::removeDaisyChainedPeer(SerialIdentifier port, const uint8_t* macAddress) {
-    auto& chain = daisyChainedByPort_[portIndex(port)];
-    for (auto it = chain.begin(); it != chain.end(); ++it) {
-        if (memcmp(it->data(), macAddress, 6) == 0) {
-            chain.erase(it);
-            // Only unregister if the MAC is not reachable via another port.
-            for (SerialIdentifier otherPort : activePorts()) {
-                if (otherPort == port) continue;
-                for (const auto& m : daisyChainedByPort_[portIndex(otherPort)]) {
-                    if (memcmp(m.data(), macAddress, 6) == 0) return;
-                }
-            }
-            if (isDirectPeer(macAddress)) return;
-            unregisterPeer(macAddress);
-            return;
-        }
-    }
+    return isDirectPeer(mac);
 }
 
 void RemoteDeviceCoordinator::registerPeer(const uint8_t* macAddress) {
@@ -636,27 +242,17 @@ void RemoteDeviceCoordinator::registerPeer(const uint8_t* macAddress) {
     }
 }
 
-void RemoteDeviceCoordinator::notifyConnect() {
-    if (chainChangeCallback) chainChangeCallback();
-}
-
-void RemoteDeviceCoordinator::notifyDisconnect() {
-    if (chainChangeCallback) chainChangeCallback();
-}
-
-void RemoteDeviceCoordinator::notifyDaisyChained() {
-    if (chainChangeCallback) chainChangeCallback();
+void RemoteDeviceCoordinator::notifyChainChange() {
+    // Copied before the call for the same reason the jack-change dispatch does
+    // it: a handler that reacts by tearing its own state down clears this slot,
+    // destroying the std::function whose operator() frame is still live.
+    std::function<void()> handler = chainChangeCallback;
+    if (handler) handler();
 }
 
 void RemoteDeviceCoordinator::unregisterPeer(const uint8_t* macAddress) {
     if (wirelessManager_ != nullptr) {
         wirelessManager_->removeEspNowPeer(macAddress);
-    }
-    for (SerialIdentifier port : activePorts()) {
-        const Peer* peer = handshakeWirelessManager.getMacPeer(port);
-        if (peer != nullptr && memcmp(peer->macAddr.data(), macAddress, 6) == 0) {
-            handshakeWirelessManager.removeMacPeer(port);
-        }
     }
 }
 
@@ -677,14 +273,7 @@ HWSerialWrapper* RemoteDeviceCoordinator::jackWrapper(SerialIdentifier port) con
     }
 }
 
-bool RemoteDeviceCoordinator::isHelloJack(SerialIdentifier port) const {
-    return helloConnectivityEnabled && jackWrapper(port) != nullptr;
-}
-
 void RemoteDeviceCoordinator::enableHelloConnectivity() {
-    if (helloConnectivityEnabled) return;
-    helloConnectivityEnabled = true;
-
     if (wirelessManager_ != nullptr) {
         const uint8_t* mac = wirelessManager_->getMacAddress();
         if (mac != nullptr) memcpy(selfMac.data(), mac, 6);
@@ -717,6 +306,7 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // operator() frame is still live.
             JackChangeCallback handler = jackChangeCallback;
             if (handler) handler(j, connected);
+            notifyChainChange();
         };
         // Every link-death path mounts Idle; the initial mount fires this too, a
         // no-op on zero state.
@@ -727,6 +317,8 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
                 // Downstream (OUTPUT) departures are this device's to report: it
                 // is the only node that sees that HELLO go silent (#158).
                 if (j == SerialIdentifier::OUTPUT_JACK) reportDownstreamLoss(mac.data());
+                std::function<void(const uint8_t*)> lost = peerLostCallback;
+                if (lost) lost(mac.data());
             }
             onLinkLost(port);
         };
@@ -745,8 +337,6 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
 }
 
 void RemoteDeviceCoordinator::emitHello() {
-    if (!helloConnectivityEnabled) return;
-
     HelloPayload hello{};
     memcpy(hello.source, selfMac.data(), 6);
     hello.deviceType = static_cast<uint8_t>(selfDeviceType);
@@ -757,7 +347,8 @@ void RemoteDeviceCoordinator::emitHello() {
     const uint64_t head = chainHeadState.load();
     const uint64_t mac48 = head & HEAD_MAC_MASK;
     if (mac48 != 0) unpackMac(mac48, hello.headMac);
-    hello.confirmed = (head & CONFIRMED_BIT) != 0 ? 1 : 0;
+    if ((head & CONFIRMED_BIT) != 0) hello.flags |= HELLO_FLAG_CONFIRMED;
+    if (isInRing()) hello.flags |= HELLO_FLAG_RING_CLOSED;
 
     const std::vector<uint8_t> frame = encodeFramed(hello);
     for (SerialIdentifier port : HELLO_JACKS) {
@@ -999,12 +590,6 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
         const uint8_t* peer = getPeerMac(port);
         if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
     }
-    // A MAC still routed through a daisy chain keeps its slot too.
-    for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
-        for (const std::array<uint8_t, 6>& m : chain) {
-            if (memcmp(m.data(), mac, 6) == 0) return;
-        }
-    }
     // A peer past the other-jack scan has left this jack entirely, so its
     // context retries are dead regardless of whether the slot survives below: a
     // retransmit re-registers its target inside the driver (EnsurePeerIsRegistered),
@@ -1057,6 +642,21 @@ void RemoteDeviceCoordinator::unpackMac(uint64_t value, uint8_t* out) {
     }
 }
 
+bool RemoteDeviceCoordinator::isInRing() const {
+    if (ringLatched) return true;
+    // Relayed membership. An upstream asserting closure only concerns this
+    // device while the loop can still run through it, so both chain links must
+    // be up — holding a head already implies a Connected INPUT, and the OUTPUT
+    // check makes a pulled downstream cable drop membership here immediately
+    // rather than waiting for the head's own evidence window.
+    // Requiring a held head is also what keeps the relay acyclic: the latching
+    // device holds none, so its assertion is never fed back to it and clearing
+    // its latch drains the flag round the loop.
+    if ((chainHeadState.load() & HEAD_MAC_MASK) == 0) return false;
+    if (getHelloLinkState(SerialIdentifier::OUTPUT_JACK) != HelloLinkState::CONNECTED) return false;
+    return upstreamRingClosed;
+}
+
 ChainRole RemoteDeviceCoordinator::getChainRole() const {
     if (ringLatched) return ChainRole::RING;
     if (getHelloLinkState(SerialIdentifier::INPUT_JACK) == HelloLinkState::CONNECTED) {
@@ -1076,6 +676,8 @@ const uint8_t* RemoteDeviceCoordinator::getHeadMac() const {
 }
 
 void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
+    upstreamRingClosed = (hello.flags & HELLO_FLAG_RING_CLOSED) != 0;
+
     // The upstream peer's effective head: its advertised headMac if it has one,
     // else its own MAC (meaning the peer is itself the head). Inheritance is not
     // an election — the head's MAC flows down the chain unchallenged; MACs are
@@ -1195,6 +797,7 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
         // The departed peer's claim dies with it, or the next upstream to reach
         // Connected would be adopted as whatever this one last advertised.
         upstreamAdvertisedHead.fill(0);
+        upstreamRingClosed = false;
         // A downstream-loss report is owed only while we remain a child under a
         // head. Becoming our own head voids it: clear the pending re-send state so
         // a later head adoption (applyUpstreamHead's successor-chase) cannot ship
@@ -1209,19 +812,14 @@ void RemoteDeviceCoordinator::releaseHeadPeer(uint64_t headMac48) {
     if (headMac48 == 0) return;
     uint8_t mac[6];
     unpackMac(headMac48, mac);
-    // Same keep-slot guards as releaseHelloPeer: an adjacent link or a daisy
-    // record still using this MAC keeps the radio slot alive.
+    // Same keep-slot guard as releaseHelloPeer: an adjacent link still using
+    // this MAC keeps the radio slot alive.
     for (SerialIdentifier port : HELLO_JACKS) {
         const uint8_t* peer = getPeerMac(port);
         if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
     }
-    for (const std::vector<std::array<uint8_t, 6>>& chain : daisyChainedByPort_) {
-        for (const std::array<uint8_t, 6>& m : chain) {
-            if (memcmp(m.data(), mac, 6) == 0) return;
-        }
-    }
-    // Past the keep-slot guards: the head truly departed (no adjacent link or
-    // daisy record still names it). Only on this actual-release path are its
+    // Past the keep-slot guard: the head truly departed (no adjacent link still
+    // names it). Only on this actual-release path are its
     // roster retries dead traffic; drop them with the slot so a retransmit can't
     // re-register it inside the driver. When a keep-slot guard retained the slot
     // above, the retries are left to self-heal (a seqId bump ignores late acks).

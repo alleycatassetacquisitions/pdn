@@ -3,7 +3,6 @@
 #include <gtest/gtest.h>
 
 #include "rdc-hello-tests.hpp"
-#include "rdc-tests.hpp"
 #include "state/connect-state.hpp"
 #include "state/state-lifecycle.hpp"
 
@@ -18,10 +17,8 @@
 // mounting the incoming one, so the single observer slot is handed from state to
 // state without arbitration.
 //
-// These run on RDCHelloTests' fixture, which calls enableHelloConnectivity().
-// That matters twice over: the link machine is the only emitter of jack edges,
-// and the mount replay is gated on the same flag. No caller under src/ enables
-// HELLO, so the shipping build delivers neither edges nor replays.
+// These run on RDCHelloTests' fixture. The link machine is the only emitter of
+// jack edges, and the mount replay reads the same link state.
 
 // Records every jack event it is handed, tagged with whether the state was mounted
 // when it landed, which is what the replay-ordering tests assert on.
@@ -364,26 +361,6 @@ inline void rdcHelloPeerDeviceTypeComesFromContextChannel(RDCHelloTests* suite) 
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::UNKNOWN)
         << "the departed peer's kind survived the swap";
-}
-
-// The replay is gated on HELLO because only the link machine emits jack edges.
-// With the handshake driving connectivity the port reads CONNECTED, but replaying
-// it would hand out a connect that no disconnect can ever follow.
-inline void connectStateSkipsReplayWhenHelloOff(RDCTests* suite) {
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE)
-        << "no link machine, so no edge source for this jack";
-    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
-
-    RecordingConnectState state(&suite->rdc, /*stateId=*/1);
-    mountState(&state, &suite->device);
-
-    EXPECT_TRUE(state.events.empty())
-        << "a handshake-connected jack was replayed as a HELLO edge";
 }
 
 // A state destroyed while still mounted — app teardown, which never dismounts —

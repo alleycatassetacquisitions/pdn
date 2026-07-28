@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
+#include "rdc-hello-tests.hpp"
 #include "utility-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
@@ -12,6 +13,9 @@ using ::testing::Return;
 using ::testing::_;
 using ::testing::NiceMock;
 
+// Physical connectivity here is the production HELLO path: framed HELLO bytes
+// pushed into a native jack driver, drained by its exec() pump into the RDC's
+// parser, then the ESP-NOW context exchange completed to commit the link.
 class ChainDuelManagerTests : public testing::Test {
 public:
     void SetUp() override {
@@ -19,25 +23,22 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(localMac));
-        ON_CALL(*device.mockPeerComms, getPeerCommsState()).WillByDefault(Return(PeerCommsState::CONNECTED));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kHandshakeCommand), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedHandler),
-                testing::SaveArg<2>(&capturedCtx)));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kChainAnnouncement), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedChainHandler),
-                testing::SaveArg<2>(&capturedChainCtx)));
-        ON_CALL(*device.mockPeerComms, setPacketHandler(testing::Eq(PktType::kChainAnnouncementAck), _, _))
-            .WillByDefault(testing::DoAll(
-                testing::SaveArg<1>(&capturedAckHandler),
-                testing::SaveArg<2>(&capturedAckCtx)));
+        wireRadioDefaults(device, localMac);
+        device.serialManager->setOutputJack(&outJack);
+        device.serialManager->setInputJack(&inJack);
+        ON_CALL(*device.mockPeerComms,
+                setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
+            .WillByDefault(testing::DoAll(testing::SaveArg<1>(&contextHandler),
+                                          testing::SaveArg<2>(&contextCtx)));
 
+        rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
+
+        // RDC traffic (context exchange, roster announces) shares this mock with
+        // the per-test game-packet expectations. A catch-all declared here keeps
+        // those sends from reading as unexpected; gmock still prefers the
+        // narrower expectations a test declares afterwards.
+        EXPECT_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
     }
 
     void TearDown() override {
@@ -45,31 +46,37 @@ public:
         delete fakeClock;
     }
 
-    void deliverPacketViaRDC(int command, SerialIdentifier senderJack, int deviceType = 0) {
-        SerialIdentifier receivingJack = (senderJack == SerialIdentifier::OUTPUT_JACK)
-            ? SerialIdentifier::INPUT_JACK : SerialIdentifier::OUTPUT_JACK;
-        struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
-        RawPacket pkt{ static_cast<int>(senderJack), static_cast<int>(receivingJack), deviceType, command };
-        uint8_t dummyMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-
-        ASSERT_NE(capturedHandler, nullptr);
-        capturedHandler(dummyMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt), capturedCtx);
+    /// Feeds a peer's PdnConnectionContext in through the handler the reliable
+    /// transport registered with the radio driver — the production receive path.
+    void deliverPdnContext(const uint8_t* peerMac) {
+        if (contextHandler == nullptr) return;
+        std::vector<uint8_t> bytes = pdnContextBytes(/*chainRole=*/0, /*userId=*/4242,
+                                                     ++contextSeqId);
+        contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }
 
-    void connectInputPort() {
+    /// Brings `jack` from Idle to Connected against `peerMac`, optionally
+    /// carrying an advertised chain head.
+    void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
+                       const uint8_t* advertisedHead = nullptr) {
+        deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
         rdc.sync(&device);
-        deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
-        rdc.sync(&device);
-        deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::OUTPUT_JACK);
+        deliverPdnContext(peerMac);
         rdc.sync(&device);
     }
 
-    void connectOutputPort() {
-        device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-        rdc.sync(&device);
-        deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+    /// Only the peer's first HELLO: the jack holds its MAC but the exchange has
+    /// not completed, so it stays CONNECTING.
+    void beginConnectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac) {
+        deliverFrame(jack, chainHelloFrame(peerMac, nullptr));
         rdc.sync(&device);
     }
+
+    /// Brings the supporter-side jack up against supporterMac.
+    void connectInputPort() { connectJackTo(inJack, supporterMac); }
+
+    /// Brings the opponent-side jack up against opponentMac.
+    void connectOutputPort() { connectJackTo(outJack, opponentMac); }
 
     // Set up the physical hunter-champion topology (direct peers only — no
     // role state). Tests that need roles applied should call
@@ -78,17 +85,15 @@ public:
     //   INPUT  (supporter jack) → hunter peer (supporterMac)
     void setupHunterChampion() {
         player.setIsHunter(true);
-        device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-        rdc.sync(&device);
-        deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
-        rdc.sync(&device);
-        rdc.sync(&device);
-        struct RawPacket { int sendingJack; int receivingJack; int deviceType; int command; } __attribute__((packed));
-        RawPacket pkt{ static_cast<int>(SerialIdentifier::OUTPUT_JACK), static_cast<int>(SerialIdentifier::INPUT_JACK), 0, HSCommand::EXCHANGE_ID };
-        capturedHandler(supporterMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt), capturedCtx);
-        rdc.sync(&device);
-        capturedHandler(supporterMac, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt), capturedCtx);
-        rdc.sync(&device);
+        connectOutputPort();
+        connectInputPort();
+    }
+
+    /// Closes a ring around this device: it heads a chain out of OUTPUT and its
+    /// own MAC comes back on INPUT, which is the only local evidence of closure.
+    void closeRingAroundSelf() {
+        connectOutputPort();
+        connectJackTo(inJack, supporterMac, localMac);
     }
 
     void applyHunterChampionRoles(ChainDuelManager& cdm) {
@@ -97,16 +102,17 @@ public:
     }
 
     MockDevice device;
+    NativeSerialDriver outJack{"cdm-out"};
+    NativeSerialDriver inJack{"cdm-in"};
+    // Declared after the jacks so it is destroyed first; its dtor clears their
+    // byte callbacks, mirroring production where the drivers outlive the RDC.
     RemoteDeviceCoordinator rdc;
     FakePlatformClock* fakeClock;
     Player player;
 
-    PeerCommsInterface::PacketCallback capturedHandler = nullptr;
-    void* capturedCtx = nullptr;
-    PeerCommsInterface::PacketCallback capturedChainHandler = nullptr;
-    void* capturedChainCtx = nullptr;
-    PeerCommsInterface::PacketCallback capturedAckHandler = nullptr;
-    void* capturedAckCtx = nullptr;
+    PeerCommsInterface::PacketCallback contextHandler = nullptr;
+    void* contextCtx = nullptr;
+    uint8_t contextSeqId = 0;
     uint8_t localMac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     uint8_t supporterMac[6] = {0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11};
@@ -142,20 +148,20 @@ inline void cdmCanInitiateMatchRequiresConnectedOpponentJack(ChainDuelManagerTes
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    // One serial frame: the OUTPUT jack knows the peer MAC and its PDN kind, but
-    // the connection is still half-open.
-    suite->device.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    suite->rdc.sync(&suite->device);
+    // One HELLO: the OUTPUT jack knows the peer MAC, but the context exchange
+    // has not answered, so the connection is still half-open.
+    suite->beginConnectJackTo(suite->outJack, suite->opponentMac);
     cdm.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);  // bounty opponent
 
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTING);
-    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
     EXPECT_FALSE(cdm.canInitiateMatch());
 
-    suite->deliverPacketViaRDC(HSCommand::EXCHANGE_ID, SerialIdentifier::INPUT_JACK);
+    // The peer's context lands, proving a path back.
+    suite->deliverPdnContext(suite->opponentMac);
     suite->rdc.sync(&suite->device);
 
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(suite->rdc.getPeerDeviceType(SerialIdentifier::OUTPUT_JACK), DeviceType::PDN);
     EXPECT_TRUE(cdm.canInitiateMatch());
 }
 
@@ -238,21 +244,11 @@ inline void cdmIsChampionFalseWithSameRoleOpponent(ChainDuelManagerTests* suite)
     EXPECT_FALSE(cdm.isChampion());
 }
 
-// Ring topology (same MAC reachable via both jacks): isChampion must return false.
+// Inside a closed ring nobody is a champion: the shootout owns that topology.
 inline void cdmIsChampionFalseInRing(ChainDuelManagerTests* suite) {
-    suite->setupHunterChampion();
+    suite->closeRingAroundSelf();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->applyHunterChampionRoles(cdm);
-
-    // supporterMac is already the direct peer on INPUT_JACK (supporter jack).
-    // Announce it as also reachable via OUTPUT_JACK (opponent jack) to create
-    // the cross-port overlap that isLoop() detects.
-    std::array<uint8_t, 6> supporterArr;
-    memcpy(supporterArr.data(), suite->supporterMac, 6);
-    suite->rdc.onChainAnnouncementReceived(
-        suite->opponentMac,
-        SerialIdentifier::OUTPUT_JACK,
-        {supporterArr});
 
     ASSERT_TRUE(cdm.isLoop());
     EXPECT_FALSE(cdm.isChampion());
@@ -926,26 +922,17 @@ inline void chainDuelThreeDeviceConfirm(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(confirmTarget.data(), macA, 6), 0);  // direct to A
     EXPECT_EQ(memcmp(confirmPayload.originatorMac, suite->localMac, 6), 0);
 
-    // Leg 4: Champion A receives and records.
-    // Use a fresh "distant supporter" MAC since the shared fixture's self-MAC
-    // (localMac) cannot appear in the daisy-chain — RDC filters self-MAC out.
-    // Seed the chain via an announcement from supporterMac (the direct peer).
-    // The RDC re-emits a chain announcement to the opposite jack after state
-    // change, so allow that send.
-    EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kChainAnnouncement, _, _)).WillRepeatedly(Return(1));
-    uint8_t distantMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
-    std::array<uint8_t, 6> distantArr;
-    memcpy(distantArr.data(), distantMac, 6);
-    suite->rdc.onChainAnnouncementReceived(
-        suite->supporterMac, SerialIdentifier::INPUT_JACK, {distantArr});
-
+    // Leg 4: Champion A receives and records. The originator has to be A's own
+    // supporter-jack peer: RDC no longer enumerates anything past the cable, so
+    // a supporter further down the chain confirms into a champion that cannot
+    // place it and contributes no boost (#144 moves that membership fact to the
+    // head roster, which the champion is not).
     ChainDuelManager a(&suite->player, suite->device.wirelessManager, &suite->rdc);
     a.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
     a.setPeerRole(SerialIdentifier::INPUT_JACK, true);
     ASSERT_TRUE(a.isChampion());
 
-    a.onConfirmReceived(suite->supporterMac, distantMac, confirmPayload.seqId);
+    a.onConfirmReceived(suite->supporterMac, suite->supporterMac, confirmPayload.seqId);
     EXPECT_EQ(a.getBoostMs(), 15u);
 }
 
@@ -997,7 +984,7 @@ inline void cdmChampionToSupporterClearsStaleSelfMac(ChainDuelManagerTests* suit
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
 
-    // Allow all sends; connectOutputPort triggers handshake sends too.
+    // Allow all sends; connectOutputPort puts a context exchange on the air too.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
 
@@ -1085,9 +1072,8 @@ inline void chainDuelReconfigRecovers(ChainDuelManagerTests* suite) {
     s1.setPeerRole(SerialIdentifier::INPUT_JACK, true);
 
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounceAck, _, _)).WillRepeatedly(Return(1));
-    EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kHandshakeCommand, _, _)).WillRepeatedly(Return(1));
+                sendData(_, PktType::kRoleAnnounceAck, _, _))
+        .WillRepeatedly(Return(1));
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));

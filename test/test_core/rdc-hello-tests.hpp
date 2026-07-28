@@ -78,7 +78,6 @@ public:
                 lastDisconnectJack = jack;
             }
         });
-        rdc.enableHelloConnectivity();
     }
 
     /// Restores the real platform clock.
@@ -938,58 +937,19 @@ inline void rdcHelloByteModeSuppressesStringAssembly() {
     EXPECT_TRUE(legacyString);
 }
 
-// (g) RDC::sync() does not run the old handshake onStateLoop on a HELLO jack.
-// Falsifiable: the same serial MAC drives the handshake to SEND_ID (which emits
-// a kHandshakeCommand) on a plain RDC, but not on a HELLO-enabled one.
-inline void rdcHelloSyncSkipsHandshakeOnStateLoop() {
-    static uint8_t selfMac[6] = {0x99, 0x88, 0x77, 0x66, 0x55, 0x44};
-
-    auto driveHandshakeMac = [](MockDevice& dev, RemoteDeviceCoordinator& coord,
-                                int& handshakeSends) {
-        ON_CALL(*dev.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(*dev.mockPeerComms, getMacAddress()).WillByDefault(Return(selfMac));
-        ON_CALL(*dev.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*dev.mockPeerComms, sendData(_, PktType::kHandshakeCommand, _, _))
-            .WillByDefault(testing::DoAll(
-                testing::InvokeWithoutArgs([&handshakeSends]() { handshakeSends++; }),
-                Return(1)));
-        coord.setExternalConnectivityTask(true);
-        coord.initialize(dev.wirelessManager, dev.serialManager, &dev);
-    };
-
-    // Control: a plain RDC advances the handshake on sync(), emitting a
-    // kHandshakeCommand from OUTPUT_SEND_ID_STATE. Proves the input is live.
-    MockDevice control;
-    RemoteDeviceCoordinator controlRdc;
-    int controlSends = 0;
-    driveHandshakeMac(control, controlRdc, controlSends);
-    control.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    controlRdc.sync(&control);
-    EXPECT_GT(controlSends, 0);
-
-    // Subject: a HELLO-enabled RDC skips the handshake onStateLoop, so the same
-    // serial MAC never advances it to SEND_ID.
-    MockDevice subject;
-    RemoteDeviceCoordinator subjectRdc;
-    int subjectSends = 0;
-    driveHandshakeMac(subject, subjectRdc, subjectSends);
-    subjectRdc.enableHelloConnectivity();
-    subject.outputJackSerial.stringCallback(SEND_MAC_ADDRESS + "AA:BB:CC:DD:EE:FF#1t1");
-    subjectRdc.sync(&subject);
-    subjectRdc.sync(&subject);
-    EXPECT_EQ(subjectSends, 0);
-}
-
 // ============================================
 // Device-level chain state machine (#156)
 // ============================================
 
-// A framed HELLO carrying a source MAC and, optionally, an advertised head.
-inline std::vector<uint8_t> chainHelloFrame(const uint8_t* source, const uint8_t* head) {
+// A framed HELLO carrying a source MAC and, optionally, an advertised head
+// and flag bits.
+inline std::vector<uint8_t> chainHelloFrame(const uint8_t* source, const uint8_t* head,
+                                            uint8_t flags = 0) {
     HelloPayload hello{};
     memcpy(hello.source, source, 6);
     hello.deviceType = static_cast<uint8_t>(DeviceType::PDN);
     if (head != nullptr) memcpy(hello.headMac, head, 6);
+    hello.flags = flags;
     return encodeFramed(hello);
 }
 
@@ -1055,6 +1015,33 @@ inline void rdcChainNonLowestHeadDetectsRing(RDCHelloTests* suite) {
 
     EXPECT_EQ(ringClosedCount, 1);
     EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
+}
+
+// A ring claim heard over a link this device has not established is not its
+// ring to join. The upstream keeps sending HELLOs while its context exchange
+// never answers (the one-way-cable shape), so no head is ever adopted — and
+// relaying a closure from a peer that has never acknowledged us would put a
+// device into the shootout topology over a cable that only works one way.
+inline void rdcRingClaimOverUnestablishedUpstreamIsIgnored(RDCHelloTests* suite) {
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK,
+                suite->helloFrame(0xB1));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
+
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t foreignHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    suite->deliverHello(suite->inJack,
+                        chainHelloFrame(upstream, foreignHead, HELLO_FLAG_RING_CLOSED));
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    ASSERT_EQ(suite->rdc.getHeadMac(), nullptr) << "an unestablished upstream was adopted";
+    EXPECT_FALSE(suite->rdc.isInRing());
+
+    suite->outJack.clearOutput();
+    suite->rdc.emitHello();
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_RING_CLOSED, 0)
+        << "the unearned claim was passed downstream";
 }
 
 // Head transfer: when the INPUT peer drops while an OUTPUT peer remains, this
@@ -1287,7 +1274,6 @@ struct ChainRingNode {
         rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
         rdc.setOnRingClosed([this]() { ringClosedCount++; });
-        rdc.enableHelloConnectivity();
     }
 
     MockDevice device;
@@ -1410,6 +1396,109 @@ inline void rdcChainDualLatchSettlesByLowerMac() {
     EXPECT_EQ(B.ringClosedCount, 1);
     EXPECT_EQ(A.rdc.getChainRole(), ChainRole::RING);
     EXPECT_EQ(B.rdc.getChainRole(), ChainRole::CHILD);
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
+
+// One HELLO cycle over a set of plugged cables, each written (upper, lower)
+// meaning upper's OUTPUT into lower's INPUT. Unpumped jack output is dropped —
+// an unplugged jack transmits into open air. These nodes share no radio, so the
+// ESP-NOW context exchange is stood in for the moment a jack starts one.
+inline void pumpChainCycle(const std::vector<ChainRingNode*>& nodes,
+                           const std::vector<std::pair<size_t, size_t>>& cables) {
+    for (ChainRingNode* n : nodes)
+        n->rdc.emitHello();
+    for (const std::pair<size_t, size_t>& cable : cables) {
+        pumpCable(nodes[cable.first]->out, nodes[cable.second]->in);
+        pumpCable(nodes[cable.second]->in, nodes[cable.first]->out);
+    }
+    for (ChainRingNode* n : nodes) {
+        n->out.clearOutput();
+        n->in.clearOutput();
+    }
+    for (ChainRingNode* n : nodes) {
+        n->rdc.sync(&n->device);
+        for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+            if (n->rdc.getHelloLinkState(jack) ==
+                RemoteDeviceCoordinator::HelloLinkState::CONNECTING) {
+                n->rdc.onContextExchangeComplete(jack);
+            }
+        }
+        n->rdc.sync(&n->device);
+    }
+}
+
+// Ring closure is visible at exactly one device — the one whose own MAC comes
+// back around — yet every member has to know it sits on a ring or the game layer
+// keeps running 1v1 duels inside the shootout's topology. Three devices, because
+// two is the case a per-jack peer comparison can still get right by accident:
+// here B and C never see their own MAC return and can only learn from A.
+inline void rdcRingMembershipReachesEveryMember() {
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+
+    const uint8_t macA[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x0A};
+    const uint8_t macB[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x0B};
+    const uint8_t macC[6] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x0C};
+    ChainRingNode a(macA);
+    ChainRingNode b(macB);
+    ChainRingNode c(macC);
+    const std::vector<ChainRingNode*> nodes = {&a, &b, &c};
+
+    std::vector<std::pair<size_t, size_t>> cables;
+    auto run = [&](int rounds) {
+        for (int i = 0; i < rounds; ++i) {
+            pumpChainCycle(nodes, cables);
+            clock.advance(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        }
+    };
+
+    cables.push_back({0, 1});  // A.out -> B.in
+    run(4);
+    cables.push_back({1, 2});  // B.out -> C.in
+    run(4);
+    ASSERT_EQ(a.rdc.getChainRole(), ChainRole::HEAD);
+    ASSERT_FALSE(a.rdc.isInRing()) << "an open chain is not a ring";
+    ASSERT_FALSE(c.rdc.isInRing());
+
+    cables.push_back({2, 0});  // C.out -> A.in closes the loop
+    run(6);
+
+    EXPECT_EQ(a.ringClosedCount, 1);
+    // Only the closing device holds the RING role: it is the roster and
+    // coordinator authority, and that stays singular.
+    EXPECT_EQ(a.rdc.getChainRole(), ChainRole::RING);
+    EXPECT_EQ(b.rdc.getChainRole(), ChainRole::CHILD);
+    EXPECT_EQ(c.rdc.getChainRole(), ChainRole::CHILD);
+    // Membership is not singular: all three are on the loop.
+    EXPECT_TRUE(a.rdc.isInRing());
+    EXPECT_TRUE(b.rdc.isInRing()) << "closure never reached the first relay";
+    EXPECT_TRUE(c.rdc.isInRing()) << "closure never reached the far side";
+
+    // The claim really is on the wire, not just in each device's head.
+    a.out.clearOutput();
+    a.rdc.emitHello();
+    EXPECT_EQ(parseEmittedHello(a.out.getOutput()).flags & HELLO_FLAG_RING_CLOSED,
+              HELLO_FLAG_RING_CLOSED);
+
+    // Pull the B-C cable. B and C each lose a chain link, so the loop provably
+    // cannot run through them any more and they drop membership on their own
+    // evidence — not by waiting for A, whose latch is still inside its window.
+    cables.erase(cables.begin() + 1);
+    run(6);  // past HELLO_SILENT_LINK_MS, well inside RING_EVIDENCE_TIMEOUT_MS
+
+    EXPECT_FALSE(b.rdc.isInRing()) << "a dead downstream cable still claimed the ring";
+    EXPECT_FALSE(c.rdc.isInRing()) << "a dead upstream cable still claimed the ring";
+    ASSERT_TRUE(a.rdc.isInRing()) << "A gave up its latch before its evidence expired";
+
+    // A's own MAC stops coming back, so its evidence times out and the claim
+    // leaves the wire.
+    run(40);
+    EXPECT_FALSE(a.rdc.isInRing()) << "the latch outlived the loop";
+    a.out.clearOutput();
+    a.rdc.emitHello();
+    EXPECT_EQ(parseEmittedHello(a.out.getOutput()).flags & HELLO_FLAG_RING_CLOSED, 0);
 
     SimpleTimer::setPlatformClock(nullptr);
 }
@@ -1574,14 +1663,15 @@ inline void rdcJoinAnnouncesToHeadAndGatesConfirmed(RDCHelloTests* suite) {
     // confirmed stays down until the announce is delivered.
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 0);
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED, 0);
 
     suite->transport()->onSendResult(PktType::kConnectionAnnounce, head,
                                      announce.lastPayload.data(),
                                      announce.lastPayload.size(), true);
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 1);
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED,
+              HELLO_FLAG_CONFIRMED);
 }
 
 // A head change drops confirmed to 0 and re-announces to the new head; confirmed
@@ -1607,7 +1697,8 @@ inline void rdcHeadChangeDropsConfirmedAndReannounces(RDCHelloTests* suite) {
                                      announce.lastPayload.size(), true);
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    ASSERT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 1);
+    ASSERT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED,
+              HELLO_FLAG_CONFIRMED);
 
     // The upstream now advertises a different head.
     suite->deliverHello(suite->inJack, chainHelloFrame(upstream, newHead));
@@ -1615,14 +1706,15 @@ inline void rdcHeadChangeDropsConfirmedAndReannounces(RDCHelloTests* suite) {
     EXPECT_EQ(0, memcmp(announce.lastDst.data(), newHead, 6));
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 0);
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED, 0);
 
     suite->transport()->onSendResult(PktType::kConnectionAnnounce, newHead,
                                      announce.lastPayload.data(),
                                      announce.lastPayload.size(), true);
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 1);
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED,
+              HELLO_FLAG_CONFIRMED);
 }
 
 // Head side: announces build the roster (member -> upstream), duplicates are
@@ -2006,14 +2098,15 @@ inline void rdcStaleAnnounceDeliveryDoesNotConfirm(RDCHelloTests* suite) {
                                      staleAnnounce.data(), staleAnnounce.size(), true);
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 0);
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED, 0);
 
     suite->transport()->onSendResult(PktType::kConnectionAnnounce, h1,
                                      announce.lastPayload.data(),
                                      announce.lastPayload.size(), true);
     suite->outJack.clearOutput();
     suite->rdc.emitHello();
-    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).confirmed, 1);
+    EXPECT_EQ(parseEmittedHello(suite->outJack.getOutput()).flags & HELLO_FLAG_CONFIRMED,
+              HELLO_FLAG_CONFIRMED);
 }
 
 // The held head is a unicast target that is usually not an adjacent HELLO
@@ -2418,9 +2511,8 @@ inline void rdcStaleTransferDoesNotReforkClaimedUpstream(RDCHelloTests* suite) {
 // Public API surface (#159)
 // ============================================
 
-// getPeerMac must read the per-jack HELLO link, not the handshake peer table the
-// HELLO path never populates: the game layer addresses its neighbour with this.
-// Served from CONNECTING (the MAC is known from the first HELLO) and cleared on
+// getPeerMac must read the per-jack HELLO link: the game layer addresses its
+// neighbour with this. Served from CONNECTING (the MAC is known from the first HELLO) and cleared on
 // link death, per jack.
 inline void rdcPeerMacReadsHelloLink(RDCHelloTests* suite) {
     const uint8_t outPeer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};

@@ -75,9 +75,7 @@ public:
     /// getPortStatus and isConnected() still read CONNECTED for that jack.
     ///
     /// The context is read at dispatch time rather than captured when it arrived,
-    /// so a state mounted long after the peer connected still gets it. getPeerMac
-    /// stays unusable from here: it reads the handshake peer table, which HELLO
-    /// quiesces (#159 re-sources it onto the link).
+    /// so a state mounted long after the peer connected still gets it.
     void setOnJackChange(JackChangeHandler handler) {
         jackChangeHandler = std::move(handler);
     }
@@ -168,9 +166,9 @@ private:
     }
 
     void replayConnectedJacks() {
-        // Ask the link machine, not getPortStatus: the latter falls back to
-        // handshake state on a jack HELLO does not own, and replaying from there
-        // would deliver a connect whose matching disconnect can never arrive.
+        // Ask the link machine directly: it is the only source of jack edges, so
+        // replaying anything else would deliver a connect whose matching
+        // disconnect can never arrive.
         for (SerialIdentifier jack : RemoteDeviceCoordinator::HELLO_JACKS) {
             if (remoteDeviceCoordinator->getHelloLinkState(jack) ==
                 RemoteDeviceCoordinator::HelloLinkState::CONNECTED) {

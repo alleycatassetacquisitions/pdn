@@ -21,14 +21,10 @@ std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const 
 }
 
 bool ChainDuelManager::isLoop() const {
-    PortState oState = rdc->getPortState(opponentJack());
-    PortState sState = rdc->getPortState(supporterJack());
-    for (const auto& oPeer : oState.peerMacAddresses) {
-        for (const auto& sPeer : sState.peerMacAddresses) {
-            if (memcmp(oPeer.data(), sPeer.data(), 6) == 0) return true;
-        }
-    }
-    return false;
+    // Read the topology layer rather than re-deriving it: the old peer-set
+    // intersection could only ever see a two-device ring once a jack stopped
+    // carrying more than its direct peer.
+    return rdc->isInRing();
 }
 
 bool ChainDuelManager::isSupporter() const {
@@ -49,10 +45,9 @@ bool ChainDuelManager::canInitiateMatch() const {
     if (!player->isHunter()) return false;
     // A closed ring is the shootout's topology; no 1v1 pairing forms inside one.
     if (isLoop()) return false;
-    // Half-open gate. Connected means the peer answered over the radio — the
-    // handshake's EXCHANGE_ID round trip, or the peer's context landing on a HELLO
-    // link — so a path back exists. A jack that only reached Connecting has a peer
-    // MAC off one inbound serial frame and nothing proving the peer can answer, and
+    // Half-open gate. Connected means the peer's context landed over the radio,
+    // so a path back exists. A jack that only reached Connecting has a peer MAC
+    // off one inbound serial frame and nothing proving the peer can answer, and
     // a match pushed across it strands the initiator waiting for an ack.
     if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
     if (rdc->getPeerDeviceType(opponentJack()) != DeviceType::PDN) return false;
@@ -63,16 +58,19 @@ bool ChainDuelManager::canInitiateMatch() const {
 
 std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() const {
     if (isLoop()) return {};
-    PortState state = rdc->getPortState(supporterJack());
-    return state.peerMacAddresses;
+    std::vector<std::array<uint8_t, 6>> peers;
+    const uint8_t* directPeer = rdc->getPeerMac(supporterJack());
+    if (directPeer != nullptr) {
+        std::array<uint8_t, 6> mac;
+        memcpy(mac.data(), directPeer, 6);
+        peers.push_back(mac);
+    }
+    return peers;
 }
 
 bool ChainDuelManager::isKnownGameEventSender(const uint8_t* fromMac) const {
-    PortState oState = rdc->getPortState(opponentJack());
-    for (const auto& peer : oState.peerMacAddresses) {
-        if (memcmp(peer.data(), fromMac, 6) == 0) return true;
-    }
-    return false;
+    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
+    return opponentPeer != nullptr && memcmp(opponentPeer, fromMac, 6) == 0;
 }
 
 bool ChainDuelManager::isKnownConfirmRelay(const uint8_t* fromMac) const {
@@ -229,8 +227,9 @@ void ChainDuelManager::onChainStateChanged() {
 }
 
 void ChainDuelManager::applyChainStateChange() {
-    PortState sState = rdc->getPortState(supporterJack());
-    size_t count = sState.peerMacAddresses.size();
+    // Direct-peer presence is the whole answer now: without the daisy-chain
+    // announcements a jack reports at most its own peer.
+    size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;
     if (lastSupporterChainCount_ > 0 && count == 0) {
         clearSupporterConfirms();
     }
@@ -406,18 +405,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
         bool oldIsSelf = (selfMac != nullptr &&
                           memcmp(selfMac, oldMac.data(), 6) == 0);
         if (!oldIsSelf) {
-            bool oldStillInChain = false;
-            for (SerialIdentifier p : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-                PortState ps = rdc->getPortState(p);
-                for (const auto& m : ps.peerMacAddresses) {
-                    if (memcmp(m.data(), oldMac.data(), 6) == 0) {
-                        oldStillInChain = true;
-                        break;
-                    }
-                }
-                if (oldStillInChain) break;
-            }
-            if (!oldStillInChain) {
+            if (!rdc->isDirectPeer(oldMac.data())) {
                 rdc->unregisterPeer(oldMac.data());
             }
         }
@@ -464,7 +452,7 @@ void ChainDuelManager::broadcastRoleAndChampion() {
 // ACK+retry on the supporter-jack direction. Rationale: losing this packet
 // leaves the opponent momentarily uncertain of our role, but their own
 // onChainStateChanged will fire whenever their topology shifts (including
-// our handshake completion) and trigger a fresh broadcast toward us. So the
+// our link coming up) and trigger a fresh broadcast toward us. So the
 // system is self-healing on any real topology change. Adding ACK+retry here
 // would double the airtime cost of every chain change; the relaxed model is
 // acceptable given the healing path.
