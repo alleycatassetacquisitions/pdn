@@ -21,9 +21,9 @@ std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const 
 }
 
 bool ChainDuelManager::isLoop() const {
-    // Read the topology layer rather than re-deriving it: the old peer-set
-    // intersection could only ever see a two-device ring once a jack stopped
-    // carrying more than its direct peer.
+    // Ring membership is the RDC's fact, not a shape the game layer re-derives:
+    // every device on a closed loop reads true here, not only the one that
+    // detected the closure.
     return rdc->isInRing();
 }
 

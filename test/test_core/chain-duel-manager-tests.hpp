@@ -923,10 +923,8 @@ inline void chainDuelThreeDeviceConfirm(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(confirmPayload.originatorMac, suite->localMac, 6), 0);
 
     // Leg 4: Champion A receives and records. The originator has to be A's own
-    // supporter-jack peer: RDC no longer enumerates anything past the cable, so
-    // a supporter further down the chain confirms into a champion that cannot
-    // place it and contributes no boost (#144 moves that membership fact to the
-    // head roster, which the champion is not).
+    // supporter-jack peer: A can only place a supporter it is directly cabled
+    // to, so one further down the chain contributes no boost.
     ChainDuelManager a(&suite->player, suite->device.wirelessManager, &suite->rdc);
     a.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
     a.setPeerRole(SerialIdentifier::INPUT_JACK, true);

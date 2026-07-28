@@ -87,9 +87,8 @@ public:
     /// Connection state of one jack (device-level chain facts live in
     /// getChainRole(), not here).
     virtual PortStatus getPortStatus(SerialIdentifier port);
-    /// Status plus this port's direct peer, if any. A jack holds one peer:
-    /// the multi-hop peer list the daisy-chain announcements used to fill is
-    /// gone with them, so this never carries more than one MAC.
+    /// Status plus this port's direct peer, if any. A jack holds one peer, so the
+    /// address list never carries more than one MAC.
     PortState getPortState(SerialIdentifier port);
 
     /// No peer id known: an FDN peer, an unregistered player, or no peer at all.
@@ -117,11 +116,10 @@ public:
     /// Returns true iff `mac` matches the direct peer on either jack.
     virtual bool isDirectPeer(const uint8_t* mac) const;
 
-    /// Reachable over a cable this device owns. Adjacency only: with the
-    /// daisy-chain announcements gone, RDC has no multi-hop peer knowledge, so
-    /// a member two hops away reads as unreachable here even though the chain
-    /// still carries it. The head roster (getChainMembers) is the multi-hop
-    /// source; a non-head device has none.
+    /// Reachable over a cable this device owns. Adjacency only: a member two
+    /// hops away reads as unreachable here even though the chain still carries
+    /// it. The head roster (getChainMembers) is the multi-hop source; a child
+    /// or standalone device has none.
     virtual bool canReachPeer(const uint8_t* mac) const;
 
     // ---- Chain-level surface (#154) ----

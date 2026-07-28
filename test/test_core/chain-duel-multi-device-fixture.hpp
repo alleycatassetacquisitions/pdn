@@ -231,12 +231,9 @@ public:
         seedRingRoster();
     }
 
-    /// Hands every node the ring's member list. RDC ring DETECTION is local and
-    /// real here (the isLoop assertions below exercise it), but the member LIST
-    /// is head-only: the head's roster is the sole multi-hop source now that the
-    /// daisy-chain announcements are gone, and the coordinator broadcast that
-    /// hands it to followers is #169's. Until that lands, the tournament tests
-    /// below would be measuring a roster gap rather than the bracket they cover.
+    /// Hands every node the ring's member list. Ring detection is local and
+    /// real here; the member list is not — it lives on the head only, and no
+    /// coordinator broadcast (#169) hands it to followers yet.
     void seedRingRoster() {
         std::vector<std::array<uint8_t, 6>> members;
         for (auto& n : nodes) {
@@ -547,10 +544,8 @@ inline void cdmMultiDeviceChainFormsAndElectsChampion(ChainDuelMultiDeviceFixtur
 }
 
 // H-H-H linear chain: the champion counts a confirm from the supporter on the
-// far end of its own cable, and ignores one from the supporter beyond that.
-// Multi-hop boost died with the daisy-chain announcements: the champion can no
-// longer enumerate anything past its direct peer, so it cannot place a distant
-// supporter. #144 moves that membership fact onto the head roster.
+// far end of its own cable, and ignores one from the supporter beyond that —
+// it can only place a peer it is directly cabled to.
 inline void cdmMultiDeviceConfirmDeliveredToChampion(ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();

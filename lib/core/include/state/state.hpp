@@ -157,8 +157,8 @@ private:
  *       void onStateLoop(PDN* pdn) override    { ... }
  *   };
  *
- * Device-agnostic states should inherit State directly
- * and override onStateMounted(Device*) as before.
+ * Device-agnostic states should inherit State directly and override
+ * onStateMounted(Device*).
  */
 template<typename DeviceT>
 class TypedState : public State {
