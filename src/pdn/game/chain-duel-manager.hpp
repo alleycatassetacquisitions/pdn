@@ -142,6 +142,8 @@ private:
     // task fills it while the main loop drains it, and a reallocation across
     // that boundary is a crash. Junk from an on-channel stranger only occupies a
     // slot until the next drain re-rejects it.
+    // Sized to RDC's kMaxChainPeersPerPort (18), the most chain peers that can
+    // legitimately be waiting on a roster update.
     static constexpr size_t MAX_BUFFERED_CONFIRMS = 18;
     std::array<std::array<uint8_t, 6>, MAX_BUFFERED_CONFIRMS> bufferedConfirms{};
     std::atomic<size_t> bufferedConfirmCount{0};

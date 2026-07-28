@@ -78,6 +78,12 @@ bool ChainDuelManager::isKnownGameEventSender(const uint8_t* fromMac) const {
 void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
     if (!isChampion()) return;
 
+    // Recipients come from the RDC roster, not this roll call. Keep it that way
+    // or multi-hop supporters get dropped.
+    if (eventType == ChainGameEventType::COUNTDOWN) {
+        clearSupporterConfirms();
+    }
+
     // WIN/LOSS are state-terminal for the supporter UI and must arrive or
     // the supporter display sticks on a stale screen until the next chain
     // event. They get seqIds and retry tracking.
@@ -122,12 +128,6 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
             PktType::kChainGameEvent,
             reinterpret_cast<const uint8_t*>(&payload),
             sizeof(payload));
-    }
-
-    // The roll call is wiped after the sends, never before: a recipient list
-    // derived from it would silently drop every multi-hop supporter.
-    if (eventType == ChainGameEventType::COUNTDOWN) {
-        clearSupporterConfirms();
     }
 }
 
