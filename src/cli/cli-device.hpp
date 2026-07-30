@@ -17,6 +17,7 @@
 #include "device/drivers/native/native-http-client-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
+#include "game/match-manager.hpp"
 
 // Core game components
 #include "device/pdn.hpp"
@@ -157,7 +158,7 @@ public:
         instance.httpClientDriver->setMockServerEnabled(true);  // Enable mock HTTP server
         instance.httpClientDriver->setConnected(true);  // Simulate WiFi connection
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
-        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCHES_PREFS_NAMESPACE});
         
         // Configure mock HTTP server with this device's player data
         MockPlayerConfig playerConfig;

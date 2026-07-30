@@ -23,6 +23,7 @@
 class ShootoutManager;
 
 // Preferences namespace and keys
+inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
 
 struct LastMatchDisplay {
     unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc

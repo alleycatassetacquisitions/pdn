@@ -4,7 +4,6 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
-#include "pdn-constants.hpp"
 #include <optional>
 
 static constexpr const char* PREF_COUNT_KEY = "count";
@@ -259,13 +258,13 @@ std::string MatchManager::toJson() {
 }
 
 void MatchManager::clearStorage() {
-    storage->clear(PREF_NAMESPACE);
+    storage->clear(MATCHES_PREFS_NAMESPACE);
     updateStoredMatchCount(0);
     LOG_I("PDN", "Cleared match storage\n");
 }
 
 size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(PREF_NAMESPACE, PREF_COUNT_KEY, 0);
+    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
@@ -289,15 +288,15 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
     
     // Try to check if preferences is working
-    if (storage->writeUChar(PREF_NAMESPACE, "test_key", 123) != 1) {
+    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, "test_key", 123) != 1) {
         LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
     } else {
-        uint8_t test_val = storage->readUChar(PREF_NAMESPACE, "test_key", 0);
+        uint8_t test_val = storage->readUChar(MATCHES_PREFS_NAMESPACE, "test_key", 0);
         LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
     }
 
     // Save match JSON to preferences
-    if (storage->write(PREF_NAMESPACE, key, matchJson) != matchJson.length()) {
+    if (storage->write(MATCHES_PREFS_NAMESPACE, key, matchJson) != matchJson.length()) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
                 key, matchJson.length());
         
@@ -309,7 +308,7 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
 }
 
 void MatchManager::updateStoredMatchCount(uint8_t count) {
-    if (storage->writeUChar(PREF_NAMESPACE, PREF_COUNT_KEY, count) != 1) {
+    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, count) != 1) {
         LOG_E("PDN", "Failed to update match count\n");
     } else {
         LOG_I("PDN", "Updated stored match count to %d\n", count);
@@ -326,7 +325,7 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
     
     // Read match JSON from preferences
-    std::string matchJson = storage->read(PREF_NAMESPACE, key, "");
+    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
     if (matchJson.empty()) {
         return nullptr;
     }
