@@ -21,6 +21,9 @@ enum class PktType : uint8_t {
     kConnectionAnnounce = 17,
     kDisconnectReport = 18,
     kHeadTransfer = 19,
+    // The lint runs only on lines a commit adds, so this new member trips the
+    // UPPER_CASE enum-constant rule its grandfathered siblings never see. It keeps
+    // their kFoo spelling rather than splitting the enum across two conventions.
     // NOLINTNEXTLINE(readability-identifier-naming)
     kChainJoin = 20,
     kNumPacketTypes  // Not a real packet type, DO NOT USE

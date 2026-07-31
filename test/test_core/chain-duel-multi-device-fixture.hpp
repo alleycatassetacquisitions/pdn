@@ -10,15 +10,10 @@
 // bytes into the other's RX, and the real exec() drain feeds the RDC parser.
 //
 // Topology convention:
-//   The task describes wiring as "device i's OUTPUT to device i+1's INPUT",
-//   stating that hunter's opponent-jack is OUTPUT. Under the current
-//   ChainDuelManager semantics, champion status requires NO same-role peer on
-//   the opponent jack. For a H-H-H line, that means the champion is the
-//   device whose OUTPUT jack is unconnected (the OUTPUT tail). To make
-//   device 0 the natural "champion end", this fixture reverses the
-//   per-index wiring: device 0 has nothing on its OUTPUT, device 1's OUTPUT
-//   connects to device 0's INPUT, device 2's OUTPUT connects to device 1's
-//   INPUT, etc.
+//   Champion status requires NO same-role peer on the opponent jack, so in an
+//   H-H-H line the champion is the device whose OUTPUT is unconnected. This
+//   fixture therefore wires device i's OUTPUT into device (i-1)'s INPUT, which
+//   puts the champion at device 0.
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -556,7 +551,7 @@ inline void cdmMultiDeviceChainFormsAndElectsChampion(ChainDuelMultiDeviceFixtur
     EXPECT_TRUE(d1.cdm->isSupporter());
     EXPECT_TRUE(d2.cdm->isSupporter());
 
-    // Both supporters should have learned d0's MAC as championMac_.
+    // Both supporters should have learned d0's MAC as championMac.
     ASSERT_NE(d1.cdm->getChampionMac(), nullptr);
     EXPECT_EQ(memcmp(d1.cdm->getChampionMac(), d0.mac, 6), 0);
     ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
@@ -682,7 +677,6 @@ inline void cdmMultiDeviceGameEventReachesDistantSupporter(ChainDuelMultiDeviceF
                 static_cast<int*>(ctx)[0]++;
             },
             counter);
-        (void)n;
     }
 
     champion.cdm->sendGameEventToSupporters(ChainGameEventType::COUNTDOWN);

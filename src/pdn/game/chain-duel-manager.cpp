@@ -41,9 +41,8 @@ void ChainDuelManager::recordMac(MacSlots& slots, std::atomic<size_t>& count,
 }
 
 bool ChainDuelManager::isLoop() const {
-    // Ring membership is the RDC's fact, not a shape the game layer re-derives:
-    // every device on a closed loop reads true here, not only the one that
-    // detected the closure.
+    // Ring membership is the RDC's fact: every device on a closed loop reads true
+    // here, not only the one that detected the closure.
     return rdc->isInRing();
 }
 
@@ -108,17 +107,13 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
         return;
     }
 
-    // One broadcast frame, never one unicast per supporter. Addressing a
-    // supporter three cables away by unicast costs a peer-table slot for every
-    // device in the chain, and the table holds 20; the broadcast slot is
-    // registered once at radio init. Supporters keep only the events whose
-    // championMac matches the champion they follow.
+    // Supporters only gate the send and seed the ack tally; the frame itself is
+    // addressed to nobody in particular.
     std::vector<std::array<uint8_t, 6>> peers = getSupporterChainPeers();
     if (peers.empty()) return;
 
     ChainGameEventPayload payload{};
     payload.event_type = static_cast<uint8_t>(eventType);
-    payload.seqId = 0;
     memcpy(payload.championMac, selfMac, 6);
 
     // WIN/LOSS are state-terminal for the supporter UI and must arrive or
@@ -144,6 +139,11 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
         retryStats.sends++;
     }
 
+    // One broadcast frame, never one unicast per supporter. Addressing a
+    // supporter three cables away by unicast costs a peer-table slot for every
+    // device in the chain, and the table holds 20; the broadcast slot is
+    // registered once at radio init. Supporters keep only the events whose
+    // championMac matches the champion they follow.
     wirelessManager->sendEspNowData(
         wirelessManager->getBroadcastAddress(),
         PktType::kChainGameEvent,
@@ -281,7 +281,6 @@ void ChainDuelManager::applyChainStateChange() {
         }
     }
 
-    // Re-evaluate championMac. If I'm now champion, self-assign.
     if (isChampion()) {
         const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr) {
@@ -398,7 +397,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     // 1. Update peer role based on which jack fromMac is on.
     //    Also remember whether this announce came from our opponent-jack
     //    (parent) direction — only opponent-jack announces authoritatively
-    //    update our championMac_ cache.
+    //    update our championMac cache.
     bool fromOpponentJack = false;
     bool fromKnownDirectPeer = false;
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
@@ -424,7 +423,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
         reinterpret_cast<const uint8_t*>(&ack), sizeof(ack));
 
     // 3 & 4. Only same-role opponent-jack announces authoritatively update
-    // championMac_. Opposite-role senders are dueling opponents, not chain
+    // championMac. Opposite-role senders are dueling opponents, not chain
     // parents — their championMac is irrelevant.
     if (!fromOpponentJack) return;
     if (role != (player->isHunter() ? 1u : 0u)) return;

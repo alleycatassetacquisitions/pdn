@@ -2512,8 +2512,8 @@ inline void rdcStaleTransferDoesNotReforkClaimedUpstream(RDCHelloTests* suite) {
 // ============================================
 
 // getPeerMac must read the per-jack HELLO link: the game layer addresses its
-// neighbour with this. Served from CONNECTING (the MAC is known from the first HELLO) and cleared on
-// link death, per jack.
+// neighbour with this. Served from CONNECTING (the MAC is known from the first
+// HELLO) and cleared on link death, per jack.
 inline void rdcPeerMacReadsHelloLink(RDCHelloTests* suite) {
     const uint8_t outPeer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 

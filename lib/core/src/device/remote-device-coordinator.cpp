@@ -819,10 +819,10 @@ void RemoteDeviceCoordinator::releaseHeadPeer(uint64_t headMac48) {
         if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
     }
     // Past the keep-slot guard: the head truly departed (no adjacent link still
-    // names it). Only on this actual-release path are its
-    // roster retries dead traffic; drop them with the slot so a retransmit can't
-    // re-register it inside the driver. When a keep-slot guard retained the slot
-    // above, the retries are left to self-heal (a seqId bump ignores late acks).
+    // names it). Only on this actual-release path are its roster retries dead
+    // traffic; drop them with the slot so a retransmit can't re-register it inside
+    // the driver. When a keep-slot guard retained the slot above, the retries are
+    // left to self-heal (a seqId bump ignores late acks).
     if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(mac);
     if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(mac);
     if (headTransferChannel != nullptr) headTransferChannel->cancel(mac);

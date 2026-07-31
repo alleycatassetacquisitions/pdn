@@ -114,8 +114,8 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /// Retry counters for the role-announce and game-event channels, logged
-    /// periodically from Idle so hardware runs can be tuned against real loss.
+    /// Cumulative retry counters for the role-announce and game-event channels:
+    /// ackLatencyMsSum / ackCount is mean RTT, abandons / (sends + retries) is loss.
     RetryStats getRetryStats() const { return retryStats; }
 
 private:
