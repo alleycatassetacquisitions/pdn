@@ -21,7 +21,8 @@
 // Core game components
 #include "device/pdn.hpp"
 #include "game/player.hpp"
-#include "game/quickdraw.hpp"
+#include "game/game-session.hpp"
+#include "game/quickdraw-apps.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -96,14 +97,26 @@ struct DeviceInstance {
     // Game objects
     PDN* pdn = nullptr;
     Player* player = nullptr;
-    Quickdraw* game = nullptr;
+    GameSession* gameSession = nullptr;
+    PlayerRegistrationApp* playerRegistrationApp = nullptr;
+    DuelApp* duelApp = nullptr;
+    ShootoutApp* shootoutApp = nullptr;
+    SymbolApp* symbolApp = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
-    
+
     // State history (circular buffer, most recent at back)
     std::deque<int> stateHistory;
     int lastStateId = -1;
-    
+
+    /**
+     * State the device is actually running, from whichever app is mounted.
+     */
+    State* getCurrentState() const {
+        StateMachine* app = pdn ? pdn->getActiveApp() : nullptr;
+        return app ? app->getCurrentState() : nullptr;
+    }
+
     /**
      * Track state transitions for display in the UI.
      */
@@ -221,27 +234,36 @@ public:
             },
             instance.symbolWirelessManager
         );
-        
-        // Create game (no remote debug manager for now)
-        instance.game = new Quickdraw(
+
+        // Create the shared managers (no remote debug manager for now) and the
+        // apps that read them
+        instance.gameSession = new GameSession(
             instance.player,
             instance.pdn,
             instance.quickdrawWirelessManager,
-            nullptr,
             instance.symbolWirelessManager);
+        GameSession* session = instance.gameSession;
+        instance.pdn->setTickCallback([session]() { session->sync(); });
 
-        // Register state machines with the device and launch Quickdraw
+        GameContext gameContext = instance.gameSession->getContext();
+        instance.playerRegistrationApp = new PlayerRegistrationApp(
+            instance.player, instance.pdn->getWirelessManager(),
+            instance.gameSession->getMatchManager(), nullptr);
+        instance.duelApp = new DuelApp(gameContext);
+        instance.shootoutApp = new ShootoutApp(gameContext);
+        instance.symbolApp = new SymbolApp(gameContext);
+
         AppConfig apps = {
-            {StateId(QUICKDRAW_APP_ID), instance.game}
+            {StateId(PLAYER_REGISTRATION_APP_ID), instance.playerRegistrationApp},
+            {StateId(DUEL_APP_ID), instance.duelApp},
+            {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
+            {StateId(SYMBOL_APP_ID), instance.symbolApp},
         };
-        instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
-        
-        // Skip entire registration flow — jump past PlayerRegistrationApp
-        // directly to the first gameplay state (AwakenSequence, index 1 in
-        // Quickdraw's state map). The player is already configured with ID,
+        // Skip the entire registration flow: launch straight into the duel app's
+        // first state (AwakenSequence). The player is already configured with ID,
         // role, and allegiance from DeviceFactory.
-        instance.game->skipToState(instance.pdn, 1);
-        
+        instance.pdn->loadAppConfig(apps, StateId(DUEL_APP_ID));
+
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
             deviceIndex, instance.serialOutDriver, instance.serialInDriver, isHunter);
@@ -258,8 +280,13 @@ public:
         
         // Remove player config from mock HTTP server
         MockHttpServer::getInstance().removePlayer(device.deviceId);
-        
-        delete device.game;
+
+        // Apps first: their states hold context pointers into the session.
+        delete device.playerRegistrationApp;
+        delete device.duelApp;
+        delete device.shootoutApp;
+        delete device.symbolApp;
+        delete device.gameSession;
         delete device.quickdrawWirelessManager;
         delete device.symbolWirelessManager;
         delete device.player;

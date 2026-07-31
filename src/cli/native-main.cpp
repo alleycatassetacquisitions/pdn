@@ -29,7 +29,9 @@
 // Core
 #include "device/pdn.hpp"
 #include "game/player.hpp"
-#include "game/quickdraw.hpp"
+#include "game/game-session.hpp"
+#include "game/quickdraw-apps.hpp"
+#include "apps/player-registration/player-registration.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
@@ -59,7 +61,11 @@ struct DeviceInstance {
     // Game objects
     PDN* pdn;
     Player* player;
-    Quickdraw* game;
+    GameSession* gameSession;
+    PlayerRegistrationApp* playerRegistrationApp;
+    DuelApp* duelApp;
+    ShootoutApp* shootoutApp;
+    SymbolApp* symbolApp;
     QuickdrawWirelessManager* wirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
 };
@@ -113,16 +119,27 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     instance.symbolWirelessManager->initialize(
         instance.pdn->getWirelessManager(),
         instance.pdn->getRemoteDeviceCoordinator());
-    
-    // Create game
-    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr, instance.symbolWirelessManager);
 
-    // Register state machines with the device and launch Quickdraw
+    // Create the shared managers and the apps that read them
+    instance.gameSession = new GameSession(instance.player, instance.pdn, instance.wirelessManager, instance.symbolWirelessManager);
+    GameSession* session = instance.gameSession;
+    instance.pdn->setTickCallback([session]() { session->sync(); });
+
+    GameContext gameContext = instance.gameSession->getContext();
+    instance.playerRegistrationApp = new PlayerRegistrationApp(
+        instance.player, instance.pdn->getWirelessManager(), instance.gameSession->getMatchManager(), nullptr);
+    instance.duelApp = new DuelApp(gameContext);
+    instance.shootoutApp = new ShootoutApp(gameContext);
+    instance.symbolApp = new SymbolApp(gameContext);
+
     AppConfig apps = {
-        {StateId(QUICKDRAW_APP_ID), instance.game}
+        {StateId(PLAYER_REGISTRATION_APP_ID), instance.playerRegistrationApp},
+        {StateId(DUEL_APP_ID), instance.duelApp},
+        {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
+        {StateId(SYMBOL_APP_ID), instance.symbolApp},
     };
-    instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
-    
+    instance.pdn->loadAppConfig(apps, StateId(PLAYER_REGISTRATION_APP_ID));
+
     return instance;
 }
 
@@ -168,14 +185,14 @@ int main(int argc, char** argv) {
     // Create device instances
     std::vector<DeviceInstance> devices;
     std::vector<PDN*> pdnPtrs;
-    std::vector<Quickdraw*> gamePtrs;
+    std::vector<StateMachine*> appPtrs;
     std::vector<NativeLightStripDriver*> lightPtrs;
     std::vector<NativePeerCommsDriver*> peerPtrs;
     
     for (int i = 0; i < numDevices; i++) {
         devices.push_back(createDeviceInstance(i));
         pdnPtrs.push_back(devices[i].pdn);
-        gamePtrs.push_back(devices[i].game);
+        appPtrs.push_back(devices[i].pdn->getActiveApp());
         lightPtrs.push_back(devices[i].lightDriver);
         peerPtrs.push_back(devices[i].peerCommsDriver);
     }
@@ -234,8 +251,11 @@ int main(int argc, char** argv) {
         }
         
         // Render dashboard
-        dashboard.render(pdnPtrs, gamePtrs, lightPtrs, peerPtrs);
-        
+        for (size_t i = 0; i < devices.size(); i++) {
+            appPtrs[i] = devices[i].pdn->getActiveApp();
+        }
+        dashboard.render(pdnPtrs, appPtrs, lightPtrs, peerPtrs);
+
         // Sleep to maintain ~30 FPS update rate
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
     }
@@ -252,7 +272,11 @@ int main(int argc, char** argv) {
     
     // Clean up devices
     for (auto& device : devices) {
-        delete device.game;
+        delete device.playerRegistrationApp;
+        delete device.duelApp;
+        delete device.shootoutApp;
+        delete device.symbolApp;
+        delete device.gameSession;
         delete device.symbolWirelessManager;
         delete device.player;
         delete device.pdn;

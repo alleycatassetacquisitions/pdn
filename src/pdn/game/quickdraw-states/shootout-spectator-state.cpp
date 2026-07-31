@@ -31,7 +31,6 @@ void ShootoutSpectator::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutSpectator::onStateLoop(PDN* pdn) {
-    shootout_->sync();
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS && shootout_->isLocalDuelist()) {
         shouldGoToDuelCountdown_ = true;

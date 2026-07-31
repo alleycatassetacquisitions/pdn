@@ -50,10 +50,33 @@ public:
     };
 
     void initialize(Device *PDN) {
-        populateStateMap();
-        currentState = stateMap[0];
+        // Populate once. onStateMounted lands here on every swap back to this
+        // app, and a second populateStateMap appends a whole duplicate state set
+        // that is never mounted (currentState addresses the original slots) and
+        // is only freed by ~StateMachine.
+        if (stateMap.empty()) {
+            populateStateMap();
+        }
+        int entryIndex = entryStateIndex;
+        if (entryIndex < 0 || entryIndex >= static_cast<int>(stateMap.size())) {
+            entryIndex = 0;
+        }
+        currentState = stateMap[entryIndex];
         asLifecycle(currentState)->mount(PDN);
         launched = true;
+    }
+
+    /// The state map slot the next mount enters at. Device::setActiveApp sets it
+    /// before every mount, from the app transition that named it or 0 when none
+    /// did. Out of range falls back to 0.
+    void setEntryStateIndex(int stateIndex) {
+        entryStateIndex = stateIndex;
+    }
+
+    /// The states in registration order. Index 0 is the boot state, and every
+    /// app-transition entry index and skipToState call addresses this vector.
+    const std::vector<State*>& getStateMap() const {
+        return stateMap;
     }
 
     /**
@@ -77,8 +100,9 @@ public:
     virtual void populateStateMap() = 0;
 
     void checkStateTransitions() {
-        newState = currentState->checkTransitions();
-        stateChangeReady = (newState != nullptr);
+        pendingTransition = currentState->checkTransitions();
+        newState = pendingTransition ? pendingTransition->getNextState() : nullptr;
+        stateChangeReady = (pendingTransition != nullptr);
     };
 
     void commitState(Device *PDN) {
@@ -87,6 +111,7 @@ public:
         currentState = newState;
         stateChangeReady = false;
         newState = nullptr;
+        pendingTransition = nullptr;
 
         asLifecycle(currentState)->mount(PDN);
     };
@@ -102,15 +127,19 @@ public:
     void onStateLoop(Device *PDN) override {
         asLifecycle(currentState)->loop(PDN);
         checkStateTransitions();
-        if (stateChangeReady) {
+        if (!stateChangeReady) {
+            return;
+        }
+        if (newState != nullptr) {
             commitState(PDN);
             return;
         }
 
-        StateId nextApp = currentState->checkAppTransitions();
-        if (nextApp.id >= 0) {
-            PDN->setActiveApp(nextApp);
-        }
+        // An app edge hands the device over instead: setActiveApp dismounts this
+        // machine, and onStateDismounted clears the pending edge as it goes.
+        StateId nextApp = pendingTransition->getTargetAppId();
+        int entryIndex = pendingTransition->getEntryStateIndex();
+        PDN->setActiveApp(nextApp, entryIndex);
     }
 
     void onStateDismounted(Device *PDN) override {
@@ -118,6 +147,7 @@ public:
         currentState = nullptr;
         stateChangeReady = false;
         newState = nullptr;
+        pendingTransition = nullptr;
     }
 
     bool hasLaunched() const {
@@ -133,6 +163,10 @@ protected:
     State *newState = nullptr;
     State *currentState = nullptr;
 
+    // The winning edge from the last checkStateTransitions. Held because an app
+    // edge carries its target app and entry slot, which newState cannot.
+    StateTransition* pendingTransition = nullptr;
+
 private:
     // Upcast helper — mount/loop/dismount are private on State* so we dispatch
     // through StateLifecycle* where they are public, allowing virtual dispatch to
@@ -142,4 +176,5 @@ private:
     }
 
     bool launched = false;
+    int entryStateIndex = 0;
 };

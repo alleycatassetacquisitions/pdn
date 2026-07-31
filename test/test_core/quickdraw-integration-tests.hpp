@@ -5,7 +5,6 @@
 #include "game/match-manager.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
-#include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
 #include "device-mock.hpp"
 #include "id-generator.hpp"

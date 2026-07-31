@@ -25,7 +25,6 @@ void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutFinalStandings::onStateLoop(PDN* pdn) {
-    if (shootout_) shootout_->sync();
     if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
         shouldGoToSleep_ = true;
     }

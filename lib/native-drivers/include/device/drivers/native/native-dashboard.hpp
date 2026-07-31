@@ -9,7 +9,7 @@
 
 #include "device/device.hpp"
 #include "device/pdn.hpp"
-#include "game/quickdraw.hpp"
+#include "state/state-machine.hpp"
 #include "device/drivers/native/native-light-strip-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-display-driver.hpp"
@@ -50,11 +50,11 @@ public:
     /**
      * Render the dashboard with current device states.
      */
-    void render(const std::vector<PDN*>& devices, 
-                const std::vector<Quickdraw*>& games,
+    void render(const std::vector<PDN*>& devices,
+                const std::vector<StateMachine*>& apps,
                 const std::vector<NativeLightStripDriver*>& lightDrivers,
                 const std::vector<NativePeerCommsDriver*>& peerDrivers) {
-        
+
         // Move cursor to top
         printf("\033[H");
 
@@ -77,7 +77,7 @@ public:
 
         // Render each device panel
         for (int i = 0; i < numDevices_ && i < (int)devices.size(); i++) {
-            renderDevicePanel(i, devices[i], games[i], lightDrivers[i], peerDrivers[i]);
+            renderDevicePanel(i, devices[i], apps[i], lightDrivers[i], peerDrivers[i]);
         }
 
         // Footer with controls
@@ -92,12 +92,12 @@ public:
     }
 
 private:
-    void renderDevicePanel(int index, PDN* device, Quickdraw* game,
-                          NativeLightStripDriver* lights, 
-                          NativePeerCommsDriver* peerComms) {
-        
+    void renderDevicePanel(int index, PDN* device, StateMachine* app,
+                           NativeLightStripDriver* lights,
+                           NativePeerCommsDriver* peerComms) {
+
         // Get current state info
-        State* currentState = game->getCurrentState();
+        State* currentState = app ? app->getCurrentState() : nullptr;
         int stateId = currentState ? currentState->getStateId() : -1;
         std::string deviceId = device->getDeviceId();
         if (deviceId.empty()) deviceId = "???";

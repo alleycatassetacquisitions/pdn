@@ -16,6 +16,7 @@
 #include "wireless-manager.hpp"
 #include "state/state-types.hpp"
 #include <map>
+#include <functional>
 #include "device-type.hpp"
 #include "driver-names.hpp"
 
@@ -39,7 +40,20 @@ public:
 
     virtual int begin() = 0;
 
-    void setActiveApp(StateId appId);
+    /// Dismounts the running app and mounts `appId`, entering it at
+    /// `entryStateIndex` in its state map. The default enters at the target's
+    /// boot state, which is what an app transition that names no entry point asks
+    /// for.
+    void setActiveApp(StateId appId, int entryStateIndex = 0);
+
+    /// The mounted app, or null before loadAppConfig.
+    StateMachine* getActiveApp();
+
+    /// Runs every tick between the drivers and the mounted app's loop. Managers
+    /// shared by several apps are pumped here: only the mounted app gets an
+    /// onStateLoop, so a manager driven from inside a state stops the moment the
+    /// device swaps to another app.
+    void setTickCallback(std::function<void()> tickCallback);
 
     virtual void loop();
 
@@ -84,4 +98,5 @@ private:
     DriverManager driverManager;
     AppConfig appConfig;
     StateId currentAppId;
+    std::function<void()> tickCallback;
 };

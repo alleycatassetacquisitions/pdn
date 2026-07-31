@@ -18,7 +18,6 @@ void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
-    shootoutManager->sync();
     tickAbortGuard();
     ShootoutManager::Phase p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {

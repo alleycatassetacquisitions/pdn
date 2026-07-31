@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/chain-duel-manager.hpp"
+#include "game/game-session.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"
@@ -10,13 +11,15 @@
 #define TAG "SupporterReady"
 
 SupporterReady::SupporterReady(const GameContext& ctx)
-    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SUPPORTER_READY) {
+    : ConnectState<PDN>(ctx.remoteDeviceCoordinator, SUPPORTER_READY)
+    , gameSession(ctx.gameSession) {
     this->player = ctx.player;
     this->chainDuelManager = ctx.chainDuelManager;
 }
 
 SupporterReady::~SupporterReady() {
     player = nullptr;
+    gameSession = nullptr;
 }
 
 void SupporterReady::startLEDs(PDN* pdn, bool armed, bool confirmed) {
@@ -75,6 +78,10 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     cachedPDN = pdn;
+    // The chain game event handler lives on the session, which owns no app and
+    // so cannot ask which state is mounted. Publishing here replaces the
+    // "is the current state SupporterReady" check it used to run.
+    if (gameSession) gameSession->setActiveSupporterReady(this);
 }
 
 void SupporterReady::onStateLoop(PDN* pdn) {
@@ -136,6 +143,7 @@ void SupporterReady::onStateLoop(PDN* pdn) {
 
 void SupporterReady::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "SupporterReady dismounted");
+    if (gameSession) gameSession->setActiveSupporterReady(nullptr);
     transitionToIdleFlag = false;
     buttonArmed = false;
     hasConfirmed = false;

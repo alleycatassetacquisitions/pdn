@@ -23,8 +23,10 @@
 #include "game/shootout-manager.hpp"
 #include "game/shootout-aware-state.hpp"
 
-/// Bundle of the shared game-wide managers a state may need. Built once by
-/// Quickdraw::populateStateMap and handed to every state so a new manager is a
+class GameSession;
+
+/// Bundle of the shared game-wide managers a state may need. Built by the
+/// GameSession that owns them and handed to every state so a new manager is a
 /// one-line addition here rather than a constructor change across every state.
 /// All pointers are non-owning; states read only the fields they use.
 struct GameContext {
@@ -36,6 +38,7 @@ struct GameContext {
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
+    GameSession* gameSession = nullptr;
 };
 
 enum QuickdrawStateId {
@@ -169,6 +172,7 @@ public:
 
 private:
     ChainDuelManager* chainDuelManager;
+    GameSession* gameSession = nullptr;
     bool transitionToIdleFlag = false;
     int lastProcessedResult_ = 0;  // main-task-only; mirrors lastResult
 

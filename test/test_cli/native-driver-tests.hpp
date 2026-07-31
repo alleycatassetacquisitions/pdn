@@ -908,140 +908,98 @@ public:
         globalLogger_->setSuppressOutput(true);
         g_logger = globalLogger_;
         SimpleTimer::setPlatformClock(globalClock_);
-        device_ = cli::DeviceFactory::createDevice(0, true);
+        device = cli::DeviceFactory::createDevice(0, true);
 
-        // The CLI factory skips past PlayerRegistrationApp directly to gameplay.
-        // These tests exercise the registration flow (HTTP fetch transitions,
-        // reboot semantics), so push the device back to PR app's FetchUserData.
-        device_.game->skipToState(device_.pdn, 0);
-        State* state = device_.game->getCurrentState();
-        if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
-            static_cast<PlayerRegistrationApp*>(state)->skipToState(device_.pdn, 1);
-        }
+        // The CLI factory launches straight into the duel app. These tests
+        // exercise the registration flow (HTTP fetch transitions, reboot
+        // semantics), so swap back to the registration app at its fetch state.
+        device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
+                                 PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
     }
 
     void TearDown() override {
-        cli::DeviceFactory::destroyDevice(device_);
+        cli::DeviceFactory::destroyDevice(device);
         SimpleTimer::setPlatformClock(nullptr);
         g_logger = nullptr;
         delete globalLogger_;
         delete globalClock_;
     }
 
-    cli::DeviceInstance device_;
+    cli::DeviceInstance device;
     NativeClockDriver* globalClock_;
     NativeLoggerDriver* globalLogger_;
 };
 
 // Test: Mock HTTP fetch transitions device from FetchUserData to WelcomeMessage
 void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
-    // Device starts at PlayerRegistrationApp (state machine)
-    State* state = suite->device_.game->getCurrentState();
+    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
+    State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    
-    // Get the internal state of the PlayerRegistrationApp
-    PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-    State* prState = prApp->getCurrentState();
-    ASSERT_NE(prState, nullptr);
-    ASSERT_EQ(prState->getStateId(), FETCH_USER_DATA);
+    ASSERT_EQ(state->getStateId(), FETCH_USER_DATA);
 
     // Run a few loop cycles — mock HTTP responds immediately
     for (int i = 0; i < 10; i++) {
-        suite->device_.pdn->loop();
+        suite->device.pdn->loop();
     }
 
-    // Should have transitioned to WelcomeMessage within PlayerRegistrationApp
-    state = suite->device_.game->getCurrentState();
+    // Should have transitioned to WelcomeMessage, still inside the registration app
+    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
+    state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    
-    prApp = static_cast<PlayerRegistrationApp*>(state);
-    prState = prApp->getCurrentState();
-    ASSERT_NE(prState, nullptr);
-    ASSERT_EQ(prState->getStateId(), WELCOME_MESSAGE);
+    ASSERT_EQ(state->getStateId(), WELCOME_MESSAGE);
 }
 
 // Test: Reboot resets device back to FetchUserData
 void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     // Advance past FetchUserData
     for (int i = 0; i < 10; i++) {
-        suite->device_.pdn->loop();
+        suite->device.pdn->loop();
     }
-    State* state = suite->device_.game->getCurrentState();
+    State* state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    
-    PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-    State* prState = prApp->getCurrentState();
-    ASSERT_NE(prState, nullptr);
-    ASSERT_NE(prState->getStateId(), FETCH_USER_DATA);
+    ASSERT_NE(state->getStateId(), FETCH_USER_DATA);
 
     // Reboot: same sequence as cmdReboot
-    suite->device_.httpClientDriver->setMockServerEnabled(true);
-    suite->device_.httpClientDriver->setConnected(true);
-    suite->device_.stateHistory.clear();
-    suite->device_.lastStateId = -1;
-    
-    // Skip to PlayerRegistrationApp (index 0) and then to its internal FetchUserDataState (index 1)
-    suite->device_.game->skipToState(suite->device_.pdn, 0);
-    state = suite->device_.game->getCurrentState();
-    if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
-        PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-        prApp->skipToState(suite->device_.pdn, 1);
-    }
+    suite->device.httpClientDriver->setMockServerEnabled(true);
+    suite->device.httpClientDriver->setConnected(true);
+    suite->device.stateHistory.clear();
+    suite->device.lastStateId = -1;
+    suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
+                                    PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
 
-    // Should be back at FetchUserData within PlayerRegistrationApp
-    state = suite->device_.game->getCurrentState();
+    // Should be back at FetchUserData within the registration app
+    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
+    state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    
-    prApp = static_cast<PlayerRegistrationApp*>(state);
-    prState = prApp->getCurrentState();
-    ASSERT_NE(prState, nullptr);
-    ASSERT_EQ(prState->getStateId(), FETCH_USER_DATA);
+    ASSERT_EQ(state->getStateId(), FETCH_USER_DATA);
 }
 
 // Test: Reboot from a later state returns to FetchUserData and can re-transition
 void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     // Advance device further (past FetchUserData into WelcomeMessage or beyond)
     for (int i = 0; i < 10; i++) {
-        suite->device_.pdn->loop();
+        suite->device.pdn->loop();
     }
-    
-    State* state = suite->device_.game->getCurrentState();
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-    ASSERT_EQ(prApp->getCurrentState()->getStateId(), WELCOME_MESSAGE);
+
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), WELCOME_MESSAGE);
 
     // Reboot
-    suite->device_.httpClientDriver->setMockServerEnabled(true);
-    suite->device_.httpClientDriver->setConnected(true);
-    suite->device_.stateHistory.clear();
-    suite->device_.lastStateId = -1;
-    
-    // Skip to PlayerRegistrationApp (index 0) and then to its internal FetchUserDataState (index 1)
-    suite->device_.game->skipToState(suite->device_.pdn, 0);
-    state = suite->device_.game->getCurrentState();
-    if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
-        PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-        prApp->skipToState(suite->device_.pdn, 1);
-    }
+    suite->device.httpClientDriver->setMockServerEnabled(true);
+    suite->device.httpClientDriver->setConnected(true);
+    suite->device.stateHistory.clear();
+    suite->device.lastStateId = -1;
+    suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
+                                    PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
 
-    state = suite->device_.game->getCurrentState();
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    prApp = static_cast<PlayerRegistrationApp*>(state);
-    ASSERT_EQ(prApp->getCurrentState()->getStateId(), FETCH_USER_DATA);
+    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), FETCH_USER_DATA);
 
     // Run loops again — should transition to WelcomeMessage again
     for (int i = 0; i < 10; i++) {
-        suite->device_.pdn->loop();
+        suite->device.pdn->loop();
     }
-    
-    state = suite->device_.game->getCurrentState();
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    prApp = static_cast<PlayerRegistrationApp*>(state);
-    ASSERT_EQ(prApp->getCurrentState()->getStateId(), WELCOME_MESSAGE);
+
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), WELCOME_MESSAGE);
 }
 
 // ============================================
@@ -1164,35 +1122,28 @@ void cliRoleCommandNoDevices(CliRoleCommandTestSuite* suite) {
 // Test: Reboot clears state history and resets lastStateId
 void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     // Add some fake state history
-    suite->device_.stateHistory.push_back(1);
-    suite->device_.stateHistory.push_back(5);
-    suite->device_.stateHistory.push_back(7);
-    suite->device_.lastStateId = 7;
+    suite->device.stateHistory.push_back(1);
+    suite->device.stateHistory.push_back(5);
+    suite->device.stateHistory.push_back(7);
+    suite->device.lastStateId = 7;
 
-    ASSERT_EQ(suite->device_.stateHistory.size(), 3u);
-    ASSERT_EQ(suite->device_.lastStateId, 7);
+    ASSERT_EQ(suite->device.stateHistory.size(), 3u);
+    ASSERT_EQ(suite->device.lastStateId, 7);
 
     // Reboot
-    suite->device_.httpClientDriver->setMockServerEnabled(true);
-    suite->device_.httpClientDriver->setConnected(true);
-    suite->device_.stateHistory.clear();
-    suite->device_.lastStateId = -1;
-    
-    // Skip to PlayerRegistrationApp (index 0) and then to its internal FetchUserDataState (index 1)
-    suite->device_.game->skipToState(suite->device_.pdn, 0);
-    State* state = suite->device_.game->getCurrentState();
-    if (state && state->getStateId() == PLAYER_REGISTRATION_APP_ID) {
-        PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-        prApp->skipToState(suite->device_.pdn, 1);
-    }
+    suite->device.httpClientDriver->setMockServerEnabled(true);
+    suite->device.httpClientDriver->setConnected(true);
+    suite->device.stateHistory.clear();
+    suite->device.lastStateId = -1;
+
+    suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
+                                    PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
 
     // History should be cleared
-    ASSERT_TRUE(suite->device_.stateHistory.empty());
-    ASSERT_EQ(suite->device_.lastStateId, -1);
+    ASSERT_TRUE(suite->device.stateHistory.empty());
+    ASSERT_EQ(suite->device.lastStateId, -1);
 
-    // Device should be at FetchUserData within PlayerRegistrationApp
-    state = suite->device_.game->getCurrentState();
-    ASSERT_EQ(state->getStateId(), PLAYER_REGISTRATION_APP_ID);
-    PlayerRegistrationApp* prApp = static_cast<PlayerRegistrationApp*>(state);
-    ASSERT_EQ(prApp->getCurrentState()->getStateId(), FETCH_USER_DATA);
+    // Device should be at FetchUserData within the registration app
+    ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), FETCH_USER_DATA);
 }

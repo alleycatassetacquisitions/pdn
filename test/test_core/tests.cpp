@@ -13,6 +13,7 @@
 #include "match-manager-tests.hpp"
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
+#include "quickdraw-state-graph-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
 #include "rdc-hello-tests.hpp"
 #include "connect-state-callback-tests.hpp"
@@ -464,6 +465,126 @@ TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {
     
     // Note: We can't directly test execDrivers() was called since
     // it's not mockable, but this documents the expected behavior
+}
+
+// ============================================
+// DEVICE TESTS - APP SWAPS
+// ============================================
+
+// An app is re-mounted on every swap back to it. Re-running populateStateMap
+// there appends a whole duplicate state set that nothing ever mounts and only
+// ~StateMachine frees, so a session's worth of swaps leaks one set per swap.
+TEST_F(AppSwapTestSuite, remountingAnAppDoesNotRepopulateItsStateMap) {
+    loadAllApps(APP_ONE);
+
+    ASSERT_EQ(appOne->populateCount, 1);
+    ASSERT_EQ(appOne->getStateMap().size(), 3u);
+
+    for (int swap = 0; swap < 3; swap++) {
+        device->setActiveApp(APP_TWO);
+        device->setActiveApp(APP_ONE);
+    }
+
+    ASSERT_EQ(appOne->populateCount, 1);
+    ASSERT_EQ(appOne->getStateMap().size(), 3u);
+    ASSERT_EQ(appTwo->populateCount, 1);
+    ASSERT_EQ(appTwo->getStateMap().size(), 3u);
+}
+
+// Entering an app part-way through is what a shootout's hand-off into a bracket
+// duel needs; restarting the target at slot 0 would replay its boot state.
+TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedStateIndex) {
+    loadAllApps(APP_ONE);
+    ASSERT_EQ(appOne->getCurrentState()->getStateId(), 0);
+
+    device->setActiveApp(APP_TWO, 2);
+
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
+}
+
+// A swap that names no entry point boots the target at its first state, the way
+// every FDN call site expects.
+TEST_F(AppSwapTestSuite, setActiveAppWithoutAnIndexEntersTheBootState) {
+    loadAllApps(APP_ONE);
+
+    device->setActiveApp(APP_TWO, 2);
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
+
+    device->setActiveApp(APP_ONE);
+    device->setActiveApp(APP_TWO);
+
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
+}
+
+TEST_F(AppSwapTestSuite, outOfRangeEntryStateIndexFallsBackToBootState) {
+    loadAllApps(APP_ONE);
+
+    device->setActiveApp(APP_TWO, 99);
+
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
+}
+
+// App and intra-machine edges share one priority list. Checking every local edge
+// first would silently demote every hand-off — the split's Idle depends on its
+// shootout edge outranking its duel-countdown edge.
+TEST_F(AppSwapTestSuite, appTransitionDeclaredFirstOutranksALocalEdge) {
+    loadAllApps(APP_THREE);
+
+    appThree->forkState()->takeAppEdge = true;
+    appThree->forkState()->takeLocalEdge = true;
+    device->loop();
+
+    ASSERT_EQ(device->getActiveApp(), appTwo);
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
+}
+
+TEST_F(AppSwapTestSuite, localEdgeStillFiresWhenTheAppEdgeConditionIsFalse) {
+    loadAllApps(APP_THREE);
+
+    appThree->forkState()->takeLocalEdge = true;
+    device->loop();
+
+    ASSERT_EQ(device->getActiveApp(), appThree);
+    ASSERT_EQ(appThree->getCurrentState()->getStateId(), 1);
+}
+
+// Managers shared across apps are pumped from here. Only the mounted app gets an
+// onStateLoop, so driving them from inside a state stalls them on the next swap.
+TEST_F(AppSwapTestSuite, tickCallbackRunsWhicheverAppIsMounted) {
+    int ticks = 0;
+    device->setTickCallback([&ticks]() { ticks++; });
+    loadAllApps(APP_ONE);
+
+    device->loop();
+    device->loop();
+    ASSERT_EQ(ticks, 2);
+
+    device->setActiveApp(APP_TWO);
+    device->loop();
+    device->loop();
+
+    ASSERT_EQ(ticks, 4);
+    ASSERT_EQ(device->getActiveApp(), appTwo);
+}
+
+// ============================================
+// QUICKDRAW STATE GRAPH
+// ============================================
+
+TEST(QuickdrawStateGraph, appsRegisterStatesInPreSplitOrder) {
+    quickdrawAppsRegisterStatesInPreSplitOrder();
+}
+
+TEST(QuickdrawStateGraph, appEdgesMatchPreSplitGraph) {
+    quickdrawAppEdgesMatchPreSplitGraph();
+}
+
+TEST(QuickdrawStateGraph, crossAppEdgesAreAppTransitions) {
+    quickdrawCrossAppEdgesAreAppTransitions();
+}
+
+TEST(QuickdrawStateGraph, registrationHandsOffFromWelcomeMessage) {
+    registrationHandsOffFromWelcomeMessage();
 }
 
 // ============================================
@@ -1015,8 +1136,8 @@ TEST_F(StateCleanupTests, countdownFreezesDisconnectDebounceDuringShootout) {
 // QUICKDRAW STATE TESTS - CONNECTION SUCCESSFUL
 // ============================================
 
-TEST_F(QuickdrawLifecycleTests, ctorDtorDoesNotLeak) {
-    quickdrawCtorDtorDoesNotLeak(this);
+TEST_F(GameSessionLifecycleTests, ctorDtorDoesNotLeak) {
+    gameSessionCtorDtorDoesNotLeak(this);
 }
 
 // ============================================

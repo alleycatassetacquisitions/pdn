@@ -23,7 +23,6 @@ void ShootoutProposal::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutProposal::onStateLoop(PDN* pdn) {
-    shootoutManager->sync();
     tickAbortGuard();
     ShootoutManager::Phase p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;

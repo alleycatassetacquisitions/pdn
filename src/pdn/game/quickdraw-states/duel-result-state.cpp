@@ -1,5 +1,4 @@
 #include "game/quickdraw-states.hpp"
-#include "game/quickdraw.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "game/match-manager.hpp"
 #include "device/drivers/logger.hpp"

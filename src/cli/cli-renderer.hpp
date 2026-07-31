@@ -206,7 +206,7 @@ private:
      * @param isSelected Whether this device is currently selected (affects header color)
      */
     void renderDevicePanel(DeviceInstance& device, bool isSelected = false) {
-        State* currentState = device.game->getCurrentState();
+        State* currentState = device.getCurrentState();
         int stateId = currentState ? currentState->getStateId() : -1;
         
         // Update state history

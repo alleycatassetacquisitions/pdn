@@ -9,7 +9,7 @@
 #include "game/player.hpp"
 #include "device-mock.hpp"
 #include "id-generator.hpp"
-#include "game/quickdraw.hpp"
+#include "game/game-session.hpp"
 #include "game/quickdraw-states.hpp"
 #include "utility-tests.hpp"
 #include "protocol-constants.hpp"
@@ -1400,13 +1400,12 @@ inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
 }
 
 // ============================================
-// Quickdraw lifecycle — exercises ctor + dtor so the native_asan env
-// catches leaks in the members Quickdraw owns (matchManager, chainDuelManager).
-// Pre-fix: ~Quickdraw just nulled the pointers, leaking ~100 bytes per device.
-// Post-fix: deletes are issued and ASAN passes clean.
+// GameSession lifecycle — exercises ctor + dtor so the native_asan env
+// catches leaks in the managers the session owns (matchManager,
+// chainDuelManager, shootoutManager).
 // ============================================
 
-class QuickdrawLifecycleTests : public testing::Test {
+class GameSessionLifecycleTests : public testing::Test {
 public:
     void SetUp() override {
         fakeClock = new FakePlatformClock();
@@ -1437,12 +1436,12 @@ public:
     uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 };
 
-// Create + destroy many Quickdraw instances; under ASAN (env:native_asan) a
-// leak in ~Quickdraw's ownership of matchManager / chainDuelManager would be
+// Create + destroy many GameSession instances; under ASAN (env:native_asan) a
+// leak in the session's ownership of matchManager / chainDuelManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
-inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
+inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
-        delete qd;
+        auto* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+        delete session;
     }
 }
