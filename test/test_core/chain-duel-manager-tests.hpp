@@ -325,9 +325,9 @@ inline void cdmSendConfirmNoopWhenChampionMacInvalid(ChainDuelManagerTests* suit
     cdm.sendConfirm();
 }
 
-// A confirm can outrun the chain announcement that puts its originator in the
-// champion's supporter chain. Held rather than dropped, and admitted on the next
-// chain-state change — otherwise that supporter contributes nothing all round.
+// A confirm can outrun the join that puts its originator in the champion's
+// supporter chain. Held rather than dropped, and admitted the moment the join
+// lands — otherwise that supporter contributes nothing all round.
 inline void cdmConfirmBufferedUntilOriginatorJoinsChain(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -338,12 +338,9 @@ inline void cdmConfirmBufferedUntilOriginatorJoinsChain(ChainDuelManagerTests* s
     cdm.onConfirmReceived(suite->supporterMac, multiHopMac, 1);
     ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 
-    // The announcement lands: multiHopMac is now reachable behind the direct
-    // supporter-jack peer.
-    std::array<uint8_t, 6> multiHopArr;
-    memcpy(multiHopArr.data(), multiHopMac, 6);
-    suite->rdc.onChainAnnouncementReceived(
-        suite->supporterMac, SerialIdentifier::INPUT_JACK, {multiHopArr});
+    // The join lands: multiHopMac sits somewhere behind the direct supporter-jack
+    // peer and has just named this device as its champion.
+    cdm.onChainJoinReceived(multiHopMac, suite->localMac);
 
     cdm.onChainStateChanged();
 
@@ -373,14 +370,34 @@ inline void cdmStrangerConfirmsCannotSilenceRealSupporter(ChainDuelManagerTests*
     // A genuine multi-hop supporter presses afterwards and joins the roster.
     uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
     cdm.onConfirmReceived(suite->supporterMac, realMac, 1);
-    std::array<uint8_t, 6> realArr;
-    memcpy(realArr.data(), realMac, 6);
-    suite->rdc.onChainAnnouncementReceived(
-        suite->supporterMac, SerialIdentifier::INPUT_JACK, {realArr});
+    cdm.onChainJoinReceived(realMac, suite->localMac);
     cdm.onChainStateChanged();
 
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
     EXPECT_EQ(cdm.getBoostMs(), ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+}
+
+// A join is a MAC claiming chain membership, so it has to name the champion it
+// claims to follow. Chains run side by side in one room and every frame is in
+// range of all of them; without the check, one chain's supporter would enrol
+// itself in another's roster and buy that champion boost it never earned.
+inline void cdmChainJoinForAnotherChampionIsIgnored(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+    ASSERT_TRUE(cdm.isChampion());
+
+    uint8_t otherChampion[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
+    uint8_t foreignSupporter[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
+    cdm.onChainJoinReceived(foreignSupporter, otherChampion);
+    cdm.onConfirmReceived(foreignSupporter, foreignSupporter, 1);
+
+    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
+    EXPECT_EQ(cdm.getBoostMs(), 0u);
+
+    // The same device, now naming us, is admitted — the MAC was never the issue.
+    cdm.onChainJoinReceived(foreignSupporter, suite->localMac);
+    EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 }
 
 // Head transfer swaps the champion under a supporter that already pressed. The
@@ -922,15 +939,16 @@ inline void chainDuelThreeDeviceConfirm(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(confirmTarget.data(), macA, 6), 0);  // direct to A
     EXPECT_EQ(memcmp(confirmPayload.originatorMac, suite->localMac, 6), 0);
 
-    // Leg 4: Champion A receives and records. The originator has to be A's own
-    // supporter-jack peer: A can only place a supporter it is directly cabled
-    // to, so one further down the chain contributes no boost.
+    // Leg 4: Champion A receives and records. The originator is two cables away,
+    // so A places it from the join it sent, not from any jack of A's own.
     ChainDuelManager a(&suite->player, suite->device.wirelessManager, &suite->rdc);
     a.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
     a.setPeerRole(SerialIdentifier::INPUT_JACK, true);
     ASSERT_TRUE(a.isChampion());
 
-    a.onConfirmReceived(suite->supporterMac, suite->supporterMac, confirmPayload.seqId);
+    uint8_t distantMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
+    a.onChainJoinReceived(distantMac, suite->localMac);
+    a.onConfirmReceived(distantMac, distantMac, confirmPayload.seqId);
     EXPECT_EQ(a.getBoostMs(), 15u);
 }
 
@@ -1122,34 +1140,40 @@ inline void cdmGameEventCountdownIsFireAndForget(ChainDuelManagerTests* suite) {
 }
 
 // WIN is tracked: seqId != 0, pending registered, retransmit fires on timer.
+// The frame is broadcast and carries the champion's MAC, which is what tells a
+// supporter several cables away that the result is from its own duel.
 inline void cdmGameEventWinIsTrackedAndRetried(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->applyHunterChampionRoles(cdm);
 
-    int supporterSends = 0;
+    int winSends = 0;
     uint8_t winSeqId = 0;
+    ChainGameEventPayload captured{};
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
         .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
-            if (memcmp(mac, suite->supporterMac, 6) == 0) {
-                ChainGameEventPayload p; memcpy(&p, data, sizeof(p));
+            if (memcmp(mac, MockDevice::BROADCAST_MAC, 6) == 0) {
+                ChainGameEventPayload p;
+                memcpy(&p, data, sizeof(p));
                 if (p.event_type == (uint8_t)ChainGameEventType::WIN) {
                     winSeqId = p.seqId;
-                    supporterSends++;
+                    captured = p;
+                    winSends++;
                 }
             }
             return 1;
         });
 
     cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
-    EXPECT_EQ(supporterSends, 1);
+    EXPECT_EQ(winSends, 1);
     ASSERT_NE(winSeqId, 0u);
+    EXPECT_EQ(memcmp(captured.championMac, suite->localMac, 6), 0);
 
     // Advance past first timeout (100ms), sync() should retransmit once.
     suite->fakeClock->advance(150);
     cdm.sync();
-    EXPECT_EQ(supporterSends, 2);
+    EXPECT_EQ(winSends, 2);
 }
 
 // ACK clears pending: no further retransmits after a matching ACK.
@@ -1162,8 +1186,9 @@ inline void cdmGameEventAckClearsPending(ChainDuelManagerTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
         .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
-            if (memcmp(mac, suite->supporterMac, 6) == 0) {
-                ChainGameEventPayload p; memcpy(&p, data, sizeof(p));
+            if (memcmp(mac, MockDevice::BROADCAST_MAC, 6) == 0) {
+                ChainGameEventPayload p;
+                memcpy(&p, data, sizeof(p));
                 if (p.event_type == (uint8_t)ChainGameEventType::LOSS) winSeqId = p.seqId;
             }
             return 1;
@@ -1191,7 +1216,7 @@ inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kChainGameEvent, _, sizeof(ChainGameEventPayload)))
         .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
-            if (memcmp(mac, suite->supporterMac, 6) == 0) supporterSends++;
+            if (memcmp(mac, MockDevice::BROADCAST_MAC, 6) == 0) supporterSends++;
             return 1;
         });
 

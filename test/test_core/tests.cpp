@@ -1483,6 +1483,10 @@ TEST_F(ChainDuelManagerTests, strangerConfirmsCannotSilenceRealSupporter) {
     cdmStrangerConfirmsCannotSilenceRealSupporter(this);
 }
 
+TEST_F(ChainDuelManagerTests, chainJoinForAnotherChampionIsIgnored) {
+    cdmChainJoinForAnotherChampionIsIgnored(this);
+}
+
 TEST_F(ChainDuelManagerTests, confirmResentWhenChampionChanges) {
     cdmConfirmResentWhenChampionChanges(this);
 }
@@ -1591,6 +1595,14 @@ TEST_F(ChainDuelMultiDeviceFixture, confirmDeliveredToChampion) {
     cdmMultiDeviceConfirmDeliveredToChampion(this);
 }
 
+TEST_F(ChainDuelMultiDeviceFixture, boostScalesWithChainDepth) {
+    cdmMultiDeviceBoostScalesWithChainDepth(this);
+}
+
+TEST_F(ChainDuelMultiDeviceFixture, gameEventReachesDistantSupporter) {
+    cdmMultiDeviceGameEventReachesDistantSupporter(this);
+}
+
 TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceFullTournament) {
     shootoutFourDeviceFullTournament(this);
 }
@@ -1599,6 +1611,9 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutEightDeviceFullTournament) {
 }
 TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
     shootoutFourDeviceConsensusAndMatchStart(this);
+}
+TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) {
+    shootoutFourDeviceTwoTournamentsBackToBack(this);
 }
 
 // ============================================

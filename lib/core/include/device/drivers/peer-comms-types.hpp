@@ -21,6 +21,8 @@ enum class PktType : uint8_t {
     kConnectionAnnounce = 17,
     kDisconnectReport = 18,
     kHeadTransfer = 19,
+    // NOLINTNEXTLINE(readability-identifier-naming)
+    kChainJoin = 20,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
@@ -72,6 +74,16 @@ struct ChainConfirmPayload
 {
     uint8_t originatorMac[6];
     uint8_t seqId;
+} __attribute__((packed));
+
+// Sent by a supporter straight to the champion whose MAC reached it through the
+// role-announce cascade. The cascade only ever travels downstream, so this is
+// the sole evidence a champion gets that a device more than one cable away
+// follows it — and the only thing that lets that device's press count.
+// championMac is the champion the sender believes in, so a frame that arrives
+// by radio accident cannot enrol anyone in the wrong chain's roster.
+struct ChainJoinPayload {
+    uint8_t championMac[6];
 } __attribute__((packed));
 
 struct RoleAnnouncePayload

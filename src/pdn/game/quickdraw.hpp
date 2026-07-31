@@ -31,6 +31,8 @@ public:
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    /// Champion-side enrolment of a supporter this device shares no cable with.
+    void onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
