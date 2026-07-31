@@ -148,7 +148,7 @@ public:
     void onStateDismounted(PDN* pdn) override;
     bool transitionToIdle();
 
-    // Called by Quickdraw's chain-game-event packet handler.
+    // Called by GameSession's chain-game-event packet handler.
     void onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac);
 
 public:

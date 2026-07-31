@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <utility>
 #include <vector>
@@ -38,94 +39,85 @@ namespace quickdraw_state_graph_expectations {
 // Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
 // dropped — that app is now mounted by the device rather than nested as a state.
 // The duel, shootout and symbol maps concatenate to exactly this.
-inline const std::vector<int>& preSplitGameplayOrder() {
-    static const std::vector<int> ORDER = {
-        AWAKEN_SEQUENCE,
-        IDLE,
-        SUPPORTER_READY,
-        DUEL_COUNTDOWN,
-        DUEL,
-        DUEL_PUSHED,
-        DUEL_RECEIVED_RESULT,
-        DUEL_RESULT,
-        WIN,
-        LOSE,
-        UPLOAD_MATCHES,
-        SLEEP,
-        SHOOTOUT_PROPOSAL,
-        SHOOTOUT_BRACKET_REVEAL,
-        SHOOTOUT_SPECTATOR,
-        SHOOTOUT_ELIMINATED,
-        SHOOTOUT_FINAL_STANDINGS,
-        SHOOTOUT_ABORTED,
-        SYMBOL,
-        SYMBOL_MATCHED,
-    };
-    return ORDER;
-}
+inline const std::vector<int> PRE_SPLIT_GAMEPLAY_ORDER = {
+    AWAKEN_SEQUENCE,
+    IDLE,
+    SUPPORTER_READY,
+    DUEL_COUNTDOWN,
+    DUEL,
+    DUEL_PUSHED,
+    DUEL_RECEIVED_RESULT,
+    DUEL_RESULT,
+    WIN,
+    LOSE,
+    UPLOAD_MATCHES,
+    SLEEP,
+    SHOOTOUT_PROPOSAL,
+    SHOOTOUT_BRACKET_REVEAL,
+    SHOOTOUT_SPECTATOR,
+    SHOOTOUT_ELIMINATED,
+    SHOOTOUT_FINAL_STANDINGS,
+    SHOOTOUT_ABORTED,
+    SYMBOL,
+    SYMBOL_MATCHED,
+};
 
 // Per-state transition targets, in the order they were added. 47 edges — the
 // pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
 // the app object onto the state that triggered it (see
 // registrationHandsOffFromWelcomeMessage below).
-inline const std::vector<std::pair<int, std::vector<int>>>& preSplitGameplayEdges() {
-    static const std::vector<std::pair<int, std::vector<int>>> EDGES = {
-        {AWAKEN_SEQUENCE, {IDLE}},
-        {IDLE,
-         {SHOOTOUT_PROPOSAL, DUEL_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
-        {SUPPORTER_READY, {IDLE}},
-        {DUEL_COUNTDOWN, {SHOOTOUT_ABORTED, DUEL, IDLE}},
-        {DUEL,
-         {SHOOTOUT_ABORTED, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED, IDLE,
-          DUEL_RECEIVED_RESULT, DUEL_PUSHED}},
-        {DUEL_PUSHED, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
-        {DUEL_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
-        {DUEL_RESULT,
-         {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
-        {WIN, {UPLOAD_MATCHES}},
-        {LOSE, {UPLOAD_MATCHES}},
-        {UPLOAD_MATCHES, {SLEEP}},
-        {SLEEP, {AWAKEN_SEQUENCE}},
-        {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
-        {SHOOTOUT_BRACKET_REVEAL, {DUEL_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
-        {SHOOTOUT_SPECTATOR,
-         {DUEL_COUNTDOWN, SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
-        {SHOOTOUT_ELIMINATED, {SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
-        {SHOOTOUT_FINAL_STANDINGS, {SLEEP}},
-        {SHOOTOUT_ABORTED, {IDLE}},
-        {SYMBOL, {IDLE, SYMBOL_MATCHED}},
-        {SYMBOL_MATCHED, {SYMBOL, IDLE}},
-    };
-    return EDGES;
-}
+inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
+    {AWAKEN_SEQUENCE, {IDLE}},
+    {IDLE,
+     {SHOOTOUT_PROPOSAL, DUEL_COUNTDOWN, SUPPORTER_READY, SHOOTOUT_ABORTED, SYMBOL}},
+    {SUPPORTER_READY, {IDLE}},
+    {DUEL_COUNTDOWN, {SHOOTOUT_ABORTED, DUEL, IDLE}},
+    {DUEL,
+     {SHOOTOUT_ABORTED, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED, IDLE,
+      DUEL_RECEIVED_RESULT, DUEL_PUSHED}},
+    {DUEL_PUSHED, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
+    {DUEL_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
+    {DUEL_RESULT,
+     {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
+    {WIN, {UPLOAD_MATCHES}},
+    {LOSE, {UPLOAD_MATCHES}},
+    {UPLOAD_MATCHES, {SLEEP}},
+    {SLEEP, {AWAKEN_SEQUENCE}},
+    {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
+    {SHOOTOUT_BRACKET_REVEAL, {DUEL_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
+    {SHOOTOUT_SPECTATOR,
+     {DUEL_COUNTDOWN, SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
+    {SHOOTOUT_ELIMINATED, {SHOOTOUT_FINAL_STANDINGS, SHOOTOUT_ABORTED}},
+    {SHOOTOUT_FINAL_STANDINGS, {SLEEP}},
+    {SHOOTOUT_ABORTED, {IDLE}},
+    {SYMBOL, {IDLE, SYMBOL_MATCHED}},
+    {SYMBOL_MATCHED, {SYMBOL, IDLE}},
+};
 
 // The edges the split turned into hand-offs, as (source state, position in that
 // state's list) -> (target app, entry slot). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
-inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>& crossAppEdges() {
-    static const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> EDGES = {
-        {{IDLE, 0}, {SHOOTOUT_APP_ID, ShootoutApp::PROPOSAL_INDEX}},
-        {{IDLE, 3}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-        {{IDLE, 4}, {SYMBOL_APP_ID, SymbolApp::SYMBOL_INDEX}},
-        {{DUEL_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-        {{DUEL, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-        {{DUEL, 1}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
-        {{DUEL, 2}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
-        {{DUEL_PUSHED, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-        {{DUEL_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-        {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-        {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
-        {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
-        {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
-        {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
-        {{SHOOTOUT_FINAL_STANDINGS, 0}, {DUEL_APP_ID, DuelApp::SLEEP_INDEX}},
-        {{SHOOTOUT_ABORTED, 0}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
-        {{SYMBOL, 0}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
-        {{SYMBOL_MATCHED, 1}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
-    };
-    return EDGES;
-}
+inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
+    {{IDLE, 0}, {SHOOTOUT_APP_ID, ShootoutApp::PROPOSAL_INDEX}},
+    {{IDLE, 3}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{IDLE, 4}, {SYMBOL_APP_ID, SymbolApp::SYMBOL_INDEX}},
+    {{DUEL_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL, 1}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
+    {{DUEL, 2}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
+    {{DUEL_PUSHED, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
+    {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
+    {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
+    {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
+    {{SHOOTOUT_FINAL_STANDINGS, 0}, {DUEL_APP_ID, DuelApp::SLEEP_INDEX}},
+    {{SHOOTOUT_ABORTED, 0}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
+    {{SYMBOL, 0}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
+    {{SYMBOL_MATCHED, 1}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
+};
 
 }  // namespace quickdraw_state_graph_expectations
 
@@ -138,7 +130,7 @@ struct QuickdrawAppsForTest {
     SymbolApp* symbol = nullptr;
 
     /// Constructs and populates the four apps without mounting any of them.
-    void build() {
+    QuickdrawAppsForTest() {
         GameContext context;
         playerRegistration = new PlayerRegistrationApp(nullptr, nullptr, nullptr, nullptr);
         duel = new DuelApp(context);
@@ -151,15 +143,11 @@ struct QuickdrawAppsForTest {
     }
 
     /// Frees the apps, and with them every state they registered.
-    void destroy() {
+    ~QuickdrawAppsForTest() {
         delete playerRegistration;
         delete duel;
         delete shootout;
         delete symbol;
-        playerRegistration = nullptr;
-        duel = nullptr;
-        shootout = nullptr;
-        symbol = nullptr;
     }
 
     /// The gameplay apps' states in the order the pre-split flat map registered
@@ -174,6 +162,15 @@ struct QuickdrawAppsForTest {
             }
         }
         return states;
+    }
+
+    /// The same states, keyed by state id.
+    std::map<int, State*> statesById() const {
+        std::map<int, State*> byId;
+        for (State* state : gameplayStates()) {
+            byId[state->getStateId()] = state;
+        }
+        return byId;
     }
 
     /// Where an edge actually lands: an intra-app edge names its target
@@ -196,10 +193,9 @@ struct QuickdrawAppsForTest {
 // cross-app edges use address these positions.
 inline void quickdrawAppsRegisterStatesInPreSplitOrder() {
     QuickdrawAppsForTest apps;
-    apps.build();
 
     const std::vector<int>& expected =
-        quickdraw_state_graph_expectations::preSplitGameplayOrder();
+        quickdraw_state_graph_expectations::PRE_SPLIT_GAMEPLAY_ORDER;
     std::vector<State*> actual = apps.gameplayStates();
     ASSERT_EQ(actual.size(), expected.size());
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -220,8 +216,6 @@ inline void quickdrawAppsRegisterStatesInPreSplitOrder() {
     EXPECT_EQ(apps.symbol->getStateMap()[SymbolApp::SYMBOL_INDEX]->getStateId(), SYMBOL);
     EXPECT_EQ(apps.playerRegistration->getStateMap()[PlayerRegistrationApp::FETCH_USER_DATA_INDEX]->getStateId(),
               PlayerRegistrationStateId::FETCH_USER_DATA);
-
-    apps.destroy();
 }
 
 // Every edge of the pre-split graph still leaves the same state, at the same
@@ -231,16 +225,11 @@ inline void quickdrawAppsRegisterStatesInPreSplitOrder() {
 // true at the same moment silently disables it.
 inline void quickdrawAppEdgesMatchPreSplitGraph() {
     QuickdrawAppsForTest apps;
-    apps.build();
-
-    std::map<int, State*> byId;
-    for (State* state : apps.gameplayStates()) {
-        byId[state->getStateId()] = state;
-    }
+    std::map<int, State*> byId = apps.statesById();
 
     size_t totalEdges = 0;
     for (const std::pair<int, std::vector<int>>& expected :
-         quickdraw_state_graph_expectations::preSplitGameplayEdges()) {
+         quickdraw_state_graph_expectations::PRE_SPLIT_GAMEPLAY_EDGES) {
         State* source = byId.count(expected.first) ? byId[expected.first] : nullptr;
         ASSERT_NE(source, nullptr) << "state " << expected.first << " missing";
 
@@ -257,8 +246,6 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
         totalEdges += expected.second.size();
     }
     EXPECT_EQ(totalEdges, 47u);
-
-    apps.destroy();
 }
 
 // Which of those edges became hand-offs, and the app plus entry slot each names.
@@ -267,16 +254,11 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
 // so the slots are pinned here directly.
 inline void quickdrawCrossAppEdgesAreAppTransitions() {
     QuickdrawAppsForTest apps;
-    apps.build();
-
-    std::map<int, State*> byId;
-    for (State* state : apps.gameplayStates()) {
-        byId[state->getStateId()] = state;
-    }
+    std::map<int, State*> byId = apps.statesById();
 
     std::map<int, std::vector<size_t>> expectedAppEdgesBySource;
     for (const std::pair<std::pair<int, size_t>, std::pair<int, int>>& expected :
-         quickdraw_state_graph_expectations::crossAppEdges()) {
+         quickdraw_state_graph_expectations::CROSS_APP_EDGES) {
         int sourceId = expected.first.first;
         size_t position = expected.first.second;
         expectedAppEdgesBySource[sourceId].push_back(position);
@@ -305,8 +287,6 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
                 << "state " << entry.first << " edge " << i << " changed kind";
         }
     }
-
-    apps.destroy();
 }
 
 // The pre-split graph's 48th edge. It used to sit on the PlayerRegistrationApp
@@ -315,7 +295,6 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 // onto WelcomeMessage, which was its only trigger.
 inline void registrationHandsOffFromWelcomeMessage() {
     QuickdrawAppsForTest apps;
-    apps.build();
 
     State* welcomeMessage = nullptr;
     for (State* state : apps.playerRegistration->getStateMap()) {
@@ -331,6 +310,4 @@ inline void registrationHandsOffFromWelcomeMessage() {
     EXPECT_EQ(edge->getTargetAppId().id, DUEL_APP_ID);
     EXPECT_EQ(edge->getEntryStateIndex(), DuelApp::AWAKEN_SEQUENCE_INDEX);
     EXPECT_EQ(apps.duel->getStateMap()[edge->getEntryStateIndex()]->getStateId(), AWAKEN_SEQUENCE);
-
-    apps.destroy();
 }

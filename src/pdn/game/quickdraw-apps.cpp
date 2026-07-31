@@ -27,9 +27,8 @@ void DuelApp::populateStateMap() {
     };
 
     awakenSequence->addTransition(
-        new StateTransition(
-            [awakenSequence]() { return awakenSequence->transitionToIdle(); },
-            idle));
+        [awakenSequence]() { return awakenSequence->transitionToIdle(); },
+        idle);
 
     // Auto-trigger Shootout on ring closure — the coordinator's own RDC event,
     // every other member's RING_CLOSED. Priority over DuelCountdown/
@@ -41,14 +40,12 @@ void DuelApp::populateStateMap() {
         StateId(SHOOTOUT_APP_ID), ShootoutApp::PROPOSAL_INDEX);
 
     idle->addTransition(
-        new StateTransition(
-            [idle]() { return idle->transitionToDuelCountdown(); },
-            duelCountdown));
+        [idle]() { return idle->transitionToDuelCountdown(); },
+        duelCountdown);
 
     idle->addTransition(
-        new StateTransition(
-            [idle]() { return idle->transitionToSupporterReady(); },
-            supporterReady));
+        [idle]() { return idle->transitionToSupporterReady(); },
+        supporterReady);
 
     idle->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
 
@@ -57,23 +54,20 @@ void DuelApp::populateStateMap() {
         StateId(SYMBOL_APP_ID), SymbolApp::SYMBOL_INDEX);
 
     supporterReady->addTransition(
-        new StateTransition(
-            [supporterReady]() { return supporterReady->transitionToIdle(); },
-            idle));
+        [supporterReady]() { return supporterReady->transitionToIdle(); },
+        idle);
 
     duelCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
 
     duelCountdown->addTransition(
-        new StateTransition(
-            [duelCountdown]() { return duelCountdown->shallWeBattle(); },
-            duel));
+        [duelCountdown]() { return duelCountdown->shallWeBattle(); },
+        duel);
 
     duelCountdown->addTransition(
-        new StateTransition(
-            [duelCountdown, shootoutManager]() {
-                return duelReturnsToIdle(*duelCountdown, shootoutManager);
-            },
-            idle));
+        [duelCountdown, shootoutManager]() {
+            return duelReturnsToIdle(*duelCountdown, shootoutManager);
+        },
+        idle);
 
     duel->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
 
@@ -86,59 +80,50 @@ void DuelApp::populateStateMap() {
         StateId(SHOOTOUT_APP_ID), ShootoutApp::ELIMINATED_INDEX);
 
     duel->addTransition(
-        new StateTransition(
-            [duel]() { return duel->transitionToIdle(); },
-            idle));
+        [duel]() { return duel->transitionToIdle(); },
+        idle);
 
     duel->addTransition(
-        new StateTransition(
-            [duel]() { return duel->transitionToDuelReceivedResult(); },
-            duelReceivedResult));
+        [duel]() { return duel->transitionToDuelReceivedResult(); },
+        duelReceivedResult);
 
     duel->addTransition(
-        new StateTransition(
-            [duel]() { return duel->transitionToDuelPushed(); },
-            duelPushed));
+        [duel]() { return duel->transitionToDuelPushed(); },
+        duelPushed);
 
     duelPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
 
     duelPushed->addTransition(
-        new StateTransition(
-            [duelPushed, shootoutManager]() {
-                return duelReturnsToIdle(*duelPushed, shootoutManager);
-            },
-            idle));
+        [duelPushed, shootoutManager]() {
+            return duelReturnsToIdle(*duelPushed, shootoutManager);
+        },
+        idle);
 
     duelPushed->addTransition(
-        new StateTransition(
-            [duelPushed]() { return duelPushed->transitionToDuelResult(); },
-            duelResult));
+        [duelPushed]() { return duelPushed->transitionToDuelResult(); },
+        duelResult);
 
     duelReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
 
     duelReceivedResult->addTransition(
-        new StateTransition(
-            [duelReceivedResult, shootoutManager]() {
-                return duelReturnsToIdle(*duelReceivedResult, shootoutManager);
-            },
-            idle));
+        [duelReceivedResult, shootoutManager]() {
+            return duelReturnsToIdle(*duelReceivedResult, shootoutManager);
+        },
+        idle);
 
     duelReceivedResult->addTransition(
-        new StateTransition(
-            [duelReceivedResult]() { return duelReceivedResult->transitionToDuelResult(); },
-            duelResult));
+        [duelReceivedResult]() { return duelReceivedResult->transitionToDuelResult(); },
+        duelResult);
 
     duelResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
 
     duelResult->addTransition(
-        new StateTransition(
-            [duelResult]() { return duelResult->transitionToWin(); },
-            win));
+        [duelResult]() { return duelResult->transitionToWin(); },
+        win);
 
     duelResult->addTransition(
-        new StateTransition(
-            [duelResult]() { return duelResult->transitionToLose(); },
-            lose));
+        [duelResult]() { return duelResult->transitionToLose(); },
+        lose);
 
     duelResult->addAppTransition(
         [duelResult]() { return duelResult->transitionToShootoutSpectator(); },
@@ -149,24 +134,20 @@ void DuelApp::populateStateMap() {
         StateId(SHOOTOUT_APP_ID), ShootoutApp::ELIMINATED_INDEX);
 
     win->addTransition(
-        new StateTransition(
-            [win]() { return win->resetGame(); },
-            uploadMatches));
+        [win]() { return win->resetGame(); },
+        uploadMatches);
 
     lose->addTransition(
-        new StateTransition(
-            [lose]() { return lose->resetGame(); },
-            uploadMatches));
+        [lose]() { return lose->resetGame(); },
+        uploadMatches);
 
     uploadMatches->addTransition(
-        new StateTransition(
-            [uploadMatches]() { return uploadMatches->transitionToSleep(); },
-            sleep));
+        [uploadMatches]() { return uploadMatches->transitionToSleep(); },
+        sleep);
 
     sleep->addTransition(
-        new StateTransition(
-            [sleep]() { return sleep->transitionToAwakenSequence(); },
-            awakenSequence));
+        [sleep]() { return sleep->transitionToAwakenSequence(); },
+        awakenSequence);
 
     // Order matters: index 0 is the state a mount enters by default, and the
     // *_INDEX constants in the header address these slots.
@@ -197,46 +178,38 @@ void ShootoutApp::populateStateMap() {
     ShootoutAborted* aborted = new ShootoutAborted(context);
 
     proposal->addTransition(
-        new StateTransition(
-            [proposal]() { return proposal->transitionToBracketReveal(); },
-            bracketReveal));
+        [proposal]() { return proposal->transitionToBracketReveal(); },
+        bracketReveal);
     proposal->addTransition(
-        new StateTransition(
-            [proposal]() { return proposal->transitionToAborted(); },
-            aborted));
+        [proposal]() { return proposal->transitionToAborted(); },
+        aborted);
 
     bracketReveal->addAppTransition(
         [bracketReveal]() { return bracketReveal->transitionToDuelCountdown(); },
         StateId(DUEL_APP_ID), DuelApp::DUEL_COUNTDOWN_INDEX);
     bracketReveal->addTransition(
-        new StateTransition(
-            [bracketReveal]() { return bracketReveal->transitionToSpectator(); },
-            spectator));
+        [bracketReveal]() { return bracketReveal->transitionToSpectator(); },
+        spectator);
     bracketReveal->addTransition(
-        new StateTransition(
-            [bracketReveal]() { return bracketReveal->transitionToAborted(); },
-            aborted));
+        [bracketReveal]() { return bracketReveal->transitionToAborted(); },
+        aborted);
 
     spectator->addAppTransition(
         [spectator]() { return spectator->transitionToDuelCountdown(); },
         StateId(DUEL_APP_ID), DuelApp::DUEL_COUNTDOWN_INDEX);
     spectator->addTransition(
-        new StateTransition(
-            [spectator]() { return spectator->transitionToFinalStandings(); },
-            finalStandings));
+        [spectator]() { return spectator->transitionToFinalStandings(); },
+        finalStandings);
     spectator->addTransition(
-        new StateTransition(
-            [spectator]() { return spectator->transitionToAborted(); },
-            aborted));
+        [spectator]() { return spectator->transitionToAborted(); },
+        aborted);
 
     eliminated->addTransition(
-        new StateTransition(
-            [eliminated]() { return eliminated->transitionToFinalStandings(); },
-            finalStandings));
+        [eliminated]() { return eliminated->transitionToFinalStandings(); },
+        finalStandings);
     eliminated->addTransition(
-        new StateTransition(
-            [eliminated]() { return eliminated->transitionToAborted(); },
-            aborted));
+        [eliminated]() { return eliminated->transitionToAborted(); },
+        aborted);
 
     // Cable-event reset after TOURNAMENT_END: when the physical ring opens,
     // route through Sleep so the cooldown period elapses before the next
@@ -273,14 +246,12 @@ void SymbolApp::populateStateMap() {
         StateId(DUEL_APP_ID), DuelApp::IDLE_INDEX);
 
     symbol->addTransition(
-        new StateTransition(
-            [symbol]() { return symbol->transitionToSymbolMatched(); },
-            symbolMatched));
+        [symbol]() { return symbol->transitionToSymbolMatched(); },
+        symbolMatched);
 
     symbolMatched->addTransition(
-        new StateTransition(
-            [symbolMatched]() { return symbolMatched->transitionToSymbol(); },
-            symbol));
+        [symbolMatched]() { return symbolMatched->transitionToSymbol(); },
+        symbol);
 
     symbolMatched->addAppTransition(
         [symbolMatched]() { return symbolMatched->transitionToIdle(); },

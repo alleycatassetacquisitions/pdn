@@ -111,6 +111,11 @@ public:
         transitions.push_back(transition);
     }
 
+    /// Declares an edge to a sibling state in the same machine.
+    void addTransition(std::function<bool()> condition, State* nextState) {
+        transitions.push_back(new StateTransition(std::move(condition), nextState));
+    }
+
     /// Declares an edge out of this state's app, entering the target at
     /// `entryStateIndex` in its state map (0 = the app's boot state).
     ///

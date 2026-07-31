@@ -130,7 +130,7 @@ public:
     void setRemoteDeviceCoordinator(RemoteDeviceCoordinator* rdc);
 
     // Shootout tournament suppresses the hunter/bounty role-mismatch rejection
-    // so same-role duels in the bracket proceed. Injected by Quickdraw after
+    // so same-role duels in the bracket proceed. Injected by GameSession after
     // both managers are built.
     void setShootoutManager(ShootoutManager* shootoutManager);
     ShootoutManager* getShootoutManager() const;

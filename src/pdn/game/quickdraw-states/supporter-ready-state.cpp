@@ -78,9 +78,8 @@ void SupporterReady::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(onSupporterPress, this, ButtonInteraction::CLICK);
     cachedPDN = pdn;
-    // The chain game event handler lives on the session, which owns no app and
-    // so cannot ask which state is mounted. Publishing here replaces the
-    // "is the current state SupporterReady" check it used to run.
+    // The chain game event handler lives on the session, which owns no app and so
+    // cannot reach the mounted SupporterReady on its own.
     if (gameSession) gameSession->setActiveSupporterReady(this);
 }
 

@@ -135,8 +135,8 @@ public:
             return;
         }
 
-        // An app edge hands the device over instead: setActiveApp dismounts this
-        // machine, and onStateDismounted clears the pending edge as it goes.
+        // setActiveApp dismounts this machine, and onStateDismounted clears the
+        // pending edge as it goes.
         StateId nextApp = pendingTransition->getTargetAppId();
         int entryIndex = pendingTransition->getEntryStateIndex();
         PDN->setActiveApp(nextApp, entryIndex);

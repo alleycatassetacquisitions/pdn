@@ -57,10 +57,8 @@ void PlayerRegistrationApp::populateStateMap() {
             std::bind(&ChooseRoleState::transitionToWelcomeMessage, chooseRole),
             welcomeMessageState));
 
-    // Registration hands the device to gameplay from its last state. This used to
-    // be an edge on the app object itself, guarded by "current state is
-    // WelcomeMessage and it wants gameplay"; as a top-level app nothing checks a
-    // machine's own transition list, so it lives on the state that triggers it.
+    // Nothing checks a top-level app's own transition list, so registration's
+    // hand-off to gameplay lives on the state that triggers it.
     welcomeMessageState->addAppTransition(
         [welcomeMessageState]() { return welcomeMessageState->transitionToGameplay(); },
         StateId(DUEL_APP_ID));

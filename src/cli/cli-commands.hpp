@@ -547,8 +547,6 @@ private:
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 
-        // Re-enter the registration app at FetchUserData: dismounts whatever
-        // state is running, then mounts the fetch the way boot does.
         dev.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID), PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
 
         result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";

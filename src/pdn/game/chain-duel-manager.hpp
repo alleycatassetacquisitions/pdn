@@ -62,7 +62,7 @@ public:
     void onChainGameEventReceived(uint8_t eventType);
 
     // Supporter-side: ACK a received WIN/LOSS game event back to the
-    // champion so it stops retransmitting. Called from Quickdraw's packet
+    // champion so it stops retransmitting. Called from GameSession's packet
     // handler when the incoming payload has seqId != 0.
     void sendGameEventAck(const uint8_t* toMac, uint8_t seqId);
 
