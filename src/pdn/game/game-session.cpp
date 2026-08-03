@@ -258,6 +258,12 @@ void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* 
     // supporter has not answered.
     chainDuelManager->onChainGameEventReceived(payload->event_type);
 
+    // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
+    // champion's roll call whether or not this device is watching for it, and a
+    // confirm still held here would then re-register a press for a round the
+    // supporter has not answered.
+    chainDuelManager->onChainGameEventReceived(payload->event_type);
+
     // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
     if (activeSupporterReady != nullptr) {
         activeSupporterReady->onChainGameEventReceived(payload->event_type, fromMac);

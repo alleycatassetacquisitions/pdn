@@ -235,8 +235,7 @@ public:
             instance.symbolWirelessManager
         );
 
-        // Create the shared managers (no remote debug manager for now) and the
-        // apps that read them
+        // Create the shared managers and the apps that read them
         instance.gameSession = new GameSession(
             instance.player,
             instance.pdn,

@@ -1140,6 +1140,10 @@ TEST_F(GameSessionLifecycleTests, ctorDtorDoesNotLeak) {
     gameSessionCtorDtorDoesNotLeak(this);
 }
 
+TEST_F(GameSessionLifecycleTests, countdownVoidsStandingConfirm) {
+    gameSessionCountdownVoidsStandingConfirm(this);
+}
+
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================

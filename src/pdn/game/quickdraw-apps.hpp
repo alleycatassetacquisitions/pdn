@@ -13,9 +13,10 @@
 // populateStateMap silently retargets every edge aiming into it. The state-graph
 // test pins each order against the pre-split graph.
 
-/// Registration -> Awaken -> Idle -> DuelCountdown -> Duel ->
-/// DuelPushed / DuelReceivedResult -> DuelResult -> Win|Lose -> Upload -> Sleep.
-/// The app the device spends most of its life in; the other two hand back here.
+/// Awaken -> Idle -> DuelCountdown -> Duel -> DuelPushed / DuelReceivedResult ->
+/// DuelResult -> Win|Lose -> Upload -> Sleep, with SupporterReady branching off
+/// Idle. The app the device spends most of its life in; the other two hand back
+/// here. Registration is its own top-level app, not a state in this one.
 class DuelApp : public StateMachine {
 public:
     static constexpr int AWAKEN_SEQUENCE_INDEX = 0;
@@ -34,8 +35,10 @@ private:
     GameContext context;
 };
 
-/// Proposal -> BracketReveal -> Spectator | Eliminated -> FinalStandings, plus
-/// the Aborted landing state every duel state can be pulled into.
+/// Proposal -> BracketReveal, which either hands off to a bracket duel or drops
+/// to Spectator; Spectator and Eliminated both end at FinalStandings. Eliminated
+/// has no inbound edge here — the duel app hands into it. Aborted is the landing
+/// state the six duel states a live tournament can interrupt are pulled into.
 class ShootoutApp : public StateMachine {
 public:
     static constexpr int PROPOSAL_INDEX = 0;

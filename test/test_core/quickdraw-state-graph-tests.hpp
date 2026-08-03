@@ -15,8 +15,9 @@
 #include "state/state.hpp"
 #include "state/state-machine.hpp"
 
-// The graph these tests pin is otherwise unexecuted by the suite: nothing else
-// calls a gameplay app's populateStateMap. Both orders below are behaviour, not
+// The graph these tests pin is otherwise unexecuted by test_core: nothing else
+// there calls a gameplay app's populateStateMap. (test_cli does, by building a
+// device.) Both orders below are behaviour, not
 // style — a mount enters stateMap[0] unless an app transition names another
 // slot, and State::checkTransitions returns the first transition whose condition
 // holds, so a reordering here silently reroutes the device while every other

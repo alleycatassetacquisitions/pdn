@@ -37,7 +37,8 @@ public:
     /// The manager bundle every gameplay state is constructed from.
     GameContext getContext();
 
-    /// The MatchManager the registration app writes fetched player data into.
+    /// The shared MatchManager. The registration app uploads and clears stored
+    /// matches through it; fetched player data goes to the Player, not here.
     MatchManager* getMatchManager();
 
     /// Published by SupporterReady while it is mounted, so an inbound chain game

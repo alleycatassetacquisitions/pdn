@@ -67,8 +67,9 @@ public:
     }
 
     /// The state map slot the next mount enters at. Device::setActiveApp sets it
-    /// before every mount, from the app transition that named it or 0 when none
-    /// did. Out of range falls back to 0.
+    /// from the app transition that named it, or 0 when none did. A mount that
+    /// does not go through setActiveApp — loadAppConfig at boot — keeps the last
+    /// value, which is 0 until the first swap. Out of range falls back to 0.
     void setEntryStateIndex(int stateIndex) {
         entryStateIndex = stateIndex;
     }
