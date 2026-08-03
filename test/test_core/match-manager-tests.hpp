@@ -23,6 +23,14 @@ public:
         char playerId[] = "test";
         player->setUserID(playerId);
         matchManager->initialize(player, &mockStorage, &fakeWirelessManager);
+        using ::testing::_;
+        ON_CALL(mockStorage, write(_, _, _))
+            .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+                return value.size();
+            });
+        ON_CALL(mockStorage, writeUChar(_, _, _)).WillByDefault(::testing::Return(1));
+        ON_CALL(mockStorage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
+        ON_CALL(mockStorage, read(_, _, _)).WillByDefault(::testing::Return(""));
         // Bounty-side tests that feed SEND_MATCH_ID via setupMatchAsBounty use
         // this dummyMac as the fake hunter. Stub the RDC to accept it as a
         // direct peer so the MAC-peering gate passes.

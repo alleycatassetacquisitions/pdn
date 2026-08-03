@@ -23,6 +23,7 @@
 #include "device/drivers/native/native-http-client-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
+#include "game/match-manager.hpp"
 #include "device/drivers/native/native-peer-broker.hpp"
 #include "device/drivers/native/native-dashboard.hpp"
 
@@ -81,7 +82,7 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     instance.serialInDriver = new NativeSerialDriver(SERIAL_IN_DRIVER_NAME + suffix);
     instance.httpClientDriver = new NativeHttpClientDriver(HTTP_CLIENT_DRIVER_NAME + suffix);
     instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
-    instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+    instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCHES_PREFS_NAMESPACE});
     
     // Create driver configuration
     DriverConfig pdnConfig = {

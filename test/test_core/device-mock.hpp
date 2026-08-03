@@ -155,13 +155,13 @@ public:
 
 class MockStorage : public StorageInterface {
 public:
-    MOCK_METHOD(size_t, write, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(std::string, read, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(bool, remove, (const std::string&), (override));
-    MOCK_METHOD(bool, clear, (), (override));
+    MOCK_METHOD(size_t, write, (const std::string&, const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::string, read, (const std::string&, const std::string&, const std::string&), (override));
+    MOCK_METHOD(bool, remove, (const std::string&, const std::string&), (override));
+    MOCK_METHOD(bool, clear, (const std::string&), (override));
     MOCK_METHOD(void, end, (), (override));
-    MOCK_METHOD(uint8_t, readUChar, (const std::string&, uint8_t), (override));
-    MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
+    MOCK_METHOD(uint8_t, readUChar, (const std::string&, const std::string&, uint8_t), (override));
+    MOCK_METHOD(size_t, writeUChar, (const std::string&, const std::string&, uint8_t), (override));
 };
 
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {

@@ -20,6 +20,7 @@
 #include "chain-duel-multi-device-fixture.hpp"
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
+#include "storage-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -732,6 +733,26 @@ TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
 
 TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
+}
+
+// ============================================
+// STORAGE / NVS NAMESPACE TESTS
+// ============================================
+
+TEST(StorageDriver, unknownNamespaceThrowsOnWrite) {
+    storageUnknownNamespaceThrowsOnWrite();
+}
+
+TEST(StorageDriver, registeredNamespaceRoundTripsString) {
+    storageRegisteredNamespaceRoundTripsString();
+}
+
+TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
+    storageUnknownNamespaceThrowsOnRead();
+}
+
+TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
+    storageUCharRoundTripInRegisteredNamespace();
 }
 
 // ============================================

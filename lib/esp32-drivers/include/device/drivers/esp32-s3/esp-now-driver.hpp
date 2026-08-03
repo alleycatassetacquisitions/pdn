@@ -30,15 +30,15 @@ constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
 
 //Singleton class that handles communication over ESP-NOW protocol.
-class EspNowManager : public PeerCommsDriverInterface
+class EspNowDriver : public PeerCommsDriverInterface
 {
 public:
-    static EspNowManager* CreateEspNowManager(const std::string& name) {
-        instance = new EspNowManager(name);
+    static EspNowDriver* CreateEspNowManager(const std::string& name) {
+        instance = new EspNowDriver(name);
         return instance;
     }
 
-    static EspNowManager* GetInstance() {
+    static EspNowDriver* GetInstance() {
         return instance;
     }
 
@@ -241,7 +241,7 @@ public:
     }
 
 private:
-    static EspNowManager* instance;
+    static EspNowDriver* instance;
 
     // Struct definitions must come before methods that use them
     struct DeferredPacket {
@@ -264,7 +264,7 @@ private:
         uint8_t expectedNextIdx;
     };
 
-    explicit EspNowManager(const std::string& name) :
+    explicit EspNowDriver(const std::string& name) :
         PeerCommsDriverInterface(name),
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
         m_maxRetries(5),
@@ -276,7 +276,7 @@ private:
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
         esp_wifi_set_promiscuous_filter(&filter);
-        esp_wifi_set_promiscuous_rx_cb(EspNowManager::WifiPromiscuousRecvCallback);
+        esp_wifi_set_promiscuous_rx_cb(EspNowDriver::WifiPromiscuousRecvCallback);
         esp_wifi_set_promiscuous(true);
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
         // after WiFi has been set up
@@ -293,13 +293,13 @@ private:
         }
         
         // Register callbacks
-        err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
+        err = esp_now_register_recv_cb(EspNowDriver::EspNowRecvCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
             return -1;
         }
         
-        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
+        err = esp_now_register_send_cb(EspNowDriver::EspNowSendCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
             return -1;
@@ -338,12 +338,12 @@ private:
         const uint8_t* srcMac = (pkt->payload) + 10;
         uint64_t srcMac64 = MacToUInt64(srcMac);
 
-        EspNowManager::GetInstance()->m_rssiTracker[srcMac64] = rssi;
+        EspNowDriver::GetInstance()->m_rssiTracker[srcMac64] = rssi;
     }
 
     //ESP-NOW callbacks
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
-        EspNowManager* manager = EspNowManager::GetInstance();
+        EspNowDriver* manager = EspNowDriver::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
@@ -455,7 +455,7 @@ private:
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
-        EspNowManager* manager = EspNowManager::GetInstance();
+        EspNowDriver* manager = EspNowDriver::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Send Callback");
