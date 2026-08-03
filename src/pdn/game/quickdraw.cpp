@@ -344,6 +344,7 @@ Quickdraw::~Quickdraw() {
     remoteDeviceCoordinator->setChainChangeCallback(nullptr);
     remoteDeviceCoordinator->setOnChainRoleChange(nullptr);
     remoteDeviceCoordinator->setPeerLostCallback(nullptr);
+    remoteDeviceCoordinator->setOnRingClosed(nullptr);
     remoteDeviceCoordinator = nullptr;
     for (PktType handled : {PktType::kChainGameEvent, PktType::kChainGameEventAck,
                             PktType::kChainConfirm, PktType::kChainJoin,

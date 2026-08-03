@@ -1627,6 +1627,7 @@ TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoo
 TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
+TEST_F(ShootoutManagerTests, mergedRingClaimantsSettleOnLowerMac) { mergedRingClaimantsSettleOnLowerMac(this); }
 TEST_F(ShootoutManagerTests, ringClosedReannouncesWhileMembersUnconfirmed) { ringClosedReannouncesWhileMembersUnconfirmed(this); }
 TEST_F(ShootoutManagerTests, laggingRosterDoesNotRunSoloTournament) { laggingRosterDoesNotRunSoloTournament(this); }
 TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }

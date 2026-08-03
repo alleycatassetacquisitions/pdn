@@ -263,6 +263,15 @@ inline void foreignRingBracketLeavesLiveTournamentIntact(ShootoutManagerTests* s
     EXPECT_TRUE(suite->shootout->isCoordinator());
     EXPECT_EQ(suite->shootout->getBracket().size(), 2u);
     EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), selfMac, 6), 0);
+
+    // The harder case: a lower-MAC stranger whose bracket claims one of ours but
+    // not us. Standing down to it drops our bracket and adopts nothing, which is
+    // worse than ignoring it — there is no coordinator left to restart anything.
+    suite->shootout->onBracketReceived(stranger.data(), {stranger, strangerPeer, mine}, 8);
+
+    EXPECT_TRUE(suite->shootout->isCoordinator());
+    EXPECT_EQ(suite->shootout->getBracket().size(), 2u);
+    EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), selfMac, 6), 0);
 }
 
 // An abort from retry exhaustion drops the ring anchor with the cables still in
@@ -284,16 +293,47 @@ inline void abortedRingReclaimsWhileStillCabled(ShootoutManagerTests* suite) {
     ASSERT_TRUE(ringShootout.shouldEnterProposal());
     ASSERT_TRUE(ringShootout.isCoordinator());
 
-    // Abort back to idle without touching a cable: the RDC latch stays set and
-    // is edge-triggered, so nothing re-fires it.
+    // Abort back to idle without touching a cable. The RDC latch stays set and is
+    // edge-triggered, so it will never announce this ring again.
     ringShootout.resetToIdle();
-    ASSERT_FALSE(ringShootout.shouldEnterProposal());
+    ASSERT_FALSE(ringShootout.isCoordinator());
     ASSERT_EQ(ringRdc.getChainRole(), ChainRole::RING);
 
-    ringShootout.sync();
+    // Idle polls this predicate every tick and mounts the proposal on it. Both
+    // halves have to work, so drive those rather than the manager's sync().
+    ASSERT_TRUE(ringShootout.shouldEnterProposal());
+    ringShootout.startProposal();
 
-    EXPECT_TRUE(ringShootout.shouldEnterProposal());
     EXPECT_TRUE(ringShootout.isCoordinator());
+    EXPECT_EQ(ringShootout.getPhase(), ShootoutManager::Phase::PROPOSAL);
+}
+
+// Both heads of a merging pair latch and both announce. Adopting whichever frame
+// lands last leaves A following B while B follows A, so nobody builds a bracket
+// and every member parks in BracketReveal with the cables still in.
+inline void mergedRingClaimantsSettleOnLowerMac(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x09, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x09, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> mine = {0x0A, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({me, mine});
+    suite->shootout->onRingClosed();
+    ASSERT_TRUE(suite->shootout->isCoordinator());
+
+    // A higher-MAC rival head announces the merged ring; ours stands.
+    std::array<uint8_t, 6> higher = {0xF0, 0, 0, 0, 0, 0};
+    suite->shootout->onRingClosedReceived(higher.data(), {higher, me, mine});
+    EXPECT_TRUE(suite->shootout->isCoordinator());
+
+    // A lower-MAC one wins, and we follow it.
+    std::array<uint8_t, 6> lower = {0x01, 0, 0, 0, 0, 0};
+    suite->shootout->onRingClosedReceived(lower.data(), {lower, me, mine});
+    EXPECT_FALSE(suite->shootout->isCoordinator());
+    EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), lower.data(), 6), 0);
 }
 
 // The head's roster fills from announces that can still be in flight when the
