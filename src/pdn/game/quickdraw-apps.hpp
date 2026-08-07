@@ -4,7 +4,7 @@
 #include "apps/pdn-app-ids.hpp"
 #include "game/quickdraw-states.hpp"
 
-// The three gameplay state machines the PDN swaps between. Each owns the states
+// The four gameplay state machines the PDN swaps between. Each owns the states
 // it registers and knows the others only as an app id plus an entry slot, never
 // as a State*.
 //
@@ -13,16 +13,35 @@
 // populateStateMap silently retargets every edge aiming into it. The state-graph
 // test pins each order against the pre-split graph.
 
-/// Awaken -> Idle -> DuelCountdown -> Duel -> DuelPushed / DuelReceivedResult ->
-/// DuelResult -> Win|Lose -> Upload -> Sleep, with SupporterReady branching off
-/// Idle. The app the device spends most of its life in; the other two hand back
-/// here. Registration is its own top-level app, not a state in this one.
-class DuelApp : public StateMachine {
+/// Awaken -> Idle -> Sleep -> Awaken, with SupporterReady branching off Idle.
+/// The app a device sits in whenever it is not duelling: waking, waiting on a
+/// cable, waiting out someone else's duel, asleep. Every other app hands back
+/// here, and Idle is where all three launches out of it are declared.
+/// Registration is its own top-level app, not a state in this one.
+class HubApp : public StateMachine {
 public:
     static constexpr int AWAKEN_SEQUENCE_INDEX = 0;
     static constexpr int IDLE_INDEX = 1;
-    static constexpr int DUEL_COUNTDOWN_INDEX = 3;
-    static constexpr int SLEEP_INDEX = 11;
+    static constexpr int SLEEP_INDEX = 3;
+
+    /// Non-owning: the context's managers belong to the GameSession above it.
+    explicit HubApp(const GameContext& context);
+
+    /// Allocates the hub states and wires every edge leaving one, cross-app
+    /// edges included, in the priority order checkTransitions walks.
+    void populateStateMap() override;
+
+private:
+    GameContext context;
+};
+
+/// DuelCountdown -> Duel -> DuelPushed / DuelReceivedResult -> DuelResult ->
+/// Win|Lose -> Upload. Entered at DuelCountdown from the hub's Idle for a 1v1
+/// and from the shootout's bracket for a tournament match; leaves to the hub's
+/// Idle on an abandoned duel and to the hub's Sleep once the upload finishes.
+class DuelApp : public StateMachine {
+public:
+    static constexpr int DUEL_COUNTDOWN_INDEX = 0;
 
     /// Non-owning: the context's managers belong to the GameSession above it.
     explicit DuelApp(const GameContext& context);
@@ -56,7 +75,7 @@ private:
     GameContext context;
 };
 
-/// Symbol -> SymbolMatched -> Symbol | back to the duel app's Idle.
+/// Symbol -> SymbolMatched -> Symbol | back to the hub's Idle.
 class SymbolApp : public StateMachine {
 public:
     static constexpr int SYMBOL_INDEX = 0;

@@ -99,6 +99,7 @@ struct DeviceInstance {
     Player* player = nullptr;
     GameSession* gameSession = nullptr;
     PlayerRegistrationApp* playerRegistrationApp = nullptr;
+    HubApp* hubApp = nullptr;
     DuelApp* duelApp = nullptr;
     ShootoutApp* shootoutApp = nullptr;
     SymbolApp* symbolApp = nullptr;
@@ -248,20 +249,22 @@ public:
         instance.playerRegistrationApp = new PlayerRegistrationApp(
             instance.player, instance.pdn->getWirelessManager(),
             instance.gameSession->getMatchManager(), nullptr);
+        instance.hubApp = new HubApp(gameContext);
         instance.duelApp = new DuelApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
         instance.symbolApp = new SymbolApp(gameContext);
 
         AppConfig apps = {
             {StateId(PLAYER_REGISTRATION_APP_ID), instance.playerRegistrationApp},
+            {StateId(HUB_APP_ID), instance.hubApp},
             {StateId(DUEL_APP_ID), instance.duelApp},
             {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
             {StateId(SYMBOL_APP_ID), instance.symbolApp},
         };
-        // Skip the entire registration flow: launch straight into the duel app's
-        // first state (AwakenSequence). The player is already configured with ID,
-        // role, and allegiance from DeviceFactory.
-        instance.pdn->loadAppConfig(apps, StateId(DUEL_APP_ID));
+        // Skip the entire registration flow: launch straight into the hub's first
+        // state (AwakenSequence). The player is already configured with ID, role,
+        // and allegiance from DeviceFactory.
+        instance.pdn->loadAppConfig(apps, StateId(HUB_APP_ID));
 
         // Register with SerialCableBroker for cable simulation
         SerialCableBroker::getInstance().registerDevice(
@@ -282,6 +285,7 @@ public:
 
         // Apps first: their states hold context pointers into the session.
         delete device.playerRegistrationApp;
+        delete device.hubApp;
         delete device.duelApp;
         delete device.shootoutApp;
         delete device.symbolApp;

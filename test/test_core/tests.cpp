@@ -571,8 +571,8 @@ TEST_F(AppSwapTestSuite, tickCallbackRunsWhicheverAppIsMounted) {
 // QUICKDRAW STATE GRAPH
 // ============================================
 
-TEST(QuickdrawStateGraph, appsRegisterStatesInPreSplitOrder) {
-    quickdrawAppsRegisterStatesInPreSplitOrder();
+TEST(QuickdrawStateGraph, appsRegisterStatesInDeclaredOrder) {
+    quickdrawAppsRegisterStatesInDeclaredOrder();
 }
 
 TEST(QuickdrawStateGraph, appEdgesMatchPreSplitGraph) {

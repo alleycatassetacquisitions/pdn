@@ -69,6 +69,7 @@ Player* player = nullptr;
 // Shared game managers, and the apps the device swaps between
 GameSession* gameSession = nullptr;
 PlayerRegistrationApp* playerRegistrationApp = nullptr;
+HubApp* hubApp = nullptr;
 DuelApp* duelApp = nullptr;
 ShootoutApp* shootoutApp = nullptr;
 SymbolApp* symbolApp = nullptr;
@@ -184,6 +185,7 @@ void setup() {
 
     GameContext gameContext = gameSession->getContext();
     playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameSession->getMatchManager(), remoteDebugManager);
+    hubApp = new HubApp(gameContext);
     duelApp = new DuelApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);
     symbolApp = new SymbolApp(gameContext);
@@ -198,6 +200,7 @@ void setup() {
     // Register the swappable state machines and boot into registration
     AppConfig apps = {
         {StateId(PLAYER_REGISTRATION_APP_ID), playerRegistrationApp},
+        {StateId(HUB_APP_ID), hubApp},
         {StateId(DUEL_APP_ID), duelApp},
         {StateId(SHOOTOUT_APP_ID), shootoutApp},
         {StateId(SYMBOL_APP_ID), symbolApp},

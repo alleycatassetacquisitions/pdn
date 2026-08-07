@@ -63,6 +63,7 @@ struct DeviceInstance {
     Player* player;
     GameSession* gameSession;
     PlayerRegistrationApp* playerRegistrationApp;
+    HubApp* hubApp;
     DuelApp* duelApp;
     ShootoutApp* shootoutApp;
     SymbolApp* symbolApp;
@@ -128,12 +129,14 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     GameContext gameContext = instance.gameSession->getContext();
     instance.playerRegistrationApp = new PlayerRegistrationApp(
         instance.player, instance.pdn->getWirelessManager(), instance.gameSession->getMatchManager(), nullptr);
+    instance.hubApp = new HubApp(gameContext);
     instance.duelApp = new DuelApp(gameContext);
     instance.shootoutApp = new ShootoutApp(gameContext);
     instance.symbolApp = new SymbolApp(gameContext);
 
     AppConfig apps = {
         {StateId(PLAYER_REGISTRATION_APP_ID), instance.playerRegistrationApp},
+        {StateId(HUB_APP_ID), instance.hubApp},
         {StateId(DUEL_APP_ID), instance.duelApp},
         {StateId(SHOOTOUT_APP_ID), instance.shootoutApp},
         {StateId(SYMBOL_APP_ID), instance.symbolApp},
@@ -273,6 +276,7 @@ int main(int argc, char** argv) {
     // Clean up devices
     for (auto& device : devices) {
         delete device.playerRegistrationApp;
+        delete device.hubApp;
         delete device.duelApp;
         delete device.shootoutApp;
         delete device.symbolApp;

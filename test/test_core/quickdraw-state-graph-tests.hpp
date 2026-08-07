@@ -39,11 +39,18 @@ namespace quickdraw_state_graph_expectations {
 
 // Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
 // dropped — that app is now mounted by the device rather than nested as a state.
-// The duel, shootout and symbol maps concatenate to exactly this.
-inline const std::vector<int> PRE_SPLIT_GAMEPLAY_ORDER = {
+// The hub, duel, shootout and symbol maps concatenate to this.
+//
+// One deliberate divergence from the pre-split order: Sleep sat between
+// UploadMatches and the shootout states, and now sits in the hub with the other
+// three between-match states. It is the hub's landing slot for the upload's exit
+// and for a finished tournament, so it has to live where those hand-offs address
+// it. Every edge is unchanged; only the flat position moved.
+inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     AWAKEN_SEQUENCE,
     IDLE,
     SUPPORTER_READY,
+    SLEEP,
     DUEL_COUNTDOWN,
     DUEL,
     DUEL_PUSHED,
@@ -52,7 +59,6 @@ inline const std::vector<int> PRE_SPLIT_GAMEPLAY_ORDER = {
     WIN,
     LOSE,
     UPLOAD_MATCHES,
-    SLEEP,
     SHOOTOUT_PROPOSAL,
     SHOOTOUT_BRACKET_REVEAL,
     SHOOTOUT_SPECTATOR,
@@ -99,45 +105,58 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // state's list) -> (target app, entry slot). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
+//
+// Six of these cross the hub/duel line rather than the original app boundaries:
+// Idle's launch into a duel, the four abandoned-duel returns to Idle, and the
+// upload's exit to Sleep. They were intra-app edges before the hub existed.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
     {{IDLE, 0}, {SHOOTOUT_APP_ID, ShootoutApp::PROPOSAL_INDEX}},
+    {{IDLE, 1}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
     {{IDLE, 3}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
     {{IDLE, 4}, {SYMBOL_APP_ID, SymbolApp::SYMBOL_INDEX}},
     {{DUEL_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL_COUNTDOWN, 2}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
     {{DUEL, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
     {{DUEL, 1}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
     {{DUEL, 2}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
+    {{DUEL, 3}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
     {{DUEL_PUSHED, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL_PUSHED, 1}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
     {{DUEL_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
+    {{DUEL_RECEIVED_RESULT, 1}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
     {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
     {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
     {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
+    {{UPLOAD_MATCHES, 0}, {HUB_APP_ID, HubApp::SLEEP_INDEX}},
     {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
     {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
-    {{SHOOTOUT_FINAL_STANDINGS, 0}, {DUEL_APP_ID, DuelApp::SLEEP_INDEX}},
-    {{SHOOTOUT_ABORTED, 0}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
-    {{SYMBOL, 0}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
-    {{SYMBOL_MATCHED, 1}, {DUEL_APP_ID, DuelApp::IDLE_INDEX}},
+    {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, HubApp::SLEEP_INDEX}},
+    {{SHOOTOUT_ABORTED, 0}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
+    {{SYMBOL, 0}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
+    {{SYMBOL_MATCHED, 1}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
 };
 
 }  // namespace quickdraw_state_graph_expectations
 
-// Holds the four apps, populated but never mounted. Each app owns the states it
+// Holds the five apps, populated but never mounted. Each app owns the states it
 // registered and frees them; this only owns the apps.
 struct QuickdrawAppsForTest {
     PlayerRegistrationApp* playerRegistration = nullptr;
+    HubApp* hub = nullptr;
     DuelApp* duel = nullptr;
     ShootoutApp* shootout = nullptr;
     SymbolApp* symbol = nullptr;
 
-    /// Constructs and populates the four apps without mounting any of them.
+    /// Constructs and populates the five apps without mounting any of them.
     QuickdrawAppsForTest() {
         GameContext context;
         playerRegistration = new PlayerRegistrationApp(nullptr, nullptr, nullptr, nullptr);
+        hub = new HubApp(context);
         duel = new DuelApp(context);
         shootout = new ShootoutApp(context);
         symbol = new SymbolApp(context);
         playerRegistration->populateStateMap();
+        hub->populateStateMap();
         duel->populateStateMap();
         shootout->populateStateMap();
         symbol->populateStateMap();
@@ -146,16 +165,18 @@ struct QuickdrawAppsForTest {
     /// Frees the apps, and with them every state they registered.
     ~QuickdrawAppsForTest() {
         delete playerRegistration;
+        delete hub;
         delete duel;
         delete shootout;
         delete symbol;
     }
 
-    /// The gameplay apps' states in the order the pre-split flat map registered
-    /// them: duel, then shootout, then symbol.
+    /// The gameplay apps' states in registration order: hub, duel, shootout,
+    /// symbol.
     std::vector<State*> gameplayStates() const {
         std::vector<State*> states;
-        for (const StateMachine* app : {static_cast<const StateMachine*>(duel),
+        for (const StateMachine* app : {static_cast<const StateMachine*>(hub),
+                                        static_cast<const StateMachine*>(duel),
                                         static_cast<const StateMachine*>(shootout),
                                         static_cast<const StateMachine*>(symbol)}) {
             for (State* state : app->getStateMap()) {
@@ -179,6 +200,7 @@ struct QuickdrawAppsForTest {
     State* resolveTarget(const StateTransition* edge) const {
         if (edge->getNextState() != nullptr) return edge->getNextState();
         const StateMachine* target = nullptr;
+        if (edge->getTargetAppId().id == HUB_APP_ID) target = hub;
         if (edge->getTargetAppId().id == DUEL_APP_ID) target = duel;
         if (edge->getTargetAppId().id == SHOOTOUT_APP_ID) target = shootout;
         if (edge->getTargetAppId().id == SYMBOL_APP_ID) target = symbol;
@@ -189,14 +211,15 @@ struct QuickdrawAppsForTest {
     }
 };
 
-// The concatenated app maps are the pre-split registration order. Each app's
-// stateMap[0] is what a mount enters by default, and the entry-slot constants the
-// cross-app edges use address these positions.
-inline void quickdrawAppsRegisterStatesInPreSplitOrder() {
+// The concatenated app maps are the declared registration order, which is the
+// pre-split order with Sleep moved into the hub. Each app's stateMap[0] is what a
+// mount enters by default, and the entry-slot constants the cross-app edges use
+// address these positions.
+inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
     QuickdrawAppsForTest apps;
 
     const std::vector<int>& expected =
-        quickdraw_state_graph_expectations::PRE_SPLIT_GAMEPLAY_ORDER;
+        quickdraw_state_graph_expectations::GAMEPLAY_REGISTRATION_ORDER;
     std::vector<State*> actual = apps.gameplayStates();
     ASSERT_EQ(actual.size(), expected.size());
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -206,10 +229,10 @@ inline void quickdrawAppsRegisterStatesInPreSplitOrder() {
 
     // The slots the cross-app edges name, spelled out so a reorder that keeps the
     // ids in place but moves a constant is still caught.
-    EXPECT_EQ(apps.duel->getStateMap()[DuelApp::AWAKEN_SEQUENCE_INDEX]->getStateId(), AWAKEN_SEQUENCE);
-    EXPECT_EQ(apps.duel->getStateMap()[DuelApp::IDLE_INDEX]->getStateId(), IDLE);
+    EXPECT_EQ(apps.hub->getStateMap()[HubApp::AWAKEN_SEQUENCE_INDEX]->getStateId(), AWAKEN_SEQUENCE);
+    EXPECT_EQ(apps.hub->getStateMap()[HubApp::IDLE_INDEX]->getStateId(), IDLE);
+    EXPECT_EQ(apps.hub->getStateMap()[HubApp::SLEEP_INDEX]->getStateId(), SLEEP);
     EXPECT_EQ(apps.duel->getStateMap()[DuelApp::DUEL_COUNTDOWN_INDEX]->getStateId(), DUEL_COUNTDOWN);
-    EXPECT_EQ(apps.duel->getStateMap()[DuelApp::SLEEP_INDEX]->getStateId(), SLEEP);
     EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::PROPOSAL_INDEX]->getStateId(), SHOOTOUT_PROPOSAL);
     EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::SPECTATOR_INDEX]->getStateId(), SHOOTOUT_SPECTATOR);
     EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::ELIMINATED_INDEX]->getStateId(), SHOOTOUT_ELIMINATED);
@@ -308,7 +331,7 @@ inline void registrationHandsOffFromWelcomeMessage() {
 
     const StateTransition* edge = welcomeMessage->getTransitions()[0];
     EXPECT_EQ(edge->getNextState(), nullptr);
-    EXPECT_EQ(edge->getTargetAppId().id, DUEL_APP_ID);
-    EXPECT_EQ(edge->getEntryStateIndex(), DuelApp::AWAKEN_SEQUENCE_INDEX);
-    EXPECT_EQ(apps.duel->getStateMap()[edge->getEntryStateIndex()]->getStateId(), AWAKEN_SEQUENCE);
+    EXPECT_EQ(edge->getTargetAppId().id, HUB_APP_ID);
+    EXPECT_EQ(edge->getEntryStateIndex(), HubApp::AWAKEN_SEQUENCE_INDEX);
+    EXPECT_EQ(apps.hub->getStateMap()[edge->getEntryStateIndex()]->getStateId(), AWAKEN_SEQUENCE);
 }

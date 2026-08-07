@@ -61,7 +61,7 @@ void PlayerRegistrationApp::populateStateMap() {
     // hand-off to gameplay lives on the state that triggers it.
     welcomeMessageState->addAppTransition(
         [welcomeMessageState]() { return welcomeMessageState->transitionToGameplay(); },
-        StateId(DUEL_APP_ID));
+        StateId(HUB_APP_ID));
 
     stateMap.push_back(playerRegistration);
     stateMap.push_back(fetchUserDataState);
