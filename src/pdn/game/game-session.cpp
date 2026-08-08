@@ -40,7 +40,6 @@ GameSession::GameSession(Player* player,
     quickdrawWirelessManager->setPacketReceivedCallback(
         [this](const QuickdrawCommand& command) { matchManager->listenForMatchEvents(command); });
 
-    // Chain game event + confirm wireless packet handlers.
     wirelessManager->setEspNowPacketHandler(
         PktType::kChainGameEvent,
         [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {

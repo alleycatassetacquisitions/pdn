@@ -15,19 +15,10 @@
 #include "state/state.hpp"
 #include "state/state-machine.hpp"
 
-// The graph these tests pin is otherwise unexecuted by test_core: nothing else
-// there calls a gameplay app's populateStateMap. (test_cli does, by building a
-// device.) Both orders below are behaviour, not
-// style — a mount enters stateMap[0] unless an app transition names another
-// slot, and State::checkTransitions returns the first transition whose condition
-// holds, so a reordering here silently reroutes the device while every other
-// test stays green.
+// The literals below are the pre-split flat graph, recorded before Quickdraw was
+// broken into swappable apps, and they are the equivalence check for that split.
+// Position in a transition list is priority, so it is behaviour, not style.
 //
-// The literals are the pre-split flat graph, recorded before Quickdraw was
-// broken into swappable apps, and are the equivalence check for that split: the
-// concatenated app state maps must still read as the old registration order, and
-// every edge must still land on the same state at the same priority — whether it
-// is now an intra-app transition or a hand-off naming an app plus an entry slot.
 // They must not be "corrected" to match a future change: if a change is meant to
 // alter the graph, that intent belongs in the diff to these literals.
 //
@@ -43,9 +34,8 @@ namespace quickdraw_state_graph_expectations {
 //
 // One deliberate divergence from the pre-split order: Sleep sat between
 // UploadMatches and the shootout states, and now sits in the hub with the other
-// three between-match states. It is the hub's landing slot for the upload's exit
-// and for a finished tournament, so it has to live where those hand-offs address
-// it. Every edge is unchanged; only the flat position moved.
+// three between-match states. Every edge is unchanged; only the flat position
+// moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     AWAKEN_SEQUENCE,
     IDLE,

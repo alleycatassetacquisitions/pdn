@@ -81,8 +81,6 @@ void DuelApp::populateStateMap() {
 
     ShootoutManager* shootoutManager = context.shootoutManager;
 
-    // Held once and reused by the five states a live tournament can interrupt;
-    // re-spelling it per state would fork the abort rule.
     std::function<bool()> phaseIsAborted = abortedPhasePredicate(shootoutManager);
 
     duelCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));

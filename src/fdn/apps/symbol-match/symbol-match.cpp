@@ -227,9 +227,9 @@ void SymbolMatch::populateStateMap() {
     symbolIdle->addTransition(new StateTransition(
         std::bind(&SymbolIdle::transitionToMatchSuccess, symbolIdle),
         matchSuccess));
-    // Kept below the match-success edge: app and intra-machine edges now share one
-    // priority list, so declaring it first would outrank every edge under it. Its
-    // predicate has no setter anywhere, so nothing observable rides on this today.
+    // Below the match-success edge because app and intra-machine edges share one
+    // priority list, so declaring it first would outrank every edge under it.
+    // Inert either way: transitionToMainMenuApp has no setter anywhere.
     symbolIdle->addAppTransition(
         std::bind(&SymbolIdle::transitionToMainMenu, symbolIdle),
         StateId(MAIN_MENU_APP_ID));
