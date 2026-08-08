@@ -102,7 +102,7 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 };
 
 // The edges the split turned into hand-offs, as (source state, position in that
-// state's list) -> (target app, entry slot). Every other edge in the table above
+// state's list) -> (target app, entry state). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
 //
@@ -110,30 +110,30 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // Idle's launch into a duel, the four abandoned-duel returns to Idle, and the
 // upload's exit to Sleep. They were intra-app edges before the hub existed.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
-    {{IDLE, 0}, {SHOOTOUT_APP_ID, ShootoutApp::PROPOSAL_INDEX}},
-    {{IDLE, 1}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
-    {{IDLE, 3}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-    {{IDLE, 4}, {SYMBOL_APP_ID, SymbolApp::SYMBOL_INDEX}},
-    {{DUEL_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-    {{DUEL_COUNTDOWN, 2}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
-    {{DUEL, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-    {{DUEL, 1}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
-    {{DUEL, 2}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
-    {{DUEL, 3}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
-    {{DUEL_PUSHED, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-    {{DUEL_PUSHED, 1}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
-    {{DUEL_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-    {{DUEL_RECEIVED_RESULT, 1}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
-    {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, ShootoutApp::ABORTED_INDEX}},
-    {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, ShootoutApp::SPECTATOR_INDEX}},
-    {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, ShootoutApp::ELIMINATED_INDEX}},
-    {{UPLOAD_MATCHES, 0}, {HUB_APP_ID, HubApp::SLEEP_INDEX}},
-    {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
-    {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DuelApp::DUEL_COUNTDOWN_INDEX}},
-    {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, HubApp::SLEEP_INDEX}},
-    {{SHOOTOUT_ABORTED, 0}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
-    {{SYMBOL, 0}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
-    {{SYMBOL_MATCHED, 1}, {HUB_APP_ID, HubApp::IDLE_INDEX}},
+    {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
+    {{IDLE, 1}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
+    {{IDLE, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+    {{IDLE, 4}, {SYMBOL_APP_ID, SYMBOL}},
+    {{DUEL_COUNTDOWN, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+    {{DUEL_COUNTDOWN, 2}, {HUB_APP_ID, IDLE}},
+    {{DUEL, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+    {{DUEL, 1}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
+    {{DUEL, 2}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
+    {{DUEL, 3}, {HUB_APP_ID, IDLE}},
+    {{DUEL_PUSHED, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+    {{DUEL_PUSHED, 1}, {HUB_APP_ID, IDLE}},
+    {{DUEL_RECEIVED_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+    {{DUEL_RECEIVED_RESULT, 1}, {HUB_APP_ID, IDLE}},
+    {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
+    {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
+    {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
+    {{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
+    {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
+    {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
+    {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
+    {{SHOOTOUT_ABORTED, 0}, {HUB_APP_ID, IDLE}},
+    {{SYMBOL, 0}, {HUB_APP_ID, IDLE}},
+    {{SYMBOL_MATCHED, 1}, {HUB_APP_ID, IDLE}},
 };
 
 }  // namespace quickdraw_state_graph_expectations
@@ -196,7 +196,7 @@ struct QuickdrawAppsForTest {
     }
 
     /// Where an edge actually lands: an intra-app edge names its target
-    /// directly, a hand-off names an app plus a slot in that app's state map.
+    /// directly, a hand-off names an app plus the state id to enter it at.
     State* resolveTarget(const StateTransition* edge) const {
         if (edge->getNextState() != nullptr) return edge->getNextState();
         const StateMachine* target = nullptr;
@@ -205,16 +205,17 @@ struct QuickdrawAppsForTest {
         if (edge->getTargetAppId().id == SHOOTOUT_APP_ID) target = shootout;
         if (edge->getTargetAppId().id == SYMBOL_APP_ID) target = symbol;
         if (target == nullptr) return nullptr;
-        int slot = edge->getEntryStateIndex();
-        if (slot < 0 || slot >= static_cast<int>(target->getStateMap().size())) return nullptr;
-        return target->getStateMap()[slot];
+        for (State* state : target->getStateMap()) {
+            if (state->getStateId() == edge->getEntryStateId().id) return state;
+        }
+        return nullptr;
     }
 };
 
 // The concatenated app maps are the declared registration order, which is the
 // pre-split order with Sleep moved into the hub. Each app's stateMap[0] is what a
-// mount enters by default, and the entry-slot constants the cross-app edges use
-// address these positions.
+// mount with no named entry state enters at, which is the one position a reorder
+// can still change the behaviour of.
 inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
     QuickdrawAppsForTest apps;
 
@@ -227,19 +228,10 @@ inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
             << "registration slot " << i << " changed";
     }
 
-    // The slots the cross-app edges name, spelled out so a reorder that keeps the
-    // ids in place but moves a constant is still caught.
-    EXPECT_EQ(apps.hub->getStateMap()[HubApp::AWAKEN_SEQUENCE_INDEX]->getStateId(), AWAKEN_SEQUENCE);
-    EXPECT_EQ(apps.hub->getStateMap()[HubApp::IDLE_INDEX]->getStateId(), IDLE);
-    EXPECT_EQ(apps.hub->getStateMap()[HubApp::SLEEP_INDEX]->getStateId(), SLEEP);
-    EXPECT_EQ(apps.duel->getStateMap()[DuelApp::DUEL_COUNTDOWN_INDEX]->getStateId(), DUEL_COUNTDOWN);
-    EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::PROPOSAL_INDEX]->getStateId(), SHOOTOUT_PROPOSAL);
-    EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::SPECTATOR_INDEX]->getStateId(), SHOOTOUT_SPECTATOR);
-    EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::ELIMINATED_INDEX]->getStateId(), SHOOTOUT_ELIMINATED);
-    EXPECT_EQ(apps.shootout->getStateMap()[ShootoutApp::ABORTED_INDEX]->getStateId(), SHOOTOUT_ABORTED);
-    EXPECT_EQ(apps.symbol->getStateMap()[SymbolApp::SYMBOL_INDEX]->getStateId(), SYMBOL);
-    EXPECT_EQ(apps.playerRegistration->getStateMap()[PlayerRegistrationApp::FETCH_USER_DATA_INDEX]->getStateId(),
-              PlayerRegistrationStateId::FETCH_USER_DATA);
+    EXPECT_EQ(apps.hub->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
+    EXPECT_EQ(apps.duel->getStateMap()[0]->getStateId(), DUEL_COUNTDOWN);
+    EXPECT_EQ(apps.shootout->getStateMap()[0]->getStateId(), SHOOTOUT_PROPOSAL);
+    EXPECT_EQ(apps.symbol->getStateMap()[0]->getStateId(), SYMBOL);
 }
 
 // Every edge of the pre-split graph still leaves the same state, at the same
@@ -296,8 +288,8 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
             << "state " << sourceId << " edge " << position << " is no longer a hand-off";
         EXPECT_EQ(edge->getTargetAppId().id, expected.second.first)
             << "state " << sourceId << " edge " << position << " changed target app";
-        EXPECT_EQ(edge->getEntryStateIndex(), expected.second.second)
-            << "state " << sourceId << " edge " << position << " changed entry slot";
+        EXPECT_EQ(edge->getEntryStateId().id, expected.second.second)
+            << "state " << sourceId << " edge " << position << " changed entry state";
     }
 
     // No edge outside the table above is a hand-off: an intra-app edge that
@@ -332,6 +324,9 @@ inline void registrationHandsOffFromWelcomeMessage() {
     const StateTransition* edge = welcomeMessage->getTransitions()[0];
     EXPECT_EQ(edge->getNextState(), nullptr);
     EXPECT_EQ(edge->getTargetAppId().id, HUB_APP_ID);
-    EXPECT_EQ(edge->getEntryStateIndex(), HubApp::AWAKEN_SEQUENCE_INDEX);
-    EXPECT_EQ(apps.hub->getStateMap()[edge->getEntryStateIndex()]->getStateId(), AWAKEN_SEQUENCE);
+    // Registration names no entry state: it hands control to the hub and the hub
+    // decides where that lands. Naming one would put a gameplay state id in the
+    // registration app, which is the coupling the two apps do not otherwise have.
+    EXPECT_LT(edge->getEntryStateId().id, 0);
+    EXPECT_EQ(apps.hub->getStateMap()[0]->getStateId(), AWAKEN_SEQUENCE);
 }

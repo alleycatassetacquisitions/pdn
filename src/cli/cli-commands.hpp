@@ -547,7 +547,7 @@ private:
         dev.stateHistory.clear();
         dev.lastStateId = -1;
 
-        dev.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID), PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
+        dev.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID), StateId(FETCH_USER_DATA));
 
         result.message = "Rebooted " + dev.deviceId + " -> FetchUserData";
         return result;

@@ -1534,7 +1534,7 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     AppConfig apps;
     apps[StateId(HUB_APP_ID)] = hub;
     suite->device.loadAppConfig(apps, StateId(HUB_APP_ID));
-    suite->device.setActiveApp(StateId(HUB_APP_ID), HubApp::SUPPORTER_READY_INDEX);
+    suite->device.setActiveApp(StateId(HUB_APP_ID), StateId(SUPPORTER_READY));
     ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), SUPPORTER_READY);
 
     ChainGameEventPayload countdown{};

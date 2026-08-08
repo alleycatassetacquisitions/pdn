@@ -28,13 +28,13 @@ public:
     }
 
     /// An edge that leaves the state machine entirely: the device dismounts the
-    /// running app and mounts `targetAppId`, entering it at `entryStateIndex` in
-    /// its state map. Index 0 is the app's boot state, which is what an app
-    /// transition that names no entry point gets.
-    StateTransition(std::function<bool()> condition, StateId targetAppId, int entryStateIndex)
+    /// running app and mounts `targetAppId`, entering it at the state named by
+    /// `entryStateId`. An unset id means the app's boot state, which is what an
+    /// app transition that names no entry point gets.
+    StateTransition(std::function<bool()> condition, StateId targetAppId, StateId entryStateId)
         : condition(std::move(condition))
         , targetAppId(targetAppId)
-        , entryStateIndex(entryStateIndex) {
+        , entryStateId(entryStateId) {
     }
 
     // Method to check if the transition condition is met
@@ -53,17 +53,18 @@ public:
         return targetAppId;
     };
 
-    /// Where in the target app's state map the hand-off lands. Meaningless on an
-    /// intra-machine edge.
-    int getEntryStateIndex() const {
-        return entryStateIndex;
+    /// The state in the target app the hand-off lands on, or an unset id for its
+    /// boot state. Meaningless on an intra-machine edge.
+    StateId getEntryStateId() const {
+        return entryStateId;
     };
 
     std::function<bool()> condition; // Function pointer that returns true based on the global state
     State* nextState = nullptr;      // Pointer to the next state, null on an app transition
-    /// App to hand off to, id < 0 when this edge stays inside the machine.
+    /// Negative when this edge stays inside the machine.
     StateId targetAppId = StateId(-1);
-    int entryStateIndex = 0;  // Slot in the target app's state map
+    /// Negative to enter the target app at whichever state it registered first.
+    StateId entryStateId = StateId(-1);
 };
 
 /*
@@ -116,15 +117,16 @@ public:
         transitions.push_back(new StateTransition(std::move(condition), nextState));
     }
 
-    /// Declares an edge out of this state's app, entering the target at
-    /// `entryStateIndex` in its state map (0 = the app's boot state).
+    /// Declares an edge out of this state's app, entering the target at the state
+    /// named by `entryStateId`. Omit it to enter at the target's boot state.
     ///
     /// App and intra-machine edges share one priority list, so an app transition
     /// declared before a sibling outranks it: the alternative — checking every
     /// intra edge first — would silently demote every hand-off below the local
     /// edges of the state it leaves.
-    void addAppTransition(std::function<bool()> condition, StateId targetAppId, int entryStateIndex = 0) {
-        transitions.push_back(new StateTransition(std::move(condition), targetAppId, entryStateIndex));
+    void addAppTransition(std::function<bool()> condition, StateId targetAppId,
+                          StateId entryStateId = StateId(-1)) {
+        transitions.push_back(new StateTransition(std::move(condition), targetAppId, entryStateId));
     }
 
     /// The first transition whose condition holds, or null when none do.

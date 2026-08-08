@@ -492,22 +492,23 @@ TEST_F(AppSwapTestSuite, remountingAnAppDoesNotRepopulateItsStateMap) {
 }
 
 // Entering an app part-way through is what a shootout's hand-off into a bracket
-// duel needs; restarting the target at slot 0 would replay its boot state.
-TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedStateIndex) {
+// duel needs; restarting the target at its boot state would replay it.
+TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedState) {
     loadAllApps(APP_ONE);
     ASSERT_EQ(appOne->getCurrentState()->getStateId(), 0);
 
-    device->setActiveApp(APP_TWO, 2);
+    device->setActiveApp(APP_TWO, StateId(2));
 
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
 }
 
-// A swap that names no entry point boots the target at its first state, the way
-// every FDN call site expects.
-TEST_F(AppSwapTestSuite, setActiveAppWithoutAnIndexEntersTheBootState) {
+// A swap that names no entry state boots the target at its first state, the way
+// every FDN call site expects. The named state is consumed by the mount, so it
+// cannot leak into a later swap that named nothing.
+TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
     loadAllApps(APP_ONE);
 
-    device->setActiveApp(APP_TWO, 2);
+    device->setActiveApp(APP_TWO, StateId(2));
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
 
     device->setActiveApp(APP_ONE);
@@ -516,10 +517,12 @@ TEST_F(AppSwapTestSuite, setActiveAppWithoutAnIndexEntersTheBootState) {
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
 }
 
-TEST_F(AppSwapTestSuite, outOfRangeEntryStateIndexFallsBackToBootState) {
+// An id no state in the target carries: logged and landed on the boot state
+// rather than left mounting nothing.
+TEST_F(AppSwapTestSuite, unknownEntryStateFallsBackToBootState) {
     loadAllApps(APP_ONE);
 
-    device->setActiveApp(APP_TWO, 99);
+    device->setActiveApp(APP_TWO, StateId(99));
 
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
 }

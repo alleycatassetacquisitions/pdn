@@ -57,25 +57,22 @@ public:
         if (stateMap.empty()) {
             populateStateMap();
         }
-        int entryIndex = entryStateIndex;
-        if (entryIndex < 0 || entryIndex >= static_cast<int>(stateMap.size())) {
-            entryIndex = 0;
-        }
-        currentState = stateMap[entryIndex];
+        currentState = findEntryState();
+        entryStateId = StateId(-1);
         asLifecycle(currentState)->mount(PDN);
         launched = true;
     }
 
-    /// The state map slot the next mount enters at. Device::setActiveApp sets it
-    /// from the app transition that named it, or 0 when none did. A mount that
-    /// does not go through setActiveApp — loadAppConfig at boot — keeps the last
-    /// value, which is 0 until the first swap. Out of range falls back to 0.
-    void setEntryStateIndex(int stateIndex) {
-        entryStateIndex = stateIndex;
+    /// The state the next mount enters at. Device::setActiveApp sets it from the
+    /// app transition that named it; initialize() consumes it, so a mount that
+    /// does not go through setActiveApp — loadAppConfig at boot — gets the boot
+    /// state rather than whatever the last swap asked for.
+    void setEntryState(StateId stateId) {
+        entryStateId = stateId;
     }
 
-    /// The states in registration order. Index 0 is the boot state, and every
-    /// app-transition entry index and skipToState call addresses this vector.
+    /// The states in registration order. Index 0 is the boot state; app
+    /// transitions name their target by state id, not by position here.
     const std::vector<State*>& getStateMap() const {
         return stateMap;
     }
@@ -136,11 +133,12 @@ public:
             return;
         }
 
-        // setActiveApp dismounts this machine, and onStateDismounted clears the
-        // pending edge as it goes.
+        // On the success path setActiveApp dismounts this machine, and
+        // onStateDismounted clears the pending edge as it goes. An unregistered id
+        // returns without dismounting, and the same edge wins again next tick.
         StateId nextApp = pendingTransition->getTargetAppId();
-        int entryIndex = pendingTransition->getEntryStateIndex();
-        PDN->setActiveApp(nextApp, entryIndex);
+        StateId entryState = pendingTransition->getEntryStateId();
+        PDN->setActiveApp(nextApp, entryState);
     }
 
     void onStateDismounted(Device *PDN) override {
@@ -165,7 +163,7 @@ protected:
     State *currentState = nullptr;
 
     // The winning edge from the last checkStateTransitions. Held because an app
-    // edge carries its target app and entry slot, which newState cannot.
+    // edge carries its target app and entry state, which newState cannot.
     StateTransition* pendingTransition = nullptr;
 
 private:
@@ -176,6 +174,22 @@ private:
         return static_cast<StateLifecycle*>(state);
     }
 
+    // Resolved against this machine's own map, so ids only have to be unique
+    // within an app — which is what the per-app state enums guarantee.
+    State* findEntryState() {
+        if (entryStateId.id < 0) {
+            return stateMap[0];
+        }
+        for (State* state : stateMap) {
+            if (state->getStateId() == entryStateId.id) {
+                return state;
+            }
+        }
+        LOG_E("StateMachine", "app %d has no state %d; entering boot state",
+              getStateId(), entryStateId.id);
+        return stateMap[0];
+    }
+
     bool launched = false;
-    int entryStateIndex = 0;
+    StateId entryStateId = StateId(-1);
 };

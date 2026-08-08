@@ -40,11 +40,10 @@ public:
 
     virtual int begin() = 0;
 
-    /// Dismounts the running app and mounts `appId`, entering it at
-    /// `entryStateIndex` in its state map. The default enters at the target's
-    /// boot state, which is what an app transition that names no entry point asks
-    /// for.
-    void setActiveApp(StateId appId, int entryStateIndex = 0);
+    /// Dismounts the running app and mounts `appId`, entering it at the state
+    /// named by `entryStateId`. The default enters at the target's boot state,
+    /// which is what an app transition that names no entry point asks for.
+    void setActiveApp(StateId appId, StateId entryStateId = StateId(-1));
 
     /// The mounted app, or null before loadAppConfig.
     StateMachine* getActiveApp();

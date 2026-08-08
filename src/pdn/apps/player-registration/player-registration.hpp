@@ -11,11 +11,6 @@
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    /// State map slot to re-enter registration at when the identity is already
-    /// known and only the fetch needs replaying. See populateStateMap for the
-    /// order the entry indices address.
-    static constexpr int FETCH_USER_DATA_INDEX = 1;
-
     PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 

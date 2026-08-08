@@ -914,7 +914,7 @@ public:
         // registration flow (HTTP fetch transitions, reboot semantics), so swap
         // back to the registration app at its fetch state.
         device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
-                                 PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
+                                 StateId(FETCH_USER_DATA));
     }
 
     void TearDown() override {
@@ -965,7 +965,7 @@ void cliCommandRebootResetsState(CliCommandTestSuite* suite) {
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
     suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
-                                    PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
+                                    StateId(FETCH_USER_DATA));
 
     // Should be back at FetchUserData within the registration app
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
@@ -989,7 +989,7 @@ void cliCommandRebootFromLaterState(CliCommandTestSuite* suite) {
     suite->device.stateHistory.clear();
     suite->device.lastStateId = -1;
     suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
-                                    PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
+                                    StateId(FETCH_USER_DATA));
 
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
     ASSERT_EQ(suite->device.getCurrentState()->getStateId(), FETCH_USER_DATA);
@@ -1137,7 +1137,7 @@ void cliCommandRebootClearsHistory(CliCommandTestSuite* suite) {
     suite->device.lastStateId = -1;
 
     suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
-                                    PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
+                                    StateId(FETCH_USER_DATA));
 
     // History should be cleared
     ASSERT_TRUE(suite->device.stateHistory.empty());

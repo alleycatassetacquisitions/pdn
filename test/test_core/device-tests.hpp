@@ -55,21 +55,21 @@ public:
     bool takeLocalEdge = false;
 };
 
-// Boot state forks to another app's slot 2 or to its own second state.
+// Boot state forks to a state in another app or to its own second state.
 class ForkingStateMachine : public StateMachine {
 public:
-    /// The hand-off names `targetAppId` and the slot in it to enter at.
-    ForkingStateMachine(int appId, StateId targetAppId, int entryStateIndex)
+    /// The hand-off names `targetAppId` and the state in it to enter at.
+    ForkingStateMachine(int appId, StateId targetAppId, StateId entryStateId)
         : StateMachine(appId)
         , targetAppId(targetAppId)
-        , entryStateIndex(entryStateIndex) {}
+        , entryStateId(entryStateId) {}
 
     /// Boot state gets the hand-off first, then a local edge to its sibling.
     void populateStateMap() override {
         ForkingState* fork = new ForkingState(0);
         ForkingState* local = new ForkingState(1);
         fork->addAppTransition([fork]() { return fork->takeAppEdge; },
-                               targetAppId, entryStateIndex);
+                               targetAppId, entryStateId);
         fork->addTransition(new StateTransition(
             [fork]() { return fork->takeLocalEdge; }, local));
         stateMap.push_back(fork);
@@ -83,7 +83,7 @@ public:
 
 private:
     StateId targetAppId;
-    int entryStateIndex;
+    StateId entryStateId;
 };
 
 // Mock StateMachine for testing
@@ -162,7 +162,7 @@ public:
         device = new MockDevice();
         appOne = new IndexedStateMachine(APP_ONE.id);
         appTwo = new IndexedStateMachine(APP_TWO.id);
-        appThree = new ForkingStateMachine(APP_THREE.id, APP_TWO, 2);
+        appThree = new ForkingStateMachine(APP_THREE.id, APP_TWO, StateId(2));
     }
 
     /// Each app frees the states it registered.

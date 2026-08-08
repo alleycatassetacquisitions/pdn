@@ -16,7 +16,7 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
     appConfig[currentAppId]->onStateMounted(this);
 }
 
-void Device::setActiveApp(StateId appId, int entryStateIndex) {
+void Device::setActiveApp(StateId appId, StateId entryStateId) {
     if(appConfig.find(appId) == appConfig.end()) {
         LOG_E(TAG, "App %d not found", appId.id);
         return;
@@ -25,9 +25,9 @@ void Device::setActiveApp(StateId appId, int entryStateIndex) {
     appConfig[currentAppId]->onStateDismounted(this);
     this->currentAppId = appId;
     // Set before the mount: apps override onStateMounted for their own setup and
-    // chain to StateMachine::onStateMounted, so the entry slot cannot ride in as
+    // chain to StateMachine::onStateMounted, so the entry state cannot ride in as
     // an argument.
-    appConfig[appId]->setEntryStateIndex(entryStateIndex);
+    appConfig[appId]->setEntryState(entryStateId);
     appConfig[appId]->onStateMounted(this);
 }
 

@@ -33,22 +33,22 @@ void HubApp::populateStateMap() {
     // demoted to a 1v1 duel.
     idle->addAppTransition(
         [shootoutManager]() { return shootoutManager && shootoutManager->shouldEnterProposal(); },
-        StateId(SHOOTOUT_APP_ID), ShootoutApp::PROPOSAL_INDEX);
+        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_PROPOSAL));
 
     idle->addAppTransition(
         [idle]() { return idle->transitionToDuelCountdown(); },
-        StateId(DUEL_APP_ID), DuelApp::DUEL_COUNTDOWN_INDEX);
+        StateId(DUEL_APP_ID), StateId(DUEL_COUNTDOWN));
 
     idle->addTransition(
         [idle]() { return idle->transitionToSupporterReady(); },
         supporterReady);
 
     idle->addAppTransition(abortedPhasePredicate(shootoutManager),
-                           StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
+                           StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     idle->addAppTransition(
         [idle]() { return idle->transitionToSymbol(); },
-        StateId(SYMBOL_APP_ID), SymbolApp::SYMBOL_INDEX);
+        StateId(SYMBOL_APP_ID), StateId(SYMBOL));
 
     supporterReady->addTransition(
         [supporterReady]() { return supporterReady->transitionToIdle(); },
@@ -58,12 +58,11 @@ void HubApp::populateStateMap() {
         [sleep]() { return sleep->transitionToAwakenSequence(); },
         awakenSequence);
 
-    // Order matters: index 0 is the state a mount enters by default, and the
-    // *_INDEX constants in the header address these slots.
-    stateMap.push_back(awakenSequence);  // 0
-    stateMap.push_back(idle);            // 1
-    stateMap.push_back(supporterReady);  // 2
-    stateMap.push_back(sleep);           // 3
+    // First registered is the state a mount with no named entry enters at.
+    stateMap.push_back(awakenSequence);
+    stateMap.push_back(idle);
+    stateMap.push_back(supporterReady);
+    stateMap.push_back(sleep);
 }
 
 DuelApp::DuelApp(const GameContext& context)
@@ -86,7 +85,7 @@ void DuelApp::populateStateMap() {
     // re-spelling it per state would fork the abort rule.
     std::function<bool()> phaseIsAborted = abortedPhasePredicate(shootoutManager);
 
-    duelCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
+    duelCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duelCountdown->addTransition(
         [duelCountdown]() { return duelCountdown->shallWeBattle(); },
@@ -96,21 +95,21 @@ void DuelApp::populateStateMap() {
         [duelCountdown, shootoutManager]() {
             return duelReturnsToIdle(*duelCountdown, shootoutManager);
         },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
-    duel->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
+    duel->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duel->addAppTransition(
         [duel]() { return duel->transitionToShootoutSpectator(); },
-        StateId(SHOOTOUT_APP_ID), ShootoutApp::SPECTATOR_INDEX);
+        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_SPECTATOR));
 
     duel->addAppTransition(
         [duel]() { return duel->transitionToShootoutEliminated(); },
-        StateId(SHOOTOUT_APP_ID), ShootoutApp::ELIMINATED_INDEX);
+        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
     duel->addAppTransition(
         [duel]() { return duel->transitionToIdle(); },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
     duel->addTransition(
         [duel]() { return duel->transitionToDuelReceivedResult(); },
@@ -120,31 +119,31 @@ void DuelApp::populateStateMap() {
         [duel]() { return duel->transitionToDuelPushed(); },
         duelPushed);
 
-    duelPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
+    duelPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duelPushed->addAppTransition(
         [duelPushed, shootoutManager]() {
             return duelReturnsToIdle(*duelPushed, shootoutManager);
         },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
     duelPushed->addTransition(
         [duelPushed]() { return duelPushed->transitionToDuelResult(); },
         duelResult);
 
-    duelReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
+    duelReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duelReceivedResult->addAppTransition(
         [duelReceivedResult, shootoutManager]() {
             return duelReturnsToIdle(*duelReceivedResult, shootoutManager);
         },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
     duelReceivedResult->addTransition(
         [duelReceivedResult]() { return duelReceivedResult->transitionToDuelResult(); },
         duelResult);
 
-    duelResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), ShootoutApp::ABORTED_INDEX);
+    duelResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duelResult->addTransition(
         [duelResult]() { return duelResult->transitionToWin(); },
@@ -156,11 +155,11 @@ void DuelApp::populateStateMap() {
 
     duelResult->addAppTransition(
         [duelResult]() { return duelResult->transitionToShootoutSpectator(); },
-        StateId(SHOOTOUT_APP_ID), ShootoutApp::SPECTATOR_INDEX);
+        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_SPECTATOR));
 
     duelResult->addAppTransition(
         [duelResult]() { return duelResult->transitionToShootoutEliminated(); },
-        StateId(SHOOTOUT_APP_ID), ShootoutApp::ELIMINATED_INDEX);
+        StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
     win->addTransition(
         [win]() { return win->resetGame(); },
@@ -172,18 +171,16 @@ void DuelApp::populateStateMap() {
 
     uploadMatches->addAppTransition(
         [uploadMatches]() { return uploadMatches->transitionToSleep(); },
-        StateId(HUB_APP_ID), HubApp::SLEEP_INDEX);
+        StateId(HUB_APP_ID), StateId(SLEEP));
 
-    // Order matters: index 0 is the state a mount enters by default, and the
-    // *_INDEX constants in the header address these slots.
-    stateMap.push_back(duelCountdown);       // 0
-    stateMap.push_back(duel);                // 1
-    stateMap.push_back(duelPushed);          // 2
-    stateMap.push_back(duelReceivedResult);  // 3
-    stateMap.push_back(duelResult);          // 4
-    stateMap.push_back(win);                 // 5
-    stateMap.push_back(lose);                // 6
-    stateMap.push_back(uploadMatches);       // 7
+    stateMap.push_back(duelCountdown);
+    stateMap.push_back(duel);
+    stateMap.push_back(duelPushed);
+    stateMap.push_back(duelReceivedResult);
+    stateMap.push_back(duelResult);
+    stateMap.push_back(win);
+    stateMap.push_back(lose);
+    stateMap.push_back(uploadMatches);
 }
 
 ShootoutApp::ShootoutApp(const GameContext& context)
@@ -207,7 +204,7 @@ void ShootoutApp::populateStateMap() {
 
     bracketReveal->addAppTransition(
         [bracketReveal]() { return bracketReveal->transitionToDuelCountdown(); },
-        StateId(DUEL_APP_ID), DuelApp::DUEL_COUNTDOWN_INDEX);
+        StateId(DUEL_APP_ID), StateId(DUEL_COUNTDOWN));
     bracketReveal->addTransition(
         [bracketReveal]() { return bracketReveal->transitionToSpectator(); },
         spectator);
@@ -217,7 +214,7 @@ void ShootoutApp::populateStateMap() {
 
     spectator->addAppTransition(
         [spectator]() { return spectator->transitionToDuelCountdown(); },
-        StateId(DUEL_APP_ID), DuelApp::DUEL_COUNTDOWN_INDEX);
+        StateId(DUEL_APP_ID), StateId(DUEL_COUNTDOWN));
     spectator->addTransition(
         [spectator]() { return spectator->transitionToFinalStandings(); },
         finalStandings);
@@ -240,18 +237,18 @@ void ShootoutApp::populateStateMap() {
     // left to confirm.
     finalStandings->addAppTransition(
         [finalStandings]() { return finalStandings->transitionToSleep(); },
-        StateId(HUB_APP_ID), HubApp::SLEEP_INDEX);
+        StateId(HUB_APP_ID), StateId(SLEEP));
 
     aborted->addAppTransition(
         [aborted]() { return aborted->transitionToIdle(); },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
-    stateMap.push_back(proposal);        // 0
-    stateMap.push_back(bracketReveal);   // 1
-    stateMap.push_back(spectator);       // 2
-    stateMap.push_back(eliminated);      // 3
-    stateMap.push_back(finalStandings);  // 4
-    stateMap.push_back(aborted);         // 5
+    stateMap.push_back(proposal);
+    stateMap.push_back(bracketReveal);
+    stateMap.push_back(spectator);
+    stateMap.push_back(eliminated);
+    stateMap.push_back(finalStandings);
+    stateMap.push_back(aborted);
 }
 
 SymbolApp::SymbolApp(const GameContext& context)
@@ -264,7 +261,7 @@ void SymbolApp::populateStateMap() {
 
     symbol->addAppTransition(
         [symbol]() { return symbol->transitionToIdle(); },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
     symbol->addTransition(
         [symbol]() { return symbol->transitionToSymbolMatched(); },
@@ -276,8 +273,8 @@ void SymbolApp::populateStateMap() {
 
     symbolMatched->addAppTransition(
         [symbolMatched]() { return symbolMatched->transitionToIdle(); },
-        StateId(HUB_APP_ID), HubApp::IDLE_INDEX);
+        StateId(HUB_APP_ID), StateId(IDLE));
 
-    stateMap.push_back(symbol);         // 0
-    stateMap.push_back(symbolMatched);  // 1
+    stateMap.push_back(symbol);
+    stateMap.push_back(symbolMatched);
 }
