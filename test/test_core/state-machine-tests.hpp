@@ -254,11 +254,11 @@ public:
     }
 
     bool getTransitionReadyFlag() {
-        return stateChangeReady;
+        return pendingTransition != nullptr;
     }
 
     State* getNewState() {
-        return newState;
+        return pendingTransition ? pendingTransition->getNextState() : nullptr;
     }
 };
 

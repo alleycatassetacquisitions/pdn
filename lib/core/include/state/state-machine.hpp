@@ -99,16 +99,14 @@ public:
 
     void checkStateTransitions() {
         pendingTransition = currentState->checkTransitions();
-        newState = pendingTransition ? pendingTransition->getNextState() : nullptr;
-        stateChangeReady = (pendingTransition != nullptr);
     };
 
     void commitState(Device *PDN) {
+        // Read before the dismount, which is free to run arbitrary state teardown.
+        State* nextState = pendingTransition->getNextState();
         asLifecycle(currentState)->dismount(PDN);
 
-        currentState = newState;
-        stateChangeReady = false;
-        newState = nullptr;
+        currentState = nextState;
         pendingTransition = nullptr;
 
         asLifecycle(currentState)->mount(PDN);
@@ -125,10 +123,11 @@ public:
     void onStateLoop(Device *PDN) override {
         asLifecycle(currentState)->loop(PDN);
         checkStateTransitions();
-        if (!stateChangeReady) {
+        if (pendingTransition == nullptr) {
             return;
         }
-        if (newState != nullptr) {
+        // A null next state is what marks the winning edge as a hand-off.
+        if (pendingTransition->getNextState() != nullptr) {
             commitState(PDN);
             return;
         }
@@ -144,8 +143,6 @@ public:
     void onStateDismounted(Device *PDN) override {
         asLifecycle(currentState)->dismount(PDN);
         currentState = nullptr;
-        stateChangeReady = false;
-        newState = nullptr;
         pendingTransition = nullptr;
     }
 
@@ -157,13 +154,10 @@ protected:
     // initial state is 0 in the list here
     std::vector<State *> stateMap;
 
-    bool stateChangeReady = false;
-
-    State *newState = nullptr;
     State *currentState = nullptr;
 
-    // The winning edge from the last checkStateTransitions. Held because an app
-    // edge carries its target app and entry state, which newState cannot.
+    /// The winning edge from the last checkStateTransitions, or null when none
+    /// held. Its own fields say where it goes, so nothing else needs recording.
     StateTransition* pendingTransition = nullptr;
 
 private:
