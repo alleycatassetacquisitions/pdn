@@ -436,9 +436,6 @@ protected:
             },
             cdm);
 
-        // GameSession fans this one to two consumers; only the manager half has a
-        // counterpart here, since the fixture stands up no states. Dropping it
-        // would leave a supporter's spent press standing into the next round.
         n.device->wirelessManager->setEspNowPacketHandler(
             PktType::kChainJoin,
             [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
@@ -448,12 +445,19 @@ protected:
             },
             cdm);
 
+        // GameSession fans this one to two consumers; only the manager half has a
+        // counterpart here, since the fixture stands up no states. Dropping it
+        // would leave a supporter's spent press standing into the next round.
+        // The champion gate has to be mirrored too: without it a foreign chain's
+        // broadcast clears confirmSent here where hardware discards the frame.
         n.device->wirelessManager->setEspNowPacketHandler(
             PktType::kChainGameEvent,
             [](const uint8_t*, const uint8_t* data, const size_t dataLen, void* ctx) {
                 if (dataLen != sizeof(ChainGameEventPayload)) return;
                 const ChainGameEventPayload* p = reinterpret_cast<const ChainGameEventPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onChainGameEventReceived(p->event_type);
+                ChainDuelManager* manager = static_cast<ChainDuelManager*>(ctx);
+                if (!manager->isEventFromOwnChampion(p->championMac)) return;
+                manager->onChainGameEventReceived(p->event_type);
             },
             cdm);
     }

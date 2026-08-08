@@ -1,4 +1,5 @@
 #include "game/game-session.hpp"
+#include "state/state-machine.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/logger.hpp"
 #include <array>
@@ -11,6 +12,7 @@ GameSession::GameSession(Player* player,
                          QuickdrawWirelessManager* quickdrawWirelessManager,
                          SymbolWirelessManager* symbolWirelessManager)
     : player(player)
+    , pdn(pdn)
     , wirelessManager(pdn->getWirelessManager())
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
     , quickdrawWirelessManager(quickdrawWirelessManager)
@@ -126,11 +128,17 @@ GameSession::GameSession(Player* player,
     this->player->setOnRoleChanged([this]() {
         remoteDeviceCoordinator->resendContext();
     });
+
+    // Installed here rather than by the caller so the slot holding `this` is
+    // dropped by the same destructor that drops the rest of them.
+    pdn->setTickCallback([this]() { sync(); });
 }
 
 GameSession::~GameSession() {
     // Both callbacks capture `this` and are held by objects that outlive this
     // session, so they must be dropped before the capture dangles.
+    if (pdn) pdn->setTickCallback(nullptr);
+    pdn = nullptr;
     if (player) player->setOnRoleChanged(nullptr);
     if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
     player = nullptr;
@@ -154,7 +162,6 @@ GameSession::~GameSession() {
     }
     quickdrawWirelessManager = nullptr;
     symbolWirelessManager = nullptr;
-    activeSupporterReady = nullptr;
     delete matchManager;
     matchManager = nullptr;
     delete chainDuelManager;
@@ -173,7 +180,6 @@ GameContext GameSession::getContext() {
     context.quickdrawWirelessManager = quickdrawWirelessManager;
     context.symbolWirelessManager = symbolWirelessManager;
     context.wirelessManager = wirelessManager;
-    context.gameSession = this;
     return context;
 }
 
@@ -181,8 +187,13 @@ MatchManager* GameSession::getMatchManager() {
     return matchManager;
 }
 
-void GameSession::setActiveSupporterReady(SupporterReady* supporterReady) {
-    activeSupporterReady = supporterReady;
+SupporterReady* GameSession::getMountedSupporterReady() {
+    if (pdn == nullptr) return nullptr;
+    StateMachine* activeApp = pdn->getActiveApp();
+    if (activeApp == nullptr) return nullptr;
+    State* current = activeApp->getCurrentState();
+    if (current == nullptr || current->getStateId() != SUPPORTER_READY) return nullptr;
+    return static_cast<SupporterReady*>(current);
 }
 
 void GameSession::sync() {
@@ -258,15 +269,10 @@ void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* 
     // supporter has not answered.
     chainDuelManager->onChainGameEventReceived(payload->event_type);
 
-    // Ahead of the state dispatch and independent of it: a COUNTDOWN wipes the
-    // champion's roll call whether or not this device is watching for it, and a
-    // confirm still held here would then re-register a press for a round the
-    // supporter has not answered.
-    chainDuelManager->onChainGameEventReceived(payload->event_type);
-
     // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
-    if (activeSupporterReady != nullptr) {
-        activeSupporterReady->onChainGameEventReceived(payload->event_type, fromMac);
+    SupporterReady* supporterReady = getMountedSupporterReady();
+    if (supporterReady != nullptr) {
+        supporterReady->onChainGameEventReceived(payload->event_type, fromMac);
     }
 
     // ACK regardless of whether we were in SupporterReady. Not ACKing after

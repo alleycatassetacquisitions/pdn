@@ -242,8 +242,6 @@ public:
             instance.pdn,
             instance.quickdrawWirelessManager,
             instance.symbolWirelessManager);
-        GameSession* session = instance.gameSession;
-        instance.pdn->setTickCallback([session]() { session->sync(); });
 
         GameContext gameContext = instance.gameSession->getContext();
         instance.playerRegistrationApp = new PlayerRegistrationApp(

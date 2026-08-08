@@ -910,9 +910,9 @@ public:
         SimpleTimer::setPlatformClock(globalClock_);
         device = cli::DeviceFactory::createDevice(0, true);
 
-        // The CLI factory launches straight into the duel app. These tests
-        // exercise the registration flow (HTTP fetch transitions, reboot
-        // semantics), so swap back to the registration app at its fetch state.
+        // The CLI factory launches into the hub. These tests exercise the
+        // registration flow (HTTP fetch transitions, reboot semantics), so swap
+        // back to the registration app at its fetch state.
         device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
                                  PlayerRegistrationApp::FETCH_USER_DATA_INDEX);
     }

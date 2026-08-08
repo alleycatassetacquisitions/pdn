@@ -13,15 +13,18 @@
 // populateStateMap silently retargets every edge aiming into it. The state-graph
 // test pins each order against the pre-split graph.
 
-/// Awaken -> Idle -> Sleep -> Awaken, with SupporterReady branching off Idle.
-/// The app a device sits in whenever it is not duelling: waking, waiting on a
-/// cable, waiting out someone else's duel, asleep. Every other app hands back
-/// here, and Idle is where all three launches out of it are declared.
-/// Registration is its own top-level app, not a state in this one.
+/// Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken. Sleep has no
+/// inbound edge from within the hub: it is entered only by hand-off, from the
+/// duel app's upload and from a finished tournament.
+/// The between-match app — waking, waiting on a cable, waiting out someone
+/// else's duel, asleep. Every other app hands back here, and Idle is where all
+/// three launches out of it are declared. Registration is its own top-level
+/// app, not a state in this one.
 class HubApp : public StateMachine {
 public:
     static constexpr int AWAKEN_SEQUENCE_INDEX = 0;
     static constexpr int IDLE_INDEX = 1;
+    static constexpr int SUPPORTER_READY_INDEX = 2;
     static constexpr int SLEEP_INDEX = 3;
 
     /// Non-owning: the context's managers belong to the GameSession above it.
@@ -36,9 +39,10 @@ private:
 };
 
 /// DuelCountdown -> Duel -> DuelPushed / DuelReceivedResult -> DuelResult ->
-/// Win|Lose -> Upload. Entered at DuelCountdown from the hub's Idle for a 1v1
-/// and from the shootout's bracket for a tournament match; leaves to the hub's
-/// Idle on an abandoned duel and to the hub's Sleep once the upload finishes.
+/// Win|Lose -> Upload. Entered at DuelCountdown from the hub's Idle for a 1v1,
+/// and from the shootout's bracket reveal or spectator for a tournament match.
+/// Leaves to the hub's Idle on an abandoned duel, to the hub's Sleep once the
+/// upload finishes, and to the shootout on abort or a bracket outcome.
 class DuelApp : public StateMachine {
 public:
     static constexpr int DUEL_COUNTDOWN_INDEX = 0;
@@ -57,7 +61,7 @@ private:
 /// Proposal -> BracketReveal, which either hands off to a bracket duel or drops
 /// to Spectator; Spectator and Eliminated both end at FinalStandings. Eliminated
 /// has no inbound edge here — the duel app hands into it. Aborted is the landing
-/// state the six duel states a live tournament can interrupt are pulled into.
+/// state the five interruptible duel states and the hub's Idle are pulled into.
 class ShootoutApp : public StateMachine {
 public:
     static constexpr int PROPOSAL_INDEX = 0;

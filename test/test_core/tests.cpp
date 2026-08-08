@@ -525,8 +525,9 @@ TEST_F(AppSwapTestSuite, outOfRangeEntryStateIndexFallsBackToBootState) {
 }
 
 // App and intra-machine edges share one priority list. Checking every local edge
-// first would silently demote every hand-off — the split's Idle depends on its
-// shootout edge outranking its duel-countdown edge.
+// first would demote every hand-off below its own state's local edges — the
+// split's Idle depends on its shootout hand-off outranking the local edge into
+// SupporterReady.
 TEST_F(AppSwapTestSuite, appTransitionDeclaredFirstOutranksALocalEdge) {
     loadAllApps(APP_THREE);
 
@@ -1142,6 +1143,10 @@ TEST_F(GameSessionLifecycleTests, ctorDtorDoesNotLeak) {
 
 TEST_F(GameSessionLifecycleTests, countdownVoidsStandingConfirm) {
     gameSessionCountdownVoidsStandingConfirm(this);
+}
+
+TEST_F(GameSessionLifecycleTests, countdownArmsMountedSupporter) {
+    gameSessionCountdownArmsMountedSupporter(this);
 }
 
 // ============================================

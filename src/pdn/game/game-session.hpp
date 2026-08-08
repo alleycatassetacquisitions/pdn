@@ -20,9 +20,10 @@
 /// a retransmit was skipped. Device::setTickCallback is the seam that runs it.
 class GameSession {
 public:
-    /// Builds the shared managers and wires every RDC callback and ESP-NOW
-    /// handler that feeds them. The device and its wireless manager outlive the
-    /// session, so the destructor empties every slot holding `this`.
+    /// Builds the shared managers, wires every RDC callback and ESP-NOW handler
+    /// that feeds them, and installs its own per-tick pump. The device and its
+    /// wireless manager outlive the session, so the destructor empties every slot
+    /// holding `this`.
     GameSession(Player* player,
                 Device* pdn,
                 QuickdrawWirelessManager* quickdrawWirelessManager,
@@ -31,7 +32,7 @@ public:
     ~GameSession();
 
     /// Drives the chain-duel and shootout retry machines and the periodic retry
-    /// stats line. One call per platform tick.
+    /// stats line. Installed on the device's tick seam by the constructor.
     void sync();
 
     /// The manager bundle every gameplay state is constructed from.
@@ -41,11 +42,12 @@ public:
     /// matches through it; fetched player data goes to the Player, not here.
     MatchManager* getMatchManager();
 
-    /// Published by SupporterReady while it is mounted, so an inbound chain game
-    /// event reaches it without the session knowing which app holds it.
-    void setActiveSupporterReady(SupporterReady* supporterReady);
-
 private:
+    /// The mounted SupporterReady, or null when another state holds the device.
+    /// Read from the mounted app rather than published into the session: which
+    /// state is running is the app's fact, and a second copy of it can drift.
+    SupporterReady* getMountedSupporterReady();
+
     void onChainStateChanged();
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
@@ -59,6 +61,7 @@ private:
     void logRetryStats();
 
     Player* player = nullptr;
+    Device* pdn = nullptr;
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -66,7 +69,6 @@ private:
     MatchManager* matchManager = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
-    SupporterReady* activeSupporterReady = nullptr;
 
     // Every STATS_LOG_INTERVAL_MS we emit one line of the chain-duel retry
     // counters under the "STATS" tag. Intended for venue deployment: `cat`ing the

@@ -11,6 +11,7 @@
 #include "id-generator.hpp"
 #include "game/game-session.hpp"
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw-apps.hpp"
 #include "utility-tests.hpp"
 #include "protocol-constants.hpp"
 
@@ -1419,6 +1420,13 @@ public:
                 testing::SaveArg<1>(&chainGameEventHandler),
                 testing::SaveArg<2>(&chainGameEventCtx)));
 
+        // Mounting a real state renders, and the display API chains, so an
+        // un-stubbed call returns null and the next link dereferences it.
+        ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
+        ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
+
         player = new Player();
         char playerId[] = "life";
         player->setUserID(playerId);
@@ -1445,10 +1453,14 @@ public:
 // Create + destroy many GameSession instances; under ASAN (env:native_asan) a
 // leak in the session's ownership of matchManager / chainDuelManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
+// The loop between destructions is the check on the device-held slots: the tick
+// callback captures the session and the device outlives it, so a slot the
+// destructor failed to empty is called here with a freed `this`.
 inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+        GameSession* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
         delete session;
+        suite->device.loop();
     }
 }
 
@@ -1459,8 +1471,8 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     suite->player->setIsHunter(true);
     uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
 
-    // A hunter duels out the OUTPUT jack, so that is the only jack an inbound
-    // game event may legitimately arrive from.
+    // A hunter's opponent jack is OUTPUT, and only an opponent-jack announce
+    // caches championMac — which is in turn what admits the game event below.
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
@@ -1499,4 +1511,44 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     EXPECT_EQ(confirmsSent, 1);
 
     delete session;
+}
+
+// The event's other consumer: the mounted SupporterReady, which the session finds
+// through the device instead of being handed a pointer at mount. A lookup that
+// misses arms no supporter, so the champion duels without their boost.
+inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* suite) {
+    suite->player->setIsHunter(true);
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+
+    FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
+    rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
+
+    GameSession* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+    ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
+    chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
+    ASSERT_TRUE(chainDuelManager->isSupporter());
+
+    HubApp* hub = new HubApp(session->getContext());
+    AppConfig apps;
+    apps[StateId(HUB_APP_ID)] = hub;
+    suite->device.loadAppConfig(apps, StateId(HUB_APP_ID));
+    suite->device.setActiveApp(StateId(HUB_APP_ID), HubApp::SUPPORTER_READY_INDEX);
+    ASSERT_EQ(suite->device.getActiveApp()->getCurrentState()->getStateId(), SUPPORTER_READY);
+
+    ChainGameEventPayload countdown{};
+    countdown.event_type = static_cast<uint8_t>(ChainGameEventType::COUNTDOWN);
+    countdown.seqId = 0;
+    memcpy(countdown.championMac, champion, 6);
+    ASSERT_NE(suite->chainGameEventHandler, nullptr);
+    suite->chainGameEventHandler(champion, reinterpret_cast<const uint8_t*>(&countdown),
+                                 sizeof(countdown), suite->chainGameEventCtx);
+
+    SupporterReady* supporterReady =
+        static_cast<SupporterReady*>(suite->device.getActiveApp()->getCurrentState());
+    EXPECT_TRUE(supporterReady->buttonArmed);
+
+    delete session;
+    delete hub;
 }

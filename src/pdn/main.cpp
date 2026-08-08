@@ -179,9 +179,6 @@ void setup() {
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
 
     gameSession = new GameSession(player, pdn, quickdrawWirelessManager, symbolWirelessManager);
-    // Above the apps, so a swap never interrupts the chain-duel or shootout
-    // retry machines: only the mounted app is looped.
-    pdn->setTickCallback([]() { gameSession->sync(); });
 
     GameContext gameContext = gameSession->getContext();
     playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameSession->getMatchManager(), remoteDebugManager);
