@@ -253,9 +253,10 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
 }
 
 // Which of those edges became hand-offs, and the app plus entry state each names.
-// A hand-off that lost its entry state would fall back to the target's boot state
-// and still resolve to something, passing the equivalence check above whenever the
-// boot state happened to be the right one, so the entry states are pinned here.
+// The equivalence check above already catches an edge that loses its entry state —
+// resolveTarget matches on state id and no state carries the unset -1, so it
+// resolves nowhere and fails there. What only this table pins is the target app id,
+// and that an edge is a hand-off at all rather than an intra-app transition.
 inline void quickdrawCrossAppEdgesAreAppTransitions() {
     QuickdrawAppsForTest apps;
     std::map<int, State*> byId = apps.statesById();

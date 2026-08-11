@@ -9,7 +9,7 @@
 // of the state to enter, never as a State*.
 
 /// The between-match app: Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken.
-/// Every other app hands back here and Idle declares all three launches out of it.
+/// Every other app hands back here, and Idle declares every launch out of it.
 /// Sleep has no inbound edge from within the hub — it is entered only by hand-off,
 /// from the duel app's upload and from a finished tournament. Registration is its
 /// own top-level app, not a state in this one.

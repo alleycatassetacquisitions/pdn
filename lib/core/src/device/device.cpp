@@ -6,6 +6,14 @@
 const char* TAG = "Device";
 
 void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
+    // Resolved against the outgoing config, so it has to run before the move. A
+    // reconfiguration otherwise leaves the previous app's state mounted with nothing
+    // able to reach it again — two live mounts on one device.
+    StateMachine* mounted = getActiveApp();
+    if (mounted != nullptr) {
+        mounted->onStateDismounted(this);
+    }
+
     this->appConfig = std::move(config);
     this->currentAppId = launchAppId;
     if(appConfig.find(currentAppId) == appConfig.end()) {
@@ -13,8 +21,8 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
         return;
     }
 
-    // Stated rather than inherited: both mount paths set the entry state, so the
-    // launch app cannot come up at whatever a previous swap happened to leave.
+    // Stated rather than inherited, so a launch cannot come up at whatever a swap
+    // last asked for. Both Device mount paths write it for that reason.
     appConfig[currentAppId]->setEntryState(StateId(-1));
     appConfig[currentAppId]->onStateMounted(this);
 }

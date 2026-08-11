@@ -502,10 +502,10 @@ TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedState) {
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
 }
 
-// A swap that names no entry state boots the target at its first state, the way
-// every FDN call site expects — including a second swap into an app that was
-// previously entered part-way through, since setActiveApp writes the default over
-// whatever the last swap asked for.
+// A swap that names no entry state boots the target at its first state, which is
+// what all ten FDN app transitions ask for — none of them names one. The second
+// half also covers re-entering an app that a previous swap entered part-way:
+// setActiveApp writes the default over whatever that swap asked for.
 TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
     loadAllApps(APP_ONE);
 
@@ -518,9 +518,9 @@ TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
 }
 
-// loadAppConfig states its entry rather than inheriting one, so an app entered
-// part-way through by an earlier swap still boots at its first state when the
-// device is reconfigured.
+// loadAppConfig states its entry rather than inheriting one. Production calls it
+// once per device before any swap, so this pins the invariant rather than closing a
+// reachable hole — but the invariant is what lets the default be trusted.
 TEST_F(AppSwapTestSuite, loadAppConfigEntersTheBootStateAfterAPartWaySwap) {
     loadAllApps(APP_ONE);
     device->setActiveApp(APP_TWO, StateId(2));
@@ -529,6 +529,20 @@ TEST_F(AppSwapTestSuite, loadAppConfigEntersTheBootStateAfterAPartWaySwap) {
     loadAllApps(APP_TWO);
 
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
+}
+
+// Reconfiguring dismounts whatever was mounted. Skipping that leaves the outgoing
+// app holding a live currentState that nothing can ever dismount, because the
+// config that reached it has been replaced.
+TEST_F(AppSwapTestSuite, loadAppConfigDismountsWhateverWasMounted) {
+    loadAllApps(APP_ONE);
+    device->setActiveApp(APP_TWO, StateId(2));
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
+
+    loadAllApps(APP_ONE);
+
+    EXPECT_EQ(appTwo->getCurrentState(), nullptr);
+    EXPECT_EQ(appOne->getCurrentState()->getStateId(), 0);
 }
 
 // An id no state in the target carries: logged and landed on the boot state

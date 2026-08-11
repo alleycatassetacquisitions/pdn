@@ -14,8 +14,8 @@
 /// Owns the managers the gameplay apps share and the wireless plumbing that
 /// feeds them, and sits above every app so neither is tied to one state machine.
 ///
-/// getContext() hands those managers out by value, so every app built from one —
-/// and every state that app allocates — holds pointers the session will free.
+/// getContext() hands those managers out by value, so an app built from one — and
+/// any state of that app which keeps a manager — holds a pointer the session frees.
 /// Destroy the apps before the session.
 ///
 /// sync() must run on each platform tick, not from a state: only the mounted app

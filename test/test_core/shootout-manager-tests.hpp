@@ -1356,12 +1356,17 @@ inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suit
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
-// #167 asked for the abort to be reachable from anywhere in the shootout rather
-// than written out per state. It is now one edge condition over ShootoutManager's phase,
-// shared by the hub's Idle, the five interruptible duel states and the four
-// shootout states. This walks the built graph and asserts every one of those edges
-// answers to it, so a state that quietly stops honouring the abort is caught here
-// rather than on a ring that will not tear down.
+// The abort is one edge condition over ShootoutManager's phase, read by every state
+// that can be interrupted by it. Builds the three apps and checks each of those
+// edges against a hardcoded (state, edge index) table — it does not discover abort
+// edges, so a state that gains one is invisible here; what it catches is a listed
+// state losing its edge or ceasing to honour the condition, which on hardware is a
+// ring that will not tear down.
+//
+// Note for anyone auditing #167 against this: the issue asked for abort to reach
+// every shootout state through ShootoutAwareState::tickAbortGuard() and for the
+// per-state edges to go away. Only the duplicated condition went away; the edges
+// are still declared per state, and the guard is still on two states.
 inline void abortRuleReachesEveryStateThatDeclaresIt(ShootoutManagerTests* suite) {
     GameContext ctx;
     ctx.shootoutManager = suite->shootout;
@@ -1374,6 +1379,8 @@ inline void abortRuleReachesEveryStateThatDeclaresIt(ShootoutManagerTests* suite
     shootoutApp.populateStateMap();
 
     // (state id, index of that state's abort edge) for every state carrying one.
+    // Positions are pinned independently by quickdrawAppEdgesMatchPreSplitGraph, so
+    // an edge inserted ahead of one of these fails there too, not only here.
     const std::vector<std::pair<int, size_t>> abortEdges = {
         {IDLE, 3},
         {DUEL_COUNTDOWN, 0},

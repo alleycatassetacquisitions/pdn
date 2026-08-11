@@ -134,8 +134,9 @@ GameSession::GameSession(Player* player,
 }
 
 GameSession::~GameSession() {
-    // Every slot below captures `this` and is held by an object that outlives this
-    // session, so each must be dropped before the capture dangles.
+    // Every slot below holds `this` — some by lambda capture, the packet handlers as
+    // a void* ctx — on an object that outlives this session, so each must be dropped
+    // before that pointer dangles.
     if (pdn) pdn->setTickCallback(nullptr);
     pdn = nullptr;
     if (player) player->setOnRoleChanged(nullptr);

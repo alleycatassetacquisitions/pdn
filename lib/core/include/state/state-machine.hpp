@@ -62,10 +62,12 @@ public:
         launched = true;
     }
 
-    /// The state the next mount enters at, or unset for the boot state. Every path
-    /// that mounts an app writes this first — setActiveApp from the app transition
-    /// that named one, loadAppConfig with unset — so it is never inherited from an
-    /// earlier mount.
+    /// The state the next mount enters at, or unset for the boot state. Both paths
+    /// on Device write it before mounting — setActiveApp from the app transition
+    /// that named one, loadAppConfig with unset — so neither inherits an earlier
+    /// mount's value. A StateMachine driven outside an AppConfig never writes it at
+    /// all (HelloLinkMachine calls initialize() directly), and rides the unset
+    /// default, so that default is load-bearing and not redundant.
     void setEntryState(StateId stateId) {
         entryStateId = stateId;
     }
@@ -103,6 +105,9 @@ public:
     /// Moves to the sibling state the pending edge names. Only valid when one is
     /// held and it is an intra-machine edge; a hand-off leaves via setActiveApp.
     void commitState(Device* device) {
+        // Before the dismount, not after: onStateDismounted on this machine nulls
+        // pendingTransition, so a state whose teardown reached back into its own
+        // machine would leave this dereferencing null.
         State* nextState = pendingTransition->getNextState();
         asLifecycle(currentState)->dismount(device);
 
@@ -168,10 +173,8 @@ private:
         return static_cast<StateLifecycle*>(state);
     }
 
-    // Resolved against this machine's own map, so a duplicate id would only
-    // matter within one app. In practice the gameplay apps share one
-    // QuickdrawStateId enum whose values are wire-visible and were renumbered to
-    // stay globally distinct, so no scan here can be ambiguous.
+    // Resolved against this machine's own map, so ids only have to be distinct
+    // within one app for the scan to be unambiguous.
     State* findEntryState() {
         if (entryStateId.id < 0) {
             return stateMap[0];
