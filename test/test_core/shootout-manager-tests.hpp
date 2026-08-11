@@ -1357,7 +1357,7 @@ inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suit
 }
 
 // #167 asked for the abort to be reachable from anywhere in the shootout rather
-// than written out per state. It is now one predicate over ShootoutManager's phase,
+// than written out per state. It is now one edge condition over ShootoutManager's phase,
 // shared by the hub's Idle, the five interruptible duel states and the four
 // shootout states. This walks the built graph and asserts every one of those edges
 // answers to it, so a state that quietly stops honouring the abort is caught here

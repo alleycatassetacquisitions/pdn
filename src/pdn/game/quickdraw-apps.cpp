@@ -1,9 +1,10 @@
 #include "game/quickdraw-apps.hpp"
 
 namespace {
-// The abort rule the hub's Idle and the five interruptible duel states share.
-// Held in one place so a split across two state maps cannot fork it.
-std::function<bool()> abortedPhasePredicate(ShootoutManager* shootoutManager) {
+// The abort rule, as an edge condition. Ten states carry an abort edge — the hub's
+// Idle, the five interruptible duel states and four of the shootout states — and
+// all ten read this, so a split across three state maps cannot fork it.
+std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManager) {
     return [shootoutManager]() {
         return shootoutManager && shootoutManager->getPhase() == ShootoutManager::Phase::ABORTED;
     };
@@ -43,7 +44,7 @@ void HubApp::populateStateMap() {
         [idle]() { return idle->transitionToSupporterReady(); },
         supporterReady);
 
-    idle->addAppTransition(abortedPhasePredicate(shootoutManager),
+    idle->addAppTransition(tournamentAbortedCondition(shootoutManager),
                            StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     idle->addAppTransition(
@@ -81,7 +82,7 @@ void DuelApp::populateStateMap() {
 
     ShootoutManager* shootoutManager = context.shootoutManager;
 
-    std::function<bool()> phaseIsAborted = abortedPhasePredicate(shootoutManager);
+    std::function<bool()> phaseIsAborted = tournamentAbortedCondition(shootoutManager);
 
     duelCountdown->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
@@ -193,9 +194,7 @@ void ShootoutApp::populateStateMap() {
     ShootoutFinalStandings* finalStandings = new ShootoutFinalStandings(context);
     ShootoutAborted* aborted = new ShootoutAborted(context);
 
-    // The same rule the duel states and the hub's Idle read, so the abort has one
-    // definition for the whole graph rather than a per-state copy of it.
-    std::function<bool()> phaseIsAborted = abortedPhasePredicate(context.shootoutManager);
+    std::function<bool()> phaseIsAborted = tournamentAbortedCondition(context.shootoutManager);
 
     proposal->addTransition(
         [proposal]() { return proposal->transitionToBracketReveal(); },
