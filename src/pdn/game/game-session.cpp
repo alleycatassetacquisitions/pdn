@@ -134,8 +134,8 @@ GameSession::GameSession(Player* player,
 }
 
 GameSession::~GameSession() {
-    // Both callbacks capture `this` and are held by objects that outlive this
-    // session, so they must be dropped before the capture dangles.
+    // Every slot below captures `this` and is held by an object that outlives this
+    // session, so each must be dropped before the capture dangles.
     if (pdn) pdn->setTickCallback(nullptr);
     pdn = nullptr;
     if (player) player->setOnRoleChanged(nullptr);
@@ -180,10 +180,6 @@ GameContext GameSession::getContext() {
     context.symbolWirelessManager = symbolWirelessManager;
     context.wirelessManager = wirelessManager;
     return context;
-}
-
-MatchManager* GameSession::getMatchManager() {
-    return matchManager;
 }
 
 SupporterReady* GameSession::getMountedSupporterReady() {

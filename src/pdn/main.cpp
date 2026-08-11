@@ -181,7 +181,7 @@ void setup() {
     gameSession = new GameSession(player, pdn, quickdrawWirelessManager, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
-    playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameSession->getMatchManager(), remoteDebugManager);
+    playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameContext.matchManager, remoteDebugManager);
     hubApp = new HubApp(gameContext);
     duelApp = new DuelApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);

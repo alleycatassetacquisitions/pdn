@@ -503,8 +503,9 @@ TEST_F(AppSwapTestSuite, setActiveAppEntersAtTheNamedState) {
 }
 
 // A swap that names no entry state boots the target at its first state, the way
-// every FDN call site expects. The named state is consumed by the mount, so it
-// cannot leak into a later swap that named nothing.
+// every FDN call site expects — including a second swap into an app that was
+// previously entered part-way through, since setActiveApp writes the default over
+// whatever the last swap asked for.
 TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
     loadAllApps(APP_ONE);
 
@@ -513,6 +514,19 @@ TEST_F(AppSwapTestSuite, setActiveAppWithoutAnEntryStateEntersTheBootState) {
 
     device->setActiveApp(APP_ONE);
     device->setActiveApp(APP_TWO);
+
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
+}
+
+// loadAppConfig states its entry rather than inheriting one, so an app entered
+// part-way through by an earlier swap still boots at its first state when the
+// device is reconfigured.
+TEST_F(AppSwapTestSuite, loadAppConfigEntersTheBootStateAfterAPartWaySwap) {
+    loadAllApps(APP_ONE);
+    device->setActiveApp(APP_TWO, StateId(2));
+    ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 2);
+
+    loadAllApps(APP_TWO);
 
     ASSERT_EQ(appTwo->getCurrentState()->getStateId(), 0);
 }

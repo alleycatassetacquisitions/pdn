@@ -12,7 +12,10 @@ void Device::loadAppConfig(AppConfig config, StateId launchAppId) {
         LOG_E(TAG, "App %d not found", currentAppId.id);
         return;
     }
-    
+
+    // Stated rather than inherited: both mount paths set the entry state, so the
+    // launch app cannot come up at whatever a previous swap happened to leave.
+    appConfig[currentAppId]->setEntryState(StateId(-1));
     appConfig[currentAppId]->onStateMounted(this);
 }
 

@@ -14,6 +14,10 @@
 /// Owns the managers the gameplay apps share and the wireless plumbing that
 /// feeds them, and sits above every app so neither is tied to one state machine.
 ///
+/// getContext() hands those managers out by value, so every app built from one —
+/// and every state that app allocates — holds pointers the session will free.
+/// Destroy the apps before the session.
+///
 /// sync() must run on each platform tick, not from a state: only the mounted app
 /// receives an onStateLoop, so a retry machine driven from inside a state stalls
 /// the moment the device swaps apps — silently, because nothing on the wire says
@@ -37,10 +41,6 @@ public:
 
     /// The manager bundle every gameplay state is constructed from.
     GameContext getContext();
-
-    /// The shared MatchManager. The registration app uploads and clears stored
-    /// matches through it; fetched player data goes to the Player, not here.
-    MatchManager* getMatchManager();
 
 private:
     /// The mounted SupporterReady, or null when another state holds the device.

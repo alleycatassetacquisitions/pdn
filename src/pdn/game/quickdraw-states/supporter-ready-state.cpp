@@ -1,6 +1,5 @@
 #include "game/quickdraw-states.hpp"
 #include "game/chain-duel-manager.hpp"
-#include "game/game-session.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/idle-animation.hpp"
 #include "device/animation/vertical-chase-animation.hpp"

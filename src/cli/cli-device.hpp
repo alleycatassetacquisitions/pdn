@@ -246,7 +246,7 @@ public:
         GameContext gameContext = instance.gameSession->getContext();
         instance.playerRegistrationApp = new PlayerRegistrationApp(
             instance.player, instance.pdn->getWirelessManager(),
-            instance.gameSession->getMatchManager(), nullptr);
+            gameContext.matchManager, nullptr);
         instance.hubApp = new HubApp(gameContext);
         instance.duelApp = new DuelApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);
@@ -281,7 +281,9 @@ public:
         // Remove player config from mock HTTP server
         MockHttpServer::getInstance().removePlayer(device.deviceId);
 
-        // Apps first: their states hold context pointers into the session.
+        // Apps before the session, which owns the managers their GameContext
+        // copies point at. No state destructor dereferences one today, so this is
+        // ordering hygiene rather than a fix for a live use-after-free.
         delete device.playerRegistrationApp;
         delete device.hubApp;
         delete device.duelApp;

@@ -96,9 +96,7 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
 //
-// Six of these cross the hub/duel line rather than the original app boundaries:
-// Idle's launch into a duel, the four abandoned-duel returns to Idle, and the
-// upload's exit to Sleep. They were intra-app edges before the hub existed.
+// All 24 were intra-app edges pre-split, when the whole game was one machine.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
     {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
     {{IDLE, 1}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
@@ -254,10 +252,10 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
     EXPECT_EQ(totalEdges, 47u);
 }
 
-// Which of those edges became hand-offs, and the app plus entry slot each names.
-// A hand-off that regressed to entry slot 0 would still resolve to a state and
-// pass the equivalence check above only if slot 0 happened to be the right one,
-// so the slots are pinned here directly.
+// Which of those edges became hand-offs, and the app plus entry state each names.
+// A hand-off that lost its entry state would fall back to the target's boot state
+// and still resolve to something, passing the equivalence check above whenever the
+// boot state happened to be the right one, so the entry states are pinned here.
 inline void quickdrawCrossAppEdgesAreAppTransitions() {
     QuickdrawAppsForTest apps;
     std::map<int, State*> byId = apps.statesById();

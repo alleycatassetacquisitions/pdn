@@ -8,13 +8,11 @@
 // it registers and knows the others only as an app id plus the QuickdrawStateId
 // of the state to enter, never as a State*.
 
-/// Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken. Sleep has no
-/// inbound edge from within the hub: it is entered only by hand-off, from the
-/// duel app's upload and from a finished tournament.
-/// The between-match app — waking, waiting on a cable, waiting out someone
-/// else's duel, asleep. Every other app hands back here, and Idle is where all
-/// three launches out of it are declared. Registration is its own top-level
-/// app, not a state in this one.
+/// The between-match app: Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken.
+/// Every other app hands back here and Idle declares all three launches out of it.
+/// Sleep has no inbound edge from within the hub — it is entered only by hand-off,
+/// from the duel app's upload and from a finished tournament. Registration is its
+/// own top-level app, not a state in this one.
 class HubApp : public StateMachine {
 public:
     /// Non-owning: the context's managers belong to the GameSession above it.
