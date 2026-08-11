@@ -1,6 +1,9 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <map>
+#include <utility>
+#include <vector>
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
@@ -8,6 +11,7 @@
 #include "game/shootout-manager.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/quickdraw-states.hpp"
+#include "game/quickdraw-apps.hpp"
 #include "game/player.hpp"
 
 class ShootoutManagerTests : public testing::Test {
@@ -1148,22 +1152,19 @@ inline void shootoutProposalDebouncesTransientLoopBreak(ShootoutManagerTests* su
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
-    EXPECT_FALSE(state.transitionToAborted());
 
     // Loop returns within debounce window — debounce cleared, phase intact.
     fakeCdm.setIsLoop(true);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
-    EXPECT_FALSE(state.transitionToAborted());
 
-    // Persistent loss past the debounce window sets Phase::ABORTED and fires
-    // transitionToAborted.
+    // Persistent loss past the debounce window sets Phase::ABORTED, which is the
+    // rule every state's abort edge reads.
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);  // start debounce
     suite->fakeClock->advance(2000);  // well past any reasonable debounce window
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
-    EXPECT_TRUE(state.transitionToAborted());
 }
 
 // Same debounce contract on ShootoutBracketReveal (tournament state is more
@@ -1194,19 +1195,16 @@ inline void shootoutBracketRevealDebouncesTransientLoopBreak(ShootoutManagerTest
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_FALSE(state.transitionToAborted());
 
     fakeCdm.setIsLoop(true);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
-    EXPECT_FALSE(state.transitionToAborted());
 
     fakeCdm.setIsLoop(false);
     state.onStateLoop(nullptr);
     suite->fakeClock->advance(2000);
     state.onStateLoop(nullptr);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
-    EXPECT_TRUE(state.transitionToAborted());
 }
 
 // The ESP-NOW peer table holds 20 entries, so a unicast fan-out cannot address a
@@ -1356,4 +1354,64 @@ inline void strayRingCommandsLeaveTournamentUntouched(ShootoutManagerTests* suit
     // A ring member's ABORT still lands.
     suite->shootout->onAbortReceived(coord.data());
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+}
+
+// #167 asked for the abort to be reachable from anywhere in the shootout rather
+// than written out per state. It is now one predicate over ShootoutManager's phase,
+// shared by the hub's Idle, the five interruptible duel states and the four
+// shootout states. This walks the built graph and asserts every one of those edges
+// answers to it, so a state that quietly stops honouring the abort is caught here
+// rather than on a ring that will not tear down.
+inline void abortRuleReachesEveryStateThatDeclaresIt(ShootoutManagerTests* suite) {
+    GameContext ctx;
+    ctx.shootoutManager = suite->shootout;
+
+    HubApp hub(ctx);
+    DuelApp duel(ctx);
+    ShootoutApp shootoutApp(ctx);
+    hub.populateStateMap();
+    duel.populateStateMap();
+    shootoutApp.populateStateMap();
+
+    // (state id, index of that state's abort edge) for every state carrying one.
+    const std::vector<std::pair<int, size_t>> abortEdges = {
+        {IDLE, 3},
+        {DUEL_COUNTDOWN, 0},
+        {DUEL, 0},
+        {DUEL_PUSHED, 0},
+        {DUEL_RECEIVED_RESULT, 0},
+        {DUEL_RESULT, 0},
+        {SHOOTOUT_PROPOSAL, 1},
+        {SHOOTOUT_BRACKET_REVEAL, 2},
+        {SHOOTOUT_SPECTATOR, 2},
+        {SHOOTOUT_ELIMINATED, 1},
+    };
+
+    std::map<int, State*> byId;
+    for (StateMachine* app : {static_cast<StateMachine*>(&hub),
+                              static_cast<StateMachine*>(&duel),
+                              static_cast<StateMachine*>(&shootoutApp)}) {
+        for (State* state : app->getStateMap())
+            byId[state->getStateId()] = state;
+    }
+
+    // No tournament running: not one of them wants to leave for Aborted.
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
+    for (const std::pair<int, size_t>& edge : abortEdges) {
+        State* source = byId.count(edge.first) ? byId[edge.first] : nullptr;
+        ASSERT_NE(source, nullptr) << "state " << edge.first << " missing";
+        ASSERT_LT(edge.second, source->getTransitions().size());
+        EXPECT_FALSE(source->getTransitions()[edge.second]->isConditionMet())
+            << "state " << edge.first << " wants Aborted with no tournament running";
+    }
+
+    suite->shootout->setLoopMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
+    suite->shootout->startProposal();
+    suite->shootout->abortTournament();
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+
+    for (const std::pair<int, size_t>& edge : abortEdges) {
+        EXPECT_TRUE(byId[edge.first]->getTransitions()[edge.second]->isConditionMet())
+            << "state " << edge.first << " ignores the abort";
+    }
 }

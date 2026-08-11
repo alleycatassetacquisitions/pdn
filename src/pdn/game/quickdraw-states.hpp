@@ -421,11 +421,9 @@ public:
     void onStateDismounted(PDN* pdn) override;
 
     bool transitionToBracketReveal();
-    bool transitionToAborted();
 
 private:
     bool shouldGoToReveal_ = false;
-    bool shouldGoToAborted_ = false;
 };
 
 class ShootoutBracketReveal : public TypedState<PDN>, public ShootoutAwareState {
@@ -437,12 +435,10 @@ public:
 
     bool transitionToDuelCountdown();
     bool transitionToSpectator();
-    bool transitionToAborted();
 
 private:
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
-    bool shouldGoToAborted_ = false;
 };
 
 class ShootoutSpectator : public TypedState<PDN> {
@@ -454,13 +450,11 @@ public:
 
     bool transitionToDuelCountdown();
     bool transitionToFinalStandings();
-    bool transitionToAborted();
 
 private:
     ShootoutManager* shootout_;
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToFinalStandings_ = false;
-    bool shouldGoToAborted_ = false;
     std::array<uint8_t, 6> lastDisplayedA_{};
     std::array<uint8_t, 6> lastDisplayedB_{};
 };
@@ -473,12 +467,10 @@ public:
     void onStateDismounted(PDN* pdn) override;
 
     bool transitionToFinalStandings();
-    bool transitionToAborted();
 
 private:
     ShootoutManager* shootout_;
     bool shouldGoToFinalStandings_ = false;
-    bool shouldGoToAborted_ = false;
 };
 
 class ShootoutFinalStandings : public TypedState<PDN> {

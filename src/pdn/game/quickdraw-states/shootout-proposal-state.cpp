@@ -26,16 +26,13 @@ void ShootoutProposal::onStateLoop(PDN* pdn) {
     tickAbortGuard();
     ShootoutManager::Phase p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::BRACKET_REVEAL) shouldGoToReveal_ = true;
-    if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
 }
 
 void ShootoutProposal::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     shouldGoToReveal_ = false;
-    shouldGoToAborted_ = false;
     resetAbortGuard();
 }
 
 bool ShootoutProposal::transitionToBracketReveal() { return shouldGoToReveal_; }
-bool ShootoutProposal::transitionToAborted() { return shouldGoToAborted_; }

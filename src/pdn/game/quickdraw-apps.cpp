@@ -193,12 +193,14 @@ void ShootoutApp::populateStateMap() {
     ShootoutFinalStandings* finalStandings = new ShootoutFinalStandings(context);
     ShootoutAborted* aborted = new ShootoutAborted(context);
 
+    // The same rule the duel states and the hub's Idle read, so the abort has one
+    // definition for the whole graph rather than a per-state copy of it.
+    std::function<bool()> phaseIsAborted = abortedPhasePredicate(context.shootoutManager);
+
     proposal->addTransition(
         [proposal]() { return proposal->transitionToBracketReveal(); },
         bracketReveal);
-    proposal->addTransition(
-        [proposal]() { return proposal->transitionToAborted(); },
-        aborted);
+    proposal->addTransition(phaseIsAborted, aborted);
 
     bracketReveal->addAppTransition(
         [bracketReveal]() { return bracketReveal->transitionToDuelCountdown(); },
@@ -206,9 +208,7 @@ void ShootoutApp::populateStateMap() {
     bracketReveal->addTransition(
         [bracketReveal]() { return bracketReveal->transitionToSpectator(); },
         spectator);
-    bracketReveal->addTransition(
-        [bracketReveal]() { return bracketReveal->transitionToAborted(); },
-        aborted);
+    bracketReveal->addTransition(phaseIsAborted, aborted);
 
     spectator->addAppTransition(
         [spectator]() { return spectator->transitionToDuelCountdown(); },
@@ -216,16 +216,12 @@ void ShootoutApp::populateStateMap() {
     spectator->addTransition(
         [spectator]() { return spectator->transitionToFinalStandings(); },
         finalStandings);
-    spectator->addTransition(
-        [spectator]() { return spectator->transitionToAborted(); },
-        aborted);
+    spectator->addTransition(phaseIsAborted, aborted);
 
     eliminated->addTransition(
         [eliminated]() { return eliminated->transitionToFinalStandings(); },
         finalStandings);
-    eliminated->addTransition(
-        [eliminated]() { return eliminated->transitionToAborted(); },
-        aborted);
+    eliminated->addTransition(phaseIsAborted, aborted);
 
     // Cable-event reset after TOURNAMENT_END: when the physical ring opens,
     // route through Sleep so the cooldown period elapses before the next

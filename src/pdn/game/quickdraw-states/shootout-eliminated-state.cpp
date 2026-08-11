@@ -20,13 +20,10 @@ void ShootoutEliminated::onStateMounted(PDN* pdn) {
 void ShootoutEliminated::onStateLoop(PDN* pdn) {
     auto p = shootout_->getPhase();
     if (p == ShootoutManager::Phase::ENDED) shouldGoToFinalStandings_ = true;
-    if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
 }
 
 void ShootoutEliminated::onStateDismounted(PDN* pdn) {
     shouldGoToFinalStandings_ = false;
-    shouldGoToAborted_ = false;
 }
 
 bool ShootoutEliminated::transitionToFinalStandings() { return shouldGoToFinalStandings_; }
-bool ShootoutEliminated::transitionToAborted() { return shouldGoToAborted_; }

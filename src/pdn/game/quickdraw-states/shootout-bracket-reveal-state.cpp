@@ -27,16 +27,13 @@ void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
             shouldGoToSpectator_ = true;
         }
     }
-    if (p == ShootoutManager::Phase::ABORTED) shouldGoToAborted_ = true;
 }
 
 void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
     shouldGoToDuelCountdown_ = false;
     shouldGoToSpectator_ = false;
-    shouldGoToAborted_ = false;
     resetAbortGuard();
 }
 
 bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }
 bool ShootoutBracketReveal::transitionToSpectator() { return shouldGoToSpectator_; }
-bool ShootoutBracketReveal::transitionToAborted() { return shouldGoToAborted_; }
