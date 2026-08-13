@@ -5,6 +5,20 @@
 #include <array>
 #include <cstring>
 
+const std::array<GameSession::PacketRoute, 8>& GameSession::packetRoutes() {
+    static const std::array<PacketRoute, 8> ROUTES = {{
+        {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
+        {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
+        {PktType::kChainConfirm, dispatchTo<&GameSession::onChainConfirmPacket>},
+        {PktType::kChainJoin, dispatchTo<&GameSession::onChainJoinPacket>},
+        {PktType::kRoleAnnounce, dispatchTo<&GameSession::onRoleAnnouncePacket>},
+        {PktType::kRoleAnnounceAck, dispatchTo<&GameSession::onRoleAnnounceAckPacket>},
+        {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
+        {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
+    }};
+    return ROUTES;
+}
+
 // The initializer list is in declaration order, which is also dependency order:
 // both managers read the two device-owned managers pulled off the PDN above them.
 GameSession::GameSession(Player* player,
@@ -40,54 +54,9 @@ GameSession::GameSession(Player* player,
     quickdrawWirelessManager->setPacketReceivedCallback(
         [this](const QuickdrawCommand& command) { matchManager->listenForMatchEvents(command); });
 
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEvent,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onChainGameEventPacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEventAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onChainGameEventAckPacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainConfirm,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onChainConfirmPacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kChainJoin,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onChainJoinPacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kRoleAnnounce,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onRoleAnnouncePacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kRoleAnnounceAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onRoleAnnounceAckPacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommand,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onShootoutCommandPacket(macAddress, data, dataLen);
-        },
-        this);
-    wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommandAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<GameSession*>(ctx)->onShootoutCommandAckPacket(macAddress, data, dataLen);
-        },
-        this);
+    for (const PacketRoute& route : packetRoutes()) {
+        wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
+    }
 
     if (symbolWirelessManager) {
         symbolWirelessManager->initialize(wirelessManager, remoteDeviceCoordinator);
@@ -151,11 +120,8 @@ GameSession::~GameSession() {
     remoteDeviceCoordinator->setOnChainRoleChange(nullptr);
     remoteDeviceCoordinator->setOnRingClosed(nullptr);
     remoteDeviceCoordinator = nullptr;
-    for (PktType handled : {PktType::kChainGameEvent, PktType::kChainGameEventAck,
-                            PktType::kChainConfirm, PktType::kChainJoin,
-                            PktType::kRoleAnnounce, PktType::kRoleAnnounceAck,
-                            PktType::kShootoutCommand, PktType::kShootoutCommandAck}) {
-        wirelessManager->clearEspNowPacketHandler(handled);
+    for (const PacketRoute& route : packetRoutes()) {
+        wirelessManager->clearEspNowPacketHandler(route.type);
     }
     if (quickdrawWirelessManager) {
         quickdrawWirelessManager->clearCallbacks();

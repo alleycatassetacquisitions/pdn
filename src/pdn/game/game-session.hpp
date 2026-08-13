@@ -10,6 +10,7 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/player.hpp"
 #include "utils/simple-timer.hpp"
+#include <array>
 
 /// Owns the managers the gameplay apps share and the wireless plumbing that
 /// feeds them, and sits above every app so neither is tied to one state machine.
@@ -59,6 +60,24 @@ private:
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
+
+    /// One row per packet type this session answers for. The constructor
+    /// registers every row and the destructor clears every row, so the two lists
+    /// cannot drift apart the way two hand-written ones can.
+    struct PacketRoute {
+        PktType type;
+        PeerCommsInterface::PacketCallback handler;
+    };
+    static const std::array<PacketRoute, 8>& packetRoutes();
+
+    /// Wraps a member handler in the C-style callback the radio takes. The
+    /// handler is a template parameter so each row still resolves at compile
+    /// time rather than through a stored pointer.
+    template <void (GameSession::*Handler)(const uint8_t*, const uint8_t*, size_t)>
+    static void dispatchTo(const uint8_t* fromMac, const uint8_t* data,
+                           const size_t dataLen, void* ctx) {
+        (static_cast<GameSession*>(ctx)->*Handler)(fromMac, data, dataLen);
+    }
 
     Player* player = nullptr;
     Device* pdn = nullptr;
