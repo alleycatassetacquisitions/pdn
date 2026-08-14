@@ -126,7 +126,6 @@ Not behavior changes — fix build errors that were latent or newly exposed by t
 | Old path | New path |
 |---|---|
 | `src/cli-main.cpp` | `src/cli/cli-main.cpp` |
-| `src/native-main.cpp` | `src/cli/native-main.cpp` |
 | `src/perf-main.cpp` | `src/cli/perf-main.cpp` |
 | `include/cli/*.hpp` | `src/cli/` |
 

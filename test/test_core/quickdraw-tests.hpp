@@ -1549,6 +1549,6 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
         static_cast<SupporterReady*>(suite->device.getActiveApp()->getCurrentState());
     EXPECT_TRUE(supporterReady->buttonArmed);
 
-    delete session;
     delete hub;
+    delete session;
 }

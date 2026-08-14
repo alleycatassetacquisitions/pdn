@@ -9,6 +9,13 @@ std::function<bool()> tournamentAbortedCondition(ShootoutManager* shootoutManage
         return shootoutManager && shootoutManager->getPhase() == ShootoutManager::Phase::ABORTED;
     };
 }
+
+// The abandoned-duel rule the three interruptible duel states share, in the same
+// shape as the abort rule above so neither can fork.
+std::function<bool()> duelAbandonedCondition(ConnectState<PDN>& duel,
+                                             ShootoutManager* shootoutManager) {
+    return [&duel, shootoutManager]() { return duelReturnsToIdle(duel, shootoutManager); };
+}
 }  // namespace
 
 HubApp::HubApp(const GameContext& context)
@@ -91,9 +98,7 @@ void DuelApp::populateStateMap() {
         duel);
 
     duelCountdown->addAppTransition(
-        [duelCountdown, shootoutManager]() {
-            return duelReturnsToIdle(*duelCountdown, shootoutManager);
-        },
+        duelAbandonedCondition(*duelCountdown, shootoutManager),
         StateId(HUB_APP_ID), StateId(IDLE));
 
     duel->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
@@ -121,9 +126,7 @@ void DuelApp::populateStateMap() {
     duelPushed->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duelPushed->addAppTransition(
-        [duelPushed, shootoutManager]() {
-            return duelReturnsToIdle(*duelPushed, shootoutManager);
-        },
+        duelAbandonedCondition(*duelPushed, shootoutManager),
         StateId(HUB_APP_ID), StateId(IDLE));
 
     duelPushed->addTransition(
@@ -133,9 +136,7 @@ void DuelApp::populateStateMap() {
     duelReceivedResult->addAppTransition(phaseIsAborted, StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ABORTED));
 
     duelReceivedResult->addAppTransition(
-        [duelReceivedResult, shootoutManager]() {
-            return duelReturnsToIdle(*duelReceivedResult, shootoutManager);
-        },
+        duelAbandonedCondition(*duelReceivedResult, shootoutManager),
         StateId(HUB_APP_ID), StateId(IDLE));
 
     duelReceivedResult->addTransition(

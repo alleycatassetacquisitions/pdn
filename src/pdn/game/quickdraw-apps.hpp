@@ -47,7 +47,8 @@ private:
 /// Proposal -> BracketReveal, which either hands off to a bracket duel or drops
 /// to Spectator; Spectator and Eliminated both end at FinalStandings. Eliminated
 /// has no inbound edge here — the duel app hands into it. Aborted is the landing
-/// state the five interruptible duel states and the hub's Idle are pulled into.
+/// state ten sources are pulled into: the hub's Idle, the five interruptible
+/// duel states, and four of the shootout states below.
 class ShootoutApp : public StateMachine {
 public:
     /// Non-owning: the context's managers belong to the GameSession above it.
@@ -60,7 +61,9 @@ private:
     GameContext context;
 };
 
-/// Symbol -> SymbolMatched -> Symbol | back to the hub's Idle.
+/// Symbol -> SymbolMatched -> Symbol, and both states hand back to the hub's
+/// Idle. Symbol's hand-off is its first edge, ahead of the local one into
+/// SymbolMatched.
 class SymbolApp : public StateMachine {
 public:
     /// Non-owning: the context's managers belong to the GameSession above it.

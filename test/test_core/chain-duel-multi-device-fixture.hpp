@@ -532,6 +532,7 @@ protected:
                 switch (cmd) {
                     case ShootoutCmd::BRACKET:         m->onBracketAckReceived(fromMac, seqId); break;
                     case ShootoutCmd::MATCH_START:     m->onMatchStartAckReceived(fromMac, seqId); break;
+                    case ShootoutCmd::MATCH_RESULT: m->onMatchResultAckReceived(fromMac, seqId); break;
                     case ShootoutCmd::TOURNAMENT_END:  m->onTournamentEndAckReceived(fromMac, seqId); break;
                     default: break;
                 }

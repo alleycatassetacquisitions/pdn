@@ -58,16 +58,6 @@ GameSession::GameSession(Player* player,
         wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
     }
 
-    if (symbolWirelessManager) {
-        symbolWirelessManager->initialize(wirelessManager, remoteDeviceCoordinator);
-        wirelessManager->setEspNowPacketHandler(
-            PktType::kSymbolMatchCommand,
-            [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-                static_cast<SymbolWirelessManager*>(ctx)->processSymbolMatchCommand(macAddress, data, dataLen);
-            },
-            symbolWirelessManager);
-    }
-
     // Clear boost/confirmed-supporters when the supporter chain drains to
     // empty while a duel is still running. Without this, a champion keeps
     // a boost from supporters that have since unplugged.
@@ -112,9 +102,9 @@ GameSession::~GameSession() {
     if (remoteDeviceCoordinator) remoteDeviceCoordinator->setSelfProfileProvider(nullptr);
     player = nullptr;
     // The coordinator and the wireless manager are device-owned and outlive this
-    // session, so every slot holding `this` has to be emptied here. kSymbolMatchCommand
-    // is deliberately absent: its ctx is the symbol manager, which outlives
-    // the session, so clearing it here would deafen a live consumer.
+    // session, so every slot holding `this` has to be emptied here. setBoostProvider
+    // is the exception and needs no clear: it is destroyed with the matchManager it
+    // was installed on, two lines down.
     remoteDeviceCoordinator->setChainChangeCallback(nullptr);
     remoteDeviceCoordinator->setPeerLostCallback(nullptr);
     remoteDeviceCoordinator->setOnChainRoleChange(nullptr);

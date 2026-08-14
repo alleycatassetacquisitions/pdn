@@ -105,9 +105,6 @@ public:
     /// Moves to the sibling state the pending edge names. Only valid when one is
     /// held and it is an intra-machine edge; a hand-off leaves via setActiveApp.
     void commitState(Device* device) {
-        // Before the dismount, not after: onStateDismounted on this machine nulls
-        // pendingTransition, so a state whose teardown reached back into its own
-        // machine would leave this dereferencing null.
         State* nextState = pendingTransition->getNextState();
         asLifecycle(currentState)->dismount(device);
 

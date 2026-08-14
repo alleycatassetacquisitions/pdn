@@ -17,7 +17,8 @@
 ///
 /// getContext() hands those managers out by value, so an app built from one — and
 /// any state of that app which keeps a manager — holds a pointer the session frees.
-/// Destroy the apps before the session.
+/// Destroy the apps before the session. No state destructor dereferences one today,
+/// so that is ordering hygiene rather than a live use-after-free.
 ///
 /// sync() must run on each platform tick, not from a state: only the mounted app
 /// receives an onStateLoop, so a retry machine driven from inside a state stalls
@@ -70,9 +71,9 @@ private:
     };
     static const std::array<PacketRoute, 8>& packetRoutes();
 
-    /// Wraps a member handler in the C-style callback the radio takes. The
-    /// handler is a template parameter so each row still resolves at compile
-    /// time rather than through a stored pointer.
+    /// Wraps a member handler in the C-style callback the radio takes. The member
+    /// is a template parameter, so the pointer-to-member call resolves at compile
+    /// time; the row still stores a std::function, as the lambdas it replaced did.
     template <void (GameSession::*Handler)(const uint8_t*, const uint8_t*, size_t)>
     static void dispatchTo(const uint8_t* fromMac, const uint8_t* data,
                            const size_t dataLen, void* ctx) {
