@@ -545,6 +545,21 @@ TEST_F(AppSwapTestSuite, loadAppConfigDismountsWhateverWasMounted) {
     EXPECT_EQ(appOne->getCurrentState()->getStateId(), 0);
 }
 
+// A loadAppConfig whose launch id is missing leaves currentAppId naming an app the
+// config does not hold. The next swap must not index the map with it: operator[]
+// would insert a null there and dereference it on the dismount.
+TEST_F(AppSwapTestSuite, swapAfterAFailedLoadDoesNotDereferenceAMissingApp) {
+    AppConfig config;
+    config[APP_ONE] = appOne;
+    device->loadAppConfig(std::move(config), APP_THREE);
+    ASSERT_EQ(device->getActiveApp(), nullptr);
+
+    device->setActiveApp(APP_ONE);
+
+    EXPECT_EQ(device->getActiveApp(), appOne);
+    EXPECT_EQ(appOne->getCurrentState()->getStateId(), 0);
+}
+
 // An id no state in the target carries: logged and landed on the boot state
 // rather than left mounting nothing.
 TEST_F(AppSwapTestSuite, unknownEntryStateFallsBackToBootState) {
