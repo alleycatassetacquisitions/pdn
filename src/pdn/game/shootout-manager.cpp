@@ -27,7 +27,22 @@ ShootoutManager::ShootoutManager(Player* player,
                                  RemoteDeviceCoordinator* rdc)
     : player(player)
     , wirelessManager(wirelessManager)
-    , rdc(rdc) {}
+    , rdc(rdc) {
+    if (rdc == nullptr) return;
+    // Subscribed here, not by an owner: these slots hold `this`, so an owner that
+    // installs them must also clear them before deleting this manager, and nothing
+    // in the type system makes it. Owning both ends puts the clear where it cannot
+    // outlive what it protects.
+    rdc->setPeerLostCallback([this](const uint8_t* lostMac) { onLocalRDCDisconnect(lostMac); });
+    // Head-only, so whoever gets this call is the ring's coordinator.
+    rdc->setOnRingClosed([this]() { onRingClosed(); });
+}
+
+ShootoutManager::~ShootoutManager() {
+    if (rdc == nullptr) return;
+    rdc->setPeerLostCallback(nullptr);
+    rdc->setOnRingClosed(nullptr);
+}
 
 bool ShootoutManager::active() const {
     return phase != Phase::IDLE;

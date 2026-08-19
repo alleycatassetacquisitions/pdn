@@ -132,14 +132,12 @@ public:
             wireChainEventHandlers(*node);
             wireShootoutHandlers(*node);
 
-            // Hook CDM to RDC chain-change notifications (what GameSession does).
-            ChainDuelManager* cdmRaw = node->cdm.get();
-            node->rdc->setChainChangeCallback([cdmRaw]() {
-                cdmRaw->onChainStateChanged();
-            });
-            // peerLostCallback intentionally unwired — advanceClock() expires
-            // HELLO liveness and would fire it spuriously. Direct-path coverage
-            // lives in RDCHelloTests + ShootoutManagerTests.
+            // Opt back out of the subscription ShootoutManager's constructor took:
+            // advanceClock() expires HELLO liveness and would fire peer-lost
+            // spuriously across every node. Direct-path coverage lives in
+            // RDCHelloTests + ShootoutManagerTests. Chain-change stays subscribed —
+            // these tests drive it deliberately.
+            node->rdc->setPeerLostCallback(nullptr);
 
             nodes.push_back(std::move(node));
         }

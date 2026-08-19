@@ -50,7 +50,6 @@ private:
     /// state is running is the app's fact, and a second copy of it can drift.
     SupporterReady* getMountedSupporterReady();
 
-    void onChainStateChanged();
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
