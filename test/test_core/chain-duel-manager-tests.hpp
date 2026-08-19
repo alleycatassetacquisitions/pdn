@@ -538,11 +538,11 @@ inline void cdmHeadTransferResendsStandingConfirm(ChainDuelManagerTests* suite) 
     cdm.sendConfirm();
     ASSERT_EQ(confirmsSent, 1);
 
-    // An upstream neighbour advertising its own head demotes this device from HEAD
-    // to CHILD. Nothing about the opponent jack changed, so only the coordinator's
-    // role edge can carry the news.
-    const uint8_t upstreamHead[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
-    suite->connectJackTo(suite->inJack, suite->supporterMac, upstreamHead);
+    // INPUT reaching CONNECTED demotes this device HEAD -> CHILD, and the opponent
+    // jack is untouched, so the standing confirm has to survive the edge and go out
+    // again. Wired through the coordinator, so it fails if the manager stops
+    // subscribing to the role edge.
+    suite->connectJackTo(suite->inJack, suite->supporterMac);
 
     EXPECT_EQ(confirmsSent, 2);
 }

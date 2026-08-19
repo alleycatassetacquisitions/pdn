@@ -1802,7 +1802,7 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) 
 
 TEST_F(ShootoutManagerTests, coordinatorIsTheRingClosureClaimant) { coordinatorIsTheRingClosureClaimant(this); }
 TEST_F(ShootoutManagerTests, ringClosedClaimAnnouncesRosterToMembers) { ringClosedClaimAnnouncesRosterToMembers(this); }
-TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorStartsProposal) { ringClosureFromCoordinatorStartsProposal(this); }
+TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorClaimsRing) { ringClosureFromCoordinatorClaimsRing(this); }
 TEST_F(ShootoutManagerTests, peerLossFromCoordinatorReachesManager) { peerLossFromCoordinatorReachesManager(this); }
 TEST_F(ShootoutManagerTests, ringClosedBroadcastPromotesOnlyItsOwnMembers) { ringClosedBroadcastPromotesOnlyItsOwnMembers(this); }
 TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoopMembersComeFromRdcRoster(this); }

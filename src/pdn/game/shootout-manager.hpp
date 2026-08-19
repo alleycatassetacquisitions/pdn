@@ -27,10 +27,10 @@ public:
         ABORTED = 6,
     };
 
-    /// Subscribes to the coordinator's peer-lost and ring-closed edges. The
-    /// coordinator holds one callback per edge, so at most one manager per
-    /// coordinator: a second one built on the same coordinator takes the slots over,
-    /// and whichever is destroyed first empties them for both.
+    /// Subscribes to the coordinator's peer-lost and ring-closed edges when given
+    /// one. One callback exists per edge, so at most one ShootoutManager per
+    /// coordinator: a second built on the same one takes both slots over, and
+    /// whichever is destroyed first empties them for both.
     ShootoutManager(Player* player,
                     WirelessManager* wirelessManager,
                     RemoteDeviceCoordinator* rdc);

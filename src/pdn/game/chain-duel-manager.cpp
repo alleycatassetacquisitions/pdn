@@ -7,21 +7,17 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc) {
-    if (rdc == nullptr) return;
-    // Subscribed here, not by an owner: these slots hold `this`, so an owner that
-    // installs them must also clear them before deleting this manager, and nothing
-    // in the type system makes it. Owning both ends puts the clear where it cannot
-    // outlive what it protects.
+    // Subscribed here rather than by whoever builds this manager: an owner that
+    // wires it is an owner every other caller has to imitate, and one that forgets
+    // gets a manager that compiles, runs, and silently never reacts.
     rdc->setChainChangeCallback([this]() { onChainStateChanged(); });
-    // A role edge is the one signal a head transfer or coordinator handoff always
-    // produces; the direct peers either side of this device can be unchanged across
-    // one, leaving a confirmed supporter registered with a champion that no longer
-    // runs the duel.
+    // The ring latch moves with both cables still seated — applyUpstreamHead sets
+    // and clears it off the HELLO parse, no jack edge — so a standing confirm has
+    // to be re-sent from the role edge; no jack edge would carry it.
     rdc->setOnChainRoleChange([this](ChainRole) { resendConfirm(); });
 }
 
 ChainDuelManager::~ChainDuelManager() {
-    if (rdc == nullptr) return;
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnChainRoleChange(nullptr);
 }

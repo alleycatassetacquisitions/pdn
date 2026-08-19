@@ -22,11 +22,7 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        ON_CALL(*device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
-            .WillByDefault(testing::Return(1));
-        ON_CALL(*device.mockPeerComms, addEspNowPeer(testing::_)).WillByDefault(testing::Return(0));
-        ON_CALL(*device.mockPeerComms, removeEspNowPeer(testing::_)).WillByDefault(testing::Return(0));
-        ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(localMac));
+        wireRadioDefaults(device, localMac);
         ON_CALL(*device.mockPeerComms,
                 setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), testing::_, testing::_))
             .WillByDefault(testing::DoAll(testing::SaveArg<1>(&contextHandler),
@@ -189,12 +185,13 @@ inline void ringClosedClaimAnnouncesRosterToMembers(ShootoutManagerTests* suite)
 // Ring closure reaches the manager through the coordinator, not a hand call.
 // Every other case here invokes onRingClosed() directly, so none of them notices
 // if the manager stops subscribing and the tournament simply never starts.
-inline void ringClosureFromCoordinatorStartsProposal(ShootoutManagerTests* suite) {
+inline void ringClosureFromCoordinatorClaimsRing(ShootoutManagerTests* suite) {
     suite->shootout->setLoopMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
 
     // The RING_CLOSED claim, not shouldEnterProposal(): that polls the coordinator's
     // role and so reads true from the latch alone, with or without this manager ever
-    // hearing about it. Announcing the roster is the part only the callback does.
+    // hearing about it. The roster announce is what this test can see, since nothing
+    // here calls startProposal(), which re-makes the same claim.
     std::vector<uint8_t> frame;
     ON_CALL(*suite->device.mockPeerComms,
             sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
@@ -220,9 +217,8 @@ inline void ringClosureFromCoordinatorStartsProposal(ShootoutManagerTests* suite
 }
 
 // Peer loss reaches the manager the same way, off the HELLO liveness timeout
-// rather than a hand call. A tournament whose member vanishes has to hear about
-// it to re-bracket; without the subscription the bracket stalls on a device that
-// is no longer on the wire.
+// rather than a hand call. Without the subscription a tournament keeps running
+// around a device that is no longer on the wire.
 inline void peerLossFromCoordinatorReachesManager(ShootoutManagerTests* suite) {
     suite->shootout->setLoopMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
     suite->shootout->startProposal();
@@ -232,9 +228,8 @@ inline void peerLossFromCoordinatorReachesManager(ShootoutManagerTests* suite) {
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 
-    // Cable out: the heartbeat lapses and the coordinator declares the peer gone,
-    // which ends the tournament rather than leaving a bracket waiting on a device
-    // that is no longer on the wire.
+    // Cable out: the heartbeat lapses, the coordinator declares the peer gone, and
+    // a lost member ends the tournament.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
 

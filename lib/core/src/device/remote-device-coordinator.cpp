@@ -732,7 +732,12 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         pendingReportMac.fill(0);
         pendingReportSeqId = 0;
         releaseHeadPeer(formingHead);
-        if (ringClosedCallback) ringClosedCallback();
+        // Copied before the call, as the chain-change and peer-lost dispatches are:
+        // the subscriber is a game-layer manager that clears this slot in its own
+        // destructor, so a handler reaching a teardown would free the std::function
+        // whose operator() frame is still live.
+        RingClosedCallback ringClosed = ringClosedCallback;
+        if (ringClosed) ringClosed();
         return;
     }
 
@@ -833,7 +838,9 @@ void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
     const ChainRole role = getChainRole();
     if (role == lastChainRole) return;
     lastChainRole = role;
-    if (chainRoleChangeCallback) chainRoleChangeCallback(role);
+    // Copied before the call; see the ring-closed dispatch for why.
+    ChainRoleChangeCallback roleChange = chainRoleChangeCallback;
+    if (roleChange) roleChange(role);
 }
 
 // ---- Head roster (#158) ----

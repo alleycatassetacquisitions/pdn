@@ -132,13 +132,6 @@ public:
             wireChainEventHandlers(*node);
             wireShootoutHandlers(*node);
 
-            // Opt back out of the subscription ShootoutManager's constructor took:
-            // advanceClock() expires HELLO liveness and would fire peer-lost
-            // spuriously across every node. Direct-path coverage lives in
-            // RDCHelloTests + ShootoutManagerTests. Chain-change stays subscribed —
-            // these tests drive it deliberately.
-            node->rdc->setPeerLostCallback(nullptr);
-
             nodes.push_back(std::move(node));
         }
     }
