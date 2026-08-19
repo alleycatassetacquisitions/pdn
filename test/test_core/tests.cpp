@@ -1671,6 +1671,10 @@ TEST_F(ChainDuelManagerTests, countdownVoidsStandingConfirm) {
     cdmCountdownVoidsStandingConfirm(this);
 }
 
+TEST_F(ChainDuelManagerTests, headTransferResendsStandingConfirm) {
+    cdmHeadTransferResendsStandingConfirm(this);
+}
+
 TEST_F(ChainDuelManagerTests, supporterRoleLossVoidsStandingConfirm) {
     cdmSupporterRoleLossVoidsStandingConfirm(this);
 }
@@ -1798,6 +1802,8 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) 
 
 TEST_F(ShootoutManagerTests, coordinatorIsTheRingClosureClaimant) { coordinatorIsTheRingClosureClaimant(this); }
 TEST_F(ShootoutManagerTests, ringClosedClaimAnnouncesRosterToMembers) { ringClosedClaimAnnouncesRosterToMembers(this); }
+TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorStartsProposal) { ringClosureFromCoordinatorStartsProposal(this); }
+TEST_F(ShootoutManagerTests, peerLossFromCoordinatorReachesManager) { peerLossFromCoordinatorReachesManager(this); }
 TEST_F(ShootoutManagerTests, ringClosedBroadcastPromotesOnlyItsOwnMembers) { ringClosedBroadcastPromotesOnlyItsOwnMembers(this); }
 TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoopMembersComeFromRdcRoster(this); }
 TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }

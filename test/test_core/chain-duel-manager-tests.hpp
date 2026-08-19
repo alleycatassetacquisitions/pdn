@@ -508,6 +508,45 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
     EXPECT_EQ(confirmsSent, 1);
 }
 
+// The role edge reaches the manager through the coordinator, not through a hand
+// call: a head transfer can leave the direct peers either side of this device
+// unchanged, so a supporter would stay registered with a champion that no longer
+// runs the duel. Drives the real HELLO path, so it fails if the manager stops
+// subscribing to the coordinator's role edge.
+inline void cdmHeadTransferResendsStandingConfirm(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+
+    EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int confirmsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainConfirm, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            confirmsSent++;
+            return 1;
+        });
+
+    // OUTPUT is a hunter's opponent jack, and a same-role peer there is what makes
+    // this device a supporter rather than the champion.
+    suite->connectOutputPort();
+    uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
+    ASSERT_TRUE(cdm.isSupporter());
+
+    cdm.sendConfirm();
+    ASSERT_EQ(confirmsSent, 1);
+
+    // An upstream neighbour advertising its own head demotes this device from HEAD
+    // to CHILD. Nothing about the opponent jack changed, so only the coordinator's
+    // role edge can carry the news.
+    const uint8_t upstreamHead[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
+    suite->connectJackTo(suite->inJack, suite->supporterMac, upstreamHead);
+
+    EXPECT_EQ(confirmsSent, 2);
+}
+
 // A supporter that never pressed holds nothing to re-send. Without this the
 // champion-changed trigger would register the whole chain as confirmed.
 inline void cdmChampionChangeWithoutPressSendsNoConfirm(ChainDuelManagerTests* suite) {

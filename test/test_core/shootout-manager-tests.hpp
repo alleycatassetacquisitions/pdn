@@ -7,6 +7,7 @@
 #include <gmock/gmock.h>
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
+#include "rdc-hello-tests.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/shootout-manager.hpp"
 #include "game/chain-duel-manager.hpp"
@@ -24,10 +25,41 @@ public:
         ON_CALL(*device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
             .WillByDefault(testing::Return(1));
         ON_CALL(*device.mockPeerComms, addEspNowPeer(testing::_)).WillByDefault(testing::Return(0));
+        ON_CALL(*device.mockPeerComms, removeEspNowPeer(testing::_)).WillByDefault(testing::Return(0));
         ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(testing::Return(localMac));
+        ON_CALL(*device.mockPeerComms,
+                setPacketHandler(testing::Eq(PktType::kPdnConnectionContext), testing::_, testing::_))
+            .WillByDefault(testing::DoAll(testing::SaveArg<1>(&contextHandler),
+                                          testing::SaveArg<2>(&contextCtx)));
 
+        // Real jacks, so tests can drive topology through the production HELLO
+        // path instead of calling the manager's handlers by hand. Idle unless a
+        // test feeds them.
+        device.serialManager->setOutputJack(&outJack);
+        device.serialManager->setInputJack(&inJack);
+
+        rdc.setExternalConnectivityTask(true);
         rdc.initialize(device.wirelessManager, device.serialManager, &device);
         shootout = new ShootoutManager(&player, device.wirelessManager, &rdc);
+    }
+
+    /// Feeds a peer's PdnConnectionContext in through the handler the reliable
+    /// transport registered with the radio driver — the production receive path.
+    void deliverPdnContext(const uint8_t* peerMac) {
+        if (contextHandler == nullptr) return;
+        std::vector<uint8_t> bytes = pdnContextBytes(/*chainRole=*/0, /*userId=*/4242,
+                                                     ++contextSeqId);
+        contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
+    }
+
+    /// Brings `jack` from Idle to Connected against `peerMac`, optionally
+    /// carrying an advertised chain head.
+    void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
+                       const uint8_t* advertisedHead = nullptr) {
+        deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
+        rdc.sync(&device);
+        deliverPdnContext(peerMac);
+        rdc.sync(&device);
     }
 
     void TearDown() override {
@@ -38,11 +70,19 @@ public:
     }
 
     MockDevice device;
+    NativeSerialDriver outJack{"shootout-out"};
+    NativeSerialDriver inJack{"shootout-in"};
+    // Declared after the jacks so it is destroyed first; its dtor clears their
+    // byte callbacks, mirroring production where the drivers outlive the RDC.
     RemoteDeviceCoordinator rdc;
     Player player{"TEST", Allegiance::RESISTANCE, true};
     ShootoutManager* shootout = nullptr;
     FakePlatformClock* fakeClock = nullptr;
+    PeerCommsInterface::PacketCallback contextHandler = nullptr;
+    void* contextCtx = nullptr;
+    uint8_t contextSeqId = 0;
     uint8_t localMac[6] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
 };
 
 inline void localConfirmIsRecordedAndBroadcast(ShootoutManagerTests* suite) {
@@ -144,6 +184,61 @@ inline void ringClosedClaimAnnouncesRosterToMembers(ShootoutManagerTests* suite)
     for (size_t i = 0; i < members.size(); i++) {
         EXPECT_EQ(memcmp(&frame[3 + 6 * i], members[i].data(), 6), 0) << "member " << i;
     }
+}
+
+// Ring closure reaches the manager through the coordinator, not a hand call.
+// Every other case here invokes onRingClosed() directly, so none of them notices
+// if the manager stops subscribing and the tournament simply never starts.
+inline void ringClosureFromCoordinatorStartsProposal(ShootoutManagerTests* suite) {
+    suite->shootout->setLoopMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
+
+    // The RING_CLOSED claim, not shouldEnterProposal(): that polls the coordinator's
+    // role and so reads true from the latch alone, with or without this manager ever
+    // hearing about it. Announcing the roster is the part only the callback does.
+    std::vector<uint8_t> frame;
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
+        .WillByDefault(testing::Invoke(
+            [&frame](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+                if (len > 0 && data[0] == static_cast<uint8_t>(ShootoutCmd::RING_CLOSED)) {
+                    frame.assign(data, data + len);
+                }
+                return 1;
+            }));
+
+    // Head a chain out of OUTPUT, then take our own MAC back on INPUT — the only
+    // local evidence that a loop closed.
+    const uint8_t upstream[6] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
+    suite->connectJackTo(suite->outJack, suite->peerMac);
+    suite->connectJackTo(suite->inJack, upstream, suite->localMac);
+    ASSERT_TRUE(suite->rdc.isInRing());
+
+    // The claim only; entering PROPOSAL is the app's transition, driven off
+    // shouldEnterProposal() on a later tick.
+    ASSERT_FALSE(frame.empty());
+    EXPECT_EQ(frame[0], static_cast<uint8_t>(ShootoutCmd::RING_CLOSED));
+}
+
+// Peer loss reaches the manager the same way, off the HELLO liveness timeout
+// rather than a hand call. A tournament whose member vanishes has to hear about
+// it to re-bracket; without the subscription the bracket stalls on a device that
+// is no longer on the wire.
+inline void peerLossFromCoordinatorReachesManager(ShootoutManagerTests* suite) {
+    suite->shootout->setLoopMembersForTest({{0x01, 0, 0, 0, 0, 0}, {0x02, 0, 0, 0, 0, 0}});
+    suite->shootout->startProposal();
+    ASSERT_TRUE(suite->shootout->active());
+
+    suite->connectJackTo(suite->outJack, suite->peerMac);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+
+    // Cable out: the heartbeat lapses and the coordinator declares the peer gone,
+    // which ends the tournament rather than leaving a bracket waiting on a device
+    // that is no longer on the wire.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
 // A member has no local ring signal to poll: the coordinator's broadcast is
