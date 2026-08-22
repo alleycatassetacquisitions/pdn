@@ -122,7 +122,12 @@ public:
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
     /// How often an undelivered role announce is re-offered, in either
     /// direction. A settled chain raises no events, so nothing else would.
-    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = 1000;
+    ///
+    /// Longer than the retry span on purpose: a tick landing inside that window
+    /// would supersede the live entry and restart its budget, so it could never
+    /// abandon and the next tick would do it again.
+    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS =
+        Resender::retransmitSpanMs() + 500;
 
     // Retry observability for this manager's two channels.
     struct RetryStats {
@@ -160,9 +165,6 @@ private:
     // The role/champion cascade. Wrapped by onChainStateChanged so every caller
     // also gets the confirm bookkeeping that has to follow it.
     void applyChainStateChange();
-
-    // Periodic repair for an announce that spent its retry budget; see sync().
-    void reofferUndeliveredAnnounces();
 
     // Tells the champion this device follows that it exists. The champion cannot
     // discover a supporter it shares no cable with any other way.
@@ -222,8 +224,28 @@ private:
     std::array<std::optional<bool>, 2> peerRoleByPort;
 
     std::optional<std::array<uint8_t, 6>> championMac;
-    std::optional<std::array<uint8_t, 6>> lastAnnouncedSupporterJackMac;
-    std::optional<std::array<uint8_t, 6>> lastAnnouncedOpponentJackMac;
+
+    // What a jack's peer has been told, and whether the radio confirmed it.
+    // Keyed on the CONTENT, not just the peer: a champion change leaves the
+    // cable untouched, so a stamp holding only the MAC suppresses exactly the
+    // announce that has to go out. `delivered` separates "handed to the radio"
+    // from "arrived" — an announce that spent its retry budget never arrived,
+    // and re-offering it is the only repair there is.
+    struct RoleAnnounceState {
+        std::array<uint8_t, 6> peer{};
+        uint8_t role = 0;
+        std::array<uint8_t, 6> champion{};
+        uint8_t seqId = 0;
+        bool delivered = false;
+
+        /// True when this records a delivered announce of exactly `content`.
+        bool told(const RoleAnnounceState& content) const {
+            return delivered && peer == content.peer && role == content.role &&
+                   champion == content.champion;
+        }
+    };
+    std::optional<RoleAnnounceState> supporterAnnounce;
+    std::optional<RoleAnnounceState> opponentAnnounce;
 
     uint8_t nextGameEventSeqId = 1;
 
@@ -249,7 +271,7 @@ private:
     // Records a peer as told once the radio confirms the frame reached it.
     // Delivery, not handover: a frame that exhausted its retries never arrived,
     // and stamping it anyway would suppress the only re-send there is.
-    void recordAnnounceDelivered(const uint8_t* mac);
+    void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 
     // Time from a frame going out to the radio reporting it delivered. Not a
     // round trip — this channel has no reply packet — and approximate when both

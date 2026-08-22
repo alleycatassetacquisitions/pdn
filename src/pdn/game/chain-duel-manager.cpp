@@ -21,10 +21,10 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     roleAnnounceChannel.onReceive([this](const uint8_t* fromMac, const RoleAnnouncePayload& p) {
         onRoleAnnounceReceived(fromMac, p.role, p.championMac, p.seqId);
     });
-    roleAnnounceChannel.setOnDelivered([this](uint8_t, const uint8_t* mac) {
+    roleAnnounceChannel.setOnDelivered([this](uint8_t seqId, const uint8_t* mac) {
         ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
         ackCount++;
-        recordAnnounceDelivered(mac);
+        recordAnnounceDelivered(seqId, mac);
     });
     // Subscribed here rather than by whoever builds this manager: an owner that
     // wires it is an owner every other caller has to imitate, and one that forgets
@@ -448,54 +448,53 @@ void ChainDuelManager::onRoleAnnounceReceived(
     }
 }
 
-void ChainDuelManager::recordAnnounceDelivered(const uint8_t* mac) {
+void ChainDuelManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac) {
     if (mac == nullptr) return;
-    // Whichever jack faces this peer has now been told. In a 2-node ring both
-    // do, and both stamps are set — correctly, since both announces went there.
-    std::array<uint8_t, 6> cur;
-    memcpy(cur.data(), mac, 6);
-    const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-    if (supporterPeer != nullptr && memcmp(supporterPeer, mac, 6) == 0) {
-        lastAnnouncedSupporterJackMac = cur;
-    }
-    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (opponentPeer != nullptr && memcmp(opponentPeer, mac, 6) == 0) {
-        lastAnnouncedOpponentJackMac = cur;
+    // Commit the record this delivery answers, matched on seqId so a stale
+    // report cannot mark newer content as told. In a 2-node ring both jacks
+    // face one peer, and each direction still has its own seqId, so only the
+    // record that actually went out is committed.
+    for (std::optional<RoleAnnounceState>* slot : {&supporterAnnounce, &opponentAnnounce}) {
+        if (!slot->has_value()) continue;
+        RoleAnnounceState& state = **slot;
+        if (state.seqId != seqId || memcmp(state.peer.data(), mac, 6) != 0) continue;
+        state.delivered = true;
     }
 }
 
 void ChainDuelManager::broadcastRoleAndChampion() {
-    if (!championMac.has_value()) return;
-
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
     if (supporterPeer == nullptr) {
-        // Forget who was last told, so a cable returning on the same MAC is
-        // announced to again rather than matching a stamp left by the old link.
-        lastAnnouncedSupporterJackMac.reset();
+        // Forget who was told before the champion check, not after: a link that
+        // dies while this device holds no champion would otherwise keep a stamp
+        // naming the departed peer, and a cable returning on that MAC would
+        // match it and never be announced to.
+        supporterAnnounce.reset();
         return;
     }
-    std::array<uint8_t, 6> cur;
-    memcpy(cur.data(), supporterPeer, 6);
-    // Already told, or still telling — same gate as the opponent side. "Told"
-    // means the radio confirmed delivery, not that a frame was handed over.
-    if (lastAnnouncedSupporterJackMac.has_value() && *lastAnnouncedSupporterJackMac == cur) {
-        return;
-    }
+    if (!championMac.has_value()) return;
+
+    RoleAnnounceState content;
+    memcpy(content.peer.data(), supporterPeer, 6);
+    content.role = player->isHunter() ? 1 : 0;
+    content.champion = *championMac;
+    if (supporterAnnounce.has_value() && supporterAnnounce->told(content)) return;
+
     // Half-open gate, same reasoning as canInitiateMatch. A jack at Connecting has
     // a peer MAC off one inbound serial frame; the supporter has not necessarily
     // parsed ours yet, and it drops announces from a MAC it does not yet hold as a
     // direct peer. The radio would still report the frame delivered, so the retry
     // clears and the announce is simply lost. Connected means its context came back
-    // over the radio, which it could only send having already recorded us. Reaching
-    // Connected fires a jack change, so the cascade re-sends this then.
+    // over the radio, which it could only send having already recorded us.
     if (rdc->getPortStatus(supporterJack()) != PortStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
-    payload.role = player->isHunter() ? 1 : 0;
-    memcpy(payload.championMac, championMac->data(), 6);
+    payload.role = content.role;
+    memcpy(payload.championMac, content.champion.data(), 6);
 
     roleAnnounceSentTimer.setTimer(0);
-    roleAnnounceChannel.sendReliable(supporterPeer, payload);
+    content.seqId = roleAnnounceChannel.sendReliable(supporterPeer, payload);
+    supporterAnnounce = content;
 }
 
 // This announce is the only thing that tells the opponent what role we hold, and
@@ -508,52 +507,30 @@ void ChainDuelManager::broadcastRoleAndChampion() {
 void ChainDuelManager::sendRoleToOpponentJack() {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer == nullptr) {
-        // Forget who was last told, so a cable returning on the same MAC is
-        // announced to again rather than matching a stamp left by the old link.
-        lastAnnouncedOpponentJackMac.reset();
+        opponentAnnounce.reset();
         return;
     }
-    std::array<uint8_t, 6> cur;
-    memcpy(cur.data(), opponentPeer, 6);
-    // Already told, or still telling. "Told" means the radio confirmed delivery,
-    // not that a frame was handed over — see recordAnnounceDelivered. Holding
-    // off while a send is still pending keeps the backstop below from stacking a
-    // second announce on top of one that is simply still in its retry window.
-    if (lastAnnouncedOpponentJackMac.has_value() && *lastAnnouncedOpponentJackMac == cur) {
-        return;
-    }
+    RoleAnnounceState content;
+    memcpy(content.peer.data(), opponentPeer, 6);
+    content.role = player->isHunter() ? 1 : 0;
+    // championMac rides along as a placeholder the receiver ignores unless the
+    // peer is same-role. It is part of the content anyway, so a champion change
+    // re-offers rather than being suppressed by a stamp that predates it.
+    if (championMac.has_value()) content.champion = *championMac;
+    if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
+
     // Same half-open gate as the supporter side: a jack at Connecting has a peer
     // MAC off one inbound frame, and the peer drops announces from a MAC it has
     // not yet recorded.
     if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
-    payload.role = player->isHunter() ? 1 : 0;
-    // championMac is a placeholder — receiver ignores unless same-role peer.
-    if (championMac.has_value()) {
-        memcpy(payload.championMac, championMac->data(), 6);
-    }
+    payload.role = content.role;
+    memcpy(payload.championMac, content.champion.data(), 6);
 
     roleAnnounceSentTimer.setTimer(0);
-    roleAnnounceChannel.sendReliable(opponentPeer, payload);
-}
-
-void ChainDuelManager::reofferUndeliveredAnnounces() {
-    // Skip a jack whose announce is still inside its retry window: a send
-    // supersedes, which restarts the budget, so re-offering on top of a live
-    // retry would reset it every tick and the entry could never abandon. Only
-    // this periodic caller needs the rule — a topology edge is rare and must
-    // always be free to re-offer.
-    const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-    if (supporterPeer != nullptr &&
-        !resender.isPending(PktType::kRoleAnnounce, supporterPeer)) {
-        broadcastRoleAndChampion();
-    }
-    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (opponentPeer != nullptr &&
-        !resender.isPending(PktType::kRoleAnnounce, opponentPeer)) {
-        sendRoleToOpponentJack();
-    }
+    content.seqId = roleAnnounceChannel.sendReliable(opponentPeer, payload);
+    opponentAnnounce = content;
 }
 
 void ChainDuelManager::sync() {
@@ -575,6 +552,7 @@ void ChainDuelManager::sync() {
     // confirms, and it and everything below it contribute no boost for the round.
     if (roleAnnounceBackstopTimer.expired()) {
         roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
-        reofferUndeliveredAnnounces();
+        broadcastRoleAndChampion();
+        sendRoleToOpponentJack();
     }
 }

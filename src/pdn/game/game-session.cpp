@@ -87,9 +87,9 @@ GameSession::~GameSession() {
     }
     quickdrawWirelessManager = nullptr;
     symbolWirelessManager = nullptr;
-    // Managers before matchManager: each drops its coordinator subscriptions as it
-    // goes, so none of them is still reachable from a live edge when the object they
-    // can read through is freed.
+    // Managers before matchManager: shootoutManager reads through it, and its
+    // coordinator subscriptions only die when it does, so a live edge could
+    // otherwise reach it after the object it reads through is gone.
     delete chainDuelManager;
     chainDuelManager = nullptr;
     delete shootoutManager;

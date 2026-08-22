@@ -83,7 +83,8 @@ bool ShootoutManager::isLocalDuelist() const {
            memcmp(selfMac, currentDuelistB.data(), 6) == 0;
 }
 
-// The single seqId allocator for every command family this manager sends. That
+// The single seqId allocator for every reliably-sent command this manager
+// sends — the four that ride the Resender; the rest go out unsequenced. That
 // is load-bearing, not incidental: because one counter serves all of them, a
 // seqId in flight names exactly one of this device's frames, which is what lets
 // an ack carry only a seqId.
@@ -119,24 +120,12 @@ void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>&
     // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
     // ring larger than that at all, whereas the broadcast slot is registered once
     // at radio init. Receivers must drop commands naming MACs outside their own ring.
-    if (!hasPeerOtherThanSelf(peers)) return;
+    if (peersExcludingSelf(peers).empty()) return;
     broadcastCommand(packet, len);
 }
 
 // Who a ring fan-out is addressed to. One spelling, asked by both send paths, so
 // a device can never end up owing an ack to itself.
-// Same question as peersExcludingSelf, asked without building the answer: this
-// runs on the 1Hz rebroadcasts, where a ring can be 64 members.
-bool ShootoutManager::hasPeerOtherThanSelf(
-    const std::vector<std::array<uint8_t, 6>>& peers) const {
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    for (const std::array<uint8_t, 6>& m : peers) {
-        if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
-        return true;
-    }
-    return false;
-}
-
 std::vector<std::array<uint8_t, 6>> ShootoutManager::peersExcludingSelf(
     const std::vector<std::array<uint8_t, 6>>& peers) const {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
@@ -925,11 +914,12 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac) {
     // tournament in radio range.
     if (!isRingMember(fromMac)) return;
     if (phase == Phase::ABORTED || phase == Phase::IDLE) return;
-    // Mirrors abortTournament's own guard: a tournament that reached its winner
-    // is over, not stuck, and wiping it here would blank the standings on a
-    // device that already has them. Unreachable while abortTournament is the
-    // only ABORT sender and refuses to send from ENDED — kept so the two ends
-    // of the same rule cannot drift apart.
+    // A tournament that reached its winner is over, not stuck; wiping it here
+    // would blank the standings on a device that already has them. Reachable by
+    // the ordinary ending: a member that missed TOURNAMENT_END is still in
+    // BETWEEN_MATCHES, and a cable pulled after the winner appears takes it
+    // through applyPeerLoss into abortTournament, which broadcasts ABORT to
+    // every member — including the ones already showing the result.
     if (phase == Phase::ENDED) return;
     resetToIdle();
     phase = Phase::ABORTED;

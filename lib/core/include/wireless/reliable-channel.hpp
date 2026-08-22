@@ -26,8 +26,8 @@
 // Most channels are created and owned by a ReliableTransport, one per PktType.
 // Not all: ChainDuelManager binds one straight to its own Resender, which is
 // what a caller outside the coordinator has to do, the transport being private
-// to it. Such an owner routes abandonment itself if it wants it, the way
-// ShootoutManager does; ChainDuelManager does not.
+// to it. Such an owner can route abandonment itself by setting the callback on
+// the Resender it holds; ChainDuelManager does not.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;

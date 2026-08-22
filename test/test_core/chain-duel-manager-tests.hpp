@@ -812,6 +812,47 @@ inline void cdmReannouncesAfterSameMacReconnect(ChainDuelManagerTests* suite) {
 // else re-offers it: a settled chain raises no chain-state events, and the two
 // things that do fire on one (announceToChampion, the confirm resend) send a
 // different packet in the opposite direction, upstream to the champion.
+// A champion change must reach the supporter jack even though the cable did not
+// move. Gating the announce on the peer MAC alone suppresses exactly the case
+// that matters: the head above us goes away, this device promotes itself, and
+// the supporter below is never told — it keeps addressing joins and confirms to
+// a device that is no longer champion, and drops this one's game events as
+// coming from a stranger, so it contributes no boost for the rest of the round.
+inline void cdmChampionChangeReachesAToldSupporter(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    uint8_t seqId = 0;
+    std::array<uint8_t, 6> announcedChampion{};
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) {
+                RoleAnnouncePayload p;
+                memcpy(&p, data, sizeof(p));
+                seqId = p.seqId;
+                memcpy(announcedChampion.data(), p.championMac, 6);
+            }
+            return 1;
+        });
+
+    // The supporter is told about champion C1, and the radio confirms it.
+    uint8_t c1[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, c1, 1);
+    ASSERT_NE(seqId, 0u);
+    suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
+    ASSERT_EQ(memcmp(announcedChampion.data(), c1, 6), 0);
+
+    // The champion above changes. Same cable, same peer MAC, new fact.
+    uint8_t c2[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x77};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, c2, 2);
+
+    EXPECT_EQ(memcmp(announcedChampion.data(), c2, 6), 0)
+        << "the supporter was never told the new champion, so it still follows the old one";
+}
+
 inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1065,11 +1106,16 @@ inline void cdmRetryStatsRecordsLifecycle(ChainDuelManagerTests* suite) {
     EXPECT_GE(s1.ackCount, 1u);
     EXPECT_GT(s1.ackLatencyMsSum, 0u);
 
-    // Force a retransmit then exhaust retries → abandons increments.
-    // Advance generously per iter to cover exponential backoff (max 1600ms).
-    cdm.broadcastRoleAndChampion();
-    for (int i = 0; i < 7; i++) {
-        suite->fakeClock->advance(2000);
+    // A NEW champion is new content, so it goes out rather than being suppressed
+    // as already-told. Nobody reports it delivered, so it exhausts its retries.
+    uint8_t champion2[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x77};
+    cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion2, 2);
+    // Tick at the cadence the platform loop actually uses. Sampling only once
+    // per backstop interval would let the re-offer land in the same call as the
+    // retry round and supersede the entry before its budget ever completes —
+    // an artefact of the test's clock, not of the schedule.
+    for (int i = 0; i < 19; i++) {
+        suite->fakeClock->advance(100);
         cdm.sync();
     }
     auto s2 = cdm.getRetryStats();

@@ -17,7 +17,7 @@ class WirelessManager;
 //   send: manager -> channel->sendReliable (serialize, stamp seqId) ->
 //     Resender pending entry -> WirelessManager::sendEspNowData -> driver
 //     (which itself retries a failed MAC-layer send). The platform loop's
-//     transport->sync() retransmits on the RetryPolicy backoff until the ack
+//     transport->sync() retransmits on the Resender's backoff until the radio
 //     lands or retries exhaust -> the channel's abandon callback. Abandonment
 //     is a game-level signal (void a match, abort a tournament), not a log
 //     line; channel->cancel() drops pending sends WITHOUT it.
@@ -78,8 +78,6 @@ public:
     /// Drives Resender retransmits and abandon dispatch. Called every loop
     /// tick by the platform loop only.
     void sync();
-
-    /// nullptr in unit tests without a radio.
 
 private:
     // Logs a PktType claimed by two different payload types (a wiring bug).
