@@ -67,6 +67,21 @@ public:
               const uint8_t* payload, size_t len,
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
 
+    /// Reliable broadcast fan-out: ONE frame addressed to the broadcast MAC, and
+    /// one pending member per named recipient. Each member carries its own retry
+    /// budget and abandons independently, but a retransmit pass emits a single
+    /// frame however many members still owe an ack.
+    ///
+    /// Broadcast rather than a unicast per member because the ESP-NOW peer table
+    /// holds 20 entries, so a ring larger than that cannot be addressed by unicast
+    /// at all, while the broadcast slot is registered once at radio init.
+    ///
+    /// Members are the recipients expected to ack. Passing none sends nothing:
+    /// a fan-out with no one to hear it is not a delivery.
+    void sendBroadcast(const std::vector<std::array<uint8_t, 6>>& members,
+                       PktType type, uint8_t seqId,
+                       const uint8_t* payload, size_t len);
+
     /// Clears the matching pending entry. Returns true when one matched.
     /// Driven by the radio SEND_SUCCESS callback (the peer's MAC ack), which
     /// replaces the old application-level ACK round-trip. A SEND_FAIL is
@@ -82,21 +97,32 @@ public:
     /// Drives retransmits and abandonment. Must be called every loop tick.
     void sync();
 
-    /// Number of pending entries on this channel, across all targets.
+    /// Number of pending entries on this channel, counting each broadcast member
+    /// that still owes an ack as one.
     size_t pendingCount(PktType type) const {
         size_t count = 0;
         for (const Pending& p : pending) {
             if (p.type == type) ++count;
         }
+        for (const BroadcastGroup& g : broadcasts) {
+            if (g.type == type) count += g.members.size();
+        }
         return count;
     }
 
-    /// True when at least one entry to this target is pending on this channel.
+    /// True when at least one entry to this target is pending on this channel,
+    /// whether it was addressed directly or as one member of a fan-out.
     bool isPending(PktType type, const uint8_t* target) const {
         if (target == nullptr) return false;
         for (const Pending& p : pending) {
             if (p.type != type) continue;
             if (memcmp(p.target.data(), target, 6) == 0) return true;
+        }
+        for (const BroadcastGroup& g : broadcasts) {
+            if (g.type != type) continue;
+            for (const BroadcastMember& m : g.members) {
+                if (memcmp(m.target.data(), target, 6) == 0) return true;
+            }
         }
         return false;
     }
@@ -111,6 +137,22 @@ private:
         SimpleTimer timer;
     };
 
+    // One recipient of a fan-out. Carries only what differs per member; the
+    // payload lives on the group, so a 64-member announce holds one copy of the
+    // frame rather than 64.
+    struct BroadcastMember {
+        std::array<uint8_t, 6> target;
+        uint8_t retries;
+        SimpleTimer timer;
+    };
+
+    struct BroadcastGroup {
+        PktType type;
+        uint8_t seqId;
+        std::vector<uint8_t> payload;
+        std::vector<BroadcastMember> members;
+    };
+
     std::vector<Pending>::iterator findPending(
         PktType type, uint8_t seqId, const uint8_t* target);
 
@@ -121,7 +163,22 @@ private:
     // avoid spending a retry on a packet that was not actually sent.
     bool transmit(const Pending& p);
 
+    // One frame for the whole group, to the broadcast MAC. Same contract as
+    // transmit(): false means it never reached the radio.
+    bool transmitBroadcast(const BroadcastGroup& g);
+
+    // Retransmit/abandon pass over the fan-outs. Abandoned members are appended
+    // to `abandoned` rather than dispatched here, so the callback runs after the
+    // whole sweep and may freely mutate this Resender.
+    struct AbandonedEntry {
+        PktType type;
+        uint8_t seqId;
+        std::array<uint8_t, 6> target;
+    };
+    void syncBroadcasts(std::vector<AbandonedEntry>& abandoned);
+
     WirelessManager* wirelessManager;
     std::vector<Pending> pending;
+    std::vector<BroadcastGroup> broadcasts;
     AbandonCallback abandonCallback;
 };

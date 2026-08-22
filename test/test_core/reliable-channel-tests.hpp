@@ -2,8 +2,13 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include "wireless/reliable-channel.hpp"
+#include "device/wireless-manager.hpp"
+#include "device-mock.hpp"
+#include "utility-tests.hpp"
 
 // Probe subclass exposing protected nextSeqId for testing.
 // Provides a no-op deliverBytes so the (otherwise pure-virtual) base
@@ -123,4 +128,196 @@ TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {
     // The surviving entry is B (not a resurrected A): acking B clears it.
     EXPECT_TRUE(resender.onAck(PktType::kQuickdrawCommand, /*seqB=*/6, target));
     EXPECT_EQ(resender.pendingCount(PktType::kQuickdrawCommand), 0u);
+}
+
+// ---- Broadcast fan-out ----
+//
+// The fan-out exists because the ESP-NOW peer table holds 20 entries, so a ring
+// larger than that cannot be addressed by unicast at all. These cases pin the
+// contract that makes one frame safe to treat as N reliable deliveries.
+
+namespace {
+/// Fan-out harness: a mocked radio whose frames are counted, a fake clock, and
+/// a Resender wired to both. Counts frames rather than trusting bookkeeping,
+/// since "one frame, N pending" is the whole claim.
+struct BroadcastFixture {
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    FakePlatformClock clock;
+    Resender resender{&wm};
+    int frames = 0;
+
+    /** Radio up and every frame counted; the fake clock drives retry rounds. */
+    BroadcastFixture() {
+        SimpleTimer::setPlatformClock(&clock);
+        setRadioUp(true);
+    }
+    /** Releases the platform clock this fixture installed. */
+    ~BroadcastFixture() { SimpleTimer::setPlatformClock(nullptr); }
+
+    /** A distinct member MAC; only the last byte varies. */
+    static std::array<uint8_t, 6> mac(uint8_t last) {
+        return {0x02, 0, 0, 0, 0, last};
+    }
+    /** One retry round. Advances past any backoff a member could be sitting on,
+     *  so a sync() is exactly one round for every member no matter how far each
+     *  has progressed — counting rounds is how these cases read a retry budget,
+     *  which is not otherwise observable. */
+    void round() {
+        clock.advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+        resender.sync();
+    }
+
+    /** Radio up or down. Down means sendEspNowData reports the frame never left. */
+    void setRadioUp(bool up) {
+        ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+            .WillByDefault([this, up](const uint8_t*, PktType, const uint8_t*, const size_t) {
+                frames++;
+                return up ? 1 : -1;
+            });
+    }
+};
+}  // namespace
+
+TEST(ResenderBroadcastTest, oneFramePerRoundNotOnePerMember) {
+    // The reason the fan-out is broadcast at all. Four members owe an ack, and a
+    // retransmit round must put ONE frame on the wire, not four — a per-member
+    // unicast retry is what exhausts the 20-slot peer table.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {
+        f.mac(1), f.mac(2), f.mac(3), f.mac(4)};
+    uint8_t payload[8] = {0};
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 7, payload, sizeof(payload));
+    EXPECT_EQ(f.frames, 1);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 4u);
+
+    f.round();
+    EXPECT_EQ(f.frames, 2) << "a retransmit round must be one frame, not one per member";
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 4u);
+}
+
+TEST(ResenderBroadcastTest, memberAckClearsOnlyItsOwnSlot) {
+    // Per-member accounting is what makes a broadcast a reliable delivery rather
+    // than a hope. One member acking must not clear the group.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2), f.mac(3)};
+    uint8_t payload[4] = {0};
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 9, payload, sizeof(payload));
+    std::array<uint8_t, 6> second = f.mac(2);
+
+    EXPECT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 9, second.data()));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
+    EXPECT_FALSE(f.resender.isPending(PktType::kShootoutCommand, second.data()));
+
+    std::array<uint8_t, 6> first = f.mac(1);
+    EXPECT_TRUE(f.resender.isPending(PktType::kShootoutCommand, first.data()));
+
+    // A second ack from the same member matches nothing and disturbs no one.
+    EXPECT_FALSE(f.resender.onAck(PktType::kShootoutCommand, 9, second.data()));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
+}
+
+TEST(ResenderBroadcastTest, silentMemberAbandonsAloneAndNamesItself) {
+    // The case a fan-out exists to detect: one member never acks. It must burn
+    // its own budget, abandon by name so the caller can act on that member, and
+    // leave the members that did ack untouched.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2)};
+    uint8_t payload[4] = {0};
+
+    std::vector<std::array<uint8_t, 6>> abandoned;
+    f.resender.setAbandonCallback(
+        [&abandoned](PktType, uint8_t, const uint8_t* target) {
+            std::array<uint8_t, 6> mac{};
+            memcpy(mac.data(), target, 6);
+            abandoned.push_back(mac);
+        });
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 3, payload, sizeof(payload));
+    std::array<uint8_t, 6> acker = f.mac(1);
+    ASSERT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 3, acker.data()));
+
+    // Silent member burns MAX_RETRIES rounds, then abandons on the round after.
+    for (uint8_t retry = 0; retry <= Resender::MAX_RETRIES; ++retry) {
+        f.round();
+    }
+
+    ASSERT_EQ(abandoned.size(), 1u);
+    EXPECT_EQ(memcmp(abandoned[0].data(), f.mac(2).data(), 6), 0)
+        << "abandon must name the member that went silent, not the group";
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+}
+
+TEST(ResenderBroadcastTest, failedRadioSendCostsNoRetryAndIsAttemptedOnce) {
+    // A send that never reaches the radio must leave every member's budget
+    // untouched, and must be ONE attempt for the group — not one attempt per
+    // member all failing in the same tick.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {
+        f.mac(1), f.mac(2), f.mac(3), f.mac(4), f.mac(5)};
+    uint8_t payload[4] = {0};
+
+    int abandons = 0;
+    f.resender.setAbandonCallback(
+        [&abandons](PktType, uint8_t, const uint8_t*) { abandons++; });
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 5, payload, sizeof(payload));
+    ASSERT_EQ(f.frames, 1);
+
+    // Radio unavailable for exactly one round.
+    f.setRadioUp(false);
+    f.round();
+    EXPECT_EQ(f.frames, 2) << "one failed attempt for the group, not one per member";
+    f.setRadioUp(true);
+
+    // The budget is read by counting rounds to abandonment. The failed round
+    // must not have shortened it, so a full MAX_RETRIES of real retransmits
+    // still has to happen before anyone is given up on.
+    for (uint8_t retry = 0; retry < Resender::MAX_RETRIES; ++retry) {
+        f.round();
+    }
+    EXPECT_EQ(abandons, 0)
+        << "a frame that never reached the radio must not cost a member a retry";
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 5u);
+
+    // The round after the budget is spent abandons every member, once each.
+    f.round();
+    EXPECT_EQ(abandons, 5);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+}
+
+TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
+    // cancel() is the unreachable-peer path and must not take the rest of the
+    // ring down with it. A re-send of the same seqId replaces the group outright
+    // rather than re-arming members that already acked.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2), f.mac(3)};
+    uint8_t payload[4] = {0};
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 4, payload, sizeof(payload));
+    std::array<uint8_t, 6> gone = f.mac(3);
+    f.resender.cancel(PktType::kShootoutCommand, gone.data());
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
+    EXPECT_FALSE(f.resender.isPending(PktType::kShootoutCommand, gone.data()));
+
+    std::array<uint8_t, 6> acked = f.mac(1);
+    ASSERT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 4, acked.data()));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 1u);
+
+    // Same seqId again: the group is rebuilt from the members named now.
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 4, payload, sizeof(payload));
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 3u);
+}
+
+TEST(ResenderBroadcastTest, emptyMemberListSendsNothing) {
+    // A fan-out with nobody to hear it is not a delivery. Sending anyway would
+    // put a frame on the air that no ack can ever clear, and the group would sit
+    // pending until it abandoned against nobody.
+    BroadcastFixture f;
+    uint8_t payload[4] = {0};
+    f.resender.sendBroadcast({}, PktType::kShootoutCommand, 2, payload, sizeof(payload));
+    EXPECT_EQ(f.frames, 0);
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
 }
