@@ -119,7 +119,12 @@ public:
     /// Returns false when the link is not proven yet and nothing was sent, so
     /// callers do not record an announce that never happened.
     bool broadcastRoleAndChampion();
-    void sendRoleToOpponentJack();
+    /// Announces this device's role to the opponent-jack peer. Returns false when
+    /// the link is not proven yet and nothing was sent.
+    bool sendRoleToOpponentJack();
+
+    /// Announces to the opponent-jack peer and records it only if it went out.
+    void recordOpponentAnnounceIfSent();
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;

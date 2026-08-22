@@ -1699,6 +1699,14 @@ TEST_F(ChainDuelManagerTests, newTerminalEventSupersedesThePrevious) {
     cdmNewTerminalEventSupersedesThePrevious(this);
 }
 
+TEST_F(ChainDuelManagerTests, opponentAnnounceRetriesUntilDelivered) {
+    cdmOpponentAnnounceRetriesUntilDelivered(this);
+}
+
+TEST_F(ChainDuelManagerTests, opponentAnnounceWaitsForConnected) {
+    cdmOpponentAnnounceWaitsForConnected(this);
+}
+
 TEST_F(ChainDuelManagerTests, reannouncesAfterSameMacReconnect) {
     cdmReannouncesAfterSameMacReconnect(this);
 }

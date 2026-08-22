@@ -697,6 +697,67 @@ inline void cdmNewTerminalEventSupersedesThePrevious(ChainDuelManagerTests* suit
         << "the superseded event is still retransmitting alongside the current one";
 }
 
+// The opponent announce is the only thing that tells the other end of the duel
+// cable what role we hold, and their canInitiateMatch refuses to start a match
+// until they know it. Nothing else repairs a lost one — their announce to us
+// populates our view of them, not theirs of us — so it has to retry.
+inline void cdmOpponentAnnounceRetriesUntilDelivered(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int announcesToOpponent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->opponentMac, 6) == 0) announcesToOpponent++;
+            return 1;
+        });
+
+    suite->connectOutputPort();
+    ASSERT_EQ(announcesToOpponent, 1) << "no announce when the duel cable came up";
+
+    // The radio never reports it delivered, so it keeps trying.
+    suite->fakeClock->advance(Resender::backoffMs(0) + 1);
+    cdm.sync();
+    EXPECT_GT(announcesToOpponent, 1)
+        << "a lost role announce leaves the opponent unable to start a duel, forever";
+}
+
+// The same half-open gate as the supporter side, and it is reached by plugging
+// the two cables in quick succession: the supporter jack coming up fires the
+// cascade, which announces to BOTH jacks, while the opponent jack still holds a
+// peer MAC off one inbound frame and nothing proving that peer can hear us.
+inline void cdmOpponentAnnounceWaitsForConnected(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int announcesToOpponent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->opponentMac, 6) == 0) announcesToOpponent++;
+            return 1;
+        });
+
+    // Opponent cable in, its context not back yet.
+    suite->beginConnectJackTo(suite->outJack, suite->opponentMac);
+    ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
+    ASSERT_NE(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+
+    // Supporter cable in. Its connect drives the cascade, which reaches the
+    // opponent-jack announce while that link is still unproven.
+    suite->connectInputPort();
+    EXPECT_EQ(announcesToOpponent, 0) << "announced across a link that is not proven";
+
+    // The opponent's context lands; now it can be told.
+    suite->deliverPdnContext(suite->opponentMac);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    EXPECT_GT(announcesToOpponent, 0) << "announce was suppressed rather than deferred";
+}
+
 // A jiggled cable is a link death and a reconnect to the same MAC. The champion
 // must announce again: the supporter's own state went with the link, so it no
 // longer knows who its champion is. Recording the announce against the peer MAC

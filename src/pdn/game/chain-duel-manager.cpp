@@ -331,9 +331,9 @@ void ChainDuelManager::applyChainStateChange() {
                 if (opponentPeer != nullptr) {
                     std::array<uint8_t, 6> cur;
                     memcpy(cur.data(), opponentPeer, 6);
-                    if (!lastAnnouncedOpponentJackMac.has_value() || *lastAnnouncedOpponentJackMac != cur) {
-                        lastAnnouncedOpponentJackMac = cur;
-                        sendRoleToOpponentJack();
+                    if (!lastAnnouncedOpponentJackMac.has_value() ||
+                        *lastAnnouncedOpponentJackMac != cur) {
+                        recordOpponentAnnounceIfSent();
                     }
                 }
                 return;
@@ -377,8 +377,7 @@ void ChainDuelManager::applyChainStateChange() {
         std::array<uint8_t, 6> cur;
         memcpy(cur.data(), opponentPeer, 6);
         if (!lastAnnouncedOpponentJackMac.has_value() || *lastAnnouncedOpponentJackMac != cur) {
-            lastAnnouncedOpponentJackMac = cur;
-            sendRoleToOpponentJack();
+            recordOpponentAnnounceIfSent();
         }
     } else {
         lastAnnouncedOpponentJackMac.reset();
@@ -492,6 +491,14 @@ void ChainDuelManager::onRoleAnnounceReceived(
     }
 }
 
+void ChainDuelManager::recordOpponentAnnounceIfSent() {
+    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
+    if (!sendRoleToOpponentJack() || opponentPeer == nullptr) return;
+    std::array<uint8_t, 6> cur;
+    memcpy(cur.data(), opponentPeer, 6);
+    lastAnnouncedOpponentJackMac = cur;
+}
+
 void ChainDuelManager::recordSupporterAnnounceIfSent() {
     // Every caller wants the same thing: announce, and remember having done so
     // only if it happened. Keeping that in one place is what stops a caller
@@ -534,17 +541,20 @@ bool ChainDuelManager::broadcastRoleAndChampion() {
     return true;
 }
 
-// Fire-and-forget, asymmetric with broadcastRoleAndChampion which has
-// ACK+retry on the supporter-jack direction. Rationale: losing this packet
-// leaves the opponent momentarily uncertain of our role, but their own
-// onChainStateChanged will fire whenever their topology shifts (including
-// our link coming up) and trigger a fresh broadcast toward us. So the
-// system is self-healing on any real topology change. Adding ACK+retry here
-// would double the airtime cost of every chain change; the relaxed model is
-// acceptable given the healing path.
-void ChainDuelManager::sendRoleToOpponentJack() {
+// This announce is the only thing that tells the opponent what role we hold, and
+// their canInitiateMatch refuses a duel until they know it. Nothing repairs a
+// lost one: their own announce to us populates OUR view of THEM, not theirs of
+// us, and the caller below re-sends only when the peer MAC changes — which it
+// will not, because the cable did not move. So it is retried like the
+// supporter-side announce, off the radio's delivery report rather than a reply
+// packet, which costs no extra airtime unless a frame actually fails.
+bool ChainDuelManager::sendRoleToOpponentJack() {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (opponentPeer == nullptr) return;
+    if (opponentPeer == nullptr) return false;
+    // Same half-open gate as the supporter side: a jack at Connecting has a peer
+    // MAC off one inbound frame, and the peer drops announces from a MAC it has
+    // not yet recorded.
+    if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
 
     uint8_t seqId = nextRoleAnnounceSeqId++;
     if (nextRoleAnnounceSeqId == 0) nextRoleAnnounceSeqId = 1;
@@ -557,9 +567,12 @@ void ChainDuelManager::sendRoleToOpponentJack() {
     }
     payload.seqId = seqId;
 
-    wirelessManager->sendEspNowData(
-        opponentPeer, PktType::kRoleAnnounce,
-        reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
+    // SUPERSEDE_PER_TARGET, and the supporter-side announce goes to a different
+    // peer, so the two never displace one another.
+    resender.send(opponentPeer, PktType::kRoleAnnounce, seqId,
+                  reinterpret_cast<const uint8_t*>(&payload), sizeof(payload),
+                  Resender::SendMode::SUPERSEDE_PER_TARGET);
+    return true;
 }
 
 void ChainDuelManager::sync() {
