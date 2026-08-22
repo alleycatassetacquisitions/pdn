@@ -12,6 +12,7 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 #include "wireless/resender.hpp"
+#include "wireless/reliable-channel.hpp"
 
 enum class ChainGameEventType : uint8_t {
     COUNTDOWN = 0,
@@ -106,12 +107,7 @@ public:
         uint8_t role,
         const uint8_t* championMac,
         uint8_t seqId);
-    /// Radio SEND_SUCCESS for an outbound role announce. There is no reply
-    /// packet on this channel, so this is the delivery signal that clears the
-    /// retry; `data` is the exact frame handed to the radio, so the stamped
-    /// seqId reads straight back out.
-    void onRoleAnnounceSendResult(const uint8_t* toMac, const uint8_t* data,
-                                  size_t len, bool success);
+
     /// Announces to the supporter-jack peer and records it only if it went out.
     void recordSupporterAnnounceIfSent();
 
@@ -230,7 +226,6 @@ private:
     std::optional<std::array<uint8_t, 6>> lastAnnouncedSupporterJackMac;
     std::optional<std::array<uint8_t, 6>> lastAnnouncedOpponentJackMac;
 
-    uint8_t nextRoleAnnounceSeqId = 1;
     uint8_t nextGameEventSeqId = 1;
 
     // Retransmits for both of this manager's channels. Owned here rather than
@@ -238,6 +233,14 @@ private:
     // outlive it and keep broadcasting for an object that is gone, and owning
     // the Resender makes that structural instead of a teardown step to remember.
     Resender resender;
+
+    // The role-announce channel, bound to this manager's own Resender rather
+    // than the coordinator's transport: the channel is the device layer's name
+    // for "stamp a seqId, retry until the radio confirms delivery", which is
+    // exactly this announce's contract, and binding it here keeps the retry
+    // state dying with the manager that armed it. Both announces ride it — they
+    // address different peers, so SUPERSEDE_PER_TARGET never crosses them.
+    ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
 
     // Round-trip latency only. Started when a frame goes out, read when the
     // reply lands; the retry schedule itself belongs to the Resender.

@@ -83,6 +83,10 @@ public:
     std::vector<std::array<uint8_t, 6>> getBracket() const;
     bool hasBye() const;
 
+    /// Cumulative retry counters for this manager's command channel. Sends and
+    /// retries count frames, abandons count recipients; see Resender::Stats.
+    const Resender::Stats& getRetryStats() const { return resender.getStats(); }
+
     /// Recipients of the fan-out sent under `seqId` that have not yet acked.
     /// Zero once every one of them has answered or been given up on.
     size_t getPendingAckCount(uint8_t seqId) const;

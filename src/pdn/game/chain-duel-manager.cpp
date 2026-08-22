@@ -7,7 +7,16 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND) {
+    , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND)
+    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce,
+                          [](uint8_t, const uint8_t*) {}) {
+    // The radio's delivery report is this channel's ack; there is no reply
+    // packet. Latency is read here because the channel reports delivery but does
+    // not time it.
+    roleAnnounceChannel.setOnDelivered([this](uint8_t, const uint8_t*) {
+        ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
+        ackCount++;
+    });
     // Subscribed here rather than by whoever builds this manager: an owner that
     // wires it is an owner every other caller has to imitate, and one that forgets
     // gets a manager that compiles, runs, and silently never reacts.
@@ -22,7 +31,8 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     wirelessManager->setEspNowSendStatusHandler(
         PktType::kRoleAnnounce,
         [](const uint8_t* dst, const uint8_t* data, const size_t len, bool success, void* ctx) {
-            static_cast<ChainDuelManager*>(ctx)->onRoleAnnounceSendResult(dst, data, len, success);
+            static_cast<ChainDuelManager*>(ctx)->roleAnnounceChannel.onSendResult(
+                dst, data, len, success);
         },
         this);
 }
@@ -31,18 +41,6 @@ ChainDuelManager::~ChainDuelManager() {
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnChainRoleChange(nullptr);
     wirelessManager->clearEspNowSendStatusHandler(PktType::kRoleAnnounce);
-}
-
-void ChainDuelManager::onRoleAnnounceSendResult(const uint8_t* toMac, const uint8_t* data,
-                                                size_t len, bool success) {
-    if (!success || len != sizeof(RoleAnnouncePayload)) return;
-    RoleAnnouncePayload echoed{};
-    memcpy(&echoed, data, sizeof(echoed));
-    if (echoed.seqId == 0) return;
-    if (resender.onAck(PktType::kRoleAnnounce, echoed.seqId, toMac)) {
-        ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
-        ackCount++;
-    }
 }
 
 SerialIdentifier ChainDuelManager::opponentJack() const {
@@ -524,20 +522,12 @@ bool ChainDuelManager::broadcastRoleAndChampion() {
     // Connected fires a jack change, so the cascade re-sends this then.
     if (rdc->getPortStatus(supporterJack()) != PortStatus::CONNECTED) return false;
 
-    uint8_t seqId = nextRoleAnnounceSeqId++;
-    if (nextRoleAnnounceSeqId == 0) nextRoleAnnounceSeqId = 1;
-
     RoleAnnouncePayload payload{};
     payload.role = player->isHunter() ? 1 : 0;
     memcpy(payload.championMac, championMac->data(), 6);
-    payload.seqId = seqId;
 
-    // SUPERSEDE_PER_TARGET: the announce is current role state, so a newer one
-    // obsoletes any prior unacked announce to the same supporter.
     roleAnnounceSentTimer.setTimer(0);
-    resender.send(supporterPeer, PktType::kRoleAnnounce, seqId,
-                  reinterpret_cast<const uint8_t*>(&payload), sizeof(payload),
-                  Resender::SendMode::SUPERSEDE_PER_TARGET);
+    roleAnnounceChannel.sendReliable(supporterPeer, payload);
     return true;
 }
 
@@ -556,22 +546,15 @@ bool ChainDuelManager::sendRoleToOpponentJack() {
     // not yet recorded.
     if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
 
-    uint8_t seqId = nextRoleAnnounceSeqId++;
-    if (nextRoleAnnounceSeqId == 0) nextRoleAnnounceSeqId = 1;
-
     RoleAnnouncePayload payload{};
     payload.role = player->isHunter() ? 1 : 0;
     // championMac is a placeholder — receiver ignores unless same-role peer.
     if (championMac.has_value()) {
         memcpy(payload.championMac, championMac->data(), 6);
     }
-    payload.seqId = seqId;
 
-    // SUPERSEDE_PER_TARGET, and the supporter-side announce goes to a different
-    // peer, so the two never displace one another.
-    resender.send(opponentPeer, PktType::kRoleAnnounce, seqId,
-                  reinterpret_cast<const uint8_t*>(&payload), sizeof(payload),
-                  Resender::SendMode::SUPERSEDE_PER_TARGET);
+    roleAnnounceSentTimer.setTimer(0);
+    roleAnnounceChannel.sendReliable(opponentPeer, payload);
     return true;
 }
 

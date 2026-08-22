@@ -143,14 +143,21 @@ void GameSession::logRetryStats() {
     }
     if (!statsLogTimer.expired()) return;
 
+    // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
+    // strips info-level calls. Both managers are reported: a venue reading one
+    // line to judge radio health would otherwise be shown the chain duel's
+    // retries and told nothing about the tournament's.
     if (chainDuelManager != nullptr) {
         ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
-        // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2
-        // which strips info-level calls.
         LOG_W("STATS", "CDM s=%u r=%u ab=%u ack=%u/%lums",
               (unsigned)c.sends, (unsigned)c.retries, (unsigned)c.abandons,
               (unsigned)c.ackCount, cMean);
+    }
+    if (shootoutManager != nullptr) {
+        const Resender::Stats& s = shootoutManager->getRetryStats();
+        LOG_W("STATS", "SHT s=%u r=%u ab=%u",
+              (unsigned)s.sends, (unsigned)s.retries, (unsigned)s.abandons);
     }
     statsLogTimer.setTimer(STATS_LOG_INTERVAL_MS);
 }
