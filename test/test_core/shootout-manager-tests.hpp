@@ -910,6 +910,41 @@ inline void ackIsMatchedBySeqIdAlone(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getPendingAckCount(bracketSeq), 0u);
 }
 
+// The coordinator re-announces a stalled match under a fresh seqId, so a member
+// that has already played and moved on cannot recognise it as a repeat. Being
+// dragged back would re-prime it against an opponent it already beat, and a
+// second result for that bout can eliminate the winner too.
+inline void reAnnouncedMatchDoesNotReplayAFinishedBout(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({coord, me, other});
+    suite->shootout->startProposal();
+    suite->shootout->onBracketReceived(coord.data(), {coord, me, other}, 1);
+
+    // This device fights match 0 and wins it.
+    suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 2);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+    suite->shootout->onMatchResultReceived(me.data(), other.data(), 0, 3, me.data());
+    ASSERT_TRUE(suite->shootout->isEliminated(other.data()));
+    ASSERT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    // The coordinator never saw that result and re-announces match 0.
+    suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 9);
+
+    EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS)
+        << "dragged back into a bout it had already won";
+    EXPECT_TRUE(suite->shootout->isEliminated(other.data()))
+        << "the beaten opponent was put back in the running";
+}
+
 // A tournament that reached its winner is finished, not stuck. A fan-out from
 // the final match can outlive it and give up afterwards, and tearing the
 // standings down then would also broadcast ABORT — which every member applies

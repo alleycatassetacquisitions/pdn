@@ -744,6 +744,17 @@ void ShootoutManager::onMatchStartReceived(
         sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
         return;
     }
+    // A bout whose loser is already out has been played. The coordinator
+    // re-announces a stalled match under a FRESH seqId, which the dedup above
+    // cannot recognise, and isSameMatch is false the moment this device moved on
+    // — so without this a member is dragged back into a match it already
+    // finished and re-primed against an opponent it already beat. Still acked,
+    // so the coordinator stops asking.
+    if (isEliminated(duelistA) || isEliminated(duelistB)) {
+        lastObservedMatchStartSeqId = seqId;
+        sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
+        return;
+    }
     bool sameMatch = isSameMatch(matchIndex, duelistA, duelistB);
     lastObservedMatchStartSeqId = seqId;
     if (sameMatch) {
