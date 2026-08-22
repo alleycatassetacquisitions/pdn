@@ -285,5 +285,5 @@ void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t*
 void GameSession::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (!shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-    shootoutManager->onCommandAckReceived(fromMac, static_cast<ShootoutCmd>(data[0]), data[1]);
+    shootoutManager->onCommandAckReceived(fromMac, data[1]);
 }

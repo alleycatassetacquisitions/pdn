@@ -524,10 +524,10 @@ protected:
                 ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
                 uint8_t seqId = data[1];
                 switch (cmd) {
-                    case ShootoutCmd::BRACKET: m->onCommandAckReceived(fromMac, ShootoutCmd::BRACKET, seqId); break;
-                    case ShootoutCmd::MATCH_START: m->onCommandAckReceived(fromMac, ShootoutCmd::MATCH_START, seqId); break;
-                    case ShootoutCmd::MATCH_RESULT: m->onCommandAckReceived(fromMac, ShootoutCmd::MATCH_RESULT, seqId); break;
-                    case ShootoutCmd::TOURNAMENT_END: m->onCommandAckReceived(fromMac, ShootoutCmd::TOURNAMENT_END, seqId); break;
+                    case ShootoutCmd::BRACKET: m->onCommandAckReceived(fromMac, seqId); break;
+                    case ShootoutCmd::MATCH_START: m->onCommandAckReceived(fromMac, seqId); break;
+                    case ShootoutCmd::MATCH_RESULT: m->onCommandAckReceived(fromMac, seqId); break;
+                    case ShootoutCmd::TOURNAMENT_END: m->onCommandAckReceived(fromMac, seqId); break;
                     default: break;
                 }
             },

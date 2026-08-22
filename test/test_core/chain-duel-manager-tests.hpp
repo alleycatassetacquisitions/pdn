@@ -697,12 +697,49 @@ inline void cdmNewTerminalEventSupersedesThePrevious(ChainDuelManagerTests* suit
         << "the superseded event is still retransmitting alongside the current one";
 }
 
+// A jiggled cable is a link death and a reconnect to the same MAC. The champion
+// must announce again: the supporter's own state went with the link, so it no
+// longer knows who its champion is. Recording the announce against the peer MAC
+// alone would match on the way back and skip it, orphaning that whole sub-chain.
+inline void cdmReannouncesAfterSameMacReconnect(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int announcesToSupporter = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) announcesToSupporter++;
+            return 1;
+        });
+
+    // No manual cascade drives below this point: the manager is subscribed to
+    // the coordinator, and whether the reconnect re-announces depends entirely
+    // on which chain-change events the coordinator actually fires.
+    suite->connectOutputPort();
+    suite->connectInputPort();
+    ASSERT_GT(announcesToSupporter, 0) << "no announce to begin with";
+    const int afterFirst = announcesToSupporter;
+
+    // Cable out: the HELLO heartbeat lapses and the link dies.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_NE(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+
+    // Same device back on the same jack.
+    suite->connectInputPort();
+    EXPECT_GT(announcesToSupporter, afterFirst)
+        << "reconnected supporter was never told who its champion is";
+}
+
 // The announce must wait for a proven link. A supporter drops announces from a MAC
 // it has not yet recorded as a direct peer, and the radio reports the frame
 // delivered anyway, so one sent at Connecting clears its own retry and is lost with
 // nothing left to re-trigger it. Connected is the evidence the supporter already
-// holds us. Driven entirely through the coordinator, because the deferral only
-// works if the Connected transition re-fires the cascade that sends it.
+// holds us. The second half is driven only by rdc.sync(), because the deferral
+// is worthless unless the Connected transition itself re-fires the cascade.
 inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -733,7 +770,6 @@ inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* sui
     suite->deliverPdnContext(suite->supporterMac);
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
-    cdm.onChainStateChanged();
     EXPECT_GT(announcesToSupporter, 0)
         << "announce was suppressed rather than deferred";
 }

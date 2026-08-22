@@ -25,7 +25,7 @@ ShootoutManager::ShootoutManager(Player* player,
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , resender(wirelessManager) {
+    , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND) {
     resender.setAbandonCallback(
         [this](PktType, uint8_t seqId, const uint8_t* targetMac,
                const uint8_t* packet, size_t len) {
@@ -83,6 +83,10 @@ bool ShootoutManager::isLocalDuelist() const {
            memcmp(selfMac, currentDuelistB.data(), 6) == 0;
 }
 
+// The single seqId allocator for every command family this manager sends. That
+// is load-bearing, not incidental: because one counter serves all of them, a
+// seqId in flight names exactly one frame, which is what lets an ack carry only
+// a seqId and lets the Resender key on (PktType, seqId) alone.
 uint8_t ShootoutManager::nextSeqId() {
     uint8_t id = nextShootoutSeqId++;
     if (nextShootoutSeqId == 0) nextShootoutSeqId = 1;
@@ -132,23 +136,16 @@ void ShootoutManager::sendReliablyToPeers(const std::vector<std::array<uint8_t, 
         if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
         recipients.push_back(m);
     }
-    // One frame, one pending entry per recipient. A ring can hold more members
-    // than the ESP-NOW peer table has slots, so the fan-out is broadcast and the
-    // acks are what say who actually heard it.
     resender.sendBroadcast(recipients, PktType::kShootoutCommand, seqId, packet, len);
 }
 
-void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, ShootoutCmd cmd,
-                                           uint8_t seqId) {
-    uint8_t expected = 0;
-    switch (cmd) {
-        case ShootoutCmd::BRACKET: expected = lastBracketSeqId; break;
-        case ShootoutCmd::MATCH_START: expected = lastMatchStartSeqId; break;
-        case ShootoutCmd::MATCH_RESULT: expected = lastMatchResultSeqId; break;
-        case ShootoutCmd::TOURNAMENT_END: expected = lastTournamentEndSeqId; break;
-        default: return;
-    }
-    if (seqId != expected) return;
+void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId) {
+    // seqId alone names the fan-out: nextSeqId() is the single allocator for all
+    // four command families, so no two frames in flight from this device share
+    // one. Cross-checking the ack's command against a per-family cursor would
+    // catch nothing — an ack echoes both fields out of the frame it answers —
+    // and would refuse a valid ack for a still-armed frame that is no longer its
+    // family's latest.
     resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
@@ -159,14 +156,25 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
 
     // Only silence that actually blocks the tournament ends it. BRACKET is the
     // roster, so a member still in the running who never received it cannot take
-    // part at all. MATCH_START only matters to the two devices fighting the
-    // match: a spectator missing it just does not see that round, and ending a
-    // tournament for that would put one abort opportunity on every member of
-    // every match instead of one on the bracket.
-    const bool stillCompeting = containsMac(bracket, targetMac) && !isEliminated(targetMac);
-    const bool blocksTournament =
-        (cmd == ShootoutCmd::BRACKET && stillCompeting) ||
-        (cmd == ShootoutCmd::MATCH_START && isActiveDuelist(targetMac));
+    // part at all. MATCH_START only matters to the two devices fighting: a
+    // spectator missing it just does not see that round, and ending a tournament
+    // for that would put an abort opportunity on every member of every match
+    // rather than one on the bracket.
+    //
+    // Both questions are asked of the frame that was abandoned, not of the
+    // manager's current state. A fan-out outlives the match it announced — it
+    // keeps retrying a silent recipient for over a second — so by the time it is
+    // given up on, currentDuelist* may already name a different match, and a
+    // finished tournament still names its final pair.
+    bool blocksTournament = false;
+    if (cmd == ShootoutCmd::BRACKET) {
+        blocksTournament = containsMac(bracket, targetMac) && !isEliminated(targetMac);
+    } else if (cmd == ShootoutCmd::MATCH_START && len >= 14) {
+        // [cmd, seqId, duelistA(6), duelistB(6), matchIndex] — see
+        // buildMatchStartPacket.
+        blocksTournament = memcmp(&packet[2], targetMac, 6) == 0 ||
+                           memcmp(&packet[8], targetMac, 6) == 0;
+    }
 
     if (blocksTournament) {
         LOG_E(TAG, "shootout cmd=%u seq=%u unacked by %s; ending tournament",
@@ -490,6 +498,11 @@ void ShootoutManager::sendBracketToPeers() {
 
 void ShootoutManager::abortTournament() {
     if (phase == Phase::ABORTED) return;
+    // A tournament that reached its winner is over, not stuck. A late
+    // abandonment from a fan-out that outlived the final match must not tear
+    // down the standings — and the ABORT would be applied ring-wide, wiping the
+    // winner screen on every device.
+    if (phase == Phase::ENDED) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase));
 
     // Broadcast before resetToIdle clears bracket/confirmedSet.
@@ -542,9 +555,8 @@ void ShootoutManager::sync() {
         }
     }
 
-    // Every command family retransmits and abandons here. Which one gave up is
-    // read off the frame in onCommandAbandoned; MATCH_START is ack-tracked like
-    // the rest, so the watchdog that used to be its only re-send is gone.
+    // Every command family retransmits and abandons here; which one gave up is
+    // read off the frame in onCommandAbandoned.
     resender.sync();
 
     maybeStartNextMatch();

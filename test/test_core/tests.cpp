@@ -1699,6 +1699,10 @@ TEST_F(ChainDuelManagerTests, newTerminalEventSupersedesThePrevious) {
     cdmNewTerminalEventSupersedesThePrevious(this);
 }
 
+TEST_F(ChainDuelManagerTests, reannouncesAfterSameMacReconnect) {
+    cdmReannouncesAfterSameMacReconnect(this);
+}
+
 TEST_F(ChainDuelManagerTests, announceWaitsForConnectedSupporterJack) {
     cdmAnnounceWaitsForConnectedSupporterJack(this);
 }
@@ -1834,9 +1838,10 @@ TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchRes
 TEST_F(ShootoutManagerTests, stalledMatchIsReAnnouncedByCoordinator) { stalledMatchIsReAnnouncedByCoordinator(this); }
 TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
 TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
-TEST_F(ShootoutManagerTests, crossFamilyAckClearsNothing) { crossFamilyAckClearsNothing(this); }
+TEST_F(ShootoutManagerTests, ackIsMatchedBySeqIdAlone) { ackIsMatchedBySeqIdAlone(this); }
+TEST_F(ShootoutManagerTests, abortDoesNotTearDownAFinishedTournament) { abortDoesNotTearDownAFinishedTournament(this); }
+TEST_F(ShootoutManagerTests, abandonedMatchStartIsJudgedAgainstItsOwnMatch) { abandonedMatchStartIsJudgedAgainstItsOwnMatch(this); }
 TEST_F(ShootoutManagerTests, silentSpectatorDoesNotAbortMatchStart) { silentSpectatorDoesNotAbortMatchStart(this); }
-TEST_F(ShootoutManagerTests, eliminatedMemberGoingSilentDoesNotAbort) { eliminatedMemberGoingSilentDoesNotAbort(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }

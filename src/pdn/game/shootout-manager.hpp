@@ -89,8 +89,9 @@ public:
     uint8_t getLastBracketSeqId() const;
 
     int getCurrentMatchIndex() const;
-    /// The two devices fighting the current match, or a pair of zero MACs when
-    /// no match is running.
+    /// The two devices of the current match index. Zero MACs only before the
+    /// first match; the index is not cleared at a match boundary, so between
+    /// matches and after the tournament ends this still names the last pair.
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
     /// Adopts a bracket announced by the coordinator and acks it. A bracket from
@@ -104,10 +105,8 @@ public:
     std::array<uint8_t, 6> getOpponentMac() const;
 
     void reportLocalWin();
-    /// An ack for one of this manager's fan-outs. The command names which family
-    /// it answers: four families share one seqId space, so an ack whose command
-    /// and seqId disagree must not clear a different family's fan-out.
-    void onCommandAckReceived(const uint8_t* fromMac, ShootoutCmd cmd, uint8_t seqId);
+    /// An ack for one of this manager's fan-outs, named by the seqId it answers.
+    void onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser,
                                uint8_t matchIndex, uint8_t seqId,
@@ -245,9 +244,10 @@ private:
     void maybeStartNextMatch();
     bool inMaybeStartNextMatch = false;
     void sendMatchStartToPeers(int matchIndex);
-    // Stall recovery, distinct from the ack retry below it. Armed when a match
-    // starts and cleared when its result lands; a match every member acked but
-    // nobody finished is invisible to the Resender, because once everyone acks
+    // Stall recovery, answering a different question from the retry machinery:
+    // not "did the frame arrive" but "did the match finish". Armed when a match
+    // starts, cleared when its result lands. A match every member acked and
+    // nobody completed is invisible to the Resender — once everyone has acked
     // there is nothing left pending for it to give up on.
     SimpleTimer matchStartWatchdog;
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;

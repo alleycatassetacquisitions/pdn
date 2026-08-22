@@ -7,7 +7,7 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , resender(wirelessManager) {
+    , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND) {
     // Subscribed here rather than by whoever builds this manager: an owner that
     // wires it is an owner every other caller has to imitate, and one that forgets
     // gets a manager that compiles, runs, and silently never reacts.
@@ -325,12 +325,7 @@ void ChainDuelManager::applyChainStateChange() {
                 // finished its context exchange cannot accept one yet, and recording
                 // it anyway would suppress the re-announce the Connected transition
                 // is supposed to trigger.
-                const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-                if (broadcastRoleAndChampion() && supporterPeer != nullptr) {
-                    std::array<uint8_t, 6> cur;
-                    memcpy(cur.data(), supporterPeer, 6);
-                    lastAnnouncedSupporterJackMac = cur;
-                }
+                recordSupporterAnnounceIfSent();
                 // Announce role to opponent-jack peer if new.
                 const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
                 if (opponentPeer != nullptr) {
@@ -365,9 +360,14 @@ void ChainDuelManager::applyChainStateChange() {
         std::array<uint8_t, 6> cur;
         memcpy(cur.data(), supporterPeer, 6);
         if (!lastAnnouncedSupporterJackMac.has_value() || *lastAnnouncedSupporterJackMac != cur) {
-            if (broadcastRoleAndChampion()) lastAnnouncedSupporterJackMac = cur;
+            recordSupporterAnnounceIfSent();
         }
     } else if (supporterPeer == nullptr) {
+        // Reached because the coordinator reports the chain again once a link is
+        // fully down, not only during the dismount that announces it. Without
+        // that second report this jack still names its departing peer here, and
+        // a peer returning on the same MAC would match the stamp and never be
+        // re-announced to.
         lastAnnouncedSupporterJackMac.reset();
     }
 
@@ -483,13 +483,24 @@ void ChainDuelManager::onRoleAnnounceReceived(
     }
     championMac = newMac;
     if (changed) {
-        broadcastRoleAndChampion();
+        recordSupporterAnnounceIfSent();
         // A head transfer swaps the champion without touching this device's own
         // links, so nothing else here would tell the new champion that this
         // supporter exists, let alone that it is already in.
         announceToChampion();
         resendConfirm();
     }
+}
+
+void ChainDuelManager::recordSupporterAnnounceIfSent() {
+    // Every caller wants the same thing: announce, and remember having done so
+    // only if it happened. Keeping that in one place is what stops a caller
+    // recording an announce the link was not ready to carry.
+    const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
+    if (!broadcastRoleAndChampion() || supporterPeer == nullptr) return;
+    std::array<uint8_t, 6> cur;
+    memcpy(cur.data(), supporterPeer, 6);
+    lastAnnouncedSupporterJackMac = cur;
 }
 
 bool ChainDuelManager::broadcastRoleAndChampion() {

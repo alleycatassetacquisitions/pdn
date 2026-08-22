@@ -112,6 +112,9 @@ public:
     /// seqId reads straight back out.
     void onRoleAnnounceSendResult(const uint8_t* toMac, const uint8_t* data,
                                   size_t len, bool success);
+    /// Announces to the supporter-jack peer and records it only if it went out.
+    void recordSupporterAnnounceIfSent();
+
     /// Announces this device's role and champion to the supporter-jack peer.
     /// Returns false when the link is not proven yet and nothing was sent, so
     /// callers do not record an announce that never happened.
@@ -133,8 +136,8 @@ public:
     /// ackLatencyMsSum / ackCount is a mean round-trip. Sends and retries are
     /// counted in frames, abandons in recipients, so the three do not divide into
     /// one another: on a fan-out one frame can be given up on by many members.
-    /// Latency is measured here rather than by the Resender, which has no clock
-    /// of its own and no notion of a reply.
+    /// Latency is measured here because the Resender does not stamp a send time;
+    /// it holds the retry schedule, not a record of when a frame first went out.
     RetryStats getRetryStats() const {
         const Resender::Stats& carried = resender.getStats();
         RetryStats merged;

@@ -321,6 +321,14 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
                 if (lost) lost(mac.data());
             }
             onLinkLost(port);
+            // Report the chain again now the link is actually down. The jack
+            // change that announced the disconnect ran during the Connected
+            // state's dismount, while this jack still names its departing peer
+            // and still reads CONNECTED — so a subscriber that asks "what is on
+            // this jack" during that callback is told the old answer, and never
+            // gets a later chance to ask. A peer that comes back on the same MAC
+            // then looks unchanged to everyone downstream.
+            notifyChainChange();
         };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;
         context.contextTimeoutMs = CONTEXT_EXCHANGE_TIMEOUT_MS;

@@ -144,11 +144,16 @@ struct BroadcastFixture {
     ::testing::NiceMock<MockPeerComms> comms;
     WirelessManager wm{&comms, nullptr};
     FakePlatformClock clock;
-    Resender resender{&wm};
+    Resender resender;
     int frames = 0;
 
-    /** Radio up and every frame counted; the fake clock drives retry rounds. */
-    BroadcastFixture() {
+    /** Radio up and every frame counted; the fake clock drives retry rounds.
+     *  The budget policy is the fixture's subject as often as the fan-out is:
+     *  whether a refused frame costs a retry decides whether a caller waiting on
+     *  abandonment ever hears anything. */
+    explicit BroadcastFixture(
+        Resender::BudgetPolicy policy = Resender::BudgetPolicy::EVERY_ROUND)
+        : resender(&wm, policy) {
         SimpleTimer::setPlatformClock(&clock);
         setRadioUp(true);
     }
@@ -250,96 +255,61 @@ TEST(ResenderBroadcastTest, silentMemberAbandonsAloneAndNamesItself) {
     EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
 }
 
-TEST(ResenderBroadcastTest, failedRadioSendCostsNoRetryAndIsAttemptedOnce) {
-    // A send that never reaches the radio must leave every member's budget
-    // untouched, and must be ONE attempt for the group — not one attempt per
-    // member all failing in the same tick.
+TEST(ResenderBroadcastTest, refusedFrameIsOneAttemptForTheGroup) {
+    // Whatever the budget policy, a round the radio refuses must be ONE attempt
+    // for the whole fan-out, not one per recipient all failing in the same tick.
     BroadcastFixture f;
-    std::vector<std::array<uint8_t, 6>> members = {
+    std::vector<std::array<uint8_t, 6>> recipients = {
         f.mac(1), f.mac(2), f.mac(3), f.mac(4), f.mac(5)};
     uint8_t payload[4] = {0};
 
-    int abandons = 0;
-    f.resender.setAbandonCallback(
-        [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) { abandons++; });
-
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 5, payload, sizeof(payload));
+    f.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 5, payload, sizeof(payload));
     ASSERT_EQ(f.frames, 1);
 
-    // Radio unavailable for exactly one round.
     f.setRadioUp(false);
     f.round();
-    EXPECT_EQ(f.frames, 2) << "one failed attempt for the group, not one per member";
-    f.setRadioUp(true);
-
-    // The budget is read by counting rounds to abandonment. The failed round
-    // must not have shortened it, so a full MAX_RETRIES of real retransmits
-    // still has to happen before anyone is given up on.
-    for (uint8_t retry = 0; retry < Resender::MAX_RETRIES; ++retry) {
-        f.round();
-    }
-    EXPECT_EQ(abandons, 0)
-        << "a frame that never reached the radio must not cost a member a retry";
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 5u);
-
-    // The round after the budget is spent abandons every member, once each.
-    f.round();
-    EXPECT_EQ(abandons, 5);
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+    EXPECT_EQ(f.frames, 2) << "one refused attempt for the group, not one per recipient";
 }
 
-TEST(ResenderBroadcastTest, radioDownEventuallyAbandonsRatherThanWaitingForever) {
-    // A member's budget is only spent on frames that actually left, so a radio
-    // that never comes back would re-arm the group forever. A caller whose only
-    // liveness signal is abandonment — the shootout, whose next match waits on
-    // the bracket fan-out clearing — would then wait on a round that cannot
-    // happen, and the tournament silently stops instead of ending.
-    BroadcastFixture f;
-    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2)};
+TEST(ResenderBroadcastTest, budgetPolicyDecidesWhetherARefusingRadioEverAbandons) {
+    // The whole reason the policy exists. Same outage, same rounds, opposite
+    // outcomes: a caller whose next step waits on abandonment must eventually be
+    // told, while a caller with nothing downstream must not spend a peer's budget
+    // on frames that never left.
     uint8_t payload[4] = {0};
 
-    int abandons = 0;
-    f.resender.setAbandonCallback(
-        [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) { abandons++; });
-
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 8, payload, sizeof(payload));
-    f.setRadioUp(false);
-
-    for (uint8_t r = 0; r <= Resender::MAX_RETRIES + 1; ++r) {
-        f.round();
+    {
+        BroadcastFixture waiting(Resender::BudgetPolicy::EVERY_ROUND);
+        int abandons = 0;
+        waiting.resender.setAbandonCallback(
+            [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) {
+                abandons++;
+            });
+        std::vector<std::array<uint8_t, 6>> recipients = {waiting.mac(1), waiting.mac(2)};
+        waiting.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 8,
+                                       payload, sizeof(payload));
+        waiting.setRadioUp(false);
+        for (uint8_t r = 0; r <= Resender::MAX_RETRIES; ++r)
+            waiting.round();
+        EXPECT_EQ(abandons, 2) << "a refusing radio must end the fan-out, not suspend it";
+        EXPECT_EQ(waiting.resender.pendingCount(PktType::kShootoutCommand), 0u);
     }
-    EXPECT_EQ(abandons, 2) << "a dead radio must end the fan-out, not suspend it";
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
-}
-
-TEST(ResenderBroadcastTest, briefRadioOutageStillCostsNoRetry) {
-    // The other side of that rule: one failed round in the middle of a healthy
-    // run must not shorten anyone's budget or trip the give-up path.
-    BroadcastFixture f;
-    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2)};
-    uint8_t payload[4] = {0};
-
-    int abandons = 0;
-    f.resender.setAbandonCallback(
-        [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) { abandons++; });
-
-    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 9, payload, sizeof(payload));
-
-    // Two outages, each on its own too short to give up on, separated by one
-    // frame that actually left. Together they exceed the threshold, so only
-    // resetting on success keeps the group alive. Neither member has spent more
-    // than that single retry.
-    f.setRadioUp(false);
-    for (uint8_t r = 0; r < Resender::MAX_RETRIES; ++r)
-        f.round();
-    f.setRadioUp(true);
-    f.round();
-    f.setRadioUp(false);
-    for (uint8_t r = 0; r < Resender::MAX_RETRIES; ++r)
-        f.round();
-
-    EXPECT_EQ(abandons, 0) << "outages that recover must not count toward giving up";
-    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
+    {
+        BroadcastFixture patient(Resender::BudgetPolicy::TRANSMITTED_ONLY);
+        int abandons = 0;
+        patient.resender.setAbandonCallback(
+            [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) {
+                abandons++;
+            });
+        std::vector<std::array<uint8_t, 6>> recipients = {patient.mac(1), patient.mac(2)};
+        patient.resender.sendBroadcast(recipients, PktType::kShootoutCommand, 8,
+                                       payload, sizeof(payload));
+        patient.setRadioUp(false);
+        for (uint8_t r = 0; r <= Resender::MAX_RETRIES + 4; ++r)
+            patient.round();
+        EXPECT_EQ(abandons, 0) << "a frame that never left must not spend a recipient's budget";
+        EXPECT_EQ(patient.resender.pendingCount(PktType::kShootoutCommand), 2u);
+    }
 }
 
 TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
