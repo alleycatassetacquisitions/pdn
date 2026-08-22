@@ -16,6 +16,14 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // packet. Latency is read here because the channel reports delivery but does
     // not time it, and the peer is recorded as told here for the same reason:
     // this is the first moment it is true.
+    // Receive rides the channel too, so the length check, the decode and the
+    // duplicate suppression are the channel's rather than a second copy of them
+    // in whoever routes the packet. Duplicates were already harmless here —
+    // onRoleAnnounceReceived is idempotent — but that made the tx half the only
+    // half using the channel it owns.
+    roleAnnounceChannel.onReceive([this](const uint8_t* fromMac, const RoleAnnouncePayload& p) {
+        onRoleAnnounceReceived(fromMac, p.role, p.championMac, p.seqId);
+    });
     roleAnnounceChannel.setOnDelivered([this](uint8_t, const uint8_t* mac) {
         ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
         ackCount++;

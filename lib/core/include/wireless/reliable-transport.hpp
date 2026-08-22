@@ -61,7 +61,6 @@ public:
         ReliableChannel<P>* raw = new ReliableChannel<P>(
             wirelessManager, &resender, type, std::move(onAbandon), sendMode);
         registry.insert({type, raw});
-        ensurePacketCallback(type);
         return raw;
     }
 
@@ -87,15 +86,6 @@ public:
     WirelessManager* getWirelessManager() { return wirelessManager; }
 
 private:
-    // Installs the driver's per-PktType receive handler the first time a channel
-    // claims that PktType. The driver callback carries only a void* ctx, so
-    // each binding is a stable heap cell pairing this transport with the type.
-    struct ReceiveBinding {
-        ReliableTransport* transport;
-        PktType type;
-    };
-    void ensurePacketCallback(PktType type);
-
     // Logs a PktType claimed by two different payload types (a wiring bug).
     static void logChannelTypeCollision(PktType type, size_t got, size_t have);
 
@@ -105,5 +95,4 @@ private:
     WirelessManager* wirelessManager;
     Resender resender;
     std::map<PktType, ReliableChannelBase*> registry;
-    std::vector<ReceiveBinding*> receiveBindings;
 };

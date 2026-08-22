@@ -5,13 +5,15 @@
 #include <array>
 #include <cstring>
 
-const std::array<GameSession::PacketRoute, 7>& GameSession::packetRoutes() {
-    static const std::array<PacketRoute, 7> ROUTES = {{
+const std::array<GameSession::PacketRoute, 6>& GameSession::packetRoutes() {
+    // kRoleAnnounce is absent deliberately: ChainDuelManager's ReliableChannel
+    // claims that slot itself. Installing it here too would clobber the channel,
+    // since this loop runs after the managers are constructed.
+    static const std::array<PacketRoute, 6> ROUTES = {{
         {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
         {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
         {PktType::kChainConfirm, dispatchTo<&GameSession::onChainConfirmPacket>},
         {PktType::kChainJoin, dispatchTo<&GameSession::onChainJoinPacket>},
-        {PktType::kRoleAnnounce, dispatchTo<&GameSession::onRoleAnnouncePacket>},
         {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
         {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
     }};
@@ -160,13 +162,6 @@ void GameSession::logRetryStats() {
               (unsigned)s.sends, (unsigned)s.retries, (unsigned)s.abandons);
     }
     statsLogTimer.setTimer(STATS_LOG_INTERVAL_MS);
-}
-
-void GameSession::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(RoleAnnouncePayload) || !chainDuelManager) return;
-    const RoleAnnouncePayload* payload = reinterpret_cast<const RoleAnnouncePayload*>(data);
-    chainDuelManager->onRoleAnnounceReceived(
-        fromMac, payload->role, payload->championMac, payload->seqId);
 }
 
 void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {

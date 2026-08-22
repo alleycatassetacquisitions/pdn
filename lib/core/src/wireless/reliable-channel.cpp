@@ -28,6 +28,12 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager,
     // whoever constructs it makes a second, undeclared step that every caller
     // has to imitate and any caller can forget.
     if (this->wirelessManager == nullptr) return;
+    this->wirelessManager->setEspNowPacketHandler(
+        type,
+        [](const uint8_t* src, const uint8_t* data, const size_t len, void* ctx) {
+            static_cast<ReliableChannelBase*>(ctx)->deliverBytes(src, data, len);
+        },
+        this);
     this->wirelessManager->setEspNowSendStatusHandler(
         type,
         [](const uint8_t* dst, const uint8_t* data, const size_t len,
@@ -41,6 +47,7 @@ ReliableChannelBase::~ReliableChannelBase() {
     // Last thing to run for this object, so the driver cannot dispatch into a
     // partly-destroyed channel afterwards.
     if (wirelessManager == nullptr) return;
+    wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);
 }
 
