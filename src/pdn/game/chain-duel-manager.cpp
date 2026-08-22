@@ -497,13 +497,10 @@ void ChainDuelManager::broadcastRoleAndChampion() {
     supporterAnnounce = content;
 }
 
-// This announce is the only thing that tells the opponent what role we hold, and
-// their canInitiateMatch refuses a duel until they know it. Nothing repairs a
-// lost one: their own announce to us populates OUR view of THEM, not theirs of
-// us, and the caller below re-sends only when the peer MAC changes — which it
-// will not, because the cable did not move. So it is retried like the
-// supporter-side announce, off the radio's delivery report rather than a reply
-// packet, which costs no extra airtime unless a frame actually fails.
+// The only thing that tells the opponent what role we hold; their
+// canInitiateMatch refuses a duel until they know it. Their announce to us
+// populates our view of them, not theirs of us, so nothing else repairs a lost
+// one — hence the retry, off the radio's delivery report.
 void ChainDuelManager::sendRoleToOpponentJack() {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer == nullptr) {
@@ -537,22 +534,14 @@ void ChainDuelManager::sendRoleToOpponentJack() {
 }
 
 void ChainDuelManager::sync() {
-    // Both of this manager's channels retransmit and abandon here. The role
-    // announce is cleared by the radio's SEND_SUCCESS; the WIN/LOSS fan-out is
-    // cleared one supporter at a time by their acks, since a broadcast carries
-    // no per-member delivery evidence.
+    // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
+    // supporter at a time, since a broadcast carries no per-member evidence.
     resender.sync();
 
-    // Self-healing backstop for both role announces. A settled chain raises no
-    // chain-state events, so an announce that spent its retry budget — a radio
-    // that refused frames for the ~1.5s the budget covers is enough — has no
-    // other way back. Each side's own gate makes this cheap once delivered:
-    // the stamp matches and the call returns immediately.
-    //
-    // Both directions need it. Losing the opponent announce means their
-    // canInitiateMatch refuses that cable a duel; losing the supporter one means
-    // that supporter never learns its champion, so it never joins, never
-    // confirms, and it and everything below it contribute no boost for the round.
+    // Backstop for both announces. A settled chain raises no chain-state events,
+    // so one that spent its budget has no other way back — and losing either is
+    // terminal for the round: the opponent refuses the duel, the supporter never
+    // learns its champion. Cheap once delivered; each side's stamp gates it.
     if (roleAnnounceBackstopTimer.expired()) {
         roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
         broadcastRoleAndChampion();

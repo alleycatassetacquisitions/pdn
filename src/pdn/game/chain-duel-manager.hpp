@@ -251,28 +251,17 @@ private:
 
     uint8_t nextGameEventSeqId = 1;
 
-    // Retransmits for both of this manager's channels. Owned here rather than
-    // shared with the coordinator's: a fan-out armed by this manager must not
-    // outlive it and keep broadcasting for an object that is gone, and owning
-    // the Resender makes that structural instead of a teardown step to remember.
+    // Owned here, not shared with the coordinator's: a fan-out armed by this
+    // manager must not outlive it and keep broadcasting for an object that is
+    // gone. Both announces ride the channel below it.
     Resender resender;
 
-    // The role-announce channel, bound to this manager's own Resender rather
-    // than the coordinator's transport: the channel is the device layer's name
-    // for "stamp a seqId, retry until the radio confirms delivery", which is
-    // exactly this announce's contract, and binding it here keeps the retry
-    // state dying with the manager that armed it.
-    //
-    // Both announces ride it, and in a 2-node ring both jacks face the same
-    // peer, so the second can supersede the first under SUPERSEDE_PER_TARGET.
-    // That is harmless rather than prevented: when both can fire they carry the
-    // same role and the same championMac, so whichever survives says everything
-    // the other would have.
+    // In a 2-node ring both jacks face one peer, so the second announce can
+    // supersede the first. Harmless: when both fire they carry the same role and
+    // championMac, and addGroup transmits before superseding, so each still gets
+    // its own delivery report.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
 
-    // Records a peer as told once the radio reports the frame sent. Report, not
-    // handover: a frame that exhausted its retries was never MAC-acked, and
-    // stamping it anyway would suppress the only re-send there is.
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 
     // Time from a frame going out to the radio reporting it delivered. Not a

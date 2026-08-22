@@ -36,21 +36,14 @@ public:
     static constexpr uint8_t MAX_RETRIES = 3;
 
     // What a due round costs when the local send path refuses the frame — the
-    // only case the two differ, since a round that reaches the radio always
-    // spends a retry. TRANSMITTED_ONLY parks the entry until the path reopens;
-    // EVERY_ROUND spends anyway, so a path that stays shut still reaches
-    // abandonment. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
+    // only case the two differ. TRANSMITTED_ONLY parks the entry until the path
+    // reopens; EVERY_ROUND spends anyway, so a path that stays shut still
+    // abandons. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
-    // TRANSMITTED_ONLY is what ReliableTransport's channels run on: their abandon
-    // handlers are deliberate no-ops and the RDC re-sends on the next chain-state
-    // event, so parking a frame across a WiFi excursion beats giving up on it.
-    //
-    // ShootoutManager waits on abandonment directly: the next match is gated on
-    // a fan-out clearing. ChainDuelManager consumes none, and takes EVERY_ROUND
-    // to bound the entry's life — under TRANSMITTED_ONLY a refused round costs
-    // no budget, so the entry never gives up and re-attempts at the 100ms floor
-    // for as long as the send path stays shut, instead of going quiet after one
-    // budget and letting the caller's own repair decide when to try again.
+    // ReliableTransport parks (its abandons are no-ops and the RDC re-sends on
+    // the next chain-state event). Both game managers abandon: the shootout
+    // gates its next match on a fan-out clearing, and the chain duel needs the
+    // entry to stop rather than re-attempt at the 100ms floor indefinitely.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 

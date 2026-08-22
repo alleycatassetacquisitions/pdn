@@ -180,23 +180,16 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
                            memcmp(&packet[8], targetMac, 6) == 0;
     } else if (cmd == ShootoutCmd::MATCH_RESULT && len >= 15 &&
                memcmp(targetMac, coordinatorMac.data(), 6) == 0) {
-        // The coordinator never took this device's result, and nothing else will
-        // notice: it advances the bracket only on receiving one, so it sits in
-        // MATCH_IN_PROGRESS with nothing owed and the Resender goes quiet. This
-        // device is the one that knows — the frame it just gave up on is its own
-        // record of a bout it won — so it says so again rather than waiting to be
-        // asked. One attempt per bout: a second abandonment for the same match
-        // means this device cannot tell a lost result from a lost ack, and
-        // guessing either way is worse than staying quiet — the coordinator is
-        // the only device that can see its own bracket stalled.
+        // Nothing on the coordinator's side notices a result that never lands: it
+        // advances only on receiving one, so it waits with nothing owed. This
+        // device is the one that knows, so it says so again. One attempt per
+        // bout — a second abandonment cannot distinguish a lost result from a
+        // lost ack, and guessing is worse than staying quiet.
         if (matchResultResentIndex != static_cast<int>(packet[14])) {
             matchResultResentIndex = static_cast<int>(packet[14]);
             LOG_W(TAG, "coordinator missed our match result; re-sending");
-            // Read back off the frame that was given up on, never off current
-            // state: a fan-out outlives the match it announced, so by now
-            // currentDuelist* may name a different bout entirely.
-            // [cmd, seqId, winner(6), loser(6), matchIndex] — see
-            // buildMatchResultPacket.
+            // Off the abandoned frame, not current state: a fan-out outlives the
+            // match it announced. [cmd, seqId, winner(6), loser(6), matchIndex]
             sendMatchResultToPeers(&packet[2], &packet[8], packet[14]);
         }
     }
@@ -916,12 +909,9 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac) {
     // tournament in radio range.
     if (!isRingMember(fromMac)) return;
     if (phase == Phase::ABORTED || phase == Phase::IDLE) return;
-    // A tournament that reached its winner is over, not stuck; wiping it here
-    // would blank the standings on a device that already has them. Reachable by
-    // the ordinary ending: a member that missed TOURNAMENT_END is still in
-    // BETWEEN_MATCHES, and a cable pulled after the winner appears takes it
-    // through applyPeerLoss into abortTournament, which broadcasts ABORT to
-    // every member — including the ones already showing the result.
+    // Same guard as abortTournament, and reachable: a member that missed
+    // TOURNAMENT_END is still in BETWEEN_MATCHES, so a cable pulled after the
+    // winner appears sends ABORT to devices already showing the result.
     if (phase == Phase::ENDED) return;
     resetToIdle();
     phase = Phase::ABORTED;
