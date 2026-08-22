@@ -8,9 +8,8 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     , wirelessManager(wirelessManager)
     , rdc(rdc)
     , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND)
-    // No abandon handler: routing one in requires a ReliableTransport, and this
-    // channel is bound straight to a local Resender. A role announce that runs
-    // out of retries is repaired by the backstop in sync(), not by a callback.
+    // No abandon handler: a role announce that runs out of retries is repaired by
+    // the backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr) {
     // The radio's delivery report is this channel's ack; there is no reply
     // packet. Latency is read here because the channel reports delivery but does
@@ -18,9 +17,7 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // this is the first moment it is true.
     // Receive rides the channel too, so the length check, the decode and the
     // duplicate suppression are the channel's rather than a second copy of them
-    // in whoever routes the packet. Duplicates were already harmless here —
-    // onRoleAnnounceReceived is idempotent — but that made the tx half the only
-    // half using the channel it owns.
+    // in whoever routes the packet.
     roleAnnounceChannel.onReceive([this](const uint8_t* fromMac, const RoleAnnouncePayload& p) {
         onRoleAnnounceReceived(fromMac, p.role, p.championMac, p.seqId);
     });
@@ -37,10 +34,6 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
     // to be re-sent from the role edge; no jack edge would carry it.
     rdc->setOnChainRoleChange([this](ChainRole) { resendConfirm(); });
-
-    // The channel installs its own send-status handler, which is what clears a
-    // role-announce retry: this channel has no reply packet, so the radio's
-    // SEND_SUCCESS is the only delivery signal there is.
 }
 
 ChainDuelManager::~ChainDuelManager() {
@@ -348,12 +341,11 @@ void ChainDuelManager::applyChainStateChange() {
     if (championMac.has_value() && supporterPeer != nullptr) {
         std::array<uint8_t, 6> cur;
         memcpy(cur.data(), supporterPeer, 6);
-        // Deliberately not also skipped while a send is in flight, unlike the
-        // opponent side. That guard is only safe where something retries on a
-        // timer: here the chain-state event IS the only trigger, so suppressing
-        // one is permanent. Re-sending inside the delivery window costs at most a
-        // duplicate frame, and SUPERSEDE_PER_TARGET means it replaces rather than
-        // accumulates.
+        // No in-flight skip here, unlike the opponent side. That guard is only
+        // safe where a timer retries behind it; this side has no backstop, so a
+        // suppressed offer is simply lost. Re-sending inside the delivery window
+        // costs at most a duplicate frame, and SUPERSEDE_PER_TARGET replaces the
+        // pending one rather than stacking on it.
         if (!lastAnnouncedSupporterJackMac.has_value() || *lastAnnouncedSupporterJackMac != cur) {
             broadcastRoleAndChampion();
         }
@@ -492,11 +484,11 @@ void ChainDuelManager::recordAnnounceDelivered(const uint8_t* mac) {
     }
 }
 
-bool ChainDuelManager::broadcastRoleAndChampion() {
-    if (!championMac.has_value()) return false;
+void ChainDuelManager::broadcastRoleAndChampion() {
+    if (!championMac.has_value()) return;
 
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-    if (supporterPeer == nullptr) return false;
+    if (supporterPeer == nullptr) return;
     // Half-open gate, same reasoning as canInitiateMatch. A jack at Connecting has
     // a peer MAC off one inbound serial frame; the supporter has not necessarily
     // parsed ours yet, and it drops announces from a MAC it does not yet hold as a
@@ -504,7 +496,7 @@ bool ChainDuelManager::broadcastRoleAndChampion() {
     // clears and the announce is simply lost. Connected means its context came back
     // over the radio, which it could only send having already recorded us. Reaching
     // Connected fires a jack change, so the cascade re-sends this then.
-    if (rdc->getPortStatus(supporterJack()) != PortStatus::CONNECTED) return false;
+    if (rdc->getPortStatus(supporterJack()) != PortStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
     payload.role = player->isHunter() ? 1 : 0;
@@ -512,7 +504,6 @@ bool ChainDuelManager::broadcastRoleAndChampion() {
 
     roleAnnounceSentTimer.setTimer(0);
     roleAnnounceChannel.sendReliable(supporterPeer, payload);
-    return true;
 }
 
 // This announce is the only thing that tells the opponent what role we hold, and
@@ -522,13 +513,13 @@ bool ChainDuelManager::broadcastRoleAndChampion() {
 // will not, because the cable did not move. So it is retried like the
 // supporter-side announce, off the radio's delivery report rather than a reply
 // packet, which costs no extra airtime unless a frame actually fails.
-bool ChainDuelManager::sendRoleToOpponentJack() {
+void ChainDuelManager::sendRoleToOpponentJack() {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer == nullptr) {
         // Forget who was last told, so a cable returning on the same MAC is
         // announced to again rather than matching a stamp left by the old link.
         lastAnnouncedOpponentJackMac.reset();
-        return false;
+        return;
     }
     std::array<uint8_t, 6> cur;
     memcpy(cur.data(), opponentPeer, 6);
@@ -537,13 +528,13 @@ bool ChainDuelManager::sendRoleToOpponentJack() {
     // off while a send is still pending keeps the backstop below from stacking a
     // second announce on top of one that is simply still in its retry window.
     if (lastAnnouncedOpponentJackMac.has_value() && *lastAnnouncedOpponentJackMac == cur) {
-        return false;
+        return;
     }
-    if (resender.isPending(PktType::kRoleAnnounce, opponentPeer)) return false;
+    if (resender.isPending(PktType::kRoleAnnounce, opponentPeer)) return;
     // Same half-open gate as the supporter side: a jack at Connecting has a peer
     // MAC off one inbound frame, and the peer drops announces from a MAC it has
     // not yet recorded.
-    if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
+    if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
     payload.role = player->isHunter() ? 1 : 0;
@@ -554,7 +545,6 @@ bool ChainDuelManager::sendRoleToOpponentJack() {
 
     roleAnnounceSentTimer.setTimer(0);
     roleAnnounceChannel.sendReliable(opponentPeer, payload);
-    return true;
 }
 
 void ChainDuelManager::sync() {
@@ -564,13 +554,18 @@ void ChainDuelManager::sync() {
     // no per-member delivery evidence.
     resender.sync();
 
-    // Self-healing backstop for the opponent announce. Once it exhausts its
-    // retry budget nothing else would ever re-send it: the chain-state cascade
-    // offers it only when the peer MAC changes, and a cable that did not move
-    // never changes it. The opponent would then never learn this device's role,
-    // and their canInitiateMatch refuses that cable a duel until it is
-    // physically re-seated. The supporter side needs no equivalent — its
-    // cascade re-offers on every topology event, unchanged MAC included.
+    // Self-healing backstop for the opponent announce. The cascade re-offers it
+    // on any chain-state event once the budget is spent — the stamp is set on
+    // delivery, so an undelivered announce leaves this peer reading as untold —
+    // but a settled chain raises no events at all, and that is the case with no
+    // other way out: the opponent never learns this device's role, and its
+    // canInitiateMatch refuses that cable a duel until someone re-seats it.
+    //
+    // Only this direction has one because only this direction is unrepairable.
+    // A supporter that missed an announce is re-offered one by announceToChampion
+    // and the confirm resend on the next event, and a champion change re-sends
+    // unconditionally.
+    //
     // Arms on the first tick and only repairs a full interval later: the cascade
     // is the prompt path, this is the one that runs after it has already failed.
     if (!roleAnnounceBackstopTimer.isRunning()) {

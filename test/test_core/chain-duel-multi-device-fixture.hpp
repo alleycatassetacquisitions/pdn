@@ -412,20 +412,13 @@ protected:
     }
 
     // Mirrors what the GameSession constructor installs for the chain-duel packet
-    // types. CDM doesn't install these itself, so for a driver-less fixture
-    // we register trampolines that deliver received packets into the CDM.
+    // types that no channel claims. Deliberately NOT kRoleAnnounce: the CDM's
+    // ReliableChannel claims that slot in its own constructor, and registering
+    // over it here would replace the channel with a trampoline that skips the
+    // length check, the decode and the duplicate suppression — leaving the
+    // production receive path untested by every chain and tournament case here.
     void wireChainEventHandlers(MultiDeviceNode& n) {
         ChainDuelManager* cdm = n.cdm.get();
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kRoleAnnounce,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(RoleAnnouncePayload)) return;
-                const RoleAnnouncePayload* p = reinterpret_cast<const RoleAnnouncePayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onRoleAnnounceReceived(
-                    fromMac, p->role, p->championMac, p->seqId);
-            },
-            cdm);
 
         n.device->wirelessManager->setEspNowPacketHandler(
             PktType::kChainConfirm,

@@ -44,15 +44,14 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager,
 }
 
 ReliableChannelBase::~ReliableChannelBase() {
-    // Last thing to run for this object, so the driver cannot dispatch into a
-    // partly-destroyed channel afterwards.
+    // A base destructor runs AFTER the derived one, so between the two the slot
+    // still points at an object whose deliverBytes is pure virtual again. What
+    // makes that safe is not the ordering here: the driver queues both receive
+    // and send-result and drains them from exec() on the main loop, which is
+    // also where channels are destroyed, so no dispatch can land mid-teardown.
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);
-}
-
-void ReliableChannelBase::onAck(uint8_t seqId, const uint8_t* fromMac) {
-    resender->onAck(packetType, seqId, fromMac);
 }
 
 void ReliableChannelBase::onResenderAbandon(uint8_t seqId, const uint8_t* targetMac) {
@@ -77,14 +76,19 @@ bool ReliableChannelBase::isDuplicateReliableRx(const uint8_t* fromMac, uint8_t 
     if (seqId == 0 || fromMac == nullptr) return false;
     for (RxSeqRecord& r : rxSeq) {
         if (std::memcmp(r.mac.data(), fromMac, 6) == 0) {
-            if (r.lastSeqId == seqId) return true;
+            // Same seqId AND still inside the window this sender could still be
+            // retransmitting in. Past it, an identical seqId is a fresh frame
+            // from a sender whose counter restarted, not a repeat.
+            if (r.lastSeqId == seqId && !r.claim.expired()) return true;
             r.lastSeqId = seqId;
+            r.claim.setTimer(RX_SEQ_CLAIM_MS);
             return false;
         }
     }
     RxSeqRecord rec;
     std::memcpy(rec.mac.data(), fromMac, 6);
     rec.lastSeqId = seqId;
+    rec.claim.setTimer(RX_SEQ_CLAIM_MS);
     if (rxSeq.size() >= MAX_RX_SENDERS) {
         rxSeq.erase(rxSeq.begin());
     }

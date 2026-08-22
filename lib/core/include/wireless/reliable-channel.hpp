@@ -45,9 +45,6 @@ public:
     /// The PktType this channel claims.
     PktType type() const { return packetType; }
 
-    /// Routes an ack for this channel's PktType into the Resender.
-    void onAck(uint8_t seqId, const uint8_t* fromMac);
-
     /// Relays a Resender abandonment to this channel's OnAbandon callback.
     void onResenderAbandon(uint8_t seqId, const uint8_t* targetMac);
 
@@ -95,10 +92,24 @@ protected:
     WirelessManager* wirelessManager;
     Resender::SendMode sendMode;
 
+    // How long a seqId stays claimed by the frame that used it. A duplicate is
+    // by definition a RETRANSMIT, and retransmits stop once the sender's budget
+    // is spent — 100+200+400+800ms — so anything reusing a seqId after this
+    // window is a different frame, not a repeat of the old one.
+    //
+    // Without the window, dedup cannot tell a repeat from a sender that
+    // restarted: seqIds begin at 1 on a fresh channel, so the first frame after
+    // a peer reboots carries the same seqId the receiver already holds and is
+    // silently dropped. On a channel that sends one frame per peer that is not a
+    // rare collision, it is every reboot.
+    static constexpr unsigned long RX_SEQ_CLAIM_MS = 2000;
+
 private:
     struct RxSeqRecord {
         std::array<uint8_t, 6> mac;
         uint8_t lastSeqId;
+        // Re-armed whenever this sender's cursor moves; see RX_SEQ_CLAIM_MS.
+        SimpleTimer claim;
     };
     OnAbandon onAbandon;
     uint8_t lastSentSeqId = 0;

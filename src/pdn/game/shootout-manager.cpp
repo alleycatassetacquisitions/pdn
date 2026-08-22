@@ -119,24 +119,31 @@ void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>&
     // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
     // ring larger than that at all, whereas the broadcast slot is registered once
     // at radio init. Receivers must drop commands naming MACs outside their own ring.
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    if (!std::any_of(peers.begin(), peers.end(), [selfMac](const std::array<uint8_t, 6>& m) {
-            return selfMac == nullptr || memcmp(m.data(), selfMac, 6) != 0;
-        })) {
-        return;
-    }
+    if (peersExcludingSelf(peers).empty()) return;
     broadcastCommand(packet, len);
+}
+
+// Who a ring fan-out is actually addressed to. Both send paths ask through here
+// rather than each spelling the filter out: written twice they disagreed when the
+// radio had no MAC to report — one treated "no self" as "nobody here is me" and
+// sent, the other kept this device in its own recipient list, where it would owe
+// an ack it can never send and abandon. For a BRACKET fan-out that abandonment
+// ends the tournament.
+std::vector<std::array<uint8_t, 6>> ShootoutManager::peersExcludingSelf(
+    const std::vector<std::array<uint8_t, 6>>& peers) const {
+    const uint8_t* selfMac = wirelessManager->getMacAddress();
+    std::vector<std::array<uint8_t, 6>> others;
+    for (const std::array<uint8_t, 6>& m : peers) {
+        if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
+        others.push_back(m);
+    }
+    return others;
 }
 
 void ShootoutManager::sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
                                           uint8_t seqId, const uint8_t* packet, size_t len) {
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    std::vector<std::array<uint8_t, 6>> recipients;
-    for (const std::array<uint8_t, 6>& m : peers) {
-        if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
-        recipients.push_back(m);
-    }
-    resender.sendBroadcast(recipients, PktType::kShootoutCommand, seqId, packet, len);
+    resender.sendBroadcast(peersExcludingSelf(peers), PktType::kShootoutCommand,
+                           seqId, packet, len);
 }
 
 void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId) {
@@ -754,10 +761,11 @@ void ShootoutManager::onMatchStartReceived(
         // somebody else's.
         //
         // This covers the whole stall, not a slice of it: the coordinator cannot
-        // advance past a match whose result it missed, because maybeStartNextMatch
-        // runs only from BETWEEN_MATCHES/BRACKET_REVEAL and only applyMatchResult
-        // reaches those. So the match it re-announces is always the one it is
-        // still owed a result for, and the device that owes it is the one here.
+        // advance past a match whose result it missed. maybeStartNextMatch runs
+        // only from BETWEEN_MATCHES or BRACKET_REVEAL; BETWEEN_MATCHES is reached
+        // only by applyMatchResult, and BRACKET_REVEAL only before the first
+        // match. So the match it re-announces is always the one it is still owed
+        // a result for, and the device that owes it is the one here.
         // Deliberately not isSameMatch(): that requires MATCH_IN_PROGRESS, and a
         // device holding a win for this bout has already left that phase.
         const bool samePair = memcmp(currentDuelistA.data(), duelistA, 6) == 0 &&

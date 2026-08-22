@@ -23,19 +23,19 @@ class WirelessManager;
 //     lands or retries exhaust -> the channel's abandon callback. Abandonment
 //     is a game-level signal (void a match, abort a tournament), not a log
 //     line; channel->cancel() drops pending sends WITHOUT it.
-//   receive: driver rx -> per-PktType handler (installed here when a channel
-//     first claims that type) -> deliverIncoming -> the owning channel's
-//     deliver, which dedups and dispatches the decoded payload to onReceive.
-//     No ack is emitted anywhere on this path: a send is cleared by the radio's
+//   receive: driver rx -> the owning channel's own per-PktType handler, installed
+//     by its constructor, straight into deliver, which dedups and dispatches the
+//     decoded payload to onReceive. The transport is not on that path. No ack is
+//     emitted anywhere on it either: a send is cleared by the radio's
 //     SEND_SUCCESS, not a reply. Claiming a channel is sufficient to make its
 //     receive path live.
 class ReliableTransport {
 public:
-    /// Installs the ack-packet handler on construction; wm may be nullptr in
-    /// unit tests (channels then run without a radio).
+    /// Routes Resender abandonment back to the owning channel; wm may be nullptr
+    /// in unit tests (channels then run without a radio).
     explicit ReliableTransport(WirelessManager* wm);
 
-    /// Deletes every vended channel and rx binding.
+    /// Deletes every vended channel; each drops its own driver handlers as it goes.
     ~ReliableTransport();
 
     /// Get-or-create the channel owning a PktType. A first claim creates and
@@ -64,17 +64,16 @@ public:
         return raw;
     }
 
-    /// Routes a radio send-result (SEND_SUCCESS/FAIL for one outbound packet)
-    /// to the channel claiming its PktType, for a caller holding a type rather
-    /// than a channel handle. On success the channel reads the stamped seqId
-    /// back out of `data` and clears its pending entry; this is what replaces
-    /// the old ack round-trip. Not on the driver's path — each channel installs
-    /// its own send-status handler and is called directly.
+    /// Test seam: drives a radio send-result into the channel claiming this
+    /// PktType, for a caller holding a type rather than a channel handle.
+    /// Not on the driver's path — each channel installs its own send-status
+    /// handler and the driver calls it directly.
     void onSendResult(PktType type, const uint8_t* toMac,
                       const uint8_t* data, size_t len, bool success);
 
-    /// Dispatches an inbound data packet to the channel claiming its PktType.
-    /// Returns false if no channel is registered.
+    /// Test seam, paired with onSendResult: dispatches an inbound packet to the
+    /// channel claiming this PktType. Returns false if no channel is registered.
+    /// Not on the driver's path — see the receive note above.
     bool deliverIncoming(PktType type, const uint8_t* fromMac,
                          const uint8_t* data, size_t len);
 

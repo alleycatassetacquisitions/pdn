@@ -18,6 +18,7 @@ public:
     using ReliableChannelBase::isDuplicateReliableRx;
     using ReliableChannelBase::nextSeqId;
     using ReliableChannelBase::ReliableChannelBase;
+    using ReliableChannelBase::RX_SEQ_CLAIM_MS;
     /// No-op body so the otherwise pure-virtual base becomes instantiable.
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
     /// Untyped probe: no payload struct, so report 0.
@@ -35,6 +36,40 @@ TEST(ReliableChannelBaseTest, nextSeqIdWrapsAfter255) {
     }
     // The 256th call wraps back to 1 (zero is reserved for "no ack expected").
     ASSERT_EQ(ch.nextSeqId(), uint8_t{1});
+}
+
+TEST(ReliableChannelBaseTest, aRestartedSenderIsNotMistakenForARetransmit) {
+    // seqIds start at 1 on a fresh channel, so the first frame a peer sends after
+    // rebooting carries the same seqId the receiver already holds from before the
+    // reboot. Suppressing that as a duplicate loses the frame — and on a channel
+    // that sends one frame per peer, such as the role announce, the cursor is
+    // ALWAYS sitting on 1, so it is lost every reboot rather than occasionally.
+    // The sender is told nothing: the radio still MAC-acks the frame, so its
+    // retry clears and it records the peer as told.
+    //
+    // What separates the two cases is time, not content. A duplicate is a
+    // retransmit, and retransmits stop when the sender's budget runs out.
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    clock.setTime(1000);
+    Resender resender(nullptr);
+    ProbeChannel ch(nullptr, &resender, PktType::kRoleAnnounce,
+                    [](uint8_t, const uint8_t*) {});
+    std::array<uint8_t, 6> peer = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+
+    // First frame of the peer's life.
+    EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 1));
+    // Its retransmit, inside the retry window: genuinely a repeat.
+    clock.advance(300);
+    EXPECT_TRUE(ch.isDuplicateReliableRx(peer.data(), 1));
+
+    // The peer reboots and announces again from a fresh counter. Far past any
+    // window it could still have been retransmitting in.
+    clock.advance(ProbeChannel::RX_SEQ_CLAIM_MS + 1);
+    EXPECT_FALSE(ch.isDuplicateReliableRx(peer.data(), 1))
+        << "a restarted sender's first frame was swallowed as a duplicate";
+
+    SimpleTimer::setPlatformClock(nullptr);
 }
 
 TEST(ReliableChannelBaseTest, rxDedupEvictsOldestSenderWhenFull) {

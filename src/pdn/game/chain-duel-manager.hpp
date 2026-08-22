@@ -41,8 +41,8 @@ public:
     /// requires a live coordinator — the class dereferences it unguarded throughout.
     /// One callback exists per edge, so at most one ChainDuelManager per coordinator:
     /// a second built on the same one takes both slots over, and whichever is
-    /// destroyed first empties them for both. Several tests do this deliberately and
-    /// stay correct only because they drive no jack edge afterwards.
+    /// destroyed first empties them for both. A test does this deliberately and
+    /// stays correct only because it drives no jack edge afterwards.
     ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /// Drops the coordinator subscriptions the constructor took, which hold `this`.
     virtual ~ChainDuelManager();
@@ -109,13 +109,13 @@ public:
         uint8_t seqId);
 
     /// Announces this device's role and champion to the supporter-jack peer.
-    /// Returns false when the link is not proven yet and nothing was sent.
-    bool broadcastRoleAndChampion();
+    /// Silent when the link is not proven yet.
+    void broadcastRoleAndChampion();
     /// Announces this device's role to the opponent-jack peer, unless that peer
-    /// has already been told or is still being told. Returns false when nothing
-    /// was sent, including when there is no peer — which also forgets whoever
-    /// was last told, so a cable returning on the same MAC is announced to again.
-    bool sendRoleToOpponentJack();
+    /// has already been told or is still being told. With no peer it forgets
+    /// whoever was last told, so a cable returning on the same MAC is announced
+    /// to again.
+    void sendRoleToOpponentJack();
 
     void sync();
 
@@ -134,7 +134,9 @@ public:
         uint32_t ackCount = 0;
     };
     /// Cumulative retry counters for the role-announce and game-event channels.
-    /// ackLatencyMsSum / ackCount is a mean round-trip. Sends and retries are
+    /// ackLatencyMsSum / ackCount is a mean delivery time, mixing two kinds of
+    /// sample: the role announce measures to the radio's SEND_SUCCESS, the game
+    /// event to a reply packet. Sends and retries are
     /// counted in frames, abandons in recipients, so the three do not divide into
     /// one another: on a fan-out one frame can be given up on by many members.
     /// Latency is measured here because the Resender does not stamp a send time;
@@ -146,7 +148,7 @@ public:
     }
 
 private:
-    // Round-trip latency only; the retry counts live on the Resender.
+    // Delivery-time samples only; the retry counts live on the Resender.
     uint32_t ackLatencyMsSum = 0;
     uint32_t ackCount = 0;
     Player* player;

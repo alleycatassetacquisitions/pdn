@@ -43,14 +43,21 @@ public:
     // whatever backoff it had reached. EVERY_ROUND: a due round spends a retry
     // either way, so a send path that stays shut still reaches abandonment.
     //
-    // This is not a rule to derive per caller — it is which behaviour that caller
-    // already had. The device-layer channels have always been TRANSMITTED_ONLY;
-    // both game managers have always counted every round, and ShootoutManager
-    // additionally depends on it, since a tournament's next match waits on a
-    // fan-out clearing and abandonment is what tells it that will never happen.
-    // ChainDuelManager consumes no abandonment at all and is EVERY_ROUND purely
-    // because that is what it did before; its undelivered announce is repaired by
-    // its own backstop rather than by giving up.
+    // Both game managers need EVERY_ROUND, for different reasons, and neither is
+    // historical accident:
+    //
+    // ShootoutManager waits on abandonment directly — the next match is gated on
+    // a fan-out clearing, so a send path that stays shut has to reach abandonment
+    // or the tournament simply stops.
+    //
+    // ChainDuelManager registers no abandon callback, but still depends on the
+    // entry being GIVEN UP ON. Under TRANSMITTED_ONLY a refused round costs
+    // nothing, so a recipient never reaches the budget, never leaves, and keeps
+    // retransmitting at the floor forever. Nothing else removes it: the role
+    // announce is never cancelled, and SUPERSEDE_PER_TARGET only clears a target
+    // that is sent to again — which a departed peer never is. The stuck entry
+    // also holds isPending true, which is what the opponent-side backstop tests
+    // before re-offering. Abandonment is the only exit.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
@@ -207,8 +214,9 @@ private:
                   const uint8_t* payload, size_t len, SendMode mode);
 
     // Drop these recipients from every prior group on this channel, and drop any
-    // group left with none. This is what SUPERSEDE_PER_TARGET means for both
-    // shapes: whoever the new frame speaks to stops owing anything to the old one.
+    // group left with none. This is what SUPERSEDE_PER_TARGET means: whoever the
+    // new frame speaks to stops owing anything to the old one. Reached from a
+    // unicast send and from cancel(); a fan-out is always KEEP_DISTINCT.
     void supersedeRecipients(PktType type,
                              const std::vector<std::array<uint8_t, 6>>& recipients);
 
