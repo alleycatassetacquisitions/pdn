@@ -920,28 +920,51 @@ inline void reAnnouncedMatchDoesNotReplayAFinishedBout(ShootoutManagerTests* sui
     std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(selfMac));
+    int matchResultFrames = 0;
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, testing::_, testing::_, testing::_))
-        .WillByDefault(testing::Return(1));
+            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
+        .WillByDefault(testing::Invoke(
+            [&matchResultFrames](const uint8_t*, PktType, const uint8_t* data,
+                                 const size_t len) {
+                if (len > 0 && data[0] == static_cast<uint8_t>(ShootoutCmd::MATCH_RESULT)) {
+                    matchResultFrames++;
+                }
+                return 1;
+            }));
 
     suite->shootout->setLoopMembersForTest({coord, me, other});
     suite->shootout->startProposal();
+    // Every member's CONFIRM is broadcast and every device in PROPOSAL records
+    // it, so a follower knows the whole ring — which is who a result goes to.
+    // Without this the set holds only this device, and a result reaches nobody.
+    suite->shootout->onConfirmReceived(coord.data());
+    suite->shootout->onConfirmReceived(me.data());
+    suite->shootout->onConfirmReceived(other.data());
     suite->shootout->onBracketReceived(coord.data(), {coord, me, other}, 1);
 
-    // This device fights match 0 and wins it.
+    // This device fights match 0 and wins it. Reported the way a real winner
+    // reports — the quickdraw outcome, not a result arriving from elsewhere —
+    // because that is what leaves this device holding the record.
     suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 2);
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
-    suite->shootout->onMatchResultReceived(me.data(), other.data(), 0, 3, me.data());
+    suite->shootout->reportLocalWin();
     ASSERT_TRUE(suite->shootout->isEliminated(other.data()));
     ASSERT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
     // The coordinator never saw that result and re-announces match 0.
+    matchResultFrames = 0;
     suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 9);
 
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS)
         << "dragged back into a bout it had already won";
     EXPECT_TRUE(suite->shootout->isEliminated(other.data()))
         << "the beaten opponent was put back in the running";
+    // Declining to replay is only half the answer. A re-announce means the
+    // coordinator is still owed this result, and it re-asks on a timer — so a
+    // member that only acks leaves the tournament stalled with every device
+    // silently refusing to play.
+    EXPECT_GT(matchResultFrames, 0)
+        << "acked the re-announce without answering it; the coordinator asks forever";
 }
 
 // A tournament that reached its winner is finished, not stuck. A fan-out from

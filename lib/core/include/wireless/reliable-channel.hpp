@@ -12,13 +12,21 @@
 // A ReliableChannel is a typed, reliable pipe for exactly one PktType: game
 // code sends a packed payload struct and receives decoded structs back, and
 // the channel supplies everything reliability needs underneath — seqId
-// stamping, retry-until-ack via the shared Resender, ack emission on receipt,
-// duplicate suppression, and an abandon callback when a peer stays
-// unreachable past the retry budget. The struct itself is the wire format
-// (packed, memcpy'd); both ends run the same firmware, so field layout is the
-// protocol. ReliableChannelBase holds the untyped mechanics; the
-// ReliableChannel<P> template below binds them to a payload type. Channels
-// are created and owned by ReliableTransport, one per PktType.
+// stamping, retry-until-delivered via a Resender, duplicate suppression on
+// receipt, and an abandon callback when a peer stays unreachable past the retry
+// budget. The struct itself is the wire format (packed, memcpy'd); both ends run
+// the same firmware, so field layout is the protocol. ReliableChannelBase holds
+// the untyped mechanics; the ReliableChannel<P> template below binds them to a
+// payload type.
+//
+// No ack packet is sent or expected: a send is cleared by the radio's own
+// SEND_SUCCESS, which is why deliver() emits nothing on receipt. Dedup still
+// earns its place, because a sender that missed SEND_SUCCESS retransmits.
+//
+// Most channels are created and owned by a ReliableTransport, one per PktType.
+// Not all: ChainDuelManager binds one straight to its own Resender, which is
+// what a caller outside the coordinator has to do, the transport being private
+// to it. A channel bound that way has no abandon routing.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;
@@ -30,8 +38,9 @@ public:
                         PktType type,
                         OnAbandon onAbandon,
                         Resender::SendMode sendMode = Resender::SendMode::SUPERSEDE_PER_TARGET);
-    /// Virtual: channels are owned and deleted through the base pointer.
-    virtual ~ReliableChannelBase() = default;
+    /// Virtual: channels are owned and deleted through the base pointer. Drops
+    /// this channel's send-status registration, which the constructor installed.
+    virtual ~ReliableChannelBase();
 
     /// The PktType this channel claims.
     PktType type() const { return packetType; }
@@ -78,8 +87,7 @@ protected:
     // sender, the expected consequence of a lost ack on a resent packet.
     // seqId==0 is the unsequenced/sendOnce sentinel (see nextSeqId) and is
     // never deduped here; those payloads dedup by domain identity at the
-    // caller. Returns true if (fromMac,seqId) was already delivered. Call only
-    // AFTER acking, so a duplicate still silences the sender's resends.
+    // caller. Returns true if (fromMac,seqId) was already delivered.
     bool isDuplicateReliableRx(const uint8_t* fromMac, uint8_t seqId);
 
     Resender* resender;

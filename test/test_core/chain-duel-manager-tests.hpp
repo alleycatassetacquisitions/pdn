@@ -801,6 +801,45 @@ inline void cdmReannouncesAfterSameMacReconnect(ChainDuelManagerTests* suite) {
 // nothing left to re-trigger it. Connected is the evidence the supporter already
 // holds us. The second half is driven only by rdc.sync(), because the deferral
 // is worthless unless the Connected transition itself re-fires the cascade.
+// An opponent announce that exhausts its retry budget has to be offered again.
+// Nothing else would: the cascade sends one only when the opponent-jack peer MAC
+// changes, and a cable that did not move never changes it. The opponent would
+// then never learn this device's role, and its canInitiateMatch refuses that
+// cable a duel for the rest of the round — recoverable only by re-seating it.
+inline void cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int announcesToOpponent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->opponentMac, 6) == 0) announcesToOpponent++;
+            return 1;
+        });
+
+    suite->connectOutputPort();
+    suite->connectInputPort();
+    ASSERT_GT(announcesToOpponent, 0) << "no opponent announce to begin with";
+
+    // The radio never confirms delivery, so the announce burns its whole budget
+    // and is given up on. This is the case the stamp must not record as told.
+    for (int i = 0; i < Resender::MAX_RETRIES + 1; ++i) {
+        suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+        cdm.sync();
+    }
+    const int afterAbandon = announcesToOpponent;
+
+    // A full backstop interval later, the undelivered announce is re-offered.
+    suite->fakeClock->advance(ChainDuelManager::ROLE_ANNOUNCE_BACKSTOP_MS + 1);
+    cdm.sync();
+    EXPECT_GT(announcesToOpponent, afterAbandon)
+        << "an announce that was never delivered was recorded as delivered, so "
+           "the opponent is never told this device's role";
+}
+
 inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1047,10 +1086,16 @@ inline void cdmOnChainStateNewSupporterTriggersBroadcast(ChainDuelManagerTests* 
     // First call: device is champion (self-assign), supporter-jack peer present →
     // should broadcast exactly once to supporter-jack.
     int firstCallSends = 0;
+    uint8_t seqId = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
-        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
-            if (memcmp(mac, suite->supporterMac, 6) == 0) firstCallSends++;
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) {
+                firstCallSends++;
+                RoleAnnouncePayload p;
+                memcpy(&p, data, sizeof(p));
+                seqId = p.seqId;
+            }
             return 1;
         });
     EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
@@ -1059,7 +1104,14 @@ inline void cdmOnChainStateNewSupporterTriggersBroadcast(ChainDuelManagerTests* 
     ASSERT_NE(cdm.getChampionMac(), nullptr);
     EXPECT_EQ(firstCallSends, 1);
 
-    // Second call: supporter-jack peer unchanged — must NOT re-broadcast.
+    // The peer counts as told only once the radio confirms the frame reached it;
+    // until then it is still owed an announce and the cascade is right to keep
+    // offering one. Drive the delivery a real link would report.
+    ASSERT_NE(seqId, 0u);
+    suite->deliverRoleAnnounceSendResult(suite->supporterMac, seqId, /*success=*/true);
+
+    // Second call: supporter-jack peer unchanged and now told — must NOT
+    // re-broadcast.
     int secondCallSends = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))

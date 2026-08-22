@@ -108,22 +108,22 @@ public:
         const uint8_t* championMac,
         uint8_t seqId);
 
-    /// Announces to the supporter-jack peer and records it only if it went out.
-    void recordSupporterAnnounceIfSent();
-
     /// Announces this device's role and champion to the supporter-jack peer.
-    /// Returns false when the link is not proven yet and nothing was sent, so
-    /// callers do not record an announce that never happened.
+    /// Returns false when the link is not proven yet and nothing was sent.
     bool broadcastRoleAndChampion();
-    /// Announces this device's role to the opponent-jack peer. Returns false when
-    /// the link is not proven yet and nothing was sent.
+    /// Announces this device's role to the opponent-jack peer, unless that peer
+    /// has already been told or is still being told. Returns false when nothing
+    /// was sent, including when there is no peer — which also forgets whoever
+    /// was last told, so a cable returning on the same MAC is announced to again.
     bool sendRoleToOpponentJack();
 
-    /// Announces to the opponent-jack peer and records it only if it went out.
-    void recordOpponentAnnounceIfSent();
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
+    /// How often an undelivered opponent announce is re-offered. Nothing else
+    /// would: the only other trigger is the peer MAC changing, and a cable that
+    /// did not move never changes it.
+    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = 1000;
 
     // Retry observability for this manager's two channels.
     struct RetryStats {
@@ -238,12 +238,24 @@ private:
     // than the coordinator's transport: the channel is the device layer's name
     // for "stamp a seqId, retry until the radio confirms delivery", which is
     // exactly this announce's contract, and binding it here keeps the retry
-    // state dying with the manager that armed it. Both announces ride it — they
-    // address different peers, so SUPERSEDE_PER_TARGET never crosses them.
+    // state dying with the manager that armed it.
+    //
+    // Both announces ride it, and in a 2-node ring both jacks face the same
+    // peer, so the second can supersede the first under SUPERSEDE_PER_TARGET.
+    // That is harmless rather than prevented: when both can fire they carry the
+    // same role and the same championMac, so whichever survives says everything
+    // the other would have.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
 
-    // Round-trip latency only. Started when a frame goes out, read when the
-    // reply lands; the retry schedule itself belongs to the Resender.
+    // Records a peer as told once the radio confirms the frame reached it.
+    // Delivery, not handover: a frame that exhausted its retries never arrived,
+    // and stamping it anyway would suppress the only re-send there is.
+    void recordAnnounceDelivered(const uint8_t* mac);
+
+    // Time from a frame going out to the radio reporting it delivered. Not a
+    // round trip — this channel has no reply packet — and approximate when both
+    // announces are in flight, since they share the one timer.
     SimpleTimer roleAnnounceSentTimer;
     SimpleTimer gameEventSentTimer;
+    SimpleTimer roleAnnounceBackstopTimer;
 };

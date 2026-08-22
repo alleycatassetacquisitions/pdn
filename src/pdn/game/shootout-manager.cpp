@@ -616,13 +616,6 @@ bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_
     return matchIndex == currentMatchIndex && phase == Phase::MATCH_IN_PROGRESS && memcmp(currentDuelistA.data(), a, 6) == 0 && memcmp(currentDuelistB.data(), b, 6) == 0;
 }
 
-bool ShootoutManager::isActiveDuelist(const uint8_t* mac) const {
-    if (currentMatchIndex < 0) return false;
-    auto pair = getCurrentMatchPair();
-    return memcmp(pair.first.data(), mac, 6) == 0 ||
-           memcmp(pair.second.data(), mac, 6) == 0;
-}
-
 void ShootoutManager::onLocalRDCDisconnect(const uint8_t* lostMac) {
     // Gate before the log: this now fires on every direct-peer link death, and
     // outside a tournament that is ordinary chain-duel unplugging. LOG_W survives
@@ -748,11 +741,35 @@ void ShootoutManager::onMatchStartReceived(
     // re-announces a stalled match under a FRESH seqId, which the dedup above
     // cannot recognise, and isSameMatch is false the moment this device moved on
     // — so without this a member is dragged back into a match it already
-    // finished and re-primed against an opponent it already beat. Still acked,
-    // so the coordinator stops asking.
+    // finished and re-primed against an opponent it already beat.
     if (isEliminated(duelistA) || isEliminated(duelistB)) {
         lastObservedMatchStartSeqId = seqId;
         sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
+        // The ack stops the retransmits but not the asking: the coordinator only
+        // re-announces a match it still believes unfinished, so it is telling us
+        // it never got the result. Acking alone would leave it asking forever
+        // while every member silently declines to play. Answer with the result
+        // itself when this device is the one that holds it — it won exactly this
+        // bout, so the record it re-sends is its own, not an inference about
+        // somebody else's.
+        //
+        // This covers the whole stall, not a slice of it: the coordinator cannot
+        // advance past a match whose result it missed, because maybeStartNextMatch
+        // runs only from BETWEEN_MATCHES/BRACKET_REVEAL and only applyMatchResult
+        // reaches those. So the match it re-announces is always the one it is
+        // still owed a result for, and the device that owes it is the one here.
+        // Deliberately not isSameMatch(): that requires MATCH_IN_PROGRESS, and a
+        // device holding a win for this bout has already left that phase.
+        const bool samePair = memcmp(currentDuelistA.data(), duelistA, 6) == 0 &&
+                              memcmp(currentDuelistB.data(), duelistB, 6) == 0;
+        const uint8_t* selfMac = wirelessManager->getMacAddress();
+        if (selfMac != nullptr && reportedLocalWin && samePair &&
+            matchIndex == currentMatchIndex && !isEliminated(selfMac)) {
+            const uint8_t* beaten =
+                (memcmp(selfMac, duelistA, 6) == 0) ? duelistB : duelistA;
+            LOG_W(TAG, "re-sending held result for matchIndex=%u", matchIndex);
+            sendMatchResultToPeers(selfMac, beaten, matchIndex);
+        }
         return;
     }
     bool sameMatch = isSameMatch(matchIndex, duelistA, duelistB);

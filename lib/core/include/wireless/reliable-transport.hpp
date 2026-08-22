@@ -23,12 +23,12 @@ class WirelessManager;
 //     lands or retries exhaust -> the channel's abandon callback. Abandonment
 //     is a game-level signal (void a match, abort a tournament), not a log
 //     line; channel->cancel() drops pending sends WITHOUT it.
-//   receive: driver rx -> per-PktType handler (installed here: the ack type at
-//     construction, data types when their first channel is claimed) ->
-//     deliverIncoming, which acks BEFORE dedup (a retransmit means our first
-//     ack was lost: re-ack, then drop the duplicate) and dispatches the
-//     decoded payload to the owning channel's onReceive. Claiming a channel
-//     is sufficient to make its receive path live.
+//   receive: driver rx -> per-PktType handler (installed here when a channel
+//     first claims that type) -> deliverIncoming -> the owning channel's
+//     deliver, which dedups and dispatches the decoded payload to onReceive.
+//     No ack is emitted anywhere on this path: a send is cleared by the radio's
+//     SEND_SUCCESS, not a reply. Claiming a channel is sufficient to make its
+//     receive path live.
 class ReliableTransport {
 public:
     /// Installs the ack-packet handler on construction; wm may be nullptr in
@@ -66,10 +66,11 @@ public:
     }
 
     /// Routes a radio send-result (SEND_SUCCESS/FAIL for one outbound packet)
-    /// to the channel claiming its PktType. On success the channel reads the
-    /// stamped seqId back out of `data` and clears its pending entry; this is
-    /// what replaces the old ack round-trip. Public so unit tests can drive it
-    /// directly without a radio.
+    /// to the channel claiming its PktType, for a caller holding a type rather
+    /// than a channel handle. On success the channel reads the stamped seqId
+    /// back out of `data` and clears its pending entry; this is what replaces
+    /// the old ack round-trip. Not on the driver's path — each channel installs
+    /// its own send-status handler and is called directly.
     void onSendResult(PktType type, const uint8_t* toMac,
                       const uint8_t* data, size_t len, bool success);
 

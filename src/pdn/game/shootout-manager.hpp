@@ -260,7 +260,6 @@ private:
     // Ends the tournament for a departed participant. Callers own the question of
     // whether the MAC is one of ours; a locally observed jack loss already is.
     void applyPeerLoss(const uint8_t* lostMac);
-    bool isActiveDuelist(const uint8_t* mac) const;
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;
     uint8_t lastMatchResultSeqId = 0;

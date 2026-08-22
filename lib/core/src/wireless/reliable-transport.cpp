@@ -26,13 +26,13 @@ ReliableTransport::~ReliableTransport() {
     }
     registry.clear();
     // Unregister the driver callbacks before freeing their ctx cells: each
-    // ReceiveBinding is the void* ctx held by the driver's per-type receive and
-    // send-status handlers, so a packet arriving after this dtor would otherwise
-    // dispatch into freed memory.
+    // ReceiveBinding is the void* ctx held by the driver's per-type receive
+    // handler, so a packet arriving after this dtor would otherwise dispatch
+    // into freed memory. Send-status handlers are not cleared here — each
+    // channel owns and drops its own, and the channels are already gone above.
     for (ReceiveBinding*& binding : receiveBindings) {
         if (wirelessManager != nullptr) {
             wirelessManager->clearEspNowPacketHandler(binding->type);
-            wirelessManager->clearEspNowSendStatusHandler(binding->type);
         }
         delete binding;
         binding = nullptr;
@@ -52,14 +52,6 @@ void ReliableTransport::ensurePacketCallback(PktType type) {
            void* ctx) {
             ReceiveBinding* b = static_cast<ReceiveBinding*>(ctx);
             b->transport->deliverIncoming(b->type, src, data, len);
-        },
-        binding);
-    wirelessManager->setEspNowSendStatusHandler(
-        type,
-        [](const uint8_t* dst, const uint8_t* data, const size_t len,
-           bool success, void* ctx) {
-            ReceiveBinding* b = static_cast<ReceiveBinding*>(ctx);
-            b->transport->onSendResult(b->type, dst, data, len, success);
         },
         binding);
 }

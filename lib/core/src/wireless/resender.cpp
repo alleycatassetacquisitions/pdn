@@ -18,14 +18,14 @@ void Resender::send(const uint8_t* target, PktType type, uint8_t seqId,
 
 void Resender::sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients,
                              PktType type, uint8_t seqId,
-                             const uint8_t* payload, size_t len, SendMode mode) {
+                             const uint8_t* payload, size_t len) {
     if (recipients.empty()) return;
     // The all-ones address is the ESP-NOW broadcast MAC. Held as a literal rather
     // than read from the radio so a fan-out is representable before the driver is
     // up, and so the unit-test path (null manager) takes the same route as
     // production instead of a second one.
     const std::array<uint8_t, 6> broadcast = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    addGroup(type, seqId, broadcast, recipients, payload, len, mode);
+    addGroup(type, seqId, broadcast, recipients, payload, len, SendMode::KEEP_DISTINCT);
 }
 
 void Resender::addGroup(PktType type, uint8_t seqId,
@@ -35,11 +35,18 @@ void Resender::addGroup(PktType type, uint8_t seqId,
     if (mode == SendMode::SUPERSEDE_PER_TARGET) {
         supersedeRecipients(type, recipients);
     }
-    // A re-send under a seqId already in flight replaces that frame outright
-    // whatever the mode: two groups claiming one seqId would make an ack
-    // ambiguous. The recipients are whoever is named now.
+    // A re-send of the same frame — same seqId to the same address — replaces it
+    // outright whatever the mode, since the recipients are whoever is named now
+    // and a member that already acked must not be re-armed by it.
+    //
+    // The destination is part of that identity, not decoration. One channel can
+    // address several peers out of a single seqId space, so the same seqId to a
+    // different peer is a different frame; dropping it from the comparison would
+    // erase a still-pending send to someone else, and that one would then never
+    // retransmit and never abandon. An ack stays unambiguous across the two
+    // because onAck matches the recipient's MAC as well as the seqId.
     for (std::vector<Group>::iterator it = groups.begin(); it != groups.end(); ++it) {
-        if (it->type == type && it->seqId == seqId) {
+        if (it->type == type && it->seqId == seqId && it->destination == destination) {
             groups.erase(it);
             break;
         }

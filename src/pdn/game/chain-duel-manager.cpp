@@ -8,14 +8,18 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     , wirelessManager(wirelessManager)
     , rdc(rdc)
     , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND)
-    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce,
-                          [](uint8_t, const uint8_t*) {}) {
+    // No abandon handler: routing one in requires a ReliableTransport, and this
+    // channel is bound straight to a local Resender. A role announce that runs
+    // out of retries is repaired by the backstop in sync(), not by a callback.
+    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr) {
     // The radio's delivery report is this channel's ack; there is no reply
     // packet. Latency is read here because the channel reports delivery but does
-    // not time it.
-    roleAnnounceChannel.setOnDelivered([this](uint8_t, const uint8_t*) {
+    // not time it, and the peer is recorded as told here for the same reason:
+    // this is the first moment it is true.
+    roleAnnounceChannel.setOnDelivered([this](uint8_t, const uint8_t* mac) {
         ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
         ackCount++;
+        recordAnnounceDelivered(mac);
     });
     // Subscribed here rather than by whoever builds this manager: an owner that
     // wires it is an owner every other caller has to imitate, and one that forgets
@@ -26,21 +30,14 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // to be re-sent from the role edge; no jack edge would carry it.
     rdc->setOnChainRoleChange([this](ChainRole) { resendConfirm(); });
 
-    // Role announces have no reply packet: the radio's SEND_SUCCESS is the
-    // delivery signal, so the send-result handler is what clears the retry.
-    wirelessManager->setEspNowSendStatusHandler(
-        PktType::kRoleAnnounce,
-        [](const uint8_t* dst, const uint8_t* data, const size_t len, bool success, void* ctx) {
-            static_cast<ChainDuelManager*>(ctx)->roleAnnounceChannel.onSendResult(
-                dst, data, len, success);
-        },
-        this);
+    // The channel installs its own send-status handler, which is what clears a
+    // role-announce retry: this channel has no reply packet, so the radio's
+    // SEND_SUCCESS is the only delivery signal there is.
 }
 
 ChainDuelManager::~ChainDuelManager() {
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnChainRoleChange(nullptr);
-    wirelessManager->clearEspNowSendStatusHandler(PktType::kRoleAnnounce);
 }
 
 SerialIdentifier ChainDuelManager::opponentJack() const {
@@ -319,21 +316,8 @@ void ChainDuelManager::applyChainStateChange() {
             memcpy(selfArr.data(), selfMac, 6);
             if (!championMac.has_value() || *championMac != selfArr) {
                 championMac = selfArr;
-                // Stamped only when the announce actually left. A jack that has not
-                // finished its context exchange cannot accept one yet, and recording
-                // it anyway would suppress the re-announce the Connected transition
-                // is supposed to trigger.
-                recordSupporterAnnounceIfSent();
-                // Announce role to opponent-jack peer if new.
-                const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-                if (opponentPeer != nullptr) {
-                    std::array<uint8_t, 6> cur;
-                    memcpy(cur.data(), opponentPeer, 6);
-                    if (!lastAnnouncedOpponentJackMac.has_value() ||
-                        *lastAnnouncedOpponentJackMac != cur) {
-                        recordOpponentAnnounceIfSent();
-                    }
-                }
+                broadcastRoleAndChampion();
+                sendRoleToOpponentJack();
                 return;
             }
         }
@@ -357,8 +341,14 @@ void ChainDuelManager::applyChainStateChange() {
     if (championMac.has_value() && supporterPeer != nullptr) {
         std::array<uint8_t, 6> cur;
         memcpy(cur.data(), supporterPeer, 6);
+        // Deliberately not also skipped while a send is in flight, unlike the
+        // opponent side. That guard is only safe where something retries on a
+        // timer: here the chain-state event IS the only trigger, so suppressing
+        // one is permanent. Re-sending inside the delivery window costs at most a
+        // duplicate frame, and SUPERSEDE_PER_TARGET means it replaces rather than
+        // accumulates.
         if (!lastAnnouncedSupporterJackMac.has_value() || *lastAnnouncedSupporterJackMac != cur) {
-            recordSupporterAnnounceIfSent();
+            broadcastRoleAndChampion();
         }
     } else if (supporterPeer == nullptr) {
         // Reached because the coordinator reports the chain again once a link is
@@ -369,17 +359,7 @@ void ChainDuelManager::applyChainStateChange() {
         lastAnnouncedSupporterJackMac.reset();
     }
 
-    // Announce our role to the opponent-jack peer if it has changed.
-    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (opponentPeer != nullptr) {
-        std::array<uint8_t, 6> cur;
-        memcpy(cur.data(), opponentPeer, 6);
-        if (!lastAnnouncedOpponentJackMac.has_value() || *lastAnnouncedOpponentJackMac != cur) {
-            recordOpponentAnnounceIfSent();
-        }
-    } else {
-        lastAnnouncedOpponentJackMac.reset();
-    }
+    sendRoleToOpponentJack();
 
     // Re-offered on every topology event, not only when the champion changes: the
     // join is unacknowledged, and a dropped one costs this device's press for the
@@ -480,7 +460,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     }
     championMac = newMac;
     if (changed) {
-        recordSupporterAnnounceIfSent();
+        broadcastRoleAndChampion();
         // A head transfer swaps the champion without touching this device's own
         // links, so nothing else here would tell the new champion that this
         // supporter exists, let alone that it is already in.
@@ -489,23 +469,20 @@ void ChainDuelManager::onRoleAnnounceReceived(
     }
 }
 
-void ChainDuelManager::recordOpponentAnnounceIfSent() {
-    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (!sendRoleToOpponentJack() || opponentPeer == nullptr) return;
+void ChainDuelManager::recordAnnounceDelivered(const uint8_t* mac) {
+    if (mac == nullptr) return;
+    // Whichever jack faces this peer has now been told. In a 2-node ring both
+    // do, and both stamps are set — correctly, since both announces went there.
     std::array<uint8_t, 6> cur;
-    memcpy(cur.data(), opponentPeer, 6);
-    lastAnnouncedOpponentJackMac = cur;
-}
-
-void ChainDuelManager::recordSupporterAnnounceIfSent() {
-    // Every caller wants the same thing: announce, and remember having done so
-    // only if it happened. Keeping that in one place is what stops a caller
-    // recording an announce the link was not ready to carry.
+    memcpy(cur.data(), mac, 6);
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-    if (!broadcastRoleAndChampion() || supporterPeer == nullptr) return;
-    std::array<uint8_t, 6> cur;
-    memcpy(cur.data(), supporterPeer, 6);
-    lastAnnouncedSupporterJackMac = cur;
+    if (supporterPeer != nullptr && memcmp(supporterPeer, mac, 6) == 0) {
+        lastAnnouncedSupporterJackMac = cur;
+    }
+    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
+    if (opponentPeer != nullptr && memcmp(opponentPeer, mac, 6) == 0) {
+        lastAnnouncedOpponentJackMac = cur;
+    }
 }
 
 bool ChainDuelManager::broadcastRoleAndChampion() {
@@ -540,7 +517,22 @@ bool ChainDuelManager::broadcastRoleAndChampion() {
 // packet, which costs no extra airtime unless a frame actually fails.
 bool ChainDuelManager::sendRoleToOpponentJack() {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (opponentPeer == nullptr) return false;
+    if (opponentPeer == nullptr) {
+        // Forget who was last told, so a cable returning on the same MAC is
+        // announced to again rather than matching a stamp left by the old link.
+        lastAnnouncedOpponentJackMac.reset();
+        return false;
+    }
+    std::array<uint8_t, 6> cur;
+    memcpy(cur.data(), opponentPeer, 6);
+    // Already told, or still telling. "Told" means the radio confirmed delivery,
+    // not that a frame was handed over — see recordAnnounceDelivered. Holding
+    // off while a send is still pending keeps the backstop below from stacking a
+    // second announce on top of one that is simply still in its retry window.
+    if (lastAnnouncedOpponentJackMac.has_value() && *lastAnnouncedOpponentJackMac == cur) {
+        return false;
+    }
+    if (resender.isPending(PktType::kRoleAnnounce, opponentPeer)) return false;
     // Same half-open gate as the supporter side: a jack at Connecting has a peer
     // MAC off one inbound frame, and the peer drops announces from a MAC it has
     // not yet recorded.
@@ -564,4 +556,21 @@ void ChainDuelManager::sync() {
     // cleared one supporter at a time by their acks, since a broadcast carries
     // no per-member delivery evidence.
     resender.sync();
+
+    // Self-healing backstop for the opponent announce. Once it exhausts its
+    // retry budget nothing else would ever re-send it: the chain-state cascade
+    // offers it only when the peer MAC changes, and a cable that did not move
+    // never changes it. The opponent would then never learn this device's role,
+    // and their canInitiateMatch refuses that cable a duel until it is
+    // physically re-seated. The supporter side needs no equivalent — its
+    // cascade re-offers on every topology event, unchanged MAC included.
+    // Arms on the first tick and only repairs a full interval later: the cascade
+    // is the prompt path, this is the one that runs after it has already failed.
+    if (!roleAnnounceBackstopTimer.isRunning()) {
+        roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
+    } else if (roleAnnounceBackstopTimer.expired()) {
+        roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
+        // Cheap once delivered: the stamp matches and this returns immediately.
+        sendRoleToOpponentJack();
+    }
 }

@@ -336,6 +336,28 @@ TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
     EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 3u);
 }
 
+TEST(ResenderBroadcastTest, sameSeqIdToADifferentPeerIsADifferentFrame) {
+    // One channel can address two peers out of one seqId space — the role announce
+    // does exactly that, one jack each. A seqId therefore names a frame only
+    // together with where it went, so the replacement scan has to compare the
+    // destination too. Matching on (type, seqId) alone lets the second peer's send
+    // erase the first peer's still-pending frame, which then never retransmits and
+    // never abandons: it is simply gone, and that peer is never told anything.
+    BroadcastFixture f;
+    uint8_t payload[4] = {0};
+    std::array<uint8_t, 6> x = f.mac(1);
+    std::array<uint8_t, 6> y = f.mac(2);
+
+    f.resender.send(x.data(), PktType::kRoleAnnounce, 5, payload, sizeof(payload),
+                    Resender::SendMode::KEEP_DISTINCT);
+    f.resender.send(y.data(), PktType::kRoleAnnounce, 5, payload, sizeof(payload),
+                    Resender::SendMode::KEEP_DISTINCT);
+
+    EXPECT_EQ(f.resender.pendingCount(PktType::kRoleAnnounce), 2u);
+    EXPECT_TRUE(f.resender.isPending(PktType::kRoleAnnounce, x.data()));
+    EXPECT_TRUE(f.resender.isPending(PktType::kRoleAnnounce, y.data()));
+}
+
 TEST(ResenderBroadcastTest, emptyMemberListSendsNothing) {
     // A fan-out with nobody to hear it is not a delivery. Sending anyway would put
     // a frame on the air that nobody was asked to answer for.

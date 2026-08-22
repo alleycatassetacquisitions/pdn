@@ -306,7 +306,12 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
             // operator() frame is still live.
             JackChangeCallback handler = jackChangeCallback;
             if (handler) handler(j, connected);
-            notifyChainChange();
+            // Connects only. A disconnect reaches here during the Connected
+            // state's dismount, while this jack still names its departing peer
+            // and still reads CONNECTED, so the chain state a subscriber would
+            // read is the one that just stopped being true. onLinkDown below
+            // reports that edge instead, from Idle, where the accessors agree.
+            if (connected) notifyChainChange();
         };
         // Every link-death path mounts Idle; the initial mount fires this too, a
         // no-op on zero state.
@@ -321,13 +326,12 @@ void RemoteDeviceCoordinator::enableHelloConnectivity() {
                 if (lost) lost(mac.data());
             }
             onLinkLost(port);
-            // Report the chain again now the link is actually down. The jack
-            // change that announced the disconnect ran during the Connected
-            // state's dismount, while this jack still names its departing peer
-            // and still reads CONNECTED — so a subscriber that asks "what is on
-            // this jack" during that callback is told the old answer, and never
-            // gets a later chance to ask. A peer that comes back on the same MAC
-            // then looks unchanged to everyone downstream.
+            // This is where a link death is reported: Idle is mounted, so the jack
+            // now answers IDLE and hands back no peer. Reporting it from the jack
+            // change instead would describe the link as still up — that callback
+            // runs during the Connected state's dismount — and a subscriber has no
+            // way to ask again later, so a peer returning on the same MAC would
+            // look unchanged to everyone downstream.
             notifyChainChange();
         };
         context.silentLinkMs = HELLO_SILENT_LINK_MS;

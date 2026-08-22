@@ -519,17 +519,13 @@ protected:
         n.device->wirelessManager->setEspNowPacketHandler(
             PktType::kShootoutCommandAck,
             [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
+                // Same routing as GameSession::onShootoutCommandAckPacket: the
+                // seqId alone names the frame, so the command byte is only
+                // range-checked, never dispatched on.
                 auto* m = static_cast<ShootoutManager*>(ctx);
                 if (dataLen < 2) return;
-                ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-                uint8_t seqId = data[1];
-                switch (cmd) {
-                    case ShootoutCmd::BRACKET: m->onCommandAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::MATCH_START: m->onCommandAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::MATCH_RESULT: m->onCommandAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::TOURNAMENT_END: m->onCommandAckReceived(fromMac, seqId); break;
-                    default: break;
-                }
+                if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
+                m->onCommandAckReceived(fromMac, data[1]);
             },
             mgr);
     }

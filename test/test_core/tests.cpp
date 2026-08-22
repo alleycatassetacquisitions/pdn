@@ -1711,6 +1711,10 @@ TEST_F(ChainDuelManagerTests, reannouncesAfterSameMacReconnect) {
     cdmReannouncesAfterSameMacReconnect(this);
 }
 
+TEST_F(ChainDuelManagerTests, undeliveredOpponentAnnounceIsRetriedByBackstop) {
+    cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(this);
+}
+
 TEST_F(ChainDuelManagerTests, announceWaitsForConnectedSupporterJack) {
     cdmAnnounceWaitsForConnectedSupporterJack(this);
 }

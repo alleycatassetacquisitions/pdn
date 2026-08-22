@@ -35,14 +35,22 @@ public:
     static constexpr unsigned long INITIAL_TIMEOUT_MS = 100;
     static constexpr uint8_t MAX_RETRIES = 3;
 
-    // What a retry costs when the radio refuses the frame. TRANSMITTED_ONLY: a
-    // frame that never left does not spend a recipient's budget, so a brief
-    // outage costs nothing and the entry keeps retrying — right where nothing
-    // downstream is waiting on abandonment, and what the device-layer channels
-    // have always done. EVERY_ROUND: a due round spends a retry whether or not
-    // the frame left, so a send path that stays shut still reaches abandonment —
-    // required where abandonment is the caller's only liveness signal, as it is
-    // for a tournament whose next match waits on a fan-out clearing.
+    // What a due round costs when the radio refuses the frame. The two differ
+    // only then: a round that reaches the radio always spends a retry.
+    //
+    // TRANSMITTED_ONLY: a frame that never left does not spend a recipient's
+    // budget, so a brief outage costs nothing and the entry keeps retrying at
+    // whatever backoff it had reached. EVERY_ROUND: a due round spends a retry
+    // either way, so a send path that stays shut still reaches abandonment.
+    //
+    // This is not a rule to derive per caller — it is which behaviour that caller
+    // already had. The device-layer channels have always been TRANSMITTED_ONLY;
+    // both game managers have always counted every round, and ShootoutManager
+    // additionally depends on it, since a tournament's next match waits on a
+    // fan-out clearing and abandonment is what tells it that will never happen.
+    // ChainDuelManager consumes no abandonment at all and is EVERY_ROUND purely
+    // because that is what it did before; its undelivered announce is repaired by
+    // its own backstop rather than by giving up.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
@@ -105,10 +113,15 @@ public:
     ///
     /// Naming no recipients sends nothing: a frame nobody is expected to answer
     /// for is not a delivery.
+    ///
+    /// Always KEEP_DISTINCT. Superseding is per-recipient, so on a fan-out it
+    /// would retire only the recipients the new frame happens to name, leaving a
+    /// member that has since left the ring still owing an ack on the old one. A
+    /// caller that wants the previous fan-out gone wants all of it gone, which is
+    /// cancelAll.
     void sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients,
                        PktType type, uint8_t seqId,
-                       const uint8_t* payload, size_t len,
-                       SendMode mode = SendMode::KEEP_DISTINCT);
+                       const uint8_t* payload, size_t len);
 
     /// Clears this recipient's obligation for the frame sent under `seqId`.
     /// Returns true when one matched. For a unicast that is the radio's
@@ -172,10 +185,15 @@ private:
     };
 
     // One frame in flight. `destination` is the address it goes to — the
-    // recipient's own MAC for a unicast, the broadcast MAC for a fan-out. It is
-    // stored rather than derived from the recipient count, because a fan-out to
-    // a single remaining member must stay broadcast: a supporter several cables
-    // away is not in the peer table and cannot be addressed directly.
+    // recipient's own MAC for a unicast, the broadcast MAC for a fan-out — and is
+    // part of the frame's identity, since one channel can address several peers
+    // out of a single seqId space.
+    //
+    // Stored rather than derived from the recipient count. Deriving it would let
+    // a fan-out quietly turn into a unicast as its members ack away, changing how
+    // an already-airborne frame is addressed and spending a peer-table slot per
+    // remaining member. The driver does register unicast peers on demand, so the
+    // wall is the 20-slot table, not membership in it.
     struct Group {
         PktType type;
         uint8_t seqId;
