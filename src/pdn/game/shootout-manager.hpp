@@ -6,6 +6,7 @@
 #include <vector>
 #include "game/player.hpp"
 #include "device/remote-device-coordinator.hpp"
+#include "wireless/resender.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
@@ -118,6 +119,8 @@ public:
 
     void onTournamentEndReceived(const uint8_t* winner, uint8_t seqId);
     void onTournamentEndAckReceived(const uint8_t* fromMac, uint8_t seqId);
+    /// Bracket members that have not yet acked the current MATCH_START.
+    size_t getMatchStartPendingAckCount() const;
     size_t getTournamentEndPendingAckCount() const;
     /// seqId of the TOURNAMENT_END this device most recently sent.
     uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
@@ -145,12 +148,6 @@ public:
     static constexpr uint8_t MAX_BRACKET_SIZE = MAX_CHAIN_MEMBERS;
 
 private:
-    struct BracketPending {
-        std::array<uint8_t, 6> peer;
-        uint8_t retries = 0;
-        SimpleTimer timer;
-    };
-
     struct NameEntry {
         std::array<uint8_t, 6> mac;
         std::string name;
@@ -179,17 +176,10 @@ private:
     void broadcastCommand(const uint8_t* packet, size_t len);
     void broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
                          const uint8_t* packet, size_t len);
-    void sendReliablyToPeers(std::vector<BracketPending>& pending,
-                             const std::vector<std::array<uint8_t, 6>>& peers,
-                             const uint8_t* packet, size_t len);
-    static void eraseFromPending(std::vector<BracketPending>& pending,
-                                 const uint8_t* fromMac);
-    // Re-broadcasts `packet` once when any pending ack has timed out, advancing
-    // every surviving entry's retry counter. Drops entries whose budget is
-    // spent and returns true if any was dropped.
-    bool retryPendingRound(std::vector<BracketPending>& pending,
-                           const uint8_t* packet, size_t len);
-
+    /// One fan-out frame to every named peer but this device, with a pending
+    /// entry per recipient. Sends nothing when nobody else is named.
+    void sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
+                             uint8_t seqId, const uint8_t* packet, size_t len);
     std::vector<std::array<uint8_t, 6>> testLoopMembers;
     bool testLoopMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
@@ -218,10 +208,17 @@ private:
 
     SimpleTimer confirmRebroadcastTimer;
 
-    std::vector<BracketPending> bracketPendingAcks;
     uint8_t lastBracketSeqId = 0;
     uint8_t nextShootoutSeqId = 1;
-    static constexpr uint8_t kMaxShootoutAckRetries = 3;
+
+    // Retransmits for every command family this manager sends. Owned here, not
+    // shared with the coordinator's: a fan-out armed by this manager must die
+    // with it rather than keep broadcasting for a tournament that is over.
+    // All four families ride one PktType, so the abandon callback reads which
+    // one gave up off the frame's own command byte.
+    Resender resender;
+    void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
+                            const uint8_t* packet, size_t len);
 
     void sendBracketToPeers();
     // [cmd, seqId, count, count * 6-byte MAC] — the frame BRACKET and
@@ -244,7 +241,6 @@ private:
     std::array<uint8_t, 6> currentDuelistB{};
     uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
-    std::vector<BracketPending> matchStartPendingAcks;
     void maybeStartNextMatch();
     bool inMaybeStartNextMatch = false;
     void sendMatchStartToPeers(int matchIndex);
@@ -262,10 +258,8 @@ private:
     uint8_t lastObservedBracketSeqId = 0;
     uint8_t lastObservedMatchStartSeqId = 0;
     uint8_t lastObservedTournamentEndSeqId = 0;
-    SimpleTimer matchStartWatchdog;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
-                              uint8_t matchIndex);
-    std::vector<BracketPending> matchResultPendingAcks;
+                                uint8_t matchIndex);
     // Cached so sync() can rebuild the packet for retry. Senders aren't
     // always the coordinator, so a per-sender cache is required.
     struct LastMatchResult {
@@ -279,8 +273,6 @@ private:
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;
 
-    static unsigned long ackTimeoutForRetry(uint8_t retries);
-
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;
 
@@ -289,6 +281,5 @@ private:
     // into the post-tournament duel.
     std::optional<bool> originalIsHunter;
     void sendTournamentEndToPeers(const uint8_t* winner);
-    std::vector<BracketPending> tournamentEndPendingAcks;
     std::array<uint8_t, 6> findLastRemaining() const;
 };

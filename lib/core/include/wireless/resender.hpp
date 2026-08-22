@@ -45,8 +45,12 @@ public:
     /// from sync() AFTER all retransmits have been processed and the
     /// abandoned entries removed, so callbacks may freely call send() or
     /// cancel() on this Resender without invalidating the iteration.
+    /// `payload` is the frame that was given up on, so a caller multiplexing
+    /// several command families onto one PktType can read which one abandoned
+    /// straight off the bytes instead of reconstructing it from its own cursors.
     using AbandonCallback = std::function<void(PktType type, uint8_t seqId,
-                                               const uint8_t* targetMac)>;
+                                               const uint8_t* targetMac,
+                                               const uint8_t* payload, size_t payloadLen)>;
 
     /// wirelessManager may be nullptr in unit tests; transmit() then no-ops.
     explicit Resender(WirelessManager* wirelessManager)
@@ -122,6 +126,23 @@ public:
         return count;
     }
 
+    /// Members of one fan-out still owing an ack, named by the seqId it went out
+    /// under. Zero once every recipient has answered or been given up on.
+    size_t pendingCount(PktType type, uint8_t seqId) const {
+        size_t count = 0;
+        for (const Pending& p : pending) {
+            if (p.type == type && p.seqId == seqId) ++count;
+        }
+        for (const BroadcastGroup& g : broadcasts) {
+            if (g.type == type && g.seqId == seqId) count += g.members.size();
+        }
+        return count;
+    }
+
+    /// Drops every pending entry on this channel, to every target. For the case
+    /// where the conversation itself is over, not just one peer's part in it.
+    void cancelAll(PktType type);
+
     /// True when at least one entry to this target is pending on this channel,
     /// whether it was addressed directly or as one member of a fan-out.
     bool isPending(PktType type, const uint8_t* target) const {
@@ -186,6 +207,7 @@ private:
         PktType type;
         uint8_t seqId;
         std::array<uint8_t, 6> target;
+        std::vector<uint8_t> payload;
     };
     void syncBroadcasts(std::vector<AbandonedEntry>& abandoned);
 

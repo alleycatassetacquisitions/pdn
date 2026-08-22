@@ -12,9 +12,6 @@
 #define TAG "SHT"
 
 namespace {
-// Indexed by retry count. Table length matches kMaxShootoutAckRetries.
-constexpr unsigned long kAckBackoffMs[] = {100, 200, 400};
-
 void deriveShootoutMatchId(int matchIndex, char* out, size_t outSize) {
     // Deterministic ID so both duelists prime MatchManager with the same
     // value without a SEND_MATCH_ID handshake.
@@ -27,7 +24,13 @@ ShootoutManager::ShootoutManager(Player* player,
                                  RemoteDeviceCoordinator* rdc)
     : player(player)
     , wirelessManager(wirelessManager)
-    , rdc(rdc) {
+    , rdc(rdc)
+    , resender(wirelessManager) {
+    resender.setAbandonCallback(
+        [this](PktType, uint8_t seqId, const uint8_t* targetMac,
+               const uint8_t* packet, size_t len) {
+            onCommandAbandoned(seqId, targetMac, packet, len);
+        });
     if (rdc == nullptr) return;
     // Subscribed here rather than by whoever builds this manager: see
     // ChainDuelManager's constructor for the reasoning.
@@ -66,7 +69,7 @@ uint8_t ShootoutManager::getLastBracketSeqId() const {
 }
 
 size_t ShootoutManager::getBracketPendingAckCount() const {
-    return bracketPendingAcks.size();
+    return resender.pendingCount(PktType::kShootoutCommand, lastBracketSeqId);
 }
 
 int ShootoutManager::getCurrentMatchIndex() const {
@@ -121,56 +124,40 @@ void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>&
     broadcastCommand(packet, len);
 }
 
-void ShootoutManager::sendReliablyToPeers(std::vector<BracketPending>& pending,
-                                          const std::vector<std::array<uint8_t, 6>>& peers,
-                                          const uint8_t* packet, size_t len) {
+void ShootoutManager::sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
+                                          uint8_t seqId, const uint8_t* packet, size_t len) {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
-    pending.clear();
+    std::vector<std::array<uint8_t, 6>> recipients;
     for (const std::array<uint8_t, 6>& m : peers) {
         if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
-        BracketPending p;
-        p.peer = m;
-        p.timer.setTimer(ackTimeoutForRetry(0));
-        pending.push_back(p);
+        recipients.push_back(m);
     }
-    if (!pending.empty()) broadcastCommand(packet, len);
+    // One frame, one pending entry per recipient. A ring can hold more members
+    // than the ESP-NOW peer table has slots, so the fan-out is broadcast and the
+    // acks are what say who actually heard it.
+    resender.sendBroadcast(recipients, PktType::kShootoutCommand, seqId, packet, len);
 }
 
-bool ShootoutManager::retryPendingRound(std::vector<BracketPending>& pending,
-                                        const uint8_t* packet, size_t len) {
-    if (std::none_of(pending.begin(), pending.end(), [](BracketPending& p) { return p.timer.expired(); })) return false;
+void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
+                                         const uint8_t* packet, size_t len) {
+    if (len == 0) return;
+    const ShootoutCmd cmd = static_cast<ShootoutCmd>(packet[0]);
 
-    bool exhausted = false;
-    for (auto it = pending.begin(); it != pending.end();) {
-        if (it->retries >= kMaxShootoutAckRetries) {
-            LOG_W(TAG, "shootout ack retries exhausted for %s", MacToString(it->peer.data()));
-            it = pending.erase(it);
-            exhausted = true;
-        } else {
-            ++it;
-        }
-    }
-    if (pending.empty()) return exhausted;
+    // Only a device still in the running is worth ending a tournament over. An
+    // eliminated player or a member that is not in this bracket at all has
+    // nothing left to contribute to the current match, so their silence is
+    // noted and no more than that.
+    const bool stillCompeting = containsMac(bracket, targetMac) && !isEliminated(targetMac);
+    const bool needsEveryone = cmd == ShootoutCmd::BRACKET || cmd == ShootoutCmd::MATCH_START;
 
-    // One frame covers every member still owing an ack; a per-peer unicast
-    // retry would need a peer-table slot each.
-    broadcastCommand(packet, len);
-    for (BracketPending& p : pending) {
-        p.retries++;
-        p.timer.setTimer(ackTimeoutForRetry(p.retries));
+    if (needsEveryone && stillCompeting) {
+        LOG_E(TAG, "shootout cmd=%u seq=%u unacked by %s; ending tournament",
+              (unsigned)packet[0], (unsigned)seqId, MacToString(targetMac));
+        abortTournament();
+        return;
     }
-    return exhausted;
-}
-
-void ShootoutManager::eraseFromPending(std::vector<BracketPending>& pending,
-                                       const uint8_t* fromMac) {
-    for (auto it = pending.begin(); it != pending.end(); ) {
-        if (memcmp(it->peer.data(), fromMac, 6) == 0) {
-            it = pending.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    LOG_W(TAG, "shootout cmd=%u seq=%u unacked by %s",
+          (unsigned)packet[0], (unsigned)seqId, MacToString(targetMac));
 }
 
 std::array<uint8_t, 6> ShootoutManager::getOpponentMac() const {
@@ -181,8 +168,12 @@ uint8_t ShootoutManager::getLastMatchStartSeqId() const {
     return lastMatchStartSeqId;
 }
 
+size_t ShootoutManager::getMatchStartPendingAckCount() const {
+    return resender.pendingCount(PktType::kShootoutCommand, lastMatchStartSeqId);
+}
+
 size_t ShootoutManager::getTournamentEndPendingAckCount() const {
-    return tournamentEndPendingAcks.size();
+    return resender.pendingCount(PktType::kShootoutCommand, lastTournamentEndSeqId);
 }
 
 std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
@@ -214,10 +205,9 @@ void ShootoutManager::resetTournamentState() {
     confirmedSet.clear();
     bracket.clear();
     currentRound.clear();
-    bracketPendingAcks.clear();
-    matchStartPendingAcks.clear();
-    tournamentEndPendingAcks.clear();
-    matchResultPendingAcks.clear();
+    // Every fan-out this tournament had in flight is void; a retransmit landing
+    // after the reset would speak for a tournament that no longer exists.
+    resender.cancelAll(PktType::kShootoutCommand);
     eliminated.clear();
     reportedLocalWin = false;
     names.clear();
@@ -458,12 +448,6 @@ void ShootoutManager::advanceToBracketReveal() {
     }
 }
 
-unsigned long ShootoutManager::ackTimeoutForRetry(uint8_t retries) {
-    constexpr size_t kTableSize = sizeof(kAckBackoffMs) / sizeof(kAckBackoffMs[0]);
-    if (retries >= kTableSize) return kAckBackoffMs[kTableSize - 1];
-    return kAckBackoffMs[retries];
-}
-
 std::vector<uint8_t> ShootoutManager::buildMacListPacket(
     ShootoutCmd cmd, uint8_t seqId,
     const std::vector<std::array<uint8_t, 6>>& macs) const {
@@ -491,12 +475,12 @@ void ShootoutManager::sendBracketToPeers() {
     lastBracketSeqId = nextSeqId();
     std::vector<uint8_t> packet =
         buildMacListPacket(ShootoutCmd::BRACKET, lastBracketSeqId, bracket);
-    sendReliablyToPeers(bracketPendingAcks, bracket, packet.data(), packet.size());
+    sendReliablyToPeers(bracket, lastBracketSeqId, packet.data(), packet.size());
 }
 
 void ShootoutManager::onBracketAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    if (seqId != lastBracketSeqId) return;
-    eraseFromPending(bracketPendingAcks, fromMac);
+    // seqId alone identifies the fan-out; a stale one matches nothing.
+    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
 void ShootoutManager::abortTournament() {
@@ -553,39 +537,12 @@ void ShootoutManager::sync() {
         }
     }
 
-    if (!bracketPendingAcks.empty()) {
-        std::vector<uint8_t> packet =
-            buildMacListPacket(ShootoutCmd::BRACKET, lastBracketSeqId, bracket);
-        // A member that never acks the bracket would sit out the tournament it
-        // is physically wired into, so an exhausted budget aborts rather than
-        // dropping that member.
-        if (retryPendingRound(bracketPendingAcks, packet.data(), packet.size())) {
-            abortTournament();
-        }
-    }
+    // Every command family retransmits and abandons here. Which one gave up is
+    // read off the frame in onCommandAbandoned; MATCH_START is ack-tracked like
+    // the rest, so the watchdog that used to be its only re-send is gone.
+    resender.sync();
 
     maybeStartNextMatch();
-
-    if (isCoordinator() && phase == Phase::MATCH_IN_PROGRESS &&
-        matchStartPendingAcks.empty() &&
-        matchStartWatchdog.expired()) {
-        sendMatchStartToPeers(currentMatchIndex);
-    }
-
-    if (phase == Phase::ENDED && !tournamentEndPendingAcks.empty()) {
-        uint8_t packet[8];
-        packet[0] = static_cast<uint8_t>(ShootoutCmd::TOURNAMENT_END);
-        packet[1] = lastTournamentEndSeqId;
-        memcpy(&packet[2], tournamentWinner.data(), 6);
-        retryPendingRound(tournamentEndPendingAcks, packet, sizeof(packet));
-    }
-
-    if (!matchResultPendingAcks.empty()) {
-        std::vector<uint8_t> packet = buildMatchResultPacket(
-            lastMatchResult.winner.data(), lastMatchResult.loser.data(),
-            lastMatchResult.matchIndex);
-        retryPendingRound(matchResultPendingAcks, packet.data(), packet.size());
-    }
 }
 
 std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>
@@ -623,13 +580,12 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
-    sendReliablyToPeers(matchStartPendingAcks, bracket, packet.data(), packet.size());
-    matchStartWatchdog.setTimer(kMatchWatchdogMs);
+    sendReliablyToPeers(bracket, lastMatchStartSeqId, packet.data(), packet.size());
 }
 
 void ShootoutManager::onMatchStartAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    if (seqId != lastMatchStartSeqId) return;
-    eraseFromPending(matchStartPendingAcks, fromMac);
+    // seqId alone identifies the fan-out; a stale one matches nothing.
+    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
 bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
@@ -678,7 +634,8 @@ void ShootoutManager::applyPeerLoss(const uint8_t* lostMac) {
 
 void ShootoutManager::maybeStartNextMatch() {
     if (!isCoordinator()) return;
-    if (!bracketPendingAcks.empty()) return;
+    // Nobody moves on until the whole bracket has it.
+    if (resender.pendingCount(PktType::kShootoutCommand, lastBracketSeqId) > 0) return;
     if (phase != Phase::BRACKET_REVEAL && phase != Phase::BETWEEN_MATCHES) return;
     if (phase == Phase::BRACKET_REVEAL && !bracketRevealTimer.expired()) return;
     // Re-entrancy guard: this function mutates currentMatchIndex, bracket,
@@ -735,8 +692,7 @@ void ShootoutManager::onBracketReceived(
         bracket.clear();
         currentRound.clear();
         eliminated.clear();
-        bracketPendingAcks.clear();
-        matchStartPendingAcks.clear();
+        resender.cancelAll(PktType::kShootoutCommand);
         currentMatchIndex = -1;
         reportedLocalWin = false;
     }
@@ -807,7 +763,6 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
         player->setIsHunter(*originalIsHunter);
     }
     phase = Phase::BETWEEN_MATCHES;
-    matchStartWatchdog.invalidate();
 }
 
 std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(
@@ -829,7 +784,7 @@ void ShootoutManager::sendMatchResultToPeers(
     lastMatchResult.matchIndex = matchIndex;
     auto packet = buildMatchResultPacket(winner, loser, matchIndex);
     // Targets confirmedSet to reach already-eliminated players too.
-    sendReliablyToPeers(matchResultPendingAcks, confirmedSet, packet.data(), packet.size());
+    sendReliablyToPeers(confirmedSet, lastMatchResultSeqId, packet.data(), packet.size());
 }
 
 void ShootoutManager::reportLocalWin() {
@@ -863,12 +818,12 @@ void ShootoutManager::onMatchResultReceived(
 }
 
 void ShootoutManager::onMatchResultAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    if (seqId != lastMatchResultSeqId) return;
-    eraseFromPending(matchResultPendingAcks, fromMac);
+    // seqId alone identifies the fan-out; a stale one matches nothing.
+    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
 size_t ShootoutManager::getMatchResultPendingAckCount() const {
-    return matchResultPendingAcks.size();
+    return resender.pendingCount(PktType::kShootoutCommand, lastMatchResultSeqId);
 }
 
 std::array<uint8_t, 6> ShootoutManager::findLastRemaining() const {
@@ -887,14 +842,14 @@ void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
     memcpy(&packet[2], winner, 6);
     // Targets confirmedSet rather than bracket: eliminated players need the
     // tournament-end transition or they stall in BETWEEN_MATCHES.
-    sendReliablyToPeers(tournamentEndPendingAcks, confirmedSet, packet, sizeof(packet));
+    sendReliablyToPeers(confirmedSet, lastTournamentEndSeqId, packet, sizeof(packet));
     memcpy(tournamentWinner.data(), winner, 6);
     phase = Phase::ENDED;
 }
 
 void ShootoutManager::onTournamentEndAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    if (seqId != lastTournamentEndSeqId) return;
-    eraseFromPending(tournamentEndPendingAcks, fromMac);
+    // seqId alone identifies the fan-out; a stale one matches nothing.
+    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
 void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seqId) {

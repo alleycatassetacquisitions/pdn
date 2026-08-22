@@ -1823,7 +1823,9 @@ TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedO
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
-TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
+TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
+TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
+TEST_F(ShootoutManagerTests, eliminatedMemberGoingSilentDoesNotAbort) { eliminatedMemberGoingSilentDoesNotAbort(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }

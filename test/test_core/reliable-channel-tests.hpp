@@ -229,7 +229,7 @@ TEST(ResenderBroadcastTest, silentMemberAbandonsAloneAndNamesItself) {
 
     std::vector<std::array<uint8_t, 6>> abandoned;
     f.resender.setAbandonCallback(
-        [&abandoned](PktType, uint8_t, const uint8_t* target) {
+        [&abandoned](PktType, uint8_t, const uint8_t* target, const uint8_t*, size_t) {
             std::array<uint8_t, 6> mac{};
             memcpy(mac.data(), target, 6);
             abandoned.push_back(mac);
@@ -261,7 +261,7 @@ TEST(ResenderBroadcastTest, failedRadioSendCostsNoRetryAndIsAttemptedOnce) {
 
     int abandons = 0;
     f.resender.setAbandonCallback(
-        [&abandons](PktType, uint8_t, const uint8_t*) { abandons++; });
+        [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) { abandons++; });
 
     f.resender.sendBroadcast(members, PktType::kShootoutCommand, 5, payload, sizeof(payload));
     ASSERT_EQ(f.frames, 1);

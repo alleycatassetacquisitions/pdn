@@ -116,6 +116,15 @@ void Resender::cancel(PktType type, const uint8_t* target) {
     }
 }
 
+void Resender::cancelAll(PktType type) {
+    for (std::vector<Pending>::iterator it = pending.begin(); it != pending.end();) {
+        it = (it->type == type) ? pending.erase(it) : it + 1;
+    }
+    for (std::vector<BroadcastGroup>::iterator g = broadcasts.begin(); g != broadcasts.end();) {
+        g = (g->type == type) ? broadcasts.erase(g) : g + 1;
+    }
+}
+
 void Resender::syncBroadcasts(std::vector<AbandonedEntry>& abandoned) {
     for (size_t gi = 0; gi < broadcasts.size();) {
         BroadcastGroup& g = broadcasts[gi];
@@ -149,7 +158,7 @@ void Resender::syncBroadcasts(std::vector<AbandonedEntry>& abandoned) {
             if (m.retries >= MAX_RETRIES) {
                 LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
                       (unsigned)g.type, g.seqId, m.target[4], m.target[5]);
-                abandoned.push_back({g.type, g.seqId, m.target});
+                abandoned.push_back({g.type, g.seqId, m.target, g.payload});
                 stats.abandons++;
                 g.members.erase(g.members.begin() + mi);
                 continue;
@@ -197,7 +206,7 @@ void Resender::sync() {
         if (p.retries >= MAX_RETRIES) {
             LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
                   (unsigned)p.type, p.seqId, p.target[4], p.target[5]);
-            abandoned.push_back({p.type, p.seqId, p.target});
+            abandoned.push_back({p.type, p.seqId, p.target, p.payload});
             stats.abandons++;
             pending.erase(pending.begin() + i);
             continue;
@@ -220,7 +229,8 @@ void Resender::sync() {
 
     if (abandonCallback) {
         for (const AbandonedEntry& a : abandoned) {
-            abandonCallback(a.type, a.seqId, a.target.data());
+            abandonCallback(a.type, a.seqId, a.target.data(),
+                            a.payload.data(), a.payload.size());
         }
     }
 }

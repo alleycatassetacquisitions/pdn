@@ -13,7 +13,8 @@ ReliableTransport::ReliableTransport(WirelessManager* wm)
     : wirelessManager(wm)
     , resender(wm) {
     resender.setAbandonCallback(
-        [this](PktType type, uint8_t seqId, const uint8_t* targetMac) {
+        [this](PktType type, uint8_t seqId, const uint8_t* targetMac,
+               const uint8_t*, size_t) {
             onResenderAbandon(type, seqId, targetMac);
         });
 }
