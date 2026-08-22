@@ -85,8 +85,8 @@ bool ShootoutManager::isLocalDuelist() const {
 
 // The single seqId allocator for every command family this manager sends. That
 // is load-bearing, not incidental: because one counter serves all of them, a
-// seqId in flight names exactly one frame, which is what lets an ack carry only
-// a seqId and lets the Resender key on (PktType, seqId) alone.
+// seqId in flight names exactly one of this device's frames, which is what lets
+// an ack carry only a seqId.
 uint8_t ShootoutManager::nextSeqId() {
     uint8_t id = nextShootoutSeqId++;
     if (nextShootoutSeqId == 0) nextShootoutSeqId = 1;
@@ -119,16 +119,24 @@ void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>&
     // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
     // ring larger than that at all, whereas the broadcast slot is registered once
     // at radio init. Receivers must drop commands naming MACs outside their own ring.
-    if (peersExcludingSelf(peers).empty()) return;
+    if (!hasPeerOtherThanSelf(peers)) return;
     broadcastCommand(packet, len);
 }
 
-// Who a ring fan-out is actually addressed to. Both send paths ask through here
-// rather than each spelling the filter out: written twice they disagreed when the
-// radio had no MAC to report — one treated "no self" as "nobody here is me" and
-// sent, the other kept this device in its own recipient list, where it would owe
-// an ack it can never send and abandon. For a BRACKET fan-out that abandonment
-// ends the tournament.
+// Who a ring fan-out is addressed to. One spelling, asked by both send paths, so
+// a device can never end up owing an ack to itself.
+// Same question as peersExcludingSelf, asked without building the answer: this
+// runs on the 1Hz rebroadcasts, where a ring can be 64 members.
+bool ShootoutManager::hasPeerOtherThanSelf(
+    const std::vector<std::array<uint8_t, 6>>& peers) const {
+    const uint8_t* selfMac = wirelessManager->getMacAddress();
+    for (const std::array<uint8_t, 6>& m : peers) {
+        if (selfMac != nullptr && memcmp(m.data(), selfMac, 6) == 0) continue;
+        return true;
+    }
+    return false;
+}
+
 std::vector<std::array<uint8_t, 6>> ShootoutManager::peersExcludingSelf(
     const std::vector<std::array<uint8_t, 6>>& peers) const {
     const uint8_t* selfMac = wirelessManager->getMacAddress();
@@ -917,6 +925,12 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac) {
     // tournament in radio range.
     if (!isRingMember(fromMac)) return;
     if (phase == Phase::ABORTED || phase == Phase::IDLE) return;
+    // Mirrors abortTournament's own guard: a tournament that reached its winner
+    // is over, not stuck, and wiping it here would blank the standings on a
+    // device that already has them. Unreachable while abortTournament is the
+    // only ABORT sender and refuses to send from ENDED — kept so the two ends
+    // of the same rule cannot drift apart.
+    if (phase == Phase::ENDED) return;
     resetToIdle();
     phase = Phase::ABORTED;
 }

@@ -35,31 +35,29 @@ public:
     static constexpr unsigned long INITIAL_TIMEOUT_MS = 100;
     static constexpr uint8_t MAX_RETRIES = 3;
 
-    // What a due round costs when the radio refuses the frame. The two differ
-    // only then: a round that reaches the radio always spends a retry.
+    // What a due round costs when the local send path refuses the frame — the
+    // only case the two differ, since a round that reaches the radio always
+    // spends a retry. TRANSMITTED_ONLY parks the entry until the path reopens;
+    // EVERY_ROUND spends anyway, so a path that stays shut still reaches
+    // abandonment. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
-    // TRANSMITTED_ONLY: a frame that never left does not spend a recipient's
-    // budget, so a brief outage costs nothing and the entry keeps retrying at
-    // whatever backoff it had reached. EVERY_ROUND: a due round spends a retry
-    // either way, so a send path that stays shut still reaches abandonment.
-    //
-    // Both game managers need EVERY_ROUND, for different reasons, and neither is
-    // historical accident:
-    //
-    // ShootoutManager waits on abandonment directly — the next match is gated on
-    // a fan-out clearing, so a send path that stays shut has to reach abandonment
-    // or the tournament simply stops.
-    //
-    // ChainDuelManager registers no abandon callback, but still depends on the
-    // entry being GIVEN UP ON. Under TRANSMITTED_ONLY a refused round costs
-    // nothing, so a recipient never reaches the budget, never leaves, and keeps
-    // retransmitting at the floor forever. Nothing else removes it: the role
-    // announce is never cancelled, and SUPERSEDE_PER_TARGET only clears a target
-    // that is sent to again — which a departed peer never is. The stuck entry
-    // also holds isPending true, which is what the opponent-side backstop tests
-    // before re-offering. Abandonment is the only exit.
+    // Both game managers need abandonment reachable. ShootoutManager waits on it
+    // directly: the next match is gated on a fan-out clearing. ChainDuelManager
+    // registers no abandon callback but needs the entry GONE, because its
+    // periodic re-offer skips a jack whose announce is still pending.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
+
+    /// Wall-clock span from a frame's first send to a recipient being given up
+    /// on, so every retransmit of it falls inside. Holds under EVERY_ROUND; a
+    /// TRANSMITTED_ONLY entry against a shut send path has no bound at all,
+    /// because a refused round costs no budget.
+    static constexpr unsigned long retransmitSpanMs() {
+        unsigned long total = 0;
+        for (uint8_t r = 0; r <= MAX_RETRIES; ++r)
+            total += backoffMs(r);
+        return total;
+    }
 
     /// Exponential backoff for the given retry number: 100, 200, 400 ...
     static constexpr unsigned long backoffMs(uint8_t retryNum) {
@@ -214,9 +212,9 @@ private:
                   const uint8_t* payload, size_t len, SendMode mode);
 
     // Drop these recipients from every prior group on this channel, and drop any
-    // group left with none. This is what SUPERSEDE_PER_TARGET means: whoever the
-    // new frame speaks to stops owing anything to the old one. Reached from a
-    // unicast send and from cancel(); a fan-out is always KEEP_DISTINCT.
+    // group left with none. Reached from a SUPERSEDE_PER_TARGET send and from
+    // cancel() — and cancel() reaches fan-out groups too, dropping one member
+    // out of a live broadcast.
     void supersedeRecipients(PktType type,
                              const std::vector<std::array<uint8_t, 6>>& recipients);
 

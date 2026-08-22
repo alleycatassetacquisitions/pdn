@@ -100,12 +100,3 @@ void ReliableChannelBase::logLengthMismatch(PktType type, size_t got, size_t wan
     LOG_W(RELIABLE_CHANNEL_TAG, "reliable rx len mismatch type=%u got=%zu want=%zu",
           (unsigned)type, got, want);
 }
-
-void ReliableChannelBase::sendOnceBytes(const uint8_t* mac, const uint8_t* data, size_t len) {
-    WirelessManager* wm = getWirelessManager();
-    if (wm == nullptr) {
-        LOG_E(RELIABLE_CHANNEL_TAG, "sendOnceBytes called with null WirelessManager");
-        return;
-    }
-    wm->sendEspNowData(mac, packetType, data, len);
-}

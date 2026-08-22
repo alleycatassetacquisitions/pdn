@@ -11,9 +11,7 @@
 
 class WirelessManager;
 
-// Owns one Resender. Vends typed channels, one per PktType.
-// All channels share the single Resender; abandon callbacks fire inline
-// during sync() and must be cheap.
+// Owns one Resender. Vends typed channels, one per PktType, all sharing it.
 //
 // Lifecycle of a reliable packet:
 //   send: manager -> channel->sendReliable (serialize, stamp seqId) ->
@@ -82,7 +80,6 @@ public:
     void sync();
 
     /// nullptr in unit tests without a radio.
-    WirelessManager* getWirelessManager() { return wirelessManager; }
 
 private:
     // Logs a PktType claimed by two different payload types (a wiring bug).

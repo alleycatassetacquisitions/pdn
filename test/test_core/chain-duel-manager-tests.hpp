@@ -806,6 +806,46 @@ inline void cdmReannouncesAfterSameMacReconnect(ChainDuelManagerTests* suite) {
 // changes, and a cable that did not move never changes it. The opponent would
 // then never learn this device's role, and its canInitiateMatch refuses that
 // cable a duel for the rest of the round — recoverable only by re-seating it.
+// The supporter direction needs the same repair as the opponent one. A supporter
+// that never learns its champion never joins the chain and never confirms, so it
+// and everything below it contribute no boost for the whole round — and nothing
+// else re-offers it: a settled chain raises no chain-state events, and the two
+// things that do fire on one (announceToChampion, the confirm resend) send a
+// different packet in the opposite direction, upstream to the champion.
+inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int announcesToSupporter = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) announcesToSupporter++;
+            return 1;
+        });
+
+    suite->connectOutputPort();
+    suite->connectInputPort();
+    ASSERT_GT(announcesToSupporter, 0) << "no supporter announce to begin with";
+
+    // The radio never confirms delivery, so the announce burns its whole budget
+    // and is given up on. The supporter is still on the jack, still untold.
+    for (int i = 0; i < Resender::MAX_RETRIES + 1; ++i) {
+        suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+        cdm.sync();
+    }
+    const int afterAbandon = announcesToSupporter;
+
+    // A full backstop interval later it is offered again.
+    suite->fakeClock->advance(ChainDuelManager::ROLE_ANNOUNCE_BACKSTOP_MS + 1);
+    cdm.sync();
+    EXPECT_GT(announcesToSupporter, afterAbandon)
+        << "supporter announce was abandoned and never re-offered; that supporter "
+           "contributes no boost for the rest of the round";
+}
+
 inline void cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);

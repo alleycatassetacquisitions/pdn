@@ -26,7 +26,8 @@
 // Most channels are created and owned by a ReliableTransport, one per PktType.
 // Not all: ChainDuelManager binds one straight to its own Resender, which is
 // what a caller outside the coordinator has to do, the transport being private
-// to it. A channel bound that way has no abandon routing.
+// to it. Such an owner routes abandonment itself if it wants it, the way
+// ShootoutManager does; ChainDuelManager does not.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;
@@ -39,7 +40,7 @@ public:
                         OnAbandon onAbandon,
                         Resender::SendMode sendMode = Resender::SendMode::SUPERSEDE_PER_TARGET);
     /// Virtual: channels are owned and deleted through the base pointer. Drops
-    /// this channel's send-status registration, which the constructor installed.
+    /// both driver registrations the constructor installed.
     virtual ~ReliableChannelBase();
 
     /// The PktType this channel claims.
@@ -77,7 +78,6 @@ protected:
     uint8_t nextSeqId();
     // nullptr in probe-style unit tests; every use is null-tolerant.
     WirelessManager* getWirelessManager() const { return wirelessManager; }
-    void sendOnceBytes(const uint8_t* mac, const uint8_t* data, size_t len);
     // Defined in the .cpp so the logger stays out of this template header.
     static void logLengthMismatch(PktType type, size_t got, size_t want);
     // Suppress re-dispatch of a duplicate reliable delivery from the same
@@ -92,17 +92,20 @@ protected:
     WirelessManager* wirelessManager;
     Resender::SendMode sendMode;
 
-    // How long a seqId stays claimed by the frame that used it. A duplicate is
-    // by definition a RETRANSMIT, and retransmits stop once the sender's budget
-    // is spent — 100+200+400+800ms — so anything reusing a seqId after this
-    // window is a different frame, not a repeat of the old one.
+    // How long a seqId stays claimed by the frame that used it. Without a claim
+    // that expires, dedup cannot tell a repeat from a sender that restarted:
+    // seqIds begin at 1 on a fresh channel, so the first frame after a peer
+    // reboots carries the seqId the receiver already holds. On a channel that
+    // sends one frame per peer that is not a rare collision, it is every reboot.
     //
-    // Without the window, dedup cannot tell a repeat from a sender that
-    // restarted: seqIds begin at 1 on a fresh channel, so the first frame after
-    // a peer reboots carries the same seqId the receiver already holds and is
-    // silently dropped. On a channel that sends one frame per peer that is not a
-    // rare collision, it is every reboot.
-    static constexpr unsigned long RX_SEQ_CLAIM_MS = 2000;
+    // Derived, not chosen, so raising MAX_RETRIES moves it too. The margin is
+    // slack, not meaning.
+    //
+    // Known gap: the span it is derived from only bounds an EVERY_ROUND sender.
+    // A TRANSMITTED_ONLY entry parked behind a shut send path can retransmit
+    // arbitrarily later, and that copy is re-delivered rather than suppressed —
+    // so a handler on such a channel must tolerate being run twice.
+    static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::retransmitSpanMs() + 500;
 
 private:
     struct RxSeqRecord {
@@ -140,11 +143,6 @@ public:
         resender->send(mac, packetType, p.seqId,
                        reinterpret_cast<const uint8_t*>(&p), sizeof(P), sendMode);
         return p.seqId;
-    }
-
-    /// Fire-and-forget send: seqId 0, no retry, no ack expected.
-    void sendOnce(const uint8_t* mac, P p) {
-        sendOnceBytes(mac, reinterpret_cast<const uint8_t*>(&p), sizeof(P));
     }
 
     /// Decode + dispatch one inbound packet: dedup, then the onReceive

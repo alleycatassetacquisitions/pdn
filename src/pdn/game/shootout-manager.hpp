@@ -182,6 +182,8 @@ private:
                          const uint8_t* packet, size_t len);
     /// One fan-out frame to every named peer but this device, with a pending
     /// entry per recipient. Sends nothing when nobody else is named.
+    /// True when `peers` names anyone but this device.
+    bool hasPeerOtherThanSelf(const std::vector<std::array<uint8_t, 6>>& peers) const;
     /// The peers a ring fan-out is addressed to: `peers` without this device.
     std::vector<std::array<uint8_t, 6>> peersExcludingSelf(
         const std::vector<std::array<uint8_t, 6>>& peers) const;

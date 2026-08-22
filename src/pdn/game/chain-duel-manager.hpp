@@ -120,9 +120,8 @@ public:
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
-    /// How often an undelivered opponent announce is re-offered. Nothing else
-    /// would: the only other trigger is the peer MAC changing, and a cable that
-    /// did not move never changes it.
+    /// How often an undelivered role announce is re-offered, in either
+    /// direction. A settled chain raises no events, so nothing else would.
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = 1000;
 
     // Retry observability for this manager's two channels.
@@ -161,6 +160,9 @@ private:
     // The role/champion cascade. Wrapped by onChainStateChanged so every caller
     // also gets the confirm bookkeeping that has to follow it.
     void applyChainStateChange();
+
+    // Periodic repair for an announce that spent its retry budget; see sync().
+    void reofferUndeliveredAnnounces();
 
     // Tells the champion this device follows that it exists. The champion cannot
     // discover a supporter it shares no cable with any other way.
