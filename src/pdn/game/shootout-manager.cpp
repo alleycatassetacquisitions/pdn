@@ -178,6 +178,27 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
         // buildMatchStartPacket.
         blocksTournament = memcmp(&packet[2], targetMac, 6) == 0 ||
                            memcmp(&packet[8], targetMac, 6) == 0;
+    } else if (cmd == ShootoutCmd::MATCH_RESULT && len >= 15 &&
+               memcmp(targetMac, coordinatorMac.data(), 6) == 0) {
+        // The coordinator never took this device's result, and nothing else will
+        // notice: it advances the bracket only on receiving one, so it sits in
+        // MATCH_IN_PROGRESS with nothing owed and the Resender goes quiet. This
+        // device is the one that knows — the frame it just gave up on is its own
+        // record of a bout it won — so it says so again rather than waiting to be
+        // asked. One retry: a coordinator that took neither copy is unreachable,
+        // and a tournament that cannot deliver a result is over.
+        if (!matchResultResent) {
+            matchResultResent = true;
+            LOG_W(TAG, "coordinator missed our match result; re-sending");
+            // Read back off the frame that was given up on, never off current
+            // state: a fan-out outlives the match it announced, so by now
+            // currentDuelist* may name a different bout entirely.
+            // [cmd, seqId, winner(6), loser(6), matchIndex] — see
+            // buildMatchResultPacket.
+            sendMatchResultToPeers(&packet[2], &packet[8], packet[14]);
+            return;
+        }
+        blocksTournament = true;
     }
 
     if (blocksTournament) {
@@ -564,17 +585,6 @@ void ShootoutManager::sync() {
     resender.sync();
 
     maybeStartNextMatch();
-
-    // Stall recovery. The ack retry above covers a member that never heard
-    // MATCH_START; this covers the opposite case, a match every member DID ack
-    // and nobody finished — a duelist that reset or browned out without pulling
-    // a cable. Gated on nothing being owed precisely because that is when the
-    // Resender has gone quiet and cannot notice.
-    if (isCoordinator() && phase == Phase::MATCH_IN_PROGRESS &&
-        getPendingAckCount(lastMatchStartSeqId) == 0 &&
-        matchStartWatchdog.expired()) {
-        sendMatchStartToPeers(currentMatchIndex);
-    }
 }
 
 std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>
@@ -606,14 +616,16 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
     currentDuelistA = a;
     currentDuelistB = b;
     currentMatchIndex = matchIndex;
-    if (!sameMatch) reportedLocalWin = false;
+    if (!sameMatch) {
+        reportedLocalWin = false;
+        matchResultResent = false;
+    }
     if (!sameMatch && isLocalDuelist() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
         memcpy(opponentMac.data(), opp, 6);
         primeMatchManagerForMatch();
     }
     sendReliablyToPeers(bracket, lastMatchStartSeqId, packet.data(), packet.size());
-    matchStartWatchdog.setTimer(kMatchWatchdogMs);
 }
 
 bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
@@ -749,32 +761,6 @@ void ShootoutManager::onMatchStartReceived(
     if (isEliminated(duelistA) || isEliminated(duelistB)) {
         lastObservedMatchStartSeqId = seqId;
         sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
-        // The ack stops the retransmits but not the asking: the coordinator only
-        // re-announces a match it still believes unfinished, so it is telling us
-        // it never got the result. Acking alone would leave it asking forever
-        // while every member silently declines to play. Answer with the result
-        // itself when this device is the one that holds it — it won exactly this
-        // bout, so the record it re-sends is its own, not an inference about
-        // somebody else's.
-        //
-        // This covers the whole stall, not a slice of it: the coordinator cannot
-        // advance past a match whose result it missed. maybeStartNextMatch runs
-        // only from BETWEEN_MATCHES or BRACKET_REVEAL; BETWEEN_MATCHES is reached
-        // only by applyMatchResult, and BRACKET_REVEAL only before the first
-        // match. So the match it re-announces is always the one it is still owed
-        // a result for, and the device that owes it is the one here.
-        // Deliberately not isSameMatch(): that requires MATCH_IN_PROGRESS, and a
-        // device holding a win for this bout has already left that phase.
-        const bool samePair = memcmp(currentDuelistA.data(), duelistA, 6) == 0 &&
-                              memcmp(currentDuelistB.data(), duelistB, 6) == 0;
-        const uint8_t* selfMac = wirelessManager->getMacAddress();
-        if (selfMac != nullptr && reportedLocalWin && samePair &&
-            matchIndex == currentMatchIndex && !isEliminated(selfMac)) {
-            const uint8_t* beaten =
-                (memcmp(selfMac, duelistA, 6) == 0) ? duelistB : duelistA;
-            LOG_W(TAG, "re-sending held result for matchIndex=%u", matchIndex);
-            sendMatchResultToPeers(selfMac, beaten, matchIndex);
-        }
         return;
     }
     bool sameMatch = isSameMatch(matchIndex, duelistA, duelistB);
@@ -820,7 +806,6 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
         player->setIsHunter(*originalIsHunter);
     }
     phase = Phase::BETWEEN_MATCHES;
-    matchStartWatchdog.invalidate();
 }
 
 std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(

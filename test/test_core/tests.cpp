@@ -1855,7 +1855,7 @@ TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedO
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
-TEST_F(ShootoutManagerTests, stalledMatchIsReAnnouncedByCoordinator) { stalledMatchIsReAnnouncedByCoordinator(this); }
+TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { coordinatorMissingOurResultIsRecoveredBySender(this); }
 TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
 TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
 TEST_F(ShootoutManagerTests, ackIsMatchedBySeqIdAlone) { ackIsMatchedBySeqIdAlone(this); }

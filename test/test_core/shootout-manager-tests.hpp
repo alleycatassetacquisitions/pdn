@@ -782,29 +782,44 @@ inline void matchResultReceivedAdvancesLocalBracket(ShootoutManagerTests* suite)
 // the match never finished — a duelist that reset or browned out without pulling a
 // cable. Ack tracking cannot see this, because once everyone acks there is nothing
 // pending left to give up on, so the coordinator re-announces on a timer.
-inline void stalledMatchIsReAnnouncedByCoordinator(ShootoutManagerTests* suite) {
-    uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
-    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
-    std::array<uint8_t, 6> opMac = {0x02, 0, 0, 0, 0, 0};
+inline void coordinatorMissingOurResultIsRecoveredBySender(ShootoutManagerTests* suite) {
+    // A result the coordinator never takes is the one failure the retry machinery
+    // cannot see from its end: it advances the bracket only on receiving one, so
+    // it sits in MATCH_IN_PROGRESS with nothing owed and nothing to give up on.
+    // The winner is the device that knows, because its own fan-out is what
+    // abandoned — so it says so again instead of waiting to be asked.
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(selfMac));
+
     ON_CALL(*suite->device.mockPeerComms,
             sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
 
-    suite->driveToFirstMatch({me, opMac});
+    suite->shootout->setLoopMembersForTest({coord, me, other});
+    suite->shootout->startProposal();
+    suite->shootout->onConfirmReceived(coord.data());
+    suite->shootout->onConfirmReceived(me.data());
+    suite->shootout->onConfirmReceived(other.data());
+    suite->shootout->onBracketReceived(coord.data(), {coord, me, other}, 1);
+
+    suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 2);
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+    suite->shootout->reportLocalWin();
+    // Count the frame, not the retransmits: a retry re-sends the SAME seqId, so
+    // only a fresh one distinguishes a genuine re-send from the retry machinery
+    // doing its ordinary job.
+    const uint8_t firstSeq = suite->shootout->getLastMatchResultSeqId();
+    ASSERT_NE(firstSeq, 0u);
 
-    // Everyone acks, so nothing is owed and the retry machinery falls silent.
-    const uint8_t firstSeq = suite->shootout->getLastMatchStartSeqId();
-    suite->shootout->onCommandAckReceived(opMac.data(), firstSeq);
-    ASSERT_EQ(suite->shootout->getPendingAckCount(suite->shootout->getLastMatchStartSeqId()), 0u);
+    // Nobody acks. The fan-out burns its budget and gives up on the coordinator.
+    suite->runRetryRounds(Resender::MAX_RETRIES + 1);
 
-    // No result arrives. The coordinator re-announces the match.
-    suite->fakeClock->advance(11000);
-    suite->shootout->sync();
-    EXPECT_NE(suite->shootout->getLastMatchStartSeqId(), firstSeq)
-        << "a fully-acked match that never finishes has no other way out";
+    EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), firstSeq)
+        << "the coordinator never took our result and nothing re-sent it";
 }
 
 inline void matchStartRetriesToSilentMemberThenAborts(ShootoutManagerTests* suite) {
@@ -916,17 +931,9 @@ inline void reAnnouncedMatchDoesNotReplayAFinishedBout(ShootoutManagerTests* sui
     std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(selfMac));
-    int matchResultFrames = 0;
     ON_CALL(*suite->device.mockPeerComms,
-            sendData(testing::_, PktType::kShootoutCommand, testing::_, testing::_))
-        .WillByDefault(testing::Invoke(
-            [&matchResultFrames](const uint8_t*, PktType, const uint8_t* data,
-                                 const size_t len) {
-                if (len > 0 && data[0] == static_cast<uint8_t>(ShootoutCmd::MATCH_RESULT)) {
-                    matchResultFrames++;
-                }
-                return 1;
-            }));
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
 
     suite->shootout->setLoopMembersForTest({coord, me, other});
     suite->shootout->startProposal();
@@ -948,19 +955,12 @@ inline void reAnnouncedMatchDoesNotReplayAFinishedBout(ShootoutManagerTests* sui
     ASSERT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
     // The coordinator never saw that result and re-announces match 0.
-    matchResultFrames = 0;
     suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 9);
 
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS)
         << "dragged back into a bout it had already won";
     EXPECT_TRUE(suite->shootout->isEliminated(other.data()))
         << "the beaten opponent was put back in the running";
-    // Declining to replay is only half the answer. A re-announce means the
-    // coordinator is still owed this result, and it re-asks on a timer — so a
-    // member that only acks leaves the tournament stalled with every device
-    // silently refusing to play.
-    EXPECT_GT(matchResultFrames, 0)
-        << "acked the re-announce without answering it; the coordinator asks forever";
 }
 
 // A tournament that reached its winner is finished, not stuck. A fan-out from

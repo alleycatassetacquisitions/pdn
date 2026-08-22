@@ -145,7 +145,6 @@ public:
 
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
-    static constexpr unsigned long kMatchWatchdogMs = 10000;
     // Packet-validation clamp on an inbound BRACKET's member count. A ring can
     // hold as many devices as the chain does, so it tracks MAX_CHAIN_MEMBERS;
     // one ESP-NOW v2 frame carries that bracket several times over.
@@ -249,12 +248,6 @@ private:
     void maybeStartNextMatch();
     bool inMaybeStartNextMatch = false;
     void sendMatchStartToPeers(int matchIndex);
-    // Stall recovery, answering a different question from the retry machinery:
-    // not "did the frame arrive" but "did the match finish". Armed when a match
-    // starts, cleared when its result lands. A match every member acked and
-    // nobody completed is invisible to the Resender — once everyone has acked
-    // there is nothing left pending for it to give up on.
-    SimpleTimer matchStartWatchdog;
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
@@ -263,6 +256,9 @@ private:
     void applyPeerLoss(const uint8_t* lostMac);
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;
+    // One re-send per match when the coordinator misses our result; a second
+    // failure means it is unreachable and the tournament ends.
+    bool matchResultResent = false;
     uint8_t lastMatchResultSeqId = 0;
     // Per-command last-observed seqId for ESP-NOW link-layer dedup.
     uint8_t lastObservedBracketSeqId = 0;
