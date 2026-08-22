@@ -56,7 +56,6 @@ private:
     /// Champion-side enrolment of a supporter this device shares no cable with.
     void onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
@@ -68,7 +67,7 @@ private:
         PktType type;
         PeerCommsInterface::PacketCallback handler;
     };
-    static const std::array<PacketRoute, 8>& packetRoutes();
+    static const std::array<PacketRoute, 7>& packetRoutes();
 
     /// Wraps a member handler in the C-style callback the radio takes. The member
     /// is a template parameter, so the pointer-to-member call resolves at compile

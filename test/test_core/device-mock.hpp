@@ -157,6 +157,11 @@ public:
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
+    /** Mocked so tests can capture the handler and replay a radio SEND_SUCCESS;
+     *  on channels with no reply packet that result IS the delivery signal. */
+    MOCK_METHOD(void, setSendStatusHandler, (PktType, SendStatusCallback, void*), (override));
+    /** Paired with setSendStatusHandler; dropped when an owner goes away. */
+    MOCK_METHOD(void, clearSendStatusHandler, (PktType), (override));
 };
 
 class MockStorage : public StorageInterface {

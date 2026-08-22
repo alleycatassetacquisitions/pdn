@@ -55,8 +55,8 @@ struct MultiDeviceNode {
     void* contextCtx = nullptr;
     PeerCommsInterface::PacketCallback roleAnnounceHandler = nullptr;
     void* roleAnnounceCtx = nullptr;
-    PeerCommsInterface::PacketCallback roleAnnounceAckHandler = nullptr;
-    void* roleAnnounceAckCtx = nullptr;
+    PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
+    void* roleAnnounceSendStatusCtx = nullptr;
     PeerCommsInterface::PacketCallback chainConfirmHandler = nullptr;
     void* chainConfirmCtx = nullptr;
     PeerCommsInterface::PacketCallback chainJoinHandler = nullptr;
@@ -316,8 +316,10 @@ protected:
                 handler = target.contextHandler;
                 ctx = target.contextCtx;
                 break;
-            case PktType::kRoleAnnounce:         handler = target.roleAnnounceHandler;     ctx = target.roleAnnounceCtx; break;
-            case PktType::kRoleAnnounceAck:      handler = target.roleAnnounceAckHandler;  ctx = target.roleAnnounceAckCtx; break;
+            case PktType::kRoleAnnounce:
+                handler = target.roleAnnounceHandler;
+                ctx = target.roleAnnounceCtx;
+                break;
             case PktType::kChainConfirm:         handler = target.chainConfirmHandler;     ctx = target.chainConfirmCtx; break;
             case PktType::kChainJoin:
                 handler = target.chainJoinHandler;
@@ -330,6 +332,14 @@ protected:
         }
         if (!handler) return;
         handler(source.mac, p.data.data(), p.data.size(), ctx);
+
+        // The radio tells the sender its frame landed. On channels with no reply
+        // packet that report is the delivery signal, so a fixture that routes the
+        // frame but never reports it would leave the sender retrying forever.
+        if (p.type == PktType::kRoleAnnounce && source.roleAnnounceSendStatus) {
+            source.roleAnnounceSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
+                                          /*success=*/true, source.roleAnnounceSendStatusCtx);
+        }
     }
 
     void wirePeerCommsMock(MultiDeviceNode& n) {
@@ -365,9 +375,10 @@ protected:
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.roleAnnounceHandler = cb; n.roleAnnounceCtx = ctx;
             });
-        ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounceAck), _, _))
-            .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
-                n.roleAnnounceAckHandler = cb; n.roleAnnounceAckCtx = ctx;
+        ON_CALL(*pc, setSendStatusHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
+            .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
+                n.roleAnnounceSendStatus = cb;
+                n.roleAnnounceSendStatusCtx = ctx;
             });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kChainConfirm), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
@@ -405,15 +416,6 @@ protected:
                 const RoleAnnouncePayload* p = reinterpret_cast<const RoleAnnouncePayload*>(data);
                 static_cast<ChainDuelManager*>(ctx)->onRoleAnnounceReceived(
                     fromMac, p->role, p->championMac, p->seqId);
-            },
-            cdm);
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kRoleAnnounceAck,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(RoleAnnounceAckPayload)) return;
-                const RoleAnnounceAckPayload* p = reinterpret_cast<const RoleAnnounceAckPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onRoleAnnounceAckReceived(fromMac, p->seqId);
             },
             cdm);
 

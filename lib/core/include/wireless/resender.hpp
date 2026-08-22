@@ -59,6 +59,18 @@ public:
         abandonCallback = std::move(cb);
     }
 
+    /// Cumulative counters for everything this Resender carries. Retries and
+    /// abandons live here now rather than in each caller, so this is where a
+    /// venue-side health readout reads them. Counted in frames: one fan-out
+    /// retransmit is one retry however many members it covers.
+    struct Stats {
+        uint32_t sends = 0;
+        uint32_t retries = 0;
+        uint32_t abandons = 0;
+    };
+    /// Cumulative retry counters; abandons / (sends + retries) is loss.
+    const Stats& getStats() const { return stats; }
+
     /// Reliable send. SendMode controls how it relates to other pending sends to
     /// the same (type, target): SUPERSEDE_PER_TARGET drops any prior one,
     /// KEEP_DISTINCT keeps prior sends with a different seqId. payload bytes are
@@ -181,4 +193,5 @@ private:
     std::vector<Pending> pending;
     std::vector<BroadcastGroup> broadcasts;
     AbandonCallback abandonCallback;
+    Stats stats;
 };

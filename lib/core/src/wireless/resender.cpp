@@ -35,6 +35,7 @@ void Resender::send(const uint8_t* target, PktType type, uint8_t seqId,
     p.timer.setTimer(backoffMs(0));
     pending.push_back(std::move(p));
 
+    stats.sends++;
     transmit(pending.back());
 }
 
@@ -68,6 +69,7 @@ void Resender::sendBroadcast(const std::vector<std::array<uint8_t, 6>>& members,
     }
     broadcasts.push_back(std::move(g));
 
+    stats.sends++;
     transmitBroadcast(broadcasts.back());
 }
 
@@ -130,6 +132,7 @@ void Resender::syncBroadcasts(std::vector<AbandonedEntry>& abandoned) {
         }
         const bool sent = anyDue ? transmitBroadcast(g) : false;
         if (anyDue && sent) {
+            stats.retries++;
             // One line per round, not per member: a full bracket is 63 members
             // and LOG_W is live in the release build.
             LOG_W(RSND_TAG, "retransmit type=%u seq=%u members=%u",
@@ -147,6 +150,7 @@ void Resender::syncBroadcasts(std::vector<AbandonedEntry>& abandoned) {
                 LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
                       (unsigned)g.type, g.seqId, m.target[4], m.target[5]);
                 abandoned.push_back({g.type, g.seqId, m.target});
+                stats.abandons++;
                 g.members.erase(g.members.begin() + mi);
                 continue;
             }
@@ -194,12 +198,14 @@ void Resender::sync() {
             LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
                   (unsigned)p.type, p.seqId, p.target[4], p.target[5]);
             abandoned.push_back({p.type, p.seqId, p.target});
+            stats.abandons++;
             pending.erase(pending.begin() + i);
             continue;
         }
 
         if (transmit(p)) {
             p.retries++;
+            stats.retries++;
             LOG_W(RSND_TAG, "retransmit type=%u seq=%u retry=%u to=%02X%02X",
                   (unsigned)p.type, p.seqId, p.retries, p.target[4], p.target[5]);
         }

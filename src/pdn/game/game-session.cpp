@@ -5,14 +5,13 @@
 #include <array>
 #include <cstring>
 
-const std::array<GameSession::PacketRoute, 8>& GameSession::packetRoutes() {
-    static const std::array<PacketRoute, 8> ROUTES = {{
+const std::array<GameSession::PacketRoute, 7>& GameSession::packetRoutes() {
+    static const std::array<PacketRoute, 7> ROUTES = {{
         {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
         {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
         {PktType::kChainConfirm, dispatchTo<&GameSession::onChainConfirmPacket>},
         {PktType::kChainJoin, dispatchTo<&GameSession::onChainJoinPacket>},
         {PktType::kRoleAnnounce, dispatchTo<&GameSession::onRoleAnnouncePacket>},
-        {PktType::kRoleAnnounceAck, dispatchTo<&GameSession::onRoleAnnounceAckPacket>},
         {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
         {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
     }};
@@ -161,12 +160,6 @@ void GameSession::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* da
     const RoleAnnouncePayload* payload = reinterpret_cast<const RoleAnnouncePayload*>(data);
     chainDuelManager->onRoleAnnounceReceived(
         fromMac, payload->role, payload->championMac, payload->seqId);
-}
-
-void GameSession::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(RoleAnnounceAckPayload) || !chainDuelManager) return;
-    const RoleAnnounceAckPayload* payload = reinterpret_cast<const RoleAnnounceAckPayload*>(data);
-    chainDuelManager->onRoleAnnounceAckReceived(fromMac, payload->seqId);
 }
 
 void GameSession::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {

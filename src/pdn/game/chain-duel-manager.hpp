@@ -11,6 +11,7 @@
 #include "device/wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/drivers/serial-wrapper.hpp"
+#include "wireless/resender.hpp"
 
 enum class ChainGameEventType : uint8_t {
     COUNTDOWN = 0,
@@ -105,7 +106,12 @@ public:
         uint8_t role,
         const uint8_t* championMac,
         uint8_t seqId);
-    void onRoleAnnounceAckReceived(const uint8_t* fromMac, uint8_t seqId);
+    /// Radio SEND_SUCCESS for an outbound role announce. There is no reply
+    /// packet on this channel, so this is the delivery signal that clears the
+    /// retry; `data` is the exact frame handed to the radio, so the stamped
+    /// seqId reads straight back out.
+    void onRoleAnnounceSendResult(const uint8_t* toMac, const uint8_t* data,
+                                  size_t len, bool success);
     void broadcastRoleAndChampion();
     void sendRoleToOpponentJack();
     void sync();
@@ -123,10 +129,20 @@ public:
     };
     /// Cumulative retry counters for the role-announce and game-event channels:
     /// ackLatencyMsSum / ackCount is mean RTT, abandons / (sends + retries) is loss.
-    RetryStats getRetryStats() const { return retryStats; }
+    /// Send/retry/abandon come from the Resender that now carries both channels;
+    /// only round-trip latency is still measured here, since the Resender is
+    /// cleared by the radio and never sees the supporter's reply.
+    RetryStats getRetryStats() const {
+        RetryStats merged = ackStats;
+        const Resender::Stats& carried = resender.getStats();
+        merged.sends = carried.sends;
+        merged.retries = carried.retries;
+        merged.abandons = carried.abandons;
+        return merged;
+    }
 
 private:
-    RetryStats retryStats;
+    RetryStats ackStats;
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* rdc;
@@ -199,31 +215,18 @@ private:
     std::optional<std::array<uint8_t, 6>> lastAnnouncedSupporterJackMac;
     std::optional<std::array<uint8_t, 6>> lastAnnouncedOpponentJackMac;
 
-    struct PendingRoleAnnounce {
-        bool active = false;
-        uint8_t seqId = 0;
-        uint8_t retries = 0;
-        std::array<uint8_t, 6> championMac;
-        uint8_t role;
-        std::array<uint8_t, 6> targetMac;
-        SimpleTimer timer;
-    };
-    PendingRoleAnnounce pendingRoleAnnounce;
-    static constexpr unsigned long kAckTimeoutMs = 100;
-    static constexpr uint8_t kMaxRetries = 3;
-
     uint8_t nextRoleAnnounceSeqId = 1;
-
-    // Champion-side WIN/LOSS in flight. One broadcast frame carries the event to
-    // the whole chain, so there is one seqId and one retry schedule; the MACs are
-    // only the tally of who still owes an ack. A second event supersedes the
-    // first for every supporter at once, so a single slot is the whole state.
-    MacSlots pendingEventAcks{};
-    size_t pendingEventAckCount = 0;
-    uint8_t pendingEventSeqId = 0;
-    uint8_t pendingEventType = 0;
-    uint8_t pendingEventRetries = 0;
-    SimpleTimer pendingEventTimer;
-
     uint8_t nextGameEventSeqId = 1;
+
+    // Retransmits for both of this manager's channels. Owned here rather than
+    // shared with the coordinator's: a fan-out armed by this manager must not
+    // outlive it and keep broadcasting for an object that is gone, and owning
+    // the Resender makes that structural instead of a teardown step to remember.
+    Resender resender;
+
+    // Round-trip latency only. Started when a frame goes out, read when the
+    // reply lands; the retry schedule itself belongs to the Resender.
+    SimpleTimer roleAnnounceSentTimer;
+    SimpleTimer gameEventSentTimer;
+    uint8_t outstandingEventSeqId = 0;
 };
