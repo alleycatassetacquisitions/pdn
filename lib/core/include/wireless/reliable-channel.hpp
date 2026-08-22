@@ -92,19 +92,15 @@ protected:
     WirelessManager* wirelessManager;
     Resender::SendMode sendMode;
 
-    // How long a seqId stays claimed by the frame that used it. Without a claim
-    // that expires, dedup cannot tell a repeat from a sender that restarted:
-    // seqIds begin at 1 on a fresh channel, so the first frame after a peer
-    // reboots carries the seqId the receiver already holds. On a channel that
-    // sends one frame per peer that is not a rare collision, it is every reboot.
+    // How long a seqId stays claimed by the frame that used it. seqIds restart at
+    // 1 on a fresh channel, so without an expiring claim the first frame after a
+    // peer reboots carries the seqId the receiver already holds — on a channel
+    // that sends one frame per peer, that is every reboot, not a rare collision.
     //
-    // Derived, not chosen, so raising MAX_RETRIES moves it too. The margin is
-    // slack, not meaning.
-    //
-    // Known gap: the span it is derived from only bounds an EVERY_ROUND sender.
-    // A TRANSMITTED_ONLY entry parked behind a shut send path can retransmit
-    // arbitrarily later, and that copy is re-delivered rather than suppressed —
-    // so a handler on such a channel must tolerate being run twice.
+    // Derived so raising MAX_RETRIES moves it too. Only bounds an EVERY_ROUND
+    // sender: a TRANSMITTED_ONLY entry parked behind a shut send path can
+    // retransmit arbitrarily later and be re-delivered, so handlers on those
+    // channels must tolerate running twice.
     static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::retransmitSpanMs() + 500;
 
 private:

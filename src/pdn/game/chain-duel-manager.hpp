@@ -124,8 +124,8 @@ public:
     /// direction. A settled chain raises no events, so nothing else would.
     ///
     /// Longer than the retry span on purpose: a tick landing inside that window
-    /// would supersede the live entry and restart its budget, so it could never
-    /// abandon and the next tick would do it again.
+    /// supersedes the live entry and restarts its budget, so the announce would
+    /// retransmit forever instead of going quiet between offers.
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS =
         Resender::retransmitSpanMs() + 500;
 
@@ -228,9 +228,10 @@ private:
     // What a jack's peer has been told, and whether the radio confirmed it.
     // Keyed on the CONTENT, not just the peer: a champion change leaves the
     // cable untouched, so a stamp holding only the MAC suppresses exactly the
-    // announce that has to go out. `delivered` separates "handed to the radio"
-    // from "arrived" — an announce that spent its retry budget never arrived,
-    // and re-offering it is the only repair there is.
+    // announce that has to go out. `delivered` is the radio's send report, not
+    // proof the peer's app took the frame — that is what the half-open gate
+    // below is for. What it does prove is the negative: an announce that spent
+    // its budget never left, and re-offering it is the only repair there is.
     struct RoleAnnounceState {
         std::array<uint8_t, 6> peer{};
         uint8_t role = 0;
@@ -268,9 +269,9 @@ private:
     // the other would have.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
 
-    // Records a peer as told once the radio confirms the frame reached it.
-    // Delivery, not handover: a frame that exhausted its retries never arrived,
-    // and stamping it anyway would suppress the only re-send there is.
+    // Records a peer as told once the radio reports the frame sent. Report, not
+    // handover: a frame that exhausted its retries never left, and stamping it
+    // anyway would suppress the only re-send there is.
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 
     // Time from a frame going out to the radio reporting it delivered. Not a

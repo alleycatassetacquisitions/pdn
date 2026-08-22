@@ -795,23 +795,6 @@ inline void cdmReannouncesAfterSameMacReconnect(ChainDuelManagerTests* suite) {
         << "reconnected supporter was never told who its champion is";
 }
 
-// The announce must wait for a proven link. A supporter drops announces from a MAC
-// it has not yet recorded as a direct peer, and the radio reports the frame
-// delivered anyway, so one sent at Connecting clears its own retry and is lost with
-// nothing left to re-trigger it. Connected is the evidence the supporter already
-// holds us. The second half is driven only by rdc.sync(), because the deferral
-// is worthless unless the Connected transition itself re-fires the cascade.
-// An opponent announce that exhausts its retry budget has to be offered again.
-// Nothing else would: the cascade sends one only when the opponent-jack peer MAC
-// changes, and a cable that did not move never changes it. The opponent would
-// then never learn this device's role, and its canInitiateMatch refuses that
-// cable a duel for the rest of the round — recoverable only by re-seating it.
-// The supporter direction needs the same repair as the opponent one. A supporter
-// that never learns its champion never joins the chain and never confirms, so it
-// and everything below it contribute no boost for the whole round — and nothing
-// else re-offers it: a settled chain raises no chain-state events, and the two
-// things that do fire on one (announceToChampion, the confirm resend) send a
-// different packet in the opposite direction, upstream to the champion.
 // A champion change must reach the supporter jack even though the cable did not
 // move. Gating the announce on the peer MAC alone suppresses exactly the case
 // that matters: the head above us goes away, this device promotes itself, and
@@ -853,6 +836,12 @@ inline void cdmChampionChangeReachesAToldSupporter(ChainDuelManagerTests* suite)
         << "the supporter was never told the new champion, so it still follows the old one";
 }
 
+// The supporter direction needs the same repair as the opponent one. A supporter
+// that never learns its champion never joins the chain and never confirms, so it
+// and everything below it contribute no boost for the whole round — and nothing
+// else re-offers it: a settled chain raises no chain-state events, and the two
+// things that do fire on one (announceToChampion, the confirm resend) send a
+// different packet in the opposite direction, upstream to the champion.
 inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -887,6 +876,11 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerT
            "contributes no boost for the rest of the round";
 }
 
+// An opponent announce that exhausts its retry budget has to be offered again.
+// Nothing else would: a settled chain raises no chain-state events, so the
+// cascade never runs, and the opponent would never learn this device's role —
+// its canInitiateMatch refuses that cable a duel for the rest of the round,
+// recoverable only by re-seating it.
 inline void cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -921,6 +915,12 @@ inline void cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(ChainDuelManagerTe
            "the opponent is never told this device's role";
 }
 
+// The announce must wait for a proven link. A supporter drops announces from a MAC
+// it has not yet recorded as a direct peer, and the radio reports the frame sent
+// anyway, so one offered at Connecting clears its own retry and is lost. Connected
+// is the evidence the supporter already holds us. The second half is driven only
+// by rdc.sync(), because the deferral is worthless unless the Connected
+// transition itself re-fires the cascade.
 inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1017,8 +1017,6 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
     ASSERT_NE(seqId, 0u);
 
     // A delivery report for a different destination clears nothing here. The
-    // old forged-ack case is gone with the ack packet: a peer cannot fabricate
-    // this device's own radio result.
     uint8_t otherMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00};
     suite->deliverRoleAnnounceSendResult(otherMac, seqId, /*success=*/true);
 

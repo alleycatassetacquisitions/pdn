@@ -41,10 +41,11 @@ public:
     // EVERY_ROUND spends anyway, so a path that stays shut still reaches
     // abandonment. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
-    // Both game managers need abandonment reachable. ShootoutManager waits on it
-    // directly: the next match is gated on a fan-out clearing. ChainDuelManager
-    // registers no abandon callback but needs the entry GONE, because its
-    // periodic re-offer skips a jack whose announce is still pending.
+    // ShootoutManager waits on abandonment directly: the next match is gated on
+    // a fan-out clearing. ChainDuelManager consumes none, and takes EVERY_ROUND
+    // to bound airtime — under TRANSMITTED_ONLY a refused entry never gives up,
+    // so it would retransmit at the 100ms floor for as long as the send path
+    // stays shut instead of going quiet after one budget.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 

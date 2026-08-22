@@ -807,10 +807,6 @@ inline void stalledMatchIsReAnnouncedByCoordinator(ShootoutManagerTests* suite) 
         << "a fully-acked match that never finishes has no other way out";
 }
 
-// A member that never acks MATCH_START had no recovery path at all before: that
-// pending set was the one sync() never retried. The frame retransmits on its own
-// budget now, and when a device the match depends on stays silent the tournament
-// ends rather than waiting on it forever.
 inline void matchStartRetriesToSilentMemberThenAborts(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};

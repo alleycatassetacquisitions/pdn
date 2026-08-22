@@ -180,8 +180,6 @@ private:
     void broadcastCommand(const uint8_t* packet, size_t len);
     void broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
                          const uint8_t* packet, size_t len);
-    /// One fan-out frame to every named peer but this device, with a pending
-    /// entry per recipient. Sends nothing when nobody else is named.
     /// The peers a ring fan-out is addressed to: `peers` without this device.
     std::vector<std::array<uint8_t, 6>> peersExcludingSelf(
         const std::vector<std::array<uint8_t, 6>>& peers) const;

@@ -452,8 +452,8 @@ void ChainDuelManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac
     if (mac == nullptr) return;
     // Commit the record this delivery answers, matched on seqId so a stale
     // report cannot mark newer content as told. In a 2-node ring both jacks
-    // face one peer, and each direction still has its own seqId, so only the
-    // record that actually went out is committed.
+    // face one peer and both frames go out; each carries its own seqId, so a
+    // report commits only the record it answers.
     for (std::optional<RoleAnnounceState>* slot : {&supporterAnnounce, &opponentAnnounce}) {
         if (!slot->has_value()) continue;
         RoleAnnounceState& state = **slot;
@@ -514,8 +514,9 @@ void ChainDuelManager::sendRoleToOpponentJack() {
     memcpy(content.peer.data(), opponentPeer, 6);
     content.role = player->isHunter() ? 1 : 0;
     // championMac rides along as a placeholder the receiver ignores unless the
-    // peer is same-role. It is part of the content anyway, so a champion change
-    // re-offers rather than being suppressed by a stamp that predates it.
+    // peer is same-role. It is still part of the content key, so a champion
+    // change re-offers here too — no new information for the usual
+    // opposite-role peer, and the price of one shared key for both directions.
     if (championMac.has_value()) content.champion = *championMac;
     if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
 

@@ -621,7 +621,7 @@ bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_
 }
 
 void ShootoutManager::onLocalRDCDisconnect(const uint8_t* lostMac) {
-    // Gate before the log: this now fires on every direct-peer link death, and
+    // Gate before the log: this fires on every direct-peer link death, and
     // outside a tournament that is ordinary chain-duel unplugging. LOG_W survives
     // the release build, so logging first put a line on the wire per cable pull.
     if (phase == Phase::IDLE || phase == Phase::ABORTED || phase == Phase::ENDED) return;
