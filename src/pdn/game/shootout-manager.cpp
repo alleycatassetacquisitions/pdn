@@ -87,7 +87,7 @@ bool ShootoutManager::isLocalDuelist() const {
 // sends — the four that ride the Resender; the rest go out unsequenced. That
 // is load-bearing, not incidental: because one counter serves all of them, a
 // seqId in flight names exactly one of this device's frames, which is what lets
-// an ack carry only a seqId.
+// an ack be answered on its seqId alone.
 uint8_t ShootoutManager::nextSeqId() {
     uint8_t id = nextShootoutSeqId++;
     if (nextShootoutSeqId == 0) nextShootoutSeqId = 1;
@@ -185,10 +185,12 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
         // MATCH_IN_PROGRESS with nothing owed and the Resender goes quiet. This
         // device is the one that knows — the frame it just gave up on is its own
         // record of a bout it won — so it says so again rather than waiting to be
-        // asked. One retry: a coordinator that took neither copy is unreachable,
-        // and a tournament that cannot deliver a result is over.
-        if (!matchResultResent) {
-            matchResultResent = true;
+        // asked. One attempt per bout: a second abandonment for the same match
+        // means this device cannot tell a lost result from a lost ack, and
+        // guessing either way is worse than staying quiet — the coordinator is
+        // the only device that can see its own bracket stalled.
+        if (matchResultResentIndex != static_cast<int>(packet[14])) {
+            matchResultResentIndex = static_cast<int>(packet[14]);
             LOG_W(TAG, "coordinator missed our match result; re-sending");
             // Read back off the frame that was given up on, never off current
             // state: a fan-out outlives the match it announced, so by now
@@ -196,9 +198,7 @@ void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac
             // [cmd, seqId, winner(6), loser(6), matchIndex] — see
             // buildMatchResultPacket.
             sendMatchResultToPeers(&packet[2], &packet[8], packet[14]);
-            return;
         }
-        blocksTournament = true;
     }
 
     if (blocksTournament) {
@@ -618,7 +618,6 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
     currentMatchIndex = matchIndex;
     if (!sameMatch) {
         reportedLocalWin = false;
-        matchResultResent = false;
     }
     if (!sameMatch && isLocalDuelist() && selfMac != nullptr) {
         const uint8_t* opp = (memcmp(selfMac, a.data(), 6) == 0) ? b.data() : a.data();
@@ -753,11 +752,13 @@ void ShootoutManager::onMatchStartReceived(
         sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
         return;
     }
-    // A bout whose loser is already out has been played. The coordinator
-    // re-announces a stalled match under a FRESH seqId, which the dedup above
-    // cannot recognise, and isSameMatch is false the moment this device moved on
-    // — so without this a member is dragged back into a match it already
-    // finished and re-primed against an opponent it already beat.
+    // A bout whose loser is already out has been played. maybeStartNextMatch
+    // waits only on the BRACKET fan-out, never on MATCH_START's, so the
+    // coordinator can announce match N+1 while match N's fan-out is still
+    // retrying a member that went quiet. That member's cursor has moved to N+1,
+    // so the dedup above misses the late N frame and isSameMatch is false —
+    // without this it would be dragged back into a bout it already finished and
+    // re-primed against an opponent it already beat.
     if (isEliminated(duelistA) || isEliminated(duelistB)) {
         lastObservedMatchStartSeqId = seqId;
         sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
@@ -793,12 +794,14 @@ bool ShootoutManager::isEliminated(const uint8_t* mac) const {
     return containsMac(eliminated, mac);
 }
 
-void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* loser) {
+void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* loser,
+                                       bool endsCurrentBout) {
     if (!isEliminated(loser)) {
         std::array<uint8_t, 6> mac;
         memcpy(mac.data(), loser, 6);
         eliminated.push_back(mac);
     }
+    if (!endsCurrentBout) return;
     // Restore pre-tournament role at each match boundary. primeMatchManagerForMatch
     // re-applies the per-match override on the next match start if this device is a
     // duelist again. Prevents role from staying flipped when the tournament ends.
@@ -823,8 +826,14 @@ void ShootoutManager::sendMatchResultToPeers(
     const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) {
     lastMatchResultSeqId = nextSeqId();
     auto packet = buildMatchResultPacket(winner, loser, matchIndex);
-    // Targets confirmedSet to reach already-eliminated players too.
-    sendReliablyToPeers(confirmedSet, lastMatchResultSeqId, packet.data(), packet.size());
+    // Targets bracket, not confirmedSet. Both reach eliminated players — only
+    // currentRound shrinks — but confirmedSet is each device's own tally of the
+    // CONFIRMs it happened to hear, and those are unacked broadcasts sent once
+    // per press. A follower that missed the coordinator's would never track it
+    // as a recipient, so its result could never abandon against the coordinator
+    // and the recovery below could never fire. The bracket is the coordinator's
+    // own roster, acked on arrival.
+    sendReliablyToPeers(bracket, lastMatchResultSeqId, packet.data(), packet.size());
 }
 
 void ShootoutManager::reportLocalWin() {
@@ -853,7 +862,15 @@ void ShootoutManager::onMatchResultReceived(
         return;
     }
     LOG_W(TAG, "onMatchResultReceived matchIndex=%u", matchIndex);
-    applyMatchResult(winner, loser);
+    // Record the elimination, but only let a result end the bout it belongs to.
+    // A result can arrive late — its sender re-sends when the coordinator misses
+    // one — and a device that has since been paired into a newer match would
+    // otherwise be pulled out of it mid-duel and have its per-match role
+    // restored underneath it, leaving both duelists computing the same role and
+    // neither reporting a win.
+    const bool namesCurrentBout =
+        currentMatchIndex < 0 || static_cast<int>(matchIndex) == currentMatchIndex;
+    applyMatchResult(winner, loser, namesCurrentBout);
     if (isCoordinator()) maybeStartNextMatch();
 }
 

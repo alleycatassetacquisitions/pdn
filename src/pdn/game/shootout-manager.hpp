@@ -256,9 +256,11 @@ private:
     void applyPeerLoss(const uint8_t* lostMac);
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;
-    // One re-send per match when the coordinator misses our result; a second
-    // failure means it is unreachable and the tournament ends.
-    bool matchResultResent = false;
+    // The match whose result this device has already re-sent once, or -1. Keyed
+    // on the bout rather than a flag, so it needs no clearing: a later match
+    // names a different index and gets its own attempt. A device flag would have
+    // to be reset wherever a match turns over, which differs by role.
+    int matchResultResentIndex = -1;
     uint8_t lastMatchResultSeqId = 0;
     // Per-command last-observed seqId for ESP-NOW link-layer dedup.
     uint8_t lastObservedBracketSeqId = 0;
@@ -266,7 +268,11 @@ private:
     uint8_t lastObservedTournamentEndSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
-    void applyMatchResult(const uint8_t* winner, const uint8_t* loser);
+    /// Applies an elimination. `endsCurrentBout` false records it without
+    /// leaving MATCH_IN_PROGRESS — a late result for an older bout must not pull
+    /// this device out of the one it is fighting now.
+    void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
+                          bool endsCurrentBout = true);
     std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
                                                 const uint8_t* loser,
                                                 uint8_t matchIndex) const;

@@ -41,6 +41,10 @@ public:
     // EVERY_ROUND spends anyway, so a path that stays shut still reaches
     // abandonment. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
+    // TRANSMITTED_ONLY is what ReliableTransport's channels run on: their abandon
+    // handlers are deliberate no-ops and the RDC re-sends on the next chain-state
+    // event, so parking a frame across a WiFi excursion beats giving up on it.
+    //
     // ShootoutManager waits on abandonment directly: the next match is gated on
     // a fan-out clearing. ChainDuelManager consumes none, and takes EVERY_ROUND
     // to bound the entry's life — under TRANSMITTED_ONLY a refused round costs
@@ -62,7 +66,9 @@ public:
     }
 
     /// The soonest a caller may treat a frame as finished with: past every
-    /// retransmit of it, plus margin. Both the receiver's duplicate-claim window
+    /// retransmit of it, plus margin. Bounded only for an EVERY_ROUND sender —
+    /// see retransmitSpanMs; a TRANSMITTED_ONLY entry behind a shut send path
+    /// has no bound, so a caller relying on this must tolerate a later copy. Both the receiver's duplicate-claim window
     /// and a sender's repair cadence are this same question, so they read it
     /// here rather than each re-deriving the arithmetic.
     static constexpr unsigned long staleAfterMs() { return retransmitSpanMs() + 500; }

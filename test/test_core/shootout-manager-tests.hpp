@@ -778,10 +778,82 @@ inline void matchResultReceivedAdvancesLocalBracket(ShootoutManagerTests* suite)
     EXPECT_FALSE(suite->shootout->isEliminated(aMac.data()));
 }
 
-// The opposite failure to the one below: every member acked MATCH_START and then
-// the match never finished — a duelist that reset or browned out without pulling a
-// cable. Ack tracking cannot see this, because once everyone acks there is nothing
-// pending left to give up on, so the coordinator re-announces on a timer.
+// Every bout gets its own attempt. A device-wide flag would be spent by the
+// first match this device wins and never returned, so a later lost result would
+// go unrecovered on the same device — and on every later tournament in the same
+// power cycle.
+inline void eachBoutGetsItsOwnResultRetry(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> fourth = {0x04, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({coord, me, other, fourth});
+    suite->shootout->startProposal();
+    for (const auto& m : {coord, me, other, fourth})
+        suite->shootout->onConfirmReceived(m.data());
+    suite->shootout->onBracketReceived(coord.data(), {coord, me, other, fourth}, 1);
+
+    suite->shootout->onMatchStartReceived(me.data(), other.data(), 0, 2);
+    suite->shootout->reportLocalWin();
+    const uint8_t firstSeq = suite->shootout->getLastMatchResultSeqId();
+    suite->runRetryRounds(Resender::MAX_RETRIES + 1);
+    ASSERT_NE(suite->shootout->getLastMatchResultSeqId(), firstSeq)
+        << "first bout was not recovered at all";
+
+    // A later bout on the same device. Its attempt must not have been spent.
+    suite->shootout->onMatchStartReceived(me.data(), fourth.data(), 1, 3);
+    suite->shootout->reportLocalWin();
+    const uint8_t secondSeq = suite->shootout->getLastMatchResultSeqId();
+    suite->runRetryRounds(Resender::MAX_RETRIES + 1);
+
+    EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), secondSeq)
+        << "the second bout this device won got no retry; the budget was a "
+           "device-wide latch, not one per match";
+    EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED)
+        << "a single lost ack on a later bout ended the whole tournament";
+}
+
+// A result for an older bout must not pull this device out of the one it is
+// fighting now. Senders re-send when the coordinator misses a result, so a late
+// copy can land on a device that has since been paired again.
+inline void staleResultDoesNotEndTheCurrentBout(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> fourth = {0x04, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({coord, me, other, fourth});
+    suite->shootout->startProposal();
+    for (const auto& m : {coord, me, other, fourth})
+        suite->shootout->onConfirmReceived(m.data());
+    suite->shootout->onBracketReceived(coord.data(), {coord, me, other, fourth}, 1);
+
+    // Missed bout 0's result, now mid-duel in bout 1.
+    suite->shootout->onMatchStartReceived(me.data(), fourth.data(), 1, 5);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
+
+    // Bout 0's winner re-sends after the coordinator missed it.
+    suite->shootout->onMatchResultReceived(coord.data(), other.data(), 0, 9, coord.data());
+
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS)
+        << "a late result for an older bout ended the bout this device is fighting";
+    EXPECT_TRUE(suite->shootout->isEliminated(other.data()))
+        << "the elimination itself should still be recorded";
+}
+
 inline void coordinatorMissingOurResultIsRecoveredBySender(ShootoutManagerTests* suite) {
     // A result the coordinator never takes is the one failure the retry machinery
     // cannot see from its end: it advances the bracket only on receiving one, so
@@ -920,8 +992,9 @@ inline void ackIsMatchedBySeqIdAlone(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getPendingAckCount(bracketSeq), 0u);
 }
 
-// The coordinator re-announces a stalled match under a fresh seqId, so a member
-// that has already played and moved on cannot recognise it as a repeat. Being
+// A late MATCH_START for a finished bout — the coordinator advances without
+// waiting on that fan-out, so an old frame can still be retrying to a member
+// whose seqId cursor has already moved on. Being
 // dragged back would re-prime it against an opponent it already beat, and a
 // second result for that bout can eliminate the winner too.
 inline void reAnnouncedMatchDoesNotReplayAFinishedBout(ShootoutManagerTests* suite) {
