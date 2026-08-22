@@ -44,9 +44,10 @@ void Resender::sendBroadcast(const std::vector<std::array<uint8_t, 6>>& members,
                              const uint8_t* payload, size_t len) {
     if (members.empty()) return;
 
-    // A re-send of the same (type, seqId) replaces the group outright. The
-    // payload is the same frame by definition, and members that already acked
-    // must not be re-armed by it.
+    // One group per (type, seqId): a re-send under the same seqId replaces the
+    // previous one outright rather than leaving two claiming the same frame. The
+    // recipients are whoever the caller names now, so a member that already acked
+    // is re-armed if it is named again.
     for (std::vector<BroadcastGroup>::iterator it = broadcasts.begin();
          it != broadcasts.end(); ++it) {
         if (it->type == type && it->seqId == seqId) {
@@ -59,6 +60,7 @@ void Resender::sendBroadcast(const std::vector<std::array<uint8_t, 6>>& members,
     g.type = type;
     g.seqId = seqId;
     g.payload.assign(payload, payload + len);
+    g.failedRounds = 0;
     g.members.reserve(members.size());
     for (const std::array<uint8_t, 6>& mac : members) {
         BroadcastMember m;
@@ -140,9 +142,14 @@ void Resender::syncBroadcasts(std::vector<AbandonedEntry>& abandoned) {
             }
         }
         const bool sent = anyDue ? transmitBroadcast(g) : false;
+        if (anyDue) g.failedRounds = sent ? 0 : static_cast<uint8_t>(g.failedRounds + 1);
+        // The radio is not coming back inside this frame's lifetime. Give the
+        // whole group up so the caller hears about it rather than waiting on a
+        // retry round that can never happen.
+        const bool radioDown = g.failedRounds > MAX_RETRIES;
         if (anyDue && sent) {
             stats.retries++;
-            // One line per round, not per member: a full bracket is 63 members
+            // One line per round, not per recipient: a fan-out can carry dozens
             // and LOG_W is live in the release build.
             LOG_W(RSND_TAG, "retransmit type=%u seq=%u members=%u",
                   (unsigned)g.type, g.seqId, (unsigned)g.members.size());
@@ -155,7 +162,7 @@ void Resender::syncBroadcasts(std::vector<AbandonedEntry>& abandoned) {
                 continue;
             }
 
-            if (m.retries >= MAX_RETRIES) {
+            if (m.retries >= MAX_RETRIES || radioDown) {
                 LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
                       (unsigned)g.type, g.seqId, m.target[4], m.target[5]);
                 abandoned.push_back({g.type, g.seqId, m.target, g.payload});

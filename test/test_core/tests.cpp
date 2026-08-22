@@ -1695,6 +1695,14 @@ TEST_F(ChainDuelManagerTests, broadcastRoleAndChampionSends) {
     cdmBroadcastRoleAndChampionSends(this);
 }
 
+TEST_F(ChainDuelManagerTests, newTerminalEventSupersedesThePrevious) {
+    cdmNewTerminalEventSupersedesThePrevious(this);
+}
+
+TEST_F(ChainDuelManagerTests, announceWaitsForConnectedSupporterJack) {
+    cdmAnnounceWaitsForConnectedSupporterJack(this);
+}
+
 TEST_F(ChainDuelManagerTests, ackClearsPending) {
     cdmAckClearsPending(this);
 }
@@ -1823,8 +1831,11 @@ TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedO
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
+TEST_F(ShootoutManagerTests, stalledMatchIsReAnnouncedByCoordinator) { stalledMatchIsReAnnouncedByCoordinator(this); }
 TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
 TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
+TEST_F(ShootoutManagerTests, crossFamilyAckClearsNothing) { crossFamilyAckClearsNothing(this); }
+TEST_F(ShootoutManagerTests, silentSpectatorDoesNotAbortMatchStart) { silentSpectatorDoesNotAbortMatchStart(this); }
 TEST_F(ShootoutManagerTests, eliminatedMemberGoingSilentDoesNotAbort) { eliminatedMemberGoingSilentDoesNotAbort(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }

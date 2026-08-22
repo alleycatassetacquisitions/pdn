@@ -288,6 +288,60 @@ TEST(ResenderBroadcastTest, failedRadioSendCostsNoRetryAndIsAttemptedOnce) {
     EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
 }
 
+TEST(ResenderBroadcastTest, radioDownEventuallyAbandonsRatherThanWaitingForever) {
+    // A member's budget is only spent on frames that actually left, so a radio
+    // that never comes back would re-arm the group forever. A caller whose only
+    // liveness signal is abandonment — the shootout, whose next match waits on
+    // the bracket fan-out clearing — would then wait on a round that cannot
+    // happen, and the tournament silently stops instead of ending.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2)};
+    uint8_t payload[4] = {0};
+
+    int abandons = 0;
+    f.resender.setAbandonCallback(
+        [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) { abandons++; });
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 8, payload, sizeof(payload));
+    f.setRadioUp(false);
+
+    for (uint8_t r = 0; r <= Resender::MAX_RETRIES + 1; ++r) {
+        f.round();
+    }
+    EXPECT_EQ(abandons, 2) << "a dead radio must end the fan-out, not suspend it";
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 0u);
+}
+
+TEST(ResenderBroadcastTest, briefRadioOutageStillCostsNoRetry) {
+    // The other side of that rule: one failed round in the middle of a healthy
+    // run must not shorten anyone's budget or trip the give-up path.
+    BroadcastFixture f;
+    std::vector<std::array<uint8_t, 6>> members = {f.mac(1), f.mac(2)};
+    uint8_t payload[4] = {0};
+
+    int abandons = 0;
+    f.resender.setAbandonCallback(
+        [&abandons](PktType, uint8_t, const uint8_t*, const uint8_t*, size_t) { abandons++; });
+
+    f.resender.sendBroadcast(members, PktType::kShootoutCommand, 9, payload, sizeof(payload));
+
+    // Two outages, each on its own too short to give up on, separated by one
+    // frame that actually left. Together they exceed the threshold, so only
+    // resetting on success keeps the group alive. Neither member has spent more
+    // than that single retry.
+    f.setRadioUp(false);
+    for (uint8_t r = 0; r < Resender::MAX_RETRIES; ++r)
+        f.round();
+    f.setRadioUp(true);
+    f.round();
+    f.setRadioUp(false);
+    for (uint8_t r = 0; r < Resender::MAX_RETRIES; ++r)
+        f.round();
+
+    EXPECT_EQ(abandons, 0) << "outages that recover must not count toward giving up";
+    EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 2u);
+}
+
 TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
     // cancel() is the unreachable-peer path and must not take the rest of the
     // ring down with it. A re-send of the same seqId replaces the group outright
@@ -306,15 +360,15 @@ TEST(ResenderBroadcastTest, cancelDropsOneMemberAndResendReplacesTheGroup) {
     ASSERT_TRUE(f.resender.onAck(PktType::kShootoutCommand, 4, acked.data()));
     EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 1u);
 
-    // Same seqId again: the group is rebuilt from the members named now.
+    // Same seqId again: the group is replaced, rebuilt from whoever is named
+    // now — including the member that already acked, since the caller named it.
     f.resender.sendBroadcast(members, PktType::kShootoutCommand, 4, payload, sizeof(payload));
     EXPECT_EQ(f.resender.pendingCount(PktType::kShootoutCommand), 3u);
 }
 
 TEST(ResenderBroadcastTest, emptyMemberListSendsNothing) {
-    // A fan-out with nobody to hear it is not a delivery. Sending anyway would
-    // put a frame on the air that no ack can ever clear, and the group would sit
-    // pending until it abandoned against nobody.
+    // A fan-out with nobody to hear it is not a delivery. Sending anyway would put
+    // a frame on the air that nobody was asked to answer for.
     BroadcastFixture f;
     uint8_t payload[4] = {0};
     f.resender.sendBroadcast({}, PktType::kShootoutCommand, 2, payload, sizeof(payload));

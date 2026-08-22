@@ -83,13 +83,15 @@ public:
     std::vector<std::array<uint8_t, 6>> getBracket() const;
     bool hasBye() const;
 
-    void onBracketAckReceived(const uint8_t* fromMac, uint8_t seqId);
+    /// Recipients of the fan-out sent under `seqId` that have not yet acked.
+    /// Zero once every one of them has answered or been given up on.
+    size_t getPendingAckCount(uint8_t seqId) const;
     uint8_t getLastBracketSeqId() const;
-    size_t getBracketPendingAckCount() const;
 
     int getCurrentMatchIndex() const;
-    std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>> getCurrentMatchPair() const;
-    void onMatchStartAckReceived(const uint8_t* fromMac, uint8_t seqId);
+    /// The two devices fighting the current match, or a pair of zero MACs when
+    /// no match is running.
+    std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
     /// Adopts a bracket announced by the coordinator and acks it. A bracket from
     /// a lower-MAC coordinator also demotes this device.
@@ -102,11 +104,14 @@ public:
     std::array<uint8_t, 6> getOpponentMac() const;
 
     void reportLocalWin();
+    /// An ack for one of this manager's fan-outs. The command names which family
+    /// it answers: four families share one seqId space, so an ack whose command
+    /// and seqId disagree must not clear a different family's fan-out.
+    void onCommandAckReceived(const uint8_t* fromMac, ShootoutCmd cmd, uint8_t seqId);
+
     void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser,
                                uint8_t matchIndex, uint8_t seqId,
                                const uint8_t* fromMac);
-    void onMatchResultAckReceived(const uint8_t* fromMac, uint8_t seqId);
-    size_t getMatchResultPendingAckCount() const;
     /// seqId of the MATCH_RESULT this device most recently sent.
     uint8_t getLastMatchResultSeqId() const { return lastMatchResultSeqId; }
     bool isEliminated(const uint8_t* mac) const;
@@ -118,10 +123,6 @@ public:
     uint8_t getLastMatchStartSeqId() const;
 
     void onTournamentEndReceived(const uint8_t* winner, uint8_t seqId);
-    void onTournamentEndAckReceived(const uint8_t* fromMac, uint8_t seqId);
-    /// Bracket members that have not yet acked the current MATCH_START.
-    size_t getMatchStartPendingAckCount() const;
-    size_t getTournamentEndPendingAckCount() const;
     /// seqId of the TOURNAMENT_END this device most recently sent.
     uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
     /// Tears down on a peer's ABORT. fromMac identifies the sending ring: the
@@ -244,6 +245,11 @@ private:
     void maybeStartNextMatch();
     bool inMaybeStartNextMatch = false;
     void sendMatchStartToPeers(int matchIndex);
+    // Stall recovery, distinct from the ack retry below it. Armed when a match
+    // starts and cleared when its result lands; a match every member acked but
+    // nobody finished is invisible to the Resender, because once everyone acks
+    // there is nothing left pending for it to give up on.
+    SimpleTimer matchStartWatchdog;
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
@@ -260,14 +266,6 @@ private:
     uint8_t lastObservedTournamentEndSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
-    // Cached so sync() can rebuild the packet for retry. Senders aren't
-    // always the coordinator, so a per-sender cache is required.
-    struct LastMatchResult {
-        std::array<uint8_t, 6> winner{};
-        std::array<uint8_t, 6> loser{};
-        uint8_t matchIndex = 0;
-    };
-    LastMatchResult lastMatchResult;
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser);
     std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,
                                                 const uint8_t* loser,

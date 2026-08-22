@@ -285,22 +285,5 @@ void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t*
 void GameSession::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (!shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
-    ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
-    uint8_t seqId = data[1];
-    switch (cmd) {
-        case ShootoutCmd::BRACKET:
-            shootoutManager->onBracketAckReceived(fromMac, seqId);
-            break;
-        case ShootoutCmd::MATCH_START:
-            shootoutManager->onMatchStartAckReceived(fromMac, seqId);
-            break;
-        case ShootoutCmd::MATCH_RESULT:
-            shootoutManager->onMatchResultAckReceived(fromMac, seqId);
-            break;
-        case ShootoutCmd::TOURNAMENT_END:
-            shootoutManager->onTournamentEndAckReceived(fromMac, seqId);
-            break;
-        default:
-            break;
-    }
+    shootoutManager->onCommandAckReceived(fromMac, static_cast<ShootoutCmd>(data[0]), data[1]);
 }

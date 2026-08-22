@@ -42,9 +42,9 @@ public:
     }
 
     /// Fires once per pending entry that exhausts its retry budget. Invoked
-    /// from sync() AFTER all retransmits have been processed and the
-    /// abandoned entries removed, so callbacks may freely call send() or
-    /// cancel() on this Resender without invalidating the iteration.
+    /// from sync() AFTER all retransmits have been processed and the abandoned
+    /// entries removed, so a callback may freely send(), cancel() or cancelAll()
+    /// on this Resender without invalidating the iteration.
     /// `payload` is the frame that was given up on, so a caller multiplexing
     /// several command families onto one PktType can read which one abandoned
     /// straight off the bytes instead of reconstructing it from its own cursors.
@@ -63,16 +63,16 @@ public:
         abandonCallback = std::move(cb);
     }
 
-    /// Cumulative counters for everything this Resender carries. Retries and
-    /// abandons live here now rather than in each caller, so this is where a
-    /// venue-side health readout reads them. Counted in frames: one fan-out
-    /// retransmit is one retry however many members it covers.
+    /// Cumulative counters for everything this Resender carries. Sends and retries
+    /// count FRAMES — one fan-out retransmit is one retry however many recipients
+    /// it covers — while abandons count RECIPIENTS given up on, since that is the
+    /// number that names devices rather than airtime. The two do not divide into
+    /// each other.
     struct Stats {
         uint32_t sends = 0;
         uint32_t retries = 0;
         uint32_t abandons = 0;
     };
-    /// Cumulative retry counters; abandons / (sends + retries) is loss.
     const Stats& getStats() const { return stats; }
 
     /// Reliable send. SendMode controls how it relates to other pending sends to
@@ -171,8 +171,8 @@ private:
     };
 
     // One recipient of a fan-out. Carries only what differs per member; the
-    // payload lives on the group, so a 64-member announce holds one copy of the
-    // frame rather than 64.
+    // payload lives on the group, so a large announce holds one copy of the frame
+    // rather than one per recipient.
     struct BroadcastMember {
         std::array<uint8_t, 6> target;
         uint8_t retries;
@@ -184,6 +184,12 @@ private:
         uint8_t seqId;
         std::vector<uint8_t> payload;
         std::vector<BroadcastMember> members;
+        // Consecutive rounds the frame never reached the radio. A member's retry
+        // budget is only spent on frames that actually went out, which is right
+        // for a brief outage but would otherwise re-arm forever while the radio
+        // is down — and a caller whose only liveness signal is abandonment would
+        // wait for one that never comes. Reset by any successful transmit.
+        uint8_t failedRounds;
     };
 
     std::vector<Pending>::iterator findPending(

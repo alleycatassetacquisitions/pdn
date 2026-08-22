@@ -334,8 +334,9 @@ protected:
         handler(source.mac, p.data.data(), p.data.size(), ctx);
 
         // The radio tells the sender its frame landed. On channels with no reply
-        // packet that report is the delivery signal, so a fixture that routes the
-        // frame but never reports it would leave the sender retrying forever.
+        // packet that report is the delivery signal, so a fixture that routed the
+        // frame but never reported it would make every send look undelivered and
+        // burn its retry budget.
         if (p.type == PktType::kRoleAnnounce && source.roleAnnounceSendStatus) {
             source.roleAnnounceSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
                                           /*success=*/true, source.roleAnnounceSendStatusCtx);
@@ -523,10 +524,10 @@ protected:
                 ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
                 uint8_t seqId = data[1];
                 switch (cmd) {
-                    case ShootoutCmd::BRACKET:         m->onBracketAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::MATCH_START:     m->onMatchStartAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::MATCH_RESULT: m->onMatchResultAckReceived(fromMac, seqId); break;
-                    case ShootoutCmd::TOURNAMENT_END:  m->onTournamentEndAckReceived(fromMac, seqId); break;
+                    case ShootoutCmd::BRACKET: m->onCommandAckReceived(fromMac, ShootoutCmd::BRACKET, seqId); break;
+                    case ShootoutCmd::MATCH_START: m->onCommandAckReceived(fromMac, ShootoutCmd::MATCH_START, seqId); break;
+                    case ShootoutCmd::MATCH_RESULT: m->onCommandAckReceived(fromMac, ShootoutCmd::MATCH_RESULT, seqId); break;
+                    case ShootoutCmd::TOURNAMENT_END: m->onCommandAckReceived(fromMac, ShootoutCmd::TOURNAMENT_END, seqId); break;
                     default: break;
                 }
             },

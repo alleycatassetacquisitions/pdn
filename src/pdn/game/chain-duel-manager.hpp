@@ -112,14 +112,16 @@ public:
     /// seqId reads straight back out.
     void onRoleAnnounceSendResult(const uint8_t* toMac, const uint8_t* data,
                                   size_t len, bool success);
-    void broadcastRoleAndChampion();
+    /// Announces this device's role and champion to the supporter-jack peer.
+    /// Returns false when the link is not proven yet and nothing was sent, so
+    /// callers do not record an announce that never happened.
+    bool broadcastRoleAndChampion();
     void sendRoleToOpponentJack();
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
 
-    // Retry observability for the role-announce channel. Mirrors
-    // RemoteDeviceCoordinator::RetryStats semantics.
+    // Retry observability for this manager's two channels.
     struct RetryStats {
         uint32_t sends = 0;
         uint32_t retries = 0;
@@ -127,22 +129,27 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /// Cumulative retry counters for the role-announce and game-event channels:
-    /// ackLatencyMsSum / ackCount is mean RTT, abandons / (sends + retries) is loss.
-    /// Send/retry/abandon come from the Resender that now carries both channels;
-    /// only round-trip latency is still measured here, since the Resender is
-    /// cleared by the radio and never sees the supporter's reply.
+    /// Cumulative retry counters for the role-announce and game-event channels.
+    /// ackLatencyMsSum / ackCount is a mean round-trip. Sends and retries are
+    /// counted in frames, abandons in recipients, so the three do not divide into
+    /// one another: on a fan-out one frame can be given up on by many members.
+    /// Latency is measured here rather than by the Resender, which has no clock
+    /// of its own and no notion of a reply.
     RetryStats getRetryStats() const {
-        RetryStats merged = ackStats;
         const Resender::Stats& carried = resender.getStats();
+        RetryStats merged;
         merged.sends = carried.sends;
         merged.retries = carried.retries;
         merged.abandons = carried.abandons;
+        merged.ackLatencyMsSum = ackLatencyMsSum;
+        merged.ackCount = ackCount;
         return merged;
     }
 
 private:
-    RetryStats ackStats;
+    // Round-trip latency only; the retry counts live on the Resender.
+    uint32_t ackLatencyMsSum = 0;
+    uint32_t ackCount = 0;
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* rdc;
@@ -228,5 +235,4 @@ private:
     // reply lands; the retry schedule itself belongs to the Resender.
     SimpleTimer roleAnnounceSentTimer;
     SimpleTimer gameEventSentTimer;
-    uint8_t outstandingEventSeqId = 0;
 };

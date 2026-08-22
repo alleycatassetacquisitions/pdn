@@ -663,6 +663,81 @@ inline void cdmBroadcastRoleAndChampionSends(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(capturedFromSupporter.championMac, champion, 6), 0);
 }
 
+// A supporter's screen shows the latest terminal result, so a newer WIN/LOSS must
+// obsolete the previous one for the whole chain at once. Two live fan-outs would
+// let the older one's retransmit land after the newer and flip the screen back —
+// the hazard SendMode::SUPERSEDE_PER_TARGET exists to prevent for unicast.
+inline void cdmNewTerminalEventSupersedesThePrevious(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+
+    int eventFrames = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainGameEvent, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            eventFrames++;
+            return 1;
+        });
+
+    // Two terminal events inside one retry budget, neither acked.
+    cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
+    cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
+    const int afterSends = eventFrames;
+    ASSERT_EQ(afterSends, 2);
+
+    // One round must put ONE frame on the air: only the newer event is live.
+    suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+    cdm.sync();
+    EXPECT_EQ(eventFrames, afterSends + 1)
+        << "the superseded event is still retransmitting alongside the current one";
+}
+
+// The announce must wait for a proven link. A supporter drops announces from a MAC
+// it has not yet recorded as a direct peer, and the radio reports the frame
+// delivered anyway, so one sent at Connecting clears its own retry and is lost with
+// nothing left to re-trigger it. Connected is the evidence the supporter already
+// holds us. Driven entirely through the coordinator, because the deferral only
+// works if the Connected transition re-fires the cascade that sends it.
+inline void cdmAnnounceWaitsForConnectedSupporterJack(ChainDuelManagerTests* suite) {
+    suite->player.setIsHunter(true);
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+
+    int announcesToSupporter = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) announcesToSupporter++;
+            return 1;
+        });
+
+    // A champion: an opponent-jack peer, and nobody of our own role beyond it.
+    suite->connectOutputPort();
+    cdm.onChainStateChanged();
+
+    // The supporter plugs in. Our jack holds its MAC off one HELLO, but its
+    // context has not come back, so it has not necessarily recorded us.
+    suite->beginConnectJackTo(suite->inJack, suite->supporterMac);
+    ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK), nullptr);
+    ASSERT_NE(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    cdm.onChainStateChanged();
+    EXPECT_EQ(announcesToSupporter, 0)
+        << "announced to a supporter that cannot accept it yet";
+
+    // Its context lands. The link is proven and the deferred announce goes.
+    suite->deliverPdnContext(suite->supporterMac);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    cdm.onChainStateChanged();
+    EXPECT_GT(announcesToSupporter, 0)
+        << "announce was suppressed rather than deferred";
+}
+
 // Ack with matching seqId clears pending; subsequent sync does not retransmit.
 inline void cdmAckClearsPending(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();

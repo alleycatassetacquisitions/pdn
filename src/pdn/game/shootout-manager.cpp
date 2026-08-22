@@ -64,12 +64,12 @@ bool ShootoutManager::hasBye() const {
     return bracket.size() % 2 == 1;
 }
 
-uint8_t ShootoutManager::getLastBracketSeqId() const {
-    return lastBracketSeqId;
+size_t ShootoutManager::getPendingAckCount(uint8_t seqId) const {
+    return resender.pendingCount(PktType::kShootoutCommand, seqId);
 }
 
-size_t ShootoutManager::getBracketPendingAckCount() const {
-    return resender.pendingCount(PktType::kShootoutCommand, lastBracketSeqId);
+uint8_t ShootoutManager::getLastBracketSeqId() const {
+    return lastBracketSeqId;
 }
 
 int ShootoutManager::getCurrentMatchIndex() const {
@@ -138,19 +138,37 @@ void ShootoutManager::sendReliablyToPeers(const std::vector<std::array<uint8_t, 
     resender.sendBroadcast(recipients, PktType::kShootoutCommand, seqId, packet, len);
 }
 
+void ShootoutManager::onCommandAckReceived(const uint8_t* fromMac, ShootoutCmd cmd,
+                                           uint8_t seqId) {
+    uint8_t expected = 0;
+    switch (cmd) {
+        case ShootoutCmd::BRACKET: expected = lastBracketSeqId; break;
+        case ShootoutCmd::MATCH_START: expected = lastMatchStartSeqId; break;
+        case ShootoutCmd::MATCH_RESULT: expected = lastMatchResultSeqId; break;
+        case ShootoutCmd::TOURNAMENT_END: expected = lastTournamentEndSeqId; break;
+        default: return;
+    }
+    if (seqId != expected) return;
+    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
+}
+
 void ShootoutManager::onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
                                          const uint8_t* packet, size_t len) {
     if (len == 0) return;
     const ShootoutCmd cmd = static_cast<ShootoutCmd>(packet[0]);
 
-    // Only a device still in the running is worth ending a tournament over. An
-    // eliminated player or a member that is not in this bracket at all has
-    // nothing left to contribute to the current match, so their silence is
-    // noted and no more than that.
+    // Only silence that actually blocks the tournament ends it. BRACKET is the
+    // roster, so a member still in the running who never received it cannot take
+    // part at all. MATCH_START only matters to the two devices fighting the
+    // match: a spectator missing it just does not see that round, and ending a
+    // tournament for that would put one abort opportunity on every member of
+    // every match instead of one on the bracket.
     const bool stillCompeting = containsMac(bracket, targetMac) && !isEliminated(targetMac);
-    const bool needsEveryone = cmd == ShootoutCmd::BRACKET || cmd == ShootoutCmd::MATCH_START;
+    const bool blocksTournament =
+        (cmd == ShootoutCmd::BRACKET && stillCompeting) ||
+        (cmd == ShootoutCmd::MATCH_START && isActiveDuelist(targetMac));
 
-    if (needsEveryone && stillCompeting) {
+    if (blocksTournament) {
         LOG_E(TAG, "shootout cmd=%u seq=%u unacked by %s; ending tournament",
               (unsigned)packet[0], (unsigned)seqId, MacToString(targetMac));
         abortTournament();
@@ -166,14 +184,6 @@ std::array<uint8_t, 6> ShootoutManager::getOpponentMac() const {
 
 uint8_t ShootoutManager::getLastMatchStartSeqId() const {
     return lastMatchStartSeqId;
-}
-
-size_t ShootoutManager::getMatchStartPendingAckCount() const {
-    return resender.pendingCount(PktType::kShootoutCommand, lastMatchStartSeqId);
-}
-
-size_t ShootoutManager::getTournamentEndPendingAckCount() const {
-    return resender.pendingCount(PktType::kShootoutCommand, lastTournamentEndSeqId);
 }
 
 std::array<uint8_t, 6> ShootoutManager::getTournamentWinner() const {
@@ -478,11 +488,6 @@ void ShootoutManager::sendBracketToPeers() {
     sendReliablyToPeers(bracket, lastBracketSeqId, packet.data(), packet.size());
 }
 
-void ShootoutManager::onBracketAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // seqId alone identifies the fan-out; a stale one matches nothing.
-    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
-}
-
 void ShootoutManager::abortTournament() {
     if (phase == Phase::ABORTED) return;
     LOG_W(TAG, "abortTournament from phase=%d", static_cast<int>(phase));
@@ -543,6 +548,17 @@ void ShootoutManager::sync() {
     resender.sync();
 
     maybeStartNextMatch();
+
+    // Stall recovery. The ack retry above covers a member that never heard
+    // MATCH_START; this covers the opposite case, a match every member DID ack
+    // and nobody finished — a duelist that reset or browned out without pulling
+    // a cable. Gated on nothing being owed precisely because that is when the
+    // Resender has gone quiet and cannot notice.
+    if (isCoordinator() && phase == Phase::MATCH_IN_PROGRESS &&
+        getPendingAckCount(lastMatchStartSeqId) == 0 &&
+        matchStartWatchdog.expired()) {
+        sendMatchStartToPeers(currentMatchIndex);
+    }
 }
 
 std::pair<std::array<uint8_t,6>, std::array<uint8_t,6>>
@@ -581,11 +597,7 @@ void ShootoutManager::sendMatchStartToPeers(int matchIndex) {
         primeMatchManagerForMatch();
     }
     sendReliablyToPeers(bracket, lastMatchStartSeqId, packet.data(), packet.size());
-}
-
-void ShootoutManager::onMatchStartAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // seqId alone identifies the fan-out; a stale one matches nothing.
-    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
+    matchStartWatchdog.setTimer(kMatchWatchdogMs);
 }
 
 bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const {
@@ -635,7 +647,7 @@ void ShootoutManager::applyPeerLoss(const uint8_t* lostMac) {
 void ShootoutManager::maybeStartNextMatch() {
     if (!isCoordinator()) return;
     // Nobody moves on until the whole bracket has it.
-    if (resender.pendingCount(PktType::kShootoutCommand, lastBracketSeqId) > 0) return;
+    if (getPendingAckCount(lastBracketSeqId) > 0) return;
     if (phase != Phase::BRACKET_REVEAL && phase != Phase::BETWEEN_MATCHES) return;
     if (phase == Phase::BRACKET_REVEAL && !bracketRevealTimer.expired()) return;
     // Re-entrancy guard: this function mutates currentMatchIndex, bracket,
@@ -763,6 +775,7 @@ void ShootoutManager::applyMatchResult(const uint8_t* winner, const uint8_t* los
         player->setIsHunter(*originalIsHunter);
     }
     phase = Phase::BETWEEN_MATCHES;
+    matchStartWatchdog.invalidate();
 }
 
 std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(
@@ -779,9 +792,6 @@ std::vector<uint8_t> ShootoutManager::buildMatchResultPacket(
 void ShootoutManager::sendMatchResultToPeers(
     const uint8_t* winner, const uint8_t* loser, uint8_t matchIndex) {
     lastMatchResultSeqId = nextSeqId();
-    memcpy(lastMatchResult.winner.data(), winner, 6);
-    memcpy(lastMatchResult.loser.data(), loser, 6);
-    lastMatchResult.matchIndex = matchIndex;
     auto packet = buildMatchResultPacket(winner, loser, matchIndex);
     // Targets confirmedSet to reach already-eliminated players too.
     sendReliablyToPeers(confirmedSet, lastMatchResultSeqId, packet.data(), packet.size());
@@ -817,15 +827,6 @@ void ShootoutManager::onMatchResultReceived(
     if (isCoordinator()) maybeStartNextMatch();
 }
 
-void ShootoutManager::onMatchResultAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // seqId alone identifies the fan-out; a stale one matches nothing.
-    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
-}
-
-size_t ShootoutManager::getMatchResultPendingAckCount() const {
-    return resender.pendingCount(PktType::kShootoutCommand, lastMatchResultSeqId);
-}
-
 std::array<uint8_t, 6> ShootoutManager::findLastRemaining() const {
     for (const auto& m : bracket) {
         if (!isEliminated(m.data())) return m;
@@ -845,11 +846,6 @@ void ShootoutManager::sendTournamentEndToPeers(const uint8_t* winner) {
     sendReliablyToPeers(confirmedSet, lastTournamentEndSeqId, packet, sizeof(packet));
     memcpy(tournamentWinner.data(), winner, 6);
     phase = Phase::ENDED;
-}
-
-void ShootoutManager::onTournamentEndAckReceived(const uint8_t* fromMac, uint8_t seqId) {
-    // seqId alone identifies the fan-out; a stale one matches nothing.
-    resender.onAck(PktType::kShootoutCommand, seqId, fromMac);
 }
 
 void ShootoutManager::onTournamentEndReceived(const uint8_t* winner, uint8_t seqId) {
