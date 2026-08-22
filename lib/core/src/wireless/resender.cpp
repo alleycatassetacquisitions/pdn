@@ -3,6 +3,8 @@
 #include "device/wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
 
+#include <algorithm>
+
 namespace {
 constexpr const char* RSND_TAG = "RSND";
 }
@@ -12,7 +14,6 @@ void Resender::send(const uint8_t* target, PktType type, uint8_t seqId,
     if (target == nullptr) return;
     std::array<uint8_t, 6> mac;
     memcpy(mac.data(), target, 6);
-    // Addressed to the one peer that owes the ack.
     addGroup(type, seqId, mac, {mac}, payload, len, mode);
 }
 
@@ -80,13 +81,8 @@ void Resender::supersedeRecipients(PktType type,
         }
         for (std::vector<Recipient>::iterator r = g->recipients.begin();
              r != g->recipients.end();) {
-            bool superseded = false;
-            for (const std::array<uint8_t, 6>& mac : recipients) {
-                if (memcmp(r->target.data(), mac.data(), 6) == 0) {
-                    superseded = true;
-                    break;
-                }
-            }
+            const bool superseded =
+                std::find(recipients.begin(), recipients.end(), r->target) != recipients.end();
             r = superseded ? g->recipients.erase(r) : r + 1;
         }
         g = g->recipients.empty() ? groups.erase(g) : g + 1;
@@ -135,13 +131,10 @@ void Resender::sync() {
         // point of a fan-out, and for a unicast the group holds exactly one.
         // Sent only if somebody is both due and still within budget, so a group
         // of nothing but exhausted recipients goes quiet.
-        bool anyDue = false;
-        for (Recipient& r : g.recipients) {
-            if (r.timer.expired() && r.retries < MAX_RETRIES) {
-                anyDue = true;
-                break;
-            }
-        }
+        const bool anyDue = std::any_of(
+            g.recipients.begin(), g.recipients.end(), [](Recipient& r) {
+                return r.timer.expired() && r.retries < MAX_RETRIES;
+            });
         const bool sent = anyDue ? transmit(g) : false;
         if (sent) {
             stats.retries++;

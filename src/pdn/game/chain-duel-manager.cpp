@@ -165,7 +165,6 @@ void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
         // retransmit landing afterwards would flip it back. Dropping the prior
         // fan-out is what SendMode::SUPERSEDE_PER_TARGET does for unicast.
         resender.cancelAll(PktType::kChainGameEvent);
-        // One frame, one pending member per supporter still owing an ack.
         resender.sendBroadcast(peers, PktType::kChainGameEvent, payload.seqId,
                                reinterpret_cast<const uint8_t*>(&payload), sizeof(payload));
     } else {
@@ -351,11 +350,11 @@ void ChainDuelManager::applyChainStateChange() {
             broadcastRoleAndChampion();
         }
     } else if (supporterPeer == nullptr) {
-        // Reached because the coordinator reports the chain again once a link is
-        // fully down, not only during the dismount that announces it. Without
-        // that second report this jack still names its departing peer here, and
-        // a peer returning on the same MAC would match the stamp and never be
-        // re-announced to.
+        // Any chain change with nothing on the supporter jack lands here. What
+        // the coordinator's post-teardown report adds is that a departure lands
+        // here too: reported only from the dismount, this jack would still name
+        // its departing peer, and a peer returning on the same MAC would match
+        // the stamp and never be announced to again.
         lastAnnouncedSupporterJackMac.reset();
     }
 

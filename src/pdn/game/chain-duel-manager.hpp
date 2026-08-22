@@ -141,13 +141,8 @@ public:
     /// it holds the retry schedule, not a record of when a frame first went out.
     RetryStats getRetryStats() const {
         const Resender::Stats& carried = resender.getStats();
-        RetryStats merged;
-        merged.sends = carried.sends;
-        merged.retries = carried.retries;
-        merged.abandons = carried.abandons;
-        merged.ackLatencyMsSum = ackLatencyMsSum;
-        merged.ackCount = ackCount;
-        return merged;
+        return {carried.sends, carried.retries, carried.abandons,
+                ackLatencyMsSum, ackCount};
     }
 
 private:

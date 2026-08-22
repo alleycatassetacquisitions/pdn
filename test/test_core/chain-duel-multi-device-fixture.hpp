@@ -333,10 +333,17 @@ protected:
         if (!handler) return;
         handler(source.mac, p.data.data(), p.data.size(), ctx);
 
-        // The radio tells the sender its frame landed. On channels with no reply
-        // packet that report is the delivery signal, so a fixture that routed the
-        // frame but never reported it would make every send look undelivered and
-        // burn its retry budget.
+        // Report delivery back to the sender: on channels with no reply packet
+        // that report IS the delivery signal, and a fixture that routed the frame
+        // without it would make every send look undelivered and burn its budget.
+        //
+        // Friendlier than the real radio, deliberately. This sits after the
+        // no-handler return, so delivery is reported only when the receiver had a
+        // handler and it ran — whereas a real SEND_SUCCESS is a MAC-layer verdict
+        // that says nothing about the application. The case the production code
+        // worries about, the radio acking while the peer is deaf, therefore
+        // cannot be reproduced here; it needs a test that drives onSendResult by
+        // hand.
         if (p.type == PktType::kRoleAnnounce && source.roleAnnounceSendStatus) {
             source.roleAnnounceSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
                                           /*success=*/true, source.roleAnnounceSendStatusCtx);
