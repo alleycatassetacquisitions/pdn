@@ -101,7 +101,7 @@ protected:
     // sender: a TRANSMITTED_ONLY entry parked behind a shut send path can
     // retransmit arbitrarily later and be re-delivered, so handlers on those
     // channels must tolerate running twice.
-    static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::retransmitSpanMs() + 500;
+    static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::staleAfterMs();
 
 private:
     struct RxSeqRecord {

@@ -1340,7 +1340,7 @@ inline void tournamentEndRetriesUntilAcked(ShootoutManagerTests* suite) {
     // broadcast — anything further must come from the retry path.
     int sendCountAfterInitialBroadcast = sendCount.load();
 
-    // Advance past the first retry interval (ackTimeoutForRetry(0)=100ms) and
+    // Advance past the first retry interval (Resender::backoffMs(0)=100ms) and
     // drive sync(). A retry must re-broadcast TOURNAMENT_END.
     suite->fakeClock->advance(200);
     suite->shootout->sync();
@@ -1395,7 +1395,7 @@ inline void matchResultRetriesUntilAcked(ShootoutManagerTests* suite) {
 
     int sendCountAfterInitial = sendCount.load();
 
-    // After ackTimeoutForRetry(0)=100ms, sync() retries to both pending peers.
+    // After Resender::backoffMs(0)=100ms, sync() retries to both pending peers.
     suite->fakeClock->advance(200);
     suite->shootout->sync();
     EXPECT_GT(sendCount.load(), sendCountAfterInitial);
@@ -1658,7 +1658,7 @@ inline void bracketRetryIsOneFramePerRound(ShootoutManagerTests* suite) {
                 return 1;
             }));
 
-    // First backoff is ackTimeoutForRetry(0) = 100ms and every pending entry was
+    // First backoff is Resender::backoffMs(0) = 100ms and every pending entry was
     // armed together, so one round covers all three.
     suite->fakeClock->advance(150);
     suite->shootout->sync();

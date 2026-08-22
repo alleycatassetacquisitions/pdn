@@ -43,9 +43,10 @@ public:
     //
     // ShootoutManager waits on abandonment directly: the next match is gated on
     // a fan-out clearing. ChainDuelManager consumes none, and takes EVERY_ROUND
-    // to bound airtime — under TRANSMITTED_ONLY a refused entry never gives up,
-    // so it would retransmit at the 100ms floor for as long as the send path
-    // stays shut instead of going quiet after one budget.
+    // to bound the entry's life — under TRANSMITTED_ONLY a refused round costs
+    // no budget, so the entry never gives up and re-attempts at the 100ms floor
+    // for as long as the send path stays shut, instead of going quiet after one
+    // budget and letting the caller's own repair decide when to try again.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
@@ -59,6 +60,12 @@ public:
             total += backoffMs(r);
         return total;
     }
+
+    /// The soonest a caller may treat a frame as finished with: past every
+    /// retransmit of it, plus margin. Both the receiver's duplicate-claim window
+    /// and a sender's repair cadence are this same question, so they read it
+    /// here rather than each re-deriving the arithmetic.
+    static constexpr unsigned long staleAfterMs() { return retransmitSpanMs() + 500; }
 
     /// Exponential backoff for the given retry number: 100, 200, 400 ...
     static constexpr unsigned long backoffMs(uint8_t retryNum) {

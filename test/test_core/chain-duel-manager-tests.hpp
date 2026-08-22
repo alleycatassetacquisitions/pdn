@@ -838,10 +838,10 @@ inline void cdmChampionChangeReachesAToldSupporter(ChainDuelManagerTests* suite)
 
 // The supporter direction needs the same repair as the opponent one. A supporter
 // that never learns its champion never joins the chain and never confirms, so it
-// and everything below it contribute no boost for the whole round — and nothing
-// else re-offers it: a settled chain raises no chain-state events, and the two
-// things that do fire on one (announceToChampion, the confirm resend) send a
-// different packet in the opposite direction, upstream to the champion.
+// and everything below it contribute no boost for the whole round. The cascade
+// would re-offer it — an undelivered announce leaves this peer reading as untold
+// — but a settled chain raises no chain-state events at all, so the cascade never
+// runs and the backstop is the only thing left.
 inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -967,7 +967,7 @@ inline void cdmAckClearsPending(ChainDuelManagerTests* suite) {
                 sendData(_, PktType::kRoleAnnounce, _, _)).WillRepeatedly(Return(1));
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
 
-    // Capture the seqId from the supporter-jack send (that's what pendingRoleAnnounce tracks).
+    // Capture the seqId from the supporter-jack send (that's what the role-announce entry tracks).
     uint8_t seqId = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
@@ -1016,7 +1016,9 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
     cdm.broadcastRoleAndChampion();
     ASSERT_NE(seqId, 0u);
 
-    // A delivery report for a different destination clears nothing here. The
+    // A delivery report for a different destination clears nothing here: the
+    // commit is matched on seqId AND MAC, so a stranger's report cannot mark
+    // this peer as told.
     uint8_t otherMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00};
     suite->deliverRoleAnnounceSendResult(otherMac, seqId, /*success=*/true);
 
@@ -1033,7 +1035,7 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
     EXPECT_EQ(retransmits, 1);
 }
 
-// Retransmit abandons after kMaxRetries with no ack.
+// Retransmit abandons after Resender::MAX_RETRIES with no ack.
 inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1049,12 +1051,12 @@ inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
         .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t*, const size_t) {
-            // Count sends to the supporter-jack peer (the one that goes into pendingRoleAnnounce).
+            // Count sends to the supporter-jack peer (the one that goes into the role-announce entry).
             if (memcmp(mac, suite->supporterMac, 6) == 0) supporterSends++;
             return 1;
         });
 
-    cdm.broadcastRoleAndChampion();  // initial: 1 to supporter + 1 fire-and-forget to opponent
+    cdm.broadcastRoleAndChampion();  // one announce, to the supporter jack
     ASSERT_EQ(supporterSends, 1);
 
     // Advance clock + sync 3 times → 3 retransmits (supporter only, pending path).
@@ -1525,7 +1527,7 @@ inline void cdmGameEventAckClearsPending(ChainDuelManagerTests* suite) {
     cdm.sync();
 }
 
-// After kMaxRetries with no ACK, pending is abandoned — no further sends.
+// After Resender::MAX_RETRIES with no ACK, pending is abandoned — no further sends.
 inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1542,7 +1544,7 @@ inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
     cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
     ASSERT_EQ(supporterSends, 1);
 
-    // kMaxRetries = 3. Advance past each exponential backoff window (100, 200,
+    // Resender::MAX_RETRIES = 3. Advance past each exponential backoff window (100, 200,
     // 400, 800ms). Use 1000ms to cover the largest.
     for (int i = 0; i < 3; i++) {
         suite->fakeClock->advance(1000);

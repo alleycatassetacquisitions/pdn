@@ -126,8 +126,7 @@ public:
     /// Longer than the retry span on purpose: a tick landing inside that window
     /// supersedes the live entry and restarts its budget, so the announce would
     /// retransmit forever instead of going quiet between offers.
-    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS =
-        Resender::retransmitSpanMs() + 500;
+    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::staleAfterMs();
 
     // Retry observability for this manager's two channels.
     struct RetryStats {
@@ -229,9 +228,11 @@ private:
     // Keyed on the CONTENT, not just the peer: a champion change leaves the
     // cable untouched, so a stamp holding only the MAC suppresses exactly the
     // announce that has to go out. `delivered` is the radio's send report, not
-    // proof the peer's app took the frame — that is what the half-open gate
-    // below is for. What it does prove is the negative: an announce that spent
-    // its budget never left, and re-offering it is the only repair there is.
+    // proof the peer's app took the frame — that is what the half-open gate in
+    // each send function is for. What it proves is the negative: an announce
+    // that spent its budget was never MAC-acked, whether it was refused before
+    // it left or went out and came back SEND_FAIL. Either way it did not land,
+    // and re-offering it is the only repair there is.
     struct RoleAnnounceState {
         std::array<uint8_t, 6> peer{};
         uint8_t role = 0;
@@ -270,8 +271,8 @@ private:
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
 
     // Records a peer as told once the radio reports the frame sent. Report, not
-    // handover: a frame that exhausted its retries never left, and stamping it
-    // anyway would suppress the only re-send there is.
+    // handover: a frame that exhausted its retries was never MAC-acked, and
+    // stamping it anyway would suppress the only re-send there is.
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 
     // Time from a frame going out to the radio reporting it delivered. Not a
