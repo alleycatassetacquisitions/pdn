@@ -38,11 +38,11 @@ jobs:
     - name: Run CLI Unit Tests
       run: pio test -e native_cli_test
 
-    # Same 403 tests as above; what these add is a detector. Plain native runs
+    # Same core suite as above; what these add is a detector. Plain native runs
     # matchManagerConcurrentDriverVsReader too, but only tsan checks it for races.
-    # Build and run separately: pio test reads the binary's stdout, and a
-    # sanitizer writes its report to stderr. Letting pio own the process turns a
-    # heap overflow into a bare "received signal SIGHUP" with no file or stack.
+    # Run the binary directly: pio's googletest runner echoes only lines it parses
+    # as test results, so a sanitizer report never reaches the log, and it renders
+    # a non-zero exit as a signal name ("received signal SIGHUP" for exit 1).
     - name: Run Core Unit Tests under AddressSanitizer
       run: |
         pio test -e native_asan --without-testing

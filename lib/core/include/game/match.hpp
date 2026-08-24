@@ -31,11 +31,12 @@ public:
     Match(const char* matchId, const char* playerId, bool isHunter);
 
     /**
-     * Creates a match with both players known. Without this overload three string
-     * arguments still compile — the third converts to bool and only the hunter is
-     * set.
+     * Deleted so three string arguments are a compile error. They otherwise bind
+     * to the overload above, converting the bounty id to `true` and leaving the
+     * bounty unset. A match with both players is built the way production builds
+     * one: the local player through the constructor, the opponent through a setter.
      */
-    Match(const char* matchId, const char* hunterId, const char* bountyId);
+    Match(const char* matchId, const char* hunterId, const char* bountyId) = delete;
 
     /**
      * Sets the hunter's draw time
@@ -51,15 +52,15 @@ public:
 
     /**
      * Sets the hunter's ID
-     * @param hunter_id Hunter player's ID
+     * @param hunterId Hunter player's ID
      */
-    void setHunterId(const char* hunter_id);
+    void setHunterId(const char* hunterId);
 
     /**
      * Sets the bounty's ID
-     * @param bounty_id Bounty player's ID
+     * @param bountyId Bounty player's ID
      */
-    void setBountyId(const char* bounty_id);
+    void setBountyId(const char* bountyId);
 
     /**
      * @return Match data as JSON string

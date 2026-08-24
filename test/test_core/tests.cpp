@@ -515,8 +515,8 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
 // MATCH TESTS
 // ============================================
 
-TEST_F(MatchTestSuite, threeStringsStoreBothPlayers) {
-    matchThreeStringsStoreBothPlayers();
+TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
+    matchShootoutIdConversionStaysInBounds();
 }
 
 TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {

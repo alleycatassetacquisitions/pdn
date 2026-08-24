@@ -14,23 +14,29 @@ protected:
 // JSON Serialization Tests
 // ============================================
 
-// Three string arguments must select the two-player constructor rather than
-// convert the third to bool. The round-trip tests below cannot catch this: they
-// compare a restored match against the same original, so an empty bounty on
-// both sides passes.
-inline void matchThreeStringsStoreBothPlayers() {
-    Match match("match-1", "hunt", "bnty");
+// Shootout ids are "SHT-" then 32 digits: 36 characters carrying one hyphen
+// where a UUID carries four. The conversion packs two hex characters per byte
+// and skips hyphens, so those three missing hyphens are worth two extra bytes
+// past a 16-byte field. The surrounding canary is what a plain native run sees;
+// under ASan the real 16-byte case reports directly.
+inline void matchShootoutIdConversionStaysInBounds() {
+    char shootoutId[IdGenerator::UUID_BUFFER_SIZE];
+    snprintf(shootoutId, sizeof(shootoutId), "SHT-%032d", 3);
+    ASSERT_EQ(strlen(shootoutId), IdGenerator::UUID_STRING_LENGTH);
 
-    EXPECT_STREQ(match.getHunterId(), "hunt");
-    EXPECT_STREQ(match.getBountyId(), "bnty") << "bounty id was not stored";
+    uint8_t bytes[IdGenerator::UUID_BINARY_SIZE + 4];
+    memset(bytes, 0xAA, sizeof(bytes));
+
+    IdGenerator::uuidStringToBytes(shootoutId, bytes);
+
+    for (size_t i = IdGenerator::UUID_BINARY_SIZE; i < sizeof(bytes); i++) {
+        EXPECT_EQ(bytes[i], 0xAA) << "wrote past the uuid field at index " << i;
+    }
 }
 
-// A shorter id must not leave the previous one's bytes in the field. Production
-// only ever fills an empty slot (MatchManager sets the opponent's id into the
-// side the constructor left blank), so this guards against a future writer that
-// reuses a Match — and against anyone swapping the copy for one that stops at
-// the terminator. STREQ cannot see it: strcmp stops there too. serialize() is
-// the only reader of the raw tail, which is why the assertions go through it.
+// A shorter id must not leave the previous one's bytes in the field. STREQ
+// cannot see this: strcmp stops at the terminator the same way a bad copy would.
+// Index 3 is the discriminating byte — index 2 holds a terminator either way.
 inline void matchShorterIdOverwriteClearsTheTail() {
     Match match("m", "abcd", true);
     match.setBountyId("wxyz");
@@ -38,26 +44,17 @@ inline void matchShorterIdOverwriteClearsTheTail() {
     match.setHunterId("ab");
     match.setBountyId("wx");
 
-    uint8_t buffer[MATCH_BINARY_SIZE] = {};
-    match.serialize(buffer);
-
-    // Offsets per Match::serialize.
-    const uint8_t* hunterBytes = buffer + IdGenerator::UUID_BINARY_SIZE;
-    const uint8_t* bountyBytes = hunterBytes + PLAYER_ID_BINARY_SIZE;
-
-    EXPECT_EQ(hunterBytes[2], 0) << "hunter field tail was not cleared";
-    EXPECT_EQ(hunterBytes[3], 0) << "hunter field tail was not cleared";
-    EXPECT_EQ(bountyBytes[2], 0) << "bounty field tail was not cleared";
-    EXPECT_EQ(bountyBytes[3], 0) << "bounty field tail was not cleared";
+    EXPECT_EQ(match.getHunterId()[3], '\0') << "hunter field tail was not cleared";
+    EXPECT_EQ(match.getBountyId()[3], '\0') << "bounty field tail was not cleared";
     EXPECT_STREQ(match.getHunterId(), "ab");
     EXPECT_STREQ(match.getBountyId(), "wx");
 }
 
 inline void matchJsonRoundTripPreservesAllFields() {
     // Create a match with all fields
-    Match original("match-id-12345678-1234-1234-1234-123456789abc", 
-                   "hunter-id-12345678-1234-1234-1234-123456789abc", 
-                   "bounty-id-12345678-1234-1234-1234-123456789abc");
+    Match original("match-id-12345678-1234-1234-1234-123456789abc",
+                   "hunter-id-12345678-1234-1234-1234-123456789abc", true);
+    original.setBountyId("bounty-id-12345678-1234-1234-1234-123456789abc");
     original.setHunterDrawTime(250);
     original.setBountyDrawTime(300);
 
@@ -78,7 +75,8 @@ inline void matchJsonRoundTripPreservesAllFields() {
 
 inline void matchJsonContainsWinnerFlag() {
     // Hunter wins (faster draw time)
-    Match hunterWins("match-1", "hunter-1", "bounty-1");
+    Match hunterWins("match-1", "hunter-1", true);
+    hunterWins.setBountyId("bounty-1");
     hunterWins.setHunterDrawTime(200);
     hunterWins.setBountyDrawTime(300);
 
@@ -88,7 +86,8 @@ inline void matchJsonContainsWinnerFlag() {
     EXPECT_NE(json.find("\"winner_is_hunter\":true"), std::string::npos);
 
     // Bounty wins (faster draw time)
-    Match bountyWins("match-2", "hunter-2", "bounty-2");
+    Match bountyWins("match-2", "hunter-2", true);
+    bountyWins.setBountyId("bounty-2");
     bountyWins.setHunterDrawTime(350);
     bountyWins.setBountyDrawTime(200);
 
@@ -104,9 +103,9 @@ inline void matchJsonContainsWinnerFlag() {
 
 inline void matchBinaryRoundTripPreservesAllFields() {
     // Create a match with valid UUID format strings
-    Match original("12345678-1234-1234-1234-123456789abc", 
-                   "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", 
-                   "11111111-2222-3333-4444-555555555555");
+    Match original("12345678-1234-1234-1234-123456789abc",
+                   "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", true);
+    original.setBountyId("11111111-2222-3333-4444-555555555555");
     original.setHunterDrawTime(150);
     original.setBountyDrawTime(275);
 
@@ -156,7 +155,8 @@ inline void matchSetupClearsDrawTimes() {
 }
 
 inline void matchDrawTimesSetCorrectly() {
-    Match match("match", "hunter", "bounty");
+    Match match("match", "hunter", true);
+    match.setBountyId("bounty");
 
     match.setHunterDrawTime(123);
     EXPECT_EQ(match.getHunterDrawTime(), 123);
@@ -170,8 +170,9 @@ inline void matchDrawTimesSetCorrectly() {
 // ============================================
 
 inline void matchWithZeroDrawTimes() {
-    Match match("match", "hunter", "bounty");
-    
+    Match match("match", "hunter", true);
+    match.setBountyId("bounty");
+
     // Both times at 0 - edge case for tie
     EXPECT_EQ(match.getHunterDrawTime(), 0);
     EXPECT_EQ(match.getBountyDrawTime(), 0);
@@ -183,8 +184,9 @@ inline void matchWithZeroDrawTimes() {
 }
 
 inline void matchWithLargeDrawTimes() {
-    Match match("match", "hunter", "bounty");
-    
+    Match match("match", "hunter", true);
+    match.setBountyId("bounty");
+
     // Test with large values
     unsigned long largeTime = 999999999UL;
     match.setHunterDrawTime(largeTime);
