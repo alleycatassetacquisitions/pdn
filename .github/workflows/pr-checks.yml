@@ -40,11 +40,18 @@ jobs:
 
     # Same 403 tests as above; what these add is a detector. Plain native runs
     # matchManagerConcurrentDriverVsReader too, but only tsan checks it for races.
+    # Build and run separately: pio test reads the binary's stdout, and a
+    # sanitizer writes its report to stderr. Letting pio own the process turns a
+    # heap overflow into a bare "received signal SIGHUP" with no file or stack.
     - name: Run Core Unit Tests under AddressSanitizer
-      run: pio test -e native_asan
+      run: |
+        pio test -e native_asan --without-testing
+        ./.pio/build/native_asan/program
 
     - name: Run Core Unit Tests under ThreadSanitizer
-      run: pio test -e native_tsan
+      run: |
+        pio test -e native_tsan --without-testing
+        ./.pio/build/native_tsan/program
 
   # ESP32 build verification
   build-esp32:

@@ -15,14 +15,13 @@ public:
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
     /// Writes an id into a fixed-width field, truncating rather than overrunning.
-    /// Callers pass std::string::c_str() (Player::getUserID), which carries no
-    /// promise of being as wide as the field it lands in. The tail is zeroed, so
-    /// a setter overwriting a populated field cannot strand the old id's bytes
-    /// past the new terminator — Match::serialize reads the field whole.
-    /// Bounded by the source's terminator, not its allocation: a source without
-    /// one is still read up to `capacity - 1`.
+    /// The dangerous source is the radio: processQuickdrawCommand builds a
+    /// QuickdrawCommand straight from received bytes, which carry no promise of a
+    /// terminator. strncpy also zero-fills the tail, so a field is fully defined
+    /// even when the id is shorter than it.
     static void copyId(char* destination, size_t capacity, const char* source) {
-        strncpy(destination, source, capacity - 1);
+        if (capacity == 0) return;
+        strncpy(destination, source == nullptr ? "" : source, capacity - 1);
         destination[capacity - 1] = '\0';
     }
 

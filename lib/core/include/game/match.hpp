@@ -31,9 +31,9 @@ public:
     Match(const char* matchId, const char* playerId, bool isHunter);
 
     /**
-     * Creates a match with both players known. Kept distinct from the
-     * single-player overload: three string arguments would otherwise convert the
-     * third to bool and set only the hunter.
+     * Creates a match with both players known. Without this overload three string
+     * arguments still compile — the third converts to bool and only the hunter is
+     * set.
      */
     Match(const char* matchId, const char* hunterId, const char* bountyId);
 

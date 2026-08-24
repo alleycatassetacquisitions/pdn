@@ -25,11 +25,12 @@ inline void matchThreeStringsStoreBothPlayers() {
     EXPECT_STREQ(match.getBountyId(), "bnty") << "bounty id was not stored";
 }
 
-// A short id must not leave the bytes that preceded it in the field. The setters
-// are the path production uses — MatchManager fills the opponent's id after
-// construction — and they can shorten an already-populated field. STREQ cannot
-// see the difference because strcmp stops at the terminator; serialize() copies
-// PLAYER_ID_BINARY_SIZE raw bytes, so the tail past the terminator shows there.
+// A shorter id must not leave the previous one's bytes in the field. Production
+// only ever fills an empty slot (MatchManager sets the opponent's id into the
+// side the constructor left blank), so this guards against a future writer that
+// reuses a Match — and against anyone swapping the copy for one that stops at
+// the terminator. STREQ cannot see it: strcmp stops there too. serialize() is
+// the only reader of the raw tail, which is why the assertions go through it.
 inline void matchShorterIdOverwriteClearsTheTail() {
     Match match("m", "abcd", true);
     match.setBountyId("wxyz");
@@ -40,14 +41,14 @@ inline void matchShorterIdOverwriteClearsTheTail() {
     uint8_t buffer[MATCH_BINARY_SIZE] = {};
     match.serialize(buffer);
 
-    // serialize writes the uuid, then hunter, then bounty — see Match::serialize.
+    // Offsets per Match::serialize.
     const uint8_t* hunterBytes = buffer + IdGenerator::UUID_BINARY_SIZE;
     const uint8_t* bountyBytes = hunterBytes + PLAYER_ID_BINARY_SIZE;
 
-    EXPECT_EQ(hunterBytes[2], 0) << "hunter id kept a byte of the id it replaced";
-    EXPECT_EQ(hunterBytes[3], 0) << "hunter id kept a byte of the id it replaced";
-    EXPECT_EQ(bountyBytes[2], 0) << "bounty id kept a byte of the id it replaced";
-    EXPECT_EQ(bountyBytes[3], 0) << "bounty id kept a byte of the id it replaced";
+    EXPECT_EQ(hunterBytes[2], 0) << "hunter field tail was not cleared";
+    EXPECT_EQ(hunterBytes[3], 0) << "hunter field tail was not cleared";
+    EXPECT_EQ(bountyBytes[2], 0) << "bounty field tail was not cleared";
+    EXPECT_EQ(bountyBytes[3], 0) << "bounty field tail was not cleared";
     EXPECT_STREQ(match.getHunterId(), "ab");
     EXPECT_STREQ(match.getBountyId(), "wx");
 }
