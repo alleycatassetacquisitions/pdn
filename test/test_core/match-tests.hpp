@@ -14,42 +14,42 @@ protected:
 // JSON Serialization Tests
 // ============================================
 
-// Three string arguments must select the two-player constructor. They used to
-// convert the third to bool and build a hunter-only match whose bounty was
-// never set, which the existing assertions could not see because they read only
-// the winner flag, and that is derived from draw times.
+// Three string arguments must select the two-player constructor rather than
+// convert the third to bool. The round-trip tests below cannot catch this: they
+// compare a restored match against the same original, so an empty bounty on
+// both sides passes.
 inline void matchThreeStringsStoreBothPlayers() {
     Match match("match-1", "hunt", "bnty");
 
     EXPECT_STREQ(match.getHunterId(), "hunt");
-    EXPECT_STREQ(match.getBountyId(), "bnty")
-        << "the third argument was taken as a bool, so no bounty was stored";
+    EXPECT_STREQ(match.getBountyId(), "bnty") << "bounty id was not stored";
 }
 
-// An id shorter than its field must not carry the bytes that followed it. The
-// string accessors cannot see this — a copy bounded by the destination drags in
-// whatever sat after the terminator, and strcmp stops at the terminator anyway.
-// serialize() is where it shows: it copies PLAYER_ID_BINARY_SIZE raw bytes, so
-// the tail reaches the uploaded record. The source here deliberately has
-// non-zero bytes after its terminator, which is what a c_str() into a longer
-// buffer looks like.
-inline void matchShortIdsDoNotSerializeTrailingBytes() {
-    char noisyHunter[8] = {'a', 'b', '\0', 'Z', 'Z', 'Z', 'Z', 'Z'};
-    char noisyBounty[8] = {'c', 'd', '\0', 'Y', 'Y', 'Y', 'Y', 'Y'};
+// A short id must not leave the bytes that preceded it in the field. The setters
+// are the path production uses — MatchManager fills the opponent's id after
+// construction — and they can shorten an already-populated field. STREQ cannot
+// see the difference because strcmp stops at the terminator; serialize() copies
+// PLAYER_ID_BINARY_SIZE raw bytes, so the tail past the terminator shows there.
+inline void matchShorterIdOverwriteClearsTheTail() {
+    Match match("m", "abcd", true);
+    match.setBountyId("wxyz");
 
-    Match match("m", noisyHunter, noisyBounty);
+    match.setHunterId("ab");
+    match.setBountyId("wx");
 
     uint8_t buffer[MATCH_BINARY_SIZE] = {};
     match.serialize(buffer);
 
-    // Layout: UUID_BINARY_SIZE bytes of match id, then hunter, then bounty.
+    // serialize writes the uuid, then hunter, then bounty — see Match::serialize.
     const uint8_t* hunterBytes = buffer + IdGenerator::UUID_BINARY_SIZE;
     const uint8_t* bountyBytes = hunterBytes + PLAYER_ID_BINARY_SIZE;
 
-    EXPECT_EQ(hunterBytes[3], 0) << "byte after the hunter id came from past its end";
-    EXPECT_EQ(bountyBytes[3], 0) << "byte after the bounty id came from past its end";
+    EXPECT_EQ(hunterBytes[2], 0) << "hunter id kept a byte of the id it replaced";
+    EXPECT_EQ(hunterBytes[3], 0) << "hunter id kept a byte of the id it replaced";
+    EXPECT_EQ(bountyBytes[2], 0) << "bounty id kept a byte of the id it replaced";
+    EXPECT_EQ(bountyBytes[3], 0) << "bounty id kept a byte of the id it replaced";
     EXPECT_STREQ(match.getHunterId(), "ab");
-    EXPECT_STREQ(match.getBountyId(), "cd");
+    EXPECT_STREQ(match.getBountyId(), "wx");
 }
 
 inline void matchJsonRoundTripPreservesAllFields() {

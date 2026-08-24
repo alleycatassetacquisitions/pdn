@@ -14,18 +14,16 @@ public:
     static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
-    /// Copies an id bounded by its SOURCE, zero-filling the rest of the field.
-    /// Ids here are conventionally exactly as wide as the field holding them, so
-    /// a destination-width copy reads past the end of anything shorter — and a
-    /// caller passing a std::string's c_str() offers no such guarantee. The
-    /// zero-fill is what makes this safe for a fixed-width field that is later
-    /// serialized whole: the bytes after the terminator are written, not left as
-    /// whatever the source happened to be followed by.
+    /// Writes an id into a fixed-width field, truncating rather than overrunning.
+    /// Callers pass std::string::c_str() (Player::getUserID), which carries no
+    /// promise of being as wide as the field it lands in. The tail is zeroed, so
+    /// a setter overwriting a populated field cannot strand the old id's bytes
+    /// past the new terminator — Match::serialize reads the field whole.
+    /// Bounded by the source's terminator, not its allocation: a source without
+    /// one is still read up to `capacity - 1`.
     static void copyId(char* destination, size_t capacity, const char* source) {
-        if (capacity == 0) return;
-        const size_t length = source == nullptr ? 0 : strnlen(source, capacity - 1);
-        if (length > 0) memcpy(destination, source, length);
-        memset(destination + length, 0, capacity - length);
+        strncpy(destination, source, capacity - 1);
+        destination[capacity - 1] = '\0';
     }
 
     //UUID 

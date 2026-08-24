@@ -519,8 +519,8 @@ TEST_F(MatchTestSuite, threeStringsStoreBothPlayers) {
     matchThreeStringsStoreBothPlayers();
 }
 
-TEST_F(MatchTestSuite, shortIdsDoNotSerializeTrailingBytes) {
-    matchShortIdsDoNotSerializeTrailingBytes();
+TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
+    matchShorterIdOverwriteClearsTheTail();
 }
 
 TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {

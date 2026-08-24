@@ -7,7 +7,11 @@
 Match::Match(const char* mid, const char* player_id, bool isHunter)
     : hunter_draw_time_ms(0), bounty_draw_time_ms(0) {
     IdGenerator::copyId(match_id, sizeof(match_id), mid);
-    IdGenerator::copyId(isHunter ? hunter : bounty, sizeof(hunter), player_id);
+    if (isHunter) {
+        IdGenerator::copyId(hunter, sizeof(hunter), player_id);
+    } else {
+        IdGenerator::copyId(bounty, sizeof(bounty), player_id);
+    }
 }
 
 Match::Match(const char* mid, const char* hunterId, const char* bountyId)
@@ -74,18 +78,15 @@ void Match::fromJson(const std::string &json) {
     if (!error) {
         if (doc[JSON_KEY_MATCH_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_MATCH_ID].as<const char*>();
-            strncpy(match_id, v ? v : "", IdGenerator::UUID_BUFFER_SIZE - 1);
-            match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
+            IdGenerator::copyId(match_id, sizeof(match_id), v ? v : "");
         }
         if (doc[JSON_KEY_HUNTER_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_HUNTER_ID].as<const char*>();
-            strncpy(hunter, v ? v : "", 4);
-            hunter[4] = '\0';
+            IdGenerator::copyId(hunter, sizeof(hunter), v ? v : "");
         }
         if (doc[JSON_KEY_BOUNTY_ID].is<const char*>()) {
             const char* v = doc[JSON_KEY_BOUNTY_ID].as<const char*>();
-            strncpy(bounty, v ? v : "", 4);
-            bounty[4] = '\0';
+            IdGenerator::copyId(bounty, sizeof(bounty), v ? v : "");
         }
         if (doc[JSON_KEY_HUNTER_TIME].is<unsigned long>()) {
             hunter_draw_time_ms = doc[JSON_KEY_HUNTER_TIME].as<unsigned long>();
@@ -136,8 +137,7 @@ size_t Match::deserialize(const uint8_t* buffer) {
     memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
     {
         std::string tmp = IdGenerator::uuidBytesToString(uuidBytes);
-        strncpy(match_id, tmp.c_str(), IdGenerator::UUID_BUFFER_SIZE - 1);
-        match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
+        IdGenerator::copyId(match_id, sizeof(match_id), tmp.c_str());
     }
     currentPos += IdGenerator::UUID_BINARY_SIZE;
 
