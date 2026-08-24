@@ -28,7 +28,14 @@ public:
     /**
      * Creates a new match from raw C-strings — no heap allocation in the hot path.
      */
-    Match(const char* match_id, const char* player_id, bool isHunter);
+    explicit Match(const char* matchId, const char* playerId, bool isHunter);
+
+    /**
+     * Creates a match with both players known. Distinct from the single-player
+     * overload so that three string arguments cannot select it by converting
+     * the third to bool, which silently built a hunter-only match.
+     */
+    Match(const char* matchId, const char* hunterId, const char* bountyId);
 
     /**
      * Sets the hunter's draw time

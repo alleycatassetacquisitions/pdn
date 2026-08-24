@@ -34,8 +34,8 @@ int QuickdrawWirelessManager::broadcastPacket(const uint8_t macAddress[6],
     qdPacket.playerDrawTime = command.playerDrawTime;
     qdPacket.isHunter = command.isHunter;
 
-    memcpy(qdPacket.matchId, command.matchId, IdGenerator::UUID_BUFFER_SIZE);
-    memcpy(qdPacket.playerId, command.playerId, 5);
+    IdGenerator::copyId(qdPacket.matchId, sizeof(qdPacket.matchId), command.matchId);
+    IdGenerator::copyId(qdPacket.playerId, sizeof(qdPacket.playerId), command.playerId);
 
     LOG_I("QWM", "Sending command %i to %s", command.command, MacToString(macAddress));
     LOG_I("QWM", "Match ID: %s", qdPacket.matchId);

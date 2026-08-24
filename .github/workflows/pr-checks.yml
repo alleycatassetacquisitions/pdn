@@ -38,6 +38,15 @@ jobs:
     - name: Run CLI Unit Tests
       run: pio test -e native_cli_test
 
+    # The sanitizer builds already existed and already passed; nothing ran them,
+    # so a regression in either would have gone unnoticed. native_tsan is the
+    # only thing that exercises matchManagerConcurrentDriverVsReader.
+    - name: Run Core Unit Tests under AddressSanitizer
+      run: pio test -e native_asan
+
+    - name: Run Core Unit Tests under ThreadSanitizer
+      run: pio test -e native_tsan
+
   # ESP32 build verification
   build-esp32:
     runs-on: ubuntu-latest

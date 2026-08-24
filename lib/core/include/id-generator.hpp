@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstring>
+
 #include "utils/UUID.h"
 #include <string>
 #include <random>
@@ -11,6 +13,20 @@ public:
     static constexpr size_t UUID_STRING_LENGTH = 36;  // Length without null terminator
     static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
+
+    /// Copies an id bounded by its SOURCE, zero-filling the rest of the field.
+    /// Ids here are conventionally exactly as wide as the field holding them, so
+    /// a destination-width copy reads past the end of anything shorter — and a
+    /// caller passing a std::string's c_str() offers no such guarantee. The
+    /// zero-fill is what makes this safe for a fixed-width field that is later
+    /// serialized whole: the bytes after the terminator are written, not left as
+    /// whatever the source happened to be followed by.
+    static void copyId(char* destination, size_t capacity, const char* source) {
+        if (capacity == 0) return;
+        const size_t length = source == nullptr ? 0 : strnlen(source, capacity - 1);
+        if (length > 0) memcpy(destination, source, length);
+        memset(destination + length, 0, capacity - length);
+    }
 
     //UUID 
     explicit IdGenerator(unsigned long seed) : generator(seed) {

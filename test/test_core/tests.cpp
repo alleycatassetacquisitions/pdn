@@ -515,6 +515,14 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
 // MATCH TESTS
 // ============================================
 
+TEST_F(MatchTestSuite, threeStringsStoreBothPlayers) {
+    matchThreeStringsStoreBothPlayers();
+}
+
+TEST_F(MatchTestSuite, shortIdsDoNotSerializeTrailingBytes) {
+    matchShortIdsDoNotSerializeTrailingBytes();
+}
+
 TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
     matchJsonRoundTripPreservesAllFields();
 }

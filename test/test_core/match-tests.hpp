@@ -14,6 +14,44 @@ protected:
 // JSON Serialization Tests
 // ============================================
 
+// Three string arguments must select the two-player constructor. They used to
+// convert the third to bool and build a hunter-only match whose bounty was
+// never set, which the existing assertions could not see because they read only
+// the winner flag, and that is derived from draw times.
+inline void matchThreeStringsStoreBothPlayers() {
+    Match match("match-1", "hunt", "bnty");
+
+    EXPECT_STREQ(match.getHunterId(), "hunt");
+    EXPECT_STREQ(match.getBountyId(), "bnty")
+        << "the third argument was taken as a bool, so no bounty was stored";
+}
+
+// An id shorter than its field must not carry the bytes that followed it. The
+// string accessors cannot see this — a copy bounded by the destination drags in
+// whatever sat after the terminator, and strcmp stops at the terminator anyway.
+// serialize() is where it shows: it copies PLAYER_ID_BINARY_SIZE raw bytes, so
+// the tail reaches the uploaded record. The source here deliberately has
+// non-zero bytes after its terminator, which is what a c_str() into a longer
+// buffer looks like.
+inline void matchShortIdsDoNotSerializeTrailingBytes() {
+    char noisyHunter[8] = {'a', 'b', '\0', 'Z', 'Z', 'Z', 'Z', 'Z'};
+    char noisyBounty[8] = {'c', 'd', '\0', 'Y', 'Y', 'Y', 'Y', 'Y'};
+
+    Match match("m", noisyHunter, noisyBounty);
+
+    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    match.serialize(buffer);
+
+    // Layout: UUID_BINARY_SIZE bytes of match id, then hunter, then bounty.
+    const uint8_t* hunterBytes = buffer + IdGenerator::UUID_BINARY_SIZE;
+    const uint8_t* bountyBytes = hunterBytes + PLAYER_ID_BINARY_SIZE;
+
+    EXPECT_EQ(hunterBytes[3], 0) << "byte after the hunter id came from past its end";
+    EXPECT_EQ(bountyBytes[3], 0) << "byte after the bounty id came from past its end";
+    EXPECT_STREQ(match.getHunterId(), "ab");
+    EXPECT_STREQ(match.getBountyId(), "cd");
+}
+
 inline void matchJsonRoundTripPreservesAllFields() {
     // Create a match with all fields
     Match original("match-id-12345678-1234-1234-1234-123456789abc", 

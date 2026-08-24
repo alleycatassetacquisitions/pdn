@@ -6,15 +6,16 @@
 
 Match::Match(const char* mid, const char* player_id, bool isHunter)
     : hunter_draw_time_ms(0), bounty_draw_time_ms(0) {
-    memcpy(match_id, mid, IdGenerator::UUID_BUFFER_SIZE - 1);
-    match_id[IdGenerator::UUID_BUFFER_SIZE - 1] = '\0';
-    if(isHunter) {
-        memcpy(hunter, player_id, 4);
-        hunter[4] = '\0';
-    } else {
-        memcpy(bounty, player_id, 4);
-        bounty[4] = '\0';
-    }
+    IdGenerator::copyId(match_id, sizeof(match_id), mid);
+    IdGenerator::copyId(isHunter ? hunter : bounty, sizeof(hunter), player_id);
+}
+
+Match::Match(const char* mid, const char* hunterId, const char* bountyId)
+    : hunter_draw_time_ms(0)
+    , bounty_draw_time_ms(0) {
+    IdGenerator::copyId(match_id, sizeof(match_id), mid);
+    IdGenerator::copyId(hunter, sizeof(hunter), hunterId);
+    IdGenerator::copyId(bounty, sizeof(bounty), bountyId);
 }
 
 Match::Match(){
@@ -26,13 +27,11 @@ Match::Match(){
 }
 
 void Match::setHunterId(const char* hunter_id) {
-    memcpy(hunter, hunter_id, 4);
-    hunter[4] = '\0';
+    IdGenerator::copyId(hunter, sizeof(hunter), hunter_id);
 }
 
 void Match::setBountyId(const char* bounty_id) {
-    memcpy(bounty, bounty_id, 4);
-    bounty[4] = '\0';
+    IdGenerator::copyId(bounty, sizeof(bounty), bounty_id);
 }
 
 void Match::setHunterDrawTime(unsigned long timeMs) {
