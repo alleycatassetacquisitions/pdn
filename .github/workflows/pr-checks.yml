@@ -38,11 +38,9 @@ jobs:
     - name: Run CLI Unit Tests
       run: pio test -e native_cli_test
 
-    # Same core suite as above; what these add is a detector. Plain native runs
-    # matchManagerConcurrentDriverVsReader too, but only tsan checks it for races.
-    # Run the binary directly: pio's googletest runner echoes only lines it parses
-    # as test results, so a sanitizer report never reaches the log, and it renders
-    # a non-zero exit as a signal name ("received signal SIGHUP" for exit 1).
+    # Plain native runs matchManagerConcurrentDriverVsReader too, but only tsan
+    # checks it for races. These run the built binary directly rather than under
+    # `pio test` — see the notes above each sanitizer env in platformio.ini.
     - name: Run Core Unit Tests under AddressSanitizer
       run: |
         pio test -e native_asan --without-testing

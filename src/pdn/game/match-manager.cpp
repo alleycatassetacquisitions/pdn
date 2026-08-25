@@ -68,9 +68,7 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
 
-    char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    IdGenerator::copyId(matchId, IdGenerator::getInstance().generateId());
-    primeMatch(matchId, opponentMac);
+    primeMatch(IdGenerator::getInstance().generateId(), opponentMac);
     sendMatchId();
 }
 

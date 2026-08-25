@@ -635,6 +635,10 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 // MATCH MANAGER TESTS
 // ============================================
 
+TEST_F(MatchManagerTestSuite, initializeStoresGeneratedMatchId) {
+    matchManagerInitializeStoresGeneratedMatchId(this);
+}
+
 TEST_F(MatchManagerTestSuite, setBoostStoresValue) {
     matchManagerSetBoostStoresValue(matchManager, player);
 }

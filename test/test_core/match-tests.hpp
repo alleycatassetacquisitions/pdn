@@ -1,6 +1,8 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <cstdio>
+#include <cstring>
 #include "game/match.hpp"
 #include "id-generator.hpp"
 
@@ -26,29 +28,33 @@ inline void matchDefaultConstructionIsEmpty() {
     EXPECT_EQ(match.getBountyDrawTime(), 0UL);
 }
 
-// Shootout ids are "SHT-" then 32 digits: 36 characters carrying one hyphen
-// where a UUID carries four. The conversion packs two hex characters per byte
-// and skips hyphens, so those three missing hyphens are worth two extra bytes
-// past a 16-byte field. The surrounding canary is what a plain native run sees;
-// under ASan the real 16-byte case reports directly.
+// A shootout id is "SHT-" then 32 digits: 36 characters with one hyphen where a
+// UUID has four. uuidStringToBytes packs two hex characters per byte and skips
+// hyphens, so this id yields 18 bytes. The canary catches a write past 16.
 inline void matchShootoutIdConversionStaysInBounds() {
     char shootoutId[IdGenerator::UUID_BUFFER_SIZE];
     snprintf(shootoutId, sizeof(shootoutId), "SHT-%032d", 3);
     ASSERT_EQ(strlen(shootoutId), IdGenerator::UUID_STRING_LENGTH);
 
-    uint8_t bytes[IdGenerator::UUID_BINARY_SIZE + 4];
-    memset(bytes, 0xAA, sizeof(bytes));
+    struct {
+        uint8_t bytes[IdGenerator::UUID_BINARY_SIZE];
+        uint8_t canary[4];
+    } probe;
+    static_assert(sizeof(probe) == IdGenerator::UUID_BINARY_SIZE + 4,
+                  "canary must sit directly after the field for this to detect anything");
+    memset(&probe, 0xAA, sizeof(probe));
 
-    IdGenerator::uuidStringToBytes(shootoutId, bytes);
+    IdGenerator::uuidStringToBytes(shootoutId, probe.bytes);
 
-    for (size_t i = IdGenerator::UUID_BINARY_SIZE; i < sizeof(bytes); i++) {
-        EXPECT_EQ(bytes[i], 0xAA) << "wrote past the uuid field at index " << i;
+    for (size_t i = 0; i < sizeof(probe.canary); i++) {
+        EXPECT_EQ(probe.canary[i], 0xAA) << "wrote past the uuid field at index " << i;
     }
 }
 
-// A shorter id must not leave the previous one's bytes in the field. STREQ
-// cannot see this: strcmp stops at the terminator the same way a bad copy would.
-// Index 3 is the discriminating byte — index 2 holds a terminator either way.
+// Pins copyId's zero-fill: overwriting with a shorter id must not leave the
+// previous id's bytes in the tail. EXPECT_STREQ cannot see this, because strcmp
+// stops at the terminator. Index 3 discriminates; index 2 holds a terminator
+// whether the tail was cleared or not.
 inline void matchShorterIdOverwriteClearsTheTail() {
     Match match("m", "abcd", true);
     match.setBountyId("wxyz");

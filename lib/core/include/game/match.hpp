@@ -24,8 +24,7 @@ constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
 class Match {
 public:
     /**
-     * Creates an empty match: blank ids, both draw times zero. Filled in later by
-     * fromJson or by assigning a constructed match over it.
+     * Creates an empty match: blank ids, both draw times zero.
      */
     Match() = default;
 
@@ -35,10 +34,8 @@ public:
     Match(const char* matchId, const char* playerId, bool isHunter);
 
     /**
-     * Deleted so three string arguments are a compile error. They otherwise bind
-     * to the overload above, converting the bounty id to `true` and leaving the
-     * bounty unset. A match with both players is built the way production builds
-     * one: the local player through the constructor, the opponent through a setter.
+     * Deleted: three strings would otherwise bind to the overload above, converting
+     * the bounty id to `true` and leaving the bounty unset.
      */
     Match(const char* matchId, const char* hunterId, const char* bountyId) = delete;
 

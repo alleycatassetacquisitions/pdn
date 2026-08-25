@@ -133,9 +133,9 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
    pio test -e native          # Core unit tests
    pio test -e native_cli_test # CLI-specific tests
    ```
-   CI also gates on the core suite under sanitizers. Build and run those
-   yourself — under `pio test` the googletest runner echoes only lines it
-   parses as test results, so a sanitizer report never reaches the terminal.
+   CI also gates on the core suite under sanitizers. Run those binaries directly:
+   a default `pio test` prints only lines its googletest parser recognizes, so a
+   sanitizer report is dropped.
    ```bash
    pio test -e native_asan --without-testing && ./.pio/build/native_asan/program
    pio test -e native_tsan --without-testing && ./.pio/build/native_tsan/program

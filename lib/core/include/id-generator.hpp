@@ -13,15 +13,13 @@ public:
     static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
-    /// Writes an id into a fixed-width field, truncating rather than overrunning
-    /// and always terminating. Both halves earn their place: a source shorter than
-    /// the field used to be read at the field's width, and a radio frame that fills
-    /// matchId to the brim used to leave it unterminated for the strcmp and %s
-    /// downstream. A null source gives an empty field, which is what ArduinoJson
-    /// returns for a key that is absent.
+    /// Copies an id into a fixed-width field, truncating at N-1 and always
+    /// terminating. A caller can assume neither bound about its source: it may be
+    /// shorter than the field, as a 4-digit player id is, or fill the field with no
+    /// terminator, as a received frame's matchId can.
     template <size_t N>
     static void copyId(char (&destination)[N], const char* source) {
-        static_assert(N > 0, "an id field needs room for a terminator");
+        static_assert(N > 1, "an id field needs room for a character and a terminator");
         strncpy(destination, source == nullptr ? "" : source, N - 1);
         destination[N - 1] = '\0';
     }
@@ -63,12 +61,11 @@ public:
      * @param uuid The UUID string to convert
      * @param bytes Output buffer for the binary data (must be 16 bytes)
      */
-    static void uuidStringToBytes(const std::string& uuid, uint8_t* bytes) {
-        // Bounded by the destination, not by the source. A 36-character id with
-        // fewer than four hyphens yields more than UUID_BINARY_SIZE bytes, and
-        // shootout ids ("SHT-" then 32 digits) carry exactly one hyphen. The
-        // zero-fill covers the other direction: a short id leaves a tail that
-        // callers copy out whole.
+    static void uuidStringToBytes(const std::string& uuid, uint8_t (&bytes)[UUID_BINARY_SIZE]) {
+        // Bounded and filled by the destination. Hex characters pack two to a
+        // byte and hyphens are skipped, so an id that is not UUID-shaped — a
+        // shootout id is "SHT-" then 32 digits — yields more than
+        // UUID_BINARY_SIZE bytes, and a short one leaves the tail undefined.
         memset(bytes, 0, UUID_BINARY_SIZE);
         size_t byteIndex = 0;
         for (size_t i = 0; i < uuid.length() && byteIndex < UUID_BINARY_SIZE; i++) {
