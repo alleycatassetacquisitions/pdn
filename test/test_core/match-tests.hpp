@@ -14,6 +14,18 @@ protected:
 // JSON Serialization Tests
 // ============================================
 
+// Match() is defaulted, so the member initializers are the only thing that
+// empties a fresh match. Nothing else in the suite reads that state.
+inline void matchDefaultConstructionIsEmpty() {
+    Match match;
+
+    EXPECT_STREQ(match.getMatchId(), "");
+    EXPECT_STREQ(match.getHunterId(), "");
+    EXPECT_STREQ(match.getBountyId(), "");
+    EXPECT_EQ(match.getHunterDrawTime(), 0UL);
+    EXPECT_EQ(match.getBountyDrawTime(), 0UL);
+}
+
 // Shootout ids are "SHT-" then 32 digits: 36 characters carrying one hyphen
 // where a UUID carries four. The conversion packs two hex characters per byte
 // and skips hyphens, so those three missing hyphens are worth two extra bytes

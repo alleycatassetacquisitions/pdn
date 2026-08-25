@@ -23,7 +23,11 @@ constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
  */
 class Match {
 public:
-    Match();
+    /**
+     * Creates an empty match: blank ids, both draw times zero. Filled in later by
+     * fromJson or by assigning a constructed match over it.
+     */
+    Match() = default;
 
     /**
      * Creates a new match from raw C-strings — no heap allocation in the hot path.

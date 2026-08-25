@@ -13,14 +13,6 @@ Match::Match(const char* mid, const char* playerId, bool isHunter) {
     }
 }
 
-Match::Match(){
-    match_id[0] = '\0';
-    hunter[0]   = '\0';
-    bounty[0]   = '\0';
-    hunter_draw_time_ms = 0;
-    bounty_draw_time_ms = 0;
-}
-
 void Match::setHunterId(const char* hunterId) {
     IdGenerator::copyId(hunter, hunterId);
 }

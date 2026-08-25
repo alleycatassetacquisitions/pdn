@@ -515,6 +515,10 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
 // MATCH TESTS
 // ============================================
 
+TEST_F(MatchTestSuite, defaultConstructionIsEmpty) {
+    matchDefaultConstructionIsEmpty();
+}
+
 TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
     matchShootoutIdConversionStaysInBounds();
 }
