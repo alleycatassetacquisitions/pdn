@@ -58,10 +58,11 @@ public:
     /// the ring roster and announces it to the other members.
     void onRingClosed();
     /// Inbound RING_CLOSED: adopt `fromMac` as coordinator and `members` as the
-    /// ring roster. The only proposal trigger a non-coordinator has.
+    /// ring roster. A non-coordinator has no other proposal trigger, though it
+    /// must also still be on the ring when the gate is polled.
     void onRingClosedReceived(const uint8_t* fromMac,
                               const std::vector<std::array<uint8_t, 6>>& members);
-    /// True once a ring closure has been observed and no tournament is running:
+    /// True while this device sits on a closed ring and no tournament is running:
     /// the Idle -> ShootoutProposal transition predicate.
     bool shouldEnterProposal() const;
 
@@ -188,9 +189,10 @@ private:
     bool testLoopMembersOverride = false;
     std::vector<std::array<uint8_t, 6>> confirmedSet;
 
-    // The ring roster as of closure. Read live from the RDC on the coordinator
-    // (the only device served a roster) and taken from its RING_CLOSED on every
-    // other member. Non-empty is also the "a ring closed" latch.
+    // The ring roster as of closure. Read live from the RDC on the head that
+    // latched it, and taken from that head's RING_CLOSED on every other member.
+    // Non-empty is also the "a ring closed" latch, and nothing retires it while
+    // IDLE, so shouldEnterProposal pairs it with a liveness check.
     std::vector<std::array<uint8_t, 6>> ringMembers;
     SimpleTimer ringClosedRebroadcastTimer;
     void sendRingClosed();
@@ -198,6 +200,10 @@ private:
     std::vector<NameEntry> names;
     void recordName(const uint8_t* mac, const char* name);
 
+    /// True while this device both claims the ring and still heads it. Only
+    /// meaningful while the anchor is a ring claim, which is why both callers
+    /// are IDLE-gated.
+    bool headsThisRing() const;
     std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;

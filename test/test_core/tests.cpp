@@ -1837,10 +1837,13 @@ TEST_F(ShootoutManagerTests, ringClosedClaimAnnouncesRosterToMembers) { ringClos
 TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorClaimsRing) { ringClosureFromCoordinatorClaimsRing(this); }
 TEST_F(ShootoutManagerTests, peerLossFromCoordinatorReachesManager) { peerLossFromCoordinatorReachesManager(this); }
 TEST_F(ShootoutManagerTests, ringClosedBroadcastPromotesOnlyItsOwnMembers) { ringClosedBroadcastPromotesOnlyItsOwnMembers(this); }
+TEST_F(ShootoutManagerTests, openRingRefusesProposalDespiteLatchedRoster) { openRingRefusesProposalDespiteLatchedRoster(this); }
 TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoopMembersComeFromRdcRoster(this); }
 TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
+TEST_F(ShootoutManagerTests, deposedHeadDoesNotProposeOnItsDeadClaim) { deposedHeadDoesNotProposeOnItsDeadClaim(this); }
+TEST_F(ShootoutManagerTests, staleCoordinatorClaimYieldsToANewRing) { staleCoordinatorClaimYieldsToANewRing(this); }
 TEST_F(ShootoutManagerTests, mergedRingClaimantsSettleOnLowerMac) { mergedRingClaimantsSettleOnLowerMac(this); }
 TEST_F(ShootoutManagerTests, ringClosedReannouncesWhileMembersUnconfirmed) { ringClosedReannouncesWhileMembersUnconfirmed(this); }
 TEST_F(ShootoutManagerTests, laggingRosterDoesNotRunSoloTournament) { laggingRosterDoesNotRunSoloTournament(this); }

@@ -74,13 +74,30 @@ public:
         }
     }
 
-    /// Brings `jack` from Idle to Connected against `peerMac`, optionally
-    /// carrying an advertised chain head.
+    /// Brings `jack` from Idle to Connected against `peerMac`, optionally carrying
+    /// an advertised chain head and HELLO flag bits.
     void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
-                       const uint8_t* advertisedHead = nullptr) {
-        deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
+                       const uint8_t* advertisedHead = nullptr, uint8_t flags = 0) {
+        deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead, flags));
         rdc.sync(&device);
         deliverPdnContext(peerMac);
+        rdc.sync(&device);
+    }
+
+    /// Puts this device mid-chain on a closed loop the way a member really gets
+    /// there: a downstream link, and an upstream link under a foreign head whose
+    /// HELLO carries the relayed ring-closed flag.
+    void joinRelayedRing() {
+        const uint8_t downstream[6] = {0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
+        const uint8_t upstream[6] = {0x05, 0x00, 0x00, 0x00, 0x00, 0x00};
+        const uint8_t chainHead[6] = {0x06, 0x00, 0x00, 0x00, 0x00, 0x00};
+        connectJackTo(outJack, downstream);
+        connectJackTo(inJack, upstream, chainHead, HELLO_FLAG_RING_CLOSED);
+    }
+
+    /// Both cables go quiet: the links lapse and the loop is provably open.
+    void loseTheRing() {
+        fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
         rdc.sync(&device);
     }
 
@@ -173,8 +190,8 @@ inline void coordinatorIsTheRingClosureClaimant(ShootoutManagerTests* suite) {
     EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), b.data(), 6), 0);
 }
 
-// The head announces the roster it just claimed, and that broadcast is the only
-// thing that opens the proposal window on the other members.
+// The head announces the roster it just claimed. A member needs that broadcast to
+// open its proposal window, and needs to still be on the ring when it polls.
 inline void ringClosedClaimAnnouncesRosterToMembers(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
@@ -196,7 +213,13 @@ inline void ringClosedClaimAnnouncesRosterToMembers(ShootoutManagerTests* suite)
             }));
 
     EXPECT_FALSE(suite->shootout->shouldEnterProposal());
-    suite->shootout->onRingClosed();
+
+    // Head a chain out of OUTPUT, then take our own MAC back on INPUT: the RDC
+    // latches the ring on that and calls the manager back.
+    const uint8_t upstream[6] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
+    suite->connectJackTo(suite->outJack, suite->peerMac);
+    suite->connectJackTo(suite->inJack, upstream, suite->localMac);
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
     EXPECT_TRUE(suite->shootout->shouldEnterProposal());
 
     EXPECT_EQ(memcmp(destination.data(), MockDevice::BROADCAST_MAC, 6), 0);
@@ -262,9 +285,9 @@ inline void peerLossFromCoordinatorReachesManager(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
-// A member has no local ring signal to poll: the coordinator's broadcast is
-// what puts it into proposal, and a roster it is absent from belongs to a
-// neighbouring ring.
+// A member is never the head that latches the ring, so it learns closure twice
+// over: the relayed HELLO flag its proposal gate polls, and the coordinator's
+// roster broadcast. A roster it is absent from belongs to a neighbouring ring.
 inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
@@ -274,6 +297,9 @@ inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* s
         .WillByDefault(testing::Return(selfMac));
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
+
+    suite->joinRelayedRing();
+    ASSERT_TRUE(suite->rdc.isInRing());
 
     std::array<uint8_t, 6> alienCoord = {0xA1, 0, 0, 0, 0, 0};
     suite->shootout->onRingClosedReceived(alienCoord.data(), {alienCoord, other});
@@ -294,6 +320,34 @@ inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* s
         .Times(testing::AtLeast(1))
         .WillRepeatedly(testing::Return(1));
     suite->shootout->confirmLocal();
+}
+
+// A member takes the roster and then loses the loop before the app polls it into
+// proposal. Nothing clears that roster — the peer-lost handler stands down in
+// IDLE — so a copy of a ring that is now unplugged is still sitting there, and
+// only live membership can tell it apart from a ring that is really closed.
+inline void openRingRefusesProposalDespiteLatchedRoster(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+
+    suite->joinRelayedRing();
+    suite->shootout->onRingClosedReceived(coord.data(), {coord, me, other});
+    ASSERT_TRUE(suite->shootout->shouldEnterProposal());
+    ASSERT_EQ(suite->shootout->getLoopMembers().size(), 3u)
+        << "the roster never arrived; nothing below would be testing anything";
+
+    suite->loseTheRing();
+    ASSERT_FALSE(suite->rdc.isInRing());
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::IDLE);
+
+    // The roster is untouched, so the refusal can only be coming from the live
+    // membership half of the gate.
+    EXPECT_EQ(suite->shootout->getLoopMembers().size(), 3u);
+    EXPECT_FALSE(suite->shootout->shouldEnterProposal());
 }
 
 // The coordinator's roster is the RDC's head-only chain-member set plus itself:
@@ -428,6 +482,63 @@ inline void abortedRingReclaimsWhileStillCabled(ShootoutManagerTests* suite) {
     EXPECT_EQ(ringShootout.getPhase(), ShootoutManager::Phase::PROPOSAL);
 }
 
+// The gate is polled every tick while the tie-break only runs on an inbound
+// frame, so a claim the tie-break would refuse must not get in through the gate
+// instead. A deposed head that did would re-announce itself from PROPOSAL, where
+// the real head's RING_CLOSED can no longer correct it.
+inline void deposedHeadDoesNotProposeOnItsDeadClaim(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x0A, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+
+    FakeRingRemoteDeviceCoordinator ringRdc;
+    ringRdc.chainMembers = {other};
+    ShootoutManager ringShootout(&suite->player, suite->device.wirelessManager, &ringRdc);
+
+    ringShootout.onRingClosed();
+    ASSERT_TRUE(ringShootout.isCoordinator());
+
+    // Ring re-forms under a different head: still on a ring, no longer heading it.
+    ringRdc.chainRole = ChainRole::CHILD;
+    ringRdc.relayedMember = true;
+    ASSERT_TRUE(ringRdc.isInRing());
+    ASSERT_TRUE(ringShootout.isCoordinator());
+
+    EXPECT_FALSE(ringShootout.shouldEnterProposal())
+        << "a device that no longer heads the ring proposed on its dead self-claim";
+}
+
+inline void staleCoordinatorClaimYieldsToANewRing(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x0A, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+
+    FakeRingRemoteDeviceCoordinator ringRdc;
+    ringRdc.chainMembers = {other};
+    ShootoutManager ringShootout(&suite->player, suite->device.wirelessManager, &ringRdc);
+
+    ringShootout.onRingClosed();
+    ASSERT_TRUE(ringShootout.isCoordinator());
+
+    // The loop re-forms under a different head. Membership still holds, which is
+    // why a membership check cannot catch this: being on a ring is not heading it.
+    ringRdc.chainRole = ChainRole::CHILD;
+    ringRdc.relayedMember = true;
+    ASSERT_TRUE(ringRdc.isInRing());
+    // The claim is still held — nothing drops it — so the stand-down has to come
+    // from the role, not from the claim going away.
+    ASSERT_TRUE(ringShootout.isCoordinator());
+
+    // The new head sorts higher, so a claim defended on membership alone would
+    // have refused it and left two coordinators on one ring.
+    std::array<uint8_t, 6> newHead = {0xF0, 0, 0, 0, 0, 0};
+    ringShootout.onRingClosedReceived(newHead.data(), {newHead, me, other});
+    EXPECT_EQ(memcmp(ringShootout.getCoordinatorMac().data(), newHead.data(), 6), 0);
+}
+
 // Both heads of a merging pair latch and both announce. Adopting whichever frame
 // lands last leaves A following B while B follows A, so nobody builds a bracket
 // and every member parks in BracketReveal with the cables still in.
@@ -440,20 +551,26 @@ inline void mergedRingClaimantsSettleOnLowerMac(ShootoutManagerTests* suite) {
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
 
-    suite->shootout->setLoopMembersForTest({me, mine});
-    suite->shootout->onRingClosed();
-    ASSERT_TRUE(suite->shootout->isCoordinator());
+    // A head only ever claims because its own RDC latched, so the claim has to be
+    // defended from a device that still heads one — the tie-break stands down
+    // when it is not.
+    FakeRingRemoteDeviceCoordinator ringRdc;
+    ringRdc.chainMembers = {mine};
+    ShootoutManager ringShootout(&suite->player, suite->device.wirelessManager, &ringRdc);
+
+    ringShootout.onRingClosed();
+    ASSERT_TRUE(ringShootout.isCoordinator());
 
     // A higher-MAC rival head announces the merged ring; ours stands.
     std::array<uint8_t, 6> higher = {0xF0, 0, 0, 0, 0, 0};
-    suite->shootout->onRingClosedReceived(higher.data(), {higher, me, mine});
-    EXPECT_TRUE(suite->shootout->isCoordinator());
+    ringShootout.onRingClosedReceived(higher.data(), {higher, me, mine});
+    EXPECT_TRUE(ringShootout.isCoordinator());
 
     // A lower-MAC one wins, and we follow it.
     std::array<uint8_t, 6> lower = {0x01, 0, 0, 0, 0, 0};
-    suite->shootout->onRingClosedReceived(lower.data(), {lower, me, mine});
-    EXPECT_FALSE(suite->shootout->isCoordinator());
-    EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), lower.data(), 6), 0);
+    ringShootout.onRingClosedReceived(lower.data(), {lower, me, mine});
+    EXPECT_FALSE(ringShootout.isCoordinator());
+    EXPECT_EQ(memcmp(ringShootout.getCoordinatorMac().data(), lower.data(), 6), 0);
 }
 
 // The head's roster fills from announces that can still be in flight when the
