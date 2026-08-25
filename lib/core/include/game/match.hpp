@@ -23,12 +23,21 @@ constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
  */
 class Match {
 public:
-    Match();
+    /**
+     * Creates an empty match: blank ids, both draw times zero.
+     */
+    Match() = default;
 
     /**
      * Creates a new match from raw C-strings — no heap allocation in the hot path.
      */
-    Match(const char* match_id, const char* player_id, bool isHunter);
+    Match(const char* matchId, const char* playerId, bool isHunter);
+
+    /**
+     * Deleted: three strings would otherwise bind to the overload above, converting
+     * the bounty id to `true` and leaving the bounty unset.
+     */
+    Match(const char* matchId, const char* hunterId, const char* bountyId) = delete;
 
     /**
      * Sets the hunter's draw time
@@ -44,15 +53,15 @@ public:
 
     /**
      * Sets the hunter's ID
-     * @param hunter_id Hunter player's ID
+     * @param hunterId Hunter player's ID
      */
-    void setHunterId(const char* hunter_id);
+    void setHunterId(const char* hunterId);
 
     /**
      * Sets the bounty's ID
-     * @param bounty_id Bounty player's ID
+     * @param bountyId Bounty player's ID
      */
-    void setBountyId(const char* bounty_id);
+    void setBountyId(const char* bountyId);
 
     /**
      * @return Match data as JSON string

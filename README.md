@@ -133,6 +133,13 @@ If you want to contribute to the PDN Project, follow these steps to set up your 
    pio test -e native          # Core unit tests
    pio test -e native_cli_test # CLI-specific tests
    ```
+   CI also gates on the core suite under sanitizers. Run those binaries directly:
+   a default `pio test` prints only lines its googletest parser recognizes, so a
+   sanitizer report is dropped.
+   ```bash
+   pio test -e native_asan --without-testing && ./.pio/build/native_asan/program
+   pio test -e native_tsan --without-testing && ./.pio/build/native_tsan/program
+   ```
 5. **Commit and push your changes**:
    ```bash
    git commit -m "Add New Feature"
