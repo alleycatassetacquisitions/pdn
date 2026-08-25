@@ -523,6 +523,10 @@ TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
     matchShootoutIdConversionStaysInBounds();
 }
 
+TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) {
+    matchDeserializeClearsPlayerIdTail();
+}
+
 TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
     matchShorterIdOverwriteClearsTheTail();
 }
@@ -559,25 +563,25 @@ TEST_F(MatchTestSuite, withLargeDrawTimes) {
     matchWithLargeDrawTimes();
 }
 
-// // ============================================
-// // UUID TESTS
-// // ============================================
+// ============================================
+// UUID TESTS
+// ============================================
 
-// TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
-//     uuidStringToBytesProducesCorrectOutput();
-// }
+TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+    uuidStringToBytesProducesCorrectOutput();
+}
 
-// TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-//     uuidBytesToStringProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
+    uuidBytesToStringProducesValidFormat();
+}
 
-// TEST_F(UUIDTestSuite, roundTripPreservesData) {
-//     uuidRoundTripPreservesData();
-// }
+TEST_F(UUIDTestSuite, roundTripPreservesData) {
+    uuidRoundTripPreservesData();
+}
 
-// TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-//     uuidGeneratorProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
+    uuidGeneratorProducesValidFormat();
+}
 
 // ============================================
 // MAC ADDRESS TESTS

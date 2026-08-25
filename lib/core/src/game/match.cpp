@@ -114,7 +114,6 @@ size_t Match::serialize(uint8_t* buffer) const {
 size_t Match::deserialize(const uint8_t* buffer) {
     size_t currentPos = 0;
     uint8_t uuidBytes[IdGenerator::UUID_BINARY_SIZE];
-    uint8_t playerIdBytes[PLAYER_ID_BINARY_SIZE];
 
     // Deserialize match_id
     memcpy(uuidBytes, buffer + currentPos, IdGenerator::UUID_BINARY_SIZE);
@@ -124,16 +123,13 @@ size_t Match::deserialize(const uint8_t* buffer) {
     }
     currentPos += IdGenerator::UUID_BINARY_SIZE;
 
-    // Deserialize hunter id (4 raw bytes)
-    memcpy(playerIdBytes, buffer + currentPos, PLAYER_ID_BINARY_SIZE);
-    memcpy(hunter, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    hunter[PLAYER_ID_BINARY_SIZE] = '\0';
+    // The wire field carries no terminator, so bound the read by the destination
+    // the same way every other id copy does. copyId also clears the tail, which a
+    // raw memcpy of the field would not.
+    IdGenerator::copyId(hunter, reinterpret_cast<const char*>(buffer + currentPos));
     currentPos += PLAYER_ID_BINARY_SIZE;
 
-    // Deserialize bounty id (4 raw bytes)
-    memcpy(playerIdBytes, buffer + currentPos, PLAYER_ID_BINARY_SIZE);
-    memcpy(bounty, playerIdBytes, PLAYER_ID_BINARY_SIZE);
-    bounty[PLAYER_ID_BINARY_SIZE] = '\0';
+    IdGenerator::copyId(bounty, reinterpret_cast<const char*>(buffer + currentPos));
     currentPos += PLAYER_ID_BINARY_SIZE;
 
     // Deserialize draw times

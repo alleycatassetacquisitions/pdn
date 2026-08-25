@@ -51,6 +51,24 @@ inline void matchShootoutIdConversionStaysInBounds() {
     }
 }
 
+// The wire field is 4 raw bytes with no terminator, so bytes after an early NUL
+// are whatever the sender left there. Reading one must not strand it in the field
+// — the setters guarantee a cleared tail and deserialize has to agree with them.
+inline void matchDeserializeClearsPlayerIdTail() {
+    uint8_t buffer[MATCH_BINARY_SIZE] = {};
+    uint8_t* hunterField = buffer + IdGenerator::UUID_BINARY_SIZE;
+    hunterField[0] = 'a';
+    hunterField[1] = 'b';
+    hunterField[2] = '\0';
+    hunterField[3] = 0x7F;
+
+    Match match;
+    match.deserialize(buffer);
+
+    EXPECT_STREQ(match.getHunterId(), "ab");
+    EXPECT_EQ(match.getHunterId()[3], '\0') << "stale wire byte survived past the terminator";
+}
+
 // Pins copyId's zero-fill: overwriting with a shorter id must not leave the
 // previous id's bytes in the tail. EXPECT_STREQ cannot see this, because strcmp
 // stops at the terminator. Index 3 discriminates; index 2 holds a terminator
