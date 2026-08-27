@@ -316,20 +316,24 @@ void ShootoutManager::onRingClosedReceived(
     // Both heads of a merging pair latch and both announce, so an unconditional
     // adopt has A following B while B follows A and the ring runs with no
     // coordinator at all — nothing generates a bracket and every member parks in
-    // BracketReveal. Same rule as the bracket stand-down: lower MAC owns the ring.
-    if (isCoordinator() && memcmp(fromMac, selfMac, 6) >= 0) return;
+    // BracketReveal. Lower MAC owns the ring, same comparison the bracket stand-down
+    // makes — but that one defends a running tournament, so it does not ask the role.
+    if (headsThisRing() && memcmp(fromMac, selfMac, 6) >= 0) return;
     memcpy(coordinatorMac.data(), fromMac, 6);
     ringMembers = members;
     LOG_W(TAG, "ring closed by %s members=%zu", MacToString(fromMac), members.size());
 }
 
 bool ShootoutManager::shouldEnterProposal() const {
-    if (phase != Phase::IDLE) return false;
-    // ringMembers is the copy RING_CLOSED leaves on a member. A coordinator that
-    // has been reset holds none, so the live RDC role is what re-opens the door
-    // there — a latched copy alone would keep a still-cabled ring shut forever.
-    if (!ringMembers.empty()) return true;
-    return rdc != nullptr && rdc->getChainRole() == ChainRole::RING;
+    if (phase != Phase::IDLE || rdc == nullptr) return false;
+    // The claim outlives its ring: both loss paths stand down while IDLE. A
+    // self-claim dies when this device stops heading the loop, an adopted one when
+    // it leaves the loop. Membership for both would let a deposed head propose.
+    if (isCoordinator()) return headsThisRing();
+    if (!ringMembers.empty()) return rdc->isInRing();
+    // No claim: an abort-reset coordinator re-opens its own door, the latch edge
+    // that would have re-announced the ring being spent.
+    return rdc->getChainRole() == ChainRole::RING;
 }
 
 void ShootoutManager::sendRingClosed() {
@@ -429,6 +433,13 @@ bool ShootoutManager::allMembersConfirmed() const {
 
 std::array<uint8_t, 6> ShootoutManager::getCoordinatorMac() const {
     return coordinatorMac;
+}
+
+bool ShootoutManager::headsThisRing() const {
+    // A self-claim is only ever taken where this device latched, so it dies the
+    // moment it stops heading the loop — even while still ON one, relaying a new
+    // head's closure.
+    return isCoordinator() && rdc != nullptr && rdc->getChainRole() == ChainRole::RING;
 }
 
 bool ShootoutManager::isCoordinator() const {

@@ -259,8 +259,14 @@ public:
     ChainRole getChainRole() const override { return chainRole; }
     /// The roster this stand-in serves, as a real head's RDC would.
     std::vector<std::array<uint8_t, 6>> getChainMembers() const override { return chainMembers; }
+    /// Membership is broader than the RING role: a device relaying another head's
+    /// closure sits on a live loop with no latch of its own.
+    bool isInRing() const override {
+        return chainRole == ChainRole::RING || relayedMember;
+    }
 
     ChainRole chainRole = ChainRole::RING;
+    bool relayedMember = false;
     std::vector<std::array<uint8_t, 6>> chainMembers;
 };
 

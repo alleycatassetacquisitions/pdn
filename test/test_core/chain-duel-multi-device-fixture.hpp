@@ -197,9 +197,25 @@ public:
     /// Ring closure the way production delivers it: the head's RDC callback, the
     /// roster broadcast, then each member's Idle -> ShootoutProposal mount.
     ///
-    /// The head's roster is injected because this fixture drives the legacy
-    /// serial handshake, which never latches the RDC ring that would serve one.
-    void claimRingOn(size_t headIndex) {
+    /// Index of the node that latched the ring, set by claimRing().
+    size_t ringHeadIndex = 0;
+
+    /// Claims on whichever node latched, which `closeRing()` makes the last-indexed
+    /// one. Production fires onRingClosed() only from that RDC callback, so a
+    /// self-claim on any other node is a state no device can reach. The roster is
+    /// injected because `dispatch()` has no kConnectionAnnounce case, so the
+    /// announces the RDC really sends fall through to `default:` and no roster
+    /// ever reaches a head here.
+    void claimRing() {
+        size_t headIndex = nodes.size();
+        for (size_t i = 0; i < nodes.size(); ++i) {
+            if (nodes[i]->rdc->getChainRole() == ChainRole::RING) {
+                headIndex = i;
+                break;
+            }
+        }
+        ASSERT_LT(headIndex, nodes.size()) << "closeRing() left no node latched";
+        ringHeadIndex = headIndex;
         std::vector<std::array<uint8_t, 6>> roster;
         for (auto& n : nodes) {
             std::array<uint8_t, 6> mac;
@@ -736,12 +752,12 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
             << "node " << i << " does not see loop";
     }
 
-    suite->claimRingOn(0);
+    suite->claimRing();
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
             << "node " << i << " missed the ring-closed broadcast";
     }
-    EXPECT_TRUE(suite->node(0).shootout->isCoordinator());
+    EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
     // Each device confirms. After four confirms propagate, every device
     // should reach BRACKET_REVEAL; the coordinator generates+broadcasts
@@ -797,7 +813,7 @@ inline void shootoutFourDeviceFullTournament(ChainDuelMultiDeviceFixture* suite)
     suite->deliverAllPackets();
     suite->closeRing();
 
-    suite->claimRingOn(0);
+    suite->claimRing();
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         suite->node(i).shootout->confirmLocal();
         suite->deliverAllPackets();
@@ -883,7 +899,7 @@ inline void shootoutEightDeviceFullTournament(ChainDuelMultiDeviceFixture* suite
         suite->node(i).player->setName(kNames[i]);
     }
 
-    suite->claimRingOn(0);
+    suite->claimRing();
     for (size_t i = 0; i < suite->nodeCount(); ++i) {
         suite->node(i).shootout->confirmLocal();
         suite->deliverAllPackets();
@@ -950,7 +966,7 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     suite->closeRing();
 
     auto runOne = [&]() {
-        suite->claimRingOn(0);
+        suite->claimRing();
         for (size_t i = 0; i < suite->nodeCount(); ++i) {
             suite->node(i).shootout->confirmLocal();
             suite->deliverAllPackets();
