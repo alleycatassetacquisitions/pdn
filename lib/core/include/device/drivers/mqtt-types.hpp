@@ -1,7 +1,9 @@
 #pragma once
 
-enum class Topic {
-    NOT_SURE_YET = 0,
+struct Topic {
+    static constexpr char* MISSION_CONTROL = "mission_control";
+    
+
 };
 
 class MQTTPayload {
