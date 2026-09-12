@@ -265,20 +265,19 @@ void GameSession::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t*
         }
         case ShootoutCmd::MATCH_START:
             if (payloadLen >= 13)
-                shootoutManager->onMatchStartReceived(payload, payload + 6, payload[12], seqId);
+                shootoutManager->onMatchStartReceived(fromMac, payload, payload + 6,
+                                                      payload[12], seqId);
             break;
         case ShootoutCmd::MATCH_RESULT:
             if (payloadLen >= 13)
                 shootoutManager->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
             break;
         case ShootoutCmd::TOURNAMENT_END:
-            if (payloadLen >= 6) shootoutManager->onTournamentEndReceived(payload, seqId);
-            break;
-        case ShootoutCmd::PEER_LOST:
-            if (payloadLen >= 6) shootoutManager->onPeerLostReceived(payload);
+            if (payloadLen >= 6)
+                shootoutManager->onTournamentEndReceived(fromMac, payload, seqId);
             break;
         case ShootoutCmd::ABORT:
-            shootoutManager->onAbortReceived(fromMac);
+            shootoutManager->onAbortReceived(fromMac, seqId);
             break;
     }
 }

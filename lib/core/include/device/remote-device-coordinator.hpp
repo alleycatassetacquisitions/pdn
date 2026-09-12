@@ -116,12 +116,6 @@ public:
     /// Returns true iff `mac` matches the direct peer on either jack.
     virtual bool isDirectPeer(const uint8_t* mac) const;
 
-    /// Reachable over a cable this device owns. Adjacency only: a member two
-    /// hops away reads as unreachable here even though the chain still carries
-    /// it. The head roster (getChainMembers) is the multi-hop source; a child
-    /// or standalone device has none.
-    virtual bool canReachPeer(const uint8_t* mac) const;
-
     // ---- Chain-level surface (#154) ----
 
     /// This device's chain role, derived from jack presence plus the ring latch.
@@ -271,10 +265,6 @@ public:
     /// setOnJackChange: it says the chain moved, not which jack or which way.
     void setChainChangeCallback(std::function<void()> callback);
 
-    /// Fires with the MAC of a direct peer whose link just died. Adjacent
-    /// losses only — nothing reports a departure further down the chain.
-    void setPeerLostCallback(std::function<void(const uint8_t*)> callback);
-
     /// Registers the MAC as an ESP-NOW peer slot.
     void registerPeer(const uint8_t* macAddress);
     /// Releases the MAC's ESP-NOW peer slot.
@@ -290,7 +280,6 @@ private:
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager_ = nullptr;
     std::function<void()> chainChangeCallback;
-    std::function<void(const uint8_t*)> peerLostCallback;
 
     // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
     JackChangeCallback jackChangeCallback;

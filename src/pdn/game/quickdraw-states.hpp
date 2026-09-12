@@ -21,7 +21,6 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "game/shootout-aware-state.hpp"
 
 /// Bundle of the shared game-wide managers a state may need. Built by the
 /// GameSession that owns them and handed to every state so a new manager is a
@@ -177,7 +176,7 @@ private:
 };
 
 /// A duel state returns to Idle on a persistent disconnect, but never while a
-/// tournament is live — the shootout's own PEER_LOST/ABORT teardown owns that
+/// tournament is live — the shootout's own ring-break/ABORT teardown owns that
 /// path. The debounce ages on wall clock even when unsampled, so a run started
 /// before the tournament went live would fire the instant the shootout ends;
 /// reset it while active so a fresh full window is always required afterward.
@@ -337,8 +336,8 @@ public:
     bool transitionToWin();
     bool transitionToLose();
     // Shootout takes priority over the regular Win/Lose paths when a tournament
-    // is active; reportLocalWin fires once on the spectator transition so the
-    // bracket advances exactly once per match.
+    // is active. This predicate reports the win as a side effect, so it must stay
+    // idempotent — reportLocalWin's own guard is what makes that true.
     bool transitionToShootoutSpectator();
     bool transitionToShootoutEliminated();
 
@@ -413,7 +412,7 @@ private:
     bool shouldRetryUpload = false;
 };
 
-class ShootoutProposal : public TypedState<PDN>, public ShootoutAwareState {
+class ShootoutProposal : public TypedState<PDN> {
 public:
     explicit ShootoutProposal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -423,10 +422,12 @@ public:
     bool transitionToBracketReveal();
 
 private:
+    ShootoutManager* shootoutManager = nullptr;
+
     bool shouldGoToReveal_ = false;
 };
 
-class ShootoutBracketReveal : public TypedState<PDN>, public ShootoutAwareState {
+class ShootoutBracketReveal : public TypedState<PDN> {
 public:
     explicit ShootoutBracketReveal(const GameContext& ctx);
     void onStateMounted(PDN* pdn) override;
@@ -437,6 +438,8 @@ public:
     bool transitionToSpectator();
 
 private:
+    ShootoutManager* shootoutManager = nullptr;
+
     bool shouldGoToDuelCountdown_ = false;
     bool shouldGoToSpectator_ = false;
 };

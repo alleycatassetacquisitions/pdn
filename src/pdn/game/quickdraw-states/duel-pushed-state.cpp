@@ -34,10 +34,6 @@ void DuelPushed::onStateLoop(PDN* pdn) {
 void DuelPushed::onStateDismounted(PDN* pdn) {
     LOG_I(DUEL_PUSHED_TAG, "DuelPushed state dismounted");
 
-    if (!isConnected()) {
-        matchManager->clearCurrentMatch();
-    }
-
     gracePeriodTimer.invalidate();
 }
 

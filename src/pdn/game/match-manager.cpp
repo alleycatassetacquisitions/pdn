@@ -42,21 +42,17 @@ ShootoutManager* MatchManager::getShootoutManager() const {
 }
 
 void MatchManager::clearCurrentMatch() {
-    if (activeDuelState.match) {
-        LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
-        activeDuelState.match.reset();
-        activeDuelState.hasReceivedDrawResult = false;
-        activeDuelState.hasPressedButton = false;
-        activeDuelState.duelLocalStartTime = 0;
-        activeDuelState.gracePeriodExpiredNoResult = false;
-        activeDuelState.opponentNeverPressed = false;
-        activeDuelState.buttonMasherCount = 0;
-        activeDuelState.matchIsReady = false;
-    }
+    if (!activeDuelState.match) return;
+    LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
+    // Whole-struct reset, so a field added to ActiveDuelState cannot be forgotten
+    // here.
+    activeDuelState = ActiveDuelState{};
 }
 
-void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac) {
-    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
+void MatchManager::primeMatch(const char* matchId, const uint8_t* opponentMac,
+                              bool localIsHunter) {
+    activeDuelState.localIsHunter = localIsHunter;
+    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), localIsHunter);
     memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
 }
 
@@ -70,23 +66,26 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
 
     char matchId[IdGenerator::UUID_BUFFER_SIZE];
     memcpy(matchId, IdGenerator::getInstance().generateId(), IdGenerator::UUID_BUFFER_SIZE);
-    primeMatch(matchId, opponentMac);
+    primeMatch(matchId, opponentMac, player->isHunter());
     sendMatchId();
 }
 
 void MatchManager::sendMatchId() {
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::SEND_MATCH_ID, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
+    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::SEND_MATCH_ID, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, activeDuelState.localIsHunter);
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
 }
 
-void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponentMac) {
+void MatchManager::initializeShootoutMatch(const char* matchId, uint8_t* opponentMac,
+                                           bool localIsHunter) {
+    // A repeat MATCH_START names a bout that may already be mounted; the live one
+    // wins, since re-priming would reset a draw already in progress.
     if (activeDuelState.match.has_value()) return;
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeShootoutMatch T=%lu",
           clock ? clock->milliseconds() : 0UL);
 
-    primeMatch(matchId, opponentMac);
+    primeMatch(matchId, opponentMac, localIsHunter);
     activeDuelState.matchIsReady = true;
 }
 
@@ -97,13 +96,12 @@ void MatchManager::receiveMatch(const char* matchId, const char* opponentId, boo
     }
 
     // Build the match from our own perspective, then record the opponent's ID.
-    activeDuelState.match.emplace(matchId, player->getUserID().c_str(), player->isHunter());
+    primeMatch(matchId, opponentMac, player->isHunter());
     if (opponentIsHunter) {
         activeDuelState.match->setHunterId(opponentId);
     } else {
         activeDuelState.match->setBountyId(opponentId);
     }
-    memcpy(activeDuelState.opponentMac.data(), opponentMac, 6);
 
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING receiveMatch-ready T=%lu", clock ? clock->milliseconds() : 0UL);
@@ -153,9 +151,9 @@ bool MatchManager::didWin() {
         return false;
     }
 
-    return player->isHunter() ?
-    activeDuelState.match->getHunterDrawTime() < activeDuelState.match->getBountyDrawTime() :
-    activeDuelState.match->getBountyDrawTime() < activeDuelState.match->getHunterDrawTime();
+    const unsigned long hunterTime = activeDuelState.match->getHunterDrawTime();
+    const unsigned long bountyTime = activeDuelState.match->getBountyDrawTime();
+    return activeDuelState.localIsHunter ? hunterTime < bountyTime : bountyTime < hunterTime;
 }
 
 bool MatchManager::finalizeMatch() {
@@ -165,13 +163,13 @@ bool MatchManager::finalizeMatch() {
     }
 
     // Snapshot times for the result screen (before clearCurrentMatch wipes the match).
-    lastMatchDisplay_.myTimeMs = player->isHunter()
-        ? activeDuelState.match->getHunterDrawTime()
-        : activeDuelState.match->getBountyDrawTime();
-    lastMatchDisplay_.opponentTimeMs = player->isHunter()
-        ? activeDuelState.match->getBountyDrawTime()
-        : activeDuelState.match->getHunterDrawTime();
-    lastMatchDisplay_.hasData = true;
+    lastMatchDisplay.myTimeMs = activeDuelState.localIsHunter
+                                    ? activeDuelState.match->getHunterDrawTime()
+                                    : activeDuelState.match->getBountyDrawTime();
+    lastMatchDisplay.opponentTimeMs = activeDuelState.localIsHunter
+                                          ? activeDuelState.match->getBountyDrawTime()
+                                          : activeDuelState.match->getHunterDrawTime();
+    lastMatchDisplay.hasData = true;
 
     std::string match_id = activeDuelState.match->getMatchId();
 
@@ -384,14 +382,13 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, Quickdr
 
         // Snapshot boost at press time so the result screen can display it
         // even if supporters unplug before the match finalizes.
-        matchManager->lastMatchDisplay_.boostMs = boost;
+        matchManager->lastMatchDisplay.boostMs = boost;
 
         LOG_I(MATCH_MANAGER_TAG, "Button pressed! Reaction time: %lu ms (boost %lu) for %s",
-                boostedTimeMs, boost, player->isHunter() ? "Hunter" : "Bounty");
+              boostedTimeMs, boost, activeDuelState->localIsHunter ? "Hunter" : "Bounty");
 
-        player->isHunter() ?
-        matchManager->setHunterDrawTime(boostedTimeMs)
-        : matchManager->setBountyDrawTime(boostedTimeMs);
+        activeDuelState->localIsHunter ? matchManager->setHunterDrawTime(boostedTimeMs)
+                                       : matchManager->setBountyDrawTime(boostedTimeMs);
 
         // Player stats record the raw (unboosted) reaction time — boost is a
         // duel-time advantage, not an achievement the player actually made.
@@ -403,7 +400,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, Quickdr
                 MacToString(activeDuelState->opponentMac.data()));
 
         // Send the BOOSTED time in DRAW_RESULT so both sides agree on who won.
-        QuickdrawCommand command(activeDuelState->opponentMac.data(), QDCommand::DRAW_RESULT, matchManager->getCurrentMatch()->getMatchId(), player->getUserID().c_str(), boostedTimeMs, player->isHunter());
+        QuickdrawCommand command(activeDuelState->opponentMac.data(), QDCommand::DRAW_RESULT, matchManager->getCurrentMatch()->getMatchId(), player->getUserID().c_str(), boostedTimeMs, activeDuelState->localIsHunter);
 
         quickdrawWirelessManager->broadcastPacket(activeDuelState->opponentMac.data(), command);
 
@@ -420,7 +417,7 @@ void MatchManager::initialize(Player* player, StorageInterface* storage, Quickdr
 }
 
 void MatchManager::sendMatchAck() {
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ID_ACK, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, player->isHunter());
+    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::MATCH_ID_ACK, activeDuelState.match->getMatchId(), player->getUserID().c_str(), 0, activeDuelState.localIsHunter);
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
 }
 
@@ -464,8 +461,11 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
     } else if(command.command == QDCommand::MATCH_ID_ACK) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ID_ACK command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
-        if(player->isHunter()) { activeDuelState.match->setBountyId(command.playerId); }
-        else { activeDuelState.match->setHunterId(command.playerId); }
+        if (activeDuelState.localIsHunter) {
+            activeDuelState.match->setBountyId(command.playerId);
+        } else {
+            activeDuelState.match->setHunterId(command.playerId);
+        }
         auto* clock = SimpleTimer::getPlatformClock();
         LOG_D(MATCH_MANAGER_TAG, "TIMING matchAck-ready T=%lu", clock ? clock->milliseconds() : 0UL);
         activeDuelState.matchIsReady = true;
@@ -502,13 +502,13 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
         return;
     }
 
-    player->isHunter() ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
+    activeDuelState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
     setNeverPressed();
     // Mirror what gets uploaded: every duel contributes a draw time to the server,
     // so on-device "average reaction" should include pity times too.
     player->addReactionTime(pityTime);
 
-    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED, activeDuelState.match->getMatchId(), player->getUserID().c_str(), pityTime, player->isHunter());
+    QuickdrawCommand command(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED, activeDuelState.match->getMatchId(), player->getUserID().c_str(), pityTime, activeDuelState.localIsHunter);
     quickdrawWirelessManager->broadcastPacket(activeDuelState.opponentMac.data(), command);
 }
 

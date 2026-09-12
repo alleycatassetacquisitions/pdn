@@ -48,10 +48,6 @@ void DuelReceivedResult::onStateLoop(PDN* pdn) {
 void DuelReceivedResult::onStateDismounted(PDN* pdn) {
     LOG_I(DUEL_RESULT_RECEIVED_TAG, "Duel result received state dismounted");
 
-    if (!isConnected()) {
-        matchManager->clearCurrentMatch();
-    }
-
     transitionToDuelResultState = false;
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();

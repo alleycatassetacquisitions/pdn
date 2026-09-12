@@ -2,11 +2,12 @@
 
 #include "utils/simple-timer.hpp"
 
-// Edge-debounce a bool: returns true once `condition` has been continuously
-// true for `windowMs`. Becoming false resets the window. Used by ShootoutProposal/
-// ShootoutBracketReveal for loop-break detection and by ConnectState for
-// disconnect detection — both patterns flicker for a tick or two in real
-// hardware and need a grace window before acting.
+// Debounce a bool: returns true once `condition` has been continuously true for
+// `windowMs`. Becoming false resets the window. Level-triggered, not edge — a
+// caller that stops sampling leaves the window running unwatched, and the next
+// ask reads as held however long the condition was actually false in between.
+// Cable state flickers for a tick or two on real hardware; this is the grace
+// window before anyone acts on it.
 class DebouncedCondition {
 public:
     bool heldFor(bool condition, unsigned long windowMs) {

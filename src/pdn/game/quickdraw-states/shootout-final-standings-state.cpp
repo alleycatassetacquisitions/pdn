@@ -31,9 +31,9 @@ void ShootoutFinalStandings::onStateLoop(PDN* pdn) {
 }
 
 void ShootoutFinalStandings::onStateDismounted(PDN* pdn) {
-    // Reset Shootout state so the next loop closure triggers a fresh
-    // proposal. Without this, phase_ stays ENDED and shootoutManager->active()
-    // returns true, blocking the Idle→ShootoutProposal transition.
+    // Held until the screen is done with them: the winner's MAC and the name
+    // table this screen reads outlive the final match, and shouldEnterProposal
+    // refuses any phase but IDLE, so the next ring cannot propose until this runs.
     if (shootout_) shootout_->resetToIdle();
     shouldGoToSleep_ = false;
 }

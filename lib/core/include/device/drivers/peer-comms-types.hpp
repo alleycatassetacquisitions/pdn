@@ -106,7 +106,8 @@ enum class ShootoutCmd : uint8_t {
     MATCH_START = 2,
     MATCH_RESULT = 3,
     TOURNAMENT_END = 4,
-    PEER_LOST = 5,
+    // 5 was PEER_LOST: a departure the ring-break guard already sees, on more
+    // devices than a direct-peer link death could reach.
     ABORT = 6,
     // Coordinator -> members on ring closure. Carries the ring roster because
     // only the head's RDC serves one; every other member gets its copy here.

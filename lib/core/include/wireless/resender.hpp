@@ -151,6 +151,13 @@ public:
     /// when the conversation itself is over, not just one peer's part in it.
     void cancelAll(PktType type);
 
+    /// cancelAll, sparing the frame sent under `keepSeqId`. For the frame that
+    /// announces the conversation is over: it owes delivery to exactly the peers
+    /// that have not yet heard the news, so it must outlive the teardown it is
+    /// reporting. A caller whose seqId space includes 0 cannot spare a frame
+    /// this way.
+    void cancelAllExcept(PktType type, uint8_t keepSeqId);
+
     /// Drives retransmits and abandonment. Must be called every loop tick.
     void sync();
 
