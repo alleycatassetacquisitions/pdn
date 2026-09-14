@@ -42,6 +42,9 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
 ChainDuelManager::~ChainDuelManager() {
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnChainRoleChange(nullptr);
+    // This manager is the only holder of the game claim; an app swap that frees
+    // it would otherwise strand its champion's ESP-NOW slot for the whole event.
+    rdc->releasePeer(PeerClaim::GAME_PEER);
 }
 
 SerialIdentifier ChainDuelManager::opponentJack() const {
@@ -319,6 +322,9 @@ void ChainDuelManager::applyChainStateChange() {
             memcpy(selfArr.data(), selfMac, 6);
             if (!championMac.has_value() || *championMac != selfArr) {
                 championMac = selfArr;
+                // Promotion out from under a remote champion: we unicast to it no
+                // longer, so its slot is ours to let go of.
+                rdc->releasePeer(PeerClaim::GAME_PEER);
                 broadcastRoleAndChampion();
                 sendRoleToOpponentJack();
                 return;
@@ -412,31 +418,22 @@ void ChainDuelManager::onRoleAnnounceReceived(
     if (!fromOpponentJack) return;
     if (role != (player->isHunter() ? 1u : 0u)) return;
 
-    // 3. Register champion as ESP-NOW peer (only if it's not our own MAC).
+    // 3. Hold the champion's ESP-NOW slot for as long as it is the champion. The
+    // claim carries over from whichever MAC held it before, so a champion change
+    // needs no release of its own; a champion that is us needs no slot at all.
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     bool championIsSelf = (selfMac != nullptr &&
                            memcmp(selfMac, announcedChampionMac, 6) == 0);
-    if (!championIsSelf) {
-        rdc->registerPeer(announcedChampionMac);
+    if (championIsSelf) {
+        rdc->releasePeer(PeerClaim::GAME_PEER);
+    } else {
+        rdc->claimPeer(PeerClaim::GAME_PEER, announcedChampionMac);
     }
 
-    // 4. Update championMac and cascade if changed. On change, release the
-    // ESP-NOW peer slot held by the OLD champion MAC unless it's still
-    // reachable via one of our jacks (then its registration is owned by the
-    // chain-peer bookkeeping and will be cleaned up when that list changes).
+    // 4. Update championMac and cascade if changed.
     std::array<uint8_t, 6> newMac;
     memcpy(newMac.data(), announcedChampionMac, 6);
     bool changed = !championMac.has_value() || *championMac != newMac;
-    if (changed && championMac.has_value()) {
-        std::array<uint8_t, 6> oldMac = *championMac;
-        bool oldIsSelf = (selfMac != nullptr &&
-                          memcmp(selfMac, oldMac.data(), 6) == 0);
-        if (!oldIsSelf) {
-            if (!rdc->isDirectPeer(oldMac.data())) {
-                rdc->unregisterPeer(oldMac.data());
-            }
-        }
-    }
     championMac = newMac;
     if (changed) {
         broadcastRoleAndChampion();

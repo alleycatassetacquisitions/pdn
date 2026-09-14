@@ -23,7 +23,6 @@
 #include "match-manager-concurrent.hpp"
 #include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
-#include "direct-peer-table-tests.hpp"
 #include "reliable-transport-tests.hpp"
 
 #if defined(ARDUINO)
@@ -1522,6 +1521,12 @@ TEST_F(RDCHelloTests, staleAnnounceDeliveryDoesNotConfirm) {
 }
 TEST_F(RDCHelloTests, headAdoptionManagesRadioSlot) {
     rdcHeadAdoptionManagesRadioSlot(this);
+}
+TEST_F(RDCHelloTests, slotStandsUntilLastClaimDrops) {
+    rdcSlotStandsUntilLastClaimDrops(this);
+}
+TEST_F(RDCHelloTests, gameClaimMoveLeavesHeldHeadSlot) {
+    rdcGameClaimMoveLeavesHeldHeadSlot(this);
 }
 TEST_F(RDCHelloTests, inputHeadLinkDeathCancelsPendingContextSend) {
     rdcInputHeadLinkDeathCancelsPendingContextSend(this);

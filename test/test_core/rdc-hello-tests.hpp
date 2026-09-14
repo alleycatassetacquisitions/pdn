@@ -2155,9 +2155,82 @@ inline void rdcHeadAdoptionManagesRadioSlot(RDCHelloTests* suite) {
     EXPECT_TRUE(contains(removed, newHead));
 }
 
+// One MAC, two holders: the jack that plugged it in and the game layer that
+// unicasts to it. Whichever lets go first, the slot stands until the other does.
+inline void rdcSlotStandsUntilLastClaimDrops(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    std::vector<std::array<uint8_t, 6>> removed;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::Invoke([&removed](const uint8_t* mac) {
+                removed.emplace_back();
+                memcpy(removed.back().data(), mac, 6);
+            }),
+            Return(0)));
+    auto contains = [](const std::vector<std::array<uint8_t, 6>>& macs, const uint8_t* mac) {
+        for (const std::array<uint8_t, 6>& m : macs)
+            if (memcmp(m.data(), mac, 6) == 0) return true;
+        return false;
+    };
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    suite->rdc.claimPeer(PeerClaim::GAME_PEER, peer);
+
+    // The cable goes. The game layer still addresses this MAC, so the slot stays.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
+    EXPECT_FALSE(contains(removed, peer));
+
+    suite->rdc.releasePeer(PeerClaim::GAME_PEER);
+    EXPECT_TRUE(contains(removed, peer));
+}
+
+// The game layer moving its claim off a MAC that is also the held head must not
+// take the head's slot with it: the head is a roster unicast target no cable of
+// ours reaches, so nothing would put the slot back.
+inline void rdcGameClaimMoveLeavesHeldHeadSlot(RDCHelloTests* suite) {
+    const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
+    const uint8_t elsewhere[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
+
+    std::vector<std::array<uint8_t, 6>> removed;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::Invoke([&removed](const uint8_t* mac) {
+                removed.emplace_back();
+                memcpy(removed.back().data(), mac, 6);
+            }),
+            Return(0)));
+    auto contains = [](const std::vector<std::array<uint8_t, 6>>& macs, const uint8_t* mac) {
+        for (const std::array<uint8_t, 6>& m : macs)
+            if (memcmp(m.data(), mac, 6) == 0) return true;
+        return false;
+    };
+
+    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
+                chainHelloFrame(upstream, head));
+    ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::CHILD);
+    ASSERT_FALSE(suite->rdc.isDirectPeer(head));
+
+    // The game layer follows the head too, then moves on.
+    suite->rdc.claimPeer(PeerClaim::GAME_PEER, head);
+    suite->rdc.claimPeer(PeerClaim::GAME_PEER, elsewhere);
+    EXPECT_FALSE(contains(removed, head));
+
+    // Only losing the head itself takes the slot down.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->rdc.sync(&suite->device);
+    EXPECT_TRUE(contains(removed, head));
+}
+
 // The held head keeping its radio slot must not keep the dead jack's context
-// retries: with the INPUT peer itself the held head, link death keeps the slot
-// in releaseHelloPeer, then onLinkLost unregisters it — a surviving context
+// retries: with the INPUT peer itself the held head, the jack's claim drops in
+// releaseHelloPeer while the head's still holds the slot, then onLinkLost drops
+// that one too — a surviving context
 // retry would re-register the slot inside the driver and leak it permanently.
 inline void rdcInputHeadLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};

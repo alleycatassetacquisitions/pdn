@@ -42,6 +42,22 @@ enum class ChainRole {
     RING = 3,
 };
 
+// The named holders of an ESP-NOW peer slot. A holder names at most one MAC at
+// a time, and several holders can name the same one — a two-device ring puts the
+// same peer on both jacks, and a chain head is usually also the INPUT peer — so
+// the slot belongs to the set of holders, not to any one of them.
+// GAME_PEER is the single claim the game layer may take, on a peer it unicasts
+// to that no cable of ours reaches. Naming it by layer rather than by game role
+// keeps champion/bracket vocabulary out of the topology layer.
+enum class PeerClaim : size_t {
+    INPUT_JACK = 0,
+    OUTPUT_JACK = 1,
+    INPUT_JACK_SECONDARY = 2,
+    CHAIN_HEAD = 3,
+    GAME_PEER = 4,
+    COUNT = 5,
+};
+
 struct PortState {
     SerialIdentifier port;
     PortStatus status;
@@ -265,20 +281,34 @@ public:
     /// setOnJackChange: it says the chain moved, not which jack or which way.
     void setChainChangeCallback(std::function<void()> callback);
 
-    /// Registers the MAC as an ESP-NOW peer slot.
-    void registerPeer(const uint8_t* macAddress);
-    /// Releases the MAC's ESP-NOW peer slot.
-    void unregisterPeer(const uint8_t* macAddress);
+    /// Takes `holder`'s claim on this MAC's ESP-NOW peer slot, registering the
+    /// slot if it is not already up. A holder names one MAC at a time, so this
+    /// also drops whatever it named before; claiming the same MAC twice is a
+    /// no-op beyond a redundant (idempotent) driver register.
+    void claimPeer(PeerClaim holder, const uint8_t* macAddress);
+
+    /// Drops `holder`'s claim. The ESP-NOW peer slot goes only when the last
+    /// holder lets go of it, so no caller needs to know who else is using it.
+    void releasePeer(PeerClaim holder);
 
 private:
     static constexpr size_t kNumPorts = 3;
 
     size_t portIndex(SerialIdentifier port) const;
+    static PeerClaim jackClaim(SerialIdentifier port);
+
+    // The MAC each holder currently names (0 = none). Holders are few and fixed,
+    // so the slot's use count is recomputed from this rather than stored beside
+    // it, which is what kept the old per-call-site guards able to disagree.
+    std::array<uint64_t, static_cast<size_t>(PeerClaim::COUNT)> peerClaims{};
+
+    // Tears the ESP-NOW slot down once no holder names the MAC. Silent on 0.
+    void dropSlotIfUnclaimed(uint64_t mac48);
 
     void notifyChainChange();
 
     SerialManager* serialManager = nullptr;
-    WirelessManager* wirelessManager_ = nullptr;
+    WirelessManager* wirelessManager = nullptr;
     std::function<void()> chainChangeCallback;
 
     // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
@@ -370,8 +400,8 @@ private:
     // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
     // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
     void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
-    // Link death on `jack`: release the peer's radio slot unless another jack
-    // still references the MAC (2-node ring keeps the slot).
+    // Link death on `jack`: clear the jack's peer residue, kill its context
+    // retries and drop the jack's claim on the peer's radio slot.
     void releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
@@ -431,9 +461,9 @@ private:
     void adoptUpstreamHead();
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
-    // Drops a former head's radio slot (and its dead roster retries) unless an
-    // adjacent link still uses the MAC.
-    void releaseHeadPeer(uint64_t headMac48);
+    // Stands down from the head currently claimed: kills the roster retries
+    // addressed to it and drops the head's claim on its radio slot.
+    void releaseHeadPeer();
 
     // ---- Head roster (#158) ----
     // member MAC -> its direct upstream MAC. Only the roster authority (see
