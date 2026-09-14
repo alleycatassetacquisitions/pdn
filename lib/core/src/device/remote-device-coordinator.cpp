@@ -244,15 +244,18 @@ void RemoteDeviceCoordinator::claimPeer(PeerClaim holder, const uint8_t* macAddr
     const uint64_t mac48 = MacToUInt64(macAddress);
     const uint64_t previous = peerClaims[static_cast<size_t>(holder)];
     peerClaims[static_cast<size_t>(holder)] = mac48;
+    // Drop before adding, so a holder moving between MACs frees its old slot in
+    // time for the new one at a full table. The claim above is already this MAC,
+    // so a re-claim of the same peer matches itself here and nothing churns.
+    dropSlotIfUnclaimed(previous);
     if (wirelessManager != nullptr && wirelessManager->addEspNowPeer(macAddress) != 0) {
         // A refused slot is silent everywhere else: the driver re-adds unicast
         // targets on every send and ignores the same failure, and a dropped frame
-        // raises no SEND_FAIL, so the link half-opens until reboot. Nothing here
-        // can free a slot, since every one of ours is claimed by someone.
+        // raises no SEND_FAIL. The table also holds targets the driver added on
+        // its own, which carry no claim and so cannot be freed from here.
         LOG_E("RDC", "ESP-NOW refused a peer slot for %s; sends to it will vanish",
               MacToString(macAddress));
     }
-    dropSlotIfUnclaimed(previous);
 }
 
 void RemoteDeviceCoordinator::releasePeer(PeerClaim holder) {
@@ -790,8 +793,8 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
 
     // Stand down from the predecessor before claiming the successor: the head is a
     // unicast target (announce/report/transfer) that is usually not an adjacent
-    // HELLO peer, so its radio slot is managed here, and doing the drop first frees
-    // a slot the claim may need when the table is near its cap.
+    // HELLO peer, so its radio slot is managed here. The drop also cancels the
+    // roster retry channels aimed at the predecessor before the successor claim.
     releaseHeadPeer();
     claimPeer(PeerClaim::CHAIN_HEAD, headMac);
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
