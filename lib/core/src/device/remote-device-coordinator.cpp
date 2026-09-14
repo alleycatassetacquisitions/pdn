@@ -618,10 +618,10 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     helloByPort[portIndex(jack)].lastContextResendMs = 0;
     // Context exchange is per-jack, so retries survive only while some jack still
     // faces this peer (a 2-node ring puts it on both). Once none does they are dead
-    // traffic, and worse, a retransmit re-registers its target inside the driver
-    // (EnsurePeerIsRegistered) and would re-add the slot dropped below. This jack
-    // already reads as empty here — onLinkDown fires from Idle. cancel() is silent,
-    // no abandon callback fires.
+    // traffic whatever else keeps the slot alive, and a retransmit would re-register
+    // the target inside the driver (EnsurePeerIsRegistered), re-adding a slot nobody
+    // claims. This jack already reads as empty here — onLinkDown fires from Idle.
+    // cancel() is silent, no abandon callback fires.
     if (!isDirectPeer(mac)) {
         if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
         if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);

@@ -46,9 +46,10 @@ enum class ChainRole {
 // a time, and several holders can name the same one — a two-device ring puts the
 // same peer on both jacks, and a chain head is usually also the INPUT peer — so
 // the slot belongs to the set of holders, not to any one of them.
-// GAME_PEER is the single claim the game layer may take, on a peer it unicasts
-// to that no cable of ours reaches. Naming it by layer rather than by game role
-// keeps champion/bracket vocabulary out of the topology layer.
+// GAME_PEER is the game layer's single claim, held on whatever MAC it currently
+// unicasts to; that MAC may also sit on one of our jacks. Naming it by layer
+// rather than by game role keeps champion/bracket vocabulary out of the
+// topology layer.
 enum class PeerClaim : size_t {
     INPUT_JACK = 0,
     OUTPUT_JACK = 1,
@@ -297,9 +298,8 @@ private:
     size_t portIndex(SerialIdentifier port) const;
     static PeerClaim jackClaim(SerialIdentifier port);
 
-    // The MAC each holder currently names (0 = none). Holders are few and fixed,
-    // so the slot's use count is recomputed from this rather than stored beside
-    // it, which is what kept the old per-call-site guards able to disagree.
+    // The MAC each holder currently names (0 = none). Holders are few and fixed, so
+    // the slot's use count is recomputed from this rather than stored beside it.
     std::array<uint64_t, static_cast<size_t>(PeerClaim::COUNT)> peerClaims{};
 
     // Tears the ESP-NOW slot down once no holder names the MAC. Silent on 0.

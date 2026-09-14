@@ -42,8 +42,8 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
 ChainDuelManager::~ChainDuelManager() {
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnChainRoleChange(nullptr);
-    // This manager is the only holder of the game claim; an app swap that frees
-    // it would otherwise strand its champion's ESP-NOW slot for the whole event.
+    // This manager is the only holder of the game claim, so nothing else would
+    // drop its champion's ESP-NOW slot.
     rdc->releasePeer(PeerClaim::GAME_PEER);
 }
 
