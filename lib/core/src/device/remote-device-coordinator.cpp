@@ -734,7 +734,7 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         pendingReportMac.fill(0);
         pendingReportSeqId = 0;
         releaseHeadPeer(formingHead);
-        // Copied before the call, as the chain-change and peer-lost dispatches are:
+        // Copied before the call, as the chain-change dispatch is:
         // the subscriber is a game-layer manager that clears this slot in its own
         // destructor, so a handler reaching a teardown would free the std::function
         // whose operator() frame is still live.

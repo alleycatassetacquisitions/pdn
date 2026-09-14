@@ -113,8 +113,7 @@ void SymbolState::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
     // The Idle edge is registered ahead of the sibling (see SymbolApp), so it
     // wins outright when both hold — an FDN answering on the tick the cable is
-    // pulled. Qualifying it on the sibling flag suppressed the repaint on an exit
-    // that does go to Idle.
+    // pulled.
     const bool showRefreshScreen = transitionToIdleState;
     mountedPdn = nullptr;
     fdnMac = nullptr;

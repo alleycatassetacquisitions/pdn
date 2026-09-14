@@ -241,6 +241,10 @@ void ShootoutManager::resetToIdle() {
 
 void ShootoutManager::resetTournamentState() {
     phase = Phase::IDLE;
+    // Retire a bout this tournament primed: the duel app's dismount is the only
+    // other path and cannot run for a bout abandoned before that app mounts,
+    // and Idle mounts a duel from whatever match is ready.
+    if (matchManager) matchManager->clearShootoutMatch();
     confirmedSet.clear();
     bracket.clear();
     currentRound.clear();
@@ -766,6 +770,10 @@ void ShootoutManager::onMatchStartReceived(
     uint8_t matchIndex, uint8_t seqId) {
     if (isCoordinator()) return;
     if (!isFromCoordinator(fromMac)) return;
+    // A tournament this device has already ended stays ended: TOURNAMENT_END
+    // leaves the anchor and the bracket standing, so every other gate below
+    // would admit a fresh-seqId bout into a finished tournament.
+    if (isTerminalPhase()) return;
     // Admitted on the sender, so the ack is owed however the payload reads.
     sendShootoutAck(ShootoutCmd::MATCH_START, seqId, coordinatorMac.data());
     if (!containsMac(bracket, duelistA) || !containsMac(bracket, duelistB)) {
@@ -939,7 +947,7 @@ void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
     // coming live from the RDC.
     if (!isRingMember(fromMac)) return;
     // Addressed to fromMac because any ring member may abort, not just the
-    // coordinator; seqId 0 is the fire-and-forget sentinel and expects no answer.
+    // coordinator.
     if (seqId != 0) sendShootoutAck(ShootoutCmd::ABORT, seqId, fromMac);
     // ENDED is refused here too, and reachably: a member that missed
     // TOURNAMENT_END is still in BETWEEN_MATCHES, so a cable pulled after the

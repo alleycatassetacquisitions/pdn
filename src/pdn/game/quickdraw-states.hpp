@@ -488,7 +488,7 @@ public:
 
 private:
     ShootoutManager* shootout_;
-    ChainDuelManager* chainDuelManager_;
+    RemoteDeviceCoordinator* remoteDeviceCoordinator;
     bool shouldGoToSleep_ = false;
 };
 

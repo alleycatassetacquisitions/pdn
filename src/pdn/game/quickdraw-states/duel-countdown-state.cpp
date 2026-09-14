@@ -87,10 +87,10 @@ ImageType DuelCountdown::getImageIdForStep(CountdownStep step) {
 
 
 void DuelCountdown::onStateDismounted(PDN* pdn) {
-    // Unconditional: supporters armed on COUNTDOWN sit on "PRESS" until a DRAW
-    // clears them, and this state cannot tell whether the duel it hands to will
-    // start. Duel::onStateMounted sends the same frame and the supporter handler
-    // is idempotent, so the continuing path just gets it twice.
+    // Supporters armed on COUNTDOWN sit on "PRESS" until a DRAW clears them, and
+    // this state cannot tell whether the duel it hands to will start. Sent on
+    // every exit: Duel::onStateMounted sends the same frame and the supporter
+    // handler is idempotent, so the continuing path just gets it twice.
     if (chainDuelManager != nullptr) {
         chainDuelManager->sendGameEventToSupporters(ChainGameEventType::DRAW);
     }

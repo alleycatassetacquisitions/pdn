@@ -194,6 +194,8 @@ private:
     /// True in the two phases a tournament ends in. Every handler that would
     /// advance a tournament refuses them, so a late frame cannot reopen one; the
     /// two terminal screens end them deliberately, via resetToIdle on dismount.
+    /// ENDED is the phase that needs the refusals: unlike an abort it leaves the
+    /// coordinator anchor and the bracket standing.
     bool isTerminalPhase() const {
         return phase == Phase::ENDED || phase == Phase::ABORTED;
     }

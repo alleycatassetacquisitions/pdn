@@ -5,6 +5,7 @@
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
 #include <optional>
+#include <cstring>
 
 static constexpr const char* PREF_COUNT_KEY = "count";
 static constexpr const char* PREF_MATCH_KEY  = "match_";
@@ -39,6 +40,17 @@ void MatchManager::setShootoutManager(ShootoutManager* shootoutManager) {
 
 ShootoutManager* MatchManager::getShootoutManager() const {
     return shootoutManager_;
+}
+
+bool MatchManager::currentMatchIsShootout() const {
+    return activeDuelState.match.has_value() &&
+           strncmp(activeDuelState.match->getMatchId(), kShootoutMatchIdPrefix,
+                   sizeof(kShootoutMatchIdPrefix) - 1) == 0;
+}
+
+void MatchManager::clearShootoutMatch() {
+    if (!currentMatchIsShootout()) return;
+    clearCurrentMatch();
 }
 
 void MatchManager::clearCurrentMatch() {
@@ -174,7 +186,7 @@ bool MatchManager::finalizeMatch() {
     std::string match_id = activeDuelState.match->getMatchId();
 
     // Shootout matches are local-ephemeral: no save, no upload.
-    if (match_id.rfind(kShootoutMatchIdPrefix, 0) == 0) {
+    if (currentMatchIsShootout()) {
         clearCurrentMatch();
         return true;
     }

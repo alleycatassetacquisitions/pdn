@@ -6,7 +6,7 @@
 ShootoutFinalStandings::ShootoutFinalStandings(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_FINAL_STANDINGS)
     , shootout_(ctx.shootoutManager)
-    , chainDuelManager_(ctx.chainDuelManager) {}
+    , remoteDeviceCoordinator(ctx.remoteDeviceCoordinator) {}
 
 void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
     pdn->getLightManager()->stopAnimation();
@@ -25,7 +25,7 @@ void ShootoutFinalStandings::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutFinalStandings::onStateLoop(PDN* pdn) {
-    if (chainDuelManager_ && !chainDuelManager_->isLoop()) {
+    if (remoteDeviceCoordinator && !remoteDeviceCoordinator->isInRing()) {
         shouldGoToSleep_ = true;
     }
 }

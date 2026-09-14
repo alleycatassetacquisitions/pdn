@@ -128,6 +128,10 @@ public:
 
     void clearCurrentMatch();
 
+    /// Clears the active bout only when a shootout primed it, leaving a bout the
+    /// cable handshake owns untouched.
+    void clearShootoutMatch();
+
     void setBoostProvider(std::function<unsigned long()> provider);
 
     /// Result-screen snapshot that outlives the match: draw times from
@@ -163,6 +167,8 @@ public:
 
 
 private:
+    /// True when the active bout carries a shootout-derived match id.
+    bool currentMatchIsShootout() const;
 
     Player* player;
 

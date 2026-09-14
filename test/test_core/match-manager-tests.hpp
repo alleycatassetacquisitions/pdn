@@ -237,12 +237,14 @@ inline void matchManagerTracksDuelState(MatchManager* mm, Player* player) {
 // out into a forfeit whose direction that same slot decides.
 inline void eachBoutIsPrimedWithItsOwnDrawSlot(MatchManagerTestSuite* suite) {
     uint8_t opponent[6] = {0x05, 0, 0, 0, 0, 0};
-    suite->matchManager->initializeShootoutMatch("SHT-bout0", opponent, false);
+    suite->matchManager->initializeShootoutMatch(
+        "SHT-00000000000000000000000000000000", opponent, false);
     ASSERT_FALSE(suite->matchManager->isLocalHunter());
 
     suite->matchManager->clearCurrentMatch();
     uint8_t nextOpponent[6] = {0x09, 0, 0, 0, 0, 0};
-    suite->matchManager->initializeShootoutMatch("SHT-bout1", nextOpponent, true);
+    suite->matchManager->initializeShootoutMatch(
+        "SHT-00000000000000000000000000000001", nextOpponent, true);
 
     EXPECT_TRUE(suite->matchManager->isLocalHunter())
         << "the new bout's draw slot was dropped; the next duel resolves on the old one";

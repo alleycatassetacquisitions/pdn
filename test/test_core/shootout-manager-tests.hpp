@@ -325,9 +325,9 @@ inline void ringClosedBroadcastPromotesOnlyItsOwnMembers(ShootoutManagerTests* s
 }
 
 // A member takes the roster and then loses the loop before the app polls it into
-// proposal. Nothing clears that roster — the peer-lost handler stands down in
-// IDLE — so a copy of a ring that is now unplugged is still sitting there, and
-// only live membership can tell it apart from a ring that is really closed.
+// proposal. Nothing clears that roster while the phase is IDLE, so a copy of a
+// ring that is now unplugged is still sitting there, and only live membership
+// can tell it apart from a ring that is really closed.
 inline void openRingRefusesProposalDespiteLatchedRoster(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x02, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x02, 0, 0, 0, 0, 0};
@@ -1404,10 +1404,9 @@ inline void confirmRecordsPeerName(ShootoutManagerTests* suite) {
 }
 
 inline void duplicateMatchResultDoesNotDoubleAdvance(ShootoutManagerTests* suite) {
-    // Reproduces the hardware bug where ESP-NOW link-layer duplicate delivery
-    // of MATCH_RESULT made the coordinator call maybeStartNextMatch twice per
-    // match. Second call incremented currentMatchIndex_ and triggered a
-    // premature advance-round, collapsing the bracket from 4 to 3.
+    // ESP-NOW link-layer duplicate delivery presents the same MATCH_RESULT
+    // twice. Both must land on one elimination: counting the loser twice
+    // advances the round early and collapses a 4-member bracket to 3.
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};  // coord
     std::array<uint8_t, 6> me  = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> b   = {0x02, 0, 0, 0, 0, 0};
@@ -1605,12 +1604,80 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
     EXPECT_TRUE(suite->player.isHunter())
         << "the tournament overwrote the standing role with a per-match slot";
 
-    // And it stays put across the match boundary that used to restore it.
+    // And it stays put across the match boundary, where a restore would land.
     suite->shootout->onMatchResultReceived(opMac.data(), me.data(), 0, 3, opMac.data());
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BETWEEN_MATCHES);
     EXPECT_TRUE(suite->player.isHunter());
     EXPECT_FALSE(matchManager.isLocalHunter())
         << "the bout's draw slot was rewritten underneath a live duel";
+
+    matchManager.clearCurrentMatch();
+    suite->shootout->setMatchManager(nullptr);
+}
+
+// One execDrivers drain can carry both a MATCH_START and the ABORT that ends the
+// tournament, and the duel app is only entered from a state loop — so the app
+// dismount that retires a bout never runs. Idle mounts a duel from whatever
+// match is ready, and a bout left behind is scored against stale draw times;
+// the tournament after it cannot prime over one either.
+inline void anAbortRetiresTheBoutTheTournamentPrimed(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> me = {0x05, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> coord = {0x02, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> third = {0x07, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+    ON_CALL(*suite->device.mockPeerComms,
+            sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    MockStorage storage;
+    FakeQuickdrawWirelessManager quickdrawWirelessManager;
+    MatchManager matchManager;
+    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    suite->shootout->setMatchManager(&matchManager);
+
+    suite->shootout->setLoopMembersForTest({me, coord, third});
+    suite->shootout->startProposal();
+    for (const std::array<uint8_t, 6>& m : {me, coord, third})
+        suite->shootout->onConfirmReceived(m.data());
+    suite->shootout->onBracketReceived(coord.data(), {me, coord, third}, 1);
+    suite->shootout->onMatchStartReceived(coord.data(), me.data(), coord.data(), 0, 2);
+    ASSERT_TRUE(matchManager.isMatchReady()) << "MATCH_START did not prime the bout";
+
+    suite->shootout->onAbortReceived(third.data(), 9);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
+
+    EXPECT_FALSE(matchManager.isMatchReady())
+        << "Idle mounts a phantom duel from the abandoned bout";
+    EXPECT_FALSE(matchManager.getCurrentMatch().has_value())
+        << "the next tournament cannot prime a bout over the abandoned one";
+
+    suite->shootout->setMatchManager(nullptr);
+}
+
+// The bout the cable handshake owns is not the tournament's to retire, and a
+// tournament can end while one is parked beside it.
+inline void aTournamentResetLeavesACableBoutAlone(ShootoutManagerTests* suite) {
+    uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
+    uint8_t opponent[6] = {0x02, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, getMacAddress())
+        .WillByDefault(testing::Return(selfMac));
+
+    MockStorage storage;
+    FakeQuickdrawWirelessManager quickdrawWirelessManager;
+    MatchManager matchManager;
+    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    suite->shootout->setMatchManager(&matchManager);
+
+    matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", "opponent",
+                              /*opponentIsHunter=*/true, opponent);
+    ASSERT_TRUE(matchManager.getCurrentMatch().has_value());
+
+    suite->shootout->resetToIdle();
+
+    EXPECT_TRUE(matchManager.getCurrentMatch().has_value())
+        << "a tournament ending took the cable handshake's bout with it";
 
     matchManager.clearCurrentMatch();
     suite->shootout->setMatchManager(nullptr);

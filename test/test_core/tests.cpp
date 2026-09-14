@@ -1858,6 +1858,8 @@ TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoo
 TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
+TEST_F(ShootoutManagerTests, anAbortRetiresTheBoutTheTournamentPrimed) { anAbortRetiresTheBoutTheTournamentPrimed(this); }
+TEST_F(ShootoutManagerTests, aTournamentResetLeavesACableBoutAlone) { aTournamentResetLeavesACableBoutAlone(this); }
 TEST_F(ShootoutManagerTests, deposedHeadDoesNotProposeOnItsDeadClaim) { deposedHeadDoesNotProposeOnItsDeadClaim(this); }
 TEST_F(ShootoutManagerTests, staleCoordinatorClaimYieldsToANewRing) { staleCoordinatorClaimYieldsToANewRing(this); }
 TEST_F(ShootoutManagerTests, mergedRingClaimantsSettleOnLowerMac) { mergedRingClaimantsSettleOnLowerMac(this); }
