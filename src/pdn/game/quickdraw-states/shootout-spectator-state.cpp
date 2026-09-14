@@ -1,5 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
+#include <array>
 #include <cstdio>
 #include <cstring>
 
@@ -38,6 +39,11 @@ void ShootoutSpectator::onStateLoop(PDN* pdn) {
     if (p == ShootoutManager::Phase::ENDED) shouldGoToFinalStandings_ = true;
 
     auto pair = shootout_->getCurrentMatchPair();
+    // A teardown zeroes the pair, and an all-zero MAC names no duelist. Without
+    // this the change test fires on the way out and repaints WATCHING over two
+    // blank names, for the one tick before the abort edge lifts the state.
+    const std::array<uint8_t, 6> noMatch{};
+    if (memcmp(pair.first.data(), noMatch.data(), 6) == 0) return;
     if (memcmp(pair.first.data(), lastDisplayedA_.data(), 6) != 0 ||
         memcmp(pair.second.data(), lastDisplayedB_.data(), 6) != 0) {
         lastDisplayedA_ = pair.first;

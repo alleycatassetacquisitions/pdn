@@ -79,8 +79,10 @@ void Duel::onStateLoop(PDN* pdn) {
         return;
     }
 
-    // Shootout timeout: hunter forfeits, bounty wins.
-    if (player->isHunter()) {
+    // Shootout timeout: the bout's hunter forfeits, its bounty wins. The draw
+    // slot decides, not the standing role — a shootout pairs by MAC ordering, so
+    // the two disagree for the whole bout.
+    if (matchManager->isLocalHunter()) {
         transitionToShootoutEliminatedState = true;
         return;
     }
@@ -115,16 +117,10 @@ bool Duel::transitionToShootoutEliminated() {
 }
 
 void Duel::onStateDismounted(PDN* pdn) {
-    if(transitionToIdleState || transitionToShootoutSpectatorState
-       || transitionToShootoutEliminatedState) {
-        pdn->getHaptics()->off();
-        matchManager->clearCurrentMatch();
-        pdn->getPrimaryButton()->removeButtonCallbacks();
-        pdn->getSecondaryButton()->removeButtonCallbacks();
-    } else if(transitionToDuelReceivedResultState) {
-        pdn->getPrimaryButton()->removeButtonCallbacks();
-        pdn->getSecondaryButton()->removeButtonCallbacks();
-    }
+    // Input goes on every exit. No successor inherits these callbacks — each
+    // registers what it wants on mount, or wants none.
+    pdn->getPrimaryButton()->removeButtonCallbacks();
+    pdn->getSecondaryButton()->removeButtonCallbacks();
 
     LOG_I(DUEL_TAG, "Duel state dismounted - Cleanup");
 
@@ -138,6 +134,9 @@ void Duel::onStateDismounted(PDN* pdn) {
     transitionToShootoutEliminatedState = false;
 }
 
+// The standing role, not the bout's draw slot: which jack must be cabled is a
+// physical fact of this device's place in the chain, and the same one the whole
+// tournament through.
 bool Duel::isPrimaryRequired() {
     return player->isHunter();
 }

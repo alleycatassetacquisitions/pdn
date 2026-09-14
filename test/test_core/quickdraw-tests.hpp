@@ -33,6 +33,33 @@ inline void wireFixtureRdcForMatchManager(MockDevice& device, MatchManager* mm) 
 
 static const uint8_t kTestMacBytes[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
+// Stands a ShootoutManager up to MATCH_IN_PROGRESS with this device as a duelist
+// against the coordinator, and lets it prime `matchManager` the way MATCH_START
+// does on hardware. `selfMac` sorts above the coordinator's, which puts the local
+// side in the BOUNTY draw slot — the opposite of the fixtures' standing hunter
+// role, so a reader consulting the wrong one of the two is visible. Returns the
+// opponent's MAC.
+inline std::array<uint8_t, 6> mountShootoutBoutWithBountySlot(
+    ShootoutManager& shootout, MockDevice& device, MatchManager* matchManager,
+    uint8_t* selfMac) {
+    std::array<uint8_t, 6> me{};
+    memcpy(me.data(), selfMac, 6);
+    std::array<uint8_t, 6> coordinator = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> spectator = {0x07, 0, 0, 0, 0, 0};
+    ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(selfMac));
+    ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+
+    shootout.setMatchManager(matchManager);
+    shootout.setLoopMembersForTest({me, coordinator, spectator});
+    shootout.startProposal();
+    for (const std::array<uint8_t, 6>& m : {me, coordinator, spectator}) {
+        shootout.onConfirmReceived(m.data());
+    }
+    shootout.onBracketReceived(coordinator.data(), {me, coordinator, spectator}, 1);
+    shootout.onMatchStartReceived(coordinator.data(), me.data(), coordinator.data(), 0, 2);
+    return coordinator;
+}
+
 // ============================================
 // Idle State Tests
 // ============================================
@@ -430,6 +457,39 @@ public:
     FakePlatformClock* fakeClock;
 };
 
+// The shootout duel timeout forfeits the bout's HUNTER. Which side that is comes
+// from the bout's draw slot, not the standing role: the two disagree for the whole
+// bout, and reading the standing role here sends the wrong device to reportLocalWin.
+inline void duelShootoutTimeoutForfeitsTheBoutHunter(DuelStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+        .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+        .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    suite->matchManager->clearCurrentMatch();
+    uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
+    ShootoutManager shootout(suite->player, suite->device.wirelessManager,
+                             &suite->device.fakeRemoteDeviceCoordinator);
+    std::array<uint8_t, 6> opponent = mountShootoutBoutWithBountySlot(
+        shootout, suite->device, suite->matchManager, selfMac);
+    suite->ctx.shootoutManager = &shootout;
+    ASSERT_TRUE(suite->player->isHunter()) << "the standing role should be the opposite";
+    ASSERT_FALSE(suite->matchManager->isLocalHunter());
+
+    Duel duelState(suite->ctx);
+    duelState.onStateMounted(&suite->device);
+    suite->fakeClock->advance(5000);  // past Duel::DUEL_TIMEOUT
+    duelState.onStateLoop(&suite->device);
+
+    EXPECT_TRUE(duelState.transitionToShootoutSpectator())
+        << "the bout's bounty did not take the forfeit win";
+    EXPECT_FALSE(duelState.transitionToShootoutEliminated());
+    EXPECT_TRUE(shootout.isEliminated(opponent.data()));
+
+    suite->ctx.shootoutManager = nullptr;
+}
+
 // ============================================
 // Scenario 1: DUT presses button first, then receives result
 // ============================================
@@ -495,8 +555,8 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     masherCallback(masherCtx);
     masherCallback(masherCtx);
 
-    // Cycle through THREE → TWO → ONE → BATTLE (3 × 2001ms) so doBattle=true
-    // and the match is not cleared on dismount.
+    // Cycle through THREE → TWO → ONE → BATTLE (3 × 2001ms) so the battle edge
+    // holds and the match survives the dismount into the duel.
     // SimpleTimer::expired() uses strict '<', so we need elapsed > duration (2000ms).
     for (int i = 0; i < 3; i++) {
         suite->fakeClock->advance(2001);
@@ -506,9 +566,9 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
     countdownState.onStateDismounted(&suite->device);
-    
-    // Now start the duel
+
     Duel duelState(suite->ctx);
+
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     duelState.onStateMounted(&suite->device);
@@ -965,6 +1025,44 @@ inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
     SUCCEED();
 }
 
+// The ordinary press-and-lose path, with no timeout involved. The winner's
+// MATCH_RESULT lands while this device's duel is still running — on hardware
+// that is the whole race — and DuelResult mounts after it. Resolving the outcome
+// from the standing role there put the loser on the winner branch, so one bout
+// produced two eliminations and a two-player final could eliminate both
+// finalists.
+inline void resultShootoutLoserDoesNotClaimTheWin(DuelResultTests* suite) {
+    uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
+    ShootoutManager shootout(suite->player, suite->device.wirelessManager,
+                             &suite->device.fakeRemoteDeviceCoordinator);
+    std::array<uint8_t, 6> opponent = mountShootoutBoutWithBountySlot(
+        shootout, suite->device, suite->matchManager, selfMac);
+    suite->ctx.shootoutManager = &shootout;
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    ASSERT_TRUE(suite->player->isHunter()) << "the standing role should be the opposite";
+    ASSERT_FALSE(suite->matchManager->isLocalHunter());
+
+    // Both draw times in: this device, in the bounty slot, was slower.
+    suite->matchManager->setBountyDrawTime(400);
+    suite->matchManager->setHunterDrawTime(100);
+    suite->matchManager->setReceivedButtonPush();
+    suite->matchManager->setReceivedDrawResult();
+
+    shootout.onMatchResultReceived(opponent.data(), selfMac, 0, 9, opponent.data());
+    ASSERT_EQ(shootout.getPhase(), ShootoutManager::Phase::BETWEEN_MATCHES);
+
+    DuelResult resultState(suite->ctx);
+    resultState.onStateMounted(&suite->device);
+
+    EXPECT_FALSE(resultState.transitionToShootoutSpectator())
+        << "the loser took the winner branch";
+    EXPECT_TRUE(resultState.transitionToShootoutEliminated());
+    EXPECT_FALSE(shootout.isEliminated(opponent.data()))
+        << "one bout produced two eliminations";
+
+    suite->ctx.shootoutManager = nullptr;
+}
+
 // ============================================
 // State Cleanup Verification Tests
 // ============================================
@@ -1056,25 +1154,60 @@ inline void cleanupCountdownClearsButtonCallbacks(StateCleanupTests* suite) {
     countdownState.onStateDismounted(&suite->device);
 }
 
-// Test: Duel state preserves button callbacks for DuelPushed/DuelReceivedResult
-inline void cleanupDuelStateDoesNotClearCallbacksOnDismount(StateCleanupTests* suite) {
+// The bout continues into DuelPushed, so the match has to survive the dismount —
+// that state reads it and writes the draw result against it.
+// Leaving the duel app is what ends a bout, so DuelApp owns the teardown. The
+// states inside it hand the match to one another and must not tear it down: which
+// edge the machine takes is decided by registration order in populateStateMap, so
+// no state can tell from its own flags whether it is handing off or leaving.
+inline void duelAppDismountEndsTheBout(StateCleanupTests* suite) {
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->matchManager->initializeMatch(dummyMac);
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+
+    DuelApp app(suite->ctx);
+    app.populateStateMap();
+
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _))
+        .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))
+        .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks())
+        .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks())
+        .Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+    app.onStateMounted(&suite->device);
+
+    EXPECT_CALL(*suite->device.mockHaptics, off()).Times(testing::AtLeast(1));
+    app.onStateDismounted(&suite->device);
+
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
+        << "a match left ready bounces the device into a phantom duel from Idle";
+}
+
+// The other half of the same rule: a state dismounting on its own leaves the bout
+// alone, because it may be handing off to a sibling that needs it. Pinned on Duel,
+// whose exits used to be enumerated by flag — the case that broke was an abort
+// winning while the press flag was set.
+inline void aDuelStateDismountLeavesTheBoutToTheApp(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
 
     Duel duelState(suite->ctx);
-
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
-    
     duelState.onStateMounted(&suite->device);
-    
-    // Duel state should NOT clear button callbacks on dismount
-    // The next state (DuelPushed or DuelReceivedResult) uses them
-    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(0);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(0);
-    
+
+    suite->fakeClock->advance(200);
+    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    duelState.onStateLoop(&suite->device);
+    ASSERT_TRUE(duelState.transitionToDuelPushed());
+
     duelState.onStateDismounted(&suite->device);
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+        << "the bout's own match was torn down on the way into DuelPushed";
 }
 
 // Test: DuelReceivedResult state clears button callbacks on dismount
@@ -1234,20 +1367,24 @@ inline void cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(StateCl
     duelState.onStateDismounted(&suite->device);
 }
 
-// Test: DuelPushed clears match when disconnected on dismount
-inline void pushedClearsMatchOnDisconnect(StateCleanupTests* suite) {
+// A disconnect ends the bout through the app's abandon edge, not through the
+// state. DuelPushed leaves the match alone even while disconnected, because the
+// same dismount also runs on the way to DuelResult — which scores the duel off
+// that match, and used to be handed an empty one on this exact path.
+inline void pushedLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setReceivedButtonPush();
 
     ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
 
-    // FakeRemoteDeviceCoordinator always reports DISCONNECTED, so isConnected() == false
+    // FakeRemoteDeviceCoordinator reports DISCONNECTED, so isConnected() == false
     DuelPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
     pushedState.onStateDismounted(&suite->device);
 
-    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+        << "the state cleared a bout the app had not finished with";
 }
 
 // Test: DuelReceivedResult clears match when disconnected on dismount
@@ -1380,7 +1517,7 @@ inline void countdownFreezesDisconnectDebounceDuringShootout(StateCleanupTests* 
     suite->ctx.shootoutManager = nullptr;
 }
 
-inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
+inline void receivedResultLeavesTheBoutAloneWhenDisconnected(StateCleanupTests* suite) {
     uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
     suite->matchManager->initializeMatch(dummyMac);
     suite->matchManager->setBountyDrawTime(150);
@@ -1397,7 +1534,8 @@ inline void receivedResultClearsMatchOnDisconnect(StateCleanupTests* suite) {
     receivedState.onStateMounted(&suite->device);
     receivedState.onStateDismounted(&suite->device);
 
-    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+        << "the state cleared a bout the app had not finished with";
 }
 
 // ============================================

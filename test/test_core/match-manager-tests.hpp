@@ -226,6 +226,49 @@ inline void matchManagerTracksDuelState(MatchManager* mm, Player* player) {
     EXPECT_TRUE(mm->matchResultsAreIn());
 }
 
+// ==========================================================================
+// Shootout draw slots: assigned per bout by MAC ordering, with the standing role
+// left alone, so the two disagree routinely.
+// ==========================================================================
+
+// The production sequence across a bout boundary: the finished bout's Duel
+// dismounts and clears, then the next bout is announced. Both halves have to
+// land — a slot without a match cannot record a draw time, and the device times
+// out into a forfeit whose direction that same slot decides.
+inline void eachBoutIsPrimedWithItsOwnDrawSlot(MatchManagerTestSuite* suite) {
+    uint8_t opponent[6] = {0x05, 0, 0, 0, 0, 0};
+    suite->matchManager->initializeShootoutMatch(
+        "SHT-00000000000000000000000000000000", opponent, false);
+    ASSERT_FALSE(suite->matchManager->isLocalHunter());
+
+    suite->matchManager->clearCurrentMatch();
+    uint8_t nextOpponent[6] = {0x09, 0, 0, 0, 0, 0};
+    suite->matchManager->initializeShootoutMatch(
+        "SHT-00000000000000000000000000000001", nextOpponent, true);
+
+    EXPECT_TRUE(suite->matchManager->isLocalHunter())
+        << "the new bout's draw slot was dropped; the next duel resolves on the old one";
+    EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
+        << "the next bout has no match, so a button press in it is discarded";
+}
+
+inline void matchManagerShootoutDrawSlotDecidesTheWinner(MatchManager* mm, Player* player) {
+    player->setIsHunter(true);
+    uint8_t opponentMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    mm->initializeShootoutMatch("SHT-00000000000000000000000000000", opponentMac,
+                                /*localIsHunter=*/false);
+    ASSERT_TRUE(mm->getCurrentMatch().has_value());
+    ASSERT_FALSE(mm->isLocalHunter());
+
+    mm->setBountyDrawTime(400);  // this device
+    mm->setHunterDrawTime(100);  // the opponent
+    mm->setReceivedButtonPush();
+    mm->setReceivedDrawResult();
+
+    EXPECT_FALSE(mm->didWin())
+        << "the standing role, not the bout's draw slot, decided the duel";
+}
+
 // ============================================
 // Spoof rejection — packet-source authentication on duel commands
 // ============================================

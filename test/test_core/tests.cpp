@@ -858,6 +858,11 @@ TEST_F(MatchManagerTestSuite, graceExpiredAloneFinalizes) {
     matchManagerGraceExpiredAloneFinalizes(matchManager, player);
 }
 
+TEST_F(MatchManagerTestSuite, eachBoutIsPrimedWithItsOwnDrawSlot) { eachBoutIsPrimedWithItsOwnDrawSlot(this); }
+TEST_F(MatchManagerTestSuite, shootoutDrawSlotDecidesTheWinner) {
+    matchManagerShootoutDrawSlotDecidesTheWinner(matchManager, player);
+}
+
 TEST_F(MatchManagerTestSuite, rejectsNeverPressedFromStranger) {
     matchManagerRejectsNeverPressedFromStranger(matchManager, player);
 }
@@ -1006,6 +1011,10 @@ TEST_F(DuelCountdownTests, cleansUpOnDismount) {
 // QUICKDRAW STATE TESTS - DUEL SCENARIOS
 // ============================================
 
+TEST_F(DuelStateTests, shootoutTimeoutForfeitsTheBoutHunter) {
+    duelShootoutTimeoutForfeitsTheBoutHunter(this);
+}
+
 // Scenario 1: DUT presses button first
 TEST_F(DuelStateTests, buttonPressTransitionsToDuelPushed) {
     duelButtonPressTransitionsToDuelPushed(this);
@@ -1095,6 +1104,10 @@ TEST_F(DuelResultTests, winTransitionsToWinState) {
     resultWinTransitionsToWinState(this);
 }
 
+TEST_F(DuelResultTests, shootoutLoserDoesNotClaimTheWin) {
+    resultShootoutLoserDoesNotClaimTheWin(this);
+}
+
 TEST_F(DuelResultTests, loseTransitionsToLoseState) {
     resultLoseTransitionsToLoseState(this);
 }
@@ -1123,8 +1136,12 @@ TEST_F(StateCleanupTests, countdownClearsButtonCallbacks) {
     cleanupCountdownClearsButtonCallbacks(this);
 }
 
-TEST_F(StateCleanupTests, duelStateDoesNotClearCallbacksOnDismount) {
-    cleanupDuelStateDoesNotClearCallbacksOnDismount(this);
+TEST_F(StateCleanupTests, duelAppDismountEndsTheBout) {
+    duelAppDismountEndsTheBout(this);
+}
+
+TEST_F(StateCleanupTests, aDuelStateDismountLeavesTheBoutToTheApp) {
+    aDuelStateDismountLeavesTheBoutToTheApp(this);
 }
 
 TEST_F(StateCleanupTests, duelReceivedResultClearsButtonCallbacks) {
@@ -1155,12 +1172,12 @@ TEST_F(StateCleanupTests, duelStateClearsCallbacksWhenGoingToDuelReceivedResult)
     cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(this);
 }
 
-TEST_F(StateCleanupTests, pushedClearsMatchOnDisconnect) {
-    pushedClearsMatchOnDisconnect(this);
+TEST_F(StateCleanupTests, pushedLeavesTheBoutAloneWhenDisconnected) {
+    pushedLeavesTheBoutAloneWhenDisconnected(this);
 }
 
-TEST_F(StateCleanupTests, receivedResultClearsMatchOnDisconnect) {
-    receivedResultClearsMatchOnDisconnect(this);
+TEST_F(StateCleanupTests, receivedResultLeavesTheBoutAloneWhenDisconnected) {
+    receivedResultLeavesTheBoutAloneWhenDisconnected(this);
 }
 
 TEST_F(StateCleanupTests, countdownDebouncesTransientDisconnect) {
@@ -1835,13 +1852,14 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) 
 TEST_F(ShootoutManagerTests, coordinatorIsTheRingClosureClaimant) { coordinatorIsTheRingClosureClaimant(this); }
 TEST_F(ShootoutManagerTests, ringClosedClaimAnnouncesRosterToMembers) { ringClosedClaimAnnouncesRosterToMembers(this); }
 TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorClaimsRing) { ringClosureFromCoordinatorClaimsRing(this); }
-TEST_F(ShootoutManagerTests, peerLossFromCoordinatorReachesManager) { peerLossFromCoordinatorReachesManager(this); }
 TEST_F(ShootoutManagerTests, ringClosedBroadcastPromotesOnlyItsOwnMembers) { ringClosedBroadcastPromotesOnlyItsOwnMembers(this); }
 TEST_F(ShootoutManagerTests, openRingRefusesProposalDespiteLatchedRoster) { openRingRefusesProposalDespiteLatchedRoster(this); }
 TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoopMembersComeFromRdcRoster(this); }
 TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
+TEST_F(ShootoutManagerTests, anAbortRetiresTheBoutTheTournamentPrimed) { anAbortRetiresTheBoutTheTournamentPrimed(this); }
+TEST_F(ShootoutManagerTests, aTournamentResetLeavesACableBoutAlone) { aTournamentResetLeavesACableBoutAlone(this); }
 TEST_F(ShootoutManagerTests, deposedHeadDoesNotProposeOnItsDeadClaim) { deposedHeadDoesNotProposeOnItsDeadClaim(this); }
 TEST_F(ShootoutManagerTests, staleCoordinatorClaimYieldsToANewRing) { staleCoordinatorClaimYieldsToANewRing(this); }
 TEST_F(ShootoutManagerTests, mergedRingClaimantsSettleOnLowerMac) { mergedRingClaimantsSettleOnLowerMac(this); }
@@ -1863,24 +1881,35 @@ TEST_F(ShootoutManagerTests, staleResultDoesNotEndTheCurrentBout) { staleResultD
 TEST_F(ShootoutManagerTests, coordinatorMissingOurResultIsRecoveredBySender) { coordinatorMissingOurResultIsRecoveredBySender(this); }
 TEST_F(ShootoutManagerTests, matchStartRetriesToSilentMemberThenAborts) { matchStartRetriesToSilentMemberThenAborts(this); }
 TEST_F(ShootoutManagerTests, resetCancelsInFlightFanOuts) { resetCancelsInFlightFanOuts(this); }
+TEST_F(ShootoutManagerTests, spectatorDoesNotRepaintATornDownMatch) { spectatorDoesNotRepaintATornDownMatch(this); }
 TEST_F(ShootoutManagerTests, ackIsMatchedBySeqIdAlone) { ackIsMatchedBySeqIdAlone(this); }
 TEST_F(ShootoutManagerTests, reAnnouncedMatchDoesNotReplayAFinishedBout) { reAnnouncedMatchDoesNotReplayAFinishedBout(this); }
 TEST_F(ShootoutManagerTests, abortDoesNotTearDownAFinishedTournament) { abortDoesNotTearDownAFinishedTournament(this); }
 TEST_F(ShootoutManagerTests, abandonedMatchStartIsJudgedAgainstItsOwnMatch) { abandonedMatchStartIsJudgedAgainstItsOwnMatch(this); }
 TEST_F(ShootoutManagerTests, silentSpectatorDoesNotAbortMatchStart) { silentSpectatorDoesNotAbortMatchStart(this); }
-TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
-TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
-TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }
 TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) { finalMatchResultTriggersTournamentEnd(this); }
 TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) { startProposalClearsAllPriorTournamentState(this); }
 TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) { tournamentEndRetriesUntilAcked(this); }
 TEST_F(ShootoutManagerTests, matchResultRetriesUntilAcked) { matchResultRetriesUntilAcked(this); }
 TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) { duplicateMatchResultDoesNotDoubleAdvance(this); }
 TEST_F(ShootoutManagerTests, confirmRecordsPeerName) { confirmRecordsPeerName(this); }
-TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) { isHunterRestoredAfterTournament(this); }
-TEST_F(ShootoutManagerTests, localRDCDisconnectIsIdempotent) { localRDCDisconnectIsIdempotent(this); }
-TEST_F(ShootoutManagerTests, shootoutProposalDebouncesTransientLoopBreak) { shootoutProposalDebouncesTransientLoopBreak(this); }
-TEST_F(ShootoutManagerTests, shootoutBracketRevealDebouncesTransientLoopBreak) { shootoutBracketRevealDebouncesTransientLoopBreak(this); }
+TEST_F(ShootoutManagerTests, shootoutLeavesStandingRoleAlone) { shootoutLeavesStandingRoleAlone(this); }
+TEST_F(ShootoutManagerTests, aLateResultDoesNotReopenACrownedTournament) { aLateResultDoesNotReopenACrownedTournament(this); }
+TEST_F(ShootoutManagerTests, endingSurvivesTheTerminalScreenExit) { endingSurvivesTheTerminalScreenExit(this); }
+TEST_F(ShootoutManagerTests, anAbortSurvivesTheAbortedScreenExit) { anAbortSurvivesTheAbortedScreenExit(this); }
+TEST_F(ShootoutManagerTests, theEndingOutlivesAReProposal) { theEndingOutlivesAReProposal(this); }
+TEST_F(ShootoutManagerTests, aBracketDoesNotReopenAnEndedTournament) { aBracketDoesNotReopenAnEndedTournament(this); }
+TEST_F(ShootoutManagerTests, aStaleShortRosterWindowDoesNotAbortTheNextProposal) { aStaleShortRosterWindowDoesNotAbortTheNextProposal(this); }
+TEST_F(ShootoutManagerTests, aLocalWinDoesNotWalkBackAnAbortedTournament) { aLocalWinDoesNotWalkBackAnAbortedTournament(this); }
+TEST_F(ShootoutManagerTests, aRingTooSmallToPlayGivesUpOnTheProposal) { aRingTooSmallToPlayGivesUpOnTheProposal(this); }
+TEST_F(ShootoutManagerTests, aRosterThatFillsInsideTheWindowStillRuns) { aRosterThatFillsInsideTheWindowStillRuns(this); }
+TEST_F(ShootoutManagerTests, tournamentWithNoSurvivorsAbortsInsteadOfNamingNobody) { tournamentWithNoSurvivorsAbortsInsteadOfNamingNobody(this); }
+TEST_F(ShootoutManagerTests, frameFromANonCoordinatorIsRefused) { frameFromANonCoordinatorIsRefused(this); }
+TEST_F(ShootoutManagerTests, admittedFrameWithBadContentIsStillAcked) { admittedFrameWithBadContentIsStillAcked(this); }
+TEST_F(ShootoutManagerTests, settledRingBreakAbortsALiveTournament) { settledRingBreakAbortsALiveTournament(this); }
+TEST_F(ShootoutManagerTests, abortIsAckedByItsRecipient) { abortIsAckedByItsRecipient(this); }
+TEST_F(ShootoutManagerTests, transientRingBreakDoesNotAbortATournament) { transientRingBreakDoesNotAbortATournament(this); }
+TEST_F(ShootoutManagerTests, aFreshTournamentGetsAFullGraceWindow) { aFreshTournamentGetsAFullGraceWindow(this); }
 TEST_F(ShootoutManagerTests, abortRuleReachesEveryStateThatDeclaresIt) { abortRuleReachesEveryStateThatDeclaresIt(this); }
 TEST_F(ShootoutManagerTests, bracketFanOutIsOneFrameBeyondPeerTable) { bracketFanOutIsOneFrameBeyondPeerTable(this); }
 TEST_F(ShootoutManagerTests, bracketRetryIsOneFramePerRound) { bracketRetryIsOneFramePerRound(this); }

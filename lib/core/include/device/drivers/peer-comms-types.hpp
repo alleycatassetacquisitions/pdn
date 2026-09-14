@@ -106,11 +106,10 @@ enum class ShootoutCmd : uint8_t {
     MATCH_START = 2,
     MATCH_RESULT = 3,
     TOURNAMENT_END = 4,
-    PEER_LOST = 5,
-    ABORT = 6,
+    ABORT = 5,
     // Coordinator -> members on ring closure. Carries the ring roster because
     // only the head's RDC serves one; every other member gets its copy here.
-    RING_CLOSED = 7,
+    RING_CLOSED = 6,
 };
 
 struct ShootoutPacket

@@ -2,13 +2,13 @@
 
 #include <array>
 #include <cstdint>
-#include <optional>
 #include <vector>
 #include "game/player.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "wireless/resender.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "device/wireless-manager.hpp"
+#include "utils/debounced-condition.hpp"
 #include "utils/simple-timer.hpp"
 
 class MatchManager;
@@ -28,10 +28,10 @@ public:
         ABORTED = 6,
     };
 
-    /// Subscribes to the coordinator's peer-lost and ring-closed edges when given
-    /// one. One callback exists per edge, so at most one ShootoutManager per
-    /// coordinator: a second built on the same one takes both slots over, and
-    /// whichever is destroyed first empties them for both.
+    /// Subscribes to the coordinator's ring-closed edge when given one. That
+    /// callback is a single slot, so at most one ShootoutManager per coordinator:
+    /// a second built on the same one takes the slot over, and whichever is
+    /// destroyed first empties it for both.
     ShootoutManager(Player* player,
                     WirelessManager* wirelessManager,
                     RemoteDeviceCoordinator* rdc);
@@ -104,7 +104,11 @@ public:
     void onBracketReceived(const uint8_t* fromMac,
                            const std::vector<std::array<uint8_t, 6>>& offeredBracket,
                            uint8_t seqId);
-    void onMatchStartReceived(const uint8_t* duelistA, const uint8_t* duelistB,
+    /// Inbound MATCH_START. Admitted on `fromMac` being our coordinator, which
+    /// is the authority BRACKET propagated; the duelist pair is game content and
+    /// cannot answer whether a broadcast frame is ours.
+    void onMatchStartReceived(const uint8_t* fromMac,
+                              const uint8_t* duelistA, const uint8_t* duelistB,
                               uint8_t matchIndex, uint8_t seqId);
     bool isLocalDuelist() const;
     std::array<uint8_t, 6> getOpponentMac() const;
@@ -120,19 +124,18 @@ public:
     uint8_t getLastMatchResultSeqId() const { return lastMatchResultSeqId; }
     bool isEliminated(const uint8_t* mac) const;
 
-    void onLocalRDCDisconnect(const uint8_t* lostMac);
-    /// Tears down on a peer's PEER_LOST, after checking the named MAC is one of
-    /// this device's ring members.
-    void onPeerLostReceived(const uint8_t* lostMac);
     uint8_t getLastMatchStartSeqId() const;
 
-    void onTournamentEndReceived(const uint8_t* winner, uint8_t seqId);
+    /// Inbound TOURNAMENT_END, admitted on `fromMac` for the same reason as
+    /// onMatchStartReceived.
+    void onTournamentEndReceived(const uint8_t* fromMac, const uint8_t* winner,
+                                 uint8_t seqId);
     /// seqId of the TOURNAMENT_END this device most recently sent.
     uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
     /// Tears down on a peer's ABORT. fromMac identifies the sending ring: the
     /// command carries no MACs of its own, and a broadcast reaches every ring
     /// in radio range.
-    void onAbortReceived(const uint8_t* fromMac);
+    void onAbortReceived(const uint8_t* fromMac, uint8_t seqId);
     std::array<uint8_t, 6> getTournamentWinner() const;
 
     // Reset all tournament state back to IDLE phase so a subsequent loop
@@ -140,10 +143,24 @@ public:
     // broken after TOURNAMENT_END or ABORTED.
     void resetToIdle();
 
-    /// Broadcast ABORT to the ring (bracket/confirmedSet), tear down, and land
-    /// in Phase::ABORTED. Idempotent: early-returns when already ABORTED.
+    /// Tears down, lands in Phase::ABORTED, and only then fans ABORT out to the
+    /// ring (bracket, or confirmedSet before a bracket exists). Armed after the
+    /// teardown because the teardown cancels the fan-outs in flight, sparing only
+    /// the seqId already recorded as terminal — which this one is not yet.
+    /// Idempotent, and refuses ENDED as well as ABORTED.
     void abortTournament();
 
+    /// Ring-break debounce. A cable nudge flickers the loop for a tick or two on
+    /// real hardware; act only once the break has settled.
+    static constexpr unsigned long LOOP_BREAK_DEBOUNCE_MS = 500;
+    /// Confirmed members needed to draw a bracket. Two is the structural floor —
+    /// a duel needs two duelists — so a two-device ring is exactly at it and runs.
+    static constexpr size_t MIN_PARTICIPANTS = 2;
+    /// How long a roster stays below MIN_PARTICIPANTS before the proposal is
+    /// given up on. Wall-clock, and generous: what fills the roster is members
+    /// announcing themselves to the head, which nothing here drives or can
+    /// predict. Raise it if a venue's larger rings are seen to fill slower.
+    static constexpr unsigned long SHORT_ROSTER_TIMEOUT_MS = 3000;
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
     // Packet-validation clamp on an inbound BRACKET's member count. A ring can
@@ -172,6 +189,16 @@ private:
     uint8_t nextSeqId();
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
                             const uint8_t* mac);
+    /// True when `mac` is the coordinator this device is following.
+    bool isFromCoordinator(const uint8_t* mac) const;
+    /// True in the two phases a tournament ends in. Every handler that would
+    /// advance a tournament refuses them, so a late frame cannot reopen one; the
+    /// two terminal screens end them deliberately, via resetToIdle on dismount.
+    /// ENDED is the phase that needs the refusals: unlike an abort it leaves the
+    /// coordinator anchor and the bracket standing.
+    bool isTerminalPhase() const {
+        return phase == Phase::ENDED || phase == Phase::ABORTED;
+    }
     // Any of the three, because which set knows the ring depends on the phase:
     // the bracket after reveal, the confirmed set during the proposal, the
     // physical loop before either exists. A follower's bracket is not a subset
@@ -194,6 +221,8 @@ private:
     // Non-empty is also the "a ring closed" latch, and nothing retires it while
     // IDLE, so shouldEnterProposal pairs it with a liveness check.
     std::vector<std::array<uint8_t, 6>> ringMembers;
+    DebouncedCondition ringBreakDebounce;
+    DebouncedCondition shortRosterDebounce;
     SimpleTimer ringClosedRebroadcastTimer;
     void sendRingClosed();
 
@@ -207,6 +236,9 @@ private:
     std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;
+    /// Overload for a roster the caller already has, so a tick that asks several
+    /// questions of it rebuilds it once.
+    bool allMembersConfirmed(const std::vector<std::array<uint8_t, 6>>& members) const;
     void advanceToBracketReveal();
     void generateBracket();
 
@@ -224,7 +256,7 @@ private:
     // Retransmits for every command family this manager sends. Owned here, not
     // shared with the coordinator's: a fan-out armed by this manager must die
     // with it rather than keep broadcasting for a tournament that is over.
-    // All four families ride one PktType, so the abandon callback reads which
+    // All five families ride one PktType, so the abandon callback reads which
     // one gave up off the frame's own command byte.
     Resender resender;
     void onCommandAbandoned(uint8_t seqId, const uint8_t* targetMac,
@@ -251,15 +283,13 @@ private:
     std::array<uint8_t, 6> currentDuelistB{};
     uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
+    /// Advances the bracket. Called only from sync(), on the main loop — a second
+    /// caller on the packet path would need its own guard against double-advance.
     void maybeStartNextMatch();
-    bool inMaybeStartNextMatch = false;
     void sendMatchStartToPeers(int matchIndex);
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
 
     std::vector<std::array<uint8_t, 6>> eliminated;
-    // Ends the tournament for a departed participant. Callers own the question of
-    // whether the MAC is one of ours; a locally observed jack loss already is.
-    void applyPeerLoss(const uint8_t* lostMac);
     bool isSameMatch(int matchIndex, const uint8_t* a, const uint8_t* b) const;
     bool reportedLocalWin = false;
     // The match whose result this device has already re-sent once, or -1. Keyed
@@ -285,11 +315,10 @@ private:
 
     std::array<uint8_t, 6> tournamentWinner{};
     uint8_t lastTournamentEndSeqId = 0;
+    // The ABORT or TOURNAMENT_END this device sent to report the tournament
+    // ending, which a teardown spares — see resetTournamentState. Zero until one
+    // is armed, and zero on a device that only ever received the news.
+    uint8_t terminalFanOutSeqId = 0;
 
-    // Snapshot of player->isHunter() at tournament entry: primeMatchManagerForMatch
-    // overrides isHunter by MAC ordering, and without restore the override leaks
-    // into the post-tournament duel.
-    std::optional<bool> originalIsHunter;
     void sendTournamentEndToPeers(const uint8_t* winner);
-    std::array<uint8_t, 6> findLastRemaining() const;
 };

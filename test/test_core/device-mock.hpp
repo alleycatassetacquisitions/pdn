@@ -239,18 +239,6 @@ private:
     bool inputPeerSet = false;
 };
 
-// Stand-in CDM for tests that flip isLoop() without standing up a real ring.
-// Used by ShootoutProposal/BracketReveal debounce tests.
-class FakeChainDuelManager : public ChainDuelManager {
-public:
-    FakeChainDuelManager(Player* p, WirelessManager* wm, RemoteDeviceCoordinator* rdc)
-        : ChainDuelManager(p, wm, rdc) {}
-    bool isLoop() const override { return isLoop_; }
-    void setIsLoop(bool v) { isLoop_ = v; }
-private:
-    bool isLoop_ = true;
-};
-
 // Stand-in RDC reporting a latched ring plus a head roster without driving the
 // HELLO stack. Only the chain surface ShootoutManager reads is overridden.
 class FakeRingRemoteDeviceCoordinator : public RemoteDeviceCoordinator {

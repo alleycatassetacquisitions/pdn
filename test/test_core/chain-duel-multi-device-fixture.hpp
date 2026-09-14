@@ -514,19 +514,17 @@ protected:
                         break;
                     }
                     case ShootoutCmd::MATCH_START:
-                        if (payloadLen >= 13) m->onMatchStartReceived(payload, payload + 6, payload[12], seqId);
+                        if (payloadLen >= 13)
+                            m->onMatchStartReceived(fromMac, payload, payload + 6, payload[12], seqId);
                         break;
                     case ShootoutCmd::MATCH_RESULT:
                         if (payloadLen >= 13) m->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
                         break;
                     case ShootoutCmd::TOURNAMENT_END:
-                        if (payloadLen >= 6) m->onTournamentEndReceived(payload, seqId);
-                        break;
-                    case ShootoutCmd::PEER_LOST:
-                        if (payloadLen >= 6) m->onPeerLostReceived(payload);
+                        if (payloadLen >= 6) m->onTournamentEndReceived(fromMac, payload, seqId);
                         break;
                     case ShootoutCmd::ABORT:
-                        m->onAbortReceived(fromMac);
+                        m->onAbortReceived(fromMac, seqId);
                         break;
                 }
             },

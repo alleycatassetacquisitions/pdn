@@ -3,7 +3,7 @@
 
 ShootoutBracketReveal::ShootoutBracketReveal(const GameContext& ctx)
     : TypedState<PDN>(SHOOTOUT_BRACKET_REVEAL)
-    , ShootoutAwareState(ctx.shootoutManager, ctx.chainDuelManager) {}
+    , shootoutManager(ctx.shootoutManager) {}
 
 void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
     // Clear stale button callbacks left by ShootoutProposal.
@@ -18,7 +18,6 @@ void ShootoutBracketReveal::onStateMounted(PDN* pdn) {
 }
 
 void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
-    tickAbortGuard();
     ShootoutManager::Phase p = shootoutManager->getPhase();
     if (p == ShootoutManager::Phase::MATCH_IN_PROGRESS) {
         if (shootoutManager->isLocalDuelist()) {
@@ -32,7 +31,6 @@ void ShootoutBracketReveal::onStateLoop(PDN* pdn) {
 void ShootoutBracketReveal::onStateDismounted(PDN* pdn) {
     shouldGoToDuelCountdown_ = false;
     shouldGoToSpectator_ = false;
-    resetAbortGuard();
 }
 
 bool ShootoutBracketReveal::transitionToDuelCountdown() { return shouldGoToDuelCountdown_; }

@@ -77,6 +77,12 @@ DuelApp::DuelApp(const GameContext& context)
     : StateMachine(DUEL_APP_ID)
     , context(context) {}
 
+void DuelApp::onStateDismounted(Device* device) {
+    StateMachine::onStateDismounted(device);
+    device->getHaptics()->off();
+    context.matchManager->clearCurrentMatch();
+}
+
 void DuelApp::populateStateMap() {
     DuelCountdown* duelCountdown = new DuelCountdown(context);
     Duel* duel = new Duel(context);

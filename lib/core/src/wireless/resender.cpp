@@ -118,6 +118,13 @@ void Resender::cancelAll(PktType type) {
     }
 }
 
+void Resender::cancelAllExcept(PktType type, uint8_t keepSeqId) {
+    for (std::vector<Group>::iterator g = groups.begin(); g != groups.end();) {
+        const bool drop = g->type == type && g->seqId != keepSeqId;
+        g = drop ? groups.erase(g) : g + 1;
+    }
+}
+
 void Resender::sync() {
     // Abandoned recipients are collected first so the callback can safely mutate
     // `groups` — send, cancel, cancelAll — without invalidating this iteration.

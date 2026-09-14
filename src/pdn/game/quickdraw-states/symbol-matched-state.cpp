@@ -69,6 +69,8 @@ void SymbolMatched::onStateLoop(PDN* pdn) {
 
 void SymbolMatched::onStateDismounted(PDN* pdn) {
     LOG_W(TAG, "dismounted");
+    // Opposite registration order here: the sibling edge is declared first, so it
+    // outranks the Idle hand-off and the qualifier is load-bearing.
     const bool showRefreshScreen = transitionToIdleState && !transitionToSymbolState;
     transitionToSymbolState = false;
     transitionToIdleState = false;
