@@ -59,6 +59,13 @@ enum class PeerClaim : size_t {
     COUNT = 5,
 };
 
+// The jack claims share portIndex's numbering so one mapping serves both; that
+// order is this assert's to keep, not a coincidence to rediscover.
+static_assert(static_cast<size_t>(PeerClaim::INPUT_JACK) == 0 &&
+                  static_cast<size_t>(PeerClaim::OUTPUT_JACK) == 1 &&
+                  static_cast<size_t>(PeerClaim::INPUT_JACK_SECONDARY) == 2,
+              "jack claim slots must match portIndex order");
+
 struct PortState {
     SerialIdentifier port;
     PortStatus status;
@@ -282,6 +289,18 @@ public:
     /// setOnJackChange: it says the chain moved, not which jack or which way.
     void setChainChangeCallback(std::function<void()> callback);
 
+    /// Holds this MAC's ESP-NOW peer slot on the game layer's behalf, releasing
+    /// whichever MAC it held before. The game layer has one such claim: the jack
+    /// and head slots are the coordinator's own and are not reachable from here.
+    void claimGamePeer(const uint8_t* macAddress);
+
+    /// Drops the game layer's claim. The slot goes only when the last holder
+    /// lets go of it, so no caller needs to know who else is using it.
+    void releaseGamePeer();
+
+private:
+    static constexpr size_t NUM_PORTS = 3;
+
     /// Takes `holder`'s claim on this MAC's ESP-NOW peer slot, registering the
     /// slot if it is not already up. A holder names one MAC at a time, so this
     /// also drops whatever it named before; claiming the same MAC twice is a
@@ -292,10 +311,7 @@ public:
     /// holder lets go of it, so no caller needs to know who else is using it.
     void releasePeer(PeerClaim holder);
 
-private:
-    static constexpr size_t kNumPorts = 3;
-
-    size_t portIndex(SerialIdentifier port) const;
+    static size_t portIndex(SerialIdentifier port);
     static PeerClaim jackClaim(SerialIdentifier port);
 
     // The MAC each holder currently names (0 = none). Holders are few and fixed, so
@@ -335,7 +351,7 @@ private:
         // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
         unsigned long lastContextResendMs = 0;
     };
-    std::array<JackHelloLink, kNumPorts> helloByPort;
+    std::array<JackHelloLink, NUM_PORTS> helloByPort;
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
     SelfProfileProvider selfProfileProvider;

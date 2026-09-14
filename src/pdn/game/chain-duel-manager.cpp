@@ -1,5 +1,6 @@
 #include "game/chain-duel-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "wireless/mac-functions.hpp"
 
 #define TAG "CDM"
 
@@ -44,7 +45,7 @@ ChainDuelManager::~ChainDuelManager() {
     rdc->setOnChainRoleChange(nullptr);
     // This manager is the only holder of the game claim, so nothing else would
     // drop its champion's ESP-NOW slot.
-    rdc->releasePeer(PeerClaim::GAME_PEER);
+    rdc->releaseGamePeer();
 }
 
 SerialIdentifier ChainDuelManager::opponentJack() const {
@@ -324,7 +325,7 @@ void ChainDuelManager::applyChainStateChange() {
                 championMac = selfArr;
                 // Promotion out from under a remote champion: we unicast to it no
                 // longer, so its slot is ours to let go of.
-                rdc->releasePeer(PeerClaim::GAME_PEER);
+                rdc->releaseGamePeer();
                 broadcastRoleAndChampion();
                 sendRoleToOpponentJack();
                 return;
@@ -417,6 +418,13 @@ void ChainDuelManager::onRoleAnnounceReceived(
     // parents — their championMac is irrelevant.
     if (!fromOpponentJack) return;
     if (role != (player->isHunter() ? 1u : 0u)) return;
+    // A sender with no champion of its own leaves the field zeroed rather than
+    // omitting it, and an all-zero MAC is addressable by nothing: claiming it
+    // burns a radio slot no release can name again.
+    if (MacToUInt64(announcedChampionMac) == 0) {
+        LOG_E(TAG, "role announce carried no champion");
+        return;
+    }
 
     // 3. Hold the champion's ESP-NOW slot for as long as it is the champion. The
     // claim carries over from whichever MAC held it before, so a champion change
@@ -425,9 +433,9 @@ void ChainDuelManager::onRoleAnnounceReceived(
     bool championIsSelf = (selfMac != nullptr &&
                            memcmp(selfMac, announcedChampionMac, 6) == 0);
     if (championIsSelf) {
-        rdc->releasePeer(PeerClaim::GAME_PEER);
+        rdc->releaseGamePeer();
     } else {
-        rdc->claimPeer(PeerClaim::GAME_PEER, announcedChampionMac);
+        rdc->claimGamePeer(announcedChampionMac);
     }
 
     // 4. Update championMac and cascade if changed.

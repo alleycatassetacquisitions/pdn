@@ -1198,6 +1198,48 @@ inline void rdcChainSecondaryJackLossKeepsRing(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getChainRole(), ChainRole::RING);
 }
 
+// Each jack holds its own claim, so losing one returns only that peer's radio
+// slot. A jack whose claim aliased another's would take a still-cabled peer's
+// slot with it, and nothing would put it back while that cable stays up.
+inline void rdcSecondaryJackLossReturnsOnlyItsOwnSlot(RDCHelloTests* suite) {
+    const uint8_t outPeer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+    const uint8_t inPeer[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    const uint8_t secondaryPeer[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    std::vector<std::array<uint8_t, 6>> removed;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly(testing::DoAll(
+            testing::Invoke([&removed](const uint8_t* mac) {
+                removed.emplace_back();
+                memcpy(removed.back().data(), mac, 6);
+            }),
+            Return(0)));
+    auto contains = [](const std::vector<std::array<uint8_t, 6>>& macs, const uint8_t* mac) {
+        for (const std::array<uint8_t, 6>& m : macs)
+            if (memcmp(m.data(), mac, 6) == 0) return true;
+        return false;
+    };
+
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, chainHelloFrame(inPeer, suite->localMac));
+    suite->rdc.sync(&suite->device);
+    connectJack(suite, suite->secondaryJack, SerialIdentifier::INPUT_JACK_SECONDARY,
+                suite->helloFrame(0xD1));
+    ASSERT_NE(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK_SECONDARY), nullptr);
+
+    // Only the secondary goes quiet; the two chain jacks keep speaking.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, chainHelloFrame(inPeer, suite->localMac));
+    suite->rdc.sync(&suite->device);
+
+    ASSERT_EQ(suite->rdc.getPeerMac(SerialIdentifier::INPUT_JACK_SECONDARY), nullptr);
+    EXPECT_TRUE(contains(removed, secondaryPeer)) << "the secondary peer kept its slot";
+    EXPECT_FALSE(contains(removed, outPeer)) << "a live OUTPUT peer lost its slot";
+    EXPECT_FALSE(contains(removed, inPeer)) << "a live INPUT peer lost its slot";
+}
+
 // A different source MAC on a still-live INPUT jack (peer swapped before the
 // silent-link watchdog fired) tears the link down and re-derives: the stale ring
 // latch and the head inherited from the vanished peer cannot survive.
@@ -2176,7 +2218,7 @@ inline void rdcSlotStandsUntilLastClaimDrops(RDCHelloTests* suite) {
     };
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
-    suite->rdc.claimPeer(PeerClaim::GAME_PEER, peer);
+    suite->rdc.claimGamePeer(peer);
 
     // The cable goes. The game layer still addresses this MAC, so the slot stays.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
@@ -2184,7 +2226,7 @@ inline void rdcSlotStandsUntilLastClaimDrops(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getPeerMac(SerialIdentifier::OUTPUT_JACK), nullptr);
     EXPECT_FALSE(contains(removed, peer));
 
-    suite->rdc.releasePeer(PeerClaim::GAME_PEER);
+    suite->rdc.releaseGamePeer();
     EXPECT_TRUE(contains(removed, peer));
 }
 
@@ -2217,8 +2259,8 @@ inline void rdcGameClaimMoveLeavesHeldHeadSlot(RDCHelloTests* suite) {
     ASSERT_FALSE(suite->rdc.isDirectPeer(head));
 
     // The game layer follows the head too, then moves on.
-    suite->rdc.claimPeer(PeerClaim::GAME_PEER, head);
-    suite->rdc.claimPeer(PeerClaim::GAME_PEER, elsewhere);
+    suite->rdc.claimGamePeer(head);
+    suite->rdc.claimGamePeer(elsewhere);
     EXPECT_FALSE(contains(removed, head));
 
     // Only losing the head itself takes the slot down.

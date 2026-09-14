@@ -599,6 +599,67 @@ inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     EXPECT_TRUE(peerRegistered);
 }
 
+// A champion this device holds a radio slot for is one no cable of ours reaches,
+// so the slot outlives every jack and only the manager letting go returns it.
+inline void cdmChampionSlotIsReturnedWhenTheManagerDies(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    // Distinct from every jack peer: a champion that is also cabled to us keeps
+    // its slot through the jack's claim, which would hide the release entirely.
+    uint8_t championMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
+
+    bool registered = false;
+    std::vector<std::array<uint8_t, 6>> removed;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .WillRepeatedly([&](const uint8_t* m) {
+            if (memcmp(m, championMac, 6) == 0) registered = true;
+            return 0;
+        });
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly([&](const uint8_t* m) {
+            removed.emplace_back();
+            memcpy(removed.back().data(), m, 6);
+            return 0;
+        });
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+
+    {
+        ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+        cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 7);
+        ASSERT_TRUE(registered) << "the champion never took a radio slot";
+        ASSERT_TRUE(removed.empty()) << "the slot went while the champion still held it";
+    }
+
+    bool returned = false;
+    for (const std::array<uint8_t, 6>& m : removed)
+        if (memcmp(m.data(), championMac, 6) == 0) returned = true;
+    EXPECT_TRUE(returned) << "the champion's slot outlived the manager that claimed it";
+}
+
+// An announce from a device that has no champion of its own leaves the field
+// zeroed. Claiming that address burns a slot nothing can name again.
+inline void cdmRoleAnnounceWithNoChampionIsRefused(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    uint8_t zeroMac[6] = {0, 0, 0, 0, 0, 0};
+
+    bool zeroRegistered = false;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
+        .WillRepeatedly([&](const uint8_t* m) {
+            if (memcmp(m, zeroMac, 6) == 0) zeroRegistered = true;
+            return 0;
+        });
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+
+    cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, zeroMac, 7);
+
+    EXPECT_FALSE(zeroRegistered) << "an all-zero champion took a radio slot";
+    EXPECT_EQ(cdm.getChampionMac(), nullptr) << "an all-zero champion was cached";
+}
+
 // Receiving announce with same championMac doesn't trigger cascade.
 inline void cdmRoleAnnounceNoCascadeIfChampionUnchanged(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();

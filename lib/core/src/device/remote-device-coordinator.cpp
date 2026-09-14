@@ -168,7 +168,7 @@ void RemoteDeviceCoordinator::sync(Device* PDN) {
     maybeFireChainRoleChange();
 }
 
-size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
+size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) {
     switch (port) {
         case SerialIdentifier::INPUT_JACK:           return 0;
         case SerialIdentifier::OUTPUT_JACK:          return 1;
@@ -178,11 +178,7 @@ size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) const {
 }
 
 PeerClaim RemoteDeviceCoordinator::jackClaim(SerialIdentifier port) {
-    switch (port) {
-        case SerialIdentifier::INPUT_JACK: return PeerClaim::INPUT_JACK;
-        case SerialIdentifier::INPUT_JACK_SECONDARY: return PeerClaim::INPUT_JACK_SECONDARY;
-        default: return PeerClaim::OUTPUT_JACK;
-    }
+    return static_cast<PeerClaim>(portIndex(port));
 }
 
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
@@ -256,6 +252,14 @@ void RemoteDeviceCoordinator::claimPeer(PeerClaim holder, const uint8_t* macAddr
         LOG_E("RDC", "ESP-NOW refused a peer slot for %s; sends to it will vanish",
               MacToString(macAddress));
     }
+}
+
+void RemoteDeviceCoordinator::claimGamePeer(const uint8_t* macAddress) {
+    claimPeer(PeerClaim::GAME_PEER, macAddress);
+}
+
+void RemoteDeviceCoordinator::releaseGamePeer() {
+    releasePeer(PeerClaim::GAME_PEER);
 }
 
 void RemoteDeviceCoordinator::releasePeer(PeerClaim holder) {
@@ -461,7 +465,7 @@ void RemoteDeviceCoordinator::resendContext() {
     // the one we would re-queue, here it is the STALE one this call exists to
     // replace. The context channels supersede per target, so the fresh send drops
     // the unacked entry and its old bytes.
-    std::array<std::array<uint8_t, 6>, kNumPorts> alreadySent{};
+    std::array<std::array<uint8_t, 6>, NUM_PORTS> alreadySent{};
     size_t sentCount = 0;
     for (SerialIdentifier port : HELLO_JACKS) {
         const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;

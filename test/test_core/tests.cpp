@@ -1579,6 +1579,10 @@ TEST_F(RDCHelloTests, chainRingOpensWhenReturnedHeadChanges) {
 TEST_F(RDCHelloTests, chainRingLatchesOnMergeWithConnectedInput) {
     rdcChainRingLatchesOnMergeWithConnectedInput(this);
 }
+TEST_F(RDCHelloTests, secondaryJackLossReturnsOnlyItsOwnSlot) {
+    rdcSecondaryJackLossReturnsOnlyItsOwnSlot(this);
+}
+
 TEST_F(RDCHelloTests, chainSecondaryJackLossKeepsRing) {
     rdcChainSecondaryJackLossKeepsRing(this);
 }
@@ -1703,6 +1707,14 @@ TEST_F(ChainDuelManagerTests, supporterRoleLossVoidsStandingConfirm) {
 
 TEST_F(ChainDuelManagerTests, championChangeWithoutPressSendsNoConfirm) {
     cdmChampionChangeWithoutPressSendsNoConfirm(this);
+}
+
+TEST_F(ChainDuelManagerTests, championSlotIsReturnedWhenTheManagerDies) {
+    cdmChampionSlotIsReturnedWhenTheManagerDies(this);
+}
+
+TEST_F(ChainDuelManagerTests, roleAnnounceWithNoChampionIsRefused) {
+    cdmRoleAnnounceWithNoChampionIsRefused(this);
 }
 
 TEST_F(ChainDuelManagerTests, roleAnnounceUpdatesChampionMac) {
