@@ -599,8 +599,41 @@ inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     EXPECT_TRUE(peerRegistered);
 }
 
-// A champion this device holds a radio slot for is one no cable of ours reaches,
-// so the slot outlives every jack and only the manager letting go returns it.
+// A ring has no champion, so the slot held for the last one is owed back the
+// moment the ring closes — a tournament runs for minutes and nothing else in it
+// would ever name that MAC again.
+inline void cdmRingClosureReturnsTheChampionSlot(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    uint8_t championMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
+
+    std::vector<std::array<uint8_t, 6>> removed;
+    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).WillRepeatedly(Return(0));
+    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
+        .WillRepeatedly([&](const uint8_t* m) {
+            removed.emplace_back();
+            memcpy(removed.back().data(), m, 6);
+            return 0;
+        });
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 7);
+    ASSERT_NE(cdm.getChampionMac(), nullptr);
+
+    suite->closeRingAroundSelf();
+    cdm.onChainStateChanged();
+
+    bool returned = false;
+    for (const std::array<uint8_t, 6>& m : removed)
+        if (memcmp(m.data(), championMac, 6) == 0) returned = true;
+    EXPECT_TRUE(returned) << "the ex-champion kept its radio slot through the ring";
+    EXPECT_EQ(cdm.getChampionMac(), nullptr) << "a ring still names a champion";
+}
+
+// The champion chosen here sits on no jack of ours, so no jack claim covers its
+// slot and only the manager letting go returns it.
 inline void cdmChampionSlotIsReturnedWhenTheManagerDies(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     // Distinct from every jack peer: a champion that is also cabled to us keeps

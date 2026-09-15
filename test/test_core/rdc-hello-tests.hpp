@@ -1199,8 +1199,9 @@ inline void rdcChainSecondaryJackLossKeepsRing(RDCHelloTests* suite) {
 }
 
 // Each jack holds its own claim, so losing one returns only that peer's radio
-// slot. A jack whose claim aliased another's would take a still-cabled peer's
-// slot with it, and nothing would put it back while that cable stays up.
+// slot. A jack whose claim aliased another's would drop a still-cabled peer's
+// slot, and the driver would re-add it on that peer's next send with no claim
+// naming it — a slot nothing can free again.
 inline void rdcSecondaryJackLossReturnsOnlyItsOwnSlot(RDCHelloTests* suite) {
     const uint8_t outPeer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t inPeer[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
@@ -2231,8 +2232,8 @@ inline void rdcSlotStandsUntilLastClaimDrops(RDCHelloTests* suite) {
 }
 
 // The game layer moving its claim off a MAC that is also the held head must not
-// take the head's slot with it: the head is a roster unicast target no cable of
-// ours reaches, so nothing would put the slot back.
+// take the head's slot with it: the roster channels would re-add it on their
+// next retry with no claim naming it, stranding a slot nothing can free.
 inline void rdcGameClaimMoveLeavesHeldHeadSlot(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};

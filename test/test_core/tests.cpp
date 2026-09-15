@@ -1709,6 +1709,10 @@ TEST_F(ChainDuelManagerTests, championChangeWithoutPressSendsNoConfirm) {
     cdmChampionChangeWithoutPressSendsNoConfirm(this);
 }
 
+TEST_F(ChainDuelManagerTests, ringClosureReturnsTheChampionSlot) {
+    cdmRingClosureReturnsTheChampionSlot(this);
+}
+
 TEST_F(ChainDuelManagerTests, championSlotIsReturnedWhenTheManagerDies) {
     cdmChampionSlotIsReturnedWhenTheManagerDies(this);
 }

@@ -595,10 +595,6 @@ private:
         return PEER_BROADCAST_ADDR;
     }
 
-    void removePeer(uint8_t* macAddr) override {
-        esp_now_del_peer(macAddr);
-    }
-
     int addEspNowPeer(const uint8_t* macAddr) override {
         return EnsurePeerIsRegistered(macAddr);
     }

@@ -42,30 +42,6 @@ enum class ChainRole {
     RING = 3,
 };
 
-// The named holders of an ESP-NOW peer slot. A holder names at most one MAC at
-// a time, and several holders can name the same one — a two-device ring puts the
-// same peer on both jacks, and a chain head is usually also the INPUT peer — so
-// the slot belongs to the set of holders, not to any one of them.
-// GAME_PEER is the game layer's single claim, held on whatever MAC it currently
-// unicasts to; that MAC may also sit on one of our jacks. Naming it by layer
-// rather than by game role keeps champion/bracket vocabulary out of the
-// topology layer.
-enum class PeerClaim : size_t {
-    INPUT_JACK = 0,
-    OUTPUT_JACK = 1,
-    INPUT_JACK_SECONDARY = 2,
-    CHAIN_HEAD = 3,
-    GAME_PEER = 4,
-    COUNT = 5,
-};
-
-// The jack claims share portIndex's numbering so one mapping serves both; that
-// order is this assert's to keep, not a coincidence to rediscover.
-static_assert(static_cast<size_t>(PeerClaim::INPUT_JACK) == 0 &&
-                  static_cast<size_t>(PeerClaim::OUTPUT_JACK) == 1 &&
-                  static_cast<size_t>(PeerClaim::INPUT_JACK_SECONDARY) == 2,
-              "jack claim slots must match portIndex order");
-
 struct PortState {
     SerialIdentifier port;
     PortStatus status;
@@ -301,22 +277,31 @@ public:
 private:
     static constexpr size_t NUM_PORTS = 3;
 
+    // Holders of an ESP-NOW peer slot. Each names at most one MAC, and several
+    // can name the same one — a two-device ring puts one peer on both jacks — so
+    // the slot belongs to the set of holders, not to any of them. One jack, one
+    // holder, at the jack's own index; the head and the game layer follow.
+    // Naming the game layer rather than its current target keeps champion and
+    // bracket vocabulary out of the topology layer.
+    static constexpr size_t CHAIN_HEAD_CLAIM = NUM_PORTS;
+    static constexpr size_t GAME_PEER_CLAIM = NUM_PORTS + 1;
+    static constexpr size_t NUM_PEER_CLAIMS = NUM_PORTS + 2;
+
     /// Takes `holder`'s claim on this MAC's ESP-NOW peer slot, registering the
     /// slot if it is not already up. A holder names one MAC at a time, so this
     /// also drops whatever it named before; claiming the same MAC twice is a
     /// no-op beyond a redundant (idempotent) driver register.
-    void claimPeer(PeerClaim holder, const uint8_t* macAddress);
+    void claimPeer(size_t holder, const uint8_t* macAddress);
 
     /// Drops `holder`'s claim. The ESP-NOW peer slot goes only when the last
     /// holder lets go of it, so no caller needs to know who else is using it.
-    void releasePeer(PeerClaim holder);
+    void releasePeer(size_t holder);
 
     static size_t portIndex(SerialIdentifier port);
-    static PeerClaim jackClaim(SerialIdentifier port);
 
     // The MAC each holder currently names (0 = none). Holders are few and fixed, so
     // the slot's use count is recomputed from this rather than stored beside it.
-    std::array<uint64_t, static_cast<size_t>(PeerClaim::COUNT)> peerClaims{};
+    std::array<uint64_t, NUM_PEER_CLAIMS> peerClaims{};
 
     // Tears the ESP-NOW slot down once no holder names the MAC. Silent on 0.
     void dropSlotIfUnclaimed(uint64_t mac48);

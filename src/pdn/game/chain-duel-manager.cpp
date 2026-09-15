@@ -299,6 +299,14 @@ void ChainDuelManager::onChainStateChanged() {
 }
 
 void ChainDuelManager::applyChainStateChange() {
+    // A ring has no champion — both role branches below test for one and neither
+    // fires — so without this the ex-champion's MAC keeps a radio slot for the
+    // whole tournament, on a device that will never unicast to it again.
+    if (rdc->isInRing()) {
+        championMac.reset();
+        rdc->releaseGamePeer();
+    }
+
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;

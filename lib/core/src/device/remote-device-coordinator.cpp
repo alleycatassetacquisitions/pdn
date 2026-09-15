@@ -177,10 +177,6 @@ size_t RemoteDeviceCoordinator::portIndex(SerialIdentifier port) {
     }
 }
 
-PeerClaim RemoteDeviceCoordinator::jackClaim(SerialIdentifier port) {
-    return static_cast<PeerClaim>(portIndex(port));
-}
-
 PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
     // A port is CONNECTED or it isn't. Chain position is a device-level fact
     // (getChainRole()).
@@ -232,39 +228,42 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     return false;
 }
 
-void RemoteDeviceCoordinator::claimPeer(PeerClaim holder, const uint8_t* macAddress) {
-    if (macAddress == nullptr) {
+void RemoteDeviceCoordinator::claimPeer(size_t holder, const uint8_t* macAddress) {
+    const uint64_t mac48 = macAddress != nullptr ? MacToUInt64(macAddress) : 0;
+    // An all-zero MAC reads as "no holder" everywhere below, so a slot taken on
+    // one could never be named again to release it.
+    if (mac48 == 0) {
         LOG_E("RDC", "peer claim %u given no MAC", static_cast<unsigned>(holder));
         return;
     }
-    const uint64_t mac48 = MacToUInt64(macAddress);
-    const uint64_t previous = peerClaims[static_cast<size_t>(holder)];
-    peerClaims[static_cast<size_t>(holder)] = mac48;
+    const uint64_t previous = peerClaims[holder];
+    peerClaims[holder] = mac48;
     // Drop before adding, so a holder moving between MACs frees its old slot in
     // time for the new one at a full table. The claim above is already this MAC,
     // so a re-claim of the same peer matches itself here and nothing churns.
     dropSlotIfUnclaimed(previous);
     if (wirelessManager != nullptr && wirelessManager->addEspNowPeer(macAddress) != 0) {
-        // A refused slot is silent everywhere else: the driver re-adds unicast
-        // targets on every send and ignores the same failure, and a dropped frame
-        // raises no SEND_FAIL. The table also holds targets the driver added on
-        // its own, which carry no claim and so cannot be freed from here.
-        LOG_E("RDC", "ESP-NOW refused a peer slot for %s; sends to it will vanish",
+        // The driver logs a refusal too but acts on neither: it re-adds unicast
+        // targets on every send and discards the same failure, and the dropped
+        // frame raises no SEND_FAIL, so nothing upstream retries. The table also
+        // holds targets the driver added on its own, which carry no claim and so
+        // cannot be freed from here.
+        LOG_E("RDC", "ESP-NOW refused a peer slot for %s; sends to it drop until one frees",
               MacToString(macAddress));
     }
 }
 
 void RemoteDeviceCoordinator::claimGamePeer(const uint8_t* macAddress) {
-    claimPeer(PeerClaim::GAME_PEER, macAddress);
+    claimPeer(GAME_PEER_CLAIM, macAddress);
 }
 
 void RemoteDeviceCoordinator::releaseGamePeer() {
-    releasePeer(PeerClaim::GAME_PEER);
+    releasePeer(GAME_PEER_CLAIM);
 }
 
-void RemoteDeviceCoordinator::releasePeer(PeerClaim holder) {
-    const uint64_t previous = peerClaims[static_cast<size_t>(holder)];
-    peerClaims[static_cast<size_t>(holder)] = 0;
+void RemoteDeviceCoordinator::releasePeer(size_t holder) {
+    const uint64_t previous = peerClaims[holder];
+    peerClaims[holder] = 0;
     dropSlotIfUnclaimed(previous);
 }
 
@@ -428,7 +427,7 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
     // Radio slot first (the driver add is idempotent): the drain below can announce
     // the peer to game code, and a pending send from our other jack skips the send
     // path entirely — neither may run before the peer has its ESP-NOW slot.
-    claimPeer(jackClaim(jack), mac);
+    claimPeer(portIndex(jack), mac);
     // Apply any context that beat this jack's HELLO and was cached while it was still
     // Idle. Runs for every jack entering Connecting, before the send-collapse below,
     // so the second jack of a 2-node ring still gets the cached context.
@@ -612,9 +611,9 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
 }
 
 void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac) {
-    // Per-jack residue clears unconditionally: the keep-slot guards below are
-    // per-MAC, and the next peer on this jack must not inherit the departed
-    // peer's chainRole during its CONNECTING window (#156 reads it then).
+    // The residue is per-jack while the slot rule is per-MAC, so it clears
+    // whatever the slot does: the next peer on this jack must not inherit the
+    // departed peer's chainRole during its CONNECTING window.
     helloByPort[portIndex(jack)].peerChainRole = 0;
     helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
     helloByPort[portIndex(jack)].peerUserId = PEER_USER_ID_NONE;
@@ -633,7 +632,7 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
         if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
         if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
     }
-    releasePeer(jackClaim(jack));
+    releasePeer(portIndex(jack));
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
@@ -795,12 +794,13 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     if (previousHead == newHead) return;
     const uint8_t* headMac = upstreamAdvertisedHead.data();
 
-    // Stand down from the predecessor before claiming the successor: the head is a
-    // unicast target (announce/report/transfer) that is usually not an adjacent
-    // HELLO peer, so its radio slot is managed here. The drop also cancels the
-    // roster retry channels aimed at the predecessor before the successor claim.
+    // Stand down from the predecessor before claiming the successor, because
+    // releaseHeadPeer reads the head claim to find whose slot and whose roster
+    // retries to drop: run it afterwards and it would cancel the successor's.
+    // The head is a unicast target (announce/report/transfer) that is usually not
+    // an adjacent HELLO peer, which is why its slot is managed here at all.
     releaseHeadPeer();
-    claimPeer(PeerClaim::CHAIN_HEAD, headMac);
+    claimPeer(CHAIN_HEAD_CLAIM, headMac);
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
     // it. The new head then propagates in our own HELLO.
     chainHeadState.store(packHead(headMac, false));
@@ -846,7 +846,7 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
 }
 
 void RemoteDeviceCoordinator::releaseHeadPeer() {
-    const uint64_t headMac48 = peerClaims[static_cast<size_t>(PeerClaim::CHAIN_HEAD)];
+    const uint64_t headMac48 = peerClaims[CHAIN_HEAD_CLAIM];
     if (headMac48 == 0) return;
     uint8_t mac[6];
     unpackMac(headMac48, mac);
@@ -857,7 +857,7 @@ void RemoteDeviceCoordinator::releaseHeadPeer() {
     if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(mac);
     if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(mac);
     if (headTransferChannel != nullptr) headTransferChannel->cancel(mac);
-    releasePeer(PeerClaim::CHAIN_HEAD);
+    releasePeer(CHAIN_HEAD_CLAIM);
 }
 
 void RemoteDeviceCoordinator::maybeFireChainRoleChange() {
