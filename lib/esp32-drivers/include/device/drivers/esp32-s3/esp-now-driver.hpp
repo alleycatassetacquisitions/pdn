@@ -528,16 +528,23 @@ private:
     }
 
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
-        if(esp_now_is_peer_exist(mac_addr))
-            return 0;
+        if (esp_now_is_peer_exist(mac_addr)) return 0;
 
         esp_now_peer_num_t num_peers;
         esp_now_get_peer_num(&num_peers);
-        if(num_peers.total_num > 19)
-        {
-            LOG_W("ENC", "ESP-NOW peer table full (20/20); cannot add new peer. "
-                          "RDC should have evicted unused peers first.");
-            return -1;
+        if (num_peers.total_num >= ESP_NOW_MAX_TOTAL_PEER_NUM) {
+            // Full: give up a slot so the send can go out. Which one barely
+            // matters, because whoever still wants the evicted MAC re-registers
+            // it on its next send through this same function. fetch_peer walks
+            // the radio's own list and returns only unicast entries, so the
+            // broadcast peer added at init is never a candidate — it has to
+            // outlive every unicast, since the send path never re-registers it.
+            esp_now_peer_info_t victim = {};
+            if (esp_now_fetch_peer(true, &victim) != ESP_OK) {
+                LOG_W("ENC", "ESP-NOW peer table full with no unicast peer to drop");
+                return -1;
+            }
+            esp_now_del_peer(victim.peer_addr);
         }
 
         esp_now_peer_info_t new_peer = {};
@@ -593,23 +600,6 @@ private:
 
     const uint8_t* getGlobalBroadcastAddress() override {
         return PEER_BROADCAST_ADDR;
-    }
-
-    void removePeer(uint8_t* macAddr) override {
-        esp_now_del_peer(macAddr);
-    }
-
-    int addEspNowPeer(const uint8_t* macAddr) override {
-        return EnsurePeerIsRegistered(macAddr);
-    }
-
-    int removeEspNowPeer(const uint8_t* macAddr) override {
-        esp_err_t err = esp_now_del_peer(macAddr);
-        if (err != ESP_OK && err != ESP_ERR_ESPNOW_NOT_FOUND) {
-            LOG_W("ENC", "Failed to remove peer: 0x%X", err);
-            return -1;
-        }
-        return 0;
     }
 
     // True when the radio is verifiably on ESPNOW_CHANNEL. esp_wifi_set_channel

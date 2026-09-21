@@ -55,12 +55,11 @@ RemoteDeviceCoordinator::~RemoteDeviceCoordinator() {
     delete transport;
 }
 
-
-void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, SerialManager* serialManager, Device* PDN) {
-    this->serialManager = serialManager;
-    this->wirelessManager_ = wirelessManager;
-    if (PDN != nullptr) {
-        selfDeviceType = PDN->getDeviceType();
+void RemoteDeviceCoordinator::initialize(WirelessManager* radio, SerialManager* serial, Device* device) {
+    serialManager = serial;
+    wirelessManager = radio;
+    if (device != nullptr) {
+        selfDeviceType = device->getDeviceType();
     }
 
     // One device-level channel per device-type PktType. Claiming a channel makes
@@ -228,24 +227,12 @@ bool RemoteDeviceCoordinator::isDirectPeer(const uint8_t* mac) const {
     return false;
 }
 
-void RemoteDeviceCoordinator::registerPeer(const uint8_t* macAddress) {
-    if (wirelessManager_ != nullptr) {
-        wirelessManager_->addEspNowPeer(macAddress);
-    }
-}
-
 void RemoteDeviceCoordinator::notifyChainChange() {
     // Copied before the call for the same reason the jack-change dispatch does
     // it: a handler that reacts by tearing its own state down clears this slot,
     // destroying the std::function whose operator() frame is still live.
     std::function<void()> handler = chainChangeCallback;
     if (handler) handler();
-}
-
-void RemoteDeviceCoordinator::unregisterPeer(const uint8_t* macAddress) {
-    if (wirelessManager_ != nullptr) {
-        wirelessManager_->removeEspNowPeer(macAddress);
-    }
 }
 
 // ---- Per-jack HELLO connectivity (#155) ----
@@ -266,8 +253,8 @@ HWSerialWrapper* RemoteDeviceCoordinator::jackWrapper(SerialIdentifier port) con
 }
 
 void RemoteDeviceCoordinator::enableHelloConnectivity() {
-    if (wirelessManager_ != nullptr) {
-        const uint8_t* mac = wirelessManager_->getMacAddress();
+    if (wirelessManager != nullptr) {
+        const uint8_t* mac = wirelessManager->getMacAddress();
         if (mac != nullptr) memcpy(selfMac.data(), mac, 6);
     }
 
@@ -386,10 +373,6 @@ void RemoteDeviceCoordinator::initiateContextExchange(SerialIdentifier jack) {
     HelloLinkMachine* machine = helloByPort[portIndex(jack)].machine;
     if (machine == nullptr) return;
     const uint8_t* mac = machine->peer().data();
-    // Radio slot first (the driver add is idempotent): the drain below can announce
-    // the peer to game code, and a pending send from our other jack skips the send
-    // path entirely — neither may run before the peer has its ESP-NOW slot.
-    registerPeer(mac);
     // Apply any context that beat this jack's HELLO and was cached while it was still
     // Idle. Runs for every jack entering Connecting, before the send-collapse below,
     // so the second jack of a 2-node ring still gets the cached context.
@@ -426,7 +409,7 @@ void RemoteDeviceCoordinator::resendContext() {
     // the one we would re-queue, here it is the STALE one this call exists to
     // replace. The context channels supersede per target, so the fresh send drops
     // the unacked entry and its old bytes.
-    std::array<std::array<uint8_t, 6>, kNumPorts> alreadySent{};
+    std::array<std::array<uint8_t, 6>, NUM_PORTS> alreadySent{};
     size_t sentCount = 0;
     for (SerialIdentifier port : HELLO_JACKS) {
         const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
@@ -469,8 +452,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
                                                   uint8_t chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
     // Live receive path: a 2-node ring points both our jacks at the same peer with
-    // both already CONNECTING, so one context completes both. The peer is already a
-    // radio slot (registered when our jack initiated), so nothing to register here.
+    // both already CONNECTING, so one context completes both.
     bool appliedToConnectingJack = false;
     for (SerialIdentifier port : HELLO_JACKS) {
         HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
@@ -573,9 +555,9 @@ void RemoteDeviceCoordinator::drainBufferedContext(SerialIdentifier jack, const 
 }
 
 void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac) {
-    // Per-jack residue clears unconditionally: the keep-slot guards below are
-    // per-MAC, and the next peer on this jack must not inherit the departed
-    // peer's chainRole during its CONNECTING window (#156 reads it then).
+    // The residue is per-jack while the slot rule is per-MAC, so it clears
+    // regardless of what happens to the slot: the next peer on this jack must not
+    // inherit the departed peer's chainRole during its CONNECTING window.
     helloByPort[portIndex(jack)].peerChainRole = 0;
     helloByPort[portIndex(jack)].peerDeviceType = DeviceType::UNKNOWN;
     helloByPort[portIndex(jack)].peerUserId = PEER_USER_ID_NONE;
@@ -584,25 +566,15 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // getPeerProfile, but a departed peer's identity should not sit in RAM.
     helloByPort[portIndex(jack)].peerProfile.fill(0);
     helloByPort[portIndex(jack)].lastContextResendMs = 0;
-    // A 2-node ring has the same peer on both jacks: releasing the radio slot on a
-    // one-cable disconnect would silently break wireless for the still-connected
-    // link, so any other jack tracking this MAC keeps the slot alive.
-    for (SerialIdentifier port : HELLO_JACKS) {
-        if (port == jack) continue;
-        const uint8_t* peer = getPeerMac(port);
-        if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
+    // Context exchange is per-jack, so retries survive only while some jack still
+    // faces this peer (a 2-node ring puts it on both). Once none does they are dead
+    // traffic once no jack faces the peer. This jack already reads as empty here —
+    // onLinkDown fires from Idle.
+    // cancel() is silent, no abandon callback fires.
+    if (!isDirectPeer(mac)) {
+        if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
+        if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
     }
-    // A peer past the other-jack scan has left this jack entirely, so its
-    // context retries are dead regardless of whether the slot survives below: a
-    // retransmit re-registers its target inside the driver (EnsurePeerIsRegistered),
-    // which would re-add a released slot and leak it. cancel() is silent — no
-    // abandon callback fires.
-    if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
-    if (fdnContextChannel != nullptr) fdnContextChannel->cancel(mac);
-    // The held head keeps its slot: it stays the roster unicast target even
-    // when it is no longer adjacent (adjacency is what just ended here).
-    if ((chainHeadState.load() & HEAD_MAC_MASK) == MacToUInt64(mac)) return;
-    unregisterPeer(mac);
 }
 
 void RemoteDeviceCoordinator::onContextExchangeComplete(SerialIdentifier jack) {
@@ -733,7 +705,7 @@ void RemoteDeviceCoordinator::applyUpstreamHead(const HelloPayload& hello) {
         // this stale report to an unrelated new head and prune a live member.
         pendingReportMac.fill(0);
         pendingReportSeqId = 0;
-        releaseHeadPeer(formingHead);
+        cancelHeadRosterTraffic(formingHead);
         // Copied before the call, as the chain-change dispatch is:
         // the subscriber is a game-layer manager that clears this slot in its own
         // destructor, so a handler reaching a teardown would free the std::function
@@ -765,10 +737,9 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     if (previousHead == newHead) return;
     const uint8_t* headMac = upstreamAdvertisedHead.data();
 
-    // The head is a unicast target (announce/report/transfer) that is usually
-    // not an adjacent HELLO peer, so its radio slot is managed here: claim the
-    // successor's before any send below, drop the predecessor's after.
-    registerPeer(headMac);
+    // Announce, report and transfer are all addressed to the head as head, so
+    // they die with the role rather than following the device.
+    cancelHeadRosterTraffic(previousHead);
     // Adopt the upstream head, dropping to confirmed=0 until re-confirmed under
     // it. The new head then propagates in our own HELLO.
     chainHeadState.store(packHead(headMac, false));
@@ -777,14 +748,13 @@ void RemoteDeviceCoordinator::adoptUpstreamHead() {
     // confirmed can rise again.
     transferRosterTo(headMac);
     maybeAnnounceToHead();
-    // releaseHeadPeer below cancels the report channel to the old head, and
+    // cancelHeadRosterTraffic above cancelled the report channel to the old head, and
     // nothing else re-triggers a report (the announce path re-announces, the
     // report path has no equivalent), so an undelivered report must chase the
     // successor head or its member stays a phantom in that roster.
     if (MacToUInt64(pendingReportMac.data()) != 0) {
         sendDisconnectReport(headMac, pendingReportMac.data());
     }
-    releaseHeadPeer(previousHead);
 }
 
 void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
@@ -811,29 +781,17 @@ void RemoteDeviceCoordinator::onLinkLost(SerialIdentifier port) {
         // this stale report to an unrelated new head and prune a live member.
         pendingReportMac.fill(0);
         pendingReportSeqId = 0;
-        releaseHeadPeer(lostHead);
+        cancelHeadRosterTraffic(lostHead);
     }
 }
 
-void RemoteDeviceCoordinator::releaseHeadPeer(uint64_t headMac48) {
+void RemoteDeviceCoordinator::cancelHeadRosterTraffic(uint64_t headMac48) {
     if (headMac48 == 0) return;
     uint8_t mac[6];
     unpackMac(headMac48, mac);
-    // Same keep-slot guard as releaseHelloPeer: an adjacent link still using
-    // this MAC keeps the radio slot alive.
-    for (SerialIdentifier port : HELLO_JACKS) {
-        const uint8_t* peer = getPeerMac(port);
-        if (peer != nullptr && memcmp(peer, mac, 6) == 0) return;
-    }
-    // Past the keep-slot guard: the head truly departed (no adjacent link still
-    // names it). Only on this actual-release path are its roster retries dead
-    // traffic; drop them with the slot so a retransmit can't re-register it inside
-    // the driver. When a keep-slot guard retained the slot above, the retries are
-    // left to self-heal (a seqId bump ignores late acks).
     if (connectionAnnounceChannel != nullptr) connectionAnnounceChannel->cancel(mac);
     if (disconnectReportChannel != nullptr) disconnectReportChannel->cancel(mac);
     if (headTransferChannel != nullptr) headTransferChannel->cancel(mac);
-    unregisterPeer(mac);
 }
 
 void RemoteDeviceCoordinator::maybeFireChainRoleChange() {

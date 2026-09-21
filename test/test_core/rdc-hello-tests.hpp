@@ -30,8 +30,6 @@ using ::testing::Return;
 inline void wireRadioDefaults(MockDevice& device, uint8_t* mac) {
     ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(mac));
-    ON_CALL(*device.mockPeerComms, addEspNowPeer(_)).WillByDefault(Return(0));
-    ON_CALL(*device.mockPeerComms, removeEspNowPeer(_)).WillByDefault(Return(0));
     ON_CALL(*device.mockPeerComms, getPeerCommsState())
         .WillByDefault(Return(PeerCommsState::CONNECTED));
 }
@@ -349,9 +347,6 @@ inline void rdcContextReceiveConnectsJack(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
-        .Times(testing::AnyNumber());
-
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/2, /*userId=*/4242, /*seqId=*/9);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
@@ -376,8 +371,6 @@ inline void rdcContextInputJackInitiates(RDCHelloTests* suite) {
 
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _))
         .WillByDefault(Return(1));
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
-        .Times(testing::AnyNumber());
 
     // Peer arrives on the INPUT jack; the jack initiates its own context on connecting.
     suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
@@ -403,7 +396,6 @@ inline void rdcContextCompletesBothJacksForSamePeer(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int contextSends = 0;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
         .WillByDefault(testing::DoAll(
@@ -436,7 +428,6 @@ inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite)
     const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
 
     // Context arrives BEFORE any HELLO: the input jack is still Idle, so it can't be
     // completed yet — but it must be held, not discarded.
@@ -469,7 +460,6 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
     ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
 
     int outCb = 0;
     int inCb = 0;
@@ -506,135 +496,25 @@ inline void rdcCachedContextCompletesBoth2NodeRingJacks(RDCHelloTests* suite) {
     EXPECT_EQ(inCb, 1);
 }
 
-// Every link death must release the peer's ESP-NOW slot (the radio hard-fails past
-// its peer cap, so leaked slots eventually block all new connections): both the
-// Connected silent-link edge and the Connecting context-timeout edge.
-inline void rdcLinkDeathReleasesPeerSlot(RDCHelloTests* suite) {
-    const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
-    const uint8_t secondPeer[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    int removed = 0;
-    std::array<uint8_t, 6> removedMac{};
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
-        .WillRepeatedly(testing::DoAll(
-            testing::Invoke([&](const uint8_t* mac) {
-                removed++;
-                memcpy(removedMac.data(), mac, 6);
-            }),
-            Return(0)));
-
-    // Connected -> Idle (silent link) releases the slot.
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
-    suite->rdc.sync(&suite->device);
-    suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(removed, 0);
-
-    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
-    suite->rdc.sync(&suite->device);
-    EXPECT_EQ(removed, 1);
-    EXPECT_EQ(0, memcmp(removedMac.data(), peer, 6));
-
-    // Connecting -> Idle (context exchange never completes) releases too.
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xC1));
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-
-    suite->fakeClock->advance(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
-    suite->rdc.sync(&suite->device);
-    EXPECT_EQ(removed, 2);
-    EXPECT_EQ(0, memcmp(removedMac.data(), secondPeer, 6));
-}
-
-// A 2-node ring has the same MAC on both jacks: dropping ONE cable must NOT release
-// the ESP-NOW slot the still-connected jack depends on; dropping the second one must.
-inline void rdc2NodeRingSingleJackDropKeepsPeerSlot(RDCHelloTests* suite) {
-    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    int removed = 0;
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
-        .WillRepeatedly(testing::DoAll(
-            testing::InvokeWithoutArgs([&removed]() { removed++; }), Return(0)));
-
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
-    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
-    suite->rdc.sync(&suite->device);
-    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
-    suite->transport()->deliverIncoming(
-        PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-
-    // One cable dies: only the INPUT jack keeps hearing HELLOs across the gap.
-    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
-    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(removed, 0);  // the surviving link still needs the radio slot
-
-    // The second cable dies too: now the slot is released.
-    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
-    suite->rdc.sync(&suite->device);
-    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    EXPECT_EQ(removed, 1);
-}
-
 // A different source MAC on a still-CONNECTED jack means the cable was swapped
 // inside the silent-link window. Teardown must run BEFORE the new MAC is
-// recorded: it releases whatever peer the link tracks, so overwriting first
-// releases the arriving peer's fresh slot and leaks the departed one.
-inline void rdcPeerSwapReleasesOldSlotThenAdoptsNew(RDCHelloTests* suite) {
-    const uint8_t departing[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
+// recorded: it acts on whatever peer the link tracks, so overwriting first would
+// tear down the arriving peer instead of the departing one.
+inline void rdcPeerSwapDropsTheOldLinkThenAdoptsNew(RDCHelloTests* suite) {
     const uint8_t arriving[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    std::vector<std::array<uint8_t, 6>> added;
-    std::vector<std::array<uint8_t, 6>> removed;
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
-        .WillRepeatedly(testing::DoAll(
-            testing::Invoke([&added](const uint8_t* mac) {
-                std::array<uint8_t, 6> entry{};
-                memcpy(entry.data(), mac, 6);
-                added.push_back(entry);
-            }),
-            Return(0)));
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
-        .WillRepeatedly(testing::DoAll(
-            testing::Invoke([&removed](const uint8_t* mac) {
-                std::array<uint8_t, 6> entry{};
-                memcpy(entry.data(), mac, 6);
-                removed.push_back(entry);
-            }),
-            Return(0)));
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
     ASSERT_EQ(suite->connectCount, 1);
-    ASSERT_EQ(added.size(), 1u);
-    ASSERT_EQ(0, memcmp(added[0].data(), departing, 6));
-    added.clear();
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
     suite->rdc.sync(&suite->device);
 
     EXPECT_EQ(suite->disconnectCount, 1);
     EXPECT_EQ(suite->lastDisconnectJack, SerialIdentifier::OUTPUT_JACK);
-    ASSERT_EQ(removed.size(), 1u);
-    EXPECT_EQ(0, memcmp(removed[0].data(), departing, 6));
-    ASSERT_EQ(added.size(), 1u);
-    EXPECT_EQ(0, memcmp(added[0].data(), arriving, 6));
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_TRUE(suite->rdc.isContextSendPending(arriving))
+        << "the arriving peer was never addressed";
 
     suite->rdc.onContextExchangeComplete(SerialIdentifier::OUTPUT_JACK);
     suite->rdc.sync(&suite->device);
@@ -673,13 +553,11 @@ inline void rdcJackDeathDropsHalfReadFrame(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
 }
 
-// Link death must cancel the pending context send along with the radio slot: a
-// surviving retry re-registers its target inside the driver, re-adding (and thus
-// permanently leaking) the slot that was just released.
+// Link death must cancel the pending context send: the exchange is per-jack, so
+// a retry outliving the last jack facing that peer is talking to nobody.
 inline void rdcLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int contextSends = 0;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
         .WillByDefault(testing::DoAll(
@@ -712,14 +590,6 @@ inline void rdcLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
 inline void rdcReplugAfterFailedExchangeRecovers(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    int adds = 0;
-    int removes = 0;
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
-        .WillRepeatedly(testing::DoAll(
-            testing::InvokeWithoutArgs([&adds]() { adds++; }), Return(0)));
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
-        .WillRepeatedly(testing::DoAll(
-            testing::InvokeWithoutArgs([&removes]() { removes++; }), Return(0)));
     int contextSends = 0;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
         .WillByDefault(testing::DoAll(
@@ -732,16 +602,13 @@ inline void rdcReplugAfterFailedExchangeRecovers(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
-    ASSERT_EQ(removes, 1);
     const int sendsBeforeReplug = contextSends;
-    const int addsBeforeReplug = adds;
 
-    // Replug: the fresh exchange must re-register and re-send, then complete.
+    // Replug: the fresh exchange must re-send its context, then complete.
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
-    EXPECT_EQ(adds, addsBeforeReplug + 1);
     EXPECT_EQ(contextSends, sendsBeforeReplug + 1);
 
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
@@ -750,7 +617,6 @@ inline void rdcReplugAfterFailedExchangeRecovers(RDCHelloTests* suite) {
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
-    EXPECT_EQ(removes, 1);
 }
 
 // Half-open recovery: we are CONNECTED but the peer never got our context (lost
@@ -760,7 +626,6 @@ inline void rdcConnectedPeerRetryTriggersContextResend(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t stranger[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int contextSends = 0;
     std::vector<uint8_t> sentPayload;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
@@ -810,7 +675,6 @@ inline void rdcConnectedPeerRetryTriggersContextResend(RDCHelloTests* suite) {
 inline void rdcConnectedRetryResendThrottled(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int contextSends = 0;
     std::vector<uint8_t> sentPayload;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
@@ -863,8 +727,6 @@ inline void rdcConnectedRetryResendThrottled(RDCHelloTests* suite) {
 inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
     std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/2, /*userId=*/7, /*seqId=*/3);
@@ -888,7 +750,6 @@ inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
 inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int callbacks = 0;
     suite->rdc.setOnContextReceived(
         [&](SerialIdentifier, DeviceType, const uint8_t*, size_t) { callbacks++; });
@@ -1638,7 +1499,6 @@ inline void rdcJoinAnnouncesToHeadAndGatesConfirmed(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture announce;
     captureSends(suite, PktType::kConnectionAnnounce, announce);
 
@@ -1681,7 +1541,6 @@ inline void rdcHeadChangeDropsConfirmedAndReannounces(RDCHelloTests* suite) {
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
     const uint8_t newHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture announce;
     captureSends(suite, PktType::kConnectionAnnounce, announce);
 
@@ -1725,7 +1584,6 @@ inline void rdcHeadBuildsAndPrunesRoster(RDCHelloTests* suite) {
     const uint8_t c2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t c3[6] = {0xC3, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int membershipChanges = 0;
     suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
 
@@ -1763,7 +1621,6 @@ inline void rdcChildReportsDownstreamLossToHead(RDCHelloTests* suite) {
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
     const uint8_t downstream[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture report;
     captureSends(suite, PktType::kDisconnectReport, report);
     int membershipChanges = 0;
@@ -1803,7 +1660,6 @@ inline void rdcRingLatchedNeverAnnouncesOrReportsToSelf(RDCHelloTests* suite) {
     const uint8_t lowNeighbour[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
     const uint8_t downstream[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture announce;
     RosterSendCapture report;
     captureSends(suite, PktType::kConnectionAnnounce, announce);
@@ -1847,7 +1703,6 @@ inline void rdcDemotedHeadTransfersRoster(RDCHelloTests* suite) {
     const uint8_t memberB[6] = {0xB2, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t newHead[6] = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture transfer;
     captureSends(suite, PktType::kHeadTransfer, transfer);
     int membershipChanges = 0;
@@ -1890,8 +1745,6 @@ inline void rdcOutputLossOfOwnHeadSendsNoReport(RDCHelloTests* suite) {
     const uint8_t upstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture report;
     captureSends(suite, PktType::kDisconnectReport, report);
 
@@ -1918,7 +1771,6 @@ inline void rdcHeadIgnoresSelfDisconnectReport(RDCHelloTests* suite) {
     const uint8_t c1[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t c2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int membershipChanges = 0;
     suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
 
@@ -1946,8 +1798,6 @@ inline void rdcHeadTransferDoesNotOverwriteAnnouncedUpstream(RDCHelloTests* suit
     const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t member[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -1986,7 +1836,6 @@ inline void rdcDemotedDeviceForwardsDisconnectReport(RDCHelloTests* suite) {
     const uint8_t lost[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t reporter[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture forwarded;
     captureSends(suite, PktType::kDisconnectReport, forwarded);
 
@@ -2012,7 +1861,6 @@ inline void rdcStandaloneIgnoresLateRosterTraffic(RDCHelloTests* suite) {
     const uint8_t m2[6] = {0xA2, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int membershipChanges = 0;
     suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::STANDALONE);
@@ -2041,9 +1889,6 @@ inline void rdcHeadDirectChildLossClearsWholeRoster(RDCHelloTests* suite) {
     const uint8_t b1[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t gapped[6] = {0xD7, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t unknownUpstream[6] = {0xEE, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -2074,8 +1919,6 @@ inline void rdcStaleAnnounceDeliveryDoesNotConfirm(RDCHelloTests* suite) {
     const uint8_t h1[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
     const uint8_t h2[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture announce;
     captureSends(suite, PktType::kConnectionAnnounce, announce);
 
@@ -2109,61 +1952,11 @@ inline void rdcStaleAnnounceDeliveryDoesNotConfirm(RDCHelloTests* suite) {
               HELLO_FLAG_CONFIRMED);
 }
 
-// The held head is a unicast target that is usually not an adjacent HELLO
-// peer, so head adoption must claim its radio slot and a head change or link
-// loss must release it — without touching a head that is also the jack peer.
-inline void rdcHeadAdoptionManagesRadioSlot(RDCHelloTests* suite) {
-    const uint8_t peerIsHead[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
-    const uint8_t newHead[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
-
-    std::vector<std::array<uint8_t, 6>> added;
-    std::vector<std::array<uint8_t, 6>> removed;
-    ON_CALL(*suite->device.mockPeerComms, addEspNowPeer(_))
-        .WillByDefault(testing::DoAll(
-            testing::Invoke([&added](const uint8_t* mac) {
-                added.emplace_back();
-                memcpy(added.back().data(), mac, 6);
-            }),
-            Return(0)));
-    ON_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_))
-        .WillByDefault(testing::DoAll(
-            testing::Invoke([&removed](const uint8_t* mac) {
-                removed.emplace_back();
-                memcpy(removed.back().data(), mac, 6);
-            }),
-            Return(0)));
-    auto contains = [](const std::vector<std::array<uint8_t, 6>>& macs, const uint8_t* mac) {
-        for (const std::array<uint8_t, 6>& m : macs)
-            if (memcmp(m.data(), mac, 6) == 0) return true;
-        return false;
-    };
-
-    // The INPUT peer is itself the head: adjacent, slot claimed by the link.
-    connectJack(suite, suite->inJack, SerialIdentifier::INPUT_JACK,
-                chainHelloFrame(peerIsHead, nullptr));
-    EXPECT_TRUE(contains(added, peerIsHead));
-
-    // The upstream re-advertises a farther head: claim it, keep the jack peer.
-    suite->deliverHello(suite->inJack, chainHelloFrame(peerIsHead, newHead));
-    EXPECT_TRUE(contains(added, newHead));
-    EXPECT_FALSE(contains(removed, peerIsHead));
-
-    // The link dies: the jack peer's slot and the held head's slot both go.
-    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
-    suite->rdc.sync(&suite->device);
-    EXPECT_TRUE(contains(removed, peerIsHead));
-    EXPECT_TRUE(contains(removed, newHead));
-}
-
-// The held head keeping its radio slot must not keep the dead jack's context
-// retries: with the INPUT peer itself the held head, link death keeps the slot
-// in releaseHelloPeer, then onLinkLost unregisters it — a surviving context
-// retry would re-register the slot inside the driver and leak it permanently.
+// A peer that is also the held head must still lose its context retries when the
+// jack dies: those retries belong to the jack's exchange, not to the head role,
+// and no jack faces the peer once the link is down.
 inline void rdcInputHeadLinkDeathCancelsPendingContextSend(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
 
     // The INPUT peer advertises no head, so it IS the head this device adopts.
     suite->deliverHello(suite->inJack, chainHelloFrame(peer, nullptr));
@@ -2193,7 +1986,6 @@ inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
     const uint8_t reporter1[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t reporter2[6] = {0xC2, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture forwarded;
     captureSends(suite, PktType::kDisconnectReport, forwarded);
 
@@ -2218,7 +2010,7 @@ inline void rdcBackToBackReportsBothRetryToHead(RDCHelloTests* suite) {
     EXPECT_EQ(forwarded.count, 4);
 }
 
-// A head change cancels the in-flight report to the old head (releaseHeadPeer),
+// A head change cancels the in-flight report to the old head (cancelHeadRosterTraffic),
 // and nothing else re-sends it — unlike the announce path, which re-announces.
 // The pending report must follow the head: re-sent to the successor, and, once
 // delivered, never re-sent again on a later head change.
@@ -2229,8 +2021,6 @@ inline void rdcPendingReportResentOnHeadChange(RDCHelloTests* suite) {
     const uint8_t h3[6] = {0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5};
     const uint8_t downstream[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture report;
     captureSends(suite, PktType::kDisconnectReport, report);
 
@@ -2275,8 +2065,6 @@ inline void rdcPendingReportVoidedByBecomingHead(RDCHelloTests* suite) {
     const uint8_t h2[6] = {0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5};
     const uint8_t downstream[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture report;
     captureSends(suite, PktType::kDisconnectReport, report);
 
@@ -2295,7 +2083,7 @@ inline void rdcPendingReportVoidedByBecomingHead(RDCHelloTests* suite) {
     ASSERT_EQ(0, memcmp(report.lastDst.data(), h1, 6));
 
     // INPUT link drops: this device becomes its own head, voiding the report.
-    // releaseHeadPeer cancels the h1 retries here, so the count settles; baseline
+    // cancelHeadRosterTraffic cancels the h1 retries here, so the count settles; baseline
     // it (a resender retransmit to h1 may have fired) to isolate the h2 re-send.
     suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
     suite->rdc.sync(&suite->device);
@@ -2315,7 +2103,6 @@ inline void rdcReportFromHeldHeadNotForwardedBack(RDCHelloTests* suite) {
     const uint8_t head[6] = {0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5};
     const uint8_t lost[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture forwarded;
     captureSends(suite, PktType::kDisconnectReport, forwarded);
 
@@ -2339,7 +2126,6 @@ inline void rdcHeadTransferReceiveMergesAndPrunes(RDCHelloTests* suite) {
     const uint8_t memberB[6] = {0xB2, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberC[6] = {0xC3, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int membershipChanges = 0;
     suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
 
@@ -2386,8 +2172,6 @@ inline void rdcAnnounceEvictsStaleUpstreamClaimant(RDCHelloTests* suite) {
     const uint8_t memberD[6] = {0xD1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberE[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
 
@@ -2411,8 +2195,6 @@ inline void rdcAnnounceEvictsStaleUpstreamClaimant(RDCHelloTests* suite) {
 // holds must be admitted: eviction runs before the capacity check, so freeing
 // the stale slot lets the fresh claim land instead of being dropped as full.
 inline void rdcFullRosterEvictsStaleThenAdmits(RDCHelloTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
 
@@ -2452,7 +2234,6 @@ inline void rdcDuplicateReannounceDoesNotEvict(RDCHelloTests* suite) {
     const uint8_t memberC[6] = {0xC1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberE[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int membershipChanges = 0;
     suite->rdc.setOnMembershipChange([&]() { membershipChanges++; });
 
@@ -2481,8 +2262,6 @@ inline void rdcStaleTransferDoesNotReforkClaimedUpstream(RDCHelloTests* suite) {
     const uint8_t memberY[6] = {0xE1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t memberX[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
     const uint8_t oldHead[6] = {0x77, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
 
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
@@ -2545,8 +2324,6 @@ inline void rdcPeerMacReadsHelloLink(RDCHelloTests* suite) {
 inline void rdcPeerUserIdLiftedFromContext(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::OUTPUT_JACK),
@@ -2574,8 +2351,6 @@ inline void rdcPeerUserIdLiftedFromContext(RDCHelloTests* suite) {
 // absent rather than lifting the first bytes of an FdnProfile.
 inline void rdcPeerUserIdAbsentForFdnContext(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
-
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
 
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
@@ -2659,8 +2434,6 @@ inline void rdcUnprovenUpstreamIsNeverAdopted(RDCHelloTests* suite) {
     const uint8_t deafUpstream[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     const uint8_t member[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockPeerComms, removeEspNowPeer(_)).Times(testing::AnyNumber());
     RosterSendCapture transfer;
     captureSends(suite, PktType::kHeadTransfer, transfer);
 
@@ -2713,7 +2486,6 @@ inline uint8_t chainRoleFromContextBytes(const std::vector<uint8_t>& bytes) {
 // Captures every outbound PdnConnectionContext frame's exact bytes, and lets the
 // caller vary the profile the RDC reads at send time.
 inline void captureContextSends(RDCHelloTests* suite, std::vector<std::vector<uint8_t>>* sends) {
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
         .WillByDefault(testing::DoAll(
             testing::Invoke([sends](const uint8_t*, PktType, const uint8_t* data, size_t len) {
@@ -2737,7 +2509,6 @@ inline void rdcResendContextPushesCurrentProfile(RDCHelloTests* suite) {
         return profile;
     });
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     std::vector<std::vector<uint8_t>> contextSends;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
         .WillByDefault(testing::DoAll(
@@ -2781,7 +2552,6 @@ inline void rdcResendContextPushesCurrentProfile(RDCHelloTests* suite) {
 inline void rdcResendContextSkipsUnconnectedJacks(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
     int contextSends = 0;
     std::vector<uint8_t> sentPayload;
     ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
@@ -2910,8 +2680,6 @@ inline void rdcResendContextSendsOncePerPeer(RDCHelloTests* suite) {
 // must roster in full, and its whole roster must still hand off in one HeadTransfer
 // frame (the frame budget is asserted at compile time in the driver).
 inline void rdcRosterHoldsFullEventChain(RDCHelloTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
 
@@ -2931,8 +2699,6 @@ inline void rdcRosterHoldsFullEventChain(RDCHelloTests* suite) {
 // (SEND_SUCCESS already fired on a frame the head then discarded) — the head
 // cannot observe or correct that, which is why the cap sits past any real chain.
 inline void rdcAnnounceOverCapIsDroppedNotAdmitted(RDCHelloTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
 
@@ -2965,8 +2731,6 @@ inline void rdcAnnounceOverCapIsDroppedNotAdmitted(RDCHelloTests* suite) {
 // A full-cap roster travels in one HeadTransfer payload, so a successor inherits
 // every member instead of the first 18.
 inline void rdcHeadTransferCarriesFullCapRoster(RDCHelloTests* suite) {
-    EXPECT_CALL(*suite->device.mockPeerComms, addEspNowPeer(_)).Times(testing::AnyNumber());
-
     connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xB1));
     ASSERT_EQ(suite->rdc.getChainRole(), ChainRole::HEAD);
 
