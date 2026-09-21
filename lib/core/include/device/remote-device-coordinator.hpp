@@ -74,9 +74,7 @@ public:
      * Claims the RDC packet channels, then brings HELLO connectivity up on
      * every jack the SerialManager reports. Call once, before sync().
      */
-    void initialize(WirelessManager* wirelessManager,
-                    SerialManager* serialManager,
-                    Device* PDN);
+    void initialize(WirelessManager* radio, SerialManager* serial, Device* device);
 
     /**
      * Must be called every loop tick (from PDN::loop). Pumps the reliable
@@ -265,20 +263,15 @@ public:
     /// setOnJackChange: it says the chain moved, not which jack or which way.
     void setChainChangeCallback(std::function<void()> callback);
 
-    /// Registers the MAC as an ESP-NOW peer slot.
-    void registerPeer(const uint8_t* macAddress);
-    /// Releases the MAC's ESP-NOW peer slot.
-    void unregisterPeer(const uint8_t* macAddress);
-
 private:
-    static constexpr size_t kNumPorts = 3;
+    static constexpr size_t NUM_PORTS = 3;
 
     size_t portIndex(SerialIdentifier port) const;
 
     void notifyChainChange();
 
     SerialManager* serialManager = nullptr;
-    WirelessManager* wirelessManager_ = nullptr;
+    WirelessManager* wirelessManager = nullptr;
     std::function<void()> chainChangeCallback;
 
     // New-surface observers (#154); fired by the RDC internals as #155-#159 land.
@@ -305,7 +298,7 @@ private:
         // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
         unsigned long lastContextResendMs = 0;
     };
-    std::array<JackHelloLink, kNumPorts> helloByPort;
+    std::array<JackHelloLink, NUM_PORTS> helloByPort;
     bool externalConnectivityTask = false;
     ContextReceivedCallback contextReceivedCallback;
     SelfProfileProvider selfProfileProvider;
@@ -349,8 +342,8 @@ private:
     std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer;
 
     // A jack entering Connecting initiates: apply any context buffered for its peer,
-    // register the peer as a radio slot, then reliably send this device's context
-    // (skipped if our other jack already has a send pending to that same peer).
+    // then reliably send this device's context (skipped if our other jack already
+    // has a send pending to that same peer).
     void initiateContextExchange(SerialIdentifier jack);
     // Serialize + reliably send this device's context to `mac` per selfDeviceType.
     void sendSelfContext(const uint8_t* mac);
@@ -370,8 +363,8 @@ private:
     // Applies any cached context for `jack`'s peer to `jack` as it connects. Leaves
     // the cache entry for the peer's other jack (2-node ring); the TTL clears it.
     void drainBufferedContext(SerialIdentifier jack, const uint8_t* mac);
-    // Link death on `jack`: release the peer's radio slot unless another jack
-    // still references the MAC (2-node ring keeps the slot).
+    // Link death on `jack`: clear the jack's peer residue; kill its context retries
+    // unless another jack still faces this peer.
     void releaseHelloPeer(SerialIdentifier jack, const uint8_t* mac);
 #ifndef NATIVE_BUILD
     TaskHandle_t connectivityTaskHandle = nullptr;
@@ -426,14 +419,14 @@ private:
     // Ring detection and the latched-head conflict, driven by any INPUT HELLO;
     // taking on a foreign head is left to adoptUpstreamHead.
     void applyUpstreamHead(const HelloPayload& hello);
-    // Adopts upstreamAdvertisedHead once the INPUT link reports CONNECTED: claims
-    // the head's radio slot, hands over the roster, announces. No-op before that.
+    // Adopts upstreamAdvertisedHead once the INPUT link reports CONNECTED: hands
+    // over the roster and announces. No-op before that.
     void adoptUpstreamHead();
     void onLinkLost(SerialIdentifier port);
     void maybeFireChainRoleChange();
-    // Drops a former head's radio slot (and its dead roster retries) unless an
-    // adjacent link still uses the MAC.
-    void releaseHeadPeer(uint64_t headMac48);
+    // Roster traffic is addressed to the head as head, so it dies with the role.
+    // A surviving retransmit would address a device that is no longer the head.
+    void cancelHeadRosterTraffic(uint64_t headMac48);
 
     // ---- Head roster (#158) ----
     // member MAC -> its direct upstream MAC. Only the roster authority (see

@@ -71,7 +71,6 @@ public:
     void clearPacketHandler(PktType) override {}
     const uint8_t* getGlobalBroadcastAddress() override { return broadcast_; }
     uint8_t* getMacAddress() override { return mac_; }
-    void removePeer(uint8_t*) override {}
     void setPeerCommsState(PeerCommsState) override {}
     PeerCommsState getPeerCommsState() override {
         return PeerCommsState::CONNECTED;

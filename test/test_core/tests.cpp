@@ -23,7 +23,6 @@
 #include "match-manager-concurrent.hpp"
 #include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
-#include "direct-peer-table-tests.hpp"
 #include "reliable-transport-tests.hpp"
 
 #if defined(ARDUINO)
@@ -1411,14 +1410,8 @@ TEST_F(RDCHelloTests, cachedContextCompletesBoth2NodeRingJacks) {
 TEST_F(RDCHelloTests, contextInputJackInitiates) {
     rdcContextInputJackInitiates(this);
 }
-TEST_F(RDCHelloTests, linkDeathReleasesPeerSlot) {
-    rdcLinkDeathReleasesPeerSlot(this);
-}
-TEST_F(RDCHelloTests, twoNodeRingSingleJackDropKeepsPeerSlot) {
-    rdc2NodeRingSingleJackDropKeepsPeerSlot(this);
-}
-TEST_F(RDCHelloTests, peerSwapReleasesOldSlotThenAdoptsNew) {
-    rdcPeerSwapReleasesOldSlotThenAdoptsNew(this);
+TEST_F(RDCHelloTests, peerSwapDropsTheOldLinkThenAdoptsNew) {
+    rdcPeerSwapDropsTheOldLinkThenAdoptsNew(this);
 }
 TEST_F(RDCHelloTests, jackDeathDropsHalfReadFrame) {
     rdcJackDeathDropsHalfReadFrame(this);
@@ -1520,9 +1513,7 @@ TEST_F(RDCHelloTests, headDirectChildLossClearsWholeRoster) {
 TEST_F(RDCHelloTests, staleAnnounceDeliveryDoesNotConfirm) {
     rdcStaleAnnounceDeliveryDoesNotConfirm(this);
 }
-TEST_F(RDCHelloTests, headAdoptionManagesRadioSlot) {
-    rdcHeadAdoptionManagesRadioSlot(this);
-}
+
 TEST_F(RDCHelloTests, inputHeadLinkDeathCancelsPendingContextSend) {
     rdcInputHeadLinkDeathCancelsPendingContextSend(this);
 }
@@ -1574,6 +1565,7 @@ TEST_F(RDCHelloTests, chainRingOpensWhenReturnedHeadChanges) {
 TEST_F(RDCHelloTests, chainRingLatchesOnMergeWithConnectedInput) {
     rdcChainRingLatchesOnMergeWithConnectedInput(this);
 }
+
 TEST_F(RDCHelloTests, chainSecondaryJackLossKeepsRing) {
     rdcChainSecondaryJackLossKeepsRing(this);
 }
@@ -1698,6 +1690,10 @@ TEST_F(ChainDuelManagerTests, supporterRoleLossVoidsStandingConfirm) {
 
 TEST_F(ChainDuelManagerTests, championChangeWithoutPressSendsNoConfirm) {
     cdmChampionChangeWithoutPressSendsNoConfirm(this);
+}
+
+TEST_F(ChainDuelManagerTests, roleAnnounceWithNoChampionIsRefused) {
+    cdmRoleAnnounceWithNoChampionIsRefused(this);
 }
 
 TEST_F(ChainDuelManagerTests, roleAnnounceUpdatesChampionMac) {

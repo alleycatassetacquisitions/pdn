@@ -221,20 +221,6 @@ public:
     }
 
     /**
-     * Register a MAC as an ESP-NOW peer, making it eligible for unicast sends.
-     */
-    int addEspNowPeer(const uint8_t* mac) {
-        return peerComms->addEspNowPeer(mac);
-    }
-
-    /**
-     * Remove a MAC from the ESP-NOW peer table.
-     */
-    int removeEspNowPeer(const uint8_t* mac) {
-        return peerComms->removeEspNowPeer(mac);
-    }
-    
-    /**
      * Get the device's MAC address.
      */
     uint8_t* getMacAddress() {

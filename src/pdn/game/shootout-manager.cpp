@@ -884,8 +884,8 @@ void ShootoutManager::onMatchResultReceived(
     // A result is fanned out by whichever duelist won it, so the sender being in
     // our bracket is what says the frame is ours. A foreign ring's result is
     // refused before the ack for the same reason ABORT is: an ack is a unicast,
-    // and a unicast permanently registers its destination in the radio's
-    // 20-entry peer table.
+    // and a unicast takes a slot in the radio's 20-entry peer table, evicting
+    // whatever sat there longest.
     if (!containsMac(bracket, fromMac)) return;
     // Always ack so the sender stops retrying, even when this is a duplicate.
     sendShootoutAck(ShootoutCmd::MATCH_RESULT, seqId, fromMac);
@@ -940,8 +940,8 @@ void ShootoutManager::onTournamentEndReceived(const uint8_t* fromMac,
 
 void ShootoutManager::onAbortReceived(const uint8_t* fromMac, uint8_t seqId) {
     // One broadcast reaches every device in radio range, other rings included.
-    // The ack stays behind this filter because a unicast permanently claims one of
-    // the 20 ESP-NOW peer slots that only the RDC frees. A follower that already
+    // The ack stays behind this filter because a unicast takes one of the radio's
+    // 20 peer slots, evicting whatever sat there longest. A follower that already
     // aborted fails it too, its rosters cleared, so the sender spends retries on a
     // device that has stopped; a still-cabled head keeps answering, its roster
     // coming live from the RDC.
