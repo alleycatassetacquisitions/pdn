@@ -48,6 +48,11 @@ ChainDuelManager::~ChainDuelManager() {
 void ChainDuelManager::setChampion(const std::array<uint8_t, 6>* mac) {
     if (mac == nullptr) {
         championMac.reset();
+        // Forget who was told. broadcastRoleAndChampion returns before it builds
+        // content while there is no champion, so a stamp left here survives the
+        // whole ring and then matches the identical announce owed when the ring
+        // opens onto the same topology, silencing it for the rest of the round.
+        supporterAnnounce.reset();
         return;
     }
     championMac = *mac;
@@ -527,6 +532,13 @@ void ChainDuelManager::sendRoleToOpponentJack() {
 }
 
 void ChainDuelManager::sync() {
+    // A ring has no champion, and neither role branch in applyChainStateChange
+    // fires while the loop is closed, so nothing else would clear the last one.
+    // Polled rather than driven off an edge: a ring closes with both cables
+    // already seated, so there is no jack event and, for a member that never
+    // latches, no role event either.
+    if (isLoop()) setChampion(nullptr);
+
     // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
     // supporter at a time, since a broadcast carries no per-member evidence.
     resender.sync();

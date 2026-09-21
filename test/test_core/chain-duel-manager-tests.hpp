@@ -583,6 +583,30 @@ inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(cdm.getChampionMac(), championMac, 6), 0);
 }
 
+// A ring has no champion. Neither role branch runs inside a ring, so a device
+// that had one goes on naming it, and announcing to it, until this clears it.
+inline void cdmRingClosureClearsTheChampion(ChainDuelManagerTests* suite) {
+    suite->setupHunterChampion();
+    uint8_t championMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kRoleAnnounce, _, _))
+        .WillRepeatedly(Return(1));
+
+    ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 7);
+    ASSERT_NE(cdm.getChampionMac(), nullptr);
+
+    // Drive the production tick rather than the handler: a ring arrives with
+    // both cables seated, so there is no event to hang this on and the manager's
+    // own sync is what has to notice.
+    suite->closeRingAroundSelf();
+    suite->rdc.sync(&suite->device);
+    cdm.sync();
+
+    EXPECT_EQ(cdm.getChampionMac(), nullptr) << "a ring still names a champion";
+}
+
 // An announce from a device that has no champion of its own leaves the field
 // zeroed. Caching that address would cascade it onward as this device's champion.
 inline void cdmRoleAnnounceWithNoChampionIsRefused(ChainDuelManagerTests* suite) {
