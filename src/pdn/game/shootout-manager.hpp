@@ -151,8 +151,11 @@ public:
     void abortTournament();
 
     /// Ring-break debounce. A cable nudge flickers the loop for a tick or two on
-    /// real hardware; act only once the break has settled.
-    static constexpr unsigned long LOOP_BREAK_DEBOUNCE_MS = 500;
+    /// real hardware; act only once the break has settled. A member reads the
+    /// ring flag out of HELLO, so the flicker it has to outlast is that flag's
+    /// walk round the chain — hence the RDC's propagation budget, not a literal.
+    static constexpr unsigned long LOOP_BREAK_DEBOUNCE_MS =
+        RemoteDeviceCoordinator::CHAIN_PROPAGATION_MS;
     /// Confirmed members needed to draw a bracket. Two is the structural floor —
     /// a duel needs two duelists — so a two-device ring is exactly at it and runs.
     static constexpr size_t MIN_PARTICIPANTS = 2;

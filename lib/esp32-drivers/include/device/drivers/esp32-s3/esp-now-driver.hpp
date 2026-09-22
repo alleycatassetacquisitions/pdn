@@ -260,10 +260,14 @@ public:
 
     /// Last RSSI captured for a peer from its receive callbacks; -1 if none seen.
     int GetRssiForPeer(const uint8_t* macAddr) {
-        uint64_t macAddr64 = MacToUInt64(macAddr);
-        if (rssiTracker.count(macAddr64) > 0)
-            return rssiTracker[macAddr64];
-        return -1;
+        const uint64_t macAddr64 = MacToUInt64(macAddr);
+        int rssi = -1;
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        std::unordered_map<uint64_t, int>::const_iterator entry =
+            rssiTracker.find(macAddr64);
+        if (entry != rssiTracker.end()) rssi = entry->second;
+        xSemaphoreGive(recvMutex);
+        return rssi;
     }
 
     /// PeerCommsInterface adapter for GetRssiForPeer.
@@ -372,8 +376,10 @@ private:
         // rx_ctrl carries the per-frame RSSI, available on every ESP-NOW
         // receive without promiscuous mode. This is the sole RSSI fill path.
         if (esp_now_info->rx_ctrl != nullptr) {
-            uint64_t srcMac64 = MacToUInt64(esp_now_info->src_addr);
+            const uint64_t srcMac64 = MacToUInt64(esp_now_info->src_addr);
+            xSemaphoreTake(manager->recvMutex, portMAX_DELAY);
             manager->rssiTracker[srcMac64] = esp_now_info->rx_ctrl->rssi;
+            xSemaphoreGive(manager->recvMutex);
         }
 
 #if DEBUG_PRINT_ESP_NOW
@@ -447,37 +453,37 @@ private:
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
-        xSemaphoreTake(sendMutex, portMAX_DELAY);
-        if (sendQueue.empty()) {
-            xSemaphoreGive(sendMutex);
-            return 0;
-        }
-        DataSendBuffer buffer = sendQueue.front();
-        xSemaphoreGive(sendMutex);
-
-        // Make sure a unicast peer is registered before sending to it.
-        if (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
-            EnsurePeerIsRegistered(buffer.dstMac);
-
-        esp_err_t err;
-        do
-        {
-            err = esp_now_send(buffer.dstMac, buffer.ptr, buffer.len);
-            if(err != ESP_OK)
-            {
-                ++curRetries;
-                if (curRetries >= maxRetries) {
-                    LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-                    //TODO: Pop all packets in the current cluster?
-                    MoveToNextSendPkt();
-                    SendFrontPkt();
-                    //TODO: Return correct error code
-                    return -1;
-                }
+        int result = 0;
+        while (true) {
+            xSemaphoreTake(sendMutex, portMAX_DELAY);
+            if (sendQueue.empty()) {
+                xSemaphoreGive(sendMutex);
+                return result;
             }
-        } while (err != ESP_OK);
-        
-        return 0;
+            const DataSendBuffer& buffer = sendQueue.front();
+
+            // Make sure a unicast peer is registered before sending to it.
+            if (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
+                EnsurePeerIsRegistered(buffer.dstMac);
+
+            // The radio must be handed the buffer under the same lock that owns
+            // it: clearSendQueue() frees the front entry from the main loop while
+            // this runs on the WiFi task, so an unlocked read hands esp_now_send
+            // a dangling pointer.
+            esp_err_t err = esp_now_send(buffer.dstMac, buffer.ptr, buffer.len);
+            xSemaphoreGive(sendMutex);
+
+            if (err == ESP_OK) return result;
+
+            ++curRetries;
+            if (curRetries < maxRetries) continue;
+
+            LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
+            // Drop the packet the radio refused and start the next one on the
+            // next pass, which MoveToNextSendPkt cannot do from inside the lock.
+            MoveToNextSendPkt();
+            result = -1;
+        }
     }
 
     //Free front packet in send queue and pop it from queue
@@ -530,8 +536,15 @@ private:
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
         if (esp_now_is_peer_exist(mac_addr)) return 0;
 
-        esp_now_peer_num_t num_peers;
-        esp_now_get_peer_num(&num_peers);
+        // Fails while the radio is down (a WiFi excursion deinits ESP-NOW under
+        // an in-flight send), leaving the struct untouched — reading total_num
+        // out of it then compares stack garbage against the cap.
+        esp_now_peer_num_t num_peers = {};
+        esp_err_t countErr = esp_now_get_peer_num(&num_peers);
+        if (countErr != ESP_OK) {
+            LOG_W("ENC", "ESP-NOW peer count unavailable: 0x%X", countErr);
+            return -1;
+        }
         if (num_peers.total_num >= ESP_NOW_MAX_TOTAL_PEER_NUM) {
             // Full: give up a slot so the send can go out. Which one barely
             // matters, because whoever still wants the evicted MAC re-registers
@@ -637,6 +650,8 @@ private:
     SemaphoreHandle_t sendResultMutex;
     std::queue<DeferredSendResult> sendResultQueue;
 
-    // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl)
+    // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl).
+    // Written on the WiFi task and read from the main loop, so it shares
+    // recvMutex with the receive queue that the same callback feeds.
     std::unordered_map<uint64_t, int> rssiTracker;
 };

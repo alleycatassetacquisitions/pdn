@@ -92,6 +92,10 @@ TEST(ReliableTransportTest, sendReliableTriggersAck) {
     p.cmd = 7;
     uint8_t seq = ch->sendReliable(target, p);
     ASSERT_NE(seq, 0);
+    // The stamp lands in the caller's own payload rather than in a by-value copy
+    // of it: HeadTransferPayload is 770 bytes and the roster handoff runs on the
+    // 4KB rdc-hello task, which cannot hold two of them at once.
+    ASSERT_EQ(p.seqId, seq);
     ASSERT_TRUE(ch->isPending(target));
 
     // Radio SEND_SUCCESS for the packet we sent clears the pending entry. The

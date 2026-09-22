@@ -157,11 +157,18 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
+    /// Worst case for a HELLO-borne fact — a head claim, the ring flag — to walk
+    /// the whole chain: one hop per emission, MAX_CHAIN_MEMBERS hops. Every
+    /// window that waits out a hop-by-hop propagation derives from this instead
+    /// of carrying a literal, because both inputs move independently and a
+    /// window shorter than the walk fires on the transient rather than on the
+    /// event. ShootoutManager::LOOP_BREAK_DEBOUNCE_MS is the game layer's.
+    static constexpr unsigned long CHAIN_PROPAGATION_MS =
+        HELLO_CADENCE_MS * MAX_CHAIN_MEMBERS;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only
-    // while this device's own MAC keeps returning on INPUT within this window.
-    // Sized above the worst-case claim-propagation transient (~18 hops at the
-    // 20ms HELLO cadence).
-    static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = 500;
+    // while this device's own MAC keeps returning on INPUT within this window,
+    // so it has to outlast a replacement claim's walk round the whole loop.
+    static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = CHAIN_PROPAGATION_MS;
 
     enum class HelloLinkState { IDLE,
                                 CONNECTING,

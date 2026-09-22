@@ -1354,8 +1354,12 @@ inline void rdcRingMembershipReachesEveryMember() {
     ASSERT_TRUE(a.rdc.isInRing()) << "A gave up its latch before its evidence expired";
 
     // A's own MAC stops coming back, so its evidence times out and the claim
-    // leaves the wire.
-    run(40);
+    // leaves the wire. The round count is derived because the evidence window is
+    // sized from the chain cap; a literal here stops clearing the latch the next
+    // time that cap moves.
+    run(static_cast<int>(RemoteDeviceCoordinator::RING_EVIDENCE_TIMEOUT_MS /
+                         RemoteDeviceCoordinator::HELLO_CADENCE_MS) +
+        2);
     EXPECT_FALSE(a.rdc.isInRing()) << "the latch outlived the loop";
     a.out.clearOutput();
     a.rdc.emitHello();
