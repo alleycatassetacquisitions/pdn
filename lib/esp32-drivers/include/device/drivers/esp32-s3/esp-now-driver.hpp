@@ -479,8 +479,7 @@ private:
             if (curRetries < maxRetries) continue;
 
             LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-            // Drop the packet the radio refused and start the next one on the
-            // next pass, which MoveToNextSendPkt cannot do from inside the lock.
+            // Drop the packet the radio refused; the next pass picks up whatever is now at the front.
             MoveToNextSendPkt();
             result = -1;
         }

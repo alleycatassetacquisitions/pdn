@@ -157,12 +157,14 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
-    /// Worst case for a HELLO-borne fact — a head claim, the ring flag — to walk
-    /// the whole chain: one hop per emission, MAX_CHAIN_MEMBERS hops. Every
-    /// window that waits out a hop-by-hop propagation derives from this instead
-    /// of carrying a literal, because both inputs move independently and a
-    /// window shorter than the walk fires on the transient rather than on the
-    /// event. ShootoutManager::LOOP_BREAK_DEBOUNCE_MS is the game layer's.
+    /// Budget for a HELLO-borne fact — a head claim, the ring flag — to walk the
+    /// whole chain: roughly one emission per hop, MAX_CHAIN_MEMBERS hops.
+    /// Nominal, not a bound: each hop also costs the receiving device's
+    /// exec()-to-parse gap, which nothing here caps. Every window that waits out
+    /// a hop-by-hop propagation derives from this instead of carrying a literal,
+    /// because both inputs move independently and a window shorter than the walk
+    /// fires on the transient rather than on the event.
+    /// ShootoutManager::LOOP_BREAK_DEBOUNCE_MS is the game layer's.
     static constexpr unsigned long CHAIN_PROPAGATION_MS =
         HELLO_CADENCE_MS * MAX_CHAIN_MEMBERS;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only

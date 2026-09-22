@@ -134,12 +134,9 @@ public:
 
     /// Reliable send: stamps a fresh nonzero seqId into the caller's payload and
     /// hands it to the Resender for retry-until-ack. Returns the stamped seqId.
-    ///
-    /// The payload is taken by mutable reference rather than by value because P
-    /// runs to hundreds of bytes (HeadTransferPayload is 770 at
-    /// MAX_CHAIN_MEMBERS=64) and the roster handoff runs on the 4KB rdc-hello
-    /// task: a by-value parameter puts a second copy of it on that stack beside
-    /// the caller's, and stamping in place is what a const reference could not do.
+    /// Taken by mutable reference, not by value: P runs to hundreds of bytes and
+    /// there is no reason to put a second copy on the caller's stack. The seqId is
+    /// stamped into the caller's own struct.
     uint8_t sendReliable(const uint8_t* mac, P& p) {
         p.seqId = nextSeqId();
         resender->send(mac, packetType, p.seqId,
