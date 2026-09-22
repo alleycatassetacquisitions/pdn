@@ -455,21 +455,42 @@ private:
     int SendFrontPkt() {
         int result = 0;
         while (true) {
+            uint8_t dst[ESP_NOW_ETH_ALEN];
+            xSemaphoreTake(sendMutex, portMAX_DELAY);
+            if (sendQueue.empty()) {
+                xSemaphoreGive(sendMutex);
+                return result;
+            }
+            memcpy(dst, sendQueue.front().dstMac, ESP_NOW_ETH_ALEN);
+            xSemaphoreGive(sendMutex);
+
+            // Registration runs unlocked. It can evict a peer, add one and log
+            // over UART, and the WiFi task blocks on sendMutex inside its own
+            // tx-complete callback (deferSendResult, MoveToNextSendPkt), so
+            // holding it across all that would make the radio wait on a serial
+            // write.
+            if (memcmp(dst, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
+                EnsurePeerIsRegistered(dst);
+
+            // The radio must be handed the buffer under the same lock that owns
+            // it: clearSendQueue() frees the front entry from the main loop while
+            // this runs on the WiFi task, so an unlocked read hands esp_now_send
+            // a dangling pointer.
             xSemaphoreTake(sendMutex, portMAX_DELAY);
             if (sendQueue.empty()) {
                 xSemaphoreGive(sendMutex);
                 return result;
             }
             const DataSendBuffer& buffer = sendQueue.front();
-
-            // Make sure a unicast peer is registered before sending to it.
-            if (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
-                EnsurePeerIsRegistered(buffer.dstMac);
-
-            // The radio must be handed the buffer under the same lock that owns
-            // it: clearSendQueue() frees the front entry from the main loop while
-            // this runs on the WiFi task, so an unlocked read hands esp_now_send
-            // a dangling pointer.
+            if (memcmp(buffer.dstMac, dst, ESP_NOW_ETH_ALEN) != 0) {
+                // A send completed while this was registering, so the front is a
+                // different destination that has not been registered yet. Start
+                // over rather than send to it unregistered. This terminates: each
+                // pass costs one completed send, and registration is a local
+                // table write against a send that takes milliseconds of airtime.
+                xSemaphoreGive(sendMutex);
+                continue;
+            }
             esp_err_t err = esp_now_send(buffer.dstMac, buffer.ptr, buffer.len);
             xSemaphoreGive(sendMutex);
 
