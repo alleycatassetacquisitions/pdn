@@ -304,7 +304,6 @@ void ChainDuelManager::onChainStateChanged() {
 }
 
 void ChainDuelManager::applyChainStateChange() {
-
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;

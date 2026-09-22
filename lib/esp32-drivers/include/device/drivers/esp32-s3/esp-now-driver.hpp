@@ -500,7 +500,8 @@ private:
             if (curRetries < maxRetries) continue;
 
             LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-            // Drop the packet the radio refused; the next pass picks up whatever is now at the front.
+            // Dropped outside the lock: MoveToNextSendPkt takes sendMutex, which is
+            // not recursive, so popping from inside the critical section deadlocks.
             MoveToNextSendPkt();
             result = -1;
         }
@@ -557,8 +558,8 @@ private:
         if (esp_now_is_peer_exist(mac_addr)) return 0;
 
         // Fails while the radio is down (a WiFi excursion deinits ESP-NOW under
-        // an in-flight send), leaving the struct untouched — reading total_num
-        // out of it then compares stack garbage against the cap.
+        // an in-flight send) and leaves the struct untouched, so a zero count
+        // would read as an empty table and admit a peer the radio cannot hold.
         esp_now_peer_num_t num_peers = {};
         esp_err_t countErr = esp_now_get_peer_num(&num_peers);
         if (countErr != ESP_OK) {
