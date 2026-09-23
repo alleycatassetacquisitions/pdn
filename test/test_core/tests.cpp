@@ -25,6 +25,7 @@
 #include "reliable-channel-tests.hpp"
 #include "reliable-transport-tests.hpp"
 #include "storage-tests.hpp"
+#include "symbol-wireless-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>

@@ -1586,7 +1586,7 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
     MockStorage storage;
     FakeQuickdrawWirelessManager quickdrawWirelessManager;
     MatchManager matchManager;
-    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
     suite->player.setIsHunter(true);
@@ -1634,7 +1634,7 @@ inline void anAbortRetiresTheBoutTheTournamentPrimed(ShootoutManagerTests* suite
     MockStorage storage;
     FakeQuickdrawWirelessManager quickdrawWirelessManager;
     MatchManager matchManager;
-    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
     suite->shootout->setLoopMembersForTest({me, coord, third});
@@ -1667,7 +1667,7 @@ inline void aTournamentResetLeavesACableBoutAlone(ShootoutManagerTests* suite) {
     MockStorage storage;
     FakeQuickdrawWirelessManager quickdrawWirelessManager;
     MatchManager matchManager;
-    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
     matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", "opponent",

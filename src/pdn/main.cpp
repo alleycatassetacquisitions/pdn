@@ -28,7 +28,7 @@
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
@@ -78,39 +78,18 @@ ShootoutApp* shootoutApp = nullptr;
 SymbolApp* symbolApp = nullptr;
 
 // Remote player management
-QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
 
-void setupEspNow(
-    QuickdrawWirelessManager* quickdrawWirelessManager,
-    RemoteDebugManager* remoteDebugManager,
-    SymbolWirelessManager* symbolWirelessManager,
-    PeerCommsInterface* peerCommsDriver) {
+void setupEspNow(RemoteDebugManager* remoteDebugManager,
+                 PeerCommsInterface* peerCommsDriver) {
     // Register packet handlers
-    peerCommsDriver->setPacketHandler(
-        PktType::kQuickdrawCommand,
-        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-        },
-        quickdrawWirelessManager
-    );
-    
     peerCommsDriver->setPacketHandler(
         PktType::kDebugPacket,
         [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
             ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
         },
-        remoteDebugManager
-    );
-
-    peerCommsDriver->setPacketHandler(
-        PktType::kSymbolMatchCommand,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(srcAddr, data, len);
-        },
-        symbolWirelessManager
-    );
+        remoteDebugManager);
 }
 
 void setup() {
@@ -165,8 +144,6 @@ void setup() {
     player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     // Create wireless managers
-    LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
-    quickdrawWirelessManager = new QuickdrawWirelessManager();
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
     symbolWirelessManager = new SymbolWirelessManager();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
@@ -175,17 +152,16 @@ void setup() {
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
     
     // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
+    setupEspNow(remoteDebugManager, peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    gameSession = new GameSession(player, pdn, quickdrawWirelessManager, symbolWirelessManager);
+    gameSession = new GameSession(player, pdn, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
     playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameContext.matchManager, remoteDebugManager);

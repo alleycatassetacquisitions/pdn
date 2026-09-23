@@ -6,7 +6,7 @@
 #include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
@@ -32,7 +32,6 @@ struct GameContext {
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
 };
@@ -344,7 +343,6 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
     ShootoutManager* shootoutManager;
     bool wonBattle = false;
     bool captured = false;

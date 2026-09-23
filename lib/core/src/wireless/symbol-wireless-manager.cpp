@@ -4,27 +4,52 @@
 #include "wireless/mac-functions.hpp"
 #include <cstring>
 
-static const char* SWM_TAG = "SWM";
+static const char* const SWM_TAG = "SWM";
 
-SymbolWirelessManager::SymbolWirelessManager() {
+SymbolWirelessManager::SymbolWirelessManager()
+    : wirelessManager(nullptr)
+    , remoteDeviceCoordinator(nullptr) {
     std::memset(macPeer, 0, sizeof(macPeer));
-    remoteDeviceCoordinator = nullptr;
 }
 
 SymbolWirelessManager::~SymbolWirelessManager() {
+    delete transport;
+    transport = nullptr;
+    channel = nullptr;
     wirelessManager = nullptr;
 }
 
 void SymbolWirelessManager::initialize(WirelessManager* wirelessManager, RemoteDeviceCoordinator* remoteDeviceCoordinator) {
     this->wirelessManager = wirelessManager;
     this->remoteDeviceCoordinator = remoteDeviceCoordinator;
+
+    // Claiming the channel is what makes the receive path live; no separate
+    // handler registration is owed. Abandonment is silent here because a symbol
+    // exchange that never lands leaves the state's own buffer timer to end it.
+    transport = new ReliableTransport(wirelessManager);
+    channel = transport->channel<SymbolMatchPacket>(PktType::kSymbolMatchCommand);
+    if (channel != nullptr) {
+        channel->onReceive(
+            [this](const uint8_t* fromMac, const SymbolMatchPacket& packet) {
+                onSymbolPacket(fromMac, packet);
+            });
+    }
+}
+
+void SymbolWirelessManager::sync() {
+    if (transport != nullptr) transport->sync();
 }
 
 void SymbolWirelessManager::setMacPeer(const uint8_t* macAddress) {
     memcpy(macPeer, macAddress, 6);
 }
 
-int SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort) {
+void SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort) {
+    if (channel == nullptr) {
+        LOG_E(SWM_TAG, "No symbol channel, dropping command %d", command);
+        return;
+    }
+
     SymbolMatchPacket packet{};
     packet.command = command;
     packet.symbolId = symbolId;
@@ -36,36 +61,28 @@ int SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIden
           static_cast<int>(symbolId),
           static_cast<int>(serialPort));
 
-    return wirelessManager->sendEspNowData(macPeer, PktType::kSymbolMatchCommand, (uint8_t*)&packet, sizeof(packet));
+    channel->sendReliable(macPeer, packet);
 }
 
-int SymbolWirelessManager::processSymbolMatchCommand(const uint8_t* macAddress, const uint8_t* data, const size_t dataLen) {
-
-    if (dataLen != sizeof(SymbolMatchPacket)) {
-        LOG_E(SWM_TAG, "RX symbol pkt bad len: got %u expected %u from %s",
-              static_cast<unsigned>(dataLen),
-              static_cast<unsigned>(sizeof(SymbolMatchPacket)),
-              macAddress ? MacToString(macAddress) : "(null)");
-        return -1;
-    }
-
-    const SymbolMatchPacket* packet = reinterpret_cast<const SymbolMatchPacket*>(data);
-
+void SymbolWirelessManager::onSymbolPacket(const uint8_t* macAddress, const SymbolMatchPacket& packet) {
     LOG_W(SWM_TAG,
           "RX symbol command %d from %s (symbolId=%d)",
-          packet->command,
+          packet.command,
           MacToString(macAddress),
-          static_cast<int>(packet->symbolId));
+          static_cast<int>(packet.symbolId));
 
     if (remoteDeviceCoordinator == nullptr) {
         LOG_E(SWM_TAG, "RemoteDeviceCoordinator unavailable, dropping symbol packet");
-        return -1;
+        return;
     }
 
     SerialIdentifier resolvedPort = SerialIdentifier::OUTPUT_JACK;
     bool portResolved = false;
 
-    for (SerialIdentifier port : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+    // Every jack, not the subset a given device type happens to use: a jack the
+    // board does not have carries no peers, and the sender's MAC sits on exactly
+    // one of them.
+    for (SerialIdentifier port : RemoteDeviceCoordinator::HELLO_JACKS) {
         PortState portState = remoteDeviceCoordinator->getPortState(port);
         for (const auto& peerMac : portState.peerMacAddresses) {
             if (macAddress != nullptr && std::memcmp(peerMac.data(), macAddress, 6) == 0) {
@@ -82,17 +99,16 @@ int SymbolWirelessManager::processSymbolMatchCommand(const uint8_t* macAddress, 
 
     if (!portResolved) {
         LOG_W(SWM_TAG, "No matching input port for symbol packet from %s", macAddress ? MacToString(macAddress) : "(null)");
-        return -1;
+        return;
     }
 
-    SymbolMatchCommand command(macAddress, packet->command, packet->symbolId);
+    SymbolMatchCommand command(macAddress, packet.command, packet.symbolId);
 
-    auto callbackIt = packetReceivedCallbacks.find(resolvedPort);
+    std::map<SerialIdentifier, std::function<void(const SymbolMatchCommand&)>>::iterator callbackIt =
+        packetReceivedCallbacks.find(resolvedPort);
     if (callbackIt != packetReceivedCallbacks.end() && callbackIt->second) {
         callbackIt->second(command);
     }
-
-    return 1;
 }
 
 void SymbolWirelessManager::setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port) {

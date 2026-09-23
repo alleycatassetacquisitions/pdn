@@ -24,7 +24,7 @@
 #include "game/player.hpp"
 #include "game/game-session.hpp"
 #include "game/quickdraw-apps.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
@@ -104,7 +104,6 @@ struct DeviceInstance {
     DuelApp* duelApp = nullptr;
     ShootoutApp* shootoutApp = nullptr;
     SymbolApp* symbolApp = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
 
     // State history (circular buffer, most recent at back)
@@ -210,38 +209,18 @@ public:
         instance.player->setUserID(idPtr);
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
-        
-        // Create QuickdrawWirelessManager (required by game states even when mocking)
-        instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
-        instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
-        
-        // Register ESP-NOW packet handlers (similar to setupEspNow in main.cpp)
-        // This is required for devices to actually receive and process ESP-NOW packets
-        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
-            PktType::kQuickdrawCommand,
-            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-                ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-            },
-            instance.quickdrawWirelessManager
-        );
 
+        // Both the duel and symbol receive paths come up with the channels their
+        // managers claim; no handler registration is owed here.
         instance.symbolWirelessManager = new SymbolWirelessManager();
         instance.symbolWirelessManager->initialize(
             instance.pdn->getWirelessManager(),
             instance.pdn->getRemoteDeviceCoordinator());
-        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
-            PktType::kSymbolMatchCommand,
-            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-                ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(src, data, len);
-            },
-            instance.symbolWirelessManager
-        );
 
         // Create the shared managers and the apps that read them
         instance.gameSession = new GameSession(
             instance.player,
             instance.pdn,
-            instance.quickdrawWirelessManager,
             instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
@@ -291,7 +270,6 @@ public:
         delete device.shootoutApp;
         delete device.symbolApp;
         delete device.gameSession;
-        delete device.quickdrawWirelessManager;
         delete device.symbolWirelessManager;
         delete device.player;
         delete device.pdn;

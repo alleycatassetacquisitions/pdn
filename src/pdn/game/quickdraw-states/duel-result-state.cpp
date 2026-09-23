@@ -9,7 +9,6 @@ DuelResult::DuelResult(const GameContext& ctx)
     : TypedState<PDN>(QuickdrawStateId::DUEL_RESULT) {
     this->player = ctx.player;
     this->matchManager = ctx.matchManager;
-    this->quickdrawWirelessManager = ctx.quickdrawWirelessManager;
     this->shootoutManager = ctx.shootoutManager;
 }
 
@@ -17,7 +16,6 @@ DuelResult::~DuelResult() {
     LOG_I(DUEL_RESULT_TAG, "Duel result state destroyed");
     this->player = nullptr;
     this->matchManager = nullptr;
-    this->quickdrawWirelessManager = nullptr;
     this->shootoutManager = nullptr;
 }
 

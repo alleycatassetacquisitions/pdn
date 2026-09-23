@@ -18,11 +18,11 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        matchManager = new MatchManager();
+        matchManager = new MatchManager(device.wirelessManager);
         player = new Player();
         char playerId[] = "test";
         player->setUserID(playerId);
-        matchManager->initialize(player, &mockStorage, &fakeWirelessManager);
+        matchManager->initialize(player, &mockStorage);
         using ::testing::_;
         ON_CALL(mockStorage, write(_, _, _))
             .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
@@ -67,6 +67,7 @@ public:
 
     MatchManager* matchManager;
     Player* player;
+    MockDevice device;
     MockStorage mockStorage;
     FakeQuickdrawWirelessManager fakeWirelessManager;
     FakeRemoteDeviceCoordinator fakeRdc;

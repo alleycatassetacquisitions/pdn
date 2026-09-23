@@ -38,20 +38,16 @@ public:
         bounty->setIsHunter(false);
 
         hunterWirelessManager = new FakeQuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, nullptr, 0);
-        hunterMatchManager = new MatchManager();
-        hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
+        hunterWirelessManager->attach(hunterDevice.mockPeerComms);
+        hunterMatchManager = new MatchManager(hunterDevice.wirelessManager);
+        hunterMatchManager->initialize(hunter, &hunterStorage);
         hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
-        hunterWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
 
         bountyWirelessManager = new FakeQuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, nullptr, 0);
-        bountyMatchManager = new MatchManager();
-        bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
+        bountyWirelessManager->attach(bountyDevice.mockPeerComms);
+        bountyMatchManager = new MatchManager(bountyDevice.wirelessManager);
+        bountyMatchManager->initialize(bounty, &bountyStorage);
         bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
-        bountyWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, bountyMatchManager, std::placeholders::_1));
     }
 
     void TearDown() override {
@@ -75,8 +71,8 @@ public:
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
-        hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
-        bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
+        hunterWirelessManager->deliverLastTo(bountyMatchManager, hunterMac);
+        bountyWirelessManager->deliverLastTo(hunterMatchManager, bountyMac);
     }
 
     FakePlatformClock* fakeClock = nullptr;
@@ -84,6 +80,8 @@ public:
     Player* bounty = nullptr;
     MatchManager* hunterMatchManager = nullptr;
     MatchManager* bountyMatchManager = nullptr;
+    MockDevice hunterDevice;
+    MockDevice bountyDevice;
     FakeQuickdrawWirelessManager* hunterWirelessManager = nullptr;
     FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
     NiceMock<MockStorage> hunterStorage;

@@ -3,6 +3,8 @@
 //
 #pragma once
 
+#include "game/match-manager.hpp"
+
 #include <gmock/gmock.h>
 #include "device/pdn.hpp"
 #include "device/device.hpp"
@@ -14,7 +16,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
@@ -255,37 +257,78 @@ public:
     std::vector<std::array<uint8_t, 6>> chainMembers;
 };
 
-// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
-// Call deliverLastTo() to route the most-recently-captured packet to another manager's
-// processQuickdrawCommand(), exercising the real serialization/deserialization path.
-class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
+// Captures kQuickdrawCommand frames as MatchManager hands them to the radio, and
+// replays one into another manager. Both directions run the real wire format, so
+// the encode and decode the duel depends on are still exercised — the send half
+// now goes through the channel and the radio rather than a stubbed method.
+class FakeQuickdrawWirelessManager {
 public:
-    FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
-
-    int broadcastPacket(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
-        sentCommands.push_back(command);
-        return 0;
+    /// Captures every quickdraw frame this radio is asked to send.
+    void attach(MockPeerComms* radio) {
+        ON_CALL(*radio, sendData(testing::_, PktType::kQuickdrawCommand, testing::_, testing::_))
+            .WillByDefault(testing::DoAll(
+                testing::Invoke([this](const uint8_t* dst, PktType, const uint8_t* data,
+                                       const size_t len) {
+                    if (len != sizeof(QuickdrawPacket)) return;
+                    QuickdrawPacket p{};
+                    memcpy(&p, data, sizeof(p));
+                    // Copied out first: emplace_back forwards by reference and a
+                    // packed member has no address a reference may bind to.
+                    const int command = p.command;
+                    const long drawTime = p.playerDrawTime;
+                    const bool isHunter = p.isHunter;
+                    sentCommands.emplace_back(dst, command, p.matchId, p.playerId,
+                                              drawTime, isHunter);
+                }),
+                testing::Return(1)));
     }
 
-    void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
-        if (sentCommands.empty()) return;
+    /// Round-trips the most recent capture through the wire format and hands it
+    /// to `recipient` as if it had arrived from `senderMac`.
+    void deliverLastTo(MatchManager* recipient, const uint8_t* senderMac) {
+        if (sentCommands.empty() || recipient == nullptr) return;
         const QuickdrawCommand& cmd = sentCommands.back();
 
-        // Serialize into the same wire format used by the real broadcastPacket.
         QuickdrawPacket pkt = {};
-        memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
+        memcpy(pkt.matchId, cmd.matchId, sizeof(pkt.matchId));
         memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
-        pkt.isHunter       = cmd.isHunter;
+        pkt.isHunter = cmd.isHunter;
         pkt.playerDrawTime = cmd.playerDrawTime;
-        pkt.command        = cmd.command;
+        pkt.command = cmd.command;
 
-        recipient->processQuickdrawCommand(
-            senderMac,
-            reinterpret_cast<const uint8_t*>(&pkt),
-            sizeof(pkt));
+        deliverBytesTo(recipient, senderMac, reinterpret_cast<const uint8_t*>(&pkt),
+                       sizeof(pkt));
+    }
+
+    /// Observer for every command this tap decodes, so a test can inspect the
+    /// wire round-trip without standing up a manager.
+    void setPacketReceivedCallback(std::function<void(const QuickdrawCommand&)> cb) {
+        packetReceivedCallback = std::move(cb);
+    }
+
+    /// Drops the decode observer.
+    void clearCallbacks() { packetReceivedCallback = nullptr; }
+
+    /// Feeds raw wire bytes to `recipient` as if the radio had delivered them.
+    /// `recipient` may be null when only the decode is under test.
+    void deliverBytesTo(MatchManager* recipient, const uint8_t* senderMac,
+                        const uint8_t* data, size_t len) {
+        if (len != sizeof(QuickdrawPacket)) return;
+        QuickdrawPacket p{};
+        memcpy(&p, data, sizeof(p));
+        const int command = p.command;
+        const long drawTime = p.playerDrawTime;
+        const bool isHunter = p.isHunter;
+        QuickdrawCommand decoded(senderMac, command, p.matchId, p.playerId, drawTime,
+                                 isHunter);
+        if (packetReceivedCallback) packetReceivedCallback(decoded);
+        if (recipient != nullptr) recipient->listenForMatchEvents(decoded);
     }
 
     std::vector<QuickdrawCommand> sentCommands;
+
+private:
+    std::function<void(const QuickdrawCommand&)> packetReceivedCallback;
 };
 
 // Fake light strip for LightManager
