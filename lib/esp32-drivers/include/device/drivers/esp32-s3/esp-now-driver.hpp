@@ -96,10 +96,10 @@ public:
 
         while (!sendResults.empty()) {
             auto& r = sendResults.front();
-            SendStatusCallback cb = sendStatusHandlers_[(int)r.type].first;
+            SendStatusCallback cb = sendStatusHandlers[(int)r.type].first;
             if (cb) {
                 cb(r.dstMac, r.data.data(), r.data.size(), r.success,
-                   sendStatusHandlers_[(int)r.type].second);
+                   sendStatusHandlers[(int)r.type].second);
             }
             sendResults.pop();
         }
@@ -236,13 +236,13 @@ public:
     /// to the main loop) when the send callback reports SEND_SUCCESS or a final
     /// SEND_FAIL for a packet of this type. Drives the reliable-transport ack.
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
-        sendStatusHandlers_[(int)packetType].first = callback;
-        sendStatusHandlers_[(int)packetType].second = ctx;
+        sendStatusHandlers[(int)packetType].first = callback;
+        sendStatusHandlers[(int)packetType].second = ctx;
     }
 
     /// Removes the send-result handler for a packet type.
     void clearSendStatusHandler(PktType packetType) override {
-        sendStatusHandlers_[(int)packetType].first = nullptr;
+        sendStatusHandlers[(int)packetType].first = nullptr;
     }
 
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
@@ -316,8 +316,7 @@ private:
     explicit EspNowDriver(const std::string& name)
         : PeerCommsDriverInterface(name)
         , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
-        , sendStatusHandlers_((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
-        , maxRetries(5)
+        , sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
         , recvMutex(xSemaphoreCreateMutex())
         , sendMutex(xSemaphoreCreateMutex()) {
         sendResultMutex = xSemaphoreCreateMutex();
@@ -428,18 +427,18 @@ private:
         if (esp_now_info->tx_status == WIFI_SEND_SUCCESS) {
             LOG_D("ENC", "Send SUCCESS");
             manager->finishInFlight(true);
-        } else if (manager->inFlightRetries < manager->maxRetries) {
+        } else if (manager->inFlightRetries < MAX_SEND_RETRIES) {
             // Over the air, so a retry gets fresh conditions. The frame stays in
             // the slot; nothing else can claim the radio while it is there.
             LOG_W("ENC", "Send FAILED (retry %d/%d)",
-                  manager->inFlightRetries + 1, manager->maxRetries);
+                  manager->inFlightRetries + 1, MAX_SEND_RETRIES);
             ++manager->inFlightRetries;
             if (manager->transmitInFlight()) return;
             // Refused, so no completion is coming for it either.
             manager->finishInFlight(false);
         } else {
             LOG_E("ENC", "Send FAILED - giving up after %d retries",
-                  manager->maxRetries);
+                  MAX_SEND_RETRIES);
             manager->finishInFlight(false);
         }
 
@@ -547,7 +546,6 @@ private:
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         free(inFlight.ptr);
         inFlight = {};
-        inFlightRetries = 0;
         xSemaphoreGive(sendMutex);
     }
 
@@ -603,7 +601,7 @@ private:
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> pktHandlerCallbacks;
     // Send-result handlers, one per PktType, mirroring pktHandlerCallbacks.
-    std::vector<std::pair<SendStatusCallback, void*>> sendStatusHandlers_;
+    std::vector<std::pair<SendStatusCallback, void*>> sendStatusHandlers;
 
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)
@@ -654,7 +652,7 @@ private:
     uint8_t macAddress[6];
 
     //Storage for retry handling
-    uint8_t maxRetries;
+    static constexpr uint8_t MAX_SEND_RETRIES = 5;
     // The frame the radio currently owns; a null ptr means it is idle. Held out
     // of sendQueue so the queue only ever contains frames nothing has claimed.
     DataSendBuffer inFlight{};

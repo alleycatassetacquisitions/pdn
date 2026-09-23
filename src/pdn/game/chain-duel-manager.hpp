@@ -165,10 +165,6 @@ private:
     // also gets the confirm bookkeeping that has to follow it.
     void applyChainStateChange();
 
-    // The only place championMac is assigned. nullptr means this device follows
-    // no champion of its own.
-    void setChampion(const std::array<uint8_t, 6>* mac);
-
     // Tells the champion this device follows that it exists. The champion cannot
     // discover a supporter it shares no cable with any other way.
     void announceToChampion();

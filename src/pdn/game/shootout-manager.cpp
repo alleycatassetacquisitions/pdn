@@ -119,10 +119,11 @@ void ShootoutManager::broadcastCommand(const uint8_t* packet, size_t len) {
 
 void ShootoutManager::broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
                                       const uint8_t* packet, size_t len) {
-    // A ring fan-out is one broadcast frame, not one unicast per member: the
-    // ESP-NOW peer table holds 20 entries, so unicast addressing cannot reach a
-    // ring larger than that at all, whereas the broadcast slot is registered once
-    // at radio init. Receivers must drop commands naming MACs outside their own ring.
+    // A ring fan-out is one broadcast frame, not one unicast per member: past the
+    // radio's 20 peer slots each unicast evicts another, so a large ring would
+    // thrash the table once per send, whereas the broadcast slot is registered
+    // once at radio init. Receivers must drop commands naming MACs outside
+    // their own ring.
     if (peersExcludingSelf(peers).empty()) return;
     broadcastCommand(packet, len);
 }

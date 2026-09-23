@@ -4,9 +4,9 @@
 
 namespace {
 constexpr const char* RELIABLE_CHANNEL_TAG = "ReliableChannel";
-// Caps the per-channel RX dedup cursor table. The live peer set is bounded by
-// the ESP-NOW peer cap, but senders come and go across a session and this table
-// never otherwise shrinks; evicting the oldest cursor when full keeps it
+// Caps the per-channel RX dedup cursor table. Receiving needs no peer-table slot,
+// so the set of senders is bounded by nothing; this table never otherwise
+// shrinks, and evicting the oldest cursor when full keeps it
 // bounded. A wrongly-evicted still-active sender just re-seeds on its next
 // packet, costing at most one re-dispatch that downstream domain dedup absorbs.
 constexpr size_t MAX_RX_SENDERS = 32;
