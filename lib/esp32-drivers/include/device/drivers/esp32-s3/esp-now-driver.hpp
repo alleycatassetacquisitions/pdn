@@ -147,9 +147,9 @@ public:
     void disconnect() override {
         // An excursion owns the radio now; the next connect() re-evaluates.
         channelPinPending = false;
-        // esp_now_deinit() destroys the TX-complete callback the send queue
-        // drains on, so a send in flight here orphans the queue forever. Clear it
-        // first; the reliable layer resends anything that mattered after resume.
+        // esp_now_deinit() destroys the TX-complete callback the queue drains on,
+        // so anything still queued here would never be freed. The reliable layer
+        // resends whatever mattered once the radio is back.
         clearSendQueue();
 
         esp_err_t err = esp_now_deinit();
@@ -157,6 +157,10 @@ public:
             LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
             return;
         }
+        // Only now: before the deinit the radio could still be transmitting that
+        // buffer, and freeing it underneath a live send is the exact hazard the
+        // slot exists to prevent.
+        discardInFlight();
 
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
@@ -206,14 +210,10 @@ public:
         buffer.len = hdr->pktLen;
 
         xSemaphoreTake(sendMutex, portMAX_DELAY);
-        bool willNeedToStartSend = sendQueue.empty();
         sendQueue.push(buffer);
         xSemaphoreGive(sendMutex);
 
-        if(willNeedToStartSend)
-        {
-            SendFrontPkt();
-        }
+        pumpSend();
         return 0;
     }
 
@@ -322,7 +322,6 @@ private:
         , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
         , sendStatusHandlers_((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
         , maxRetries(5)
-        , curRetries(0)
         , recvMutex(xSemaphoreCreateMutex())
         , sendMutex(xSemaphoreCreateMutex()) {
         sendResultMutex = xSemaphoreCreateMutex();
@@ -432,102 +431,87 @@ private:
         // enums share values (ESP_NOW_SEND_SUCCESS == WIFI_SEND_SUCCESS).
         if (esp_now_info->tx_status == WIFI_SEND_SUCCESS) {
             LOG_D("ENC", "Send SUCCESS");
-            manager->deferSendResult(true);
-            manager->MoveToNextSendPkt();
+            manager->finishInFlight(true);
+        } else if (manager->inFlightRetries < manager->maxRetries) {
+            // Over the air, so a retry gets fresh conditions. The frame stays in
+            // the slot; nothing else can claim the radio while it is there.
+            LOG_W("ENC", "Send FAILED (retry %d/%d)",
+                  manager->inFlightRetries + 1, manager->maxRetries);
+            ++manager->inFlightRetries;
+            manager->transmitInFlight();
+            return;
         } else {
-            if (manager->curRetries < manager->maxRetries) {
-                LOG_W("ENC", "Send FAILED (retry %d/%d)",
-                      manager->curRetries + 1, manager->maxRetries);
-                ++manager->curRetries;
-            } else {
-                LOG_E("ENC", "Send FAILED - giving up after %d retries",
-                      manager->maxRetries);
-                manager->deferSendResult(false);
-                manager->MoveToNextSendPkt();
-            }
+            LOG_E("ENC", "Send FAILED - giving up after %d retries",
+                  manager->maxRetries);
+            manager->finishInFlight(false);
         }
 
-        //TODO: Catch error and do reporting and push to next pkt
-        manager->SendFrontPkt();
+        manager->pumpSend();
     }
 
-    //Attempt to send the next packet in send queue
-    int SendFrontPkt() {
-        int result = 0;
-        while (true) {
-            uint8_t dst[ESP_NOW_ETH_ALEN];
+    /// Hands the radio the next waiting frame, if it is not already holding one.
+    ///
+    /// The frame the radio owns lives in `inFlight`, never in `sendQueue`. That
+    /// single fact is what makes the rest safe: only the completion callback
+    /// clears the slot, so no second caller can hand the radio the same frame
+    /// twice, nothing can free a buffer mid-transmit, and the registration and
+    /// the send need no lock at all.
+    void pumpSend() {
+        for (;;) {
             xSemaphoreTake(sendMutex, portMAX_DELAY);
-            if (sendQueue.empty()) {
+            if (inFlight.ptr != nullptr || sendQueue.empty()) {
                 xSemaphoreGive(sendMutex);
-                return result;
+                return;
             }
-            memcpy(dst, sendQueue.front().dstMac, ESP_NOW_ETH_ALEN);
-            xSemaphoreGive(sendMutex);
-
-            // Registration runs unlocked. It can evict a peer, add one and log
-            // over UART, and the WiFi task blocks on sendMutex inside its own
-            // tx-complete callback (deferSendResult, MoveToNextSendPkt), so
-            // holding it across all that would make the radio wait on a serial
-            // write.
-            if (memcmp(dst, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
-                EnsurePeerIsRegistered(dst);
-
-            // The radio must be handed the buffer under the same lock that owns
-            // it: clearSendQueue() frees the front entry from the main loop while
-            // this runs on the WiFi task, so an unlocked read hands esp_now_send
-            // a dangling pointer.
-            xSemaphoreTake(sendMutex, portMAX_DELAY);
-            if (sendQueue.empty()) {
-                xSemaphoreGive(sendMutex);
-                return result;
-            }
-            const DataSendBuffer& buffer = sendQueue.front();
-            if (memcmp(buffer.dstMac, dst, ESP_NOW_ETH_ALEN) != 0) {
-                // A send completed while this was registering, so the front is a
-                // different destination that has not been registered yet. Start
-                // over rather than send to it unregistered. This terminates: each
-                // pass costs one completed send, and registration is a local
-                // table write against a send that takes milliseconds of airtime.
-                xSemaphoreGive(sendMutex);
-                continue;
-            }
-            esp_err_t err = esp_now_send(buffer.dstMac, buffer.ptr, buffer.len);
-            xSemaphoreGive(sendMutex);
-
-            if (err == ESP_OK) return result;
-
-            ++curRetries;
-            if (curRetries < maxRetries) continue;
-
-            LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-            // Dropped outside the lock: MoveToNextSendPkt takes sendMutex, which is
-            // not recursive, so popping from inside the critical section deadlocks.
-            MoveToNextSendPkt();
-            result = -1;
-        }
-    }
-
-    //Free front packet in send queue and pop it from queue
-    void MoveToNextSendPkt() {
-        xSemaphoreTake(sendMutex, portMAX_DELAY);
-        if (!sendQueue.empty()) {
-            free(sendQueue.front().ptr);
+            inFlight = sendQueue.front();
             sendQueue.pop();
+            inFlightRetries = 0;
+            xSemaphoreGive(sendMutex);
+
+            if (transmitInFlight()) return;
+
+            // A refusal from esp_now_send is local and deterministic: the radio
+            // never saw the air, so retrying without airtime in between fails
+            // the same way. Report it and take the next frame.
+            finishInFlight(false);
         }
-        xSemaphoreGive(sendMutex);
-        curRetries = 0;
     }
 
-    // Snapshot the just-finished send (still at sendQueue.front()) onto the
-    // deferred queue for exec() to dispatch on the main loop. Call BEFORE
-    // MoveToNextSendPkt, which frees the front buffer. Broadcast/unsequenced
-    // sends are queued too; the reliable channel drops them (no seqId match).
+    /// Hands `inFlight` to the radio. True when the radio accepted it and a
+    /// completion callback is owed.
+    bool transmitInFlight() {
+        // Unlocked on purpose. The slot is this frame's until completion, so
+        // there is nothing to guard, and registration can evict a peer — work
+        // that must not run under a mutex the radio task waits on.
+        if (memcmp(inFlight.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
+            EnsurePeerIsRegistered(inFlight.dstMac);
+
+        esp_err_t err = esp_now_send(inFlight.dstMac, inFlight.ptr, inFlight.len);
+        if (err == ESP_OK) return true;
+        LOG_E("ENC", "ESPNOW send refused: 0x%X", err);
+        return false;
+    }
+
+    /// Reports the outcome upward, frees the frame and opens the slot.
+    void finishInFlight(bool success) {
+        deferSendResult(success);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        free(inFlight.ptr);
+        inFlight = {};
+        xSemaphoreGive(sendMutex);
+    }
+
+    // Snapshot the finished send onto the deferred queue for exec() to dispatch
+    // on the main loop. Reads the in-flight slot, so it reports the frame that
+    // actually completed rather than whatever happens to be queued next.
+    // Broadcast/unsequenced sends are queued too; the reliable channel drops
+    // them (no seqId match).
     void deferSendResult(bool success) {
         DeferredSendResult res;
         bool have = false;
         xSemaphoreTake(sendMutex, portMAX_DELAY);
-        if (!sendQueue.empty()) {
-            const DataSendBuffer& buf = sendQueue.front();
+        if (inFlight.ptr != nullptr) {
+            const DataSendBuffer& buf = inFlight;
             const DataPktHdr* hdr = reinterpret_cast<const DataPktHdr*>(buf.ptr);
             res.type = hdr->packetType;
             memcpy(res.dstMac, buf.dstMac, 6);
@@ -551,7 +535,17 @@ private:
             sendQueue.pop();
         }
         xSemaphoreGive(sendMutex);
-        curRetries = 0;
+    }
+
+    /// Frees the frame the radio was holding. Only safe once the radio can no
+    /// longer be reading it and no completion is owed, which is why disconnect()
+    /// calls this after esp_now_deinit rather than with the queue.
+    void discardInFlight() {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        free(inFlight.ptr);
+        inFlight = {};
+        inFlightRetries = 0;
+        xSemaphoreGive(sendMutex);
     }
 
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
@@ -660,7 +654,12 @@ private:
 
     //Storage for retry handling
     uint8_t maxRetries;
-    uint8_t curRetries;
+    // The frame the radio currently owns; a null ptr means it is idle. Held out
+    // of sendQueue so the queue only ever contains frames nothing has claimed.
+    DataSendBuffer inFlight{};
+    // Over-the-air attempts spent on inFlight. Touched only while the slot is
+    // occupied, which the slot itself serialises.
+    uint8_t inFlightRetries = 0;
 
     //Packet send queue
     std::queue<DataSendBuffer> sendQueue;
