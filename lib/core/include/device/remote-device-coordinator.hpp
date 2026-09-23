@@ -157,16 +157,18 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
+    /// The longest chain this budget covers. Deliberately not MAX_CHAIN_MEMBERS:
+    /// that is a roster-array cap, sized past any real chain so its overflow
+    /// contract never fires, and a window sized off it waits out a topology
+    /// nobody cables. This is an event-envelope number — raise it when venues
+    /// run longer chains, not when the roster cap moves.
+    static constexpr unsigned long MAX_PROPAGATION_HOPS = 25;
     /// Budget for a HELLO-borne fact — a head claim, the ring flag — to walk the
-    /// whole chain: roughly one emission per hop, MAX_CHAIN_MEMBERS hops.
-    /// Nominal, not a bound: each hop also costs the receiving device's
-    /// exec()-to-parse gap, which nothing here caps. Every window that waits out
-    /// a hop-by-hop propagation derives from this instead of carrying a literal,
-    /// because both inputs move independently and a window shorter than the walk
-    /// fires on the transient rather than on the event.
-    /// ShootoutManager::LOOP_BREAK_DEBOUNCE_MS is the game layer's.
+    /// chain at roughly one emission per hop. Nominal, not a bound: each hop also
+    /// costs the receiving device's exec()-to-parse gap, which nothing here caps.
+    /// Windows that wait out such a walk derive from this so they move together.
     static constexpr unsigned long CHAIN_PROPAGATION_MS =
-        HELLO_CADENCE_MS * MAX_CHAIN_MEMBERS;
+        HELLO_CADENCE_MS * MAX_PROPAGATION_HOPS;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only
     // while this device's own MAC keeps returning on INPUT within this window,
     // so it has to outlast a replacement claim's walk round the whole loop.
