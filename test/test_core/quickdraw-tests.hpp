@@ -583,6 +583,36 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
 }
 
 // Test: Button press broadcasts DRAW_RESULT
+// kQuickdrawCommand carries several command families to one opponent. A later
+// command must not cancel the retries an earlier one is still owed, which is
+// what the superseding send mode would do.
+inline void duelLaterCommandKeepsEarlierRetrying(DuelStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    auto countOf = [suite](int command) {
+        size_t n = 0;
+        for (const QuickdrawPacket& p : suite->wirelessManager->sentFrames) {
+            if (p.command == command) n++;
+        }
+        return n;
+    };
+
+    // SetUp's initializeMatch already sent SEND_MATCH_ID to the opponent, and
+    // nothing reports it delivered, so it is still owed retries.
+    ASSERT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
+
+    suite->fakeClock->advance(200);
+    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    ASSERT_EQ(countOf(QDCommand::DRAW_RESULT), 1u);
+
+    // Past the resender's first backoff, the earlier command must go out again.
+    for (int i = 0; i < 4; i++) {
+        suite->fakeClock->advance(150);
+        suite->matchManager->sync();
+    }
+    EXPECT_GT(countOf(QDCommand::SEND_MATCH_ID), 1u);
+}
+
 inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);

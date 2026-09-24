@@ -88,10 +88,10 @@ public:
     /// a press from a device it shares no cable with can be counted. Ignores a
     /// join naming any champion but this device.
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
-    /// Records a supporter's press. `fromMac` is the hop it arrived from, which
-    /// is not the originator once a chain is more than one deep; membership is
-    /// read live from the join roster rather than gated here.
-    void onConfirmReceived(const uint8_t* fromMac, const uint8_t* originatorMac);
+    /// Records a supporter's press. Ungated: a confirm is unicast straight to the
+    /// champion from any depth, so its sender is usually a device this one shares
+    /// no cable with. Membership is read live from the join roster instead.
+    void onConfirmReceived(const uint8_t* originatorMac);
     void onChainStateChanged();
 
     // Records a peer's role learned from an incoming kRoleAnnounce packet.
@@ -260,9 +260,8 @@ private:
     // its own delivery report.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
 
-    // Both unicast straight to the champion from any depth in the chain. On the
-    // channel they get retries and duplicate suppression; before, a join had
-    // neither and leaned on the driver's MAC-layer retry alone.
+    // Both unicast straight to the champion from any depth in the chain, so the
+    // sender is usually a device this one shares no cable with.
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
 

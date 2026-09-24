@@ -57,8 +57,9 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /// wirelessManager may be null, and sends then no-op; tests that never
-    /// reach the radio pass nullptr rather than standing one up.
+    /// wirelessManager may be null: nothing is transmitted, but the send reports
+    /// success so the retry bookkeeping still runs. Tests that never reach the
+    /// radio pass nullptr rather than standing one up.
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
@@ -196,8 +197,9 @@ private:
     // fired once and hoped for.
     Resender resender;
     ReliableChannel<QuickdrawPacket> duelChannel;
-    /// Unicasts one command to `mac`, retried until the radio acks it or the
-    /// channel's retry budget runs out.
+    /// Unicasts one command to `mac`, retried until the radio acks it. Rounds
+    /// the radio refuses cost no budget, so a shut send path defers rather than
+    /// abandons.
     void sendCommand(const uint8_t* mac, QuickdrawCommand& command);
     /**
      * Appends a match to storage

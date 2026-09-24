@@ -1073,6 +1073,10 @@ TEST_F(DuelStateTests, buttonPressBroadcastsDrawResult) {
     duelButtonPressBroadcastsDrawResult(this);
 }
 
+TEST_F(DuelStateTests, laterCommandKeepsEarlierRetrying) {
+    duelLaterCommandKeepsEarlierRetrying(this);
+}
+
 TEST_F(DuelStateTests, pushedWaitsForOpponentResult) {
     duelPushedWaitsForOpponentResult(this);
 }

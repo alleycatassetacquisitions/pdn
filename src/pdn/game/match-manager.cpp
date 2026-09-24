@@ -17,7 +17,11 @@ MatchManager::MatchManager(WirelessManager* wirelessManager)
     : player(nullptr)
     , storage(nullptr)
     , resender(wirelessManager)
-    , duelChannel(wirelessManager, &resender, PktType::kQuickdrawCommand, nullptr) {
+    // KEEP_DISTINCT, not the superseding default: kQuickdrawCommand carries five
+    // command families, so a DRAW_RESULT must not cancel the retries of a
+    // MATCH_ID_ACK still owed to the same opponent.
+    , duelChannel(wirelessManager, &resender, PktType::kQuickdrawCommand, nullptr,
+                  Resender::SendMode::KEEP_DISTINCT) {
     duelChannel.onReceive([this](const uint8_t* fromMac, const QuickdrawPacket& p) {
         QuickdrawCommand command(fromMac, p.command, p.matchId, p.playerId,
                                  p.playerDrawTime, p.isHunter);

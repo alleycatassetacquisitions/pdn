@@ -194,8 +194,9 @@ bool Resender::transmit(const Group& g) {
     // fail either, so report success and let retry bookkeeping run.
     if (wirelessManager == nullptr) return true;
     // A negative return means the frame never reached the radio: too large for a
-    // frame, the payload allocation failed, or WirelessManager refused it because
-    // ESP-NOW is not ready — a WiFi excursion parks every send for its duration.
+    // frame, the payload allocation failed, or the radio would not come back to
+    // ESP-NOW. Note a retransmit during a WiFi excursion does not wait it out —
+    // sendEspNowData switches the radio back first, ending the excursion.
     return wirelessManager->sendEspNowData(g.destination.data(), g.type,
                                            g.payload.data(), g.payload.size()) >= 0;
 }

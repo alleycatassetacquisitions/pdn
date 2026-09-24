@@ -40,11 +40,11 @@ public:
     // reopens; EVERY_ROUND spends anyway, so a path that stays shut still
     // abandons. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
-    // ReliableTransport parks (its abandons are no-ops and the RDC re-sends on
-    // the next chain-state event), and so does the duel channel, whose handlers
-    // are idempotent under a late replay. The two fan-out managers abandon: the
-    // shootout gates its next match on a fan-out clearing, and the chain duel
-    // needs the entry to stop rather than re-attempt at the 100ms floor.
+    // Parked by ReliableTransport (its abandons are no-ops and the RDC re-sends
+    // on the next chain-state event), and by the duel and symbol channels, whose
+    // handlers are idempotent under a late replay. Spent by the shootout, which
+    // gates its next match on a fan-out clearing, and by the chain duel, whose
+    // fan-out needs the entry to stop rather than re-attempt at the 100ms floor.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 

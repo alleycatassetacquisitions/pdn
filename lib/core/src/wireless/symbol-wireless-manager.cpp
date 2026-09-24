@@ -11,7 +11,10 @@ SymbolWirelessManager::SymbolWirelessManager(WirelessManager* wirelessManager,
     : wirelessManager(wirelessManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
     , resender(wirelessManager)
-    , channel(wirelessManager, &resender, PktType::kSymbolMatchCommand, nullptr) {
+    // KEEP_DISTINCT: SEND_SYMBOL, SYMBOL_MATCH_SUCCESS and SYMBOLS_REFRESHED
+    // share this PktType, so one must not cancel another's retries.
+    , channel(wirelessManager, &resender, PktType::kSymbolMatchCommand, nullptr,
+              Resender::SendMode::KEEP_DISTINCT) {
     std::memset(macPeer, 0, sizeof(macPeer));
     // No abandon callback: a symbol exchange that never lands is left to the
     // cable check in SymbolState, which leaves the state when the FDN goes away.
@@ -63,22 +66,16 @@ void SymbolWirelessManager::onSymbolPacket(const uint8_t* macAddress, const Symb
     // the same peer, so the first match wins and the callback for that jack is
     // the one that runs.
     for (SerialIdentifier port : RemoteDeviceCoordinator::HELLO_JACKS) {
-        PortState portState = remoteDeviceCoordinator->getPortState(port);
-        for (const auto& peerMac : portState.peerMacAddresses) {
-            if (macAddress != nullptr && std::memcmp(peerMac.data(), macAddress, 6) == 0) {
-                resolvedPort = port;
-                portResolved = true;
-                break;
-            }
-        }
-
-        if (portResolved) {
+        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
+        if (peerMac != nullptr && std::memcmp(peerMac, macAddress, 6) == 0) {
+            resolvedPort = port;
+            portResolved = true;
             break;
         }
     }
 
     if (!portResolved) {
-        LOG_W(SWM_TAG, "No matching input port for symbol packet from %s", macAddress ? MacToString(macAddress) : "(null)");
+        LOG_W(SWM_TAG, "No matching input port for symbol packet from %s", MacToString(macAddress));
         return;
     }
 

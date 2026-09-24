@@ -235,7 +235,8 @@ int main(int argc, char** argv) {
                                       const_cast<uint8_t*>(kHunterMac));
 
         // The ack the bounty owes the hunter. The first field is the sender:
-        // every inbound command is matched against the receiver's opponent.
+        // every inbound command after the handshake is matched against the
+        // receiver's opponent.
         QuickdrawCommand ackCmd(kBountyMac, QDCommand::MATCH_ID_ACK,
                                 matchId, "boun", 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
@@ -252,7 +253,7 @@ int main(int argc, char** argv) {
         clock.set(duelStart + bountyPress);
         bounty.matchMgr->getDuelButtonPush()(bounty.matchMgr);
 
-        // Exchange draw results via wire-format packets through processQuickdrawCommand.
+        // Exchange draw results as wire-format frames through each radio's handler.
         QuickdrawPacket hunterPkt = makeDrawResultPacket(
             hunter.matchMgr->getCurrentMatch(), true, "hunt");
         QuickdrawPacket bountyPkt = makeDrawResultPacket(

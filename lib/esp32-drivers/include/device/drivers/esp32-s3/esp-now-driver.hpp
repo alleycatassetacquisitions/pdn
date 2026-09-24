@@ -74,24 +74,6 @@ public:
             }
         }
 
-        // A frame the radio accepted but never reported on would hold the slot
-        // for good, and every later send queues behind it in silence: a channel's
-        // only delivery signal is the completion that is not coming. Treat a slot
-        // held past the budget as failed and let the reliable layer retry.
-        bool stalled = false;
-        xSemaphoreTake(sendMutex, portMAX_DELAY);
-        if (inFlight.ptr != nullptr &&
-            millis() - inFlightClaimedMs >= SEND_COMPLETION_TIMEOUT_MS) {
-            stalled = true;
-        }
-        xSemaphoreGive(sendMutex);
-        if (stalled) {
-            LOG_E("ENC", "no send completion in %lums; releasing the slot",
-                  SEND_COMPLETION_TIMEOUT_MS);
-            finishInFlight(false);
-            pumpSend();
-        }
-
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex, portMAX_DELAY);
         std::swap(pending, recvQueue);
@@ -165,8 +147,6 @@ public:
     void disconnect() override {
         // An excursion owns the radio now; the next connect() re-evaluates.
         channelPinPending = false;
-        // Stale frames must not go out after the excursion; the reliable layer
-        // resends whatever still matters once the radio is back.
         clearSendQueue();
 
         esp_err_t err = esp_now_deinit();
@@ -481,7 +461,6 @@ private:
             inFlight = sendQueue.front();
             sendQueue.pop();
             inFlightRetries = 0;
-            inFlightClaimedMs = millis();
             xSemaphoreGive(sendMutex);
 
             if (transmitInFlight()) return;
@@ -500,11 +479,13 @@ private:
         // and that task takes this mutex in the send callback, so holding it
         // across either invites a deadlock.
         //
-        // That leaves the frame reachable by disconnect() on the main loop while
-        // the radio still has the pointer, and copying the struct out would only
-        // copy the pointer, not the bytes. So the slot is claimed instead:
-        // discardInFlight leaves the buffer alone while this flag is up and the
-        // free happens here, on the way out.
+        // The radio copies the payload before esp_now_send returns (esp_now.h
+        // attention 4), so the exposure is this unlocked window only — but
+        // disconnect() runs on the main loop and can free the buffer inside it.
+        // So the slot is claimed: discardInFlight leaves the buffer alone while
+        // this flag is up and the free happens here, on the way out. Only one
+        // transmit is ever live, because nothing empties an occupied slot except
+        // the completion for the frame in it.
         DataSendBuffer frame;
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         frame = inFlight;
@@ -527,9 +508,8 @@ private:
         xSemaphoreGive(sendMutex);
 
         if (discarded) {
-            // The slot was emptied mid-send and left us the only pointer to the
-            // frame. Nothing is owed upward either: the excursion that emptied
-            // it took the send callback with it.
+            // The excursion that emptied the slot left us the only pointer to
+            // the frame.
             free(frame.ptr);
             return false;
         }
@@ -580,8 +560,8 @@ private:
         xSemaphoreGive(sendMutex);
     }
 
-    /// Releases the slot. Called once the send callback is gone, so the
-    /// completion that would otherwise clear it is never coming.
+    /// Frees the frame in the slot and opens it, or hands the free to a live
+    /// transmit. Reached both from a completion and from disconnect().
     void discardInFlight() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         if (inFlightTransmitting) {
@@ -698,10 +678,6 @@ private:
     uint8_t macAddress[6];
 
     static constexpr uint8_t MAX_SEND_RETRIES = 5;
-    // Ceiling on how long one frame may hold the radio. Well past a unicast plus
-    // its MAC-layer retries; this catches a completion that never arrives, not a
-    // slow one.
-    static constexpr unsigned long SEND_COMPLETION_TIMEOUT_MS = 500;
     // The frame the radio currently owns; a null ptr means it is idle. Held out
     // of sendQueue so the queue only ever contains frames nothing has claimed.
     DataSendBuffer inFlight{};
@@ -710,12 +686,9 @@ private:
     // rather than pulling the buffer out from under the radio.
     bool inFlightTransmitting = false;
     bool inFlightDiscarded = false;
-    // When the slot was claimed, for the stall check in exec().
-    unsigned long inFlightClaimedMs = 0;
-    // Over-the-air attempts spent on inFlight. Read and bumped off-lock from the
-    // send callback, which is safe only because the one write that races it
-    // (pumpSend zeroing it) happens while the slot is empty and no completion is
-    // owed.
+    // Over-the-air attempts spent on inFlight. Bumped off-lock from the send
+    // callback; the only write that races it zeroes it in pumpSend before the
+    // frame reaches the radio, so no completion can be owed at that moment.
     uint8_t inFlightRetries = 0;
 
     //Packet send queue

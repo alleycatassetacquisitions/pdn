@@ -12,12 +12,14 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // No abandon handler: a role announce that runs out of retries is repaired by
     // the backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
-    // No abandon handler on either: a lost confirm is repaired by the 1Hz
-    // backstop in sync(), and a lost join by the next chain-state change.
+    // No abandon handler on either. A lost join is re-offered on the next
+    // chain-state change; a lost confirm is re-offered only when the chain role
+    // or the champion changes, so a confirm abandoned mid-round stays lost until
+    // then.
     , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
     , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
-    chainConfirmChannel.onReceive([this](const uint8_t* fromMac, const ChainConfirmPayload& p) {
-        onConfirmReceived(fromMac, p.originatorMac);
+    chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
+        onConfirmReceived(p.originatorMac);
     });
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.championMac);
@@ -248,9 +250,7 @@ void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
     confirmSent = false;
 }
 
-void ChainDuelManager::onConfirmReceived(const uint8_t* fromMac,
-                                         const uint8_t* originatorMac) {
-    (void)fromMac;
+void ChainDuelManager::onConfirmReceived(const uint8_t* originatorMac) {
     // Recorded unconditionally. Whether this originator is a chain member, and
     // whether we are the champion who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
