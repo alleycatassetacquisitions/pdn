@@ -49,6 +49,12 @@ ReliableChannelBase::~ReliableChannelBase() {
     // makes that safe is not the ordering here: the driver queues both receive
     // and send-result and drains them from exec() on the main loop, which is
     // also where channels are destroyed, so no dispatch can land mid-teardown.
+    //
+    // Dropping the pending sends is this channel's job, not its owner's: a
+    // fan-out armed here must not keep retransmitting for an object that is
+    // gone, and nothing would ever report it delivered once the send-status
+    // handler below is cleared.
+    if (resender != nullptr) resender->cancelAll(packetType);
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);

@@ -250,9 +250,10 @@ private:
 
     uint8_t nextGameEventSeqId = 1;
 
-    // Owned here, not shared with the coordinator's: a fan-out armed by this
-    // manager must not outlive it and keep broadcasting for an object that is
-    // gone. Both announces ride the channel below it.
+    // Owned here rather than shared with the coordinator's, for two reasons the
+    // Resender only holds per-instance: the EVERY_ROUND budget below, and the
+    // retry counters this manager reports. Channels cancel their own pending
+    // sends as they are destroyed, so outliving the owner is no longer one.
     Resender resender;
 
     // In a 2-node ring both jacks face one peer, so the second announce can

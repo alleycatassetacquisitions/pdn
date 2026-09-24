@@ -427,3 +427,42 @@ TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
     transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 2);
 }
+
+TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
+    // Both fan-out managers justify owning a private Resender by saying a
+    // send armed by the manager must not outlive it. That has to be the
+    // channel's doing, not a side effect of the two being destroyed together:
+    // once the channel is gone nothing will ever report the frame delivered,
+    // so retransmitting it is pure noise on a shared radio.
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    Resender resender(&wm, Resender::BudgetPolicy::EVERY_ROUND);
+
+    int frames = 0;
+    ON_CALL(comms, getPeerCommsState())
+        .WillByDefault(::testing::Return(PeerCommsState::CONNECTED));
+    ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([&frames](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            frames++;
+            return 1;
+        });
+
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x09};
+    {
+        ReliableChannel<TransportTestPayload> channel(
+            &wm, &resender, PktType::kShootoutCommand, nullptr);
+        TransportTestPayload p{};
+        channel.sendReliable(peer, p);
+        ASSERT_EQ(frames, 1);
+        ASSERT_EQ(resender.pendingCount(PktType::kShootoutCommand), 1u);
+    }
+
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
+    clock.advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+    resender.sync();
+    EXPECT_EQ(frames, 1) << "a destroyed channel kept retransmitting";
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
