@@ -74,6 +74,24 @@ public:
             }
         }
 
+        // A frame the radio accepted but never reported on would hold the slot
+        // for good, and every later send queues behind it in silence: a channel's
+        // only delivery signal is the completion that is not coming. Treat a slot
+        // held past the budget as failed and let the reliable layer retry.
+        bool stalled = false;
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        if (inFlight.ptr != nullptr &&
+            millis() - inFlightClaimedMs >= SEND_COMPLETION_TIMEOUT_MS) {
+            stalled = true;
+        }
+        xSemaphoreGive(sendMutex);
+        if (stalled) {
+            LOG_E("ENC", "no send completion in %lums; releasing the slot",
+                  SEND_COMPLETION_TIMEOUT_MS);
+            finishInFlight(false);
+            pumpSend();
+        }
+
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex, portMAX_DELAY);
         std::swap(pending, recvQueue);
@@ -463,6 +481,7 @@ private:
             inFlight = sendQueue.front();
             sendQueue.pop();
             inFlightRetries = 0;
+            inFlightClaimedMs = millis();
             xSemaphoreGive(sendMutex);
 
             if (transmitInFlight()) return;
@@ -679,6 +698,10 @@ private:
     uint8_t macAddress[6];
 
     static constexpr uint8_t MAX_SEND_RETRIES = 5;
+    // Ceiling on how long one frame may hold the radio. Well past a unicast plus
+    // its MAC-layer retries; this catches a completion that never arrives, not a
+    // slow one.
+    static constexpr unsigned long SEND_COMPLETION_TIMEOUT_MS = 500;
     // The frame the radio currently owns; a null ptr means it is idle. Held out
     // of sendQueue so the queue only ever contains frames nothing has claimed.
     DataSendBuffer inFlight{};
@@ -687,6 +710,8 @@ private:
     // rather than pulling the buffer out from under the radio.
     bool inFlightTransmitting = false;
     bool inFlightDiscarded = false;
+    // When the slot was claimed, for the stall check in exec().
+    unsigned long inFlightClaimedMs = 0;
     // Over-the-air attempts spent on inFlight. Read and bumped off-lock from the
     // send callback, which is safe only because the one write that races it
     // (pumpSend zeroing it) happens while the slot is empty and no completion is

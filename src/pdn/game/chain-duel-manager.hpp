@@ -88,10 +88,10 @@ public:
     /// a press from a device it shares no cable with can be counted. Ignores a
     /// join naming any champion but this device.
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
-    void onConfirmReceived(
-        const uint8_t* fromMac,
-        const uint8_t* originatorMac,
-        uint8_t seqId);
+    /// Records a supporter's press. `fromMac` is the hop it arrived from, which
+    /// is not the originator once a chain is more than one deep; membership is
+    /// read live from the join roster rather than gated here.
+    void onConfirmReceived(const uint8_t* fromMac, const uint8_t* originatorMac);
     void onChainStateChanged();
 
     // Records a peer's role learned from an incoming kRoleAnnounce packet.
@@ -189,8 +189,6 @@ private:
 
     size_t lastSupporterChainCount = 0;
 
-    uint8_t nextConfirmSeqId = 1;  // skip 0 as sentinel
-
     // Set the moment a press produces a confirm, so the champion-changed and
     // chain-settled triggers know there is something worth re-sending. Atomic:
     // written from the radio task (COUNTDOWN arrival), read from the main loop.
@@ -261,6 +259,12 @@ private:
     // championMac, and addGroup transmits before superseding, so each still gets
     // its own delivery report.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
+
+    // Both unicast straight to the champion from any depth in the chain. On the
+    // channel they get retries and duplicate suppression; before, a join had
+    // neither and leaned on the driver's MAC-layer retry alone.
+    ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
+    ReliableChannel<ChainJoinPayload> chainJoinChannel;
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 

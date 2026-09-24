@@ -91,6 +91,7 @@ struct ChainConfirmPayload
 // by radio accident cannot enrol anyone in the wrong chain's roster.
 struct ChainJoinPayload {
     uint8_t championMac[6];
+    uint8_t seqId;
 } __attribute__((packed));
 
 struct RoleAnnouncePayload

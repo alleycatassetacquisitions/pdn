@@ -11,7 +11,17 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND)
     // No abandon handler: a role announce that runs out of retries is repaired by
     // the backstop in sync(), not by a callback.
-    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr) {
+    , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
+    // No abandon handler on either: a lost confirm is repaired by the 1Hz
+    // backstop in sync(), and a lost join by the next chain-state change.
+    , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
+    , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
+    chainConfirmChannel.onReceive([this](const uint8_t* fromMac, const ChainConfirmPayload& p) {
+        onConfirmReceived(fromMac, p.originatorMac);
+    });
+    chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
+        onChainJoinReceived(fromMac, p.championMac);
+    });
     // The radio's delivery report is this channel's ack; there is no reply
     // packet. Latency is read here because the channel reports delivery but does
     // not time it, and the peer is recorded as told here for the same reason:
@@ -225,14 +235,7 @@ void ChainDuelManager::sendConfirm() {
 
     ChainConfirmPayload payload{};
     memcpy(payload.originatorMac, selfMac, 6);
-    payload.seqId = nextConfirmSeqId++;
-    if (nextConfirmSeqId == 0) nextConfirmSeqId = 1;
-
-    wirelessManager->sendEspNowData(
-        championMac->data(),
-        PktType::kChainConfirm,
-        reinterpret_cast<const uint8_t*>(&payload),
-        sizeof(payload));
+    chainConfirmChannel.sendReliable(championMac->data(), payload);
 }
 
 void ChainDuelManager::resendConfirm() {
@@ -245,11 +248,9 @@ void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
     confirmSent = false;
 }
 
-void ChainDuelManager::onConfirmReceived(
-    const uint8_t* fromMac,
-    const uint8_t* originatorMac,
-    uint8_t seqId) {
-    (void)fromMac; (void)seqId;
+void ChainDuelManager::onConfirmReceived(const uint8_t* fromMac,
+                                         const uint8_t* originatorMac) {
+    (void)fromMac;
     // Recorded unconditionally. Whether this originator is a chain member, and
     // whether we are the champion who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
@@ -279,11 +280,7 @@ void ChainDuelManager::announceToChampion() {
 
     ChainJoinPayload payload{};
     memcpy(payload.championMac, championMac->data(), 6);
-    wirelessManager->sendEspNowData(
-        championMac->data(),
-        PktType::kChainJoin,
-        reinterpret_cast<const uint8_t*>(&payload),
-        sizeof(payload));
+    chainJoinChannel.sendReliable(championMac->data(), payload);
 }
 
 void ChainDuelManager::onChainStateChanged() {
