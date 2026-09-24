@@ -24,7 +24,6 @@
 #include "game/player.hpp"
 #include "game/game-session.hpp"
 #include "game/quickdraw-apps.hpp"
-#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"

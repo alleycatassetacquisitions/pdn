@@ -491,12 +491,11 @@ void ChainDuelManager::sendRoleToOpponentJack() {
     RoleAnnounceState content;
     memcpy(content.peer.data(), opponentPeer, 6);
     content.role = player->isHunter() ? 1 : 0;
-    // championMac rides along as a placeholder no peer this call can reach will
-    // read: an opposite-role peer fails the role check, and a same-role peer
-    // receives it on its SUPPORTER jack and fails the fromOpponentJack gate
-    // first. It is still part of the content key, so a champion change re-offers
-    // here — carrying nothing new, and the price of one shared key for both
-    // directions.
+    // championMac rides along because both directions share one content key, and
+    // it is empty until this device follows someone. An opposite-role peer
+    // ignores it on the role check, but in a 2-node ring both jacks face the same
+    // peer, so a same-role peer can receive this on its opponent jack and read
+    // the empty champion — which is why the receiver refuses a zeroed one.
     if (championMac.has_value()) content.champion = *championMac;
     if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
 

@@ -6,7 +6,6 @@
 #include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
-#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"

@@ -146,19 +146,14 @@ public:
     static constexpr unsigned long HELLO_SILENT_LINK_MS = 100;
     // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
-    /// The longest chain this budget covers. Deliberately not MAX_CHAIN_MEMBERS:
-    /// that is a roster-array cap, sized past any real chain so its overflow
-    /// contract never fires, and a window sized off it waits out a topology
-    /// nobody cables. This is an event-envelope number — raise it when venues
-    /// run longer chains, not when the roster cap moves.
-    static constexpr unsigned long MAX_PROPAGATION_HOPS = 20;
     /// Budget for a HELLO-borne fact — a head claim, the ring flag — to walk the
-    /// chain. The nominal walk is one emission per hop; the quarter again on top
-    /// is margin, because each hop also costs the receiving device's
-    /// exec()-to-parse gap and nothing here caps that. Windows that wait out such
-    /// a walk derive from this so they move together.
-    static constexpr unsigned long CHAIN_PROPAGATION_MS =
-        HELLO_CADENCE_MS * MAX_PROPAGATION_HOPS * 5 / 4;
+    /// chain: ~20 hops at the 20ms cadence, plus a quarter again of margin for
+    /// the receiving device's exec()-to-parse gap, which nothing caps. Not sized
+    /// off MAX_CHAIN_MEMBERS: that is a roster-array cap set past any real chain,
+    /// and a window sized off it would wait out a topology nobody cables.
+    /// Hardware-proven at this value; windows that wait out such a walk derive
+    /// from it so they move together, and moving it wants a rig sweep.
+    static constexpr unsigned long CHAIN_PROPAGATION_MS = 500;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only
     // while this device's own MAC keeps returning on INPUT within this window,
     // so it has to outlast a replacement claim's walk round the whole loop.
@@ -470,9 +465,3 @@ private:
     void onDisconnectReport(const uint8_t* fromMac, const DisconnectReportPayload& report);
     void onHeadTransfer(const uint8_t* fromMac, const HeadTransferPayload& transfer);
 };
-
-// 500ms is the value both windows derived from the propagation budget were proven
-// at on hardware; a change to the hop count or the margin that moves it wants a
-// rig sweep before it ships.
-static_assert(RemoteDeviceCoordinator::CHAIN_PROPAGATION_MS == 500,
-              "propagation budget moved off its hardware-proven value");

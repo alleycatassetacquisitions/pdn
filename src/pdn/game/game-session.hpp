@@ -4,7 +4,6 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"

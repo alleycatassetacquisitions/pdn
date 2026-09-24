@@ -191,7 +191,8 @@ private:
 
     // Set the moment a press produces a confirm, so the champion-changed and
     // chain-settled triggers know there is something worth re-sending. Atomic:
-    // written from the radio task (COUNTDOWN arrival), read from the main loop.
+    // written when a COUNTDOWN arrives and read by the duel states — both on the
+    // main loop, since packet handlers are drained from exec().
     std::atomic<bool> confirmSent{false};
 
     // Every press we have heard this round, member or not. Membership is applied
