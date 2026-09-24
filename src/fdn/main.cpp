@@ -155,10 +155,9 @@ void setup() {
 
     hackedPlayersManager  = new HackedPlayersManager(fdn->getStorage());
 
-    symbolWirelessManager = new SymbolWirelessManager();
-    symbolWirelessManager->initialize(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
-    // Claiming the channel makes the receive path live; the retransmits behind
-    // it still need a tick.
+    symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
+                                                      fdn->getRemoteDeviceCoordinator());
+    // The retransmits behind the channel need a tick.
     fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
 
     setupEspNow(peerCommsDriver);

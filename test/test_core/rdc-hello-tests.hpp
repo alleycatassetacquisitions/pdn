@@ -1355,8 +1355,8 @@ inline void rdcRingMembershipReachesEveryMember() {
 
     // A's own MAC stops coming back, so its evidence times out and the claim
     // leaves the wire. The round count is derived because the evidence window is
-    // sized from the chain cap; a literal here stops clearing the latch the next
-    // time that cap moves.
+    // sized from the RDC's propagation budget; a literal here stops clearing the
+    // latch the next time that budget moves.
     run(static_cast<int>(RemoteDeviceCoordinator::RING_EVIDENCE_TIMEOUT_MS /
                          RemoteDeviceCoordinator::HELLO_CADENCE_MS) +
         2);

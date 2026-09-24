@@ -142,8 +142,8 @@ public:
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
-    /// Tears down ESP-NOW for a WiFi excursion; clears the send queue first
-    /// (an in-flight send orphaned across deinit stalls TX forever).
+    /// Tears down ESP-NOW for a WiFi excursion, dropping both the queue and the
+    /// frame in the slot; the reliable layer resends whatever still matters.
     void disconnect() override {
         // An excursion owns the radio now; the next connect() re-evaluates.
         channelPinPending = false;
@@ -154,9 +154,10 @@ public:
         esp_err_t err = esp_now_deinit();
         if (err != ESP_OK) LOG_E("ENC", "ESPNOW Error deinitializing: 0x%X\n", err);
 
-        // Unconditional: deinit unregisters the send callback, so whatever was in
-        // the slot will never be completed. Leaving it would block every later
-        // pumpSend, and leaving the state CONNECTED would stop connect() retrying.
+        // Runs even when deinit reported an error, because a radio that may have
+        // dropped its send callback owes no completion for whatever is in the
+        // slot. Leaving it there would block every later pumpSend, and leaving
+        // the state CONNECTED would stop connect() retrying.
         discardInFlight();
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
@@ -476,20 +477,43 @@ private:
     /// Hands `inFlight` to the radio. True when the radio accepted it and a
     /// completion callback is owed.
     bool transmitInFlight() {
-        // Snapshot under the lock: disconnect() empties the slot from the main
-        // loop while this can be running on the radio task. Registering and
-        // sending then happen unlocked, because registration can evict a peer and
-        // must not run under a mutex the radio task waits on.
+        // Registration and the send run unlocked: both block on the WiFi task,
+        // and that task takes this mutex in the send callback, so holding it
+        // across either invites a deadlock.
+        //
+        // That leaves the frame reachable by disconnect() on the main loop while
+        // the radio still has the pointer, and copying the struct out would only
+        // copy the pointer, not the bytes. So the slot is claimed instead:
+        // discardInFlight leaves the buffer alone while this flag is up and the
+        // free happens here, on the way out.
         DataSendBuffer frame;
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         frame = inFlight;
+        if (frame.ptr == nullptr) {
+            xSemaphoreGive(sendMutex);
+            return false;
+        }
+        inFlightTransmitting = true;
         xSemaphoreGive(sendMutex);
-        if (frame.ptr == nullptr) return false;
 
         if (memcmp(frame.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
             EnsurePeerIsRegistered(frame.dstMac);
 
         esp_err_t err = esp_now_send(frame.dstMac, frame.ptr, frame.len);
+
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        inFlightTransmitting = false;
+        const bool discarded = inFlightDiscarded;
+        inFlightDiscarded = false;
+        xSemaphoreGive(sendMutex);
+
+        if (discarded) {
+            // The slot was emptied mid-send and left us the only pointer to the
+            // frame. Nothing is owed upward either: the excursion that emptied
+            // it took the send callback with it.
+            free(frame.ptr);
+            return false;
+        }
         if (err == ESP_OK) return true;
         LOG_E("ENC", "ESPNOW send refused: 0x%X", err);
         return false;
@@ -498,10 +522,7 @@ private:
     /// Reports the outcome upward, frees the frame and opens the slot.
     void finishInFlight(bool success) {
         deferSendResult(success);
-        xSemaphoreTake(sendMutex, portMAX_DELAY);
-        free(inFlight.ptr);
-        inFlight = {};
-        xSemaphoreGive(sendMutex);
+        discardInFlight();
     }
 
     // Snapshot the finished send onto the deferred queue for exec() to dispatch
@@ -544,7 +565,13 @@ private:
     /// completion that would otherwise clear it is never coming.
     void discardInFlight() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
-        free(inFlight.ptr);
+        if (inFlightTransmitting) {
+            // The radio still holds this pointer; transmitInFlight frees it as
+            // it returns. Emptying the slot here is what tells it to.
+            inFlightDiscarded = true;
+        } else {
+            free(inFlight.ptr);
+        }
         inFlight = {};
         xSemaphoreGive(sendMutex);
     }
@@ -651,12 +678,19 @@ private:
     //Storage for MAC address
     uint8_t macAddress[6];
 
-    //Storage for retry handling
     static constexpr uint8_t MAX_SEND_RETRIES = 5;
     // The frame the radio currently owns; a null ptr means it is idle. Held out
     // of sendQueue so the queue only ever contains frames nothing has claimed.
     DataSendBuffer inFlight{};
-    // Over-the-air attempts spent on inFlight.
+    // Both guarded by sendMutex. Raised while transmitInFlight holds the frame's
+    // pointer outside the lock, so a discard in that window defers the free to it
+    // rather than pulling the buffer out from under the radio.
+    bool inFlightTransmitting = false;
+    bool inFlightDiscarded = false;
+    // Over-the-air attempts spent on inFlight. Read and bumped off-lock from the
+    // send callback, which is safe only because the one write that races it
+    // (pumpSend zeroing it) happens while the slot is empty and no completion is
+    // owed.
     uint8_t inFlightRetries = 0;
 
     //Packet send queue

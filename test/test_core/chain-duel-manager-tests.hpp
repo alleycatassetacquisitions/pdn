@@ -567,8 +567,7 @@ inline void cdmChampionChangeWithoutPressSendsNoConfirm(ChainDuelManagerTests* s
     cdm.resendConfirm();
 }
 
-// onRoleAnnounceReceived updates peerRoleByPort and championMac, and acks the
-// sender.
+// onRoleAnnounceReceived updates peerRoleByPort and championMac.
 inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);

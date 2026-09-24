@@ -36,7 +36,9 @@ struct QuickdrawCommand {
     bool isHunter;
     long playerDrawTime;
 
-    /// Decoded form of one duel frame. `macAddress` is the sender.
+    /// Decoded form of one duel frame. On the receive path `macAddress` is the
+    /// sender, which is what every gate here matches against; an outbound command
+    /// fills it with the destination and sendCommand ignores it.
     QuickdrawCommand(const uint8_t* macAddress, int command, const char* matchId, const char* playerId, long playerDrawTime, bool isHunter)
         : wifiMacAddr(macAddress)
         , command(command)

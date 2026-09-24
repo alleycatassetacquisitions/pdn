@@ -1269,6 +1269,10 @@ TEST_F(PacketParsingTests, rejectsMalformedPacket) {
     packetParsingRejectsMalformedPacket(this);
 }
 
+TEST_F(PacketParsingTests, suppressesRetransmit) {
+    packetParsingSuppressesRetransmit(this);
+}
+
 TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeHunter) {
     listenForMatchResultsSetsOpponentTimeHunter(this);
 }

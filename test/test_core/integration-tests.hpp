@@ -71,8 +71,8 @@ public:
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
-        hunterWirelessManager->deliverLastTo(bountyMatchManager, hunterMac);
-        bountyWirelessManager->deliverLastTo(hunterMatchManager, bountyMac);
+        bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
+        hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
     }
 
     FakePlatformClock* fakeClock = nullptr;

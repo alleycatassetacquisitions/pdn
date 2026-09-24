@@ -45,8 +45,7 @@ public:
                 }));
 
         wirelessManager = new WirelessManager(&peerComms, &httpClient);
-        manager = new SymbolWirelessManager();
-        manager->initialize(wirelessManager, &rdc);
+        manager = new SymbolWirelessManager(wirelessManager, &rdc);
     }
 
     /// Frees the manager and the clock the timers hold.

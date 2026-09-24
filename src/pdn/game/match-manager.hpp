@@ -57,9 +57,9 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /// wirelessManager may be null in unit tests; sends then no-op.
-
-    explicit MatchManager(WirelessManager* wirelessManager = nullptr);
+    /// wirelessManager may be null, and sends then no-op; tests that never
+    /// reach the radio pass nullptr rather than standing one up.
+    explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
 
@@ -192,12 +192,12 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    // Duel frames are unicast to one opponent and carry the match's outcome, so
-    // they get the same retry-until-the-radio-acks treatment as every other
-    // reliable send rather than being fired once and hoped for.
+    // Duel frames carry the match's outcome, so they are retried rather than
+    // fired once and hoped for.
     Resender resender;
     ReliableChannel<QuickdrawPacket> duelChannel;
-    /// Unicasts one command to `mac`, retried by the channel until the radio acks.
+    /// Unicasts one command to `mac`, retried until the radio acks it or the
+    /// channel's retry budget runs out.
     void sendCommand(const uint8_t* mac, QuickdrawCommand& command);
     /**
      * Appends a match to storage

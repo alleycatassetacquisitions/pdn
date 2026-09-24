@@ -145,15 +145,14 @@ void setup() {
     pdn->begin();
     // Create wireless managers
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager();
+    symbolWirelessManager = new SymbolWirelessManager(pdn->getWirelessManager(),
+                                                      pdn->getRemoteDeviceCoordinator());
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
-    
     // Register ESP-NOW packet handlers
     setupEspNow(remoteDebugManager, peerCommsDriver);
 

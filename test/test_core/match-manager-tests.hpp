@@ -69,7 +69,6 @@ public:
     Player* player;
     MockDevice device;
     MockStorage mockStorage;
-    FakeQuickdrawWirelessManager fakeWirelessManager;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
 };

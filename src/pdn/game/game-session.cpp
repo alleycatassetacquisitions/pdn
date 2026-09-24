@@ -140,9 +140,10 @@ void GameSession::logRetryStats() {
     if (!statsLogTimer.expired()) return;
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. Both managers are reported: a venue reading one
-    // line to judge radio health would otherwise be shown the chain duel's
-    // retries and told nothing about the tournament's.
+    // strips info-level calls. Both fan-out managers are reported: a venue
+    // reading one line to judge radio health would otherwise be shown the chain
+    // duel's retries and told nothing about the tournament's. The duel channel
+    // keeps its own counters and is not folded in here.
     if (chainDuelManager != nullptr) {
         ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;

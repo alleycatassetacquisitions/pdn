@@ -7,7 +7,8 @@
 #include "device/drivers/serial-wrapper.hpp"
 #include "device/wireless-manager.hpp"
 #include "symbol.hpp"
-#include "wireless/reliable-transport.hpp"
+#include "wireless/reliable-channel.hpp"
+#include "wireless/resender.hpp"
 
 class RemoteDeviceCoordinator;
 
@@ -49,20 +50,18 @@ struct SymbolMatchCommand {
 
 class SymbolWirelessManager {
 public:
-    /// Leaves the manager inert until initialize() claims a channel.
-    SymbolWirelessManager();
-    /// Drops the channel, which clears the driver handlers it installed.
-    ~SymbolWirelessManager();
-
-    /// Claims the symbol channel, which is what makes the receive path live.
-    void initialize(WirelessManager* wirelessManager, RemoteDeviceCoordinator* remoteDeviceCoordinator);
+    /// Claiming the channel is what makes the receive path live, so it happens
+    /// here: there is no second wiring step a caller can forget.
+    SymbolWirelessManager(WirelessManager* wirelessManager,
+                          RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
     /// Drives the channel's retransmits. Called every loop tick.
     void sync();
 
     /// Sends one command to the peer set by setMacPeer, retried until the radio
-    /// reports it landed. `serialPort` names the jack it is meant for; the
-    /// address decides where it goes.
+    /// reports it landed or the retry budget runs out, after which it is dropped
+    /// silently. `serialPort` reaches the log only; the address decides where the
+    /// frame goes.
     void sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort);
 
     /// Sets the address every subsequent sendPacket goes to.
@@ -82,8 +81,8 @@ private:
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     uint8_t macPeer[6];
-    ReliableTransport* transport = nullptr;
-    ReliableChannel<SymbolMatchPacket>* channel = nullptr;
+    Resender resender;
+    ReliableChannel<SymbolMatchPacket> channel;
 
     std::map<SerialIdentifier, std::function<void(const SymbolMatchCommand&)>> packetReceivedCallbacks;
 };

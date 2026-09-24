@@ -1584,8 +1584,7 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    FakeQuickdrawWirelessManager quickdrawWirelessManager;
-    MatchManager matchManager;
+    MatchManager matchManager(nullptr);
     matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
@@ -1632,8 +1631,7 @@ inline void anAbortRetiresTheBoutTheTournamentPrimed(ShootoutManagerTests* suite
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    FakeQuickdrawWirelessManager quickdrawWirelessManager;
-    MatchManager matchManager;
+    MatchManager matchManager(nullptr);
     matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
@@ -1665,8 +1663,7 @@ inline void aTournamentResetLeavesACableBoutAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(selfMac));
 
     MockStorage storage;
-    FakeQuickdrawWirelessManager quickdrawWirelessManager;
-    MatchManager matchManager;
+    MatchManager matchManager(nullptr);
     matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 

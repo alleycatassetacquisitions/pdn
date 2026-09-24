@@ -41,9 +41,10 @@ public:
     // abandons. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
     // ReliableTransport parks (its abandons are no-ops and the RDC re-sends on
-    // the next chain-state event). Both game managers abandon: the shootout
-    // gates its next match on a fan-out clearing, and the chain duel needs the
-    // entry to stop rather than re-attempt at the 100ms floor indefinitely.
+    // the next chain-state event), and so does the duel channel, whose handlers
+    // are idempotent under a late replay. The two fan-out managers abandon: the
+    // shootout gates its next match on a fan-out clearing, and the chain duel
+    // needs the entry to stop rather than re-attempt at the 100ms floor.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
@@ -120,8 +121,9 @@ public:
     /// emits a single frame however many still owe an ack.
     ///
     /// Broadcast rather than a unicast per recipient because the ESP-NOW peer
-    /// table holds 20 entries, so a ring larger than that cannot be addressed by
-    /// unicast at all, while the broadcast slot is registered once at radio init.
+    /// table holds 20 entries: a ring larger than that makes every unicast evict
+    /// a peer the next one re-registers, while the broadcast slot, which eviction
+    /// never reclaims, is registered once at radio init.
     ///
     /// Naming no recipients sends nothing: a frame nobody is expected to answer
     /// for is not a delivery.

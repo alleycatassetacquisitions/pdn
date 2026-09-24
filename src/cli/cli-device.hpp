@@ -210,10 +210,7 @@ public:
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
 
-        // Both the duel and symbol receive paths come up with the channels their
-        // managers claim; no handler registration is owed here.
-        instance.symbolWirelessManager = new SymbolWirelessManager();
-        instance.symbolWirelessManager->initialize(
+        instance.symbolWirelessManager = new SymbolWirelessManager(
             instance.pdn->getWirelessManager(),
             instance.pdn->getRemoteDeviceCoordinator());
 

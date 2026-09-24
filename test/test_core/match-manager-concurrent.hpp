@@ -37,7 +37,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     char playerId[] = "test";
     player.setUserID(playerId);
     player.setIsHunter(false);
-    FakeQuickdrawWirelessManager wireless;
     FakeRemoteDeviceCoordinator rdc;
     const uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
     rdc.setPeerMac(SerialIdentifier::INPUT_JACK, peerMac);
@@ -46,7 +45,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.initialize();
     driver.connect();
 
-    MatchManager mm;
+    MatchManager mm(nullptr);
     using ::testing::_;
     ON_CALL(storage, write(_, _, _))
         .WillByDefault([](const std::string&, const std::string&, const std::string& value) {

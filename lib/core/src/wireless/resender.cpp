@@ -193,9 +193,9 @@ bool Resender::transmit(const Group& g) {
     // Null manager is the unit-test no-op path: nothing is sent, but nothing can
     // fail either, so report success and let retry bookkeeping run.
     if (wirelessManager == nullptr) return true;
-    // A negative return means the frame was never queued at all: too large for a
-    // frame, or the payload allocation failed. Radio state does not show up here —
-    // a send with the radio down still queues and reports success.
+    // A negative return means the frame never reached the radio: too large for a
+    // frame, the payload allocation failed, or WirelessManager refused it because
+    // ESP-NOW is not ready — a WiFi excursion parks every send for its duration.
     return wirelessManager->sendEspNowData(g.destination.data(), g.type,
                                            g.payload.data(), g.payload.size()) >= 0;
 }

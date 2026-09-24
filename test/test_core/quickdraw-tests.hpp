@@ -76,9 +76,9 @@ public:
         player->setUserID(playerId);
         player->setIsHunter(true);
 
-        matchManager = new MatchManager(device.wirelessManager);
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
@@ -214,9 +214,9 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager(device.wirelessManager);
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
@@ -412,10 +412,10 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager(device.wirelessManager);
         wirelessManager = new FakeQuickdrawWirelessManager();
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
@@ -824,9 +824,9 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager(device.wirelessManager);
         wirelessManager = new FakeQuickdrawWirelessManager();
         wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
@@ -1075,10 +1075,10 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager(device.wirelessManager);
         wirelessManager = new FakeQuickdrawWirelessManager();
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
