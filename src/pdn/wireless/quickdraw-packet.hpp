@@ -45,8 +45,9 @@ struct QuickdrawCommand {
         , playerDrawTime(playerDrawTime)
         , isHunter(isHunter) {
 
-        memcpy(this->matchId, matchId, IdGenerator::UUID_BUFFER_SIZE);
-
-        memcpy(this->playerId, playerId, 5);
+        // Bounded by the source, not the destination: a caller handing over a
+        // shorter string than the field would otherwise be read past the end of.
+        IdGenerator::copyId(this->matchId, matchId);
+        IdGenerator::copyId(this->playerId, playerId);
     }
 };
