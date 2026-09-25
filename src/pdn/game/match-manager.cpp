@@ -1,5 +1,4 @@
 #include "game/match-manager.hpp"
-#include <ArduinoJson.h>
 #include "device/drivers/logger.hpp"
 #include "wireless/quickdraw-packet.hpp"
 #include "game/shootout-manager.hpp"
@@ -259,33 +258,6 @@ bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
     return true;
 }
 
-std::string MatchManager::toJson() {
-    // Create JSON document with an object at the root
-    JsonDocument doc;  // Adjust size based on max matches
-    
-    // Create a "matches" array within the root object
-    JsonArray matchArray = doc["matches"].to<JsonArray>();
-
-    // Read all matches from storage
-    uint8_t count = getStoredMatchCount();
-    for (uint8_t i = 0; i < count; i++) {
-        Match* match = readMatchFromStorage(i);
-        if (match) {
-            // Add match to array
-            std::string matchJson = match->toJson();
-            JsonDocument matchDoc;
-            deserializeJson(matchDoc, matchJson);
-            matchArray.add(matchDoc.as<JsonObject>());
-            delete match;
-        }
-    }
-
-    // Serialize to string
-    std::string output;
-    serializeJson(doc, output);
-    return output;
-}
-
 void MatchManager::clearStorage() {
     storage->clear(MATCHES_PREFS_NAMESPACE);
     updateStoredMatchCount(0);
@@ -342,27 +314,6 @@ void MatchManager::updateStoredMatchCount(uint8_t count) {
     } else {
         LOG_I("PDN", "Updated stored match count to %d\n", count);
     }
-}
-
-Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    if (index >= getStoredMatchCount()) {
-        return nullptr;
-    }
-
-    // Create key for this match
-    char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
-    
-    // Read match JSON from preferences
-    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
-    if (matchJson.empty()) {
-        return nullptr;
-    }
-
-    // Create and deserialize match
-    Match* match = new Match();
-    match->fromJson(matchJson);
-    return match;
 }
 
 parameterizedCallbackFunction MatchManager::getButtonMasher() {
