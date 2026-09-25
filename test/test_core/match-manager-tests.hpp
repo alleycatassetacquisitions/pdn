@@ -23,6 +23,14 @@ public:
         char playerId[] = "test";
         player->setUserID(playerId);
         matchManager->initialize(player, &mockStorage, &fakeWirelessManager);
+        using ::testing::_;
+        ON_CALL(mockStorage, write(_, _, _))
+            .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+                return value.size();
+            });
+        ON_CALL(mockStorage, writeUChar(_, _, _)).WillByDefault(::testing::Return(1));
+        ON_CALL(mockStorage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
+        ON_CALL(mockStorage, read(_, _, _)).WillByDefault(::testing::Return(""));
         // Bounty-side tests that feed SEND_MATCH_ID via setupMatchAsBounty use
         // this dummyMac as the fake hunter. Stub the RDC to accept it as a
         // direct peer so the MAC-peering gate passes.
@@ -64,6 +72,17 @@ public:
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
 };
+
+// initializeMatch hands primeMatch the generator's own buffer rather than a copy,
+// so this pins that the id survives as far as the Match. Nothing else in the suite
+// reads the generated id — every other test supplies one.
+inline void matchManagerInitializeStoresGeneratedMatchId(MatchManagerTestSuite* suite) {
+    suite->setupMatchAsHunter();
+
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    EXPECT_EQ(strlen(suite->matchManager->getCurrentMatch()->getMatchId()),
+              IdGenerator::UUID_STRING_LENGTH);
+}
 
 // ============================================
 // Boost (chain duel support)

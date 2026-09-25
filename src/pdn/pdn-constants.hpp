@@ -22,6 +22,3 @@ constexpr uint8_t numGripLights    = 6;
 
 // --- Game timing ---
 constexpr unsigned long DUEL_NO_RESULT_TIME = 123456789;
-
-// --- Persistent storage namespace (NVS / Preferences) ---
-constexpr const char* PREF_NAMESPACE = "matches";

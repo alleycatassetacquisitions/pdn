@@ -38,6 +38,19 @@ jobs:
     - name: Run CLI Unit Tests
       run: pio test -e native_cli_test
 
+    # Plain native runs matchManagerConcurrentDriverVsReader too, but only tsan
+    # checks it for races. These run the built binary directly rather than under
+    # `pio test` — see the notes above each sanitizer env in platformio.ini.
+    - name: Run Core Unit Tests under AddressSanitizer
+      run: |
+        pio test -e native_asan --without-testing
+        ./.pio/build/native_asan/program
+
+    - name: Run Core Unit Tests under ThreadSanitizer
+      run: |
+        pio test -e native_tsan --without-testing
+        ./.pio/build/native_tsan/program
+
   # ESP32 build verification
   build-esp32:
     runs-on: ubuntu-latest

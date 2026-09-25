@@ -25,6 +25,7 @@
 #include "reliable-channel-tests.hpp"
 #include "direct-peer-table-tests.hpp"
 #include "reliable-transport-tests.hpp"
+#include "storage-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -694,6 +695,22 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
 // MATCH TESTS
 // ============================================
 
+TEST_F(MatchTestSuite, defaultConstructionIsEmpty) {
+    matchDefaultConstructionIsEmpty();
+}
+
+TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
+    matchShootoutIdConversionStaysInBounds();
+}
+
+TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) {
+    matchDeserializeClearsPlayerIdTail();
+}
+
+TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
+    matchShorterIdOverwriteClearsTheTail();
+}
+
 TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
     matchJsonRoundTripPreservesAllFields();
 }
@@ -726,25 +743,25 @@ TEST_F(MatchTestSuite, withLargeDrawTimes) {
     matchWithLargeDrawTimes();
 }
 
-// // ============================================
-// // UUID TESTS
-// // ============================================
+// ============================================
+// UUID TESTS
+// ============================================
 
-// TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
-//     uuidStringToBytesProducesCorrectOutput();
-// }
+TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+    uuidStringToBytesProducesCorrectOutput();
+}
 
-// TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-//     uuidBytesToStringProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
+    uuidBytesToStringProducesValidFormat();
+}
 
-// TEST_F(UUIDTestSuite, roundTripPreservesData) {
-//     uuidRoundTripPreservesData();
-// }
+TEST_F(UUIDTestSuite, roundTripPreservesData) {
+    uuidRoundTripPreservesData();
+}
 
-// TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-//     uuidGeneratorProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
+    uuidGeneratorProducesValidFormat();
+}
 
 // ============================================
 // MAC ADDRESS TESTS
@@ -801,6 +818,10 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 // ============================================
 // MATCH MANAGER TESTS
 // ============================================
+
+TEST_F(MatchManagerTestSuite, initializeStoresGeneratedMatchId) {
+    matchManagerInitializeStoresGeneratedMatchId(this);
+}
 
 TEST_F(MatchManagerTestSuite, setBoostStoresValue) {
     matchManagerSetBoostStoresValue(matchManager, player);
@@ -917,6 +938,26 @@ TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
 
 TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
+}
+
+// ============================================
+// STORAGE / NVS NAMESPACE TESTS
+// ============================================
+
+TEST(StorageDriver, unknownNamespaceThrowsOnWrite) {
+    storageUnknownNamespaceThrowsOnWrite();
+}
+
+TEST(StorageDriver, registeredNamespaceRoundTripsString) {
+    storageRegisteredNamespaceRoundTripsString();
+}
+
+TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
+    storageUnknownNamespaceThrowsOnRead();
+}
+
+TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
+    storageUCharRoundTripInRegisteredNamespace();
 }
 
 // ============================================

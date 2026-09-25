@@ -40,17 +40,17 @@ static_assert(sizeof(HeadTransferPayload) <= MAX_PKT_DATA_SIZE,
               "lower MAX_CHAIN_MEMBERS or split the transfer across frames");
 
 //Singleton class that handles communication over ESP-NOW protocol.
-class EspNowManager : public PeerCommsDriverInterface
+class EspNowDriver : public PeerCommsDriverInterface
 {
 public:
     /// Creates the process-wide singleton; call once at driver registration.
-    static EspNowManager* CreateEspNowManager(const std::string& name) {
-        instance = new EspNowManager(name);
+    static EspNowDriver* CreateEspNowManager(const std::string& name) {
+        instance = new EspNowDriver(name);
         return instance;
     }
 
     /// The process-wide singleton, or nullptr before CreateEspNowManager.
-    static EspNowManager* GetInstance() {
+    static EspNowDriver* GetInstance() {
         return instance;
     }
 
@@ -287,7 +287,7 @@ public:
     }
 
 private:
-    static EspNowManager* instance;
+    static EspNowDriver* instance;
 
     // Struct definitions must come before methods that use them
     struct DeferredPacket {
@@ -313,7 +313,7 @@ private:
         size_t len;
     };
 
-    explicit EspNowManager(const std::string& name)
+    explicit EspNowDriver(const std::string& name)
         : PeerCommsDriverInterface(name)
         , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
         , sendStatusHandlers_((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
@@ -338,13 +338,13 @@ private:
         }
         
         // Register callbacks
-        err = esp_now_register_recv_cb(EspNowManager::EspNowRecvCallback);
+        err = esp_now_register_recv_cb(EspNowDriver::EspNowRecvCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering recv cb: 0x%X\n", err);
             return -1;
         }
         
-        err = esp_now_register_send_cb(EspNowManager::EspNowSendCallback);
+        err = esp_now_register_send_cb(EspNowDriver::EspNowSendCallback);
         if(err != ESP_OK) {
             LOG_E("ENC", "ESPNOW Error registering send cb: 0x%X\n", err);
             return -1;
@@ -367,7 +367,7 @@ private:
 
     //ESP-NOW callbacks
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
-        EspNowManager* manager = EspNowManager::GetInstance();
+        EspNowDriver* manager = EspNowDriver::GetInstance();
 
         // rx_ctrl carries the per-frame RSSI, available on every ESP-NOW
         // receive without promiscuous mode. This is the sole RSSI fill path.
@@ -415,7 +415,7 @@ private:
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
-        EspNowManager* manager = EspNowManager::GetInstance();
+        EspNowDriver* manager = EspNowDriver::GetInstance();
 
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Send Callback");

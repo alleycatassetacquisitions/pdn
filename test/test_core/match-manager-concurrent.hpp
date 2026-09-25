@@ -47,6 +47,13 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.connect();
 
     MatchManager mm;
+    using ::testing::_;
+    ON_CALL(storage, write(_, _, _))
+        .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+            return value.size();
+        });
+    ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(::testing::Return(1));
+    ON_CALL(storage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
     mm.initialize(&player, &storage, &wireless);
     mm.setRemoteDeviceCoordinator(&rdc);
     mm.clearCurrentMatch();

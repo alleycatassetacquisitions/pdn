@@ -4,6 +4,7 @@
 #include <FastLED.h>
 #include <Preferences.h>
 
+#include "device/crash/crash-logger.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
@@ -44,7 +45,7 @@
 #endif
 
 WifiConfig* wifiConfig = nullptr;
-
+CrashLogger* crashLogger = nullptr;
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;
 SSD1309U8G2Driver* displayDriver         = nullptr;
@@ -57,7 +58,7 @@ Esp32S3HapticsDriver* hapticsDriver      = nullptr;
 Esp32s3SerialIn* serialInDriver          = nullptr;
 Esp32s3SerialInSecondary* serialInSecondaryDriver = nullptr;
 Esp32S3HttpClient* httpClientDriver      = nullptr;
-EspNowManager*   peerCommsDriver         = nullptr;
+EspNowDriver*   peerCommsDriver         = nullptr;
 Esp32S3Logger*   loggerDriver            = nullptr;
 Esp32S3PrefsDriver* storageDriver        = nullptr;
 
@@ -106,7 +107,7 @@ static void setupEspNow(PeerCommsInterface* peerComms) {
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial) delay(100);
+    // Do not block on Serial — USB CDC may have no host in the field; setup must run anyway.
 
     // Construct platform drivers first — logging and timers depend on these.
     loggerDriver = new Esp32S3Logger(LOGGER_DRIVER_NAME);
@@ -129,9 +130,9 @@ void setup() {
     serialInSecondaryDriver = new Esp32s3SerialInSecondary(SERIAL_IN_SECONDARY_DRIVER_NAME, fdnRXt2, fdnRXr2);
 
     wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
-    peerCommsDriver = EspNowManager::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, FDN_PREF_NAMESPACE);
+    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -166,6 +167,10 @@ void setup() {
 
     setupEspNow(peerCommsDriver);
 
+    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger->capture();
+    crashLogger->transmitPending();
+
     // Apps
     idleApp = new Idle(
         remotePlayerManager, hackedPlayersManager,
@@ -199,5 +204,8 @@ void setup() {
 }
 
 void loop() {
+    if (crashLogger != nullptr) {
+        crashLogger->pollSerialCommand();
+    }
     fdn->loop();
 }

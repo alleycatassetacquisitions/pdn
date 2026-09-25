@@ -76,9 +76,7 @@ void MatchManager::initializeMatch(uint8_t* opponentMac) {
     auto* clock = SimpleTimer::getPlatformClock();
     LOG_D(MATCH_MANAGER_TAG, "TIMING initializeMatch T=%lu", clock ? clock->milliseconds() : 0UL);
 
-    char matchId[IdGenerator::UUID_BUFFER_SIZE];
-    memcpy(matchId, IdGenerator::getInstance().generateId(), IdGenerator::UUID_BUFFER_SIZE);
-    primeMatch(matchId, opponentMac, player->isHunter());
+    primeMatch(IdGenerator::getInstance().generateId(), opponentMac, player->isHunter());
     sendMatchId();
 }
 
@@ -268,13 +266,13 @@ std::string MatchManager::toJson() {
 }
 
 void MatchManager::clearStorage() {
-    storage->clear();
+    storage->clear(MATCHES_PREFS_NAMESPACE);
     updateStoredMatchCount(0);
     LOG_I("PDN", "Cleared match storage\n");
 }
 
 size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(PREF_COUNT_KEY, 0);
+    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
@@ -298,15 +296,15 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
     LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
     
     // Try to check if preferences is working
-    if (storage->writeUChar("test_key", 123) != 1) {
+    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, "test_key", 123) != 1) {
         LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
     } else {
-        uint8_t test_val = storage->readUChar("test_key", 0);
-        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", test_val);
+        uint8_t testValue = storage->readUChar(MATCHES_PREFS_NAMESPACE, "test_key", 0);
+        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", testValue);
     }
 
     // Save match JSON to preferences
-    if (storage->write(key, matchJson) != matchJson.length()) {
+    if (storage->write(MATCHES_PREFS_NAMESPACE, key, matchJson) != matchJson.length()) {
         LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
                 key, matchJson.length());
         
@@ -318,7 +316,7 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
 }
 
 void MatchManager::updateStoredMatchCount(uint8_t count) {
-    if (storage->writeUChar(PREF_COUNT_KEY, count) != 1) {
+    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, count) != 1) {
         LOG_E("PDN", "Failed to update match count\n");
     } else {
         LOG_I("PDN", "Updated stored match count to %d\n", count);
@@ -335,7 +333,7 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
     snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
     
     // Read match JSON from preferences
-    std::string matchJson = storage->read(key, "");
+    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
     if (matchJson.empty()) {
         return nullptr;
     }

@@ -54,9 +54,8 @@ struct QuickdrawCommand {
         : command(command), playerDrawTime(playerDrawTime), isHunter(isHunter) {
         this->wifiMacAddr = macAddress;
 
-        memcpy(this->matchId, matchId, IdGenerator::UUID_BUFFER_SIZE);
-
-        memcpy(this->playerId, playerId, 5);
+        IdGenerator::copyId(this->matchId, matchId);
+        IdGenerator::copyId(this->playerId, playerId);
     }
 };
 

@@ -26,7 +26,6 @@ pdn-pcb/#auto_saved_files#
 
 # Exported BOM files
 *.xml
-*.csv
 
 .pioenvs
 .piolibdeps
