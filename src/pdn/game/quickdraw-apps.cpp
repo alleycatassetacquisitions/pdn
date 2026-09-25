@@ -91,7 +91,6 @@ void DuelApp::populateStateMap() {
     DuelResult* duelResult = new DuelResult(context);
     Win* win = new Win(context);
     Lose* lose = new Lose(context);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(context);
 
     ShootoutManager* shootoutManager = context.shootoutManager;
 
@@ -167,16 +166,14 @@ void DuelApp::populateStateMap() {
         [duelResult]() { return duelResult->transitionToShootoutEliminated(); },
         StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
-    win->addTransition(
+    // Straight to sleep: the match upload that used to sit between these and
+    // SLEEP took the radio into WiFi at the end of every duel.
+    win->addAppTransition(
         [win]() { return win->resetGame(); },
-        uploadMatches);
+        StateId(HUB_APP_ID), StateId(SLEEP));
 
-    lose->addTransition(
+    lose->addAppTransition(
         [lose]() { return lose->resetGame(); },
-        uploadMatches);
-
-    uploadMatches->addAppTransition(
-        [uploadMatches]() { return uploadMatches->transitionToSleep(); },
         StateId(HUB_APP_ID), StateId(SLEEP));
 
     stateMap.push_back(duelCountdown);
@@ -186,7 +183,6 @@ void DuelApp::populateStateMap() {
     stateMap.push_back(duelResult);
     stateMap.push_back(win);
     stateMap.push_back(lose);
-    stateMap.push_back(uploadMatches);
 }
 
 ShootoutApp::ShootoutApp(const GameContext& context)

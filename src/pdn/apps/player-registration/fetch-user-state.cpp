@@ -48,8 +48,6 @@ void FetchUserDataState::onStateMounted(PDN* pdn) {
         transitionToPlayerRegistrationState = true;
         fetchTimer.invalidate();
         isFetchingUserData = false;
-    } else if(matchManager->getStoredMatchCount() > 0) {
-        uploadMatches();
     } else {
         fetchUserData();
     }
@@ -72,33 +70,11 @@ void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     isFetchingUserData = false;
-    isUploadingMatches = false;
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
     transitionToPlayerRegistrationState = false;
     fetchTimer.invalidate();
 }   
-
-void FetchUserDataState::uploadMatches() {
-    isUploadingMatches = true;
-    fetchTimer.setTimer(MATCHES_UPLOAD_TIMEOUT);
-    QuickdrawRequests::updateMatches(
-        wirelessManager,
-        matchManager->toJson(),
-        [this](const std::string& jsonResponse) {
-            LOG_I(TAG, "Successfully uploaded matches: %s", jsonResponse.c_str());
-            matchManager->clearStorage();
-            fetchTimer.invalidate();
-            fetchUserData();
-        },
-        [this](const WirelessErrorInfo& error) {
-            LOG_E(TAG, "Failed to upload matches: %s (code: %d)", 
-                error.message.c_str(), static_cast<int>(error.code));
-            fetchTimer.invalidate();
-            fetchUserData();
-        }
-    );
-}
 
 void FetchUserDataState::fetchUserData() {
     isFetchingUserData = true;

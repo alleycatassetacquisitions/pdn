@@ -48,7 +48,6 @@ public:
     bool transitionToWelcomeMessage();
     bool transitionToPlayerRegistration();
     void fetchUserData();
-    void uploadMatches();
     void showLoadingGlyphs(PDN* pdn);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -62,12 +61,10 @@ private:
     bool transitionToWelcomeMessageState = false;
     WirelessManager* wirelessManager;
     bool isFetchingUserData = false;
-    bool isUploadingMatches = false;
 
     Player* player;
     SimpleTimer fetchTimer;
     const int USER_DATA_FETCH_TIMEOUT = 10000;
-    const int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 
 class ConfirmOfflineState : public TypedState<PDN> {

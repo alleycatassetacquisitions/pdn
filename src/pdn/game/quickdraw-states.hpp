@@ -48,7 +48,8 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    UPLOAD_MATCHES = 20,
+    // 20 was UPLOAD_MATCHES. Left as a gap: these ids are wire-visible, so
+    // closing it would shift every state after it.
     SUPPORTER_READY = 21,
     SHOOTOUT_PROPOSAL = 22,
     SHOOTOUT_BRACKET_REVEAL = 23,
@@ -381,30 +382,6 @@ private:
     ChainDuelManager* chainDuelManager;
     MatchManager* matchManager;
     bool reset = false;
-};
-
-class UploadMatchesState : public TypedState<PDN> {
-public:
-    explicit UploadMatchesState(const GameContext& ctx);
-    ~UploadMatchesState();
-
-    void onStateMounted(PDN* pdn) override;
-    void onStateLoop(PDN* pdn) override;
-    void onStateDismounted(PDN* pdn) override;
-    bool transitionToSleep();
-    void showLoadingGlyphs(PDN* pdn);
-    void attemptUpload();
-
-private:
-    Player* player;
-    WirelessManager* wirelessManager;
-    MatchManager* matchManager;
-    SimpleTimer uploadMatchesTimer;
-    int matchUploadRetryCount = 0;
-    const int UPLOAD_MATCHES_TIMEOUT = 10000;
-    std::string matchesJson;
-    bool transitionToSleepState = false;
-    bool shouldRetryUpload = false;
 };
 
 class ShootoutProposal : public TypedState<PDN> {

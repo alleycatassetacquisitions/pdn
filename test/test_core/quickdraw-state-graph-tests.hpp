@@ -48,7 +48,6 @@ inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     DUEL_RESULT,
     WIN,
     LOSE,
-    UPLOAD_MATCHES,
     SHOOTOUT_PROPOSAL,
     SHOOTOUT_BRACKET_REVEAL,
     SHOOTOUT_SPECTATOR,
@@ -76,9 +75,8 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
     {DUEL_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
     {DUEL_RESULT,
      {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
-    {WIN, {UPLOAD_MATCHES}},
-    {LOSE, {UPLOAD_MATCHES}},
-    {UPLOAD_MATCHES, {SLEEP}},
+    {WIN, {SLEEP}},
+    {LOSE, {SLEEP}},
     {SLEEP, {AWAKEN_SEQUENCE}},
     {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
     {SHOOTOUT_BRACKET_REVEAL, {DUEL_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
@@ -115,7 +113,8 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
     {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
     {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
     {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-    {{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
+    {{WIN, 0}, {HUB_APP_ID, SLEEP}},
+    {{LOSE, 0}, {HUB_APP_ID, SLEEP}},
     {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
     {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
     {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
@@ -253,7 +252,7 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
         }
         totalEdges += expected.second.size();
     }
-    EXPECT_EQ(totalEdges, 47u);
+    EXPECT_EQ(totalEdges, 46u);
 }
 
 // Which of those edges became hand-offs, and the app plus entry state each names.
