@@ -174,6 +174,14 @@ public:
 
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
+    /** On a ring whenever a head is set. Off one by default, as the base reports. */
+    bool isInRing() const override { return ringHeadMac != std::array<uint8_t, 6>{}; }
+    /** The head a test put this device under; nullptr off a ring. */
+    const uint8_t* getHeadMac() const override {
+        return ringHeadMac == std::array<uint8_t, 6>{} ? nullptr : ringHeadMac.data();
+    }
+    std::array<uint8_t, 6> ringHeadMac{};
+
     void setPortStatus(SerialIdentifier id, PortStatus status) {
         if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
         else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
@@ -252,9 +260,15 @@ public:
         return chainRole == ChainRole::RING || relayedMember;
     }
 
+    /** The head relayed to a member; the base answers only for a real chain. */
+    const uint8_t* getHeadMac() const override {
+        return headMac == std::array<uint8_t, 6>{} ? nullptr : headMac.data();
+    }
+
     ChainRole chainRole = ChainRole::RING;
     bool relayedMember = false;
     std::vector<std::array<uint8_t, 6>> chainMembers;
+    std::array<uint8_t, 6> headMac{};
 };
 
 // Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.

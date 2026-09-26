@@ -1886,20 +1886,20 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) 
 // SHOOTOUT MANAGER TESTS
 // ============================================
 
-TEST_F(ShootoutManagerTests, coordinatorIsTheRingClosureClaimant) { coordinatorIsTheRingClosureClaimant(this); }
-TEST_F(ShootoutManagerTests, ringClosedClaimAnnouncesRosterToMembers) { ringClosedClaimAnnouncesRosterToMembers(this); }
-TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorClaimsRing) { ringClosureFromCoordinatorClaimsRing(this); }
+TEST_F(ShootoutManagerTests, coordinatorIsTheRingHeadThatDrew) { coordinatorIsTheRingHeadThatDrew(this); }
+TEST_F(ShootoutManagerTests, ringClosedAnnouncesRosterToMembers) { ringClosedAnnouncesRosterToMembers(this); }
+TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorAnnouncesRing) { ringClosureFromCoordinatorAnnouncesRing(this); }
 TEST_F(ShootoutManagerTests, ringClosedBroadcastPromotesOnlyItsOwnMembers) { ringClosedBroadcastPromotesOnlyItsOwnMembers(this); }
 TEST_F(ShootoutManagerTests, openRingRefusesProposalDespiteLatchedRoster) { openRingRefusesProposalDespiteLatchedRoster(this); }
 TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoopMembersComeFromRdcRoster(this); }
-TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
+TEST_F(ShootoutManagerTests, onlyTheRingHeadDrawsTheBracket) { onlyTheRingHeadDrawsTheBracket(this); }
+TEST_F(ShootoutManagerTests, memberJoinsOnlyItsRingHeadsBracket) { memberJoinsOnlyItsRingHeadsBracket(this); }
+TEST_F(ShootoutManagerTests, proposalAdvancesWhenTheRosterCompletesIt) { proposalAdvancesWhenTheRosterCompletesIt(this); }
+TEST_F(ShootoutManagerTests, followerReacksItsCoordinatorsBracketRetransmit) { followerReacksItsCoordinatorsBracketRetransmit(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
 TEST_F(ShootoutManagerTests, anAbortRetiresTheBoutTheTournamentPrimed) { anAbortRetiresTheBoutTheTournamentPrimed(this); }
 TEST_F(ShootoutManagerTests, aTournamentResetLeavesACableBoutAlone) { aTournamentResetLeavesACableBoutAlone(this); }
-TEST_F(ShootoutManagerTests, deposedHeadDoesNotProposeOnItsDeadClaim) { deposedHeadDoesNotProposeOnItsDeadClaim(this); }
-TEST_F(ShootoutManagerTests, staleCoordinatorClaimYieldsToANewRing) { staleCoordinatorClaimYieldsToANewRing(this); }
-TEST_F(ShootoutManagerTests, mergedRingClaimantsSettleOnLowerMac) { mergedRingClaimantsSettleOnLowerMac(this); }
 TEST_F(ShootoutManagerTests, ringClosedReannouncesWhileMembersUnconfirmed) { ringClosedReannouncesWhileMembersUnconfirmed(this); }
 TEST_F(ShootoutManagerTests, laggingRosterDoesNotRunSoloTournament) { laggingRosterDoesNotRunSoloTournament(this); }
 TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
