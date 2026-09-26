@@ -370,8 +370,6 @@ protected:
         auto* pc = n.device->mockPeerComms;
 
         ON_CALL(*pc, getMacAddress()).WillByDefault(Return(n.mac));
-        ON_CALL(*pc, addEspNowPeer(_)).WillByDefault(Return(0));
-        ON_CALL(*pc, removeEspNowPeer(_)).WillByDefault(Return(0));
         ON_CALL(*pc, getPeerCommsState()).WillByDefault(Return(PeerCommsState::CONNECTED));
 
         // Capture every outgoing packet into the shared queue.

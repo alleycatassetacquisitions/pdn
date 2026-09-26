@@ -1,5 +1,6 @@
 #include "game/chain-duel-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "wireless/mac-functions.hpp"
 
 #define TAG "CDM"
 
@@ -42,6 +43,14 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
 ChainDuelManager::~ChainDuelManager() {
     rdc->setChainChangeCallback(nullptr);
     rdc->setOnChainRoleChange(nullptr);
+}
+
+void ChainDuelManager::setChampion(const std::array<uint8_t, 6>* mac) {
+    if (mac == nullptr) {
+        championMac.reset();
+        return;
+    }
+    championMac = *mac;
 }
 
 SerialIdentifier ChainDuelManager::opponentJack() const {
@@ -295,6 +304,7 @@ void ChainDuelManager::onChainStateChanged() {
 }
 
 void ChainDuelManager::applyChainStateChange() {
+
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;
@@ -318,7 +328,7 @@ void ChainDuelManager::applyChainStateChange() {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
             if (!championMac.has_value() || *championMac != selfArr) {
-                championMac = selfArr;
+                setChampion(&selfArr);
                 broadcastRoleAndChampion();
                 sendRoleToOpponentJack();
                 return;
@@ -332,7 +342,7 @@ void ChainDuelManager::applyChainStateChange() {
     if (isSupporter() && championMac.has_value()) {
         const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr && memcmp(championMac->data(), selfMac, 6) == 0) {
-            championMac.reset();
+            setChampion(nullptr);
         }
     }
 
@@ -384,10 +394,10 @@ void ChainDuelManager::onRoleAnnounceReceived(
     uint8_t role,
     const uint8_t* announcedChampionMac,
     uint8_t seqId) {
-    // 1. Update peer role based on which jack fromMac is on.
-    //    Also remember whether this announce came from our opponent-jack
-    //    (parent) direction — only opponent-jack announces authoritatively
-    //    update our championMac cache.
+    // Update peer role based on which jack fromMac is on.
+    // Also remember whether this announce came from our opponent-jack (parent)
+    // direction — only opponent-jack announces authoritatively update our
+    // championMac cache.
     bool fromOpponentJack = false;
     bool fromKnownDirectPeer = false;
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
@@ -402,42 +412,25 @@ void ChainDuelManager::onRoleAnnounceReceived(
         }
     }
 
-    // 2. Only act on announces from known direct peers. A stranger in radio
-    //    range must not be able to move this device's champion.
+    // Only act on announces from known direct peers. A stranger in radio
+    // range must not be able to move this device's champion.
     if (!fromKnownDirectPeer) return;
 
-    // 3 & 4. Only same-role opponent-jack announces authoritatively update
+    // Only same-role opponent-jack announces authoritatively update
     // championMac. Opposite-role senders are dueling opponents, not chain
     // parents — their championMac is irrelevant.
     if (!fromOpponentJack) return;
     if (role != (player->isHunter() ? 1u : 0u)) return;
+    // Wire input: the field is always present, so a sender with no champion sends
+    // it zeroed, and a two-bounty ring does exactly that: both clear their champion,
+    // then each announces to the other's opponent jack with a matching role. Caching
+    // the zero would cascade it onward as this device's champion.
+    if (MacToUInt64(announcedChampionMac) == 0) return;
 
-    // 3. Register champion as ESP-NOW peer (only if it's not our own MAC).
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    bool championIsSelf = (selfMac != nullptr &&
-                           memcmp(selfMac, announcedChampionMac, 6) == 0);
-    if (!championIsSelf) {
-        rdc->registerPeer(announcedChampionMac);
-    }
-
-    // 4. Update championMac and cascade if changed. On change, release the
-    // ESP-NOW peer slot held by the OLD champion MAC unless it's still
-    // reachable via one of our jacks (then its registration is owned by the
-    // chain-peer bookkeeping and will be cleaned up when that list changes).
     std::array<uint8_t, 6> newMac;
     memcpy(newMac.data(), announcedChampionMac, 6);
     bool changed = !championMac.has_value() || *championMac != newMac;
-    if (changed && championMac.has_value()) {
-        std::array<uint8_t, 6> oldMac = *championMac;
-        bool oldIsSelf = (selfMac != nullptr &&
-                          memcmp(selfMac, oldMac.data(), 6) == 0);
-        if (!oldIsSelf) {
-            if (!rdc->isDirectPeer(oldMac.data())) {
-                rdc->unregisterPeer(oldMac.data());
-            }
-        }
-    }
-    championMac = newMac;
+    setChampion(&newMac);
     if (changed) {
         broadcastRoleAndChampion();
         // A head transfer swaps the champion without touching this device's own
