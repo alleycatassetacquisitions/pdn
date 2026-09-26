@@ -32,9 +32,9 @@ namespace quickdraw_state_graph_expectations {
 // dropped — that app is now mounted by the device rather than nested as a state.
 // The hub, duel, shootout and symbol maps concatenate to this.
 //
-// One deliberate divergence from the pre-split order: Sleep sat between Lose and
-// the shootout states, and now sits in the hub with the other three
-// between-match states. Only the flat position moved.
+// One deliberate divergence from the pre-split order: Sleep sat between
+// UploadMatches (since deleted) and the shootout states, and now sits in the hub
+// with the other three between-match states. Only the flat position moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     AWAKEN_SEQUENCE,
     IDLE,

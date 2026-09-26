@@ -8,11 +8,12 @@
 
 static constexpr const char* PREF_COUNT_KEY = "count";
 static constexpr const char* PREF_MATCH_KEY  = "match_";
-// Deliberately far below the 255 an index byte allows. The `nvs` partition is
-// 20KB and shared with the crash log, and a stored match is ~150 bytes, so
-// without this the partition fills first and BOTH subsystems start failing
-// writes silently. Capping here keeps the loss to matches alone. The exact
-// ceiling wants measuring on hardware; this is the conservative side of it.
+static constexpr const char* PREF_SLOT_KEY = "slot";
+// Ring size, not a ceiling: the oldest record is overwritten so a save never
+// fails. Far below the 255 an index byte allows, because the 20KB `nvs`
+// partition is shared with the crash log, whose writes report nothing when they
+// fail. A stored match is ~145 bytes of JSON; its on-flash cost is larger and
+// wants measuring, so this is the conservative side of it.
 static constexpr uint8_t MAX_MATCHES = 32;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
@@ -216,8 +217,6 @@ bool MatchManager::finalizeMatch() {
 
     // Save to storage
     if (appendMatchToStorage(&*activeDuelState.match)) {
-        // Update stored count
-        updateStoredMatchCount(getStoredMatchCount() + 1);
         clearCurrentMatch();
         LOG_I(MATCH_MANAGER_TAG, "Successfully finalized match %s\n", match_id.c_str());
         return true;
@@ -264,12 +263,18 @@ bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
 }
 
 Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    if (index >= getStoredMatchCount()) {
+    const uint8_t retained = static_cast<uint8_t>(getStoredMatchCount());
+    if (index >= retained) {
         return nullptr;
     }
 
+    // Oldest first. Until the ring wraps the slots are already in order; once it
+    // has, the next slot due to be written is the oldest one still held.
+    const uint8_t oldest = (retained == MAX_MATCHES) ? nextStorageSlot() : 0;
+    const uint8_t slot = static_cast<uint8_t>((oldest + index) % MAX_MATCHES);
+
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
+    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, slot);
 
     std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
     if (matchJson.empty()) {
@@ -284,7 +289,18 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
 void MatchManager::clearStorage() {
     storage->clear(MATCHES_PREFS_NAMESPACE);
     updateStoredMatchCount(0);
+    setNextStorageSlot(0);
     LOG_I("PDN", "Cleared match storage\n");
+}
+
+uint8_t MatchManager::nextStorageSlot() {
+    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_SLOT_KEY, 0);
+}
+
+void MatchManager::setNextStorageSlot(uint8_t slot) {
+    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, PREF_SLOT_KEY, slot) != 1) {
+        LOG_E(MATCH_MANAGER_TAG, "Failed to advance the match storage slot");
+    }
 }
 
 size_t MatchManager::getStoredMatchCount() {
@@ -294,40 +310,24 @@ size_t MatchManager::getStoredMatchCount() {
 bool MatchManager::appendMatchToStorage(const Match* match) {
     if (!match) return false;
 
-    uint8_t count = getStoredMatchCount();
-    if (count >= MAX_MATCHES) {
-        LOG_E("PDN", "Cannot save match - storage full\n");
-        return false;
-    }
+    const uint8_t slot = nextStorageSlot();
+    const std::string matchJson = match->toJson();
 
-    // Convert match to JSON for storage
-    std::string matchJson = match->toJson();
-    
-    // Create key for this match
     char key[16];
-    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, count);
+    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, slot);
 
-    LOG_W(MATCH_MANAGER_TAG, "Attempting to save match to storage at key %s (JSON length: %d bytes)", 
-            key, matchJson.length());
-    LOG_W(MATCH_MANAGER_TAG, "Match JSON: %s", matchJson.c_str());
-    
-    // Try to check if preferences is working
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, "test_key", 123) != 1) {
-        LOG_E(MATCH_MANAGER_TAG, "NVS Preference test write failed! Potential hardware or NVS issue");
-    } else {
-        uint8_t testValue = storage->readUChar(MATCHES_PREFS_NAMESPACE, "test_key", 0);
-        LOG_W(MATCH_MANAGER_TAG, "NVS test write/read successful: wrote 123, read %d", testValue);
-    }
-
-    // Save match JSON to preferences
     if (storage->write(MATCHES_PREFS_NAMESPACE, key, matchJson) != matchJson.length()) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", 
-                key, matchJson.length());
-        
+        LOG_E(MATCH_MANAGER_TAG, "Failed to save match to storage - key: %s, length: %d", key,
+              matchJson.length());
         return false;
     }
 
-    LOG_W(MATCH_MANAGER_TAG, "Successfully saved match to storage at index %d", count);
+    setNextStorageSlot(static_cast<uint8_t>((slot + 1) % MAX_MATCHES));
+
+    const uint8_t retained = static_cast<uint8_t>(getStoredMatchCount());
+    if (retained < MAX_MATCHES) {
+        updateStoredMatchCount(static_cast<uint8_t>(retained + 1));
+    }
     return true;
 }
 
@@ -493,8 +493,7 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 
     activeDuelState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
     setNeverPressed();
-    // A pity time is still a duel outcome, so it belongs in the on-device
-    // "average reaction" like any other.
+    // Pity times are synthetic but still count toward the average.
     player->addReactionTime(pityTime);
 
     sendCommand(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED,

@@ -70,6 +70,8 @@ void Lose::onStateLoop(PDN* pdn) {
 void Lose::onStateDismounted(PDN* pdn) {
     loseTimer.invalidate();
     reset = false;
+    // The animation started on mount loops; no successor inherits it.
+    pdn->getLightManager()->stopAnimation();
 }
 
 bool Lose::resetGame() {

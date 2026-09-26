@@ -78,6 +78,8 @@ void Win::onStateDismounted(PDN* pdn) {
     winTimer.invalidate();
     reset = false;
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
+    // The animation started on mount loops; no successor inherits it.
+    pdn->getLightManager()->stopAnimation();
 }
 
 bool Win::resetGame() {

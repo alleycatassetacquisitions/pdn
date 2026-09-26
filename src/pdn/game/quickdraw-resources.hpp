@@ -71,13 +71,6 @@ inline const ImageCollection resistanceImageCollection = {
 // - CRGB::DarkGreen = #006400 = (0, 100, 0)
 // - CRGB::DarkBlue  = #00008B = (0, 0, 139)
 // - CRGB::Yellow    = #FFFF00 = (255, 255, 0)
-inline const LEDColor bountyColors[16] = {
-    LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 165, 0),
-    LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 165, 0),
-    LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
-    LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
-};
-
 inline const LEDColor hunterColors[16] = {
     LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 0, 139),
     LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 0, 139),

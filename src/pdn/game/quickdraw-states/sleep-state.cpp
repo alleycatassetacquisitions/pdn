@@ -4,7 +4,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <string>
-#include "game/quickdraw-requests.hpp"
 #include "device/device.hpp"
 
 #define TAG "SleepState"
@@ -21,9 +20,7 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(PDN* pdn) {
-    // Sleeping means dark. Win and Lose both start looping animations and
-    // neither stops one, so the invariant belongs here rather than on each
-    // edge into sleep.
+    // Sleeping means dark, whatever ran before it.
     pdn->getLightManager()->stopAnimation();
 
     pdn->getDisplay()->
@@ -48,28 +45,6 @@ void Sleep::onStateLoop(PDN* pdn) {
     }
 
     // TODO: Convert this breathing effect to use the new animation system
-    // The old direct LED control API (setLight) has been removed in favor of animations
-    // This breathing effect should be implemented as a proper Animation class
-    /*
-    EVERY_N_MILLIS(16) {
-        if (breatheUp) {
-            ledBrightness++;
-        } else {
-            ledBrightness--;
-        }
-        pwm_val =
-            255.0 * (1.0 - abs((2.0 * (ledBrightness / smoothingPoints)) - 1.0));
-
-        if (ledBrightness == 255) {
-            breatheUp = false;
-        } else if (ledBrightness == 0) {
-            breatheUp = true;
-        }
-
-        LEDColor color = bountyColors[random8()];
-        PDN->getLightManager()->setLight(LightIdentifier::TRANSMIT_LIGHT, 0, color);
-    }
-    */
 }
 
 void Sleep::onStateDismounted(PDN* pdn) {

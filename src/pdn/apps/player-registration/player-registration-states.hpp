@@ -3,7 +3,6 @@
 #include "device/pdn.hpp"
 #include "state/state.hpp"
 #include "game/player.hpp"
-#include "game/match-manager.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "utils/simple-timer.hpp"

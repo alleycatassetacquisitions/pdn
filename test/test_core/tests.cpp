@@ -952,6 +952,10 @@ TEST(StorageDriver, registeredNamespaceRoundTripsString) {
     storageRegisteredNamespaceRoundTripsString();
 }
 
+TEST(StorageDriver, matchRingOverwritesOldestAndNeverFills) {
+    storageMatchRingOverwritesOldestAndNeverFills();
+}
+
 TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
     storageUnknownNamespaceThrowsOnRead();
 }

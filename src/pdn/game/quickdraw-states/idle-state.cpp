@@ -102,6 +102,9 @@ void Idle::onStateDismounted(PDN* pdn) {
     statsIndex = 0;
     matchInitializationTimer.invalidate();
     matchInitialized = false;
+    // Idle's animation loops and its highest-priority exit is the shootout
+    // proposal, which draws no lights of its own.
+    pdn->getLightManager()->stopAnimation();
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();

@@ -118,7 +118,14 @@ public:
     std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
 
     /**
-     * Empties the match store and resets its count.
+     * Reads a retained match, oldest first, for `index` in [0, getStoredMatchCount()).
+     * @return a Match the caller owns, or nullptr if `index` is out of range.
+     */
+    Match* readMatchFromStorage(uint8_t index);
+
+    /**
+     * Empties the match store. Nothing calls this yet: finished matches are held
+     * for a collector that does not exist, and the ring bounds them meanwhile.
      */
     void clearStorage();
 
@@ -209,12 +216,10 @@ private:
      */
     void updateStoredMatchCount(uint8_t count);
 
-    /**
-     * Reads a match from storage at the specified index
-     * @param index Index of the match to read
-     * @return New Match object if successful, nullptr if invalid
-     */
-    Match* readMatchFromStorage(uint8_t index);
+    /// The ring slot the next saved match will occupy.
+    uint8_t nextStorageSlot();
+    /// Advances the ring cursor.
+    void setNextStorageSlot(uint8_t slot);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake duel commands

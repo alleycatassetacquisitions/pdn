@@ -7,11 +7,11 @@
 #include "device/device.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "game/match-manager.hpp"
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    /// Boot app: takes the player from id entry through to a fetched record.
+    /// Boot app: id entry, the record fetch, and the offline fallback that
+    /// skips it, ending at the hand-off to gameplay.
     PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 
