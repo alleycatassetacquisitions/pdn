@@ -40,9 +40,9 @@ inline void storageMatchRingOverwritesOldestAndNeverFills() {
     player.setUserID(playerId);
     player.setIsHunter(true);
 
-    FakeQuickdrawWirelessManager wireless;
-    MatchManager manager;
-    manager.initialize(&player, &storage, &wireless);
+    MockDevice device;
+    MatchManager manager(device.wirelessManager);
+    manager.initialize(&player, &storage);
 
     const size_t capacity = 32;
     const size_t overflow = 5;
