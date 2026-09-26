@@ -753,7 +753,6 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
             << "node " << i << " missed the ring-closed broadcast";
     }
-    EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
     // Each device confirms. After four confirms propagate, every device
     // should reach BRACKET_REVEAL; the coordinator generates+broadcasts
@@ -771,6 +770,8 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
                   ShootoutManager::Phase::BRACKET_REVEAL)
             << "node " << i << " phase";
     }
+    // The ring head drew the bracket, so it coordinates.
+    EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
     // Advance past the bracket-reveal window and let the coordinator fire
     // the first MATCH_START.

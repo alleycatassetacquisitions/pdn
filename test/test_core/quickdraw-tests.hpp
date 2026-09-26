@@ -49,6 +49,7 @@ inline std::array<uint8_t, 6> mountShootoutBoutWithBountySlot(
     ON_CALL(*device.mockPeerComms, getMacAddress()).WillByDefault(Return(selfMac));
     ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
+    device.fakeRemoteDeviceCoordinator.ringHeadMac = coordinator;
     shootout.setMatchManager(matchManager);
     shootout.setLoopMembersForTest({me, coordinator, spectator});
     shootout.startProposal();
