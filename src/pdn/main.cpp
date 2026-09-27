@@ -30,7 +30,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
-#include "wireless/quickdraw-packet.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"

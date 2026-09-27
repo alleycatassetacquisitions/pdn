@@ -42,12 +42,6 @@ enum class ChainRole {
     RING = 3,
 };
 
-struct PortState {
-    SerialIdentifier port;
-    PortStatus status;
-    std::vector<std::array<uint8_t, 6>> peerMacAddresses;
-};
-
 class RemoteDeviceCoordinator {
     // Reaches the owned transport to inject SEND_SUCCESS / inbound contexts without
     // a radio; the transport stays out of the public API.
@@ -91,12 +85,6 @@ public:
      * getChainRole(), not here).
      */
     virtual PortStatus getPortStatus(SerialIdentifier port);
-    /**
-     * Status plus this port's direct peer, if any. A jack holds one peer, so the
-     * address list never carries more than one MAC.
-     */
-    PortState getPortState(SerialIdentifier port);
-
     /** No peer id known: an FDN peer, an unregistered player, or no peer at all. */
     static constexpr uint16_t PEER_USER_ID_NONE = 0xFFFF;
 
@@ -104,7 +92,6 @@ public:
      * Returns a pointer to the port's direct peer MAC address, or nullptr when the
      * port tracks no peer. Known from the first HELLO, so it is served from
      * CONNECTING onward, not only once CONNECTED.
-     * Prefer this over getPortState() when only the MAC address is needed.
      */
     virtual const uint8_t* getPeerMac(SerialIdentifier port) const;
 
