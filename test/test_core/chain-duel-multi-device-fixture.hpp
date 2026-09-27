@@ -433,7 +433,6 @@ protected:
     // production receive path untested by every chain and tournament case here.
     void wireChainEventHandlers(MultiDeviceNode& n) {
         ChainDuelManager* cdm = n.cdm.get();
-        (void)cdm;
 
         // GameSession fans this one to two consumers; only the manager half has a
         // counterpart here, since the fixture stands up no states. Dropping it

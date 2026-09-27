@@ -260,7 +260,7 @@ public:
 // Captures kQuickdrawCommand frames as MatchManager hands them to the radio, and
 // replays one into another manager through the channel's own receive handler, so
 // both directions run the real wire format, dedup included.
-class FakeQuickdrawWirelessManager {
+class QuickdrawRadioTap {
 public:
     /// Taps a radio: captures outbound quickdraw frames and holds on to the
     /// receive handler the duel channel installs. Must run BEFORE the
