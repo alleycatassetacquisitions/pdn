@@ -130,9 +130,11 @@ public:
     /// radio can be torn down for a WiFi excursion at any point, so an attempt
     /// that goes nowhere has to be repeated rather than counted.
     void transmitPending() {
-        if (!hasPending()) return;
+        // Rate gate first: hasPending() is two NVS reads, and this is called from
+        // the loop that also pumps the radio and feeds the HELLO cadence.
         const unsigned long now = millis();
         if (lastTransmitAttemptMs != 0 && now - lastTransmitAttemptMs < TRANSMIT_RETRY_MS) return;
+        if (!hasPending()) return;
         lastTransmitAttemptMs = now;
         useHttp ? transmitHttp() : transmitEspNow();
     }
@@ -306,8 +308,9 @@ private:
 
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
-    // Gap between attempts at the same record. Long enough that a record in the
-    // driver's queue has had its chance to be reported before another is offered.
+    // Gap between attempts at the same record. Hand-picked. Without it the record
+    // stays pending until the radio reports, so every tick would queue another copy
+    // of the same frame.
     static constexpr unsigned long TRANSMIT_RETRY_MS = 1000;
     unsigned long lastTransmitAttemptMs = 0;
 

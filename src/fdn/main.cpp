@@ -169,7 +169,6 @@ void setup() {
 
     crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
     crashLogger->capture();
-    crashLogger->transmitPending();
 
     // Apps
     idleApp = new Idle(
@@ -206,6 +205,9 @@ void setup() {
 void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
+        // One record is offered per attempt and only a radio report retires it, so
+        // this has to keep being called; a single pass leaves a backlog pending.
+        crashLogger->transmitPending();
     }
     fdn->loop();
 }
