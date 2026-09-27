@@ -433,25 +433,7 @@ protected:
     // production receive path untested by every chain and tournament case here.
     void wireChainEventHandlers(MultiDeviceNode& n) {
         ChainDuelManager* cdm = n.cdm.get();
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainConfirm,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainConfirmPayload)) return;
-                const ChainConfirmPayload* p = reinterpret_cast<const ChainConfirmPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onConfirmReceived(
-                    fromMac, p->originatorMac, p->seqId);
-            },
-            cdm);
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainJoin,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainJoinPayload)) return;
-                const ChainJoinPayload* p = reinterpret_cast<const ChainJoinPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onChainJoinReceived(fromMac, p->championMac);
-            },
-            cdm);
+        (void)cdm;
 
         // GameSession fans this one to two consumers; only the manager half has a
         // counterpart here, since the fixture stands up no states. Dropping it

@@ -5,15 +5,13 @@
 #include <array>
 #include <cstring>
 
-const std::array<GameSession::PacketRoute, 6>& GameSession::packetRoutes() {
+const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
     // kRoleAnnounce is absent deliberately: ChainDuelManager's ReliableChannel
     // claims that slot itself. Installing it here too would clobber the channel,
     // since this loop runs after the managers are constructed.
-    static const std::array<PacketRoute, 6> ROUTES = {{
+    static const std::array<PacketRoute, 4> ROUTES = {{
         {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
         {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
-        {PktType::kChainConfirm, dispatchTo<&GameSession::onChainConfirmPacket>},
-        {PktType::kChainJoin, dispatchTo<&GameSession::onChainJoinPacket>},
         {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
         {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
     }};
@@ -193,24 +191,6 @@ void GameSession::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_
     if (dataLen != sizeof(ChainGameEventAckPayload) || !chainDuelManager) return;
     const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
     chainDuelManager->onChainGameEventAckReceived(fromMac, payload->seqId);
-}
-
-void GameSession::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainConfirmPayload)) return;
-    if (!chainDuelManager) return;
-    // Deliberately ungated on the sender: a confirm is unicast straight to the
-    // champion from any depth, so the sender is usually a device we share no
-    // cable with and no adjacency test can recognise it. Membership is decided
-    // against the join roster when the count is read, and a press whose join has
-    // not landed yet is held rather than dropped.
-    const ChainConfirmPayload* payload = reinterpret_cast<const ChainConfirmPayload*>(data);
-    chainDuelManager->onConfirmReceived(fromMac, payload->originatorMac, payload->seqId);
-}
-
-void GameSession::onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainJoinPayload) || !chainDuelManager) return;
-    const ChainJoinPayload* payload = reinterpret_cast<const ChainJoinPayload*>(data);
-    chainDuelManager->onChainJoinReceived(fromMac, payload->championMac);
 }
 
 namespace {
