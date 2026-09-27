@@ -11,10 +11,15 @@ SymbolWirelessManager::SymbolWirelessManager(WirelessManager* wirelessManager,
     : wirelessManager(wirelessManager)
     , remoteDeviceCoordinator(remoteDeviceCoordinator)
     , resender(wirelessManager)
-    // KEEP_DISTINCT: SEND_SYMBOL, SYMBOL_MATCH_SUCCESS and SYMBOLS_REFRESHED
-    // share this PktType, so one must not cancel another's retries.
+    // Superseding, though the three families share this PktType: they are
+    // successive states of one screen, not independent items. The receiver's dedup
+    // keeps one cursor per sender, so under KEEP_DISTINCT a retransmit reordered
+    // behind a newer family is re-dispatched — and these handlers are not
+    // idempotent that way round. A replayed SEND_SYMBOL re-arms matchReady, and a
+    // replayed SYMBOLS_REFRESHED drops the player back to the blinking symbol
+    // after a match already succeeded.
     , channel(wirelessManager, &resender, PktType::kSymbolMatchCommand, nullptr,
-              Resender::SendMode::KEEP_DISTINCT) {
+              Resender::SendMode::SUPERSEDE_PER_TARGET) {
     std::memset(macPeer, 0, sizeof(macPeer));
     // No abandon callback: a symbol exchange that never lands is left to the
     // cable check in SymbolState, which leaves the state when the FDN goes away.
@@ -47,6 +52,13 @@ void SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIde
 }
 
 void SymbolWirelessManager::onSymbolPacket(const uint8_t* macAddress, const SymbolMatchPacket& packet) {
+    // The channel tolerates a null sender, so this does too rather than
+    // dereferencing one in MacToString.
+    if (macAddress == nullptr) {
+        LOG_E(SWM_TAG, "Symbol packet with no sender, dropping");
+        return;
+    }
+
     LOG_W(SWM_TAG,
           "RX symbol command %d from %s (symbolId=%d)",
           packet.command,
