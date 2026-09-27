@@ -13,8 +13,8 @@
 // code sends a packed payload struct and receives decoded structs back, and
 // the channel supplies everything reliability needs underneath — seqId
 // stamping, retry-until-delivered via a Resender, duplicate suppression on
-// receipt, and an abandon callback when a peer stays unreachable past the retry
-// budget. The struct itself is the wire format (packed, memcpy'd); both ends run
+// receipt, and an abandon callback when a peer stays unreachable past the frame's
+// span. The struct itself is the wire format (packed, memcpy'd); both ends run
 // the same firmware, so field layout is the protocol. ReliableChannelBase holds
 // the untyped mechanics; the ReliableChannel<P> template below binds them to a
 // payload type.
@@ -97,11 +97,10 @@ protected:
     // peer reboots carries the seqId the receiver already holds — on a channel
     // that sends one frame per peer, that is every reboot, not a rare collision.
     //
-    // Derived so raising MAX_RETRIES moves it too. Only bounds an EVERY_ROUND
-    // sender: a TRANSMITTED_ONLY entry parked behind a shut send path can
-    // retransmit arbitrarily later and be re-delivered, so handlers on those
-    // channels must tolerate running twice.
-    static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::staleAfterMs();
+    // Read from the transport so it stays wider than the span a frame can
+    // retransmit over: no retransmit outlives the claim its first copy was
+    // delivered under.
+    static constexpr unsigned long RX_SEQ_CLAIM_MS = Resender::STALE_AFTER_MS;
 
 private:
     struct RxSeqRecord {

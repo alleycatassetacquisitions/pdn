@@ -25,7 +25,7 @@ ShootoutManager::ShootoutManager(Player* player,
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND) {
+    , resender(wirelessManager) {
     resender.setAbandonCallback(
         [this](PktType, uint8_t seqId, const uint8_t* targetMac,
                const uint8_t* packet, size_t len) {
@@ -687,7 +687,9 @@ bool ShootoutManager::isSameMatch(int matchIndex, const uint8_t* a, const uint8_
 
 void ShootoutManager::maybeStartNextMatch() {
     if (!isCoordinator()) return;
-    // Nobody moves on until the whole bracket has it.
+    // Nobody moves on until the whole bracket has it. The reveal window below
+    // outlasts the fan-out's span, so in practice that resolves first and this
+    // reads as already satisfied; it stands for the case the two constants move.
     if (getPendingAckCount(lastBracketSeqId) > 0) return;
     if (phase != Phase::BRACKET_REVEAL && phase != Phase::BETWEEN_MATCHES) return;
     if (phase == Phase::BRACKET_REVEAL && !bracketRevealTimer.expired()) return;

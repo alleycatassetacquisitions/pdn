@@ -58,14 +58,9 @@ void Resender::addGroup(PktType type, uint8_t seqId,
     g.seqId = seqId;
     g.destination = destination;
     g.payload.assign(payload, payload + len);
-    g.recipients.reserve(recipients.size());
-    for (const std::array<uint8_t, 6>& mac : recipients) {
-        Recipient r;
-        r.target = mac;
-        r.retries = 0;
-        r.timer.setTimer(backoffMs(0));
-        g.recipients.push_back(std::move(r));
-    }
+    g.recipients = recipients;
+    g.retransmitTimer.setTimer(backoffMs(0));
+    g.deadlineTimer.setTimer(RETRANSMIT_SPAN_MS);
     groups.push_back(std::move(g));
 
     stats.sends++;
@@ -79,10 +74,10 @@ void Resender::supersedeRecipients(PktType type,
             ++g;
             continue;
         }
-        for (std::vector<Recipient>::iterator r = g->recipients.begin();
+        for (std::vector<std::array<uint8_t, 6>>::iterator r = g->recipients.begin();
              r != g->recipients.end();) {
             const bool superseded =
-                std::find(recipients.begin(), recipients.end(), r->target) != recipients.end();
+                std::find(recipients.begin(), recipients.end(), *r) != recipients.end();
             r = superseded ? g->recipients.erase(r) : r + 1;
         }
         g = g->recipients.empty() ? groups.erase(g) : g + 1;
@@ -93,9 +88,9 @@ bool Resender::onAck(PktType type, uint8_t seqId, const uint8_t* fromMac) {
     if (fromMac == nullptr) return false;
     for (std::vector<Group>::iterator g = groups.begin(); g != groups.end(); ++g) {
         if (g->type != type || g->seqId != seqId) continue;
-        for (std::vector<Recipient>::iterator r = g->recipients.begin();
+        for (std::vector<std::array<uint8_t, 6>>::iterator r = g->recipients.begin();
              r != g->recipients.end(); ++r) {
-            if (memcmp(r->target.data(), fromMac, 6) != 0) continue;
+            if (memcmp(r->data(), fromMac, 6) != 0) continue;
             g->recipients.erase(r);
             // The frame is done once nobody is left owing an answer for it.
             if (g->recipients.empty()) groups.erase(g);
@@ -134,51 +129,35 @@ void Resender::sync() {
     for (size_t gi = 0; gi < groups.size();) {
         Group& g = groups[gi];
 
-        // One frame for the whole group, not one per recipient: that is the
-        // point of a fan-out, and for a unicast the group holds exactly one.
-        // Sent only if somebody is both due and still within budget, so a group
-        // of nothing but exhausted recipients goes quiet.
-        const bool anyDue = std::any_of(
-            g.recipients.begin(), g.recipients.end(), [](Recipient& r) {
-                return r.timer.expired() && r.retries < MAX_RETRIES;
-            });
-        const bool sent = anyDue ? transmit(g) : false;
-        if (sent) {
-            stats.retries++;
-            // One line per round, not per recipient: a fan-out can carry dozens
-            // and LOG_W is live in the release build.
-            LOG_W(RSND_TAG, "retransmit type=%u seq=%u recipients=%u",
-                  (unsigned)g.type, g.seqId, (unsigned)g.recipients.size());
-        }
-        // Whether a round the radio refused still costs a retry is the caller's
-        // choice, not this loop's: see BudgetPolicy.
-        const bool roundCounts = sent || budgetPolicy == BudgetPolicy::EVERY_ROUND;
-
-        for (size_t ri = 0; ri < g.recipients.size();) {
-            Recipient& r = g.recipients[ri];
-            if (!r.timer.expired()) {
-                ++ri;
-                continue;
-            }
-
-            if (r.retries >= MAX_RETRIES) {
+        // Out of time: everyone still owing an answer for this frame is given up on
+        // together, because one send armed them all together. Elapsed rather than
+        // counted, because a refusal is not an attempt: a full PSRAM, a payload over
+        // the packet size or a radio held out of ESP-NOW mode would otherwise leave
+        // the frame unbounded while every reader of RETRANSMIT_SPAN_MS assumes it.
+        if (g.deadlineTimer.expired()) {
+            for (const std::array<uint8_t, 6>& target : g.recipients) {
                 LOG_E(RSND_TAG, "abandon type=%u seq=%u to=%02X%02X",
-                      (unsigned)g.type, g.seqId, r.target[4], r.target[5]);
-                abandoned.push_back({g.type, g.seqId, r.target, g.payload});
+                      (unsigned)g.type, g.seqId, target[4], target[5]);
+                abandoned.push_back({g.type, g.seqId, target, g.payload});
                 stats.abandons++;
-                g.recipients.erase(g.recipients.begin() + ri);
-                continue;
             }
-            if (roundCounts) r.retries++;
-            r.timer.setTimer(backoffMs(r.retries));
-            ++ri;
+            groups.erase(groups.begin() + gi);
+            continue;
         }
 
-        if (g.recipients.empty()) {
-            groups.erase(groups.begin() + gi);
-        } else {
-            ++gi;
+        // One frame for the whole group, not one per recipient: that is the point
+        // of a fan-out, and for a unicast the group holds exactly one.
+        if (g.retransmitTimer.expired()) {
+            g.retransmitTimer.setTimer(backoffMs(++g.round));
+            if (transmit(g)) {
+                stats.retries++;
+                // One line per round, not per recipient: a fan-out can carry dozens
+                // and LOG_W is live in the release build.
+                LOG_W(RSND_TAG, "retransmit type=%u seq=%u recipients=%u",
+                      (unsigned)g.type, g.seqId, (unsigned)g.recipients.size());
+            }
         }
+        ++gi;
     }
 
     if (abandonCallback) {
@@ -190,11 +169,12 @@ void Resender::sync() {
 }
 
 bool Resender::transmit(const Group& g) {
-    // Null manager is the unit-test no-op path: nothing is sent, but nothing can
-    // fail either, so report success and let retry bookkeeping run.
+    // Null manager is the unit-test no-op path: nothing is sent, and nothing can
+    // fail either.
     if (wirelessManager == nullptr) return true;
-    // A negative return means the frame never reached the radio (transient PSRAM
-    // pressure, or a brief ESP-NOW-not-ready window during a WiFi mode switch).
+    // A negative return means the local send path would not take the frame at all
+    // (a payload over the packet size, a failed allocation, a radio held out of
+    // ESP-NOW mode).
     return wirelessManager->sendEspNowData(g.destination.data(), g.type,
                                            g.payload.data(), g.payload.size()) >= 0;
 }

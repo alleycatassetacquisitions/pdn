@@ -24,7 +24,7 @@ enum class ChainGameEventType : uint8_t {
 // seqId = 0 is a sentinel meaning "no ACK expected, no retry". Used for
 // COUNTDOWN and DRAW which are time-critical and must not arrive late.
 // WIN and LOSS use a nonzero seqId and are retransmitted until ACKed or
-// the retry budget is exhausted.
+// the frame's span runs out.
 //
 // championMac names the champion the event came from. Game events go out as one
 // broadcast frame, so the sender's MAC says nothing about which chain the event
@@ -124,9 +124,9 @@ public:
     /// direction. A settled chain raises no events, so nothing else would.
     ///
     /// Longer than the retry span on purpose: a tick landing inside that window
-    /// supersedes the live entry and restarts its budget, so the announce would
+    /// supersedes the live entry and restarts its span, so the announce would
     /// retransmit forever instead of going quiet between offers.
-    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::staleAfterMs();
+    static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
     // Retry observability for this manager's two channels.
     struct RetryStats {
@@ -235,9 +235,9 @@ private:
     // announce that has to go out. `delivered` is the radio's send report, not
     // proof the peer's app took the frame — that is what the half-open gate in
     // each send function is for. What it proves is the negative: an announce
-    // that spent its budget was never MAC-acked, whether it was refused before
-    // it left or went out and came back SEND_FAIL. Either way it did not land,
-    // and re-offering it is the only repair there is.
+    // that ran out its span was never MAC-acked, whether it was refused before it
+    // left or went out and came back SEND_FAIL. Either way it did not land, and
+    // re-offering it is the only repair there is.
     struct RoleAnnounceState {
         std::array<uint8_t, 6> peer{};
         uint8_t role = 0;

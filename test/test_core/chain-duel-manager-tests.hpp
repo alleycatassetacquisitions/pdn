@@ -138,6 +138,16 @@ public:
 
 // Role derivation: champion topology produces correct is* / canInitiate / peers results.
 // Without peers everything returns false/empty; with a full champion setup everything flips.
+/// Runs the main loop for `ms`, one sync() every 20ms — fine enough that no 100ms
+/// backoff window is skipped, not a claim about the device's loop period.
+inline void runLoopFor(ChainDuelManagerTests* suite, ChainDuelManager& cdm,
+                       unsigned long ms) {
+    for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20) {
+        suite->fakeClock->advance(20);
+        cdm.sync();
+    }
+}
+
 inline void cdmRoleDerivationWithChampionTopology(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -681,14 +691,14 @@ inline void cdmNewTerminalEventSupersedesThePrevious(ChainDuelManagerTests* suit
             return 1;
         });
 
-    // Two terminal events inside one retry budget, neither acked.
+    // Two terminal events inside one frame's span, neither acked.
     cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
     cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
     const int afterSends = eventFrames;
     ASSERT_EQ(afterSends, 2);
 
     // One round must put ONE frame on the air: only the newer event is live.
-    suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+    suite->fakeClock->advance(Resender::backoffMs(0) + 1);
     cdm.sync();
     EXPECT_EQ(eventFrames, afterSends + 1)
         << "the superseded event is still retransmitting alongside the current one";
@@ -850,12 +860,9 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerT
     suite->connectInputPort();
     ASSERT_GT(announcesToSupporter, 0) << "no supporter announce to begin with";
 
-    // The radio never confirms delivery, so the announce burns its whole budget
-    // and is given up on. The supporter is still on the jack, still untold.
-    for (int i = 0; i < Resender::MAX_RETRIES + 1; ++i) {
-        suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
-        cdm.sync();
-    }
+    // The radio never confirms delivery, so the announce runs out of span and is
+    // given up on. The supporter is still on the jack, still untold.
+    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS + 100);
     const int afterAbandon = announcesToSupporter;
 
     // A full backstop interval later it is offered again.
@@ -866,7 +873,7 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerT
            "contributes no boost for the rest of the round";
 }
 
-// An opponent announce that exhausts its retry budget has to be offered again.
+// An opponent announce that ran out its span has to be offered again.
 // Nothing else would: a settled chain raises no chain-state events, so the
 // cascade never runs, and the opponent would never learn this device's role —
 // its canInitiateMatch refuses that cable a duel for the rest of the round,
@@ -887,12 +894,9 @@ inline void cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(ChainDuelManagerTe
     suite->connectInputPort();
     ASSERT_GT(announcesToOpponent, 0) << "no opponent announce to begin with";
 
-    // The radio never confirms delivery, so the announce burns its whole budget
-    // and is given up on. This is the case the stamp must not record as told.
-    for (int i = 0; i < Resender::MAX_RETRIES + 1; ++i) {
-        suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
-        cdm.sync();
-    }
+    // The radio never confirms delivery, so the announce runs out of span and is
+    // given up on. This is the case the stamp must not record as told.
+    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS + 100);
     const int afterAbandon = announcesToOpponent;
 
     // A full backstop interval later, the undelivered announce is re-offered.
@@ -1020,8 +1024,8 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
     EXPECT_EQ(retransmits, 1);
 }
 
-// Retransmit abandons after Resender::MAX_RETRIES with no ack.
-inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
+// Retransmit abandons once the span runs out with no ack.
+inline void cdmRetransmitAbandonsWhenSpanRunsOut(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->applyHunterChampionRoles(cdm);
@@ -1044,10 +1048,12 @@ inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
     ASSERT_EQ(supporterSends, 1);
 
     // Advance clock + sync 3 times → 3 retransmits (supporter only, pending path).
-    // Exponential backoff: waits are 100, 200, 400ms. Advance past the biggest
-    // per iter to guarantee each retry fires.
+    // Gaps of 100, 200, 400ms, so one jump past the biggest fires each round. 450
+    // rather than 500: three 500ms jumps put the last retransmit on the same
+    // millisecond the span ends, leaving the case to turn on expired() being strict.
+    // At 450 the third round has 150ms of room ahead of the deadline.
     for (int i = 0; i < 3; i++) {
-        suite->fakeClock->advance(500);
+        suite->fakeClock->advance(450);
         cdm.sync();
     }
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
@@ -1095,7 +1101,7 @@ inline void cdmRetryStatsRecordsLifecycle(ChainDuelManagerTests* suite) {
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion2, 2);
     // Tick at the cadence the platform loop actually uses. Sampling only once
     // per backstop interval would let the re-offer land in the same call as the
-    // retry round and supersede the entry before its budget ever completes —
+    // retry round and supersede the entry before its span ever runs out —
     // an artefact of the test's clock, not of the schedule.
     for (int i = 0; i < 19; i++) {
         suite->fakeClock->advance(100);
@@ -1503,8 +1509,8 @@ inline void cdmGameEventAckClearsPending(ChainDuelManagerTests* suite) {
     cdm.sync();
 }
 
-// After Resender::MAX_RETRIES with no ACK, pending is abandoned — no further sends.
-inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
+// Once a frame's retransmit span runs out with no ACK it is abandoned — no further sends.
+inline void cdmGameEventAbandonsWhenSpanRunsOut(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->applyHunterChampionRoles(cdm);
@@ -1520,12 +1526,10 @@ inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
     cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
     ASSERT_EQ(supporterSends, 1);
 
-    // Resender::MAX_RETRIES = 3. Advance past each exponential backoff window (100, 200,
-    // 400, 800ms). Use 1000ms to cover the largest.
-    for (int i = 0; i < 3; i++) {
-        suite->fakeClock->advance(1000);
-        cdm.sync();
-    }
+    // The retransmits land 100, 300 and 700ms in (gaps of 100, 200, 400); the next
+    // would fall past the
+    // frame's span, so that is where it stops.
+    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS - 100);
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
 
     // After abandon, further sync must not retransmit.

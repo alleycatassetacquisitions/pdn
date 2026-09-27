@@ -18,9 +18,9 @@ class WirelessManager;
 //     Resender pending entry -> WirelessManager::sendEspNowData -> driver
 //     (which itself retries a failed MAC-layer send). The platform loop's
 //     transport->sync() retransmits on the Resender's backoff until the radio
-//     lands or retries exhaust -> the channel's abandon callback. Abandonment
-//     is a game-level signal (void a match, abort a tournament), not a log
-//     line; channel->cancel() drops pending sends WITHOUT it.
+//     lands or the frame's span runs out -> the channel's abandon callback.
+//     Abandonment is a game-level signal (void a match, abort a tournament), not
+//     a log line; channel->cancel() drops pending sends WITHOUT it.
 //   receive: driver rx -> the owning channel's own per-PktType handler, installed
 //     by its constructor, straight into deliver, which dedups and dispatches the
 //     decoded payload to onReceive. The transport is not on that path. No ack is
