@@ -65,8 +65,7 @@ public:
     /// Device::loop() iterations. sendData pumps its own frame, so this is the
     /// path for frames left queued behind a busy slot, not for every send.
     /// DriverManager walks a std::map keyed by driver name, and "peer_comms"
-    /// sorts ahead of "serial_in"/"serial_out", so a frame queued by a
-    /// serial-driven handler waits an extra tick.
+    /// sorts ahead of "serial_in"/"serial_out".
     void exec() override {
         // Re-pin armed by connect(): retry (paced) until the readback sticks,
         // re-issuing the disconnect each attempt to kill whatever STA attempt
@@ -136,7 +135,14 @@ public:
             lastChannelPinMs = millis();
         }
 
-        initializeEspNow();
+        if (initializeEspNow() != 0) {
+            // Leaving the state DISCONNECTED keeps sendData refusing and lets a
+            // later connect() try again. Marking it CONNECTED would accept frames
+            // the radio can never report, and the slot has no deadline.
+            LOG_E("ENC", "ESPNOW init failed; staying disconnected");
+            peerCommsState = PeerCommsState::DISCONNECTED;
+            return;
+        }
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
@@ -219,10 +225,9 @@ public:
         sendQueue.push(buffer);
         xSemaphoreGive(sendMutex);
 
-        // Offered now rather than at the next exec(). Every caller is on the main
-        // loop, so the slot keeps its single owner, and a frame queued before
-        // Device::loop() starts still reaches the radio — the crash-log backlog is
-        // queued from setup(), where no exec() runs.
+        // Offered now rather than at the next exec(), so a send does not wait a
+        // whole tick for the radio. Every caller is on the main loop, so the slot
+        // keeps its single owner.
         pumpSend();
         return 0;
     }
@@ -432,16 +437,17 @@ private:
     ///
     /// A frame the radio accepts but never reports on holds the slot for good and
     /// every later send queues behind it. Do not answer that with a timer: the
-    /// radio reports a peer, not a frame, so two frames to one peer are
-    /// indistinguishable and a slot released on a deadline charges the late
-    /// verdict to whichever frame replaced it, turning a stall into a wrong ack.
+    /// callback hands over no reference to the frame it finished, so a slot
+    /// released on a deadline charges the late verdict to whichever frame replaced
+    /// it, turning a stall into a wrong ack.
     void serviceSendCompletion() {
         const Completion outcome =
             pendingCompletion.exchange(Completion::NONE, std::memory_order_acquire);
         if (outcome == Completion::NONE) return;
         // Nothing in the slot means the radio owed this for a frame disconnect()
         // already released. There is no frame to attribute it to, so drop it.
-        // Running before pumpSend is what makes that sufficient: a stale verdict
+        // What keeps a stale verdict off a successor is discardInFlight clearing it
+        // as it releases the slot, not call ordering: a stale verdict
         // is always consumed against an empty slot before the next frame is
         // claimed, so it can never be charged to a successor.
         if (inFlight.ptr == nullptr) return;
@@ -475,8 +481,8 @@ private:
     /// radio copies it before esp_now_send returns (esp_now.h attention 4). A retry
     /// re-sends the same bytes and the completion reads the payload back.
     void pumpSend() {
-        // sendData refuses while the radio is down, so this covers the frame that
-        // was queued while it was up and lost the race with disconnect().
+        // exec() runs whatever the state, and esp_now_send must not follow a
+        // deinit.
         if (peerCommsState != PeerCommsState::CONNECTED) return;
         if (inFlight.ptr != nullptr) return;
 
@@ -495,11 +501,12 @@ private:
         inFlightRetries = 0;
         if (transmitInFlight()) return;
 
-        // The radio never saw the air, so no completion is coming. One frame per
-        // tick rather than draining here: ESP_ERR_ESPNOW_NO_MEM asks for a pause
-        // before the next frame (esp_now.h), and a queue drained into a full
-        // internal TX buffer fails every frame in it.
-        finishInFlight(false);
+        // Refused, so no completion is coming for it. Recorded rather than
+        // dispatched here: this runs from sendData as well as exec(), and reporting
+        // a result inside a caller's own send would re-enter the reliable layer
+        // while it is walking its groups. The next exec() consumes this, which also
+        // gives ESP_ERR_ESPNOW_NO_MEM the pause esp_now.h asks for.
+        pendingCompletion.store(Completion::FAILED, std::memory_order_release);
     }
 
     /// Hands `inFlight` to the radio. True when the radio took it and a completion
@@ -517,7 +524,7 @@ private:
     /// Reports the slot's frame upward and releases it. Main loop only.
     ///
     /// Reports the failure verdict even though nothing consumes it today:
-    /// ReliableChannelBase is the only registrant and drops `!success` on its first
+    /// Both registrants drop `!success` on their first
     /// line. An outcome class is the driver's to report, not to decide against.
     void finishInFlight(bool success) {
         const DataSendBuffer frame = inFlight;
@@ -675,9 +682,8 @@ private:
 
     // The send path's only lock-free cross-task state: what the radio said about
     // the frame it last finished. Nothing is paired with it — the callback gets a destination
-    // and the frame's bytes but no handle, and two frames to one peer are
-    // indistinguishable — so a verdict rejected on a mismatch would strand the
-    // slot with no way to release it.
+    // and the frame's bytes but no reference to what was queued, so a verdict
+    // rejected on a mismatch would strand the slot with no way to release it.
     std::atomic<Completion> pendingCompletion{Completion::NONE};
 
     // Frames nobody has claimed yet. sendData is the one entry point a caller off
@@ -688,7 +694,8 @@ private:
     // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl).
     // Written on the WiFi task and read from the main loop, so it shares
     // recvMutex with the receive queue that the same callback feeds. Uncapped: an
-    // entry costs ~40 bytes on a PSRAM part, and a cap would have to evict a live
+    // entry costs ~40 bytes of internal DRAM — allocations this small do not reach
+    // PSRAM — and a cap would have to evict a live
     // peer at the device count a real event reaches, leaving it reading
     // RSSI_UNKNOWN — which the proximity tiers treat as the weakest signal.
     std::unordered_map<uint64_t, int> rssiTracker;
