@@ -17,7 +17,7 @@ using ::testing::NiceMock;
 
 /**
  * Two-device duel simulation. Each device has its own MatchManager and
- * FakeQuickdrawWirelessManager. performHandshake() drives the production
+ * QuickdrawRadioTap. performHandshake() drives the production
  * SEND_MATCH_ID → MATCH_ID_ACK exchange so tests never call createMatch().
  */
 class DuelIntegrationTestSuite : public testing::Test {
@@ -37,13 +37,13 @@ public:
         bounty->setUserID(bountyId);
         bounty->setIsHunter(false);
 
-        hunterWirelessManager = new FakeQuickdrawWirelessManager();
+        hunterWirelessManager = new QuickdrawRadioTap();
         hunterWirelessManager->attach(hunterDevice.mockPeerComms);
         hunterMatchManager = new MatchManager(hunterDevice.wirelessManager);
         hunterMatchManager->initialize(hunter, &hunterStorage);
         hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
 
-        bountyWirelessManager = new FakeQuickdrawWirelessManager();
+        bountyWirelessManager = new QuickdrawRadioTap();
         bountyWirelessManager->attach(bountyDevice.mockPeerComms);
         bountyMatchManager = new MatchManager(bountyDevice.wirelessManager);
         bountyMatchManager->initialize(bounty, &bountyStorage);
@@ -82,8 +82,8 @@ public:
     MatchManager* bountyMatchManager = nullptr;
     MockDevice hunterDevice;
     MockDevice bountyDevice;
-    FakeQuickdrawWirelessManager* hunterWirelessManager = nullptr;
-    FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
+    QuickdrawRadioTap* hunterWirelessManager = nullptr;
+    QuickdrawRadioTap* bountyWirelessManager = nullptr;
     NiceMock<MockStorage> hunterStorage;
     NiceMock<MockStorage> bountyStorage;
     FakeRemoteDeviceCoordinator hunterFakeRdc;

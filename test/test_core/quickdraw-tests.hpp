@@ -77,7 +77,7 @@ public:
         player->setUserID(playerId);
         player->setIsHunter(true);
 
-        wirelessManager = new FakeQuickdrawWirelessManager();
+        wirelessManager = new QuickdrawRadioTap();
         wirelessManager->attach(device.mockPeerComms);
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
@@ -110,7 +110,7 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
+    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -215,7 +215,7 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new FakeQuickdrawWirelessManager();
+        wirelessManager = new QuickdrawRadioTap();
         wirelessManager->attach(device.mockPeerComms);
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
@@ -250,7 +250,7 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
+    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -413,7 +413,7 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new FakeQuickdrawWirelessManager();
+        wirelessManager = new QuickdrawRadioTap();
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         wirelessManager->attach(device.mockPeerComms);
         matchManager = new MatchManager(device.wirelessManager);
@@ -448,7 +448,7 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
+    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -583,7 +583,6 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 350);
 }
 
-// Test: Button press broadcasts DRAW_RESULT
 // kQuickdrawCommand carries several command families to one opponent. A later
 // command must not cancel the retries an earlier one is still owed, which is
 // what the superseding send mode would do.
@@ -855,7 +854,7 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new FakeQuickdrawWirelessManager();
+        wirelessManager = new QuickdrawRadioTap();
         wirelessManager->attach(device.mockPeerComms);
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
@@ -884,7 +883,7 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
+    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     GameContext ctx;
@@ -1106,7 +1105,7 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new FakeQuickdrawWirelessManager();
+        wirelessManager = new QuickdrawRadioTap();
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         wirelessManager->attach(device.mockPeerComms);
         matchManager = new MatchManager(device.wirelessManager);
@@ -1143,7 +1142,7 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
+    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -1597,7 +1596,7 @@ public:
         char playerId[] = "life";
         player->setUserID(playerId);
 
-        qwm = new FakeQuickdrawWirelessManager();
+        qwm = new QuickdrawRadioTap();
     }
 
     void TearDown() override {
@@ -1610,7 +1609,7 @@ public:
     MockDevice device;
     FakePlatformClock* fakeClock;
     Player* player;
-    FakeQuickdrawWirelessManager* qwm;
+    QuickdrawRadioTap* qwm;
     uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     PeerCommsInterface::PacketCallback chainGameEventHandler;
     void* chainGameEventCtx = nullptr;

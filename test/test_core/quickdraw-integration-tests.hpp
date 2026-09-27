@@ -36,7 +36,10 @@ inline TestQuickdrawPacket createTestPacket(
     long playerDrawTime = 0,
     bool isHunter = true
 ) {
-    TestQuickdrawPacket packet;
+    // Zero-initialized: seqId is a wire field this helper does not set, and an
+    // indeterminate one reaches the channel's dedup cursor. Zero is the
+    // fire-and-forget sentinel dedup skips, so every built packet dispatches.
+    TestQuickdrawPacket packet{};
     strncpy(packet.matchId, matchId.c_str(), 36);
     packet.matchId[36] = '\0';
     strncpy(packet.playerId, playerId.c_str(), 4);
@@ -122,7 +125,7 @@ public:
     MockStorage storage;
     Player* player = nullptr;
     MatchManager* matchManager = nullptr;
-    FakeQuickdrawWirelessManager* wirelessManager = nullptr;
+    QuickdrawRadioTap* wirelessManager = nullptr;
     WirelessManager* deviceWirelessManager = nullptr;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock = nullptr;
@@ -143,7 +146,7 @@ private:
 
     void setupManagers() {
         deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
-        wirelessManager = new FakeQuickdrawWirelessManager();
+        wirelessManager = new QuickdrawRadioTap();
         wirelessManager->attach(&peerComms);
         matchManager = new MatchManager(deviceWirelessManager);
         matchManager->initialize(player, &storage);
@@ -236,8 +239,8 @@ public:
     Player* bounty = nullptr;
     MatchManager* hunterMatchManager = nullptr;
     MatchManager* bountyMatchManager = nullptr;
-    FakeQuickdrawWirelessManager* hunterWirelessManager = nullptr;
-    FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
+    QuickdrawRadioTap* hunterWirelessManager = nullptr;
+    QuickdrawRadioTap* bountyWirelessManager = nullptr;
     WirelessManager* hunterDeviceWirelessManager = nullptr;
     WirelessManager* bountyDeviceWirelessManager = nullptr;
     MockPeerComms hunterPeerComms;
@@ -264,7 +267,7 @@ private:
         hunter->setIsHunter(true);
 
         hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
-        hunterWirelessManager = new FakeQuickdrawWirelessManager();
+        hunterWirelessManager = new QuickdrawRadioTap();
         hunterWirelessManager->attach(&hunterPeerComms);
         hunterMatchManager = new MatchManager(hunterDeviceWirelessManager);
         hunterMatchManager->initialize(hunter, &hunterStorage);
@@ -278,7 +281,7 @@ private:
         bounty->setIsHunter(false);
 
         bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
-        bountyWirelessManager = new FakeQuickdrawWirelessManager();
+        bountyWirelessManager = new QuickdrawRadioTap();
         bountyWirelessManager->attach(&bountyPeerComms);
         bountyMatchManager = new MatchManager(bountyDeviceWirelessManager);
         bountyMatchManager->initialize(bounty, &bountyStorage);
