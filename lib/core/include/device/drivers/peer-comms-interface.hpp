@@ -12,11 +12,15 @@ enum class PeerCommsState {
 class PeerCommsInterface {
 public:
     using PacketCallback = std::function<void(const uint8_t* src, const uint8_t* data, const size_t length, void* ctx)>;
-    // Fired once per outbound packet when the radio reports its MAC-layer
-    // result. `dst`/`data`/`length` mirror the send; `success` is the
-    // SEND_SUCCESS/FAIL verdict. Drives the reliable transport's ack in place
-    // of a round-trip ack packet. Default no-op so drivers without a send
-    // callback (or that don't need one) need not implement it.
+    // Fired once per outbound packet the driver accepted, either when the radio
+    // reports its MAC-layer result or when the radio refused the frame outright
+    // and will report nothing. `dst`/`data`/`length` mirror the send; `success` is
+    // the verdict. Drives the reliable transport's ack in place of a round-trip
+    // ack packet. A driver that accepts a frame owes this callback: it is the only
+    // delivery signal the reliable layer gets, and a frame never reported is one it
+    // waits on until its own timer gives up. Defaulted to a no-op only so a driver
+    // with no send callback at all still satisfies the interface -- a driver that
+    // takes frames and leaves this unset starves the layer above it.
     using SendStatusCallback = std::function<void(const uint8_t* dst, const uint8_t* data, const size_t length, bool success, void* ctx)>;
 
     virtual ~PeerCommsInterface() = default;
