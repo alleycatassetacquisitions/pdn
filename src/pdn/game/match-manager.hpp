@@ -132,6 +132,11 @@ public:
      */
     size_t getStoredMatchCount();
 
+    /// Drops a match whose handshake never completed, and cancels the retries of
+    /// the SEND_MATCH_ID that announced it. Use this where a match is given up on;
+    /// clearCurrentMatch alone is for a match that ran to a result.
+    void abandonMatchHandshake();
+
     void clearCurrentMatch();
 
     /// Clears the active bout only when a shootout primed it, leaving a bout the

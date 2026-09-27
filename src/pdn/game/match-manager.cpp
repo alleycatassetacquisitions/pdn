@@ -78,15 +78,25 @@ void MatchManager::clearShootoutMatch() {
     clearCurrentMatch();
 }
 
+void MatchManager::abandonMatchHandshake() {
+    if (!activeDuelState.match.has_value()) return;
+    // Only SEND_MATCH_ID needs this. It is gated on isDirectPeer alone, so a copy
+    // parked behind a refusing radio and delivered later primes an opponent into a
+    // match this device has dropped. The result families carry the match id and are
+    // refused by isFromActiveMatchOpponent, so they need no help. cancel() is
+    // silent; no abandon callback fires.
+    duelChannel.cancel(activeDuelState.opponentMac.data());
+    clearCurrentMatch();
+}
+
 void MatchManager::clearCurrentMatch() {
     if (!activeDuelState.match) return;
     LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
-    // Retries for the match being abandoned must go with it. This channel is
-    // KEEP_DISTINCT, so the next SEND_MATCH_ID does not supersede the old one, and
-    // Idle re-keys at 1000ms while the channel retransmits for 1500 — a stale id
-    // delivered afterwards primes the opponent into a match this device has
-    // already forgotten. cancel() is silent; no abandon callback fires.
-    duelChannel.cancel(activeDuelState.opponentMac.data());
+    // Deliberately does NOT cancel the duel channel. A result frame is sent in the
+    // same tick that mounts DuelResult, which clears the match, so cancelling here
+    // would strip that frame's retransmits while the opponent is still inside its
+    // grace window and leave both devices reading a loss. Abandoning a handshake is
+    // the case that needs the cancel; see abandonMatchHandshake.
     // Whole-struct reset, so a field added to ActiveDuelState cannot be forgotten
     // here.
     activeDuelState = ActiveDuelState{};
@@ -511,7 +521,7 @@ void MatchManager::listenForMatchEvents(const QuickdrawCommand& command) {
     } else if(command.command == QDCommand::MATCH_ROLE_MISMATCH) {
         LOG_I(MATCH_MANAGER_TAG, "Received MATCH_ROLE_MISMATCH command from opponent");
         if (!isFromActiveMatchOpponent(command)) return;
-        clearCurrentMatch();
+        abandonMatchHandshake();
         return;
     } else if(command.command == QDCommand::DRAW_RESULT || command.command == QDCommand::NEVER_PRESSED) {
         LOG_I(MATCH_MANAGER_TAG, "Received DRAW_RESULT command from opponent");

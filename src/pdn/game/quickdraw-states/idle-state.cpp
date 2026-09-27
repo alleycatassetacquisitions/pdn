@@ -90,7 +90,9 @@ void Idle::onStateLoop(PDN* pdn) {
 
     if(matchInitializationTimer.expired()) {
         matchInitialized = false;
-        matchManager->clearCurrentMatch();
+        // The next tick re-keys with a fresh id, so the announcement of this one
+        // must stop retrying or it primes the opponent into a match that is gone.
+        matchManager->abandonMatchHandshake();
     }
 }
 
