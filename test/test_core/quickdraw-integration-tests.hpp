@@ -156,11 +156,11 @@ private:
             matchManager->setRemoteDeviceCoordinator(&fakeRdc);
         }
 
-        // Hunter initiates the match through the production path.
-        // FakeQuickdrawWirelessManager captures the SEND_MATCH_ID broadcast;
-        // no ACK is routed back since single-device tests don't need matchIsReady.
-        // Opponent MAC must match what processPacket delivers from, so
-        // listenForMatchEvents' source-MAC gate accepts the packet.
+        // Hunter initiates the match through the production path. The tap
+        // captures the SEND_MATCH_ID unicast; no ack is routed back, since
+        // single-device tests do not need matchIsReady. This MAC has to match the
+        // one frames are delivered from, or listenForMatchEvents' sender gate
+        // rejects them.
         uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         matchManager->initializeMatch(opponentMac);
         matchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
@@ -410,8 +410,8 @@ inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
     // A frame the manager would otherwise act on, handed over one byte short.
     // The bytes behind the pointer are a whole valid packet, so the channel's
     // length check is the only thing standing between it and the manager — a
-    // buffer that really is too small would be rejected by its contents anyway
-    // and would prove nothing.
+    // buffer that really is too small would be caught by that same check without
+    // ever exercising the decode, and would prove nothing.
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
     packet.seqId = 4;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};

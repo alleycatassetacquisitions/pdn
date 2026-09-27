@@ -4,7 +4,6 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -51,7 +50,6 @@ private:
 
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    /// Champion-side enrolment of a supporter this device shares no cable with.
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();

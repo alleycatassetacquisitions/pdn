@@ -6,7 +6,6 @@
 #include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
-#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
@@ -148,7 +147,7 @@ public:
 
 public:
     // Button callback in onStateMounted uses these via `this` capture.
-    // Atomic because the ESP-NOW packet callback (WiFi task on hardware) and
+    // Atomic because the ESP-NOW packet handler (drained from exec() on the main loop) and
     // the button press / state-loop callbacks (main task) read and write them
     // concurrently.
     Player *player;

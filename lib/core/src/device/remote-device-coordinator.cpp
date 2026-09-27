@@ -182,21 +182,6 @@ PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
     return mapHelloLinkToStatus(port);
 }
 
-PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
-    std::vector<std::array<uint8_t, 6>> peerAddresses;
-
-    // Composed from getPeerMac so a jack cannot report one direct peer here and
-    // a different one there.
-    const uint8_t* directPeer = getPeerMac(port);
-    if (directPeer != nullptr) {
-        std::array<uint8_t, 6> mac;
-        memcpy(mac.data(), directPeer, 6);
-        peerAddresses.push_back(mac);
-    }
-
-    return PortState{ port, getPortStatus(port), peerAddresses };
-}
-
 void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
     chainChangeCallback = std::move(callback);
 }

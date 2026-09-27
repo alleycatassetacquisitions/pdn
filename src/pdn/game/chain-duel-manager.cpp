@@ -12,12 +12,14 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // No abandon handler: a role announce that runs out of retries is repaired by
     // the backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
-    // No abandon handler on either: a lost confirm is repaired by the 1Hz
-    // backstop in sync(), and a lost join by the next chain-state change.
+    // No abandon handler on either. A lost join is re-offered on the next
+    // chain-state change; a lost confirm is re-offered only when the chain role
+    // or the champion changes, so a confirm abandoned mid-round stays lost until
+    // then.
     , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
     , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
-    chainConfirmChannel.onReceive([this](const uint8_t* fromMac, const ChainConfirmPayload& p) {
-        onConfirmReceived(fromMac, p.originatorMac);
+    chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
+        onConfirmReceived(p.originatorMac);
     });
     chainJoinChannel.onReceive([this](const uint8_t* fromMac, const ChainJoinPayload& p) {
         onChainJoinReceived(fromMac, p.championMac);
@@ -256,9 +258,7 @@ void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
     confirmSent = false;
 }
 
-void ChainDuelManager::onConfirmReceived(const uint8_t* fromMac,
-                                         const uint8_t* originatorMac) {
-    (void)fromMac;
+void ChainDuelManager::onConfirmReceived(const uint8_t* originatorMac) {
     // Recorded unconditionally. Whether this originator is a chain member, and
     // whether we are the champion who gets to count it, are both read live in
     // getConfirmedSupporterCount — neither is knowable for certain at the moment
@@ -500,12 +500,11 @@ void ChainDuelManager::sendRoleToOpponentJack() {
     RoleAnnounceState content;
     memcpy(content.peer.data(), opponentPeer, 6);
     content.role = player->isHunter() ? 1 : 0;
-    // championMac rides along as a placeholder no peer this call can reach will
-    // read: an opposite-role peer fails the role check, and a same-role peer
-    // receives it on its SUPPORTER jack and fails the fromOpponentJack gate
-    // first. It is still part of the content key, so a champion change re-offers
-    // here — carrying nothing new, and the price of one shared key for both
-    // directions.
+    // championMac rides along because both directions share one content key, and
+    // it is empty until this device follows someone. An opposite-role peer
+    // ignores it on the role check, but in a 2-node ring both jacks face the same
+    // peer, so a same-role peer can receive this on its opponent jack and read
+    // the empty champion — which is why the receiver refuses a zeroed one.
     if (championMac.has_value()) content.champion = *championMac;
     if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
 

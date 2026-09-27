@@ -9,8 +9,8 @@
 #include "device-mock.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
-// The symbol exchange runs over a ReliableChannel that the manager claims in
-// initialize(). These pin the two halves that claim buys: frames leave as
+// The symbol exchange runs over a ReliableChannel the manager claims in its
+// constructor. These pin the two halves that claim buys: frames leave as
 // kSymbolMatchCommand, and an inbound frame is dispatched to the callback for
 // the jack its sender sits on.
 class SymbolWirelessTests : public testing::Test {
@@ -34,7 +34,7 @@ public:
                     }
                     return 1;
                 }));
-        // The channel installs its receive handler during initialize(); holding
+        // The channel installs its receive handler as it is constructed; holding
         // on to it is the only way to play the radio back at it.
         ON_CALL(peerComms, setPacketHandler(PktType::kSymbolMatchCommand,
                                             testing::_, testing::_))
