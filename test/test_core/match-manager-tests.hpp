@@ -519,11 +519,11 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
     EXPECT_FALSE(mm->isMatchReady());
 }
 
-TEST_F(MatchManagerTestSuite, clearingAMatchCancelsItsPendingRetries) {
+TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
     // The duel channel keeps its families distinct, so a fresh SEND_MATCH_ID does
-    // not supersede the one it replaces. Idle re-keys at 1000ms while the channel
-    // retransmits for 1500, so without cancelling here a stale id lands afterwards
-    // and primes the opponent into a match this device has already dropped.
+    // not supersede the one it replaces, and this Resender parks a refused entry
+    // without spending budget. Left armed, that copy can land after the device has
+    // re-keyed and prime the opponent into a match that is gone.
     using ::testing::_;
     std::vector<int> sentCommands;
     ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
@@ -547,10 +547,53 @@ TEST_F(MatchManagerTestSuite, clearingAMatchCancelsItsPendingRetries) {
     const size_t beforeClear = sentCommands.size();
     ASSERT_GT(beforeClear, 1u) << "the handshake never retransmitted";
 
-    matchManager->clearCurrentMatch();
+    matchManager->abandonMatchHandshake();
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 16);
     matchManager->sync();
 
     EXPECT_EQ(sentCommands.size(), beforeClear)
-        << "a cleared match kept retransmitting its SEND_MATCH_ID";
+        << "an abandoned handshake kept retransmitting its SEND_MATCH_ID";
+}
+
+TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
+    // A result frame goes out in the same tick that mounts DuelResult, which clears
+    // the match. Cancelling on that path strips the frame's retransmits while the
+    // opponent is still inside its grace window, and both devices then read a loss.
+    // The result families carry the match id and are refused by
+    // isFromActiveMatchOpponent, so they need no cancelling.
+    using ::testing::_;
+    std::vector<int> sentCommands;
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
+        .WillByDefault(::testing::Invoke(
+            [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+                if (len == sizeof(QuickdrawPacket)) {
+                    QuickdrawPacket packet{};
+                    memcpy(&packet, data, sizeof(packet));
+                    sentCommands.push_back(packet.command);
+                }
+                return 1;
+            }));
+
+    uint8_t opponent[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    matchManager->initializeMatch(opponent);
+    ASSERT_FALSE(sentCommands.empty());
+
+    // Drive the production path: the duel button handler sends DRAW_RESULT and sets
+    // the transition flag in one call, which is what mounts DuelResult.
+    matchManager->setDuelLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(150);
+    matchManager->getDuelButtonPush()(matchManager);
+    const size_t afterResult = sentCommands.size();
+    ASSERT_GT(afterResult, 0u) << "the button push sent nothing";
+
+    matchManager->clearCurrentMatch();
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    matchManager->sync();
+
+    bool resultRetried = false;
+    for (size_t i = afterResult; i < sentCommands.size(); ++i) {
+        if (sentCommands[i] == QDCommand::DRAW_RESULT) resultRetried = true;
+    }
+    EXPECT_TRUE(resultRetried)
+        << "clearing a finished match stripped the retransmits of its DRAW_RESULT";
 }
