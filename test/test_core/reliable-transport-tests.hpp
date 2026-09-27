@@ -470,7 +470,7 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
     WirelessManager wm{&comms, nullptr};
     FakePlatformClock clock;
     SimpleTimer::setPlatformClock(&clock);
-    Resender resender(&wm, Resender::BudgetPolicy::EVERY_ROUND);
+    Resender resender(&wm);
 
     int frames = 0;
     ON_CALL(comms, getPeerCommsState())
@@ -492,7 +492,7 @@ TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
     }
 
     EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
-    clock.advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+    clock.advance(Resender::INITIAL_TIMEOUT_MS + 1);
     resender.sync();
     EXPECT_EQ(frames, 1) << "a destroyed channel kept retransmitting";
 

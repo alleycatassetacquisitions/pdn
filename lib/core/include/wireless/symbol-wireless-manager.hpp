@@ -18,7 +18,7 @@ struct SymbolMatchPacket {
     SymbolId symbolId;
 } __attribute__((packed));
 
-/// Wire values for SymbolMatchPacket::command.
+/** Wire values for SymbolMatchPacket::command. */
 namespace SMCommand {
 constexpr int SEND_SYMBOL = 0;
 constexpr int SYMBOL_MATCH_SUCCESS = 1;
@@ -31,8 +31,10 @@ struct SymbolMatchCommand {
     int command;
     SymbolId symbolId;
 
-    /// Decoded form of one symbol frame; a null `macAddress` zeroes the address
-    /// and clears wifiMacAddrValid.
+    /**
+     * Decoded form of one symbol frame; a null `macAddress` zeroes the address
+     * and clears wifiMacAddrValid.
+     */
     SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId)
         : wifiMacAddrValid(macAddress != nullptr)
         , command(command)
@@ -47,27 +49,31 @@ struct SymbolMatchCommand {
 
 class SymbolWirelessManager {
 public:
-    /// Claiming the channel is what makes the receive path live, so it happens
-    /// here: there is no second wiring step a caller can forget.
+    /**
+     * Claiming the channel is what makes the receive path live, so it happens
+     * here: there is no second wiring step a caller can forget.
+     */
     SymbolWirelessManager(WirelessManager* wirelessManager,
                           RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
-    /// Drives the channel's retransmits. Called every loop tick.
+    /** Drives the channel's retransmits. Called every loop tick. */
     void sync();
 
-    /// Sends one command to the peer set by setMacPeer, retried until the radio
-    /// reports it landed or the retry budget runs out, after which it is dropped
-    /// silently. `serialPort` reaches the log only; the address decides where the
-    /// frame goes.
+    /**
+     * Sends one command to the peer set by setMacPeer, retried until the radio
+     * reports it landed or the retry budget runs out, after which it is dropped
+     * silently. `serialPort` reaches the log only; the address decides where the
+     * frame goes.
+     */
     void sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort);
 
-    /// Sets the address every subsequent sendPacket goes to.
+    /** Sets the address every subsequent sendPacket goes to. */
     void setMacPeer(const uint8_t* macAddress);
 
-    /// Registers the callback for commands arriving on `port`. One slot per jack.
+    /** Registers the callback for commands arriving on `port`. One slot per jack. */
     void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port);
 
-    /// Drops every registered port callback.
+    /** Drops every registered port callback. */
     void clearCallback();
 
 private:

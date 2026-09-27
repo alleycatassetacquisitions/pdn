@@ -57,9 +57,12 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /// wirelessManager may be null: nothing is transmitted, but the send reports
-    /// success so the retry bookkeeping still runs. Tests that never reach the
-    /// radio pass nullptr rather than standing one up.
+    /**
+     * wirelessManager may be null, which also leaves the duel channel unclaimed,
+     * so no inbound frame is delivered either. Nothing is transmitted, but the send
+     * reports success so the retry bookkeeping still runs. Tests that never reach
+     * the radio pass nullptr rather than standing one up.
+     */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
@@ -136,9 +139,11 @@ public:
      */
     size_t getStoredMatchCount();
 
-    /// Drops a match whose handshake never completed, and cancels the retries of
-    /// the SEND_MATCH_ID that announced it. Use this where a match is given up on;
-    /// clearCurrentMatch alone is for a match that ran to a result.
+    /**
+     * Drops a match whose handshake never completed, and cancels the retries of
+     * the SEND_MATCH_ID that announced it. Use this where a match is given up on;
+     * clearCurrentMatch alone is for a match that ran to a result.
+     */
     void abandonMatchHandshake();
 
     void clearCurrentMatch();
@@ -170,10 +175,10 @@ public:
 
     void listenForMatchEvents(const QuickdrawCommand& command);
 
-    /// Binds the player and storage this manager records matches against.
+    /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /// Drives the duel channel's retries. Called once per tick by GameSession.
+    /** Drives the duel channel's retries. Called once per tick by GameSession. */
     void sync();
 
     parameterizedCallbackFunction getDuelButtonPush();

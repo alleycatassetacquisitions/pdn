@@ -15,7 +15,7 @@
 // the jack its sender sits on.
 class SymbolWirelessTests : public testing::Test {
 public:
-    /// Stands up the manager on a mocked radio and captures its channel handler.
+    /** Stands up the manager on a mocked radio and captures its channel handler. */
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
@@ -48,7 +48,7 @@ public:
         manager = new SymbolWirelessManager(wirelessManager, &rdc);
     }
 
-    /// Frees the manager and the clock the timers hold.
+    /** Frees the manager and the clock the timers hold. */
     void TearDown() override {
         delete manager;
         delete wirelessManager;
@@ -56,7 +56,7 @@ public:
         delete fakeClock;
     }
 
-    /// Plays one frame back at the manager as the radio would.
+    /** Plays one frame back at the manager as the radio would. */
     void deliver(const uint8_t* fromMac, const SymbolMatchPacket& packet) {
         ASSERT_NE(receiveHandler, nullptr);
         receiveHandler(fromMac, reinterpret_cast<const uint8_t*>(&packet),

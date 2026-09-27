@@ -277,11 +277,13 @@ public:
 // both directions run the real wire format, dedup included.
 class QuickdrawRadioTap {
 public:
-    /// Taps a radio: captures outbound quickdraw frames and holds on to the
-    /// receive handler the duel channel installs. Must run BEFORE the
-    /// MatchManager is constructed, because that is when the channel claims the
-    /// PktType, and after any broad sendData default, because gmock resolves to
-    /// the last matching ON_CALL rather than the most specific.
+    /**
+     * Taps a radio: captures outbound quickdraw frames and holds on to the
+     * receive handler the duel channel installs. Must run BEFORE the
+     * MatchManager is constructed, because that is when the channel claims the
+     * PktType, and after any broad sendData default, because gmock resolves to
+     * the last matching ON_CALL rather than the most specific.
+     */
     void attach(MockPeerComms* radio) {
         ON_CALL(*radio, setPacketHandler(PktType::kQuickdrawCommand, testing::_, testing::_))
             .WillByDefault(testing::Invoke(
@@ -311,30 +313,34 @@ public:
                 testing::Return(1)));
     }
 
-    /// The exact frame this radio last sent, for the peer's tap to replay.
+    /** The exact frame this radio last sent, for the peer's tap to replay. */
     const QuickdrawPacket* lastFrame() const {
         return sentFrames.empty() ? nullptr : &sentFrames.back();
     }
 
-    /// Replays `frame` into THIS radio's manager as if it had arrived from
-    /// `senderMac`. Called on the receiving side, because the handler a tap
-    /// holds is the one its own manager's channel installed.
+    /**
+     * Replays `frame` into THIS radio's manager as if it had arrived from
+     * `senderMac`. Called on the receiving side, because the handler a tap
+     * holds is the one its own manager's channel installed.
+     */
     void deliverFrameFrom(const uint8_t* senderMac, const QuickdrawPacket* frame) {
         if (frame == nullptr) return;
         deliverBytesTo(senderMac, reinterpret_cast<const uint8_t*>(frame),
                        sizeof(*frame));
     }
 
-    /// Observer for every command this tap decodes, so a test can inspect the
-    /// wire round-trip without standing up a manager.
+    /**
+     * Observer for every command this tap decodes, so a test can inspect the
+     * wire round-trip without standing up a manager.
+     */
     void setPacketReceivedCallback(std::function<void(const QuickdrawCommand&)> cb) {
         packetReceivedCallback = std::move(cb);
     }
 
-    /// Drops the decode observer.
+    /** Drops the decode observer. */
     void clearCallbacks() { packetReceivedCallback = nullptr; }
 
-    /// Feeds raw wire bytes into this radio's manager as the driver would.
+    /** Feeds raw wire bytes into this radio's manager as the driver would. */
     void deliverBytesTo(const uint8_t* senderMac, const uint8_t* data, size_t len) {
         // Observer only. Delivery goes through the channel below, so a short
         // frame reaches its length check rather than being filtered out here.
