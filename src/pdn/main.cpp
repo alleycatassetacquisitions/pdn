@@ -215,8 +215,8 @@ void setup() {
 void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
-        // Not from setup(): the driver's queue is drained by execDrivers below, so
-        // a record offered before the loop starts has nothing to carry it.
+        // Only exec() resolves a send into a report, and a report is what retires a
+        // record, so this has to run where exec() does.
         crashLogger->transmitPending();
     }
     pdn->loop();

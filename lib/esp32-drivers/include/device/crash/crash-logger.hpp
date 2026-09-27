@@ -134,8 +134,10 @@ public:
         // the loop that also pumps the radio and feeds the HELLO cadence.
         const unsigned long now = millis();
         if (lastTransmitAttemptMs != 0 && now - lastTransmitAttemptMs < TRANSMIT_RETRY_MS) return;
-        if (!hasPending()) return;
+        // Stamped whatever the outcome, so a device with nothing pending arms the
+        // gate too rather than re-reading NVS on every tick.
         lastTransmitAttemptMs = now;
+        if (!hasPending()) return;
         useHttp ? transmitHttp() : transmitEspNow();
     }
 
@@ -313,6 +315,10 @@ private:
     // of the same frame.
     static constexpr unsigned long TRANSMIT_RETRY_MS = 1000;
     unsigned long lastTransmitAttemptMs = 0;
+    mutable uint32_t crashSeqCache = 0;
+    mutable bool crashSeqCached = false;
+    mutable uint32_t sentSeqCache = 0;
+    mutable bool sentSeqCached = false;
 
     bool isCleanReason(esp_reset_reason_t reason) const {
         return reason == ESP_RST_POWERON
@@ -323,20 +329,36 @@ private:
             || reason == ESP_RST_JTAG;
     }
 
+    // Both counters are cached after their first read. This class is the only
+    // writer of either key, and a device that has never crashed holds neither, so
+    // an uncached read costs two NVS misses per call — and the Preferences layer
+    // logs each miss at error level.
     uint32_t readCrashSeq() const {
-        return readUint32Pref(SEQ_KEY);
+        if (!crashSeqCached) {
+            crashSeqCache = readUint32Pref(SEQ_KEY);
+            crashSeqCached = true;
+        }
+        return crashSeqCache;
     }
 
     uint32_t readSentSeq() const {
-        return readUint32Pref(SENT_SEQ_KEY);
+        if (!sentSeqCached) {
+            sentSeqCache = readUint32Pref(SENT_SEQ_KEY);
+            sentSeqCached = true;
+        }
+        return sentSeqCache;
     }
 
     void writeCrashSeq(uint32_t value) {
         writeUint32Pref(SEQ_KEY, value);
+        crashSeqCache = value;
+        crashSeqCached = true;
     }
 
     void writeSentSeq(uint32_t value) {
         writeUint32Pref(SENT_SEQ_KEY, value);
+        sentSeqCache = value;
+        sentSeqCached = true;
     }
 
     uint32_t readUint32Pref(const char* key) const {
