@@ -96,13 +96,6 @@ static void setupEspNow(PeerCommsInterface* peerComms) {
             static_cast<FDNConnectWirelessManager*>(arg)->processPacket(src, data, len);
         },
         fdnConnectWirelessManager);
-
-    peerComms->setPacketHandler(
-        PktType::kSymbolMatchCommand,
-        [](const uint8_t* src, const uint8_t* data, size_t len, void* arg) {
-            static_cast<SymbolWirelessManager*>(arg)->processSymbolMatchCommand(src, data, len);
-        },
-        symbolWirelessManager);
 }
 
 void setup() {
@@ -162,8 +155,10 @@ void setup() {
 
     hackedPlayersManager  = new HackedPlayersManager(fdn->getStorage());
 
-    symbolWirelessManager = new SymbolWirelessManager();
-    symbolWirelessManager->initialize(fdn->getWirelessManager(), fdn->getRemoteDeviceCoordinator());
+    symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
+                                                      fdn->getRemoteDeviceCoordinator());
+    // The retransmits behind the channel need a tick.
+    fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
 
     setupEspNow(peerCommsDriver);
 

@@ -7,7 +7,7 @@
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "utils/simple-timer.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
@@ -37,7 +37,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     char playerId[] = "test";
     player.setUserID(playerId);
     player.setIsHunter(false);
-    FakeQuickdrawWirelessManager wireless;
     FakeRemoteDeviceCoordinator rdc;
     const uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
     rdc.setPeerMac(SerialIdentifier::INPUT_JACK, peerMac);
@@ -46,7 +45,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.initialize();
     driver.connect();
 
-    MatchManager mm;
+    MatchManager mm(nullptr);
     using ::testing::_;
     ON_CALL(storage, write(_, _, _))
         .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
@@ -54,7 +53,7 @@ inline void matchManagerConcurrentDriverVsReader() {
         });
     ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(::testing::Return(1));
     ON_CALL(storage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
-    mm.initialize(&player, &storage, &wireless);
+    mm.initialize(&player, &storage);
     mm.setRemoteDeviceCoordinator(&rdc);
     mm.clearCurrentMatch();
 
@@ -66,7 +65,7 @@ inline void matchManagerConcurrentDriverVsReader() {
             auto* matchMgr = static_cast<MatchManager*>(ctx);
             const auto* pkt = reinterpret_cast<const QuickdrawPacket*>(data);
             QuickdrawCommand cmd(src,
-                                 static_cast<QDCommand>(pkt->command),
+                                 pkt->command,
                                  pkt->matchId, pkt->playerId,
                                  pkt->playerDrawTime, pkt->isHunter);
             matchMgr->listenForMatchEvents(cmd);

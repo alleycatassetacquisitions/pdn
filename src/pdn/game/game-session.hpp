@@ -4,7 +4,7 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -32,7 +32,6 @@ public:
     /// holding `this`.
     GameSession(Player* player,
                 Device* pdn,
-                QuickdrawWirelessManager* quickdrawWirelessManager,
                 SymbolWirelessManager* symbolWirelessManager);
     /// Drops the callbacks that capture `this`, then frees the managers it owns.
     ~GameSession();
@@ -81,7 +80,6 @@ private:
     Device* pdn = nullptr;
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     MatchManager* matchManager = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;

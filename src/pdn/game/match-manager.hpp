@@ -17,7 +17,10 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/mac-functions.hpp"
+#include "wireless/quickdraw-packet.hpp"
+#include "wireless/reliable-channel.hpp"
+#include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -54,8 +57,9 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-
-    MatchManager();
+    /// wirelessManager may be null, and sends then no-op; tests that never
+    /// reach the radio pass nullptr rather than standing one up.
+    explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
 
@@ -152,7 +156,11 @@ public:
 
     void listenForMatchEvents(const QuickdrawCommand& command);
 
-    void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
+    /// Binds the player and storage this manager records matches against.
+    void initialize(Player* player, StorageInterface* storage);
+
+    /// Drives the duel channel's retries. Called once per tick by GameSession.
+    void sync();
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -184,7 +192,13 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
+    // Duel frames carry the match's outcome, so they are retried rather than
+    // fired once and hoped for.
+    Resender resender;
+    ReliableChannel<QuickdrawPacket> duelChannel;
+    /// Unicasts one command to `mac`, retried until the radio acks it or the
+    /// channel's retry budget runs out.
+    void sendCommand(const uint8_t* mac, QuickdrawCommand& command);
     /**
      * Appends a match to storage
      * @param match Match to save

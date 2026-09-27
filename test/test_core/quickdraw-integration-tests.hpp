@@ -9,7 +9,7 @@
 #include "device-mock.hpp"
 #include "id-generator.hpp"
 #include "utility-tests.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "device/wireless-manager.hpp"
 
 using ::testing::_;
@@ -69,8 +69,11 @@ public:
     void SetUp() override {
         setupClock();
         setupPlayer();
-        setupManagers();
+        // Broad mock defaults first: setupManagers installs the narrower radio
+        // tap, and gmock resolves to the last matching ON_CALL, not the most
+        // specific one.
         setupDefaultMockExpectations();
+        setupManagers();
     }
 
     void TearDown() override {
@@ -107,11 +110,10 @@ public:
                       const uint8_t macAddr[6] = nullptr) {
         uint8_t defaultMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         const uint8_t* mac = macAddr ? macAddr : defaultMac;
-        wirelessManager->processQuickdrawCommand(
+        wirelessManager->deliverBytesTo(
             mac,
             reinterpret_cast<const uint8_t*>(&packet),
-            sizeof(packet)
-        );
+            sizeof(packet));
     }
 
     // All members are public for access from standalone test functions
@@ -141,10 +143,10 @@ private:
 
     void setupManagers() {
         deviceWirelessManager = new WirelessManager(&peerComms, &httpClient);
-        matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, deviceWirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        wirelessManager->attach(&peerComms);
+        matchManager = new MatchManager(deviceWirelessManager);
+        matchManager->initialize(player, &storage);
         // Stub the RDC with the opponent MAC this fixture uses so the
         // SEND_MATCH_ID gate in listenForMatchEvents passes for delivered packets.
         {
@@ -193,10 +195,10 @@ public:
 
     void SetUp() override {
         setupClock();
+        setupDefaultMockExpectations();
         setupHunter();
         setupBounty();
         setupMatches();
-        setupDefaultMockExpectations();
     }
 
     void TearDown() override {
@@ -217,18 +219,16 @@ public:
         TestQuickdrawPacket packet = createTestPacketFromMatch(
             hunterMatchManager->getCurrentMatch(), command, true);
         uint8_t macAddr[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
-        bountyWirelessManager->processQuickdrawCommand(
-            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet)
-        );
+        bountyWirelessManager->deliverBytesTo(
+            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet));
     }
 
     void bountySendsToHunter(int command) {
         TestQuickdrawPacket packet = createTestPacketFromMatch(
             bountyMatchManager->getCurrentMatch(), command, false);
         uint8_t macAddr[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-        hunterWirelessManager->processQuickdrawCommand(
-            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet)
-        );
+        hunterWirelessManager->deliverBytesTo(
+            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet));
     }
 
     // All members are public for access from standalone test functions
@@ -264,10 +264,10 @@ private:
         hunter->setIsHunter(true);
 
         hunterDeviceWirelessManager = new WirelessManager(&hunterPeerComms, &hunterHttpClient);
-        hunterMatchManager = new MatchManager();
         hunterWirelessManager = new FakeQuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, hunterDeviceWirelessManager, 100);
-        hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
+        hunterWirelessManager->attach(&hunterPeerComms);
+        hunterMatchManager = new MatchManager(hunterDeviceWirelessManager);
+        hunterMatchManager->initialize(hunter, &hunterStorage);
         hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
     }
 
@@ -278,10 +278,10 @@ private:
         bounty->setIsHunter(false);
 
         bountyDeviceWirelessManager = new WirelessManager(&bountyPeerComms, &bountyHttpClient);
-        bountyMatchManager = new MatchManager();
         bountyWirelessManager = new FakeQuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, bountyDeviceWirelessManager, 100);
-        bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
+        bountyWirelessManager->attach(&bountyPeerComms);
+        bountyMatchManager = new MatchManager(bountyDeviceWirelessManager);
+        bountyMatchManager->initialize(bounty, &bountyStorage);
         bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
     }
 
@@ -302,8 +302,8 @@ private:
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
-        hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
-        bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
+        bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
+        hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
 
         // Clear handshake callbacks; each test sets its own for the draw phase.
         hunterWirelessManager->clearCallbacks();
@@ -379,21 +379,47 @@ inline void packetParsingNeverPressedParsesCorrectly(PacketParsingTests* suite) 
     EXPECT_EQ(receivedCommand.playerDrawTime, 9999L);
 }
 
-inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
-    bool callbackInvoked = false;
-    
-    suite->wirelessManager->setPacketReceivedCallback([&](QuickdrawCommand cmd) {
-        callbackInvoked = true;
-    });
-    
-    // Send a packet that's too small
-    uint8_t smallPacket[10] = {0};
+// The duel channel suppresses a sender's retransmit of a frame it already
+// delivered. seqId 0 is the unsequenced sentinel and is deliberately exempt, so
+// the frame carries a real one.
+inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
+    int callbacks = 0;
+    suite->wirelessManager->setPacketReceivedCallback(
+        [&](const QuickdrawCommand&) { ++callbacks; });
+
+    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
+    packet.seqId = 9;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
-    
-    suite->wirelessManager->processQuickdrawCommand(macAddr, smallPacket, sizeof(smallPacket));
-    
-    // Should not invoke callback for malformed packet
-    EXPECT_FALSE(callbackInvoked);
+
+    EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
+    suite->wirelessManager->deliverBytesTo(
+        macAddr, reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
+    EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 180);
+
+    // Same frame again: the observer still sees the bytes arrive, but the
+    // channel must not hand it to the manager a second time.
+    suite->matchManager->getCurrentMatch()->setBountyDrawTime(0);
+    suite->wirelessManager->deliverBytesTo(
+        macAddr, reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
+    EXPECT_EQ(callbacks, 2);
+    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 0);
+}
+
+inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
+    // A frame the manager would otherwise act on, handed over one byte short.
+    // The bytes behind the pointer are a whole valid packet, so the channel's
+    // length check is the only thing standing between it and the manager — a
+    // buffer that really is too small would be rejected by its contents anyway
+    // and would prove nothing.
+    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
+    packet.seqId = 4;
+    uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+    suite->wirelessManager->deliverBytesTo(
+        macAddr, reinterpret_cast<const uint8_t*>(&packet), sizeof(packet) - 1);
+
+    EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
 }
 
 inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suite) {
@@ -525,7 +551,6 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {

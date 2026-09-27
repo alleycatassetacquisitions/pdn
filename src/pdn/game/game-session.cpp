@@ -24,28 +24,23 @@ const std::array<GameSession::PacketRoute, 6>& GameSession::packetRoutes() {
 // both managers read the two device-owned managers pulled off the PDN above them.
 GameSession::GameSession(Player* player,
                          Device* pdn,
-                         QuickdrawWirelessManager* quickdrawWirelessManager,
                          SymbolWirelessManager* symbolWirelessManager)
     : player(player)
     , pdn(pdn)
     , wirelessManager(pdn->getWirelessManager())
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
-    , quickdrawWirelessManager(quickdrawWirelessManager)
     , symbolWirelessManager(symbolWirelessManager)
-    , matchManager(new MatchManager())
+    , matchManager(new MatchManager(wirelessManager))
     , chainDuelManager(new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator))
     , shootoutManager(new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator)) {
     this->shootoutManager->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager);
 
-    matchManager->initialize(player, pdn->getStorage(), quickdrawWirelessManager);
+    matchManager->initialize(player, pdn->getStorage());
     matchManager->setBoostProvider([this]() -> unsigned long {
         return chainDuelManager ? chainDuelManager->getBoostMs() : 0;
     });
     matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
-
-    quickdrawWirelessManager->setPacketReceivedCallback(
-        [this](const QuickdrawCommand& command) { matchManager->listenForMatchEvents(command); });
 
     for (const PacketRoute& route : packetRoutes()) {
         wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
@@ -82,10 +77,6 @@ GameSession::~GameSession() {
     for (const PacketRoute& route : packetRoutes()) {
         wirelessManager->clearEspNowPacketHandler(route.type);
     }
-    if (quickdrawWirelessManager) {
-        quickdrawWirelessManager->clearCallbacks();
-    }
-    quickdrawWirelessManager = nullptr;
     symbolWirelessManager = nullptr;
     // Managers before matchManager: shootoutManager holds a raw MatchManager*
     // and dereferences it when priming a bracket match.
@@ -104,7 +95,6 @@ GameContext GameSession::getContext() {
     context.remoteDeviceCoordinator = remoteDeviceCoordinator;
     context.chainDuelManager = chainDuelManager;
     context.shootoutManager = shootoutManager;
-    context.quickdrawWirelessManager = quickdrawWirelessManager;
     context.symbolWirelessManager = symbolWirelessManager;
     context.wirelessManager = wirelessManager;
     return context;
@@ -120,6 +110,10 @@ SupporterReady* GameSession::getMountedSupporterReady() {
 }
 
 void GameSession::sync() {
+    // The duel channel retries on its own timers, so it needs a tick even when
+    // no state is driving a match.
+    if (matchManager) matchManager->sync();
+
     if (chainDuelManager) {
         chainDuelManager->sync();
 
@@ -133,6 +127,7 @@ void GameSession::sync() {
     // retries keep running while the device is in the duel app for a bracket
     // match.
     if (shootoutManager) shootoutManager->sync();
+    if (symbolWirelessManager) symbolWirelessManager->sync();
 
     logRetryStats();
 }
@@ -145,9 +140,10 @@ void GameSession::logRetryStats() {
     if (!statsLogTimer.expired()) return;
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. Both managers are reported: a venue reading one
-    // line to judge radio health would otherwise be shown the chain duel's
-    // retries and told nothing about the tournament's.
+    // strips info-level calls. Both fan-out managers are reported: a venue
+    // reading one line to judge radio health would otherwise be shown the chain
+    // duel's retries and told nothing about the tournament's. The duel channel
+    // keeps its own counters and is not folded in here.
     if (chainDuelManager != nullptr) {
         ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;
