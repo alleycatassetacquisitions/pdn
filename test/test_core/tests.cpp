@@ -1793,8 +1793,8 @@ TEST_F(ChainDuelManagerTests, retryStatsRecordsLifecycle) {
     cdmRetryStatsRecordsLifecycle(this);
 }
 
-TEST_F(ChainDuelManagerTests, retransmitAbandonsAfterMax) {
-    cdmRetransmitAbandonsAfterMax(this);
+TEST_F(ChainDuelManagerTests, retransmitAbandonsWhenSpanRunsOut) {
+    cdmRetransmitAbandonsWhenSpanRunsOut(this);
 }
 
 TEST_F(ChainDuelManagerTests, onChainStateBecomesChampionSetsSelfMac) {
@@ -1845,8 +1845,8 @@ TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) {
     cdmGameEventAckClearsPending(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) {
-    cdmGameEventAbandonsAfterMax(this);
+TEST_F(ChainDuelManagerTests, gameEventAbandonsWhenSpanRunsOut) {
+    cdmGameEventAbandonsWhenSpanRunsOut(this);
 }
 
 // ============================================
@@ -1909,7 +1909,7 @@ TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { con
 TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
 TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
 TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
-TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
+TEST_F(ShootoutManagerTests, matchStartWaitsOutTheBracketRevealWindow) { matchStartWaitsOutTheBracketRevealWindow(this); }
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
