@@ -125,10 +125,15 @@ public:
         return readSentSeq() < readCrashSeq();
     }
 
-    /// Sends the outstanding record, if any, over whichever transport this
-    /// logger was built with. Call once the transport is ready.
+    /// Offers the oldest unreported record to whichever transport this logger was
+    /// built with. Call every tick: reporting is what retires a record, and the
+    /// radio can be torn down for a WiFi excursion at any point, so an attempt
+    /// that goes nowhere has to be repeated rather than counted.
     void transmitPending() {
         if (!hasPending()) return;
+        const unsigned long now = millis();
+        if (lastTransmitAttemptMs != 0 && now - lastTransmitAttemptMs < TRANSMIT_RETRY_MS) return;
+        lastTransmitAttemptMs = now;
         useHttp ? transmitHttp() : transmitEspNow();
     }
 
@@ -301,6 +306,10 @@ private:
 
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
+    // Gap between attempts at the same record. Long enough that a record in the
+    // driver's queue has had its chance to be reported before another is offered.
+    static constexpr unsigned long TRANSMIT_RETRY_MS = 1000;
+    unsigned long lastTransmitAttemptMs = 0;
 
     bool isCleanReason(esp_reset_reason_t reason) const {
         return reason == ESP_RST_POWERON
@@ -411,6 +420,25 @@ private:
     void transmitEspNow() {
         if (!espNowDriver) return;
 
+        // A record counts as sent when the radio reports its frame, not when the
+        // frame is offered. A queued frame can still be discarded — a WiFi
+        // excursion drops the driver's queue — so marking records as they are
+        // queued would retire ones that never reached the air.
+        espNowDriver->setSendStatusHandler(
+            PktType::kCrashLog,
+            [](const uint8_t*, const uint8_t* data, const size_t length,
+               bool success, void* ctx) {
+                if (!success || ctx == nullptr || length != sizeof(CrashPacket)) return;
+                CrashPacket reported{};
+                memcpy(&reported, data, sizeof(reported));
+                CrashLogger* self = static_cast<CrashLogger*>(ctx);
+                // sentSeq is a high-water mark, so only ever move it forward.
+                if (reported.crashNumber > self->readSentSeq()) {
+                    self->writeSentSeq(reported.crashNumber);
+                }
+            },
+            this);
+
         const uint32_t crashSeq = readCrashSeq();
         uint32_t sentSeq = readSentSeq();
 
@@ -439,8 +467,10 @@ private:
             );
 
             if (result == 0) {
-                writeSentSeq(n);
                 LOG_I(CRASH_LOG_TAG, "Queued crash #%lu for broadcast", static_cast<unsigned long>(n));
+                // One frame per attempt. The next is offered once the radio has
+                // reported this one, which is what moves sentSeq past it.
+                break;
             } else {
                 LOG_E(CRASH_LOG_TAG, "Failed to queue crash #%lu — will retry on next boot",
                       static_cast<unsigned long>(n));

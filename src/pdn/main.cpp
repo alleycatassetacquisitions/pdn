@@ -183,7 +183,6 @@ void setup() {
 
     crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
     crashLogger->capture();
-    crashLogger->transmitPending();
 
     gameSession = new GameSession(player, pdn, quickdrawWirelessManager, symbolWirelessManager);
 
@@ -216,6 +215,9 @@ void setup() {
 void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
+        // Not from setup(): the driver's queue is drained by execDrivers below, so
+        // a record offered before the loop starts has nothing to carry it.
+        crashLogger->transmitPending();
     }
     pdn->loop();
 }
