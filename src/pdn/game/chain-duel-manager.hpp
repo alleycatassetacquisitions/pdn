@@ -193,10 +193,9 @@ private:
 
     // Set the moment a press produces a confirm, so the champion-changed and
     // chain-settled triggers know there is something worth re-sending. Written by
-    // the duel state that sends the confirm and cleared when a COUNTDOWN arrives
-    // or the role changes; read only by resendConfirm. Every one of those is on the
-    // main loop, packet handlers included, so the atomic buys nothing but is left
-    // rather than churned.
+    // the duel state that sends the confirm, and cleared when a COUNTDOWN arrives or
+    // when this device stops being a supporter; read only by resendConfirm. Every
+    // one of those is on the main loop, packet handlers included.
     std::atomic<bool> confirmSent{false};
 
     // Every press we have heard this round, member or not. Membership is applied
@@ -255,7 +254,7 @@ private:
     uint8_t nextGameEventSeqId = 1;
 
     // Owned here rather than shared with the coordinator's, for two reasons the
-    // Resender only holds per-instance: the EVERY_ROUND budget below, and the
+    // Resender only holds per-instance: its EVERY_ROUND budget, and the
     // retry counters this manager reports. It also bounds the kChainGameEvent
     // fan-out's lifetime, which no channel does — that traffic goes out through
     // sendBroadcast, so the channel destructor's cancellation does not cover it.

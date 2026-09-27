@@ -57,7 +57,9 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /// wirelessManager may be null: nothing is transmitted, but the send reports
+    /// wirelessManager may be null, which also leaves the duel channel unclaimed,
+    /// so no inbound frame is delivered either. Nothing is transmitted, but the send
+    /// reports
     /// success so the retry bookkeeping still runs. Tests that never reach the
     /// radio pass nullptr rather than standing one up.
     explicit MatchManager(WirelessManager* wirelessManager);

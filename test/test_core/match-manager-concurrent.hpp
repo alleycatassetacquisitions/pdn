@@ -47,9 +47,9 @@ inline void matchManagerConcurrentDriverVsReader() {
 
     // A real WirelessManager, so constructing MatchManager claims the duel
     // channel and the channel installs the receive handler. Built with nullptr the
-    // channel installs nothing, and this test would drive a decode trampoline of
-    // its own instead of the path the firmware runs. Declared before mm so it
-    // outlives the channel that points at it.
+    // channel installs nothing at all, so a null one here would exercise no
+    // receive path. Declared before mm so it outlives the channel that points at
+    // it.
     WirelessManager wireless(&driver, nullptr);
     MatchManager mm(&wireless);
     using ::testing::_;
@@ -114,8 +114,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     SimpleTimer::setPlatformClock(nullptr);
 
     // Without this the test is a TSan vehicle that passes whether or not a frame
-    // ever arrived, which is how it went green while the channel installed no
-    // handler at all.
+    // ever arrived, so a receive path that installs nothing still passes it.
     EXPECT_TRUE(reachedTheManager)
         << "no SEND_MATCH_ID reached MatchManager through the duel channel";
     SUCCEED() << "No TSan races expected: MatchManager is only accessed from exec() on the main thread";

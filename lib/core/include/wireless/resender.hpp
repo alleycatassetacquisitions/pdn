@@ -41,11 +41,13 @@ public:
     // abandons. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
     //
     // Parked by ReliableTransport (its abandons are no-ops and the RDC re-sends on
-    // the next chain-state event) and by the duel and symbol channels, whose
-    // receivers drop a replay they have already acted on. Spent by the shootout,
-    // which gates its next match on a fan-out clearing, and by the chain duel,
-    // whose fan-out needs the entry to stop rather than re-attempt at the 100ms
-    // floor indefinitely.
+    // the next chain-state event), by the duel channel, whose receivers refuse a
+    // replay on the match id it carries, and by the symbol channel, whose
+    // supersession stops a replay arriving out of order at all. Spent by the
+    // shootout, which gates its next match on a fan-out clearing, and by the chain
+    // duel, whose fan-out needs the entry to stop rather than re-attempt at the
+    // 100ms floor indefinitely. That Resender also carries the two unicast chain
+    // channels, which inherit the policy.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 

@@ -6,7 +6,6 @@
 #include "id-generator.hpp"
 
 // Wire format transmitted over ESP-NOW for every quickdraw command.
-// Defined here so tests can construct and inspect packets without duplicating the layout.
 struct QuickdrawPacket {
     char matchId[37];  // IdGenerator::UUID_BUFFER_SIZE
     char playerId[5];  // 4 chars + null terminator

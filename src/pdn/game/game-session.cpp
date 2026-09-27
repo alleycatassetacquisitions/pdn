@@ -142,8 +142,8 @@ void GameSession::logRetryStats() {
     // strips info-level calls. Both fan-out managers are reported: a venue
     // reading one line to judge radio health would otherwise be shown the chain
     // duel's retries and told nothing about the tournament's. The duel channel's
-    // Resender counts its own retries but exposes no accessor, so they are not
-    // reported anywhere.
+    // Resender counts retries, but MatchManager keeps it private with no getter, so
+    // they are not reported anywhere.
     if (chainDuelManager != nullptr) {
         ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;

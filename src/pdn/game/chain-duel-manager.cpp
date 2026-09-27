@@ -339,8 +339,8 @@ void ChainDuelManager::applyChainStateChange() {
     sendRoleToOpponentJack();
 
     // Re-offered on every topology event, not only when the champion changes: the
-    // join is unacknowledged, and a dropped one costs this device's press for the
-    // whole round with nothing else to repair it.
+    // join is retried only to its own budget, and one abandoned past that costs
+    // this device's press for the whole round with nothing else to repair it.
     announceToChampion();
 }
 
