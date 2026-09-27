@@ -59,9 +59,7 @@ private:
 
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    /** Champion-side enrolment of a supporter this device shares no cable with. */
-    void onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
+    /// Champion-side enrolment of a supporter this device shares no cable with.
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
@@ -75,7 +73,7 @@ private:
         PktType type;
         PeerCommsInterface::PacketCallback handler;
     };
-    static const std::array<PacketRoute, 6>& packetRoutes();
+    static const std::array<PacketRoute, 4>& packetRoutes();
 
     /**
      * Wraps a member handler in the C-style callback the radio takes. The member
