@@ -5,10 +5,10 @@
 namespace {
 constexpr const char* RELIABLE_CHANNEL_TAG = "ReliableChannel";
 // Caps the per-channel RX dedup cursor table. Receiving costs no peer-table slot,
-// so nothing bounds the set of senders and this table never otherwise shrinks;
-// evicting the oldest cursor when full is what bounds it. A wrongly-evicted
-// still-active sender just re-seeds on its next packet, costing at most one
-// re-dispatch that downstream domain dedup absorbs.
+// so nothing bounds the set of senders and this table never otherwise shrinks.
+// Full, it drops the first cursor registered. A still-active sender dropped that
+// way re-seeds on its next packet, costing one re-dispatch that downstream domain
+// dedup absorbs.
 constexpr size_t MAX_RX_SENDERS = 32;
 }
 

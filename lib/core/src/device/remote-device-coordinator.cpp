@@ -552,9 +552,9 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     helloByPort[portIndex(jack)].peerProfile.fill(0);
     helloByPort[portIndex(jack)].lastContextResendMs = 0;
     // Context exchange is per-jack, so retries survive only while some jack still
-    // faces this peer (a 2-node ring puts it on both). Once none does they are dead
-    // traffic once no jack faces the peer. This jack already reads as empty here —
-    // onLinkDown fires from Idle.
+    // faces this peer (a 2-node ring puts it on both), so once none does they are
+    // dead traffic. This jack already reads as empty here — onLinkDown fires from
+    // Idle.
     // cancel() is silent, no abandon callback fires.
     if (!isDirectPeer(mac)) {
         if (pdnContextChannel != nullptr) pdnContextChannel->cancel(mac);
