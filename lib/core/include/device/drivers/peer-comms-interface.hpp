@@ -36,8 +36,16 @@ public:
     virtual void connect() = 0;
     virtual void disconnect() = 0;
 
-    // Returns the last observed RSSI for a peer, or -1 if unknown/unavailable.
-    virtual int getRssiForPeer(const uint8_t* macAddr) { (void)macAddr; return -1; }
+    // Sentinel for "no reading for this peer". Below every real dBm and below
+    // every proximity threshold, so a miss reads as the weakest signal rather than
+    // the strongest: -1 outranks thresholds like -50 and picked the nearest tier.
+    static constexpr int RSSI_UNKNOWN = -128;
+
+    // Returns the last observed RSSI for a peer, or RSSI_UNKNOWN if none.
+    virtual int getRssiForPeer(const uint8_t* macAddr) {
+        (void)macAddr;
+        return RSSI_UNKNOWN;
+    }
 
 protected:
 

@@ -269,24 +269,17 @@ public:
         return 0;
     }
 
-    /// Last RSSI captured for a peer from its receive callbacks; -1 if none seen.
-    int GetRssiForPeer(const uint8_t* macAddr) {
-        uint64_t macAddr64 = MacToUInt64(macAddr);
-        if (rssiTracker.count(macAddr64) > 0)
-            return rssiTracker[macAddr64];
-        return -1;
-    }
-
-    /// PeerCommsInterface adapter for GetRssiForPeer.
+    /// Last RSSI captured for a peer from its receive callbacks; RSSI_UNKNOWN if
+    /// none seen.
     int getRssiForPeer(const uint8_t* macAddr) override {
-        return GetRssiForPeer(macAddr);
-    }
-
-    /// Forwards to the static ESP-NOW receive callback (used when
-    /// re-initializing ESP-NOW).
-    void HandleReceivedData(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
-        // This simply forwards to the static callback method
-        EspNowRecvCallback(esp_now_info, data, data_len);
+        const uint64_t macAddr64 = MacToUInt64(macAddr);
+        int rssi = RSSI_UNKNOWN;
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        std::unordered_map<uint64_t, int>::const_iterator entry =
+            rssiTracker.find(macAddr64);
+        if (entry != rssiTracker.end()) rssi = entry->second;
+        xSemaphoreGive(recvMutex);
+        return rssi;
     }
 
 private:
@@ -364,13 +357,6 @@ private:
     static void EspNowRecvCallback(const esp_now_recv_info_t *esp_now_info, const uint8_t *data, int data_len) {
         EspNowDriver* manager = EspNowDriver::GetInstance();
 
-        // rx_ctrl carries the per-frame RSSI, available on every ESP-NOW
-        // receive without promiscuous mode. This is the sole RSSI fill path.
-        if (esp_now_info->rx_ctrl != nullptr) {
-            uint64_t srcMac64 = MacToUInt64(esp_now_info->src_addr);
-            manager->rssiTracker[srcMac64] = esp_now_info->rx_ctrl->rssi;
-        }
-
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "ESPNOW Recv Callback len %i from %X:%X:%X:%X:%X:%X\n", data_len,
             esp_now_info->src_addr[0], esp_now_info->src_addr[1], esp_now_info->src_addr[2],
@@ -400,6 +386,17 @@ private:
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
+
+        // Below the length checks, so a frame whose declared length disagrees with
+        // what arrived cannot seed an entry. The packet type is validated later, in
+        // HandlePktCallback, so a well-framed frame with a junk type still does.
+        // Shares recvMutex: the main loop reads this through getRssiForPeer.
+        if (esp_now_info->rx_ctrl != nullptr) {
+            const uint64_t srcMac64 = MacToUInt64(esp_now_info->src_addr);
+            xSemaphoreTake(manager->recvMutex, portMAX_DELAY);
+            manager->rssiTracker[srcMac64] = esp_now_info->rx_ctrl->rssi;
+            xSemaphoreGive(manager->recvMutex);
+        }
 
         manager->handleSinglePacket(esp_now_info->src_addr, data, pktHdr);
     }
@@ -688,6 +685,11 @@ private:
     // caller today is on it.
     std::queue<DataSendBuffer> sendQueue;
 
-    // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl)
+    // Storage for rssi, filled from each ESP-NOW receive callback (rx_ctrl).
+    // Written on the WiFi task and read from the main loop, so it shares
+    // recvMutex with the receive queue that the same callback feeds. Uncapped: an
+    // entry costs ~40 bytes on a PSRAM part, and a cap would have to evict a live
+    // peer at the device count a real event reaches, leaving it reading
+    // RSSI_UNKNOWN — which the proximity tiers treat as the weakest signal.
     std::unordered_map<uint64_t, int> rssiTracker;
 };
