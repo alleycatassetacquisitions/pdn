@@ -22,7 +22,7 @@ struct TransportTestPayload {
 
 TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
     // Every other test here feeds back an echo it stamped itself, which passes
-    // whether or not the Resender wrote the id. This one reads the bytes the radio
+    // whether or not the id reached the wire. This one reads the bytes the radio
     // was given: a stamp at the wrong offset is a silent wire bug, because both
     // the receiver's dedup and the sender's ack recover identity from that byte.
     using ::testing::_;

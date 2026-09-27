@@ -13,8 +13,9 @@ class PeerCommsInterface {
 public:
     using PacketCallback = std::function<void(const uint8_t* src, const uint8_t* data, const size_t length, void* ctx)>;
     // Fired once per outbound packet the driver accepted, either when the radio
-    // reports its MAC-layer result or when the radio refused the frame outright
-    // and will report nothing. `dst`/`data`/`length` mirror the send; `success` is
+    // reports its MAC-layer result or when the radio refused the frame outright and
+    // will report nothing. A frame accepted and then dropped by disconnect() is the
+    // one case that goes unreported. `dst`/`data`/`length` mirror the send; `success` is
     // the verdict. Drives the reliable transport's ack in place of a round-trip
     // ack packet. A driver that accepts a frame owes this callback: it is the only
     // delivery signal the reliable layer gets, and a frame never reported is one it
@@ -38,7 +39,7 @@ public:
 
     // Sentinel for "no reading for this peer". Below every real dBm and below
     // every proximity threshold, so a miss reads as the weakest signal rather than
-    // the strongest: -1 outranks thresholds like -50 and picked the nearest tier.
+    // the strongest: a value above a threshold like -50 reads as the nearest tier.
     static constexpr int RSSI_UNKNOWN = -128;
 
     // Returns the last observed RSSI for a peer, or RSSI_UNKNOWN if none.

@@ -47,7 +47,7 @@ ReliableChannelBase::~ReliableChannelBase() {
     // A base destructor runs AFTER the derived one, so between the two the slot
     // still points at an object whose deliverBytes is pure virtual again. What
     // makes that safe is not the ordering here: the driver queues receives and
-    // records a send verdict, acting on both from exec() on the main loop, which
+    // records a send verdict, acting on both from the main loop, which
     // is also where channels are destroyed, so no dispatch can land mid-teardown.
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);

@@ -43,7 +43,7 @@ public:
     // ReliableTransport parks (its abandons are no-ops and the RDC re-sends on
     // the next chain-state event). Both game managers abandon: the shootout
     // gates its next match on a fan-out clearing, and the chain duel needs the
-    // entry to stop rather than re-attempt at the INITIAL_TIMEOUT_MS floor indefinitely.
+    // entry to stop rather than re-attempt at the 100ms floor indefinitely.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
