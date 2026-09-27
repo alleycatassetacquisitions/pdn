@@ -4,11 +4,11 @@
 
 namespace {
 constexpr const char* RELIABLE_CHANNEL_TAG = "ReliableChannel";
-// Caps the per-channel RX dedup cursor table. The live peer set is bounded by
-// the ESP-NOW peer cap, but senders come and go across a session and this table
-// never otherwise shrinks; evicting the oldest cursor when full keeps it
-// bounded. A wrongly-evicted still-active sender just re-seeds on its next
-// packet, costing at most one re-dispatch that downstream domain dedup absorbs.
+// Caps the per-channel RX dedup cursor table. Receiving costs no peer-table slot,
+// so nothing bounds the set of senders and this table never otherwise shrinks;
+// evicting the oldest cursor when full is what bounds it. A wrongly-evicted
+// still-active sender just re-seeds on its next packet, costing at most one
+// re-dispatch that downstream domain dedup absorbs.
 constexpr size_t MAX_RX_SENDERS = 32;
 }
 
@@ -46,9 +46,9 @@ ReliableChannelBase::ReliableChannelBase(WirelessManager* wirelessManager,
 ReliableChannelBase::~ReliableChannelBase() {
     // A base destructor runs AFTER the derived one, so between the two the slot
     // still points at an object whose deliverBytes is pure virtual again. What
-    // makes that safe is not the ordering here: the driver queues both receive
-    // and send-result and drains them from exec() on the main loop, which is
-    // also where channels are destroyed, so no dispatch can land mid-teardown.
+    // makes that safe is not the ordering here: the driver queues receives and
+    // records a send verdict, acting on both from exec() on the main loop, which
+    // is also where channels are destroyed, so no dispatch can land mid-teardown.
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);
     wirelessManager->clearEspNowSendStatusHandler(packetType);

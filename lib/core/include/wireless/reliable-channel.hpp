@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -12,7 +14,7 @@
 // A ReliableChannel is a typed, reliable pipe for exactly one PktType: game
 // code sends a packed payload struct and receives decoded structs back, and
 // the channel supplies everything reliability needs underneath — seqId
-// stamping, retry-until-delivered via a Resender, duplicate suppression on
+// allocation, retry-until-delivered via a Resender, duplicate suppression on
 // receipt, and an abandon callback when a peer stays unreachable past the retry
 // budget. The struct itself is the wire format (packed, memcpy'd); both ends run
 // the same firmware, so field layout is the protocol. ReliableChannelBase holds
@@ -112,8 +114,8 @@ private:
     };
     OnAbandon onAbandon;
     uint8_t lastSentSeqId = 0;
-    // Last nonzero seqId delivered per sender. Bounded by the physical peer
-    // count present in a session.
+    // Last nonzero seqId delivered per sender. Receiving costs no peer-table
+    // slot, so nothing bounds this but MAX_RX_SENDERS.
     std::vector<RxSeqRecord> rxSeq;
 };
 
@@ -132,9 +134,13 @@ public:
         : ReliableChannelBase(wirelessManager, resender, type,
                               std::move(onAbandon), sendMode) {}
 
-    /// Reliable send: stamps a fresh nonzero seqId and hands the payload to the
-    /// Resender for retry-until-ack. Returns the stamped seqId.
-    uint8_t sendReliable(const uint8_t* mac, P p) {
+    /// Reliable send: allocates a fresh nonzero seqId, writes it into `p`, hands
+    /// the payload to the Resender for retry-until-ack, and returns the id. By
+    /// reference rather than by value so a 770-byte HeadTransferPayload is not
+    /// copied onto this frame on the way past; the id lands in the caller's struct
+    /// as a consequence, which costs nothing because every caller passes a local
+    /// it built for this send.
+    uint8_t sendReliable(const uint8_t* mac, P& p) {
         p.seqId = nextSeqId();
         resender->send(mac, packetType, p.seqId,
                        reinterpret_cast<const uint8_t*>(&p), sizeof(P), sendMode);

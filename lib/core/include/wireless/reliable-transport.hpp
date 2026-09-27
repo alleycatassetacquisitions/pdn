@@ -14,7 +14,7 @@ class WirelessManager;
 // Owns one Resender. Vends typed channels, one per PktType, all sharing it.
 //
 // Lifecycle of a reliable packet:
-//   send: manager -> channel->sendReliable (serialize, stamp seqId) ->
+//   send: manager -> channel->sendReliable (serialize, allocate seqId) ->
 //     Resender pending entry -> WirelessManager::sendEspNowData -> driver
 //     (which itself retries a failed MAC-layer send). The platform loop's
 //     transport->sync() retransmits on the Resender's backoff until the radio

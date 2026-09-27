@@ -43,7 +43,7 @@ public:
     // ReliableTransport parks (its abandons are no-ops and the RDC re-sends on
     // the next chain-state event). Both game managers abandon: the shootout
     // gates its next match on a fan-out clearing, and the chain duel needs the
-    // entry to stop rather than re-attempt at the 100ms floor indefinitely.
+    // entry to stop rather than re-attempt at the INITIAL_TIMEOUT_MS floor indefinitely.
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
@@ -109,7 +109,8 @@ public:
     const Stats& getStats() const { return stats; }
 
     /// Reliable send to one peer: the frame is addressed to that peer and it is
-    /// the only recipient expected to answer. payload bytes are copied.
+    /// the only recipient expected to answer. payload bytes are copied exactly as
+    /// given — every sender writes `seqId` into them before calling.
     void send(const uint8_t* target, PktType type, uint8_t seqId,
               const uint8_t* payload, size_t len,
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);

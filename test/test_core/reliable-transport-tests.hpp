@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <vector>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "wireless/reliable-channel.hpp"
@@ -18,6 +19,42 @@ struct TransportTestPayload {
     uint8_t seqId;
     uint8_t data[14];
 } __attribute__((packed));
+
+TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
+    // Every other test here feeds back an echo it stamped itself, which passes
+    // whether or not the Resender wrote the id. This one reads the bytes the radio
+    // was given: a stamp at the wrong offset is a silent wire bug, because both
+    // the receiver's dedup and the sender's ack recover identity from that byte.
+    using ::testing::_;
+    using ::testing::DoAll;
+    using ::testing::Invoke;
+    using ::testing::Return;
+
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    ReliableTransport transport(&wm);
+    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    ASSERT_NE(ch, nullptr);
+
+    std::vector<uint8_t> onTheWire;
+    EXPECT_CALL(mockComms, sendData(_, PktType::kChainGameEvent, _, _))
+        .WillOnce(DoAll(Invoke([&onTheWire](const uint8_t*, PktType,
+                                           const uint8_t* data, const size_t len) {
+                            onTheWire.assign(data, data + len);
+                        }),
+                        Return(1)));
+
+    uint8_t target[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload payload{};
+    const uint8_t seq = ch->sendReliable(target, payload);
+
+    ASSERT_NE(seq, 0);
+    ASSERT_EQ(onTheWire.size(), sizeof(TransportTestPayload));
+    EXPECT_EQ(onTheWire[offsetof(TransportTestPayload, seqId)], seq)
+        << "the seqId the channel returned is not in the bytes the radio was given";
+    EXPECT_EQ(payload.seqId, seq) << "the id did not reach the caller's struct";
+}
 
 TEST(ReliableTransportTest, reclaimSamePayloadReturnsSameChannel) {
     // A re-claim of a PktType with the same payload type (e.g. a re-created
