@@ -45,7 +45,13 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.initialize();
     driver.connect();
 
-    MatchManager mm(nullptr);
+    // A real WirelessManager, so constructing MatchManager claims the duel
+    // channel and the channel installs the receive handler. Built with nullptr the
+    // channel installs nothing, and this test would drive a decode trampoline of
+    // its own instead of the path the firmware runs. Declared before mm so it
+    // outlives the channel that points at it.
+    WirelessManager wireless(&driver, nullptr);
+    MatchManager mm(&wireless);
     using ::testing::_;
     ON_CALL(storage, write(_, _, _))
         .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
@@ -57,21 +63,8 @@ inline void matchManagerConcurrentDriverVsReader() {
     mm.setRemoteDeviceCoordinator(&rdc);
     mm.clearCurrentMatch();
 
-    // Handler is invoked by exec() on the main thread — never by the WiFi thread.
-    driver.setPacketHandler(
-        PktType::kQuickdrawCommand,
-        [](const uint8_t* src, const uint8_t* data, size_t len, void* ctx) {
-            if (len < sizeof(QuickdrawPacket)) return;
-            auto* matchMgr = static_cast<MatchManager*>(ctx);
-            const auto* pkt = reinterpret_cast<const QuickdrawPacket*>(data);
-            QuickdrawCommand cmd(src,
-                                 pkt->command,
-                                 pkt->matchId, pkt->playerId,
-                                 pkt->playerDrawTime, pkt->isHunter);
-            matchMgr->listenForMatchEvents(cmd);
-        },
-        &mm
-    );
+    // No handler is armed here: the duel channel claimed kQuickdrawCommand when mm
+    // was constructed, and the driver invokes it from exec() on this thread.
 
     std::atomic<bool> running{true};
 
@@ -85,7 +78,7 @@ inline void matchManagerConcurrentDriverVsReader() {
             QuickdrawPacket pkt = {};
             strncpy(pkt.matchId,  matchId, sizeof(pkt.matchId) - 1);
             strncpy(pkt.playerId, "hunt",  sizeof(pkt.playerId) - 1);
-            pkt.command        = static_cast<int>(QDCommand::SEND_MATCH_ID);
+            pkt.command        = QDCommand::SEND_MATCH_ID;
             pkt.isHunter       = true;
             pkt.playerDrawTime = 0;
 
@@ -100,12 +93,14 @@ inline void matchManagerConcurrentDriverVsReader() {
     // on this thread), then reads MatchManager state — all on one thread.
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
     volatile int sideEffect = 0;
+    bool reachedTheManager = false;
     while (std::chrono::steady_clock::now() < deadline) {
         driver.exec();
         sideEffect += static_cast<int>(mm.isMatchReady());
         sideEffect += static_cast<int>(mm.getHasReceivedDrawResult());
         sideEffect += static_cast<int>(mm.getHasPressedButton());
         if (mm.getCurrentMatch().has_value()) {
+            reachedTheManager = true;
             sideEffect += static_cast<int>(mm.getCurrentMatch()->getHunterDrawTime());
             sideEffect += static_cast<int>(mm.getCurrentMatch()->getBountyDrawTime());
         }
@@ -118,5 +113,10 @@ inline void matchManagerConcurrentDriverVsReader() {
     mm.clearCurrentMatch();
     SimpleTimer::setPlatformClock(nullptr);
 
+    // Without this the test is a TSan vehicle that passes whether or not a frame
+    // ever arrived, which is how it went green while the channel installed no
+    // handler at all.
+    EXPECT_TRUE(reachedTheManager)
+        << "no SEND_MATCH_ID reached MatchManager through the duel channel";
     SUCCEED() << "No TSan races expected: MatchManager is only accessed from exec() on the main thread";
 }
