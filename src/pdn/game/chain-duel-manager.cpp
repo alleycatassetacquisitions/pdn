@@ -57,14 +57,6 @@ ChainDuelManager::~ChainDuelManager() {
     rdc->setOnChainRoleChange(nullptr);
 }
 
-void ChainDuelManager::setChampion(const std::array<uint8_t, 6>* mac) {
-    if (mac == nullptr) {
-        championMac.reset();
-        return;
-    }
-    championMac = *mac;
-}
-
 SerialIdentifier ChainDuelManager::opponentJack() const {
     return player->isHunter() ? SerialIdentifier::OUTPUT_JACK : SerialIdentifier::INPUT_JACK;
 }
@@ -301,7 +293,6 @@ void ChainDuelManager::onChainStateChanged() {
 }
 
 void ChainDuelManager::applyChainStateChange() {
-
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;
@@ -325,7 +316,7 @@ void ChainDuelManager::applyChainStateChange() {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
             if (!championMac.has_value() || *championMac != selfArr) {
-                setChampion(&selfArr);
+                championMac = selfArr;
                 broadcastRoleAndChampion();
                 sendRoleToOpponentJack();
                 return;
@@ -339,7 +330,7 @@ void ChainDuelManager::applyChainStateChange() {
     if (isSupporter() && championMac.has_value()) {
         const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr && memcmp(championMac->data(), selfMac, 6) == 0) {
-            setChampion(nullptr);
+            championMac.reset();
         }
     }
 
@@ -427,7 +418,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     std::array<uint8_t, 6> newMac;
     memcpy(newMac.data(), announcedChampionMac, 6);
     bool changed = !championMac.has_value() || *championMac != newMac;
-    setChampion(&newMac);
+    championMac = newMac;
     if (changed) {
         broadcastRoleAndChampion();
         // A head transfer swaps the champion without touching this device's own
