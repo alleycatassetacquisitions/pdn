@@ -199,13 +199,11 @@ inline void cdmConfirmLifecycle(ChainDuelManagerTests* suite) {
 
     EXPECT_EQ(cdm.getBoostMs(), 0u);
 
-    // New signature: (fromMac, originatorMac, seqId).
-    // For 2-device case, fromMac == originatorMac (direct delivery, no forwarder).
     cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getBoostMs(), 15u);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
-    // Same originator, different seqId → still same MAC, still deduped at champion.
+    // The same supporter pressing twice counts once.
     cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 

@@ -464,9 +464,9 @@ TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
 }
 
 TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
-    // Both fan-out managers justify owning a private Resender by saying a
-    // send armed by the manager must not outlive it. That has to be the
-    // channel's doing, not a side effect of the two being destroyed together:
+    // A send armed through a channel must not outlive that channel. That has to
+    // be the channel's doing, not a side effect of the two being destroyed
+    // together:
     // once the channel is gone nothing will ever report the frame delivered,
     // so retransmitting it is pure noise on a shared radio.
     ::testing::NiceMock<MockPeerComms> comms;

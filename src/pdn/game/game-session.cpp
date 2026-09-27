@@ -6,9 +6,10 @@
 #include <cstring>
 
 const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
-    // kRoleAnnounce is absent deliberately: ChainDuelManager's ReliableChannel
-    // claims that slot itself. Installing it here too would clobber the channel,
-    // since this loop runs after the managers are constructed.
+    // kRoleAnnounce, kChainConfirm, kChainJoin, kQuickdrawCommand and
+    // kSymbolMatchCommand are all absent deliberately: a ReliableChannel claims
+    // each of those slots itself. Installing any of them here too would clobber
+    // the channel, since this loop runs after the managers are constructed.
     static const std::array<PacketRoute, 4> ROUTES = {{
         {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
         {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
@@ -140,8 +141,9 @@ void GameSession::logRetryStats() {
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
     // strips info-level calls. Both fan-out managers are reported: a venue
     // reading one line to judge radio health would otherwise be shown the chain
-    // duel's retries and told nothing about the tournament's. The duel channel
-    // keeps its own counters and is not folded in here.
+    // duel's retries and told nothing about the tournament's. The duel channel's
+    // Resender counts its own retries but exposes no accessor, so they are not
+    // reported anywhere.
     if (chainDuelManager != nullptr) {
         ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;

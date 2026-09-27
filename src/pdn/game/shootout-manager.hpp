@@ -260,8 +260,9 @@ private:
 
     // Retransmits for every command family this manager sends. Owned here rather
     // than shared with the coordinator's, for the EVERY_ROUND budget and the
-    // retry counters reported per manager; a send outliving its owner is the
-    // channel destructor's job now, not this one's.
+    // retry counters reported per manager, and because it is the only thing that
+    // bounds these sends' lifetime: this manager drives the Resender directly and
+    // holds no channel, so nothing cancels its fan-outs on destruction.
     // All five families ride one PktType, so the abandon callback reads which
     // one gave up off the frame's own command byte.
     Resender resender;

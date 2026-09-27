@@ -45,8 +45,9 @@ struct QuickdrawCommand {
         , playerDrawTime(playerDrawTime)
         , isHunter(isHunter) {
 
-        // Bounded by the source, not the destination: a caller handing over a
-        // shorter string than the field would otherwise be read past the end of.
+        // copyId bounds the write by the destination and always terminates, and
+        // stops early at the source's NUL, so a caller may hand over a string
+        // shorter than the field or one that is not terminated at all.
         IdGenerator::copyId(this->matchId, matchId);
         IdGenerator::copyId(this->playerId, playerId);
     }

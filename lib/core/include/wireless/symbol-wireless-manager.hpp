@@ -31,9 +31,6 @@ struct SymbolMatchCommand {
     int command;
     SymbolId symbolId;
 
-    /// No default: a command without a sender has nothing to answer.
-    SymbolMatchCommand() = delete;
-
     /// Decoded form of one symbol frame; a null `macAddress` zeroes the address
     /// and clears wifiMacAddrValid.
     SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId)

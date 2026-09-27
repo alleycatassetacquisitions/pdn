@@ -146,8 +146,9 @@ void SupporterReady::onStateDismounted(PDN* pdn) {
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
 }
 
-// Runs on the ESP-NOW WiFi task on hardware. Touch only atomic fields here;
-// onStateLoop (main task) observes lastResult transitions and manages the
+// Reached from a packet handler, which the driver drains from exec() on the main
+// loop, so this shares a task with onStateLoop. It still only hands the result
+// over through lastResult; onStateLoop observes the transition and owns the
 // non-atomic resultClearTimer.
 void SupporterReady::onChainGameEventReceived(uint8_t event_type, const uint8_t* senderMac) {
     (void)senderMac;

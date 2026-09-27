@@ -33,13 +33,13 @@ void MatchManager::sync() {
     resender.sync();
 }
 
-void MatchManager::sendCommand(const uint8_t* mac, QuickdrawCommand& command) {
+void MatchManager::sendCommand(const uint8_t* mac, const QuickdrawCommand& command) {
     QuickdrawPacket packet{};
     packet.command = command.command;
     packet.playerDrawTime = command.playerDrawTime;
     packet.isHunter = command.isHunter;
     memcpy(packet.matchId, command.matchId, IdGenerator::UUID_BUFFER_SIZE);
-    memcpy(packet.playerId, command.playerId, 5);
+    memcpy(packet.playerId, command.playerId, sizeof(packet.playerId));
 
     LOG_I(MATCH_MANAGER_TAG, "Sending command %i to %s", command.command, MacToString(mac));
     duelChannel.sendReliable(mac, packet);
@@ -81,6 +81,12 @@ void MatchManager::clearShootoutMatch() {
 void MatchManager::clearCurrentMatch() {
     if (!activeDuelState.match) return;
     LOG_I(MATCH_MANAGER_TAG, "Clearing current match");
+    // Retries for the match being abandoned must go with it. This channel is
+    // KEEP_DISTINCT, so the next SEND_MATCH_ID does not supersede the old one, and
+    // Idle re-keys at 1000ms while the channel retransmits for 1500 — a stale id
+    // delivered afterwards primes the opponent into a match this device has
+    // already forgotten. cancel() is silent; no abandon callback fires.
+    duelChannel.cancel(activeDuelState.opponentMac.data());
     // Whole-struct reset, so a field added to ActiveDuelState cannot be forgotten
     // here.
     activeDuelState = ActiveDuelState{};

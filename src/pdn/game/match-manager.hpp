@@ -200,7 +200,7 @@ private:
     /// Unicasts one command to `mac`, retried until the radio acks it. Rounds
     /// the radio refuses cost no budget, so a shut send path defers rather than
     /// abandons.
-    void sendCommand(const uint8_t* mac, QuickdrawCommand& command);
+    void sendCommand(const uint8_t* mac, const QuickdrawCommand& command);
     /**
      * Appends a match to storage
      * @param match Match to save

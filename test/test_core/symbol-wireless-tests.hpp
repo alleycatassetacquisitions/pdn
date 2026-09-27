@@ -151,3 +151,35 @@ TEST_F(SymbolWirelessTests, retransmitOfTheSameFrameDispatchesOnce) {
 
     EXPECT_EQ(calls, 1);
 }
+
+TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
+    // The three families are successive states of one screen, so this channel
+    // supersedes per target. Keeping them distinct instead would let an unacked
+    // SEND_SYMBOL keep retransmitting behind a SYMBOLS_REFRESHED and land after
+    // it, and the receiver's single dedup cursor would pass it through.
+    const uint8_t peer[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, peer);
+    manager->setMacPeer(peer);
+
+    manager->sendPacket(SMCommand::SEND_SYMBOL, SymbolId::SYMBOL_A,
+                        SerialIdentifier::OUTPUT_JACK);
+    ASSERT_EQ(sent.size(), 1u);
+
+    // Nothing reports delivery, so the first frame is still owed retransmits.
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    manager->sync();
+    ASSERT_GE(sent.size(), 2u);
+
+    manager->sendPacket(SMCommand::SYMBOLS_REFRESHED, SymbolId::SYMBOL_A,
+                        SerialIdentifier::OUTPUT_JACK);
+    const size_t afterRefresh = sent.size();
+
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 8);
+    manager->sync();
+
+    ASSERT_GT(sent.size(), afterRefresh) << "the refresh itself never retransmitted";
+    for (size_t i = afterRefresh; i < sent.size(); ++i) {
+        EXPECT_NE(sent[i].command, SMCommand::SEND_SYMBOL)
+            << "a superseded SEND_SYMBOL retransmitted after SYMBOLS_REFRESHED";
+    }
+}

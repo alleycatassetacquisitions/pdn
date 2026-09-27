@@ -25,11 +25,11 @@
 // SEND_SUCCESS, which is why deliver() emits nothing on receipt. Dedup still
 // earns its place, because a sender that missed SEND_SUCCESS retransmits.
 //
-// Most channels are created and owned by a ReliableTransport, one per PktType.
-// Not all: ChainDuelManager binds one straight to its own Resender, which is
-// what a caller outside the coordinator has to do, the transport being private
-// to it. Such an owner can route abandonment itself by setting the callback on
-// the Resender it holds; ChainDuelManager does not.
+// The transport owns one channel per PktType, but it is a private member of the
+// coordinator, so a manager outside it binds channels straight to a Resender of
+// its own — ChainDuelManager does that three times, MatchManager and
+// SymbolWirelessManager once each. Such an owner can route abandonment itself by
+// setting the callback on the Resender it holds; none of them do.
 class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;

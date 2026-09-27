@@ -90,7 +90,9 @@ public:
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
     /// Records a supporter's press. Ungated: a confirm is unicast straight to the
     /// champion from any depth, so its sender is usually a device this one shares
-    /// no cable with. Membership is read live from the join roster instead.
+    /// no cable with. Membership is scored later, against the supporter-jack peer
+    /// plus the join roster, so a press whose join has not landed yet is held
+    /// rather than dropped.
     void onConfirmReceived(const uint8_t* originatorMac);
     void onChainStateChanged();
 
@@ -190,9 +192,11 @@ private:
     size_t lastSupporterChainCount = 0;
 
     // Set the moment a press produces a confirm, so the champion-changed and
-    // chain-settled triggers know there is something worth re-sending. Atomic:
-    // written when a COUNTDOWN arrives and read by the duel states — both on the
-    // main loop, since packet handlers are drained from exec().
+    // chain-settled triggers know there is something worth re-sending. Written by
+    // the duel state that sends the confirm and cleared when a COUNTDOWN arrives
+    // or the role changes; read only by resendConfirm. Every one of those is on the
+    // main loop, packet handlers included, so the atomic buys nothing but is left
+    // rather than churned.
     std::atomic<bool> confirmSent{false};
 
     // Every press we have heard this round, member or not. Membership is applied
@@ -252,8 +256,9 @@ private:
 
     // Owned here rather than shared with the coordinator's, for two reasons the
     // Resender only holds per-instance: the EVERY_ROUND budget below, and the
-    // retry counters this manager reports. Channels cancel their own pending
-    // sends as they are destroyed, so outliving the owner is no longer one.
+    // retry counters this manager reports. It also bounds the kChainGameEvent
+    // fan-out's lifetime, which no channel does — that traffic goes out through
+    // sendBroadcast, so the channel destructor's cancellation does not cover it.
     Resender resender;
 
     // In a 2-node ring both jacks face one peer, so the second announce can

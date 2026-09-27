@@ -518,3 +518,39 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
     EXPECT_FALSE(mm->isMatchReady());
 }
+
+TEST_F(MatchManagerTestSuite, clearingAMatchCancelsItsPendingRetries) {
+    // The duel channel keeps its families distinct, so a fresh SEND_MATCH_ID does
+    // not supersede the one it replaces. Idle re-keys at 1000ms while the channel
+    // retransmits for 1500, so without cancelling here a stale id lands afterwards
+    // and primes the opponent into a match this device has already dropped.
+    using ::testing::_;
+    std::vector<int> sentCommands;
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
+        .WillByDefault(::testing::Invoke(
+            [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+                if (len == sizeof(QuickdrawPacket)) {
+                    QuickdrawPacket packet{};
+                    memcpy(&packet, data, sizeof(packet));
+                    sentCommands.push_back(packet.command);
+                }
+                return 1;
+            }));
+
+    uint8_t opponent[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    matchManager->initializeMatch(opponent);
+    ASSERT_FALSE(sentCommands.empty()) << "initializeMatch sent no SEND_MATCH_ID";
+
+    // Nothing reports delivery, so the frame is still owed retransmits.
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    matchManager->sync();
+    const size_t beforeClear = sentCommands.size();
+    ASSERT_GT(beforeClear, 1u) << "the handshake never retransmitted";
+
+    matchManager->clearCurrentMatch();
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 16);
+    matchManager->sync();
+
+    EXPECT_EQ(sentCommands.size(), beforeClear)
+        << "a cleared match kept retransmitting its SEND_MATCH_ID";
+}
