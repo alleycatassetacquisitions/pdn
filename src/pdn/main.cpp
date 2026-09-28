@@ -213,11 +213,10 @@ void setup() {
 }
 
 void loop() {
-    if (crashLogger != nullptr) {
-        crashLogger->pollSerialCommand();
-        // Only exec() resolves a send into a report, and a report is what retires a
-        // record, so this has to run where exec() does.
-        crashLogger->transmitPending();
-    }
+    if (crashLogger != nullptr) crashLogger->pollSerialCommand();
     pdn->loop();
+    // After the device loop, so the one offer per boot runs with exec() having
+    // pumped the radio at least once: the channel pin is retried from there, and a
+    // frame sent before it lands goes out where nobody is listening.
+    if (crashLogger != nullptr) crashLogger->transmitPending();
 }
