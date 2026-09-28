@@ -97,9 +97,9 @@ public:
             pending.pop();
         }
 
-        // Order matters; serviceSendCompletion says why.
-        serviceSendCompletion();
-        pumpSend();
+        // Order matters; applySendResult says why.
+        applySendResult();
+        startNextSend();
     }
 
     /// Brings the radio into ESP-NOW mode: STA, auto-reconnect off, PS_NONE,
@@ -164,9 +164,9 @@ public:
 
         // Unconditional: deinit unregisters the send callback, so the completion
         // that would clear the slot is never coming, and an occupied slot blocks
-        // every later pumpSend. Leaving the state CONNECTED would stop connect()
+        // every later startNextSend. Leaving the state CONNECTED would stop connect()
         // re-running. A completion that does still arrive lands on an empty slot
-        // and serviceSendCompletion drops it.
+        // and applySendResult drops it.
         discardInFlight();
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
@@ -228,7 +228,7 @@ public:
         // Offered now rather than at the next exec(), so a send does not wait a
         // whole tick for the radio. Every caller is on the main loop, so the slot
         // keeps its single owner.
-        pumpSend();
+        startNextSend();
         return 0;
     }
 
@@ -440,7 +440,7 @@ private:
     /// callback hands over no reference to the frame it finished, so a slot
     /// released on a deadline charges the late verdict to whichever frame replaced
     /// it, turning a stall into a wrong ack.
-    void serviceSendCompletion() {
+    void applySendResult() {
         const Completion outcome =
             pendingCompletion.exchange(Completion::NONE, std::memory_order_acquire);
         if (outcome == Completion::NONE) return;
@@ -480,7 +480,7 @@ private:
     /// The frame outlives the attempt for this driver's sake, not the radio's: the
     /// radio copies it before esp_now_send returns (esp_now.h attention 4). A retry
     /// re-sends the same bytes and the completion reads the payload back.
-    void pumpSend() {
+    void startNextSend() {
         // exec() runs whatever the state, and esp_now_send must not follow a
         // deinit.
         if (peerCommsState != PeerCommsState::CONNECTED) return;
