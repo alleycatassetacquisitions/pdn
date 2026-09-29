@@ -26,12 +26,16 @@ enum class PktType : uint8_t
 
 struct DataPktHdr
 {
-    //Total packet length including header
-    uint8_t pktLen;
+    /// Total packet length including this header. Two bytes because a v2 frame
+    /// carries more than a byte can count.
+    uint16_t pktLen;
     PktType packetType;
-    uint8_t numPktsInCluster;
-    uint8_t idxInCluster;
 } __attribute__((packed));
+
+/// One ESP-NOW v2 frame's payload, less this protocol's header. Stated here
+/// rather than derived from the IDF macro so the native suite can see it; the
+/// driver asserts the two agree.
+constexpr size_t MAX_PKT_DATA_SIZE = 1470 - sizeof(DataPktHdr);
 
 struct ChainConfirmPayload
 {

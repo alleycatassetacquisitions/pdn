@@ -27,7 +27,8 @@
 //Use this mac address in order to reach all nearby devices
 constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN - sizeof(DataPktHdr);
+static_assert(MAX_PKT_DATA_SIZE == ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr),
+              "wire payload size disagrees with the IDF's v2 frame");
 
 //Singleton class that handles communication over ESP-NOW protocol.
 class EspNowDriver : public PeerCommsDriverInterface

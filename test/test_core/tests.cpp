@@ -7,6 +7,7 @@
 #include "device-tests.hpp"
 
 // New test headers
+#include "peer-comms-types-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
