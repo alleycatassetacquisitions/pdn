@@ -153,12 +153,14 @@ public:
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
 
-    // Real storage rather than MOCK_METHOD: tests register a handler and use
-    // fireSendStatus below to simulate the radio reporting completion.
+    /// Real storage rather than MOCK_METHOD: registers a handler a test can
+    /// later trigger via fireSendStatus to simulate the radio reporting
+    /// completion, without needing gmock expectations set up first.
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
         sendStatusHandlers[packetType] = {callback, ctx};
     }
 
+    /// Unregisters the send-status handler for a packet type, if any.
     void clearSendStatusHandler(PktType packetType) override {
         sendStatusHandlers.erase(packetType);
     }

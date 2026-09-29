@@ -186,7 +186,7 @@ public:
             return -1;
         }
 
-        auto* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
+        DataPktHdr* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
         hdr->pktLen = sizeof(DataPktHdr) + length;
         hdr->packetType = packetType;
 
@@ -226,15 +226,17 @@ public:
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
-    //Set the send-status handler for a particular packet type. Fires from the
-    //radio's send-completion callback, keyed on the frame's packetType. Only one
-    //handler per type; registering again replaces it.
+    /// Registers the handler a caller wants invoked once the radio reports
+    /// completion for a frame of this type, so it can pace further sends off
+    /// delivery instead of a fixed delay. Only one handler per type; a second
+    /// registration replaces the first.
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
         m_sendStatusHandlers[(int)packetType].first = callback;
         m_sendStatusHandlers[(int)packetType].second = ctx;
     }
 
-    //Unregister the send-status handler for specified packet type
+    /// Unregisters the send-status handler for a packet type, e.g. when the
+    /// caller that registered it is tearing down and no longer wants callbacks.
     void clearSendStatusHandler(PktType packetType) override {
         m_sendStatusHandlers[(int)packetType].first = nullptr;
     }
@@ -530,7 +532,7 @@ private:
         DataSendBuffer buffer = m_sendQueue.front();
         xSemaphoreGive(sendMutex);
 
-        const auto* hdr = reinterpret_cast<const DataPktHdr*>(buffer.ptr);
+        const DataPktHdr* hdr = reinterpret_cast<const DataPktHdr*>(buffer.ptr);
         if ((int)hdr->packetType >= (int)PktType::kNumPacketTypes) {
             return;
         }
