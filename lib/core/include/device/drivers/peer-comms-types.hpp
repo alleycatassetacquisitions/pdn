@@ -3,8 +3,7 @@
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
-enum class PktType : uint8_t
-{
+enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
     kDebugPacket = 2,
@@ -22,7 +21,7 @@ enum class PktType : uint8_t
     kFdnConnect = 14,
     kCrashLog = 15,
     kFirmwareUpdate = 16,
-    kNumPacketTypes //Not a real packet type, DO NOT USE
+    kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
 struct DataPktHdr
@@ -102,94 +101,94 @@ constexpr size_t FIRMWARE_LABEL_LENGTH = 16;
 
 /// Firmware distribution commands: offer, chunk, poll, status, complete.
 enum class FirmwareCmd : uint8_t {
-  OFFER = 0,
-  CHUNK = 1,
-  POLL = 2,
-  STATUS = 3,
-  COMPLETE = 4,
+    OFFER = 0,
+    CHUNK = 1,
+    POLL = 2,
+    STATUS = 3,
+    COMPLETE = 4,
 };
 
 /// Firmware distribution results: success, validation, flash errors.
 enum class FirmwareResult : uint8_t {
-  OK = 0,
-  BAD_HASH = 1,
-  BAD_SIGNATURE = 2,
-  BAD_CERT = 3,
-  STALE_CERT = 4,
-  FLASH_FAILED = 5,
-  TOO_LARGE = 6,
+    OK = 0,
+    BAD_HASH = 1,
+    BAD_SIGNATURE = 2,
+    BAD_CERT = 3,
+    STALE_CERT = 4,
+    FLASH_FAILED = 5,
+    TOO_LARGE = 6,
 };
 
 /// Delegation record: root signs this, signer signs images.
 struct SignerCert {
-  /// Key identifier, allows revocation by ID.
-  uint8_t keyId[4];
-  /// Generation counter for key rotation.
-  uint8_t generation;
-  /// P-256 public key (uncompressed, 64 bytes).
-  uint8_t publicKey[64];
-  /// Signer name or version label.
-  char label[FIRMWARE_LABEL_LENGTH];
-  /// Root signature over keyId|generation|publicKey|label.
-  uint8_t rootSignature[FIRMWARE_SIG_LENGTH];
+    /// Key identifier, allows revocation by ID.
+    uint8_t keyId[4];
+    /// Generation counter for key rotation.
+    uint8_t generation;
+    /// P-256 public key (uncompressed, 64 bytes).
+    uint8_t publicKey[64];
+    /// Signer name or version label.
+    char label[FIRMWARE_LABEL_LENGTH];
+    /// Root signature over keyId|generation|publicKey|label.
+    uint8_t rootSignature[FIRMWARE_SIG_LENGTH];
 } __attribute__((packed));
 
 /// Firmware offer: announces image, delegates signing, provides cert and sig.
 struct FirmwareOfferPayload {
-  /// Command type: FirmwareCmd::OFFER.
-  uint8_t command;
-  /// SHA-256 of complete image.
-  uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-  /// Total image length in bytes.
-  uint32_t imageLength;
-  /// Bytes per chunk (except possibly the last).
-  uint16_t chunkSize;
-  /// Number of chunks; at most FIRMWARE_MAX_CHUNKS.
-  uint16_t chunkCount;
-  /// Delegation cert and root signature.
-  SignerCert cert;
-  /// Signature over imageSha256|imageLength|chunkSize|chunkCount.
-  uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
-  /// Image version string.
-  char version[FIRMWARE_LABEL_LENGTH];
+    /// Command type: FirmwareCmd::OFFER.
+    uint8_t command;
+    /// SHA-256 of complete image.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// Total image length in bytes.
+    uint32_t imageLength;
+    /// Bytes per chunk (except possibly the last).
+    uint16_t chunkSize;
+    /// Number of chunks; at most FIRMWARE_MAX_CHUNKS.
+    uint16_t chunkCount;
+    /// Delegation cert and root signature.
+    SignerCert cert;
+    /// Signature over imageSha256|imageLength|chunkSize|chunkCount.
+    uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
+    /// Image version string.
+    char version[FIRMWARE_LABEL_LENGTH];
 } __attribute__((packed));
 
 /// Chunk header prepended to chunk data in a frame.
 struct FirmwareChunkHeader {
-  /// Command type: FirmwareCmd::CHUNK.
-  uint8_t command;
-  /// Chunk index; at most FIRMWARE_MAX_CHUNKS - 1.
-  uint16_t index;
-  /// Bytes in this chunk (chunkSize except possibly last).
-  uint16_t length;
+    /// Command type: FirmwareCmd::CHUNK.
+    uint8_t command;
+    /// Chunk index; at most FIRMWARE_MAX_CHUNKS - 1.
+    uint16_t index;
+    /// Bytes in this chunk (chunkSize except possibly last).
+    uint16_t length;
 } __attribute__((packed));
 
 /// Poll: request status for an image.
 struct FirmwarePollPayload {
-  /// Command type: FirmwareCmd::POLL.
-  uint8_t command;
-  /// SHA-256 of image to poll.
-  uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// Command type: FirmwareCmd::POLL.
+    uint8_t command;
+    /// SHA-256 of image to poll.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
 } __attribute__((packed));
 
 /// Status: bitmap of received chunks.
 struct FirmwareStatusPayload {
-  /// Command type: FirmwareCmd::STATUS.
-  uint8_t command;
-  /// SHA-256 of image; matches poll.
-  uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-  /// Count of chunks received so far.
-  uint16_t receivedCount;
-  /// Bitmap: bit N set means chunk N received (384 bytes = 3072 bits).
-  uint8_t bitmap[FIRMWARE_BITMAP_BYTES];
+    /// Command type: FirmwareCmd::STATUS.
+    uint8_t command;
+    /// SHA-256 of image; matches poll.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// Count of chunks received so far.
+    uint16_t receivedCount;
+    /// Bitmap: bit N set means chunk N received (384 bytes = 3072 bits).
+    uint8_t bitmap[FIRMWARE_BITMAP_BYTES];
 } __attribute__((packed));
 
 /// Complete: reports final result after flashing.
 struct FirmwareCompletePayload {
-  /// Command type: FirmwareCmd::COMPLETE.
-  uint8_t command;
-  /// SHA-256 of image; confirms which update completed.
-  uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-  /// FirmwareResult: OK or error code.
-  uint8_t result;
+    /// Command type: FirmwareCmd::COMPLETE.
+    uint8_t command;
+    /// SHA-256 of image; confirms which update completed.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// FirmwareResult: OK or error code.
+    uint8_t result;
 } __attribute__((packed));

@@ -17,7 +17,7 @@ public:
     /// are the payload as given to sendData (header stripped). A raw function
     /// pointer, not std::function: callers register captureless lambdas, so ctx
     /// is the only state that needs to round-trip.
-    using SendStatusCallback = void(*)(const uint8_t* dstMac, const uint8_t* data, size_t length, bool success, void* ctx);
+    using SendStatusCallback = void (*)(const uint8_t* dstMac, const uint8_t* data, size_t length, bool success, void* ctx);
 
     virtual ~PeerCommsInterface() = default;
     virtual int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) = 0;
@@ -28,7 +28,9 @@ public:
     /// frame of this type. One handler per type; registering again replaces it.
     /// Default no-op so drivers that don't report send status keep compiling.
     virtual void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) {
-        (void)packetType; (void)callback; (void)ctx;
+        (void)packetType;
+        (void)callback;
+        (void)ctx;
     }
 
     /// Unregisters the send-status handler for a packet type, if any.

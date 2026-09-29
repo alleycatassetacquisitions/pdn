@@ -46,9 +46,9 @@ public:
 
     void exec() override {
         std::queue<DeferredPacket> pending;
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
         std::swap(pending, recvQueue_);
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreGive(recvMutex);
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
@@ -113,18 +113,16 @@ public:
 
     //Queues up data for sending, may not send right away
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
-        if(length > MAX_PKT_DATA_SIZE)
-        {
+        if (length > MAX_PKT_DATA_SIZE) {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
-                length,
-                MAX_PKT_DATA_SIZE);
+                  length,
+                  MAX_PKT_DATA_SIZE);
             return -1;
         }
 
         auto* sendBuffer = static_cast<uint8_t*>(ps_malloc(sizeof(DataPktHdr) + length));
-        if(!sendBuffer)
-        {
-            //TODO: Return better error code once we have them
+        if (!sendBuffer) {
+            // TODO: Return better error code once we have them
             LOG_E("ENC", "Failed to allocate buffer for ESP-NOW send queue");
             LOG_E("ENC", "Needed to allocate a total of %lu bytes\n", length);
             return -1;
@@ -233,15 +231,14 @@ private:
         size_t len;
     };
 
-    explicit EspNowDriver(const std::string& name) :
-        PeerCommsDriverInterface(name),
-        m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
-        m_sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr)),
-        m_maxRetries(5),
-        m_curRetries(0),
-        recvMutex_(xSemaphoreCreateMutex()),
-        sendMutex(xSemaphoreCreateMutex())
-    {
+    explicit EspNowDriver(const std::string& name)
+        : PeerCommsDriverInterface(name)
+        , m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
+        , m_sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
+        , m_maxRetries(5)
+        , m_curRetries(0)
+        , recvMutex(xSemaphoreCreateMutex())
+        , sendMutex(xSemaphoreCreateMutex()) {
 
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
@@ -330,7 +327,7 @@ private:
 
         // pktLen drives the payload length passed downstream; a mismatch against
         // the frame the radio actually delivered would under/overrun that copy.
-        if(pktHdr->pktLen != data_len) {
+        if (pktHdr->pktLen != data_len) {
             LOG_E("ENC", "Recieved pktLen (%u) does not match frame length (%i)\n", pktHdr->pktLen, data_len);
             return;
         }
@@ -387,7 +384,7 @@ private:
         auto buffer = m_sendQueue.front();
         xSemaphoreGive(sendMutex);
 
-        if(memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
+        if (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
             EnsurePeerIsRegistered(buffer.dstMac);
 
         esp_err_t err;
@@ -454,7 +451,7 @@ private:
         return 0;
     }
 
-    SemaphoreHandle_t recvMutex_;
+    SemaphoreHandle_t recvMutex;
     std::queue<DeferredPacket> recvQueue_;
 
     SemaphoreHandle_t sendMutex;
@@ -462,12 +459,12 @@ private:
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
 
-    //Storage for send-status handler callbacks and their user args, indexed by PktType
+    // Storage for send-status handler callbacks and their user args, indexed by PktType
     std::vector<std::pair<SendStatusCallback, void*>> m_sendStatusHandlers;
 
-    //Reports the outcome of the in-flight (front-of-queue) send to whatever
-    //handler is registered for that frame's packetType. Called before the
-    //frame is popped/freed, since it needs the frame to read the type from.
+    // Reports the outcome of the in-flight (front-of-queue) send to whatever
+    // handler is registered for that frame's packetType. Called before the
+    // frame is popped/freed, since it needs the frame to read the type from.
     void DispatchSendStatus(bool success) {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         if (m_sendQueue.empty()) {
@@ -501,9 +498,9 @@ private:
         memcpy(pkt.srcMac, srcMacAddr, 6);
         pkt.data.assign(pktData, pktData + pktLen);
 
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
         recvQueue_.push(std::move(pkt));
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreGive(recvMutex);
     }
 
     uint8_t* getMacAddress() override {
