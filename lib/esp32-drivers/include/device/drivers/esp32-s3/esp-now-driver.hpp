@@ -130,13 +130,13 @@ public:
             return -1;
         }
 
-        auto* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
+        DataPktHdr* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
         hdr->pktLen = sizeof(DataPktHdr) + length;
         hdr->packetType = packetType;
 
         memcpy(sendBuffer + sizeof(DataPktHdr), data, length);
 
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         bool willNeedToStartSend = m_sendQueue.empty();
 
         DataSendBuffer buffer;
@@ -145,7 +145,7 @@ public:
         buffer.len = hdr->pktLen;
         m_sendQueue.push(buffer);
 
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
         if(willNeedToStartSend)
         {
@@ -170,15 +170,17 @@ public:
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
-    //Set the send-status handler for a particular packet type. Fires from the
-    //radio's send-completion callback, keyed on the frame's packetType. Only one
-    //handler per type; registering again replaces it.
+    /// Registers the handler a caller wants invoked once the radio reports
+    /// completion for a frame of this type, so it can pace further sends off
+    /// delivery instead of a fixed delay. Only one handler per type; a second
+    /// registration replaces the first.
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
         m_sendStatusHandlers[(int)packetType].first = callback;
         m_sendStatusHandlers[(int)packetType].second = ctx;
     }
 
-    //Unregister the send-status handler for specified packet type
+    /// Unregisters the send-status handler for a packet type, e.g. when the
+    /// caller that registered it is tearing down and no longer wants callbacks.
     void clearSendStatusHandler(PktType packetType) override {
         m_sendStatusHandlers[(int)packetType].first = nullptr;
     }
@@ -238,7 +240,7 @@ private:
         m_maxRetries(5),
         m_curRetries(0),
         recvMutex_(xSemaphoreCreateMutex()),
-        sendMutex_(xSemaphoreCreateMutex())
+        sendMutex(xSemaphoreCreateMutex())
     {
 
         wifi_promiscuous_filter_t filter = {
@@ -377,13 +379,13 @@ private:
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         if(m_sendQueue.empty()) {
-            xSemaphoreGive(sendMutex_);
+            xSemaphoreGive(sendMutex);
             return 0;
         }
         auto buffer = m_sendQueue.front();
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
         if(memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
             EnsurePeerIsRegistered(buffer.dstMac);
@@ -411,12 +413,12 @@ private:
 
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         if (!m_sendQueue.empty()) {
             free(m_sendQueue.front().ptr);
             m_sendQueue.pop();
         }
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
         m_curRetries = 0;
     }
 
@@ -455,7 +457,7 @@ private:
     SemaphoreHandle_t recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
 
-    SemaphoreHandle_t sendMutex_;
+    SemaphoreHandle_t sendMutex;
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
@@ -467,15 +469,15 @@ private:
     //handler is registered for that frame's packetType. Called before the
     //frame is popped/freed, since it needs the frame to read the type from.
     void DispatchSendStatus(bool success) {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         if (m_sendQueue.empty()) {
-            xSemaphoreGive(sendMutex_);
+            xSemaphoreGive(sendMutex);
             return;
         }
         DataSendBuffer buffer = m_sendQueue.front();
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
-        const auto* hdr = reinterpret_cast<const DataPktHdr*>(buffer.ptr);
+        const DataPktHdr* hdr = reinterpret_cast<const DataPktHdr*>(buffer.ptr);
         if ((int)hdr->packetType >= (int)PktType::kNumPacketTypes) {
             return;
         }

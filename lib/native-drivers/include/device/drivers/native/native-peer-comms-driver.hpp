@@ -100,19 +100,23 @@ public:
         handlers_.erase(packetType);
     }
 
+    /// Registers the handler a caller wants invoked once (simulated) send
+    /// completion is reported for this packet type. Only one handler per
+    /// type; a second registration replaces the first.
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
-        sendStatusHandlers_[packetType] = {callback, ctx};
+        sendStatusHandlers[packetType] = {callback, ctx};
     }
 
+    /// Unregisters the send-status handler for a packet type, if any.
     void clearSendStatusHandler(PktType packetType) override {
-        sendStatusHandlers_.erase(packetType);
+        sendStatusHandlers.erase(packetType);
     }
 
     /// Test hook: the native simulation has no radio to report completion, so
     /// callers invoke this directly to exercise a registered handler.
     void fireSendStatus(PktType packetType, bool success) {
-        auto it = sendStatusHandlers_.find(packetType);
-        if (it != sendStatusHandlers_.end() && it->second.callback) {
+        auto it = sendStatusHandlers.find(packetType);
+        if (it != sendStatusHandlers.end() && it->second.callback) {
             it->second.callback(nullptr, nullptr, 0, success, it->second.context);
         }
     }
@@ -210,7 +214,7 @@ private:
     };
 
     std::map<PktType, HandlerEntry> handlers_;
-    std::map<PktType, SendStatusHandlerEntry> sendStatusHandlers_;
+    std::map<PktType, SendStatusHandlerEntry> sendStatusHandlers;
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];
