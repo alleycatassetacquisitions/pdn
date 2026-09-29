@@ -26,6 +26,10 @@ public:
     virtual size_t getRunningImageLength() const = 0;
     /// Reads `length` bytes at `offset` from the currently running image.
     virtual bool readRunningImage(size_t offset, uint8_t* out, size_t length) const = 0;
+    /// Reads back what was written to the inactive slot, so a caller can verify the
+    /// assembled image against its expected hash before booting it. Chunks arrive out
+    /// of order, so the image cannot be hashed as it is written.
+    virtual bool readWrittenSlot(size_t offset, uint8_t* out, size_t length) const = 0;
 
     /// Marks the written slot as the boot target, pending confirmation.
     virtual bool setBootToWritten() = 0;

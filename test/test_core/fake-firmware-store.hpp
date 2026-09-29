@@ -27,7 +27,7 @@ public:
         if (!writeInProgress) {
             return false;
         }
-        if (offset + length > writeSlot.size()) {
+        if (offset > writeSlot.size() || length > writeSlot.size() - offset) {
             writeOutsideImageOccurred = true;
             return false;
         }
@@ -60,11 +60,22 @@ public:
 
     /// Fails if the requested range falls outside the running image.
     bool readRunningImage(size_t offset, uint8_t* out, size_t length) const override {
-        if (offset + length > runningImage.size()) {
+        if (offset > runningImage.size() || length > runningImage.size() - offset) {
             return false;
         }
         std::copy(runningImage.begin() + static_cast<std::ptrdiff_t>(offset),
                   runningImage.begin() + static_cast<std::ptrdiff_t>(offset + length), out);
+        return true;
+    }
+
+    /// Reads back from the same backing store writeAt fills, regardless of
+    /// chunk order, so a caller can hash the assembled image once complete.
+    bool readWrittenSlot(size_t offset, uint8_t* out, size_t length) const override {
+        if (offset > writeSlot.size() || length > writeSlot.size() - offset) {
+            return false;
+        }
+        std::copy(writeSlot.begin() + static_cast<std::ptrdiff_t>(offset),
+                  writeSlot.begin() + static_cast<std::ptrdiff_t>(offset + length), out);
         return true;
     }
 
