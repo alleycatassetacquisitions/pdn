@@ -22,6 +22,7 @@
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "storage-tests.hpp"
+#include "send-status-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>

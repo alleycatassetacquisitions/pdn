@@ -170,6 +170,19 @@ public:
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
+    //Set the send-status handler for a particular packet type. Fires from the
+    //radio's send-completion callback, keyed on the frame's packetType. Only one
+    //handler per type; registering again replaces it.
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        m_sendStatusHandlers[(int)packetType].first = callback;
+        m_sendStatusHandlers[(int)packetType].second = ctx;
+    }
+
+    //Unregister the send-status handler for specified packet type
+    void clearSendStatusHandler(PktType packetType) override {
+        m_sendStatusHandlers[(int)packetType].first = nullptr;
+    }
+
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
     // because WiFi must be set up first. Actual init happens in connect().
     int initialize() override {
@@ -221,6 +234,7 @@ private:
     explicit EspNowDriver(const std::string& name) :
         PeerCommsDriverInterface(name),
         m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
+        m_sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr)),
         m_maxRetries(5),
         m_curRetries(0),
         recvMutex_(xSemaphoreCreateMutex()),
@@ -337,6 +351,7 @@ private:
         if(status == ESP_NOW_SEND_SUCCESS)
         {
             LOG_D("ENC", "Send SUCCESS");
+            manager->DispatchSendStatus(true);
             manager->MoveToNextSendPkt();
         }
         else
@@ -351,6 +366,7 @@ private:
             {
                 LOG_E("ENC", "Send FAILED - giving up after %d retries",
                       manager->m_maxRetries);
+                manager->DispatchSendStatus(false);
                 manager->MoveToNextSendPkt();
             }
         }
@@ -443,6 +459,33 @@ private:
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
+
+    //Storage for send-status handler callbacks and their user args, indexed by PktType
+    std::vector<std::pair<SendStatusCallback, void*>> m_sendStatusHandlers;
+
+    //Reports the outcome of the in-flight (front-of-queue) send to whatever
+    //handler is registered for that frame's packetType. Called before the
+    //frame is popped/freed, since it needs the frame to read the type from.
+    void DispatchSendStatus(bool success) {
+        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        if (m_sendQueue.empty()) {
+            xSemaphoreGive(sendMutex_);
+            return;
+        }
+        DataSendBuffer buffer = m_sendQueue.front();
+        xSemaphoreGive(sendMutex_);
+
+        const auto* hdr = reinterpret_cast<const DataPktHdr*>(buffer.ptr);
+        if ((int)hdr->packetType >= (int)PktType::kNumPacketTypes) {
+            return;
+        }
+
+        SendStatusCallback callback = m_sendStatusHandlers[(int)hdr->packetType].first;
+        if (callback) {
+            void* ctx = m_sendStatusHandlers[(int)hdr->packetType].second;
+            callback(buffer.dstMac, buffer.ptr + sizeof(DataPktHdr), buffer.len - sizeof(DataPktHdr), success, ctx);
+        }
+    }
 
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)

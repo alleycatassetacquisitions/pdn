@@ -100,6 +100,23 @@ public:
         handlers_.erase(packetType);
     }
 
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        sendStatusHandlers_[packetType] = {callback, ctx};
+    }
+
+    void clearSendStatusHandler(PktType packetType) override {
+        sendStatusHandlers_.erase(packetType);
+    }
+
+    /// Test hook: the native simulation has no radio to report completion, so
+    /// callers invoke this directly to exercise a registered handler.
+    void fireSendStatus(PktType packetType, bool success) {
+        auto it = sendStatusHandlers_.find(packetType);
+        if (it != sendStatusHandlers_.end() && it->second.callback) {
+            it->second.callback(nullptr, nullptr, 0, success, it->second.context);
+        }
+    }
+
     const uint8_t* getGlobalBroadcastAddress() override {
         return NativePeerBroker::getInstance().getBroadcastAddress();
     }
@@ -181,6 +198,11 @@ private:
         void* context;
     };
 
+    struct SendStatusHandlerEntry {
+        SendStatusCallback callback;
+        void* context;
+    };
+
     struct DeferredPacket {
         PktType type;
         uint8_t srcMac[6];
@@ -188,6 +210,7 @@ private:
     };
 
     std::map<PktType, HandlerEntry> handlers_;
+    std::map<PktType, SendStatusHandlerEntry> sendStatusHandlers_;
     std::mutex recvMutex_;
     std::queue<DeferredPacket> recvQueue_;
     uint8_t macAddress_[6];
