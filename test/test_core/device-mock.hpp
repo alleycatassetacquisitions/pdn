@@ -18,6 +18,7 @@
 #include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
+#include <map>
 
 using namespace std;
 
@@ -151,6 +152,28 @@ public:
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
+
+    // Real storage rather than MOCK_METHOD: tests register a handler and use
+    // fireSendStatus below to simulate the radio reporting completion.
+    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
+        sendStatusHandlers[packetType] = {callback, ctx};
+    }
+
+    void clearSendStatusHandler(PktType packetType) override {
+        sendStatusHandlers.erase(packetType);
+    }
+
+    /// Test hook: invokes the handler registered for packetType directly, standing
+    /// in for the radio completion callback the driver has no radio to fire.
+    void fireSendStatus(PktType packetType, bool success) {
+        auto it = sendStatusHandlers.find(packetType);
+        if (it != sendStatusHandlers.end() && it->second.first) {
+            it->second.first(nullptr, nullptr, 0, success, it->second.second);
+        }
+    }
+
+private:
+    std::map<PktType, std::pair<SendStatusCallback, void*>> sendStatusHandlers;
 };
 
 class MockStorage : public StorageInterface {
