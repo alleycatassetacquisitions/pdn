@@ -351,7 +351,7 @@ protected:
 
         // Report delivery back to the sender: on channels with no reply packet
         // that report IS the delivery signal, and a fixture that routed the frame
-        // without it would make every send look undelivered and burn its budget.
+        // without it would make every send look undelivered and run out its span.
         //
         // Friendlier than the real radio, deliberately. This sits after the
         // no-handler return, so delivery is reported only when the receiver had a

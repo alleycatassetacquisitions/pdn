@@ -163,6 +163,12 @@ public:
     static constexpr unsigned long SHORT_ROSTER_TIMEOUT_MS = 3000;
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
+
+    // Keeps the reveal window the binding wait between the two gates in
+    // maybeStartNextMatch. Invert it and the ack gate becomes the only thing
+    // holding the start, with no timeout of its own to resolve it.
+    static_assert(kBracketRevealMs > Resender::RETRANSMIT_SPAN_MS,
+                  "the bracket-ack gate would hold the tournament with no timeout");
     // Packet-validation clamp on an inbound BRACKET's member count. A ring can
     // hold as many devices as the chain does, so it tracks MAX_CHAIN_MEMBERS;
     // one ESP-NOW v2 frame carries that bracket several times over.

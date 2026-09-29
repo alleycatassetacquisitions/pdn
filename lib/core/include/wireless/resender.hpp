@@ -12,11 +12,12 @@
 class WirelessManager;
 
 // Reliable send: put a frame on the air, retransmit it on a backoff, give up on
-// a budget. One frame can owe delivery to one peer or to many — a ring can hold
-// more devices than the ESP-NOW peer table has slots, so a fan-out goes out once
-// addressed to the broadcast MAC and is tracked per recipient. Both shapes are
-// the same record here: a frame, the address it is sent to, and the recipients
-// still expected to answer for it. sync() must run every loop tick.
+// it when its span runs out. One frame can owe delivery to one peer or to many —
+// a ring can hold more devices than the ESP-NOW peer table has slots, so a
+// fan-out goes out once addressed to the broadcast MAC and is tracked per
+// recipient. Both shapes are the same record here: a frame, the address it is
+// sent to, and the recipients still expected to answer for it. sync() must run
+// every loop tick.
 
 class Resender {
 public:
@@ -30,47 +31,42 @@ public:
     enum class SendMode { SUPERSEDE_PER_TARGET,
                           KEEP_DISTINCT };
 
-    // Retry tuning, shared by every channel: first retransmit after 100ms,
-    // doubling each retry, capped at 3 retries.
+    /// Retry tuning, shared by every channel: first retransmit after 100ms, the
+    /// gap doubling each round, until the frame's span runs out — three retransmits
+    /// at these values. The count is not theirs alone: sync() tests the deadline
+    /// before the round, and that order is load-bearing rather than cosmetic. Test
+    /// the round first and a loop that stalled past the span emits one more
+    /// retransmit on the way out, after the window the receiver claims the seqId
+    /// for has been sized shut.
     static constexpr unsigned long INITIAL_TIMEOUT_MS = 100;
-    static constexpr uint8_t MAX_RETRIES = 3;
 
-    // What a due round costs when the local send path refuses the frame — the
-    // only case the two differ. TRANSMITTED_ONLY parks the entry until the path
-    // reopens; EVERY_ROUND spends anyway, so a path that stays shut still
-    // abandons. See budgetPolicyDecidesWhetherARefusingRadioEverAbandons.
-    //
-    // ReliableTransport parks (its abandons are no-ops and the RDC re-sends on
-    // the next chain-state event). Both game managers abandon: the shootout
-    // gates its next match on a fan-out clearing, and the chain duel needs the
-    // entry to stop rather than re-attempt at the 100ms floor indefinitely.
-    enum class BudgetPolicy { TRANSMITTED_ONLY,
-                              EVERY_ROUND };
+    /// Wall-clock span from a frame's first send to its recipients being given up
+    /// on. Every group is armed with this as a deadline, so it bounds the frame
+    /// whatever the local send path does.
+    ///
+    /// Both ends read it, which is why it is one stated number: past it the sender
+    /// hands the send path no further copy, and the receiver holds a seqId claim
+    /// wider than it on that promise (see ReliableChannel::RX_SEQ_CLAIM_MS). Nothing
+    /// on the wire carries a deadline, so a per-frame one would drive the claim to
+    /// the widest caller's regardless. Widen this and the claim widens with it.
+    static constexpr unsigned long RETRANSMIT_SPAN_MS = 1500;
 
-    /// Wall-clock span from a frame's first send to a recipient being given up
-    /// on, so every retransmit of it falls inside. Holds under EVERY_ROUND; a
-    /// TRANSMITTED_ONLY entry against a shut send path has no bound at all,
-    /// because a refused round costs no budget.
-    static constexpr unsigned long retransmitSpanMs() {
-        unsigned long total = 0;
-        for (uint8_t r = 0; r <= MAX_RETRIES; ++r)
-            total += backoffMs(r);
-        return total;
-    }
+    // Nothing else ties the first backoff to the span, and getting it backwards
+    // degrades silently: one send, no retransmit, then abandonment.
+    static_assert(INITIAL_TIMEOUT_MS < RETRANSMIT_SPAN_MS,
+                  "a frame would be sent once and given up on, never retransmitted");
 
-    /// The soonest a caller may treat a frame as finished with: past every
-    /// retransmit of it, plus margin. Bounded only for an EVERY_ROUND sender —
-    /// see retransmitSpanMs; a TRANSMITTED_ONLY entry behind a shut send path
-    /// has no bound, so a caller relying on this must tolerate a later copy. Both the receiver's duplicate-claim window
-    /// and a sender's repair cadence are this same question, so they read it
-    /// here rather than each re-deriving the arithmetic.
-    static constexpr unsigned long staleAfterMs() { return retransmitSpanMs() + 500; }
+    /// The soonest a caller may treat a frame as finished with. The span bounds
+    /// hand-off, not airtime: transmit() only queues, so a copy handed over just
+    /// inside the span can leave the radio after it, and the 500ms covers that
+    /// drain. Both the receiver's duplicate-claim window and a sender's repair
+    /// cadence are this same question, so they read it here rather than each
+    /// re-deriving the arithmetic.
+    static constexpr unsigned long STALE_AFTER_MS = RETRANSMIT_SPAN_MS + 500;
 
-    /// Exponential backoff for the given retry number: 100, 200, 400 ...
-    static constexpr unsigned long backoffMs(uint8_t retryNum) {
-        // Clamp the shift so raising MAX_RETRIES past ~25 can't hit shift UB
-        // (unsigned long is 32-bit on the ESP32).
-        return INITIAL_TIMEOUT_MS << (retryNum > 16 ? 16u : retryNum);
+    /// Exponential backoff for the given round: 100, 200, 400 ...
+    static constexpr unsigned long backoffMs(uint8_t round) {
+        return INITIAL_TIMEOUT_MS << round;
     }
 
     /// Fires once per recipient that is given up on. Invoked from sync() AFTER
@@ -84,10 +80,8 @@ public:
                                                const uint8_t* payload, size_t payloadLen)>;
 
     /// wirelessManager may be nullptr in unit tests; transmit() then no-ops.
-    explicit Resender(WirelessManager* wirelessManager,
-                      BudgetPolicy budgetPolicy = BudgetPolicy::TRANSMITTED_ONLY)
-        : wirelessManager(wirelessManager)
-        , budgetPolicy(budgetPolicy) {}
+    explicit Resender(WirelessManager* wirelessManager)
+        : wirelessManager(wirelessManager) {}
     /// Groups own their payload copies; nothing external to release.
     ~Resender() = default;
 
@@ -115,9 +109,10 @@ public:
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
 
     /// Reliable fan-out: ONE frame addressed to the broadcast MAC, with every
-    /// named recipient expected to answer for it separately. Each carries its own
-    /// retry budget and is given up on independently, but a retransmit round
-    /// emits a single frame however many still owe an ack.
+    /// named recipient expected to answer for it separately. Each is acked
+    /// independently, but the retry schedule belongs to the frame: a round emits a
+    /// single frame however many still owe an ack, and the ones still owing when
+    /// the span runs out are given up on together.
     ///
     /// Broadcast rather than a unicast per recipient because the ESP-NOW peer
     /// table holds 20 entries, so a ring larger than that cannot be addressed by
@@ -139,8 +134,8 @@ public:
     /// Returns true when one matched. For a unicast that is the radio's
     /// SEND_SUCCESS (the peer's MAC ack); a fan-out gets no per-recipient radio
     /// evidence, so there it is an application ack. A SEND_FAIL is deliberately
-    /// ignored: the backoff timer retransmits on timeout, which avoids burning
-    /// the whole budget on a briefly-absent peer.
+    /// ignored: the driver's own MAC retries take milliseconds, so retransmitting
+    /// on one would collapse the backoff into dozens of rounds inside the span.
     bool onAck(PktType type, uint8_t seqId, const uint8_t* fromMac);
 
     /// Silent drop of one recipient's obligations on this channel; use when the
@@ -186,23 +181,14 @@ public:
         if (target == nullptr) return false;
         for (const Group& g : groups) {
             if (g.type != type) continue;
-            for (const Recipient& r : g.recipients) {
-                if (memcmp(r.target.data(), target, 6) == 0) return true;
+            for (const std::array<uint8_t, 6>& r : g.recipients) {
+                if (memcmp(r.data(), target, 6) == 0) return true;
             }
         }
         return false;
     }
 
 private:
-    // One device expected to answer for a frame. Carries only what differs
-    // between recipients; the frame itself lives on the group, so a large
-    // fan-out holds one copy rather than one per recipient.
-    struct Recipient {
-        std::array<uint8_t, 6> target;
-        uint8_t retries;
-        SimpleTimer timer;
-    };
-
     // One frame in flight. `destination` is the address it goes to — the
     // recipient's own MAC for a unicast, the broadcast MAC for a fan-out — and is
     // part of the frame's identity, since one channel can address several peers
@@ -218,7 +204,13 @@ private:
         uint8_t seqId;
         std::array<uint8_t, 6> destination;
         std::vector<uint8_t> payload;
-        std::vector<Recipient> recipients;
+        std::vector<std::array<uint8_t, 6>> recipients;
+        // The retry schedule is the frame's, not each recipient's: one send arms
+        // them all together and nothing joins a live group, so a recipient has
+        // nothing of its own to remember but its address.
+        SimpleTimer retransmitTimer;
+        SimpleTimer deadlineTimer;
+        uint8_t round = 0;
     };
 
     void addGroup(PktType type, uint8_t seqId, const std::array<uint8_t, 6>& destination,
@@ -232,8 +224,9 @@ private:
     void supersedeRecipients(PktType type,
                              const std::vector<std::array<uint8_t, 6>>& recipients);
 
-    // Returns false when the frame never reached the radio, so the caller can
-    // avoid spending a retry on a packet that was not actually sent.
+    // False when the local send path would not take the frame. Only the counters
+    // and the log read this: it is not evidence the frame reached the air either
+    // way, since sendData discards the radio's own result and reports the queue.
     bool transmit(const Group& g);
 
     struct AbandonedEntry {
@@ -244,7 +237,6 @@ private:
     };
 
     WirelessManager* wirelessManager;
-    BudgetPolicy budgetPolicy;
     std::vector<Group> groups;
     AbandonCallback abandonCallback;
     Stats stats;

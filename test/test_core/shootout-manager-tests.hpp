@@ -86,11 +86,13 @@ public:
         shootout->sync();
     }
 
-    /// `n` retry rounds, each advancing past any backoff a recipient could be
-    /// sitting on, so counting rounds is how a case reads a retry budget.
-    void runRetryRounds(uint8_t n) {
-        for (uint8_t i = 0; i < n; ++i) {
-            fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+    /// Runs the main loop for `ms`, one sync() every 20ms — fine enough that no
+    /// 100ms backoff window is skipped, not a claim about the device's loop period. The
+    /// retry span is wall-clock, so a case that wants a fan-out to run out of
+    /// retries lets that much time pass.
+    void runLoopFor(unsigned long ms) {
+        for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20) {
+            fakeClock->advance(20);
             shootout->sync();
         }
     }
@@ -775,7 +777,7 @@ inline void bracketRetriesThreeTimesThenAborts(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
-inline void matchStartGatedOnAllBracketAcks(ShootoutManagerTests* suite) {
+inline void matchStartWaitsOutTheBracketRevealWindow(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
         .WillByDefault(testing::Return(selfMac));
@@ -785,6 +787,9 @@ inline void matchStartGatedOnAllBracketAcks(ShootoutManagerTests* suite) {
     std::vector<std::array<uint8_t, 6>> members = {
         {0x01,0,0,0,0,0}, {0x02,0,0,0,0,0}, {0x03,0,0,0,0,0}, {0x04,0,0,0,0,0}
     };
+    // The RDC has to agree the ring is closed: this case runs the loop for long
+    // enough that a ring only the manager believes in reads as one that broke.
+    suite->closeRingOnJacks();
     suite->shootout->setLoopMembersForTest(members);
 
     suite->shootout->onRingClosed();
@@ -795,23 +800,34 @@ inline void matchStartGatedOnAllBracketAcks(ShootoutManagerTests* suite) {
     auto bracket = suite->shootout->getBracket();
     uint8_t bracketSeq = suite->shootout->getLastBracketSeqId();
 
-    // Ack from only one peer. Reveal window expires; MATCH_START must NOT fire.
+    // Ack from only one peer, kept inside the fan-out's span: past it the silent
+    // members are given up on, which ends the tournament rather than delaying the
+    // match. What holds the start here is the reveal window, not the ack gate —
+    // kBracketRevealMs outlasts the span, so no timeline reaches an expired reveal
+    // with the bracket still owed acks.
     for (const auto& m : bracket) {
         if (memcmp(m.data(), selfMac, 6) != 0) {
             suite->shootout->onCommandAckReceived(m.data(), bracketSeq);
             break;
         }
     }
-    suite->fakeClock->advance(6000);
-    suite->shootout->sync();
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS - 100);
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
-    // Ack the remaining peers. Now MATCH_START fires on next sync.
+    // The rest ack in time, so nobody is dropped and the match starts once the
+    // bracket has been on screen for its reveal window. Asserted the tick it
+    // starts: from there MATCH_START is the fan-out owed acks, and nobody in this
+    // case answers it either.
     for (const auto& m : bracket) {
         if (memcmp(m.data(), selfMac, 6) == 0) continue;
         suite->shootout->onCommandAckReceived(m.data(), bracketSeq);
     }
-    suite->shootout->sync();
+    for (int tick = 0; tick < 400 &&
+                       suite->shootout->getPhase() != ShootoutManager::Phase::MATCH_IN_PROGRESS;
+         ++tick) {
+        suite->fakeClock->advance(20);
+        suite->shootout->sync();
+    }
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
     EXPECT_EQ(suite->shootout->getCurrentMatchIndex(), 0);
     auto pair = suite->shootout->getCurrentMatchPair();
@@ -924,7 +940,7 @@ inline void eachBoutGetsItsOwnResultRetry(ShootoutManagerTests* suite) {
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), other.data(), 0, 2);
     suite->shootout->reportLocalWin();
     const uint8_t firstSeq = suite->shootout->getLastMatchResultSeqId();
-    suite->runRetryRounds(Resender::MAX_RETRIES + 1);
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
     ASSERT_NE(suite->shootout->getLastMatchResultSeqId(), firstSeq)
         << "first bout was not recovered at all";
 
@@ -932,10 +948,10 @@ inline void eachBoutGetsItsOwnResultRetry(ShootoutManagerTests* suite) {
     suite->shootout->onMatchStartReceived(coord.data(), me.data(), fourth.data(), 1, 3);
     suite->shootout->reportLocalWin();
     const uint8_t secondSeq = suite->shootout->getLastMatchResultSeqId();
-    suite->runRetryRounds(Resender::MAX_RETRIES + 1);
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
 
     EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), secondSeq)
-        << "the second bout this device won got no retry; the budget was a "
+        << "the second bout this device won got no retry; the latch was a "
            "device-wide latch, not one per match";
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED)
         << "a single lost ack on a later bout ended the whole tournament";
@@ -1009,8 +1025,8 @@ inline void coordinatorMissingOurResultIsRecoveredBySender(ShootoutManagerTests*
     const uint8_t firstSeq = suite->shootout->getLastMatchResultSeqId();
     ASSERT_NE(firstSeq, 0u);
 
-    // Nobody acks. The fan-out burns its budget and gives up on the coordinator.
-    suite->runRetryRounds(Resender::MAX_RETRIES + 1);
+    // Nobody acks. The fan-out runs out its span and gives up on the coordinator.
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
 
     EXPECT_NE(suite->shootout->getLastMatchResultSeqId(), firstSeq)
         << "the coordinator never took our result and nothing re-sent it";
@@ -1038,14 +1054,15 @@ inline void matchStartRetriesToSilentMemberThenAborts(ShootoutManagerTests* suit
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
     ASSERT_EQ(matchStartFrames, 1);
 
-    // The peer never acks. Each round retransmits the one frame.
-    suite->runRetryRounds(Resender::MAX_RETRIES);
-    EXPECT_EQ(matchStartFrames, 1 + Resender::MAX_RETRIES);
+    // The peer never acks, so the frame keeps going out on its doubling backoff:
+    // 100, 300 and 700ms in — the gaps double, so the offsets are their running
+    // sum — with the next one due past the span.
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS - 100);
+    EXPECT_EQ(matchStartFrames, 4);  // 1 initial + 3 retransmits at 100/300/700
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
-    // Budget spent, and the silent member is one of the two fighting: it ends.
-    suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
-    suite->shootout->sync();
+    // Span spent, and the silent member is one of the two fighting: it ends.
+    suite->runLoopFor(200);
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED);
 }
 
@@ -1086,7 +1103,7 @@ inline void resetCancelsInFlightFanOuts(ShootoutManagerTests* suite) {
     // the first frame is told to stop.
     const int tournamentAtAbort = tournamentFrames;
     const int abortAtAbort = abortFrames;
-    suite->runRetryRounds(Resender::MAX_RETRIES + 2);
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
     EXPECT_EQ(tournamentFrames, tournamentAtAbort)
         << "a cancelled tournament fan-out kept transmitting";
     EXPECT_GT(abortFrames, abortAtAbort)
@@ -1279,7 +1296,7 @@ inline void abandonedMatchStartIsJudgedAgainstItsOwnMatch(ShootoutManagerTests* 
 
     // Now the stale fan-out gives up on a spectator of match 0 who is very
     // likely fighting match 1.
-    suite->runRetryRounds(Resender::MAX_RETRIES + 2);
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED)
         << "a stale fan-out was judged against the match running now";
 }
@@ -1309,7 +1326,7 @@ inline void silentSpectatorDoesNotAbortMatchStart(ShootoutManagerTests* suite) {
     suite->shootout->onCommandAckReceived(pair.first.data(), msSeq);
     suite->shootout->onCommandAckReceived(pair.second.data(), msSeq);
 
-    suite->runRetryRounds(Resender::MAX_RETRIES + 2);
+    suite->runLoopFor(Resender::RETRANSMIT_SPAN_MS + 100);
     EXPECT_NE(suite->shootout->getPhase(), ShootoutManager::Phase::ABORTED)
         << "a spectator's silence ended a match it was not fighting";
 }
