@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <vector>
 #include <queue>
 #include <unordered_map>
@@ -114,77 +113,38 @@ public:
 
     //Queues up data for sending, may not send right away
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
-        if(length > (255 * MAX_PKT_DATA_SIZE))
+        if(length > MAX_PKT_DATA_SIZE)
         {
             LOG_W("ENC", "ESP-NOW: Tried to send too large of buffer: %u of max %u\n",
-                length, 
-                255 * MAX_PKT_DATA_SIZE);
+                length,
+                MAX_PKT_DATA_SIZE);
             return -1;
         }
 
-        //Calculate the total number of ESP_NOW_MAX_DATA_LEN (250) byte packets we'll 
-        //need to send the whole buffer
-        uint8_t numInCluster = length / MAX_PKT_DATA_SIZE + 
-                               (length % MAX_PKT_DATA_SIZE == 0 ? 0 : 1);
-        
-        //Allocate entire send buffer up front so we don't fail an allocation part way through
-        //the cluster
-        //We'll use alloca for tracking the buffers while we set them up since this should
-        //require a very small amount of memory making the risk of stack overflow very small
-        //This will also be much faster than malloc/free which would be wasteful for such a
-        //small allocation
-        auto sendBuffers = static_cast<uint8_t**>(alloca(sizeof(uint8_t*) * numInCluster));
-        size_t bytesLeft = length;
-        for(int i = 0; i < numInCluster; ++i)
+        auto* sendBuffer = static_cast<uint8_t*>(ps_malloc(sizeof(DataPktHdr) + length));
+        if(!sendBuffer)
         {
-            size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
-            sendBuffers[i] = (uint8_t*)ps_malloc(sizeof(DataPktHdr) + thisBuffer);
-            if(!sendBuffers[i])
-            {
-                //free anything we already allocated
-                for(int j = 0; j < i; ++j)
-                    free(sendBuffers[j]);
-
-                //TODO: Return better error code once we have them
-                LOG_E("ENC", "Failed to allocate buffers for ESP-NOW send queue");
-                LOG_E("ENC", "Needed to allocate a total of %lu bytes\n", length);
-                return -1;
-            }
-            bytesLeft -= thisBuffer;
+            //TODO: Return better error code once we have them
+            LOG_E("ENC", "Failed to allocate buffer for ESP-NOW send queue");
+            LOG_E("ENC", "Needed to allocate a total of %lu bytes\n", length);
+            return -1;
         }
+
+        auto* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
+        hdr->pktLen = sizeof(DataPktHdr) + length;
+        hdr->packetType = packetType;
+
+        memcpy(sendBuffer + sizeof(DataPktHdr), data, length);
 
         xSemaphoreTake(sendMutex_, portMAX_DELAY);
         bool willNeedToStartSend = m_sendQueue.empty();
 
-        //Build up each packet
-        bytesLeft = length;
-        for(int pktIdx = 0; pktIdx < numInCluster; ++pktIdx)
-        {
-            size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
-#if DEBUG_PRINT_ESP_NOW
-            ESP_LOGD("ENC", "ESPNOW SendData pktIdx: %i thisBuffer: %u\n", pktIdx, thisBuffer);
-#endif
+        DataSendBuffer buffer;
+        memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
+        buffer.ptr = sendBuffer;
+        buffer.len = hdr->pktLen;
+        m_sendQueue.push(buffer);
 
-            //Each packet needs a header, build it directly in the send buffer
-            auto* hdr = reinterpret_cast<DataPktHdr*>(sendBuffers[pktIdx]);
-            hdr->idxInCluster = pktIdx;
-            hdr->numPktsInCluster = numInCluster;
-            hdr->pktLen = sizeof(DataPktHdr) + thisBuffer;
-            hdr->packetType = packetType;
-
-            //Copy the actual data into the send buffer following the header
-            size_t dataOffset = pktIdx * MAX_PKT_DATA_SIZE;
-            memcpy(sendBuffers[pktIdx] + sizeof(DataPktHdr), data + dataOffset, thisBuffer);
-
-            //Now add it to the send queue
-            DataSendBuffer buffer;
-            memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
-            buffer.ptr = sendBuffers[pktIdx];
-            buffer.len = hdr->pktLen;
-            m_sendQueue.push(buffer);
-
-            bytesLeft -= thisBuffer;
-        }
         xSemaphoreGive(sendMutex_);
 
         if(willNeedToStartSend)
@@ -256,13 +216,6 @@ private:
         uint8_t dstMac[6];
         uint8_t* ptr;
         size_t len;
-    };
-
-    struct DataRecvBuffer
-    {
-        uint8_t* data;
-        unsigned long mostRecentRecvPktTime;
-        uint8_t expectedNextIdx;
     };
 
     explicit EspNowDriver(const std::string& name) :
@@ -359,100 +312,19 @@ private:
 
         const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
+        // pktLen drives the payload length passed downstream; a mismatch against
+        // the frame the radio actually delivered would under/overrun that copy.
+        if(pktHdr->pktLen != data_len) {
+            LOG_E("ENC", "Recieved pktLen (%u) does not match frame length (%i)\n", pktHdr->pktLen, data_len);
+            return;
+        }
+
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
 
-        if(pktHdr->numPktsInCluster > 1) {
-            manager->handleMultiPacketCluster(esp_now_info->src_addr, data, pktHdr);
-        } else {
-            manager->handleSinglePacket(esp_now_info->src_addr, data, pktHdr);
-        }
-    }
-
-    // Helper methods for packet reception
-    void handleSinglePacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
-        HandlePktCallback(pktHdr->packetType, mac_addr, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
-    }
-
-    void handleMultiPacketCluster(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr) {
-        uint64_t macAddr64 = MacToUInt64(mac_addr);
-        
-        if(pktHdr->idxInCluster == 0) {
-            handleFirstPacketInCluster(macAddr64, pktHdr);
-        }
-        
-        handleSubsequentPacket(mac_addr, data, pktHdr, macAddr64);
-    }
-
-    void handleFirstPacketInCluster(uint64_t macAddr64, const DataPktHdr* pktHdr) {
-        // If there's an existing cluster for this mac address, release it
-        // as that means we lost a packet somewhere
-        auto existingBuffer = m_recvBuffers.find(macAddr64);
-        if(existingBuffer != m_recvBuffers.end()) {
-            free(existingBuffer->second.data);
-            m_recvBuffers.erase(existingBuffer);
-        }
-
-        DataRecvBuffer newBuffer;
-        newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
-        newBuffer.expectedNextIdx = 1;
-        m_recvBuffers[macAddr64] = newBuffer;
-    }
-
-    void handleSubsequentPacket(const uint8_t* mac_addr, const uint8_t* data, const DataPktHdr* pktHdr, uint64_t macAddr64) {
-        auto existingBuffer = m_recvBuffers.find(macAddr64);
-        
-        // If no buffer exists, we missed the start packet
-        if(existingBuffer == m_recvBuffers.end()) {
-            LOG_W("ENC", "No recv buffer for mid cluster pkt. We must have missed first pkt.");
-            return;
-        }
-
-        DataRecvBuffer& recvBuffer = existingBuffer->second;
-        
-        if(!validatePacketSequence(pktHdr, recvBuffer, existingBuffer)) {
-            return;
-        }
-
-        copyPacketData(data, pktHdr, recvBuffer);
-        ++existingBuffer->second.expectedNextIdx;
-        
-        if(isClusterComplete(existingBuffer->second, pktHdr)) {
-            finalizeCluster(mac_addr, pktHdr, recvBuffer, existingBuffer);
-        }
-    }
-
-    bool validatePacketSequence(const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer, 
-                                std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
-        if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx) {
-            LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
-                  recvBuffer.expectedNextIdx, pktHdr->idxInCluster);
-            free(recvBuffer.data);
-            m_recvBuffers.erase(existingBuffer);
-            return false;
-        }
-        return true;
-    }
-
-    void copyPacketData(const uint8_t* data, const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer) {
-        size_t bufferOffset = pktHdr->idxInCluster * MAX_PKT_DATA_SIZE;
-        memcpy(recvBuffer.data + bufferOffset, data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
-    }
-
-    bool isClusterComplete(const DataRecvBuffer& recvBuffer, const DataPktHdr* pktHdr) {
-        return recvBuffer.expectedNextIdx == pktHdr->numPktsInCluster;
-    }
-
-    void finalizeCluster(const uint8_t* mac_addr, const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer,
-                         std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
-        size_t totalClusterSize = (pktHdr->numPktsInCluster - 1) * MAX_PKT_DATA_SIZE;
-        totalClusterSize += pktHdr->pktLen - sizeof(DataPktHdr);
-        
-        HandlePktCallback(pktHdr->packetType, mac_addr, recvBuffer.data, totalClusterSize);
-        
-        free(recvBuffer.data);
-        m_recvBuffers.erase(existingBuffer);
+        manager->HandlePktCallback(pktHdr->packetType, esp_now_info->src_addr,
+                                   data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
@@ -497,9 +369,7 @@ private:
         auto buffer = m_sendQueue.front();
         xSemaphoreGive(sendMutex_);
 
-        //If this is the first packet in cluster, make sure the peer is registered
-        auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
-        if(hdr->idxInCluster == 0 && (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0))
+        if(memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
             EnsurePeerIsRegistered(buffer.dstMac);
 
         esp_err_t err;
@@ -512,7 +382,6 @@ private:
                 if(m_curRetries >= m_maxRetries)
                 {
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-                    //TODO: Pop all packets in the current cluster?
                     MoveToNextSendPkt();
                     SendFrontPkt();
                     //TODO: Return correct error code
@@ -629,9 +498,6 @@ private:
 
     //Packet send queue
     std::queue<DataSendBuffer> m_sendQueue;
-
-    //Receive buffer tracking for multi-packet clusters
-    std::unordered_map<uint64_t, DataRecvBuffer> m_recvBuffers;
 
     //Storage for rssi, which is captured by wifi promiscuous callback
     std::unordered_map<uint64_t, int> m_rssiTracker;
