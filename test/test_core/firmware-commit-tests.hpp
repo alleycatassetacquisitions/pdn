@@ -155,3 +155,21 @@ TEST(FirmwareCommitTest, anOfferBelowTheStoredFloorIsRefused) {
     EXPECT_FALSE(f.manager->isReceiving());
     EXPECT_EQ(f.store.beginWriteCalls(), 0);
 }
+
+TEST(FirmwareCommitTest, theRestartProceedsWhenTheReportCannotBeSent) {
+    // COMPLETE is sequenced before the restart, but nothing in the fleet
+    // decodes it: a radio that keeps refusing the frame used to leave the
+    // device running the old image with its boot partition already switched.
+    FirmwareReceiverFixture f;
+    f.comms.refuseEverySend();
+    f.receiveCompleteValidImage();
+    ASSERT_TRUE(f.store.bootSet());
+    ASSERT_FALSE(f.store.didRestart());
+
+    for (int tick = 0; tick < 10; tick++) {
+        f.manager->sync();
+    }
+
+    EXPECT_TRUE(f.store.didRestart());
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 0);
+}

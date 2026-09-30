@@ -51,6 +51,12 @@ constexpr int REPAIR_STALL_ROUNDS = 3;
 // transfer. Ten seconds of silence is a seed that died, not a slow one.
 constexpr unsigned long RECEIVE_STALL_TIMEOUT_MS = 10000;
 
+// Times sendComplete may be refused by the radio before the report is
+// dropped and the phase moves on. Deliberately small: nothing in the fleet
+// decodes COMPLETE, so it is a diagnostic, while the restart sequenced behind
+// it is what makes the rollback window mean anything.
+constexpr int COMPLETE_SEND_ATTEMPTS = 5;
+
 bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
     return (bitmap[index / 8] & (1 << (index % 8))) != 0;
 }
@@ -308,6 +314,7 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
 
 void FirmwareUpdateManager::evaluateCommit() {
     receivePhase = ReceivePhase::REPORTING;  // this transfer is concluding, pass or fail
+    completeAttempts = 0;
 
     const auto fail = [this](FirmwareResult result) {
         firmwareStore->abortWrite();
@@ -454,7 +461,13 @@ void FirmwareUpdateManager::sendComplete(FirmwareResult result) {
     complete.result = static_cast<uint8_t>(result);
 
     if (!sendFrame(reinterpret_cast<const uint8_t*>(&complete), sizeof(complete), "sendComplete")) {
-        return;  // the phase stays REPORTING: sync() retries next tick
+        completeAttempts++;
+        if (completeAttempts < COMPLETE_SEND_ATTEMPTS) {
+            return;  // the phase stays REPORTING: sync() retries next tick
+        }
+        // A radio that will not take the frame must not cost the restart: it
+        // is what points the device at the image it just verified.
+        LOG_E(TAG, "sendComplete: refused %d times; dropping the report and moving on", completeAttempts);
     }
     receivePhase = result == FirmwareResult::OK ? ReceivePhase::RESTARTING : ReceivePhase::IDLE;
 }

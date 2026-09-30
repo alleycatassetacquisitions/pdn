@@ -56,6 +56,9 @@ public:
     /// Real behavior rather than a MOCK_METHOD: records every send so a
     /// test can assert counts without an EXPECT_CALL per frame.
     int sendData(const uint8_t*, PktType, const uint8_t* data, const size_t length) override {
+        if (refuseAll) {
+            return -1;
+        }
         totalSent++;
         if (length > 0 && data[0] < commandCounts.size()) {
             commandCounts[data[0]]++;
@@ -82,6 +85,11 @@ public:
     /// COMPLETE has been sent.
     const uint8_t* lastCompleteImageHash() const { return lastCompleteHash; }
 
+    /// Makes every sendData call from here on fail as if the driver refused
+    /// to queue the frame — a radio that never accepts one, rather than
+    /// SeedComms's single-shot refusal.
+    void refuseEverySend() { refuseAll = true; }
+
 private:
     int totalSent = 0;
     std::array<int, 5> commandCounts{};
@@ -89,6 +97,7 @@ private:
     uint8_t lastCompleteHash[FIRMWARE_SHA256_LENGTH] = {};
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF1};
+    bool refuseAll = false;
 };
 
 /// Shared by every firmware-distribution suite: a receiver manager wired to a
