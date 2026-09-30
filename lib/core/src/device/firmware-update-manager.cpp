@@ -508,6 +508,9 @@ void FirmwareUpdateManager::sync() {
     // onSendReport ever arriving for it — only on the local enqueue having
     // succeeded, which is what clears completePending.
     if (restartPending && restartTimer.expired()) {
+        // esp_restart() does not return, so clearing this matters only for a store
+        // whose restart() does — without it such a store would be restarted every tick.
+        restartPending = false;
         firmwareStore->restart();
         return;  // real hardware never returns from this; the fake does, for tests
     }
