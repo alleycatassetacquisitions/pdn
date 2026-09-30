@@ -602,10 +602,10 @@ private:
 
 class FirmwareUpdate : public TypedState<PDN> {
 public:
-    /// Renders seed progress. Does not own firmwareUpdateManager: Quickdraw
-    /// constructs it once and pumps its sync() every tick regardless of
-    /// state, since a device can be passively receiving without ever
-    /// mounting this state.
+    /// Draws a static "UPDATING" label and waits out the seed run. Does not
+    /// own firmwareUpdateManager: Quickdraw constructs it once and main.cpp's
+    /// loop() pumps its sync(), since a device can be passively receiving
+    /// without ever mounting this state.
     explicit FirmwareUpdate(FirmwareUpdateManager* firmwareUpdateManager);
 
     /// Starts distributing this device's own running image.

@@ -153,10 +153,6 @@ void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* d
 
 void Quickdraw::onStateLoop(Device *PDN) {
     if (chainDuelManager) chainDuelManager->sync();
-    // Pumped unconditionally, not from the FirmwareUpdate state: a device
-    // passively receiving an offer while sitting in Idle never mounts that
-    // state, and the post-commit restart only fires from here.
-    if (firmwareUpdateManager) firmwareUpdateManager->sync();
 
     if (chainDuelManager) {
         bool loopNow = chainDuelManager->isLoop();
@@ -315,6 +311,10 @@ Quickdraw::~Quickdraw() {
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
+}
+
+FirmwareUpdateManager* Quickdraw::getFirmwareUpdateManager() {
+    return firmwareUpdateManager;
 }
 
 void Quickdraw::populateStateMap() {
