@@ -1,6 +1,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <gtest/gtest-spi.h>
 
 #include "firmware-receiver-tests.hpp"
 #include "firmware-seed-tests.hpp"
@@ -38,10 +39,13 @@ TEST(FirmwareRepairTest, statusForAnotherImageIsIgnored) {
 
 TEST(FirmwareRepairTest, aDevicePoweredOnMidRunJoinsAtTheNextOffer) {
     // No cohort and no discovery window: this is the behaviour that buys.
+    // A seed and a late-joining receiver are two devices on one timeline, so
+    // late shares f's clock explicitly rather than each fixture installing
+    // its own and racing for SimpleTimer's single global one.
     FirmwareSeedFixture f;
     f.manager->beginSeeding();
     f.streamAllChunks();
-    FirmwareReceiverFixture late;
+    FirmwareReceiverFixture late(&f.clock);
     late.manager->onOffer(SEED_MAC, f.currentOffer());
     EXPECT_TRUE(late.manager->isReceiving());
     f.deliverStatus(LATE_DEVICE, late.missingIndices());
@@ -115,4 +119,29 @@ TEST(FirmwareRepairTest, successiveBackoffDrawsFromTheSameReceiverDiffer) {
     f.manager->onPoll(f.pollForCurrentImage());
     const unsigned long second = f.delayUntilStatusSent();
     EXPECT_NE(first, second);
+}
+
+TEST(FirmwareRepairTest, aSecondReceiverFixtureWithoutASharedClockFailsLoudly) {
+    // The exact trap fix round 1 fell into building the different-MACs test
+    // above: a second fixture silently stealing the first's clock instead of
+    // sharing it. Proves the guard fires instead of a future test passing
+    // for the wrong reason. EXPECT_NONFATAL_FAILURE isolates the expected
+    // failure (ADD_FAILURE(), not FAIL() — a constructor can't use a fatal
+    // assertion) so it doesn't fail this test itself.
+    EXPECT_NONFATAL_FAILURE(
+        {
+            FirmwareReceiverFixture first;
+            FirmwareReceiverFixture second;  // no shared clock: must fail loudly, not hijack
+        },
+        "already installed");
+}
+
+TEST(FirmwareRepairTest, aSecondSeedFixtureWithoutASharedClockFailsLoudly) {
+    // Same guard, the other fixture type.
+    EXPECT_NONFATAL_FAILURE(
+        {
+            FirmwareSeedFixture first;
+            FirmwareSeedFixture second;  // no shared clock: must fail loudly, not hijack
+        },
+        "already installed");
 }
