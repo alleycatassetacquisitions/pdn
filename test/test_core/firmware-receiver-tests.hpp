@@ -693,3 +693,45 @@ TEST(FirmwareReceiverTest, destroyingTheManagerDeregistersItsRadioHandlers) {
     EXPECT_FALSE(f.packetHandlerRegistered());
     EXPECT_FALSE(f.comms.hasSendStatusHandler(PktType::kFirmwareUpdate));
 }
+
+TEST(FirmwareReceiverTest, aChunkDeclaringNoBytesIsDropped) {
+    // Five bytes of frame for index 2 with length 0 used to set the bitmap
+    // bit, after which the honest chunk was dropped as a duplicate and the
+    // whole multi-megabyte run ended in BAD_HASH.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE] = {0};
+    f.deliverChunk(/*index=*/2, body, /*length=*/0);
+    EXPECT_EQ(f.manager->receivedCount(), 0);
+}
+
+TEST(FirmwareReceiverTest, aChunkLongerThanTheOfferedChunkSizeIsDropped) {
+    // Index 0 at 1401 bytes still fits the declared image, so the geometry
+    // bound below cannot reject it — only the offer's own chunk size can.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE + 1] = {0};
+    f.deliverChunk(/*index=*/0, body, sizeof(body));
+    EXPECT_EQ(f.manager->receivedCount(), 0);
+}
+
+TEST(FirmwareReceiverTest, anHonestChunkOverwritesAShortForgery) {
+    // A forged short chunk for an index cannot be stopped from landing — the
+    // frame is unauthenticated — so the honest chunk has to be able to land
+    // on top of it. First-writer-wins is what turned one forged frame into an
+    // unrecoverable run.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t forged[5] = {0};
+    f.deliverChunk(/*index=*/2, forged, sizeof(forged));
+    ASSERT_EQ(f.manager->receivedCount(), 1);
+
+    uint8_t honest[FirmwareReceiverFixture::CHUNK_SIZE];
+    memset(honest, 0xAB, sizeof(honest));
+    f.deliverChunk(/*index=*/2, honest, sizeof(honest));
+
+    EXPECT_EQ(f.manager->receivedCount(), 1) << "an overwrite is not new progress";
+    EXPECT_EQ(f.store.slot()[2 * FirmwareReceiverFixture::CHUNK_SIZE], 0xAB);
+    EXPECT_EQ(f.store.slot()[3 * FirmwareReceiverFixture::CHUNK_SIZE - 1], 0xAB)
+        << "the honest chunk's tail must land, not just its head";
+}

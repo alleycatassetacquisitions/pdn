@@ -291,7 +291,20 @@ void FirmwareUpdateManager::abortReceive() {
 }
 
 void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uint8_t* data) {
-    if (receivePhase != ReceivePhase::RECEIVING || header.index >= chunkCount || bitmapBit(header.index)) {
+    if (receivePhase != ReceivePhase::RECEIVING || header.index >= chunkCount) {
+        return;
+    }
+
+    // Chunks are unauthenticated by design — the image hash is what
+    // authenticates them — but a length outside the offer's own geometry has
+    // to be refused here, not left to the hash: it would mark an index
+    // received while writing a fraction of its bytes, and a partial write is
+    // exactly what the repair loop cannot see. The offer's chunkSize is the
+    // ceiling because every index but the last carries exactly that many
+    // bytes, and the length check below bounds the last one.
+    if (header.length == 0 || header.length > chunkSize) {
+        LOG_D(TAG, "chunk %u declares %u bytes, outside the offered %u", header.index, header.length,
+              chunkSize);
         return;
     }
 
@@ -308,6 +321,15 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
     if (!firmwareStore->writeAt(offset, data, header.length)) {
         LOG_E(TAG, "writeAt failed for chunk %u; the slot write has failed", header.index);
         writeFailed = true;
+    }
+
+    // Last writer wins for a repeated index, rather than first: a short
+    // forgery that lands before the honest chunk would otherwise hold the
+    // index forever, and the repair loop cannot help because this device
+    // reports that index as received. Overwriting costs a duplicate write
+    // and buys back the only recovery path there is.
+    if (bitmapBit(header.index)) {
+        return;  // the bytes were refreshed, but nothing new landed
     }
 
     setBitmapBit(header.index);
