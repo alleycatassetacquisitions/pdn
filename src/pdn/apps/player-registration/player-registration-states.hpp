@@ -49,6 +49,7 @@ public:
     bool transitionToPlayerRegistration();
     void fetchUserData();
     void uploadMatches();
+    void healthCheck();
     void showLoadingGlyphs(PDN* pdn);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;

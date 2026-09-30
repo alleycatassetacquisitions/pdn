@@ -226,6 +226,7 @@ inline const std::string TEST_BOUNTY_ID     = "9999";
 inline const std::string TEST_HUNTER_ID     = "8888";
 inline const std::string BROADCAST_WIFI     = "1111";
 inline const std::string FORCE_MATCH_UPLOAD = "6969";
+inline const std::string HEALTH_CHECK       = "9998";
 
 // Easing curve lookup tables have moved to lib/core/include/utils/easing-curves.hpp.
 #include "utils/easing-curves.hpp"
