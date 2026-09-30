@@ -73,6 +73,9 @@ void Idle::onStateMounted(PDN* pdn) {
     cachedPdn = pdn;
     parameterizedCallbackFunction checkFirmwareUpdateHold = [](void* ctx) {
         Idle* idle = static_cast<Idle*>(ctx);
+        if (idle->cachedPdn == nullptr) {
+            return;  // dismounted; the detach in onStateDismounted is the primary fix, this is the belt
+        }
         if (idle->cachedPdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
             idle->secondaryHeldForFirmwareUpdate = true;
         }
@@ -127,6 +130,11 @@ void Idle::onStateDismounted(PDN* pdn) {
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
+    // removeButtonCallbacks() does not clear callback pointers (OneButton::reset()
+    // only touches its own click/press-tracking state) — DURING_LONG_PRESS is the
+    // only slot in the tree nothing else re-registers over, so it must be detached
+    // explicitly or it keeps firing into a dismounted Idle in every later state.
+    pdn->getSecondaryButton()->setButtonPress(nullptr, nullptr, ButtonInteraction::DURING_LONG_PRESS);
     transitionToSymbolState = false;
     secondaryHeldForFirmwareUpdate = false;
     transitionToFirmwareUpdateState = false;

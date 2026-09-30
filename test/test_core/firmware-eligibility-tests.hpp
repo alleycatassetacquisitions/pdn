@@ -58,3 +58,28 @@ TEST(FirmwareEligibilityTest, deviceTypeRefusalIsNotASignatureFailure) {
     f.manager->onOffer(SEED_MAC, offer);
     EXPECT_FALSE(f.manager->isReceiving());
 }
+
+TEST(FirmwareEligibilityTest, ineligibleMidTransferAbortsAndNeverCommits) {
+    // onOffer only gates the accept; a match starting partway through a
+    // transfer must stop the receive rather than let it run to a
+    // commit-and-restart on a device now in use.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    ASSERT_TRUE(f.manager->isReceiving());
+
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE] = {0};
+    f.deliverChunk(0, body, sizeof(body));
+    ASSERT_EQ(f.manager->receivedCount(), 1);
+
+    f.setEligible(false);
+    f.manager->sync();
+    EXPECT_FALSE(f.manager->isReceiving());
+
+    // The transfer is closed, not paused: further chunks land nowhere, and
+    // the commit path — which would set the boot target — never runs.
+    f.deliverChunk(1, body, sizeof(body));
+    f.deliverChunk(2, body, sizeof(body));
+    f.deliverChunk(3, body, sizeof(body));
+    EXPECT_EQ(f.manager->receivedCount(), 1);
+    EXPECT_FALSE(f.store.bootSet());
+}
