@@ -508,6 +508,17 @@ bool FirmwareUpdateManager::isSeeding() const {
 }
 
 void FirmwareUpdateManager::sync() {
+    // onOffer only checks isEligible() at accept time; a match starting
+    // mid-transfer must not let collection run to a commit-and-restart on a
+    // device someone is using. No resume: the seed repeats OFFER for the
+    // whole run, so an eligible-again device rejoins at the next one on its
+    // own.
+    if (receiving && !isEligible()) {
+        LOG_E(TAG, "eligibility lost mid-transfer; aborting the receive");
+        firmwareStore->abortWrite();
+        receiving = false;
+    }
+
     if (sendInFlight) {
         return;  // at most one kFirmwareUpdate frame in flight, whichever role queued it
     }
