@@ -205,8 +205,13 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // already committed and about to restart; do not re-erase a verified slot
     }
 
-    if (receiving && std::memcmp(offer.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH) == 0) {
-        return;  // the seed repeats OFFER once a second; don't reopen a transfer in flight
+    // First offer wins for the whole transfer, whatever image a later one
+    // carries. Two seeds on different builds both repeat OFFER once a second,
+    // and reopening the slot for each would mean a multi-second blocking erase
+    // every second with neither transfer ever finishing. A device that loses
+    // its seed rejoins at the next offer once this one ends.
+    if (receiving) {
+        return;
     }
 
     if (std::memcmp(offer.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH) == 0) {
@@ -247,9 +252,6 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;
     }
 
-    if (receiving) {
-        firmwareStore->abortWrite();  // switching images: don't leave the old write open
-    }
     if (!firmwareStore->beginWrite(offer.imageLength)) {
         LOG_E(TAG, "beginWrite failed for a %u byte image", offer.imageLength);
         receiving = false;  // fail closed: the slot may be left partially erased
@@ -355,6 +357,15 @@ void FirmwareUpdateManager::evaluateCommit() {
         completeResult = FirmwareResult::FLASH_FAILED;
         completePending = true;
         return;
+    }
+
+    // Revocation is by generation: taking an image signed under a higher one
+    // is what retires every certificate below it, including a leaked signer's.
+    // Only here, past verification and commit — raising the floor on an offer
+    // alone would let an unverified frame lock the device out of every
+    // legitimate update that follows.
+    if (acceptedOffer.cert.generation > firmwareStore->getMinGeneration()) {
+        firmwareStore->setMinGeneration(acceptedOffer.cert.generation);
     }
 
     completeResult = FirmwareResult::OK;

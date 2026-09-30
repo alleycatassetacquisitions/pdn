@@ -508,6 +508,22 @@ TEST(FirmwareReceiverTest, repeatingTheSameOfferDoesNotResetProgress) {
     EXPECT_EQ(f.manager->receivedCount(), 1);
 }
 
+TEST(FirmwareReceiverTest, aSecondSeedsDifferentImageDoesNotRestartTheTransfer) {
+    // Two operators seeding different builds each repeat OFFER once a second.
+    // Reopening the slot for the newer one would mean a multi-second blocking
+    // erase every second, with the main loop stalled and neither transfer ever
+    // completing.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t body[1400] = {0};
+    f.deliverChunk(0, body, sizeof(body));
+
+    f.manager->onOffer(SEED_MAC, f.signedOfferForImage(f.imageBytes()));
+
+    EXPECT_EQ(f.store.beginWriteCalls(), 1) << "a competing offer must not re-erase the slot";
+    EXPECT_EQ(f.manager->receivedCount(), 1);
+}
+
 TEST(FirmwareReceiverTest, aChunkPastTheDeclaredImageLengthIsDropped) {
     // A geometry-valid offer still bounds each write against the declared
     // image length, not just against the chunk-count ceiling: an
