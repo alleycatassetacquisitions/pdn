@@ -29,7 +29,9 @@ public:
 
     /// Writes one chunk into the open slot at its declared index. Drops it
     /// if no offer is open, the index is out of range for it, or that index
-    /// already landed.
+    /// already landed. Once every index has landed, hashes the assembled
+    /// image, re-verifies the offer it was accepted under, writes the
+    /// trailer, and commits — or reports why it did not.
     void onChunk(const FirmwareChunkHeader& header, const uint8_t* data);
 
     /// A seed asking who's still missing chunks for `poll`'s image. Ignored
@@ -92,6 +94,16 @@ private:
     void sendNextChunk();
     void sendStatus();
 
+    // Runs once the receive bitmap is full: hashes the assembled image,
+    // checks it against the offer, re-verifies the offer's signature chain,
+    // writes the trailer, and only then marks the slot bootable. Any failure
+    // aborts the write and queues why for sendComplete.
+    void evaluateCommit();
+    // Sends completeResult behind the same single-frame-in-flight gate as
+    // every other outbound frame; queued by evaluateCommit via
+    // completePending rather than called directly.
+    void sendComplete(FirmwareResult result);
+
     // Drives the seed's state once its initial broadcast has streamed every
     // chunk: send POLL, wait out the collection window, resend the union of
     // reported gaps, repeat until a round comes back clean or stalls.
@@ -125,6 +137,21 @@ private:
     size_t imageLength = 0;
     uint8_t currentImageHash[FIRMWARE_SHA256_LENGTH] = {};
     uint8_t bitmap[FIRMWARE_BITMAP_BYTES] = {};
+
+    // Latched the instant any chunk's writeAt fails; checked ahead of the
+    // hash comparison at commit time so a hardware write fault is reported
+    // as FLASH_FAILED rather than the confusing BAD_HASH its unwritten
+    // region would otherwise produce.
+    bool writeFailed = false;
+    // The exact offer this transfer was accepted under: re-verified at
+    // commit time, and its cert/signature seed the trailer written past the
+    // image once that passes.
+    FirmwareOfferPayload acceptedOffer = {};
+
+    // Set by evaluateCommit, sent from sync() like every other outbound
+    // frame once whichever frame is already in flight clears.
+    bool completePending = false;
+    FirmwareResult completeResult = FirmwareResult::OK;
 
     bool runningImageHashComputed = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};

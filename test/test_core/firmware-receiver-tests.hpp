@@ -12,6 +12,7 @@
 #include "device/drivers/platform-clock.hpp"
 #include "utils/simple-timer.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -59,6 +60,9 @@ public:
         if (length > 0 && data[0] < commandCounts.size()) {
             commandCounts[data[0]]++;
         }
+        if (length >= sizeof(FirmwareCompletePayload) && data[0] == static_cast<uint8_t>(FirmwareCmd::COMPLETE)) {
+            lastComplete = static_cast<FirmwareResult>(reinterpret_cast<const FirmwareCompletePayload*>(data)->result);
+        }
         return 0;
     }
 
@@ -66,10 +70,16 @@ public:
     int sentCount() const { return totalSent; }
     /// Count of frames sent so far whose leading command byte is `cmd`.
     int countOf(FirmwareCmd cmd) const { return commandCounts[static_cast<size_t>(cmd)]; }
+    /// The result carried by the most recent COMPLETE frame sent — a commit
+    /// test's outcome. FirmwareResult::OK before any COMPLETE has been sent,
+    /// same as a successful commit's own value, so a test must first confirm
+    /// a COMPLETE was actually sent (e.g. via countOf(COMPLETE)).
+    FirmwareResult lastCompleteResult() const { return lastComplete; }
 
 private:
     int totalSent = 0;
     std::array<int, 5> commandCounts{};
+    FirmwareResult lastComplete = FirmwareResult::OK;
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF1};
 };
@@ -244,6 +254,43 @@ public:
         return buildSignedOffer(hash, static_cast<uint32_t>(bytes.size()), CHUNK_SIZE, /*chunks=*/1);
     }
 
+    /// Bytes for a synthetic multi-chunk image (four chunks at CHUNK_SIZE,
+    /// the last one short) — the commit-path suite's transfer, distinct from
+    /// imageBytes()'s single-chunk one so its own real hash exercises the
+    /// full assemble-then-hash path.
+    std::vector<uint8_t> commitImageBytes() const {
+        std::vector<uint8_t> bytes(5000);
+        for (size_t i = 0; i < bytes.size(); i++) {
+            bytes[i] = static_cast<uint8_t>(i);
+        }
+        return bytes;
+    }
+
+    /// Accepts a signed offer for commitImageBytes() and delivers every
+    /// chunk with its real content, so the assembled hash matches the
+    /// offer's declared one and the commit path runs to completion.
+    void receiveCompleteValidImage() {
+        const std::vector<uint8_t> image = commitImageBytes();
+        manager->onOffer(SEED_MAC, signedOfferForImage(image));
+        deliverImage(image);
+        manager->sync();  // flushes the COMPLETE evaluateCommit queues
+    }
+
+    /// Like receiveCompleteValidImage, but corrupts one byte of what is sent
+    /// after the offer is signed over the original bytes — the assembled
+    /// image's real hash then cannot match the offer's declared one.
+    void receiveCompleteImageWithOneCorruptChunk() {
+        std::vector<uint8_t> image = commitImageBytes();
+        manager->onOffer(SEED_MAC, signedOfferForImage(image));
+        image[image.size() / 2] ^= 0xFF;
+        deliverImage(image);
+        manager->sync();  // flushes the COMPLETE evaluateCommit queues
+    }
+
+    /// The FirmwareResult carried by the most recent COMPLETE frame sent —
+    /// the commit path's outcome for a test to assert against.
+    FirmwareResult lastResult() const { return comms.lastCompleteResult(); }
+
     ReceiverComms comms;
     FakeFirmwareStore store;
     FirmwareUpdateManager* manager;
@@ -318,6 +365,27 @@ private:
             offsetof(FirmwareOfferPayload, cert) - offsetof(FirmwareOfferPayload, imageSha256);
         firmware_test_keys::signRaw(firmware_test_keys::signerKeypair().privateKey, signedStart,
                                     signedLength, offer.imageSignature);
+    }
+
+    // A signed offer for `image`'s real hash, tiled at CHUNK_SIZE — the
+    // commit path hashes what was actually written, so a commit test needs
+    // content that matches its own offer, unlike the fixed TEST_IMAGE_SHA
+    // every other builder here declares without backing bytes.
+    FirmwareOfferPayload signedOfferForImage(const std::vector<uint8_t>& image) {
+        uint8_t hash[FIRMWARE_SHA256_LENGTH];
+        sha256(image.data(), image.size(), hash);
+        const uint16_t chunks = static_cast<uint16_t>((image.size() + CHUNK_SIZE - 1) / CHUNK_SIZE);
+        return buildSignedOffer(hash, static_cast<uint32_t>(image.size()), CHUNK_SIZE, chunks);
+    }
+
+    // Delivers every chunk of `image`, in order, at CHUNK_SIZE boundaries.
+    void deliverImage(const std::vector<uint8_t>& image) {
+        const uint16_t chunks = static_cast<uint16_t>((image.size() + CHUNK_SIZE - 1) / CHUNK_SIZE);
+        for (uint16_t i = 0; i < chunks; i++) {
+            const size_t offset = static_cast<size_t>(i) * CHUNK_SIZE;
+            const size_t length = std::min<size_t>(CHUNK_SIZE, image.size() - offset);
+            deliverChunk(i, image.data() + offset, static_cast<uint16_t>(length));
+        }
     }
 
     PeerCommsInterface::PacketCallback rawHandler;

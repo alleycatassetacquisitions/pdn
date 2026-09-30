@@ -18,11 +18,10 @@ constexpr const char* TAG = "FirmwareUpdate";
 // covers rather than choosing one at runtime.
 constexpr uint16_t SEED_CHUNK_SIZE = 1400;
 
-// Both OTA slots in partitions.csv (ota_0/ota_1) are this size; the running
-// image a seed offers can never exceed it. Tied to FIRMWARE_MAX_CHUNKS below
-// so a partition resize that would overflow repairBitmap fails the build
-// instead of silently corrupting it at runtime.
-constexpr size_t OTA_PARTITION_SIZE = 0x3E0000;
+// OTA_PARTITION_SIZE (firmware-store-interface.hpp) is the partitions.csv
+// slot size; tied here to FIRMWARE_MAX_CHUNKS so a partition resize that
+// would overflow repairBitmap fails the build instead of silently
+// corrupting it at runtime.
 static_assert((OTA_PARTITION_SIZE + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE <= FIRMWARE_MAX_CHUNKS,
               "an OTA partition no longer fits FIRMWARE_MAX_CHUNKS chunks at SEED_CHUNK_SIZE");
 
@@ -73,23 +72,23 @@ uint32_t seedFromMac(const uint8_t mac[6]) {
     return seed != 0 ? seed : 1u;
 }
 
-// Hashes the running image by streaming it through flash in fixed-size
-// chunks rather than buffering the whole thing: a running image can be
-// several megabytes. Called at most once per boot (the caller caches the
-// result), so the cost here is not a per-OFFER concern.
-void hashRunningImage(FirmwareStoreInterface* firmwareStore, uint8_t out[FIRMWARE_SHA256_LENGTH]) {
+// Hashes `length` bytes read through `read` (readRunningImage for the booted
+// image, readWrittenSlot for a just-assembled one — the two things this file
+// ever needs a SHA-256 of), streaming a fixed buffer rather than holding the
+// whole image: it can be several megabytes.
+void hashRange(FirmwareStoreInterface* firmwareStore,
+               bool (FirmwareStoreInterface::*read)(size_t, uint8_t*, size_t) const, size_t length,
+               uint8_t out[FIRMWARE_SHA256_LENGTH]) {
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);
     mbedtls_sha256_starts(&ctx, /*is224=*/0);
 
     uint8_t buffer[256];
-    const size_t total = firmwareStore->getRunningImageLength();
     size_t offset = 0;
-    while (offset < total) {
-        const size_t chunk = std::min(sizeof(buffer), total - offset);
-        if (!firmwareStore->readRunningImage(offset, buffer, chunk)) {
-            LOG_E(TAG, "readRunningImage failed at offset %zu of %zu; running-image hash is incomplete",
-                  offset, total);
+    while (offset < length) {
+        const size_t chunk = std::min(sizeof(buffer), length - offset);
+        if (!(firmwareStore->*read)(offset, buffer, chunk)) {
+            LOG_E(TAG, "hashRange: read failed at offset %zu of %zu; hash is incomplete", offset, length);
             break;
         }
         mbedtls_sha256_update(&ctx, buffer, chunk);
@@ -164,7 +163,8 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
 
 const uint8_t* FirmwareUpdateManager::cachedRunningImageHash() {
     if (!runningImageHashComputed) {
-        hashRunningImage(firmwareStore, runningImageHash);
+        hashRange(firmwareStore, &FirmwareStoreInterface::readRunningImage, firmwareStore->getRunningImageLength(),
+                  runningImageHash);
         runningImageHashComputed = true;
     }
     return runningImageHash;
@@ -238,6 +238,8 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
     chunkSize = offer.chunkSize;
     receivedChunkCount = 0;
     std::memset(bitmap, 0, sizeof(bitmap));
+    writeFailed = false;
+    acceptedOffer = offer;  // re-verified at commit time; its cert/signature seed the trailer written past the image
     receiving = true;
 }
 
@@ -252,13 +254,87 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
         return;
     }
 
+    // A write failure still counts the chunk as landed: redelivering a
+    // doomed offset would not help, and letting collection finish lets the
+    // commit check report FLASH_FAILED precisely instead of never
+    // completing at all.
     if (!firmwareStore->writeAt(offset, data, header.length)) {
-        LOG_D(TAG, "writeAt failed for chunk %u", header.index);
-        return;
+        LOG_E(TAG, "writeAt failed for chunk %u; the slot write has failed", header.index);
+        writeFailed = true;
     }
 
     setBitmapBit(header.index);
     receivedChunkCount++;
+    if (receivedChunkCount == chunkCount) {
+        evaluateCommit();
+    }
+}
+
+void FirmwareUpdateManager::evaluateCommit() {
+    receiving = false;  // this transfer is concluding, pass or fail
+
+    const auto fail = [this](FirmwareResult result) {
+        firmwareStore->abortWrite();
+        completeResult = result;
+        completePending = true;
+    };
+
+    if (writeFailed) {
+        LOG_E(TAG, "commit: a chunk write failed during transfer; the slot is unusable");
+        fail(FirmwareResult::FLASH_FAILED);
+        return;
+    }
+
+    uint8_t assembledHash[FIRMWARE_SHA256_LENGTH];
+    hashRange(firmwareStore, &FirmwareStoreInterface::readWrittenSlot, imageLength, assembledHash);
+    if (std::memcmp(assembledHash, currentImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
+        LOG_E(TAG, "commit: assembled image hash does not match the offer");
+        fail(FirmwareResult::BAD_HASH);
+        return;
+    }
+
+    // Verification before commit: re-run the same chain the offer was
+    // accepted under (spec's "Verification before commit"), not just trust
+    // the accept-time result.
+    const FirmwareResult verifyResult = verifyOffer(acceptedOffer, rootPublicKey, firmwareStore->getMinGeneration());
+    if (verifyResult != FirmwareResult::OK) {
+        LOG_E(TAG, "commit: offer failed re-verification (%d)", static_cast<int>(verifyResult));
+        fail(verifyResult);
+        return;
+    }
+
+    // The transfer never carries the trailer (cert/signature ride in the
+    // OFFER instead), so it has to be written here or this device could
+    // never seed the image onward: beginSeeding() reads it from exactly this
+    // offset. Written while the store's write is still open, not after
+    // finishWrite() closes it.
+    FirmwareTrailer trailer{};
+    trailer.cert = acceptedOffer.cert;
+    std::memcpy(trailer.imageSignature, acceptedOffer.imageSignature, FIRMWARE_SIG_LENGTH);
+    trailer.imageLength = static_cast<uint32_t>(imageLength);
+    trailer.magic = FIRMWARE_TRAILER_MAGIC;
+    if (!firmwareStore->writeAt(imageLength, reinterpret_cast<const uint8_t*>(&trailer), sizeof(trailer))) {
+        LOG_E(TAG, "commit: failed to write the trailer past the image");
+        fail(FirmwareResult::FLASH_FAILED);
+        return;
+    }
+
+    if (!firmwareStore->finishWrite()) {
+        LOG_E(TAG, "commit: finishWrite failed");
+        fail(FirmwareResult::FLASH_FAILED);
+        return;
+    }
+
+    if (!firmwareStore->setBootToWritten()) {
+        LOG_E(TAG, "commit: setBootToWritten failed");
+        // finishWrite() already closed the store's write; there is nothing left to abort.
+        completeResult = FirmwareResult::FLASH_FAILED;
+        completePending = true;
+        return;
+    }
+
+    completeResult = FirmwareResult::OK;
+    completePending = true;
 }
 
 void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
@@ -328,6 +404,22 @@ void FirmwareUpdateManager::sendStatus() {
     sendInFlight = true;
 }
 
+void FirmwareUpdateManager::sendComplete(FirmwareResult result) {
+    FirmwareCompletePayload complete{};
+    complete.command = static_cast<uint8_t>(FirmwareCmd::COMPLETE);
+    std::memcpy(complete.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH);
+    complete.result = static_cast<uint8_t>(result);
+
+    const int sendResult = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
+                                               reinterpret_cast<const uint8_t*>(&complete), sizeof(complete));
+    if (sendResult != 0) {
+        LOG_E(TAG, "sendComplete: sendData refused the frame (%d); retrying next sync()", sendResult);
+        return;  // completePending stays true: sync() retries next tick
+    }
+    completePending = false;
+    sendInFlight = true;
+}
+
 bool FirmwareUpdateManager::beginSeeding() {
     if (seeding) {
         return false;  // a run is already streaming; let it finish rather than restart mid-image
@@ -388,6 +480,11 @@ bool FirmwareUpdateManager::isSeeding() const {
 void FirmwareUpdateManager::sync() {
     if (sendInFlight) {
         return;  // at most one kFirmwareUpdate frame in flight, whichever role queued it
+    }
+
+    if (completePending) {
+        sendComplete(completeResult);
+        return;
     }
 
     if (statusReplyTimer.isRunning() && statusReplyTimer.expired()) {

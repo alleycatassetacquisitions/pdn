@@ -1,6 +1,7 @@
 #pragma once
 
 #include "device/drivers/firmware-store-interface.hpp"
+#include "device/drivers/peer-comms-types.hpp"
 #include <algorithm>
 #include <vector>
 
@@ -16,7 +17,10 @@ public:
         if (length > inactiveSlotSize) {
             return false;
         }
-        writeSlot.assign(length, 0);
+        // Real flash erases headroom past the declared length so the commit
+        // path can write a FirmwareTrailer there before the slot is marked
+        // bootable (writeAt below must accept that range too).
+        writeSlot.assign(length + sizeof(FirmwareTrailer), 0);
         writeInProgress = true;
         return true;
     }

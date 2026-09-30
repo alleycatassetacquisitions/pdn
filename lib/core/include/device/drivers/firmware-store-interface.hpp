@@ -3,6 +3,13 @@
 #include <cstddef>
 #include <cstdint>
 
+/// Both OTA slots in partitions.csv (ota_0/ota_1) are this size; a seed's
+/// image can never exceed it. Declared once here rather than duplicated per
+/// implementation, so the bitmap-ceiling static_assert in
+/// firmware-update-manager.cpp and the runtime partition-table check in
+/// Esp32S3FirmwareStore both compare against the same number.
+constexpr size_t OTA_PARTITION_SIZE = 0x3E0000;
+
 /// Everything firmware distribution needs from flash, with no ESP32 types in
 /// the signature. The native fake implements this so the protocol is testable
 /// off-device; only the ESP32 implementation is not.
