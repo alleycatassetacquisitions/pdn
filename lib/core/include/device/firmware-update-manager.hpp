@@ -215,6 +215,10 @@ private:
     // when sync() flushes the report, and the difference between a REPORTING
     // that ends at RESTARTING and one that ends back at IDLE.
     FirmwareResult completeResult = FirmwareResult::OK;
+    // Refused attempts to hand COMPLETE to the radio, counted so REPORTING
+    // cannot hold the post-commit restart hostage to a frame the radio will
+    // not take. Reset by evaluateCommit for each transfer.
+    int completeAttempts = 0;
 
     bool runningImageHashComputed = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};
