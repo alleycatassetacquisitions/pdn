@@ -8,12 +8,16 @@
 #include "firmware-test-keys.hpp"
 #include "device/firmware-update-manager.hpp"
 #include "device/firmware-verify.hpp"
+#include "device/drivers/platform-clock.hpp"
+#include "utils/simple-timer.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <vector>
 
 using ::testing::_;
@@ -23,6 +27,56 @@ using ::testing::NiceMock;
 /// A MAC standing in for the seed device throughout the firmware-distribution
 /// suites.
 inline constexpr uint8_t SEED_MAC[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+
+/// Clock this suite drives by hand so a receiver's POLL-reply backoff can be
+/// fast-forwarded without a real wait. Duplicated from firmware-seed-tests.hpp's
+/// FakeSeedClock rather than shared: each fixture file owns registering and
+/// clearing SimpleTimer's global clock for its own lifetime.
+class FakeReceiverClock : public PlatformClock {
+public:
+    /// Current simulated time in milliseconds.
+    unsigned long milliseconds() override { return currentTime; }
+    /// Moves the simulated clock forward by `delta` milliseconds.
+    void advance(unsigned long delta) { currentTime += delta; }
+
+private:
+    unsigned long currentTime = 0;
+};
+
+/// Records every frame FirmwareUpdateManager sends, the same way
+/// firmware-seed-tests.hpp's SeedComms does for the seed suite: real
+/// sendData bookkeeping so a test can assert counts directly instead of an
+/// EXPECT_CALL per send, layered on the gmock base this fixture already
+/// relies on for setPacketHandler capture.
+class ReceiverComms : public NiceMock<MockPeerComms> {
+public:
+    /// Stubs getGlobalBroadcastAddress so the destination sendData is given
+    /// is a valid pointer rather than NiceMock's default nullptr.
+    ReceiverComms() {
+        ON_CALL(*this, getGlobalBroadcastAddress())
+            .WillByDefault(Invoke([this]() -> const uint8_t* { return broadcastAddress; }));
+    }
+
+    /// Real behavior rather than a MOCK_METHOD: records every send so a
+    /// test can assert counts without an EXPECT_CALL per frame.
+    int sendData(const uint8_t*, PktType, const uint8_t* data, const size_t length) override {
+        totalSent++;
+        if (length > 0 && data[0] < commandCounts.size()) {
+            commandCounts[data[0]]++;
+        }
+        return 0;
+    }
+
+    /// Count of every frame sent so far, of any command.
+    int sentCount() const { return totalSent; }
+    /// Count of frames sent so far whose leading command byte is `cmd`.
+    int countOf(FirmwareCmd cmd) const { return commandCounts[static_cast<size_t>(cmd)]; }
+
+private:
+    int totalSent = 0;
+    std::array<int, 5> commandCounts{};
+    uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+};
 
 /// Shared by every firmware-distribution suite: a receiver manager wired to a
 /// fake flash slot and a mock radio, plus builders for signed offers and
@@ -40,6 +94,7 @@ public:
     /// size, and captures the radio callback the manager registers so
     /// deliverFrame can drive the actual wire-receive path.
     FirmwareReceiverFixture() {
+        SimpleTimer::setPlatformClock(&clock);
         store.setInactiveSlotSize(INACTIVE_SLOT_SIZE);
         ON_CALL(comms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
             .WillByDefault(Invoke([this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
@@ -49,8 +104,47 @@ public:
         manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY);
     }
 
-    /// Frees the manager this fixture owns.
-    ~FirmwareReceiverFixture() { delete manager; }
+    /// Frees the manager this fixture owns and un-registers the fake clock
+    /// so it does not outlive this fixture for a later test's SimpleTimer.
+    ~FirmwareReceiverFixture() {
+        delete manager;
+        SimpleTimer::setPlatformClock(nullptr);
+    }
+
+    /// Moves the fixture's fake clock forward by `ms` milliseconds, without
+    /// calling sync() — callers drive sync() themselves so they control
+    /// exactly when a deferred send is attempted.
+    void advance(unsigned long ms) { clock.advance(ms); }
+
+    /// Accepts a signed offer, then delivers one chunk — a receiver mid-run
+    /// with more chunks still missing than landed.
+    void beginReceivingPartial() {
+        manager->onOffer(SEED_MAC, signedOffer(/*length=*/5000, /*chunks=*/4));
+        uint8_t body[CHUNK_SIZE] = {0};
+        deliverChunk(0, body, sizeof(body));
+    }
+
+    /// A POLL naming the image this fixture's offers declare (TEST_IMAGE_SHA).
+    FirmwarePollPayload pollForCurrentImage() const {
+        FirmwarePollPayload poll{};
+        poll.command = static_cast<uint8_t>(FirmwareCmd::POLL);
+        std::memcpy(poll.imageSha256, TEST_IMAGE_SHA, FIRMWARE_SHA256_LENGTH);
+        return poll;
+    }
+
+    /// Every chunk index not yet landed, from the receive bitmap — what a
+    /// real STATUS reply would report missing to a repair-round POLL.
+    std::set<uint16_t> missingIndices() const {
+        uint8_t received[FIRMWARE_BITMAP_BYTES];
+        manager->fillBitmap(received);
+        std::set<uint16_t> missing;
+        for (uint16_t i = 0; i < FIRMWARE_MAX_CHUNKS; i++) {
+            if ((received[i / 8] & (1 << (i % 8))) == 0) {
+                missing.insert(i);
+            }
+        }
+        return missing;
+    }
 
     /// A signed offer for a synthetic image of `length` bytes split into
     /// `chunks` chunks of CHUNK_SIZE bytes each (the last one short).
@@ -116,7 +210,7 @@ public:
         return buildSignedOffer(hash, static_cast<uint32_t>(bytes.size()), CHUNK_SIZE, /*chunks=*/1);
     }
 
-    NiceMock<MockPeerComms> comms;
+    ReceiverComms comms;
     FakeFirmwareStore store;
     FirmwareUpdateManager* manager;
 
@@ -158,6 +252,7 @@ private:
 
     PeerCommsInterface::PacketCallback rawHandler;
     void* rawCtx = nullptr;
+    FakeReceiverClock clock;
 };
 
 TEST(FirmwareReceiverTest, offerOpensTheSlotForTheDeclaredLength) {

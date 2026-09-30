@@ -6,6 +6,7 @@
 #include <mbedtls/sha256.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -20,6 +21,38 @@ constexpr uint16_t SEED_CHUNK_SIZE = 1400;
 
 // How often the seed re-broadcasts OFFER for the life of a run.
 constexpr unsigned long SEED_OFFER_INTERVAL_MS = 1000;
+
+// How long the seed waits after a POLL for STATUS replies before acting on
+// whatever it heard. Must clear onPoll's [0, STATUS_BACKOFF_CEILING_MS)
+// reply jitter with margin, or a slow-but-honest reply arrives after the
+// seed already moved on.
+constexpr unsigned long SEED_POLL_WINDOW_MS = 600;
+
+// Upper bound (exclusive) of a receiver's random delay before answering a
+// POLL, so every device that heard it doesn't reply in the same instant.
+constexpr unsigned long STATUS_BACKOFF_CEILING_MS = 500;
+
+// A repair set that stops shrinking for this many rounds in a row means at
+// least one chunk is never going to land; broadcasting it forever would
+// never end the run, so the seed gives up on it instead.
+constexpr int REPAIR_STALL_ROUNDS = 3;
+
+bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
+    return (bitmap[index / 8] & (1 << (index % 8))) != 0;
+}
+
+void setBitAt(uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
+    bitmap[index / 8] |= static_cast<uint8_t>(1 << (index % 8));
+}
+
+bool bitmapIsEmpty(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES]) {
+    for (size_t i = 0; i < FIRMWARE_BITMAP_BYTES; i++) {
+        if (bitmap[i] != 0) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // Hashes the running image by streaming it through flash in fixed-size
 // chunks rather than buffering the whole thing: a running image can be
@@ -90,8 +123,22 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
             onChunk(*header, body);
             return;
         }
+        case FirmwareCmd::POLL:
+            if (length < sizeof(FirmwarePollPayload)) {
+                LOG_D(TAG, "POLL frame too short (%zu < %zu)", length, sizeof(FirmwarePollPayload));
+                return;
+            }
+            onPoll(*reinterpret_cast<const FirmwarePollPayload*>(data));
+            return;
+        case FirmwareCmd::STATUS:
+            if (length < sizeof(FirmwareStatusPayload)) {
+                LOG_D(TAG, "STATUS frame too short (%zu < %zu)", length, sizeof(FirmwareStatusPayload));
+                return;
+            }
+            onStatus(*reinterpret_cast<const FirmwareStatusPayload*>(data));
+            return;
         default:
-            return;  // only OFFER and CHUNK are handled on the receive side
+            return;  // OFFER, CHUNK, POLL and STATUS are the only frames handled on the receive side
     }
 }
 
@@ -186,6 +233,36 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
     receivedChunkCount++;
 }
 
+void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
+    if (!receiving) {
+        return;  // nothing to report on
+    }
+    if (std::memcmp(poll.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
+        return;  // a poll for an image other than the one being collected
+    }
+    // Re-rolled on every poll heard, including a repeat: nothing here tracks
+    // whether a reply is already pending, and a fresh roll is no worse than
+    // whatever delay was already running.
+    statusReplyTimer.setTimer(static_cast<unsigned long>(std::rand() % STATUS_BACKOFF_CEILING_MS));
+}
+
+void FirmwareUpdateManager::onStatus(const FirmwareStatusPayload& status) {
+    if (!seeding) {
+        return;  // no run in progress for a report to apply to
+    }
+    if (std::memcmp(status.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH) != 0) {
+        return;  // a stale reply from another run must not pollute this one's repair set
+    }
+    // Bounded to seedChunkCount, not the full 3072-bit wire bitmap: a
+    // reported gap past the image's real chunk count would ask the seed to
+    // resend a chunk that does not exist.
+    for (uint16_t i = 0; i < seedChunkCount; i++) {
+        if (!bitAt(status.bitmap, i)) {
+            setBitAt(repairBitmap, i);
+        }
+    }
+}
+
 bool FirmwareUpdateManager::isReceiving() const {
     return receiving;
 }
@@ -204,6 +281,23 @@ bool FirmwareUpdateManager::bitmapBit(uint16_t index) const {
 
 void FirmwareUpdateManager::setBitmapBit(uint16_t index) {
     bitmap[index / 8] |= static_cast<uint8_t>(1 << (index % 8));
+}
+
+void FirmwareUpdateManager::sendStatus() {
+    FirmwareStatusPayload status{};
+    status.command = static_cast<uint8_t>(FirmwareCmd::STATUS);
+    std::memcpy(status.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH);
+    status.receivedCount = receivedChunkCount;
+    std::memcpy(status.bitmap, bitmap, FIRMWARE_BITMAP_BYTES);
+
+    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
+                                           reinterpret_cast<const uint8_t*>(&status), sizeof(status));
+    if (result != 0) {
+        LOG_E(TAG, "sendStatus: sendData refused the frame (%d); retrying next sync()", result);
+        return;  // statusReplyTimer stays expired: sync() retries this same reply next tick
+    }
+    statusReplyTimer.invalidate();
+    sendInFlight = true;
 }
 
 bool FirmwareUpdateManager::beginSeeding() {
@@ -239,6 +333,15 @@ bool FirmwareUpdateManager::beginSeeding() {
     seedNextChunkIndex = 0;
     seeding = true;
 
+    // A previous run may have left repair state behind; this run starts
+    // its own collection from nothing.
+    std::memset(repairBitmap, 0, sizeof(repairBitmap));
+    haveLastRepairSet = false;
+    identicalRepairRounds = 0;
+    pollSentForRound = false;
+    repairRoundReady = false;
+    repairCursor = 0;
+
     sendOffer();
     offerTimer.setTimer(SEED_OFFER_INTERVAL_MS);
     return true;
@@ -254,8 +357,17 @@ bool FirmwareUpdateManager::isSeeding() const {
 }
 
 void FirmwareUpdateManager::sync() {
-    if (!seeding || sendInFlight) {
-        return;  // at most one frame in flight: nothing to do until the radio reports the last one done
+    if (sendInFlight) {
+        return;  // at most one kFirmwareUpdate frame in flight, whichever role queued it
+    }
+
+    if (statusReplyTimer.isRunning() && statusReplyTimer.expired()) {
+        sendStatus();
+        return;
+    }
+
+    if (!seeding) {
+        return;
     }
 
     if (!offerTimer.isRunning() || offerTimer.expired()) {
@@ -266,7 +378,73 @@ void FirmwareUpdateManager::sync() {
 
     if (seedNextChunkIndex < seedChunkCount) {
         sendNextChunk();
+        return;
     }
+
+    syncRepair();
+}
+
+void FirmwareUpdateManager::syncRepair() {
+    if (!pollSentForRound) {
+        sendPoll();
+        return;
+    }
+
+    if (!repairRoundReady) {
+        if (!pollWindowTimer.expired()) {
+            return;  // still within the window, collecting STATUS replies
+        }
+        resolveRepairRound();
+        if (!seeding) {
+            return;  // resolveRepairRound ended the run: nothing missing, or repair stalled out
+        }
+    }
+
+    // Skip anything this round's set never asked for (or already sent) in
+    // the same call that would otherwise discover there's nothing left —
+    // deferring that discovery to a later sync() would leave the round's
+    // flags reset one call later than the send that actually finished it.
+    while (repairCursor < seedChunkCount && !bitAt(repairStreamSet, repairCursor)) {
+        repairCursor++;
+    }
+
+    if (repairCursor < seedChunkCount) {
+        sendNextRepairChunk();
+        return;
+    }
+
+    // This round's resends are all out; the next round starts collecting
+    // immediately (repairBitmap was already cleared by resolveRepairRound),
+    // and its own POLL goes out on the next sync().
+    pollSentForRound = false;
+    repairRoundReady = false;
+    repairCursor = 0;
+}
+
+void FirmwareUpdateManager::resolveRepairRound() {
+    if (bitmapIsEmpty(repairBitmap)) {
+        seeding = false;  // nobody reported a gap: the run is done
+        return;
+    }
+
+    if (haveLastRepairSet && std::memcmp(repairBitmap, lastRepairSet, sizeof(repairBitmap)) == 0) {
+        identicalRepairRounds++;
+    } else {
+        identicalRepairRounds = 1;
+    }
+    std::memcpy(lastRepairSet, repairBitmap, sizeof(repairBitmap));
+    haveLastRepairSet = true;
+
+    if (identicalRepairRounds >= REPAIR_STALL_ROUNDS) {
+        LOG_E(TAG, "repair set unchanged for %d rounds in a row; ending the run", identicalRepairRounds);
+        seeding = false;  // waiting out a chunk that never lands would never end the run
+        std::memset(repairBitmap, 0, sizeof(repairBitmap));
+        return;
+    }
+
+    std::memcpy(repairStreamSet, repairBitmap, sizeof(repairBitmap));
+    std::memset(repairBitmap, 0, sizeof(repairBitmap));  // the next round starts collecting now
+    repairRoundReady = true;
 }
 
 void FirmwareUpdateManager::dispatchSendStatus(const uint8_t* dstMac, const uint8_t* data, size_t length,
@@ -320,5 +498,50 @@ void FirmwareUpdateManager::sendNextChunk() {
         return;  // seedNextChunkIndex not advanced, sendInFlight stays false: nothing was queued
     }
     seedNextChunkIndex++;
+    sendInFlight = true;
+}
+
+void FirmwareUpdateManager::sendPoll() {
+    FirmwarePollPayload poll{};
+    poll.command = static_cast<uint8_t>(FirmwareCmd::POLL);
+    std::memcpy(poll.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH);
+
+    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
+                                           reinterpret_cast<const uint8_t*>(&poll), sizeof(poll));
+    if (result != 0) {
+        LOG_E(TAG, "sendPoll: sendData refused the frame (%d); retrying next sync()", result);
+        return;  // pollSentForRound stays false: sync() retries next tick
+    }
+    sendInFlight = true;
+    pollSentForRound = true;
+    pollWindowTimer.setTimer(SEED_POLL_WINDOW_MS);
+}
+
+void FirmwareUpdateManager::sendNextRepairChunk() {
+    // syncRepair has already skipped repairCursor forward to a set bit (or
+    // to seedChunkCount, in which case it never calls this).
+    const uint16_t index = repairCursor;
+    const size_t offset = static_cast<size_t>(index) * SEED_CHUNK_SIZE;
+    const uint16_t length =
+        static_cast<uint16_t>(std::min<size_t>(SEED_CHUNK_SIZE, seedImageLength - offset));
+
+    uint8_t frame[sizeof(FirmwareChunkHeader) + SEED_CHUNK_SIZE];
+    FirmwareChunkHeader* header = reinterpret_cast<FirmwareChunkHeader*>(frame);
+    header->command = static_cast<uint8_t>(FirmwareCmd::CHUNK);
+    header->index = index;
+    header->length = length;
+
+    if (!firmwareStore->readRunningImage(offset, frame + sizeof(FirmwareChunkHeader), length)) {
+        LOG_E(TAG, "sendNextRepairChunk: failed to read the running image at offset %zu", offset);
+        return;  // repairCursor not advanced; sync() retries this same index next tick
+    }
+
+    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
+                                           sizeof(FirmwareChunkHeader) + length);
+    if (result != 0) {
+        LOG_E(TAG, "sendNextRepairChunk: sendData refused chunk %u (%d); retrying next sync()", index, result);
+        return;  // repairCursor not advanced, sendInFlight stays false: nothing was queued
+    }
+    repairCursor = index + 1;
     sendInFlight = true;
 }
