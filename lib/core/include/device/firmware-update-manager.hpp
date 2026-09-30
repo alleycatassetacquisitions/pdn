@@ -32,6 +32,19 @@ public:
     /// already landed.
     void onChunk(const FirmwareChunkHeader& header, const uint8_t* data);
 
+    /// A seed asking who's still missing chunks for `poll`'s image. Ignored
+    /// unless it names the image currently being collected. Otherwise arms a
+    /// random-delay reply so every receiver answering the same poll doesn't
+    /// broadcast STATUS in the same instant.
+    void onPoll(const FirmwarePollPayload& poll);
+
+    /// A receiver's report of what it has for the run currently being
+    /// seeded. Ignored unless it names this run's image; otherwise the
+    /// chunks it did not report folds into the set the next repair sweep
+    /// resends. Carries no sender MAC: the repair set is a union over every
+    /// reply heard, not a per-device ledger.
+    void onStatus(const FirmwareStatusPayload& status);
+
     /// True once an offer has been accepted; nothing here clears it back to
     /// false.
     bool isReceiving() const;
@@ -77,6 +90,15 @@ private:
 
     void sendOffer();
     void sendNextChunk();
+    void sendStatus();
+
+    // Drives the seed's state once its initial broadcast has streamed every
+    // chunk: send POLL, wait out the collection window, resend the union of
+    // reported gaps, repeat until a round comes back clean or stalls.
+    void syncRepair();
+    void sendPoll();
+    void sendNextRepairChunk();
+    void resolveRepairRound();
 
     bool bitmapBit(uint16_t index) const;
     void setBitmapBit(uint16_t index);
@@ -100,6 +122,11 @@ private:
     bool runningImageHashComputed = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};
 
+    // A poll answer is deferred behind a random delay so every receiver
+    // hearing the same POLL doesn't reply in the same instant; armed by
+    // onPoll, fired by sync() once it expires.
+    SimpleTimer statusReplyTimer;
+
     // Kept separate from the receiving fields above: a device offering its
     // own image and collecting someone else's at the same time must not have
     // one role's beginSeeding corrupt the other's in-progress geometry.
@@ -111,4 +138,21 @@ private:
     SimpleTimer offerTimer;
     SignerCert seedCert = {};
     uint8_t seedImageSignature[FIRMWARE_SIG_LENGTH] = {};
+
+    // Repair loop: repairBitmap accumulates the complement of every STATUS
+    // heard since the last round resolved; resolveRepairRound freezes it
+    // into repairStreamSet (what this round actually resends) and clears
+    // repairBitmap so the next round starts collecting immediately, not only
+    // once its own POLL goes out. lastRepairSet/identicalRepairRounds detect
+    // a repair set that stops shrinking so a permanently-missing chunk (one
+    // that never lands) doesn't broadcast forever.
+    uint8_t repairBitmap[FIRMWARE_BITMAP_BYTES] = {};
+    uint8_t repairStreamSet[FIRMWARE_BITMAP_BYTES] = {};
+    uint8_t lastRepairSet[FIRMWARE_BITMAP_BYTES] = {};
+    bool haveLastRepairSet = false;
+    int identicalRepairRounds = 0;
+    bool pollSentForRound = false;
+    bool repairRoundReady = false;
+    uint16_t repairCursor = 0;
+    SimpleTimer pollWindowTimer;
 };
