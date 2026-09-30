@@ -176,12 +176,10 @@ private:
     // Set by evaluateCommit on a successful commit: the spec requires a
     // restart after setting the boot partition, or the confirm timer armed
     // at the next boot never means anything. onOffer checks this too, so a
-    // repeat OFFER in the window before the restart fires cannot reopen the
-    // slot that was just verified and pointed at. Sent from sync(), after
-    // completePending, so COMPLETE is handed to the radio first; never
-    // gated on a send report actually arriving.
+    // repeat OFFER arriving before the restart fires cannot reopen the slot
+    // that was just verified and pointed at. Fired from sync(), after
+    // completePending, so COMPLETE is handed to the radio first.
     bool restartPending = false;
-    SimpleTimer restartTimer;
 
     bool runningImageHashComputed = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};
