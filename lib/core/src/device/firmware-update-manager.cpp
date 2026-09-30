@@ -282,6 +282,7 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
 void FirmwareUpdateManager::abortReceive() {
     firmwareStore->abortWrite();
     receivePhase = ReceivePhase::IDLE;
+    statusReplyTimer.invalidate();  // a bitmap for a dead transfer is worse than no reply
 }
 
 void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uint8_t* data) {
@@ -315,6 +316,11 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
 void FirmwareUpdateManager::evaluateCommit() {
     receivePhase = ReceivePhase::REPORTING;  // this transfer is concluding, pass or fail
     completeAttempts = 0;
+    // Any poll answer still counting down belongs to a transfer that is over.
+    // Letting it fire would hand the seed a partial bitmap for an image this
+    // device has either committed or abandoned, and those phantom gaps fold
+    // straight into the next repair round.
+    statusReplyTimer.invalidate();
 
     const auto fail = [this](FirmwareResult result) {
         firmwareStore->abortWrite();
