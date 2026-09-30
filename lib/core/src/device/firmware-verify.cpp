@@ -38,15 +38,23 @@ bool verifyP256(const uint8_t* publicKey, const uint8_t* data, size_t len,
     mbedtls_mpi_init(&r);
     mbedtls_mpi_init(&s);
 
-    bool verified = false;
-    if (mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1) == 0 &&
-        mbedtls_ecp_point_read_binary(&grp, &q, uncompressedPoint, sizeof(uncompressedPoint)) == 0 &&
-        mbedtls_mpi_read_binary(&r, signature, 32) == 0 &&
-        mbedtls_mpi_read_binary(&s, signature + 32, 32) == 0) {
-        verified = mbedtls_ecdsa_verify(&grp, hash, sizeof(hash), &q, &r, &s) == 0;
-    } else {
-        LOG_E(TAG, "malformed public key or signature");
+    int rc = mbedtls_ecp_group_load(&grp, MBEDTLS_ECP_DP_SECP256R1);
+    if (rc == 0) {
+        rc = mbedtls_ecp_point_read_binary(&grp, &q, uncompressedPoint, sizeof(uncompressedPoint));
     }
+    if (rc == 0) {
+        rc = mbedtls_mpi_read_binary(&r, signature, 32);
+    }
+    if (rc == 0) {
+        rc = mbedtls_mpi_read_binary(&s, signature + 32, 32);
+    }
+    if (rc == 0) {
+        rc = mbedtls_ecdsa_verify(&grp, hash, sizeof(hash), &q, &r, &s);
+    }
+    if (rc != 0) {
+        LOG_E(TAG, "mbedtls verify failed, rc=%d", rc);
+    }
+    const bool verified = rc == 0;
 
     mbedtls_mpi_free(&s);
     mbedtls_mpi_free(&r);
@@ -63,6 +71,10 @@ bool sha256(const uint8_t* data, size_t len, uint8_t out[32]) {
 
 FirmwareResult verifyOffer(const FirmwareOfferPayload& offer, const uint8_t* rootPublicKey,
                            uint8_t minGeneration) {
+    if (rootPublicKey == nullptr) {
+        LOG_E(TAG, "rootPublicKey is null");
+        return FirmwareResult::BAD_CERT;
+    }
     // Order matters: authenticate the delegation before trusting anything it
     // carries, and check the floor before spending a second elliptic curve
     // verify.

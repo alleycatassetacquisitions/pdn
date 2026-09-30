@@ -31,3 +31,20 @@ TEST(FirmwareVerifyTest, rejectsASignatureOverADifferentHash) {
     memcpy(offer.imageSignature, other.imageSignature, FIRMWARE_SIG_LENGTH);
     EXPECT_EQ(verifyOffer(offer, TEST_ROOT_PUBLIC_KEY, 1), FirmwareResult::BAD_SIGNATURE);
 }
+
+TEST(FirmwareVerifyTest, rejectsAnOfferUnderADifferentRootKey) {
+    FirmwareOfferPayload offer = makeSignedOffer(1);
+    EXPECT_EQ(verifyOffer(offer, TEST_SIGNER_PUBLIC_KEY, 1), FirmwareResult::BAD_CERT);
+}
+
+TEST(FirmwareVerifyTest, rejectsATamperedImageLength) {
+    FirmwareOfferPayload offer = makeSignedOffer(1);
+    offer.imageLength = 0xFFFFFFFF;
+    EXPECT_EQ(verifyOffer(offer, TEST_ROOT_PUBLIC_KEY, 1), FirmwareResult::BAD_SIGNATURE);
+}
+
+TEST(FirmwareVerifyTest, rejectsATamperedChunkCount) {
+    FirmwareOfferPayload offer = makeSignedOffer(1);
+    offer.chunkCount = 9999;
+    EXPECT_EQ(verifyOffer(offer, TEST_ROOT_PUBLIC_KEY, 1), FirmwareResult::BAD_SIGNATURE);
+}
