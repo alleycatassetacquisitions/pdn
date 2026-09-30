@@ -15,6 +15,7 @@
 #include "apps/handshake/handshake-states.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "utility-tests.hpp"
+#include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
 
 using ::testing::_;
@@ -1650,10 +1651,21 @@ public:
 // Create + destroy many Quickdraw instances; under ASAN (env:native_asan) a
 // leak in ~Quickdraw's ownership of matchManager / chainDuelManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
+// Half the rounds pass a firmware store, because a null one leaves
+// firmwareUpdateManager unbuilt: without them nothing here exercises the
+// manager's own construction and teardown, including the radio handlers its
+// destructor has to hand back.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
         auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, nullptr);
         delete qd;
+    }
+    FakeFirmwareStore firmwareStore;
+    for (int i = 0; i < 5; i++) {
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, &firmwareStore);
+        EXPECT_TRUE(suite->device.mockPeerComms->hasSendStatusHandler(PktType::kFirmwareUpdate));
+        delete qd;
+        EXPECT_FALSE(suite->device.mockPeerComms->hasSendStatusHandler(PktType::kFirmwareUpdate));
     }
 }
 
