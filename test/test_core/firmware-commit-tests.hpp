@@ -64,10 +64,10 @@ TEST(FirmwareCommitTest, committedDeviceIgnoresARepeatOfferForTheSameImage) {
 }
 
 TEST(FirmwareCommitTest, anOfferIsRefusedWhileACompletionReportIsStillQueued) {
-    // A failed commit leaves receiving false and restartPending unset, so
-    // nothing else stops an offer arriving before sync() flushes the report:
-    // it would overwrite the hash sendComplete has yet to read, and the
-    // failure would go out named after an image that never failed.
+    // A failed commit holds REPORTING until sync() flushes the report, and
+    // an offer accepted in that window would overwrite the hash sendComplete
+    // has yet to read: the failure would go out named after an image that
+    // never failed.
     FirmwareReceiverFixture f;
     f.receiveCompleteImageWithOneCorruptChunk(/*flushComplete=*/false);
     ASSERT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 0);

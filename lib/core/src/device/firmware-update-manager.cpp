@@ -573,7 +573,7 @@ bool FirmwareUpdateManager::beginSeeding() {
 }
 
 void FirmwareUpdateManager::onSendReport(bool success) {
-    (void)success;  // any terminal report frees the slot; loss is the repair loop's job, not a retry here
+    (void)success;  // the gate opens on any terminal report; onSendReport's header comment says what recovers a lost frame
     sendInFlight = false;
 }
 

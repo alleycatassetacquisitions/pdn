@@ -15,8 +15,9 @@ public:
 
     /// Reports what the radio did with a previously queued frame. `data`/`length`
     /// are the payload as given to sendData (header stripped). A raw function
-    /// pointer, not std::function: callers register captureless lambdas, so ctx
-    /// is the only state that needs to round-trip.
+    /// pointer, not std::function: a registrant hands over a static member
+    /// function or a captureless lambda and gets its instance back through
+    /// ctx, so the driver's handler table holds no allocation.
     using SendStatusCallback = void (*)(const uint8_t* dstMac, const uint8_t* data, size_t length, bool success, void* ctx);
 
     virtual ~PeerCommsInterface() = default;
