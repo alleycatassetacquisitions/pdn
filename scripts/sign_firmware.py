@@ -36,8 +36,14 @@ except NameError:
     env = None
 
 REPO_ROOT = pathlib.Path(env["PROJECT_DIR"]) if env is not None else pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from firmware_signing_io import SigningInputError, load_private_key_from_file, read_bytes_or_die  # noqa: E402
 
 CERT_LENGTH = 149  # keyId[4] + generation:u8 + publicKey[64] + label[16] + rootSignature[64]
+
+# ESP-IDF's esp_image_header_t is 24 bytes; nothing shorter can be a real image, and
+# rejecting it here catches an empty/truncated build artifact before it burns a signature.
+MIN_IMAGE_BYTES = 24
 
 
 def _extract(pattern, path, what):
@@ -73,10 +79,6 @@ def sign_raw(private_key, data):
     return r.to_bytes(32, "big") + s.to_bytes(32, "big")
 
 
-def load_private_key(raw_32_bytes):
-    return ec.derive_private_key(int.from_bytes(raw_32_bytes, "big"), ec.SECP256R1())
-
-
 def signed_span(image_bytes, device_type, chunk_size=None):
     """The exact 41-byte span verifyOffer checks the image signature over:
     imageSha256|imageLength|chunkSize|chunkCount|deviceType, packed little-endian."""
@@ -93,7 +95,7 @@ def signed_span(image_bytes, device_type, chunk_size=None):
 
 def build_trailer(image_bytes, device_type, signer_private_key, cert_bytes):
     if len(cert_bytes) != CERT_LENGTH:
-        raise ValueError(f"cert is {len(cert_bytes)} bytes, expected {CERT_LENGTH}")
+        raise SigningInputError(f"cert is {len(cert_bytes)} bytes, expected {CERT_LENGTH}")
     span, _digest, image_length = signed_span(image_bytes, device_type)
     image_signature = sign_raw(signer_private_key, span)
     magic = read_trailer_magic()
@@ -102,9 +104,14 @@ def build_trailer(image_bytes, device_type, signer_private_key, cert_bytes):
 
 
 def sign_file(firmware_bin_path, signer_key_path, cert_path, device_type):
-    image_bytes = pathlib.Path(firmware_bin_path).read_bytes()
-    signer_private_key = load_private_key(pathlib.Path(signer_key_path).read_bytes())
-    cert_bytes = pathlib.Path(cert_path).read_bytes()
+    image_bytes = read_bytes_or_die(firmware_bin_path, "firmware image")
+    if len(image_bytes) < MIN_IMAGE_BYTES:
+        raise SigningInputError(
+            f"firmware image is {len(image_bytes)} bytes, too small to be a valid ESP32 image "
+            f"(minimum header is {MIN_IMAGE_BYTES} bytes): {firmware_bin_path}"
+        )
+    signer_private_key = load_private_key_from_file(signer_key_path, what="signer private key")
+    cert_bytes = read_bytes_or_die(cert_path, "signer cert")
     return build_trailer(image_bytes, device_type, signer_private_key, cert_bytes)
 
 
@@ -130,7 +137,12 @@ def _pio_sign_action(target, source, env):
 
     device_type_name = _pio_device_type_name(env["PIOENV"])
     device_type = read_device_type(device_type_name)
-    trailer = sign_file(bin_path, key_path, cert_path, device_type)
+    try:
+        trailer = sign_file(bin_path, key_path, cert_path, device_type)
+    except SigningInputError as e:
+        print(f"ERROR: {e}")
+        env.Exit(1)
+        return
 
     with open(bin_path, "ab") as f:
         f.write(trailer)
@@ -157,7 +169,10 @@ def _cli_main():
     args = parser.parse_args()
 
     device_type = read_device_type(args.device_type)
-    trailer = sign_file(args.firmware_bin, args.signer_key, args.signer_cert, device_type)
+    try:
+        trailer = sign_file(args.firmware_bin, args.signer_key, args.signer_cert, device_type)
+    except SigningInputError as e:
+        sys.exit(f"error: {e}")
 
     if args.in_place:
         with open(args.firmware_bin, "ab") as f:

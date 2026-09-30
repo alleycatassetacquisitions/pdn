@@ -24,6 +24,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from firmware_signing_io import SigningInputError, load_private_key_from_file, write_new_file  # noqa: E402
 
 KEY_ID_LENGTH = 4
 PUBLIC_KEY_LENGTH = 64
@@ -37,10 +39,6 @@ def refuse_if_under_repo(path):
     resolved = pathlib.Path(path).resolve()
     if resolved == REPO_ROOT or REPO_ROOT in resolved.parents:
         raise SystemExit(f"refusing to write key material under the repo: {resolved}")
-
-
-def load_private_key(raw_32_bytes):
-    return ec.derive_private_key(int.from_bytes(raw_32_bytes, "big"), ec.SECP256R1())
 
 
 def public_key_raw(private_key):
@@ -97,7 +95,11 @@ def main():
     refuse_if_under_repo(args.out_cert)
     refuse_if_under_repo(args.out_key)
 
-    root_private_key = load_private_key(pathlib.Path(args.root_key).read_bytes())
+    try:
+        root_private_key = load_private_key_from_file(args.root_key, what="root private key")
+    except SigningInputError as e:
+        sys.exit(f"error: {e}")
+
     signer_private_key = ec.generate_private_key(ec.SECP256R1())
     signer_public_raw = public_key_raw(signer_private_key)
     signer_private_raw = signer_private_key.private_numbers().private_value.to_bytes(32, "big")
@@ -109,8 +111,11 @@ def main():
     root_public_raw = public_key_raw(root_private_key)
     verify_raw(root_public_raw, cert[:UNSIGNED_CERT_LENGTH], cert[UNSIGNED_CERT_LENGTH:])
 
-    pathlib.Path(args.out_cert).write_bytes(cert)
-    pathlib.Path(args.out_key).write_bytes(signer_private_raw)
+    try:
+        write_new_file(args.out_cert, cert)
+        write_new_file(args.out_key, signer_private_raw)
+    except SigningInputError as e:
+        sys.exit(f"error: {e}")
 
     print(f"Signer cert written to {args.out_cert} ({len(cert)} bytes), key to {args.out_key}.")
     print(f"keyId=0x{args.key_id:08x} generation={args.generation} label={args.label!r}")
