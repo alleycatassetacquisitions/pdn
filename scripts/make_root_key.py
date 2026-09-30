@@ -15,6 +15,8 @@ import sys
 from cryptography.hazmat.primitives.asymmetric import ec
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from firmware_signing_io import SigningInputError, write_new_file  # noqa: E402
 
 
 def refuse_if_under_repo(path):
@@ -51,10 +53,12 @@ def main():
 
     private_raw, public_raw = generate_root_keypair()
 
-    out_path = pathlib.Path(args.out)
-    out_path.write_bytes(private_raw)
+    try:
+        write_new_file(args.out, private_raw)
+    except SigningInputError as e:
+        sys.exit(f"error: {e}")
 
-    print(f"Root private key written to {out_path} — keep this OFFLINE, never commit it.\n")
+    print(f"Root private key written to {args.out} — keep this OFFLINE, never commit it.\n")
     print("Paste into lib/core/include/device/firmware-root-key.hpp:\n")
     print(format_c_array(public_raw))
     return 0
