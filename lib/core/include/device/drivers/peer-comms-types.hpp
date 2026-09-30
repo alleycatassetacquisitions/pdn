@@ -116,7 +116,6 @@ enum class FirmwareResult : uint8_t {
     BAD_CERT = 3,
     STALE_CERT = 4,
     FLASH_FAILED = 5,
-    TOO_LARGE = 6,
 };
 
 /// Delegation record: root signs this, signer signs images.
@@ -153,8 +152,6 @@ struct FirmwareOfferPayload {
     SignerCert cert;
     /// Signature over imageSha256|imageLength|chunkSize|chunkCount|deviceType.
     uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
-    /// Image version string.
-    char version[FIRMWARE_LABEL_LENGTH];
 } __attribute__((packed));
 
 /// Chunk header prepended to chunk data in a frame.

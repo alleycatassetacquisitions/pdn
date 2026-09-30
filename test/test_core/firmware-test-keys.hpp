@@ -145,7 +145,6 @@ inline FirmwareOfferPayload buildOffer(uint8_t generation, const uint8_t hash[32
     offer.chunkSize = 1322;
     offer.chunkCount = 4;
     offer.cert = signCert(generation);
-    std::strncpy(offer.version, "1.0", sizeof(offer.version));
 
     const uint8_t* signedStart =
         reinterpret_cast<const uint8_t*>(&offer) + offsetof(FirmwareOfferPayload, imageSha256);
