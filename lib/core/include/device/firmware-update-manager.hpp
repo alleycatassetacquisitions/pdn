@@ -2,7 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
+#include "device/device-type.hpp"
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -17,9 +19,13 @@ class FirmwareUpdateManager {
 public:
     /// Wires the manager to the radio and flash slot and registers to
     /// receive kFirmwareUpdate frames. rootPublicKey pins the chain every
-    /// offer must verify against.
+    /// offer must verify against. isEligible gates onOffer: an offer is
+    /// never even evaluated unless it returns true (e.g. idle, no cable,
+    /// no match in progress). deviceType is this device's own build
+    /// (Device::getDeviceType()); onOffer refuses any offer built for a
+    /// different one, and beginSeeding stamps outgoing offers with it.
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
-                          const uint8_t* rootPublicKey);
+                          const uint8_t* rootPublicKey, std::function<bool()> isEligible, DeviceType deviceType);
 
     /// Evaluates an announced image. Ignores it outright if it matches the
     /// running image or the image already being collected, or if a commit
@@ -75,16 +81,22 @@ public:
 
     /// Sends the next frame once the radio has cleared the last one: an
     /// OFFER when the one-second cadence has elapsed, otherwise the next
-    /// unstreamed chunk. The only place a frame is sent; the owning state
-    /// calls this every tick.
+    /// unstreamed chunk. The only place a frame is sent, and the only place
+    /// the post-commit restart fires from; must be pumped every tick
+    /// regardless of game state, since receiving an offer is passive and not
+    /// tied to any one state.
     void sync();
 
-private:
-    // Routes a raw radio frame to onOffer/onChunk, validating its length
-    // against the wire struct before any cast — verifyOffer takes a const&
-    // and cannot check the frame it was handed.
-    static void dispatchPacket(const uint8_t* src, const uint8_t* data, size_t length, void* ctx);
+    /// Routes a raw radio frame to onOffer/onChunk/onPoll/onStatus, validating
+    /// its length against the relevant wire struct before any cast. Public so
+    /// the driver's packet callback (dispatchPacket) can reach it and so a
+    /// test can drive the wire-receive path directly without a driver.
     void onPacketReceived(const uint8_t* src, const uint8_t* data, size_t length);
+
+private:
+    // Trampoline for the driver's packet callback; forwards straight to
+    // onPacketReceived.
+    static void dispatchPacket(const uint8_t* src, const uint8_t* data, size_t length, void* ctx);
 
     // Trampoline the driver calls on terminal success or final give-up for a
     // kFirmwareUpdate frame; forwards straight to onSendReport.
@@ -129,6 +141,12 @@ private:
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
     const uint8_t* rootPublicKey;
+    // Gates onOffer: consulted before anything else, including the
+    // restartPending/deviceType/geometry guards below.
+    std::function<bool()> isEligible;
+    // This device's own build; onOffer refuses any offer whose deviceType
+    // field does not match, and sendOffer stamps outgoing offers with it.
+    DeviceType deviceType;
     uint32_t rngState;
 
     bool receiving = false;

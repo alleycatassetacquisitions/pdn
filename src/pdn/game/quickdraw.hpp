@@ -14,13 +14,20 @@
 #include "game/shootout-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
+class FirmwareUpdateManager;
+class FirmwareStoreInterface;
+
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
 constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:
-    Quickdraw(Player *player, Device *PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
+    /// Constructs and owns matchManager/chainDuelManager/shootoutManager_/firmwareUpdateManager
+    /// and wires their ESP-NOW packet handlers. firmwareStore backs firmwareUpdateManager's
+    /// flash slot; the caller owns and outlives it (main.cpp constructs it alongside the
+    /// other drivers).
+    Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -54,6 +61,7 @@ private:
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing

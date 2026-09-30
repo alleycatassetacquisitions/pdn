@@ -97,7 +97,7 @@ public:
 // Test: Idle state mounts and registers button callbacks
 inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -108,7 +108,7 @@ inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
 // Test: Idle state does not transition without a connection
 inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -122,7 +122,7 @@ inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
 // Test: State cleanup on dismount
 inline void idleStateClearsOnDismount(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -135,7 +135,7 @@ inline void idleStateClearsOnDismount(IdleStateTests* suite) {
 // Test: Button callbacks are registered and removed properly
 inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -148,7 +148,7 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received
 inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates but has not yet received MATCH_ID_ACK
@@ -162,7 +162,7 @@ inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
 // Test: transitionToDuelCountdown returns true once matchIsReady is set via the full handshake
 inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates match, then receives ACK from bounty
@@ -1207,8 +1207,8 @@ inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
     Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+
     idleState.onStateMounted(&suite->device);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
@@ -1617,7 +1617,7 @@ public:
 // reported. Without ASAN this still catches crashes in the lifecycle path.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, nullptr);
         delete qd;
     }
 }

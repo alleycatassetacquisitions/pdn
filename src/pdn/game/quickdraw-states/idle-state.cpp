@@ -64,6 +64,21 @@ void Idle::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
     pdn->getSecondaryButton()->setButtonPress(cycleStats, this, ButtonInteraction::CLICK);
 
+    // The operator's firmware-update trigger: hold the secondary button for
+    // FIRMWARE_UPDATE_HOLD_MS. DURING_LONG_PRESS fires every tick the button
+    // stays held past OneButton's own long-press threshold, so this just
+    // watches longPressedMillis() cross the named constant; onStateLoop
+    // promotes the raw signal into the transition flag per the state-machine
+    // pattern.
+    cachedPdn = pdn;
+    parameterizedCallbackFunction checkFirmwareUpdateHold = [](void* ctx) {
+        Idle* idle = static_cast<Idle*>(ctx);
+        if (idle->cachedPdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
+            idle->secondaryHeldForFirmwareUpdate = true;
+        }
+    };
+    pdn->getSecondaryButton()->setButtonPress(checkFirmwareUpdateHold, this, ButtonInteraction::DURING_LONG_PRESS);
+
     displayIsDirty = true;
 }
 
@@ -99,6 +114,10 @@ void Idle::onStateLoop(PDN* pdn) {
         matchInitialized = false;
         matchManager->clearCurrentMatch();
     }
+
+    if (secondaryHeldForFirmwareUpdate) {
+        transitionToFirmwareUpdateState = true;
+    }
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
@@ -109,6 +128,9 @@ void Idle::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     transitionToSymbolState = false;
+    secondaryHeldForFirmwareUpdate = false;
+    transitionToFirmwareUpdateState = false;
+    cachedPdn = nullptr;
 }
 
 bool Idle::transitionToDuelCountdown() {
@@ -165,4 +187,8 @@ bool Idle::isAuxRequired() {
 
 bool Idle::transitionToSymbol() {
     return transitionToSymbolState;
+}
+
+bool Idle::transitionToFirmwareUpdate() const {
+    return transitionToFirmwareUpdateState;
 }

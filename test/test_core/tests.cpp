@@ -14,6 +14,7 @@
 #include "firmware-seed-tests.hpp"
 #include "firmware-repair-tests.hpp"
 #include "firmware-commit-tests.hpp"
+#include "firmware-eligibility-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"

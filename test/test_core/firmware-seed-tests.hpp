@@ -161,7 +161,8 @@ public:
         store.setRunningImage(image);
         store.setRunningTrailer(buildTrailer(image));
 
-        manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY);
+        manager = new FirmwareUpdateManager(
+            &comms, &store, TEST_ROOT_PUBLIC_KEY, []() { return true; }, DeviceType::PDN);
     }
 
     /// Frees the manager this fixture owns and, only if this fixture
@@ -252,6 +253,7 @@ public:
         offer.imageLength = static_cast<uint32_t>(IMAGE_LENGTH);
         offer.chunkSize = CHUNK_SIZE;
         offer.chunkCount = static_cast<uint16_t>(IMAGE_LENGTH / CHUNK_SIZE);
+        offer.deviceType = static_cast<uint8_t>(DeviceType::PDN);
         offer.cert = cert;
         std::memcpy(offer.imageSignature, imageSignature, FIRMWARE_SIG_LENGTH);
         return offer;
@@ -302,6 +304,10 @@ private:
         signedSpan.imageLength = static_cast<uint32_t>(image.size());
         signedSpan.chunkSize = CHUNK_SIZE;
         signedSpan.chunkCount = static_cast<uint16_t>((image.size() + CHUNK_SIZE - 1) / CHUNK_SIZE);
+        // Must match the manager's own DeviceType (DeviceType::PDN): sendOffer
+        // stamps outgoing offers with it, and this signature has to cover
+        // whatever value actually goes out on the wire.
+        signedSpan.deviceType = static_cast<uint8_t>(DeviceType::PDN);
 
         const uint8_t* signedStart =
             reinterpret_cast<const uint8_t*>(&signedSpan) + offsetof(FirmwareOfferPayload, imageSha256);

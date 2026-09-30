@@ -132,6 +132,17 @@ public:
     /// attempted.
     void advance(unsigned long ms) { activeClock->advance(ms); }
 
+    /// Stands in for "idle, not mid-match" (true) or the opposite (false) in
+    /// the eligibility predicate the manager was constructed with. Defaults
+    /// true so every other test in this suite is unaffected.
+    void setEligible(bool value) { eligible = value; }
+
+    /// Stands in for a cable plugged into either jack, the other half of the
+    /// eligibility predicate — a separate member from `eligible` so a test
+    /// toggling only this one actually exercises this guard and not the
+    /// other.
+    void setCableConnected(bool value) { cableConnected = value; }
+
     /// This fixture's own clock. Only the active timeline if constructed
     /// without a shared one — pass `&clock` to another fixture's
     /// shared-clock constructor to put both devices on this timeline.
@@ -213,8 +224,16 @@ public:
         offer.imageLength = length;
         offer.chunkSize = chunkSizeBytes;
         offer.chunkCount = chunks;
+        offer.deviceType = static_cast<uint8_t>(DeviceType::PDN);
         resign(offer);
         return offer;
+    }
+
+    /// A signed offer built for `type` rather than the fixture manager's own
+    /// DeviceType::PDN — a legitimately-signed offer for the wrong device,
+    /// the case onOffer's deviceType guard exists to refuse.
+    FirmwareOfferPayload signedOfferForDeviceType(DeviceType type, uint32_t length, uint16_t chunks) {
+        return buildSignedOffer(TEST_IMAGE_SHA, length, CHUNK_SIZE, chunks, type);
     }
 
     /// Delivers one chunk directly to the manager, as if the radio had just
@@ -344,15 +363,19 @@ private:
                 rawHandler = callback;
                 rawCtx = ctx;
             }));
-        manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY);
+        manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY, [this]() { return eligible && !cableConnected; }, DeviceType::PDN);
     }
 
     // Builds a signed offer for `hash`, asserting that chunkSizeBytes/chunks
     // actually tile length: a mismatched pair here would silently produce an
     // offer the manager rejects for a reason the test never intended,
-    // masking whatever the test meant to exercise.
+    // masking whatever the test meant to exercise. `type` defaults to the
+    // fixture manager's own DeviceType (DeviceType::PDN) so every builder
+    // below produces an offer the manager will actually consider unless a
+    // test asks otherwise via signedOfferForDeviceType.
     FirmwareOfferPayload buildSignedOffer(const uint8_t hash[FIRMWARE_SHA256_LENGTH], uint32_t length,
-                                          uint16_t chunkSizeBytes, uint16_t chunks) {
+                                          uint16_t chunkSizeBytes, uint16_t chunks,
+                                          DeviceType type = DeviceType::PDN) {
         if (chunkSizeBytes != 0) {
             const uint64_t expected = (static_cast<uint64_t>(length) + chunkSizeBytes - 1) / chunkSizeBytes;
             if (expected != chunks) {
@@ -367,6 +390,7 @@ private:
         offer.imageLength = length;
         offer.chunkSize = chunkSizeBytes;
         offer.chunkCount = chunks;
+        offer.deviceType = static_cast<uint8_t>(type);
         resign(offer);
         return offer;
     }
@@ -401,6 +425,12 @@ private:
     // clears it on destruction.
     FakeClock* activeClock = nullptr;
     bool ownsClock = false;
+
+    // Back setEligible/setCableConnected; composed into the predicate passed
+    // to the manager's constructor. Two separate members, not one, so each
+    // setter exercises its own route through the predicate.
+    bool eligible = true;
+    bool cableConnected = false;
 };
 
 TEST(FirmwareReceiverTest, offerOpensTheSlotForTheDeclaredLength) {
