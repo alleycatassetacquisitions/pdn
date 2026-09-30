@@ -107,9 +107,16 @@ private:
     // hash is computed at most once per boot and reused from then on.
     const uint8_t* cachedRunningImageHash();
 
+    // Next draw from this device's own PRNG state, seeded from its MAC at
+    // construction — never the global rand()/srand(), whose state this
+    // firmware shares with unrelated code (symbol-manager's fixed
+    // std::srand(35), player.cpp's user-ID seed).
+    uint32_t nextRandomUint32();
+
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
     const uint8_t* rootPublicKey;
+    uint32_t rngState;
 
     bool receiving = false;
     uint16_t chunkCount = 0;
@@ -135,6 +142,11 @@ private:
     uint16_t seedChunkCount = 0;
     uint16_t seedNextChunkIndex = 0;
     size_t seedImageLength = 0;
+    // Fixed for the run's lifetime at beginSeeding(): onStatus/sendPoll/
+    // sendOffer all send or compare against this, not a freshly recomputed
+    // hash, so the run's identity can't drift mid-run even though it
+    // happens to equal cachedRunningImageHash() today.
+    uint8_t seedImageHash[FIRMWARE_SHA256_LENGTH] = {};
     SimpleTimer offerTimer;
     SignerCert seedCert = {};
     uint8_t seedImageSignature[FIRMWARE_SIG_LENGTH] = {};

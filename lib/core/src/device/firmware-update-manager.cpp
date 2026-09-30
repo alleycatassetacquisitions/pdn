@@ -6,7 +6,6 @@
 #include <mbedtls/sha256.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -18,6 +17,14 @@ const char* TAG = "FirmwareUpdate";
 // the device must reproduce the exact chunkSize/chunkCount the signature
 // covers rather than choosing one at runtime.
 constexpr uint16_t SEED_CHUNK_SIZE = 1400;
+
+// Both OTA slots in partitions.csv (ota_0/ota_1) are this size; the running
+// image a seed offers can never exceed it. Tied to FIRMWARE_MAX_CHUNKS below
+// so a partition resize that would overflow repairBitmap fails the build
+// instead of silently corrupting it at runtime.
+constexpr size_t OTA_PARTITION_SIZE = 0x3E0000;
+static_assert((OTA_PARTITION_SIZE + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE <= FIRMWARE_MAX_CHUNKS,
+              "an OTA partition no longer fits FIRMWARE_MAX_CHUNKS chunks at SEED_CHUNK_SIZE");
 
 // How often the seed re-broadcasts OFFER for the life of a run.
 constexpr unsigned long SEED_OFFER_INTERVAL_MS = 1000;
@@ -54,6 +61,18 @@ bool bitmapIsEmpty(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES]) {
     return true;
 }
 
+// Folds all six MAC bytes into a nonzero xorshift32 seed, so two devices
+// differing in any byte start from different state. xorshift32 never
+// escapes an all-zero state, so a (pathological) all-zero MAC still needs a
+// usable seed.
+uint32_t seedFromMac(const uint8_t mac[6]) {
+    uint32_t seed = 0x9E3779B9u;
+    for (size_t i = 0; i < 6; i++) {
+        seed = (seed * 33u) ^ mac[i];
+    }
+    return seed != 0 ? seed : 1u;
+}
+
 // Hashes the running image by streaming it through flash in fixed-size
 // chunks rather than buffering the whole thing: a running image can be
 // several megabytes. Called at most once per boot (the caller caches the
@@ -87,7 +106,8 @@ FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms,
                                              const uint8_t* rootPublicKey)
     : peerComms(peerComms)
     , firmwareStore(firmwareStore)
-    , rootPublicKey(rootPublicKey) {
+    , rootPublicKey(rootPublicKey)
+    , rngState(seedFromMac(peerComms->getMacAddress())) {
     peerComms->setPacketHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchPacket, this);
     peerComms->setSendStatusHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchSendStatus, this);
 }
@@ -148,6 +168,14 @@ const uint8_t* FirmwareUpdateManager::cachedRunningImageHash() {
         runningImageHashComputed = true;
     }
     return runningImageHash;
+}
+
+uint32_t FirmwareUpdateManager::nextRandomUint32() {
+    // xorshift32.
+    rngState ^= rngState << 13;
+    rngState ^= rngState >> 17;
+    rngState ^= rngState << 5;
+    return rngState;
 }
 
 void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer) {
@@ -243,14 +271,14 @@ void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
     // Re-rolled on every poll heard, including a repeat: nothing here tracks
     // whether a reply is already pending, and a fresh roll is no worse than
     // whatever delay was already running.
-    statusReplyTimer.setTimer(static_cast<unsigned long>(std::rand() % STATUS_BACKOFF_CEILING_MS));
+    statusReplyTimer.setTimer(nextRandomUint32() % STATUS_BACKOFF_CEILING_MS);
 }
 
 void FirmwareUpdateManager::onStatus(const FirmwareStatusPayload& status) {
     if (!seeding) {
         return;  // no run in progress for a report to apply to
     }
-    if (std::memcmp(status.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH) != 0) {
+    if (std::memcmp(status.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
         return;  // a stale reply from another run must not pollute this one's repair set
     }
     // Bounded to seedChunkCount, not the full 3072-bit wire bitmap: a
@@ -327,6 +355,7 @@ bool FirmwareUpdateManager::beginSeeding() {
 
     seedCert = trailer.cert;
     std::memcpy(seedImageSignature, trailer.imageSignature, FIRMWARE_SIG_LENGTH);
+    std::memcpy(seedImageHash, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH);
 
     seedChunkCount =
         static_cast<uint16_t>((seedImageLength + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE);
@@ -458,7 +487,7 @@ void FirmwareUpdateManager::dispatchSendStatus(const uint8_t* dstMac, const uint
 void FirmwareUpdateManager::sendOffer() {
     FirmwareOfferPayload offer{};
     offer.command = static_cast<uint8_t>(FirmwareCmd::OFFER);
-    std::memcpy(offer.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH);
+    std::memcpy(offer.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH);
     offer.imageLength = static_cast<uint32_t>(seedImageLength);
     offer.chunkSize = SEED_CHUNK_SIZE;
     offer.chunkCount = seedChunkCount;
@@ -504,7 +533,7 @@ void FirmwareUpdateManager::sendNextChunk() {
 void FirmwareUpdateManager::sendPoll() {
     FirmwarePollPayload poll{};
     poll.command = static_cast<uint8_t>(FirmwareCmd::POLL);
-    std::memcpy(poll.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH);
+    std::memcpy(poll.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH);
 
     const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
                                            reinterpret_cast<const uint8_t*>(&poll), sizeof(poll));

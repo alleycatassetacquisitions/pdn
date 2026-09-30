@@ -51,11 +51,20 @@ private:
 class ReceiverComms : public NiceMock<MockPeerComms> {
 public:
     /// Stubs getGlobalBroadcastAddress so the destination sendData is given
-    /// is a valid pointer rather than NiceMock's default nullptr.
+    /// is a valid pointer rather than NiceMock's default nullptr, and
+    /// getMacAddress so FirmwareUpdateManager's constructor (which seeds its
+    /// per-device PRNG from it) has a real 6 bytes to fold rather than a
+    /// null deref.
     ReceiverComms() {
         ON_CALL(*this, getGlobalBroadcastAddress())
             .WillByDefault(Invoke([this]() -> const uint8_t* { return broadcastAddress; }));
+        ON_CALL(*this, getMacAddress()).WillByDefault(Invoke([this]() -> uint8_t* { return selfMac; }));
     }
+
+    /// Overwrites the MAC getMacAddress() reports; must be called before the
+    /// FirmwareUpdateManager under test is constructed, since it reads this
+    /// only once, at construction.
+    void setMacAddress(const uint8_t mac[6]) { std::memcpy(selfMac, mac, 6); }
 
     /// Real behavior rather than a MOCK_METHOD: records every send so a
     /// test can assert counts without an EXPECT_CALL per frame.
@@ -76,6 +85,7 @@ private:
     int totalSent = 0;
     std::array<int, 5> commandCounts{};
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF1};
 };
 
 /// Shared by every firmware-distribution suite: a receiver manager wired to a
@@ -93,8 +103,17 @@ public:
     /// Wires a fresh manager to `comms`/`store`, gives the slot its real
     /// size, and captures the radio callback the manager registers so
     /// deliverFrame can drive the actual wire-receive path.
-    FirmwareReceiverFixture() {
+    FirmwareReceiverFixture()
+        : FirmwareReceiverFixture(nullptr) {}
+
+    /// Like the default constructor, but overrides the MAC getMacAddress()
+    /// reports before the manager reads it — for tests comparing two
+    /// devices' PRNG state, which is seeded from that MAC.
+    explicit FirmwareReceiverFixture(const uint8_t* mac) {
         SimpleTimer::setPlatformClock(&clock);
+        if (mac != nullptr) {
+            comms.setMacAddress(mac);
+        }
         store.setInactiveSlotSize(INACTIVE_SLOT_SIZE);
         ON_CALL(comms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
             .WillByDefault(Invoke([this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
@@ -132,18 +151,41 @@ public:
         return poll;
     }
 
-    /// Every chunk index not yet landed, from the receive bitmap — what a
-    /// real STATUS reply would report missing to a repair-round POLL.
+    /// Every chunk index not yet landed within the accepted offer's own
+    /// chunk count — what a real STATUS reply would report missing to a
+    /// repair-round POLL. Bounded by the offer's declared length, not the
+    /// full 3072-bit wire bitmap: a seed's onStatus masks the same way, so
+    /// an unbounded set here would never compare equal to what it resends.
     std::set<uint16_t> missingIndices() const {
         uint8_t received[FIRMWARE_BITMAP_BYTES];
         manager->fillBitmap(received);
+        const uint16_t chunkCount =
+            static_cast<uint16_t>((store.beginWriteLength() + CHUNK_SIZE - 1) / CHUNK_SIZE);
         std::set<uint16_t> missing;
-        for (uint16_t i = 0; i < FIRMWARE_MAX_CHUNKS; i++) {
+        for (uint16_t i = 0; i < chunkCount; i++) {
             if ((received[i / 8] & (1 << (i % 8))) == 0) {
                 missing.insert(i);
             }
         }
         return missing;
+    }
+
+    /// Advances the clock in 1ms steps until sync() sends the STATUS a
+    /// prior onPoll armed, confirms that send, and returns how many ms it
+    /// took — the receiver's actual backoff draw for that poll. A sentinel
+    /// past STATUS_BACKOFF_CEILING_MS (500) means it never fired.
+    unsigned long delayUntilStatusSent() {
+        const int before = comms.countOf(FirmwareCmd::STATUS);
+        for (unsigned long ms = 1; ms <= 600; ms++) {
+            advance(1);
+            manager->sync();
+            if (comms.countOf(FirmwareCmd::STATUS) != before) {
+                manager->onSendReport(true);
+                return ms;
+            }
+        }
+        manager->onSendReport(true);
+        return 600;
     }
 
     /// A signed offer for a synthetic image of `length` bytes split into
