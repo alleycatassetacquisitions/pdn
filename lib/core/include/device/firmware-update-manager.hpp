@@ -108,6 +108,16 @@ private:
     void sendNextChunk();
     void sendStatus();
 
+    // Hands one frame to the radio and latches the single-frame gate. False
+    // means nothing was queued, so no send report will ever arrive for it
+    // and the caller must leave its own progress alone for sync() to retry.
+    // `what` names the caller in the log line.
+    bool sendFrame(const uint8_t* data, size_t length, const char* what);
+    // Reads chunk `index` out of the running image and sends it. Shared by
+    // the initial stream and the repair rounds, which differ only in which
+    // cursor they advance once it is queued.
+    bool sendChunkAt(uint16_t index, const char* what);
+
     // Runs once the receive bitmap is full: hashes the assembled image,
     // checks it against the offer, re-verifies the offer's signature chain,
     // writes the trailer, and only then marks the slot bootable. Any failure

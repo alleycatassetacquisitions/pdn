@@ -436,14 +436,10 @@ void FirmwareUpdateManager::sendStatus() {
     status.receivedCount = receivedChunkCount;
     std::memcpy(status.bitmap, bitmap, FIRMWARE_BITMAP_BYTES);
 
-    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
-                                           reinterpret_cast<const uint8_t*>(&status), sizeof(status));
-    if (result != 0) {
-        LOG_E(TAG, "sendStatus: sendData refused the frame (%d); retrying next sync()", result);
+    if (!sendFrame(reinterpret_cast<const uint8_t*>(&status), sizeof(status), "sendStatus")) {
         return;  // statusReplyTimer stays expired: sync() retries this same reply next tick
     }
     statusReplyTimer.invalidate();
-    sendInFlight = true;
 }
 
 void FirmwareUpdateManager::sendComplete(FirmwareResult result) {
@@ -452,14 +448,10 @@ void FirmwareUpdateManager::sendComplete(FirmwareResult result) {
     std::memcpy(complete.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH);
     complete.result = static_cast<uint8_t>(result);
 
-    const int sendResult = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
-                                               reinterpret_cast<const uint8_t*>(&complete), sizeof(complete));
-    if (sendResult != 0) {
-        LOG_E(TAG, "sendComplete: sendData refused the frame (%d); retrying next sync()", sendResult);
+    if (!sendFrame(reinterpret_cast<const uint8_t*>(&complete), sizeof(complete), "sendComplete")) {
         return;  // completePending stays true: sync() retries next tick
     }
     completePending = false;
-    sendInFlight = true;
 }
 
 bool FirmwareUpdateManager::beginSeeding() {
@@ -657,17 +649,21 @@ void FirmwareUpdateManager::sendOffer() {
     offer.cert = seedCert;
     std::memcpy(offer.imageSignature, seedImageSignature, FIRMWARE_SIG_LENGTH);
 
-    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
-                                           reinterpret_cast<const uint8_t*>(&offer), sizeof(offer));
-    if (result != 0) {
-        LOG_E(TAG, "sendOffer: sendData refused the frame (%d); retrying next sync()", result);
-        return;  // sendInFlight stays false: nothing was queued, so no report will ever arrive for it
-    }
-    sendInFlight = true;
+    sendFrame(reinterpret_cast<const uint8_t*>(&offer), sizeof(offer), "sendOffer");
 }
 
-void FirmwareUpdateManager::sendNextChunk() {
-    const uint16_t index = seedNextChunkIndex;
+bool FirmwareUpdateManager::sendFrame(const uint8_t* data, size_t length, const char* what) {
+    const int result =
+        peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, data, length);
+    if (result != 0) {
+        LOG_E(TAG, "%s: sendData refused the frame (%d); retrying next sync()", what, result);
+        return false;  // nothing was queued, so no send report will ever arrive for it
+    }
+    sendInFlight = true;
+    return true;
+}
+
+bool FirmwareUpdateManager::sendChunkAt(uint16_t index, const char* what) {
     const size_t offset = static_cast<size_t>(index) * SEED_CHUNK_SIZE;
     const uint16_t length =
         static_cast<uint16_t>(std::min<size_t>(SEED_CHUNK_SIZE, seedImageLength - offset));
@@ -679,18 +675,16 @@ void FirmwareUpdateManager::sendNextChunk() {
     header->length = length;
 
     if (!firmwareStore->readRunningImage(offset, frame + sizeof(FirmwareChunkHeader), length)) {
-        LOG_E(TAG, "sendNextChunk: failed to read the running image at offset %zu", offset);
-        return;  // sendInFlight stays false; sync() retries this same index next tick
+        LOG_E(TAG, "%s: failed to read the running image at offset %zu", what, offset);
+        return false;  // nothing queued; sync() retries this same index next tick
     }
+    return sendFrame(frame, sizeof(FirmwareChunkHeader) + length, what);
+}
 
-    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
-                                           sizeof(FirmwareChunkHeader) + length);
-    if (result != 0) {
-        LOG_E(TAG, "sendNextChunk: sendData refused chunk %u (%d); retrying next sync()", index, result);
-        return;  // seedNextChunkIndex not advanced, sendInFlight stays false: nothing was queued
+void FirmwareUpdateManager::sendNextChunk() {
+    if (sendChunkAt(seedNextChunkIndex, "sendNextChunk")) {
+        seedNextChunkIndex++;
     }
-    seedNextChunkIndex++;
-    sendInFlight = true;
 }
 
 void FirmwareUpdateManager::sendPoll() {
@@ -698,13 +692,9 @@ void FirmwareUpdateManager::sendPoll() {
     poll.command = static_cast<uint8_t>(FirmwareCmd::POLL);
     std::memcpy(poll.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH);
 
-    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
-                                           reinterpret_cast<const uint8_t*>(&poll), sizeof(poll));
-    if (result != 0) {
-        LOG_E(TAG, "sendPoll: sendData refused the frame (%d); retrying next sync()", result);
+    if (!sendFrame(reinterpret_cast<const uint8_t*>(&poll), sizeof(poll), "sendPoll")) {
         return;  // pollSentForRound stays false: sync() retries next tick
     }
-    sendInFlight = true;
     pollSentForRound = true;
     pollWindowTimer.setTimer(SEED_POLL_WINDOW_MS);
 }
@@ -712,28 +702,7 @@ void FirmwareUpdateManager::sendPoll() {
 void FirmwareUpdateManager::sendNextRepairChunk() {
     // syncRepair has already skipped repairCursor forward to a set bit (or
     // to seedChunkCount, in which case it never calls this).
-    const uint16_t index = repairCursor;
-    const size_t offset = static_cast<size_t>(index) * SEED_CHUNK_SIZE;
-    const uint16_t length =
-        static_cast<uint16_t>(std::min<size_t>(SEED_CHUNK_SIZE, seedImageLength - offset));
-
-    uint8_t frame[sizeof(FirmwareChunkHeader) + SEED_CHUNK_SIZE];
-    FirmwareChunkHeader* header = reinterpret_cast<FirmwareChunkHeader*>(frame);
-    header->command = static_cast<uint8_t>(FirmwareCmd::CHUNK);
-    header->index = index;
-    header->length = length;
-
-    if (!firmwareStore->readRunningImage(offset, frame + sizeof(FirmwareChunkHeader), length)) {
-        LOG_E(TAG, "sendNextRepairChunk: failed to read the running image at offset %zu", offset);
-        return;  // repairCursor not advanced; sync() retries this same index next tick
+    if (sendChunkAt(repairCursor, "sendNextRepairChunk")) {
+        repairCursor++;
     }
-
-    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
-                                           sizeof(FirmwareChunkHeader) + length);
-    if (result != 0) {
-        LOG_E(TAG, "sendNextRepairChunk: sendData refused chunk %u (%d); retrying next sync()", index, result);
-        return;  // repairCursor not advanced, sendInFlight stays false: nothing was queued
-    }
-    repairCursor = index + 1;
-    sendInFlight = true;
 }
