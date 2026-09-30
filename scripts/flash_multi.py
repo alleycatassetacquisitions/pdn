@@ -98,6 +98,21 @@ def test_esp32_on_port(port_name):
 
 NVS_OFFSET = 0x9000
 NVS_SIZE = 0x5000  # 20 KB — matches default_8MB.csv
+OTADATA_OFFSET = "0xe000"
+
+
+def find_boot_app0():
+    """Path to boot_app0.bin in the installed framework package, as PlatformIO resolves it.
+
+    Writing it at otadata resets the boot selector to ota_0. A device that has
+    taken a wireless update is running ota_1, so without this a re-flash writes
+    ota_0 and the device keeps booting the old image — indistinguishable from a
+    dead device to whoever just flashed it.
+    """
+    core_dir = os.environ.get("PLATFORMIO_CORE_DIR") or os.path.join(
+        os.path.expanduser("~"), ".platformio")
+    return os.path.join(core_dir, "packages", "framework-arduinoespressif32",
+                        "tools", "partitions", "boot_app0.bin")
 
 
 def _esptool(*args):
@@ -173,8 +188,8 @@ def clear_nvs_partition(port_name):
         return False
 
 
-def flash_to_port(port_name, port_desc, build_dir, chip_info="", erase_flash=False,
-                  has_littlefs=False, clear_nvs=False):
+def flash_to_port(port_name, port_desc, build_dir, boot_app0, chip_info="", erase_flash=False,
+                  clear_nvs=False):
     """Flash firmware (from build_dir) to a single port. Returns True on success."""
     if _abort.is_set():
         return False
@@ -190,16 +205,14 @@ def flash_to_port(port_name, port_desc, build_dir, chip_info="", erase_flash=Fal
     bootloader = os.path.join(build_dir, "bootloader.bin")
     partitions = os.path.join(build_dir, "partitions.bin")
     firmware = os.path.join(build_dir, "firmware.bin")
-    littlefs = os.path.join(build_dir, "littlefs.bin")
 
     cmd = _esptool(
         "--chip", "esp32s3", "--port", port_name, "--baud", "921600",
         "--before", "usb-reset", "--after", "hard-reset",
         "write-flash", "--flash-mode", "dio", "--flash-freq", "80m", "--flash-size", "8MB",
-        "0x0000", bootloader, "0x8000", partitions, "0x10000", firmware,
+        "0x0000", bootloader, "0x8000", partitions, OTADATA_OFFSET, boot_app0,
+        "0x10000", firmware,
     )
-    if has_littlefs:
-        cmd += ["0x670000", littlefs]
 
     try:
         _run_esptool(port_name, cmd, timeout=60)
@@ -253,9 +266,11 @@ def main():
         print("Run 'pio run -e esp32-s3_pdn_release' first to build.")
         sys.exit(1)
 
-    has_littlefs = os.path.exists(os.path.join(build_dir, "littlefs.bin"))
-    print("littlefs.bin found — filesystem will be flashed." if has_littlefs
-          else "littlefs.bin not found — skipping filesystem partition.")
+    boot_app0 = find_boot_app0()
+    if not os.path.exists(boot_app0):
+        print(f"Error: Missing {boot_app0}")
+        print("Run 'pio run -e esp32-s3_pdn_release' once so PlatformIO installs the framework.")
+        sys.exit(1)
 
     print("Scanning for devices...")
     ports_info = list_com_ports_with_pyserial()
@@ -292,8 +307,8 @@ def main():
         futures = {
             executor.submit(
                 flash_to_port,
-                port, desc, build_dir, chip_info,
-                args.erase, has_littlefs, args.clear_nvs,
+                port, desc, build_dir, boot_app0, chip_info,
+                args.erase, args.clear_nvs,
             ): port
             for port, desc, chip_info in esp32_devices
         }
