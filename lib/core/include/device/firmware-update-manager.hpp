@@ -54,8 +54,8 @@ public:
     /// reply heard, not a per-device ledger.
     void onStatus(const FirmwareStatusPayload& status);
 
-    /// True once an offer has been accepted; nothing here clears it back to
-    /// false.
+    /// True once an offer has been accepted. Cleared when the image commits, or
+    /// when the device becomes ineligible mid-transfer and sync() aborts it.
     bool isReceiving() const;
 
     /// Count of distinct chunk indices written so far.
