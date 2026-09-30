@@ -1354,7 +1354,12 @@ inline void rdcRingMembershipReachesEveryMember() {
     ASSERT_TRUE(a.rdc.isInRing()) << "A gave up its latch before its evidence expired";
 
     // A's own MAC stops coming back, so its evidence times out and the claim
-    // leaves the wire.
+    // leaves the wire. The window does not start at the cable pull: C keeps
+    // relaying A as head until its own silent-link detector fires, so this has to
+    // outlast both that and the evidence timeout — 30 rounds between them. The
+    // rest is slack, not arithmetic: a hop also costs the receiving device's
+    // exec()-to-parse gap, which nothing caps, so the count is spelled out rather
+    // than derived from the two constants.
     run(40);
     EXPECT_FALSE(a.rdc.isInRing()) << "the latch outlived the loop";
     a.out.clearOutput();

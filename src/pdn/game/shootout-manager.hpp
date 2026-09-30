@@ -150,8 +150,13 @@ public:
     /// Idempotent, and refuses ENDED as well as ABORTED.
     void abortTournament();
 
-    /// Ring-break debounce. A cable nudge flickers the loop for a tick or two on
-    /// real hardware; act only once the break has settled.
+    /// Ring-break debounce. A cable nudge flickers the loop on real hardware; act
+    /// only once the break has settled. This covers the flicker, not a recovery:
+    /// healing a nudge costs a link re-handshake, the latching device's own MAC
+    /// walking the loop to re-latch, then the flag walking back, all of which
+    /// outlast it. Calibrated against how long a nudge flickers, so it is not the
+    /// RDC's propagation window even though both are 500 — widening this one is a
+    /// rig question and does not imply widening that one.
     static constexpr unsigned long LOOP_BREAK_DEBOUNCE_MS = 500;
     /// Confirmed members needed to draw a bracket. Two is the structural floor —
     /// a duel needs two duelists — so a two-device ring is exactly at it and runs.

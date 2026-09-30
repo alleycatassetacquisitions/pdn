@@ -158,9 +158,12 @@ public:
     // A link stuck mid-context-exchange past this falls back to IDLE.
     static constexpr unsigned long CONTEXT_EXCHANGE_TIMEOUT_MS = 500;
     // A ring latch is evidence-based: it survives a higher-MAC head claim only
-    // while this device's own MAC keeps returning on INPUT within this window.
-    // Sized above the worst-case claim-propagation transient (~18 hops at the
-    // 20ms HELLO cadence).
+    // while this device's own MAC keeps returning on INPUT within this window, so
+    // it has to outlast a replacement claim's walk round the loop. Hand-set at 25
+    // HELLO cadences, not derived: a hop also costs the receiving device's
+    // exec()-to-parse gap, which nothing caps, so this is slack rather than
+    // arithmetic and not a bound on any particular chain length. Deliberately not
+    // sized off MAX_CHAIN_MEMBERS, a roster-array cap set past any real chain.
     static constexpr unsigned long RING_EVIDENCE_TIMEOUT_MS = 500;
 
     enum class HelloLinkState { IDLE,

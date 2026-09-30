@@ -109,7 +109,8 @@ public:
     const Stats& getStats() const { return stats; }
 
     /// Reliable send to one peer: the frame is addressed to that peer and it is
-    /// the only recipient expected to answer. payload bytes are copied.
+    /// the only recipient expected to answer. payload bytes are copied exactly as
+    /// given — every sender writes `seqId` into them before calling.
     void send(const uint8_t* target, PktType type, uint8_t seqId,
               const uint8_t* payload, size_t len,
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
