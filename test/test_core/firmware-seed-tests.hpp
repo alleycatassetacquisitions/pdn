@@ -51,7 +51,14 @@ public:
 
     /// Real behavior rather than a MOCK_METHOD: records every send so a
     /// pacing test can assert counts without an EXPECT_CALL per frame.
+    /// Honors refuseNextSend() first, standing in for a driver that refuses
+    /// a frame synchronously (e.g. a ps_malloc failure) and so never queues
+    /// it: no send-status report will ever arrive for a refused send.
     int sendData(const uint8_t*, PktType, const uint8_t* data, const size_t length) override {
+        if (refuseNext) {
+            refuseNext = false;
+            return -1;
+        }
         totalSent++;
         if (length > 0 && data[0] < commandCounts.size()) {
             commandCounts[data[0]]++;
@@ -63,11 +70,15 @@ public:
     int sentCount() const { return totalSent; }
     /// Count of frames sent so far whose leading command byte is `cmd`.
     int countOf(FirmwareCmd cmd) const { return commandCounts[static_cast<size_t>(cmd)]; }
+    /// Makes the next sendData call fail as if the driver refused to queue
+    /// the frame, then reverts to succeeding.
+    void refuseNextSend() { refuseNext = true; }
 
 private:
     int totalSent = 0;
     std::array<int, 5> commandCounts{};
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    bool refuseNext = false;
 };
 
 /// Shared by the seed suite: a manager wired to a fake flash slot holding a
@@ -126,12 +137,12 @@ public:
     FirmwareUpdateManager* manager;
 
 private:
-    // Builds a trailer (SignerCert then a 64-byte image signature) that
-    // signs exactly the span verifyOffer checks — imageSha256|imageLength|
-    // chunkSize|chunkCount — for `image`, the same way sign_firmware.py
-    // will sign a real build. Not asserted by this suite's tests, but a
-    // trailer beginSeeding cannot read would fail every test here, and a
-    // garbage one would misrepresent what production code actually does.
+    // Builds a well-formed FirmwareTrailer (cert, image signature over
+    // exactly the span verifyOffer checks, declared length, magic) the same
+    // way sign_firmware.py will sign a real build. Not asserted by this
+    // suite's happy-path tests, but a trailer beginSeeding cannot read or
+    // validate would fail every test here, and a garbage one would
+    // misrepresent what production code actually does.
     std::vector<uint8_t> buildTrailer(const std::vector<uint8_t>& image) {
         uint8_t hash[FIRMWARE_SHA256_LENGTH];
         sha256(image.data(), image.size(), hash);
@@ -146,15 +157,17 @@ private:
             reinterpret_cast<const uint8_t*>(&signedSpan) + offsetof(FirmwareOfferPayload, imageSha256);
         const size_t signedLength =
             offsetof(FirmwareOfferPayload, cert) - offsetof(FirmwareOfferPayload, imageSha256);
-        uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
-        firmware_test_keys::signRaw(firmware_test_keys::signerKeypair().privateKey, signedStart, signedLength,
-                                    imageSignature);
 
-        const SignerCert cert = firmware_test_keys::signCert(/*generation=*/1);
-        std::vector<uint8_t> trailer(sizeof(SignerCert) + FIRMWARE_SIG_LENGTH);
-        std::memcpy(trailer.data(), &cert, sizeof(SignerCert));
-        std::memcpy(trailer.data() + sizeof(SignerCert), imageSignature, FIRMWARE_SIG_LENGTH);
-        return trailer;
+        FirmwareTrailer trailer{};
+        trailer.cert = firmware_test_keys::signCert(/*generation=*/1);
+        firmware_test_keys::signRaw(firmware_test_keys::signerKeypair().privateKey, signedStart, signedLength,
+                                    trailer.imageSignature);
+        trailer.imageLength = static_cast<uint32_t>(image.size());
+        trailer.magic = FIRMWARE_TRAILER_MAGIC;
+
+        std::vector<uint8_t> bytes(sizeof(FirmwareTrailer));
+        std::memcpy(bytes.data(), &trailer, sizeof(FirmwareTrailer));
+        return bytes;
     }
 
     FakeSeedClock clock;
@@ -176,4 +189,25 @@ TEST(FirmwareSeedTest, offerRepeatsThroughoutTheRun) {
     f.manager->beginSeeding();
     f.runSeedFor(3000);  // three seconds of streaming
     EXPECT_GE(f.comms.countOf(FirmwareCmd::OFFER), 3);
+}
+
+TEST(FirmwareSeedTest, beginSeedingRefusesAnUnprovisionedTrailer) {
+    FirmwareSeedFixture f;
+    // Right size so the read itself succeeds — this isolates the
+    // magic/imageLength validation from the bounds check on the read.
+    f.store.setRunningTrailer(std::vector<uint8_t>(sizeof(FirmwareTrailer), 0));
+    EXPECT_FALSE(f.manager->beginSeeding());
+    EXPECT_FALSE(f.manager->isSeeding());
+    EXPECT_EQ(f.comms.sentCount(), 0);
+}
+
+TEST(FirmwareSeedTest, aRefusedSendIsRetriedNotWedged) {
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();      // the initial OFFER goes out and succeeds
+    f.manager->onSendReport(true);  // frees the slot
+    f.comms.refuseNextSend();       // simulates a synchronous enqueue failure (e.g. ps_malloc)
+    f.manager->sync();              // attempts the first chunk; refused, nothing queued
+    EXPECT_EQ(f.comms.sentCount(), 1) << "a refused send must not count as sent";
+    f.manager->sync();  // sendInFlight stayed false, so this retries
+    EXPECT_EQ(f.comms.sentCount(), 2) << "the seed must retry a refused send, not wedge";
 }
