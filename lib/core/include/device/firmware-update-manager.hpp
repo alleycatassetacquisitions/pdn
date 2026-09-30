@@ -31,7 +31,8 @@ public:
     /// already landed.
     void onChunk(const FirmwareChunkHeader& header, const uint8_t* data);
 
-    /// True from an accepted offer until the image is replaced.
+    /// True once an offer has been accepted; nothing here clears it back to
+    /// false.
     bool isReceiving() const;
 
     /// Count of distinct chunk indices written so far.
@@ -50,6 +51,10 @@ private:
     bool bitmapBit(uint16_t index) const;
     void setBitmapBit(uint16_t index);
 
+    // The running image's bytes cannot change while it is executing, so its
+    // hash is computed at most once per boot and reused from then on.
+    const uint8_t* cachedRunningImageHash();
+
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
     const uint8_t* rootPublicKey;
@@ -58,6 +63,10 @@ private:
     uint16_t chunkCount = 0;
     uint16_t chunkSize = 0;
     uint16_t receivedChunkCount = 0;
+    size_t imageLength = 0;
     uint8_t currentImageHash[FIRMWARE_SHA256_LENGTH] = {};
     uint8_t bitmap[FIRMWARE_BITMAP_BYTES] = {};
+
+    bool runningImageHashComputed = false;
+    uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};
 };
