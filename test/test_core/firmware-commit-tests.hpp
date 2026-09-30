@@ -88,6 +88,36 @@ TEST(FirmwareCommitTest, anOfferIsRefusedWhileACompletionReportIsStillQueued) {
         << "COMPLETE must name the image that actually failed";
 }
 
+TEST(FirmwareCommitTest, nothingOnTheWireDisturbsAPendingReport) {
+    // Row A's bad state — collecting a new image while a report on the last
+    // one is still queued — is no longer a combination the manager can hold:
+    // one phase member cannot be RECEIVING and REPORTING at once, so every
+    // frame the wire can deliver during REPORTING is refused by the same
+    // single check. Asserted from outside, since unrepresentability itself is
+    // a property of the type: neither an offer, nor a chunk, nor a poll
+    // changes what the report says.
+    FirmwareReceiverFixture f;
+    f.receiveCompleteImageWithOneCorruptChunk(/*flushComplete=*/false);
+
+    f.manager->onOffer(SEED_MAC, f.signedOfferForImage(f.imageBytes()));
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE] = {0};
+    f.deliverChunk(0, body, sizeof(body));
+    f.manager->onPoll(f.pollForCurrentImage());
+    EXPECT_FALSE(f.manager->isReceiving());
+    EXPECT_EQ(f.store.beginWriteCalls(), 1);
+
+    f.manager->sync();
+    ASSERT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 1);
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::STATUS), 0);
+    EXPECT_EQ(f.lastResult(), FirmwareResult::BAD_HASH);
+
+    const std::vector<uint8_t> failedImage = f.commitImageBytes();
+    uint8_t failedHash[FIRMWARE_SHA256_LENGTH];
+    sha256(failedImage.data(), failedImage.size(), failedHash);
+    EXPECT_EQ(std::memcmp(f.comms.lastCompleteImageHash(), failedHash, FIRMWARE_SHA256_LENGTH), 0)
+        << "COMPLETE must name the image that actually failed";
+}
+
 TEST(FirmwareCommitTest, committedDeviceRestarts) {
     // The spec requires a restart after setting the boot partition, or the
     // confirm timer armed at the next boot never arms anything.

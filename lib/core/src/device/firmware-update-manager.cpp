@@ -195,24 +195,17 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // a correctly-signed offer for another device type must still be refused
     }
 
-    if (restartPending) {
-        return;  // already committed and about to restart; do not re-erase a verified slot
-    }
-
-    // sendComplete reads currentImageHash when sync() finally flushes the
-    // report, and a failed commit sets no restartPending to stand in for
-    // this: accepting an offer here would make that report name the new
-    // image while still carrying the failed transfer's result code.
-    if (completePending) {
-        return;
-    }
-
-    // First offer wins for the whole transfer, whatever image a later one
-    // carries. Two seeds on different builds both repeat OFFER once a second,
-    // and reopening the slot for each would mean a multi-second blocking erase
-    // every second with neither transfer ever finishing. A device that loses
-    // its seed rejoins at the next offer once this one ends.
-    if (receiving) {
+    // One check for every stage that must not be interrupted, which is every
+    // stage but IDLE. RECEIVING: first offer wins for the whole transfer,
+    // whatever image a later one carries — two seeds on different builds both
+    // repeat OFFER once a second, and reopening the slot for each would mean a
+    // multi-second blocking erase every second with neither transfer ever
+    // finishing. REPORTING: sendComplete reads currentImageHash when sync()
+    // flushes the report, so accepting here would make that report name the
+    // new image while carrying the old transfer's result code. RESTARTING:
+    // the slot is verified and already the boot target; re-erasing it would
+    // strand the device on the running image.
+    if (receivePhase != ReceivePhase::IDLE) {
         return;
     }
 
@@ -256,8 +249,7 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
 
     if (!firmwareStore->beginWrite(offer.imageLength)) {
         LOG_E(TAG, "beginWrite failed for a %u byte image", offer.imageLength);
-        receiving = false;  // fail closed: the slot may be left partially erased
-        return;
+        return;  // fail closed: the phase stays IDLE, so no chunk can land in a half-erased slot
     }
 
     std::memcpy(currentImageHash, offer.imageSha256, FIRMWARE_SHA256_LENGTH);
@@ -268,11 +260,11 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
     std::memset(bitmap, 0, sizeof(bitmap));
     writeFailed = false;
     acceptedOffer = offer;  // re-verified at commit time; its cert/signature seed the trailer written past the image
-    receiving = true;
+    receivePhase = ReceivePhase::RECEIVING;
 }
 
 void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uint8_t* data) {
-    if (!receiving || header.index >= chunkCount || bitmapBit(header.index)) {
+    if (receivePhase != ReceivePhase::RECEIVING || header.index >= chunkCount || bitmapBit(header.index)) {
         return;
     }
 
@@ -299,12 +291,11 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
 }
 
 void FirmwareUpdateManager::evaluateCommit() {
-    receiving = false;  // this transfer is concluding, pass or fail
+    receivePhase = ReceivePhase::REPORTING;  // this transfer is concluding, pass or fail
 
     const auto fail = [this](FirmwareResult result) {
         firmwareStore->abortWrite();
         completeResult = result;
-        completePending = true;
     };
 
     if (writeFailed) {
@@ -357,7 +348,6 @@ void FirmwareUpdateManager::evaluateCommit() {
         LOG_E(TAG, "commit: setBootToWritten failed");
         // finishWrite() already closed the store's write; there is nothing left to abort.
         completeResult = FirmwareResult::FLASH_FAILED;
-        completePending = true;
         return;
     }
 
@@ -370,17 +360,16 @@ void FirmwareUpdateManager::evaluateCommit() {
         firmwareStore->setMinGeneration(acceptedOffer.cert.generation);
     }
 
+    // REPORTING ends at RESTARTING for an OK result: the spec requires a
+    // restart once the boot partition is set, or the confirm timer armed at
+    // the next boot never arms anything. The running hash cannot change
+    // without one either, so until it fires the phase itself is what stops a
+    // repeat OFFER reopening this slot.
     completeResult = FirmwareResult::OK;
-    completePending = true;
-    // The spec requires a restart once the boot partition is set, or the
-    // confirm timer armed at the next boot never arms anything: the running
-    // hash cannot change without one, so nothing else stops a repeat OFFER
-    // from reopening this slot (the restartPending guard in onOffer does).
-    restartPending = true;
 }
 
 void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
-    if (!receiving) {
+    if (receivePhase != ReceivePhase::RECEIVING) {
         return;  // nothing to report on
     }
     if (std::memcmp(poll.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
@@ -393,7 +382,7 @@ void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
 }
 
 void FirmwareUpdateManager::onStatus(const FirmwareStatusPayload& status) {
-    if (!seeding) {
+    if (seedPhase == SeedPhase::IDLE) {
         return;  // no run in progress for a report to apply to
     }
     if (std::memcmp(status.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
@@ -410,7 +399,7 @@ void FirmwareUpdateManager::onStatus(const FirmwareStatusPayload& status) {
 }
 
 bool FirmwareUpdateManager::isReceiving() const {
-    return receiving;
+    return receivePhase == ReceivePhase::RECEIVING;
 }
 
 uint16_t FirmwareUpdateManager::receivedCount() const {
@@ -449,13 +438,13 @@ void FirmwareUpdateManager::sendComplete(FirmwareResult result) {
     complete.result = static_cast<uint8_t>(result);
 
     if (!sendFrame(reinterpret_cast<const uint8_t*>(&complete), sizeof(complete), "sendComplete")) {
-        return;  // completePending stays true: sync() retries next tick
+        return;  // the phase stays REPORTING: sync() retries next tick
     }
-    completePending = false;
+    receivePhase = result == FirmwareResult::OK ? ReceivePhase::RESTARTING : ReceivePhase::IDLE;
 }
 
 bool FirmwareUpdateManager::beginSeeding() {
-    if (seeding) {
+    if (seedPhase != SeedPhase::IDLE) {
         return false;  // a run is already streaming; let it finish rather than restart mid-image
     }
 
@@ -486,16 +475,18 @@ bool FirmwareUpdateManager::beginSeeding() {
     seedChunkCount =
         static_cast<uint16_t>((seedImageLength + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE);
     seedNextChunkIndex = 0;
-    seeding = true;
+    // An image with no chunks to stream (nothing this store can serve) has
+    // nothing for STREAMING to do, and STREAMING is the one phase that never
+    // ends on its own: only a queued chunk moves it on.
+    seedPhase = seedChunkCount > 0 ? SeedPhase::STREAMING : SeedPhase::POLLING;
 
     // A previous run may have left repair state behind; this run starts
     // its own collection from nothing.
     std::memset(repairBitmap, 0, sizeof(repairBitmap));
     haveLastRepairSet = false;
     identicalRepairRounds = 0;
-    pollSentForRound = false;
-    repairRoundReady = false;
     repairCursor = 0;
+    pollWindowTimer.invalidate();
 
     sendOffer();
     offerTimer.setTimer(SEED_OFFER_INTERVAL_MS);
@@ -508,7 +499,7 @@ void FirmwareUpdateManager::onSendReport(bool success) {
 }
 
 bool FirmwareUpdateManager::isSeeding() const {
-    return seeding;
+    return seedPhase != SeedPhase::IDLE;
 }
 
 void FirmwareUpdateManager::sync() {
@@ -517,29 +508,30 @@ void FirmwareUpdateManager::sync() {
     // device someone is using. No resume: the seed repeats OFFER for the
     // whole run, so an eligible-again device rejoins at the next one on its
     // own.
-    if (receiving && !isEligible()) {
+    if (receivePhase == ReceivePhase::RECEIVING && !isEligible()) {
         LOG_E(TAG, "eligibility lost mid-transfer; aborting the receive");
         firmwareStore->abortWrite();
-        receiving = false;
+        receivePhase = ReceivePhase::IDLE;
     }
 
     if (sendInFlight) {
         return;  // at most one kFirmwareUpdate frame in flight, whichever role queued it
     }
 
-    if (completePending) {
+    if (receivePhase == ReceivePhase::REPORTING) {
         sendComplete(completeResult);
         return;
     }
 
-    // Ordered after completePending, and behind the sendInFlight gate above:
+    // Ordered after REPORTING, and behind the sendInFlight gate above:
     // COMPLETE must have been handed to the radio and reported on before the
     // device restarts out from under it. No delay of its own — that ordering
     // is the whole guarantee a timer here could offer.
-    if (restartPending) {
-        // esp_restart() does not return, so clearing this matters only for a store
-        // whose restart() does — without it such a store would be restarted every tick.
-        restartPending = false;
+    if (receivePhase == ReceivePhase::RESTARTING) {
+        // esp_restart() does not return, so leaving RESTARTING matters only for a
+        // store whose restart() does — without it such a store would be restarted
+        // every tick.
+        receivePhase = ReceivePhase::IDLE;
         firmwareStore->restart();
         return;  // real hardware never returns from this; the fake does, for tests
     }
@@ -549,7 +541,7 @@ void FirmwareUpdateManager::sync() {
         return;
     }
 
-    if (!seeding) {
+    if (seedPhase == SeedPhase::IDLE) {
         return;
     }
 
@@ -559,7 +551,7 @@ void FirmwareUpdateManager::sync() {
         return;
     }
 
-    if (seedNextChunkIndex < seedChunkCount) {
+    if (seedPhase == SeedPhase::STREAMING) {
         sendNextChunk();
         return;
     }
@@ -568,17 +560,16 @@ void FirmwareUpdateManager::sync() {
 }
 
 void FirmwareUpdateManager::syncRepair() {
-    if (!pollSentForRound) {
-        sendPoll();
-        return;
-    }
-
-    if (!repairRoundReady) {
+    if (seedPhase == SeedPhase::POLLING) {
+        if (!pollWindowTimer.isRunning()) {
+            sendPoll();  // arms the window once the frame is actually queued
+            return;
+        }
         if (!pollWindowTimer.expired()) {
             return;  // still within the window, collecting STATUS replies
         }
         resolveRepairRound();
-        if (!seeding) {
+        if (seedPhase != SeedPhase::REPAIRING) {
             return;  // resolveRepairRound ended the run: nothing missing, or repair stalled out
         }
     }
@@ -599,14 +590,14 @@ void FirmwareUpdateManager::syncRepair() {
     // This round's resends are all out; the next round starts collecting
     // immediately (repairBitmap was already cleared by resolveRepairRound),
     // and its own POLL goes out on the next sync().
-    pollSentForRound = false;
-    repairRoundReady = false;
+    seedPhase = SeedPhase::POLLING;
+    pollWindowTimer.invalidate();
     repairCursor = 0;
 }
 
 void FirmwareUpdateManager::resolveRepairRound() {
     if (bitmapIsEmpty(repairBitmap)) {
-        seeding = false;  // nobody reported a gap: the run is done
+        seedPhase = SeedPhase::IDLE;  // nobody reported a gap: the run is done
         return;
     }
 
@@ -620,14 +611,14 @@ void FirmwareUpdateManager::resolveRepairRound() {
 
     if (identicalRepairRounds >= REPAIR_STALL_ROUNDS) {
         LOG_E(TAG, "repair set unchanged for %d rounds in a row; ending the run", identicalRepairRounds);
-        seeding = false;  // waiting out a chunk that never lands would never end the run
+        seedPhase = SeedPhase::IDLE;  // waiting out a chunk that never lands would never end the run
         std::memset(repairBitmap, 0, sizeof(repairBitmap));
         return;
     }
 
     std::memcpy(repairStreamSet, repairBitmap, sizeof(repairBitmap));
     std::memset(repairBitmap, 0, sizeof(repairBitmap));  // the next round starts collecting now
-    repairRoundReady = true;
+    seedPhase = SeedPhase::REPAIRING;
 }
 
 void FirmwareUpdateManager::dispatchSendStatus(const uint8_t* dstMac, const uint8_t* data, size_t length,
@@ -682,8 +673,13 @@ bool FirmwareUpdateManager::sendChunkAt(uint16_t index, const char* what) {
 }
 
 void FirmwareUpdateManager::sendNextChunk() {
-    if (sendChunkAt(seedNextChunkIndex, "sendNextChunk")) {
-        seedNextChunkIndex++;
+    if (!sendChunkAt(seedNextChunkIndex, "sendNextChunk")) {
+        return;  // nothing queued: this same index is retried next sync()
+    }
+    seedNextChunkIndex++;
+    if (seedNextChunkIndex >= seedChunkCount) {
+        seedPhase = SeedPhase::POLLING;  // every chunk is out; the run moves to POLL/repair
+        pollWindowTimer.invalidate();
     }
 }
 
@@ -693,9 +689,8 @@ void FirmwareUpdateManager::sendPoll() {
     std::memcpy(poll.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH);
 
     if (!sendFrame(reinterpret_cast<const uint8_t*>(&poll), sizeof(poll), "sendPoll")) {
-        return;  // pollSentForRound stays false: sync() retries next tick
+        return;  // the window stays unarmed: sync() retries this same POLL next tick
     }
-    pollSentForRound = true;
     pollWindowTimer.setTimer(SEED_POLL_WINDOW_MS);
 }
 
