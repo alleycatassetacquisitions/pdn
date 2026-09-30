@@ -61,7 +61,9 @@ public:
             commandCounts[data[0]]++;
         }
         if (length >= sizeof(FirmwareCompletePayload) && data[0] == static_cast<uint8_t>(FirmwareCmd::COMPLETE)) {
-            lastComplete = static_cast<FirmwareResult>(reinterpret_cast<const FirmwareCompletePayload*>(data)->result);
+            const FirmwareCompletePayload* complete = reinterpret_cast<const FirmwareCompletePayload*>(data);
+            lastComplete = static_cast<FirmwareResult>(complete->result);
+            std::memcpy(lastCompleteHash, complete->imageSha256, FIRMWARE_SHA256_LENGTH);
         }
         return 0;
     }
@@ -75,11 +77,16 @@ public:
     /// same as a successful commit's own value, so a test must first confirm
     /// a COMPLETE was actually sent (e.g. via countOf(COMPLETE)).
     FirmwareResult lastCompleteResult() const { return lastComplete; }
+    /// The image hash carried by the most recent COMPLETE frame sent: which
+    /// image the reported result is actually about. All-zero before any
+    /// COMPLETE has been sent.
+    const uint8_t* lastCompleteImageHash() const { return lastCompleteHash; }
 
 private:
     int totalSent = 0;
     std::array<int, 5> commandCounts{};
     FirmwareResult lastComplete = FirmwareResult::OK;
+    uint8_t lastCompleteHash[FIRMWARE_SHA256_LENGTH] = {};
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF1};
 };
@@ -312,13 +319,17 @@ public:
 
     /// Like receiveCompleteValidImage, but corrupts one byte of what is sent
     /// after the offer is signed over the original bytes — the assembled
-    /// image's real hash then cannot match the offer's declared one.
-    void receiveCompleteImageWithOneCorruptChunk() {
+    /// image's real hash then cannot match the offer's declared one. With
+    /// flushComplete false the queued COMPLETE is left unsent, which is the
+    /// window a new offer must not be accepted in.
+    void receiveCompleteImageWithOneCorruptChunk(bool flushComplete = true) {
         std::vector<uint8_t> image = commitImageBytes();
         manager->onOffer(SEED_MAC, signedOfferForImage(image));
         image[image.size() / 2] ^= 0xFF;
         deliverImage(image);
-        manager->sync();  // flushes the COMPLETE evaluateCommit queues
+        if (flushComplete) {
+            manager->sync();  // flushes the COMPLETE evaluateCommit queues
+        }
     }
 
     /// The FirmwareResult carried by the most recent COMPLETE frame sent —

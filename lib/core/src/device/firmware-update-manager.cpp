@@ -205,6 +205,14 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // already committed and about to restart; do not re-erase a verified slot
     }
 
+    // sendComplete reads currentImageHash when sync() finally flushes the
+    // report, and a failed commit sets no restartPending to stand in for
+    // this: accepting an offer here would make that report name the new
+    // image while still carrying the failed transfer's result code.
+    if (completePending) {
+        return;
+    }
+
     // First offer wins for the whole transfer, whatever image a later one
     // carries. Two seeds on different builds both repeat OFFER once a second,
     // and reopening the slot for each would mean a multi-second blocking erase
