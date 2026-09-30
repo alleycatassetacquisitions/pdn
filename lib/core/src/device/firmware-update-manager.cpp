@@ -128,6 +128,11 @@ FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms,
     peerComms->setSendStatusHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchSendStatus, this);
 }
 
+FirmwareUpdateManager::~FirmwareUpdateManager() {
+    peerComms->clearPacketHandler(PktType::kFirmwareUpdate);
+    peerComms->clearSendStatusHandler(PktType::kFirmwareUpdate);
+}
+
 void FirmwareUpdateManager::dispatchPacket(const uint8_t* src, const uint8_t* data, size_t length, void* ctx) {
     static_cast<FirmwareUpdateManager*>(ctx)->onPacketReceived(src, data, length);
 }

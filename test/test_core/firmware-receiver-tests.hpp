@@ -345,6 +345,20 @@ public:
     /// the commit path's outcome for a test to assert against.
     FirmwareResult lastResult() const { return comms.lastCompleteResult(); }
 
+    /// Frees the manager early so a test can see what its destructor did;
+    /// this fixture's own destructor tolerates it already being gone.
+    void destroyManager() {
+        delete manager;
+        manager = nullptr;
+    }
+
+    /// Whether the manager's kFirmwareUpdate packet handler is still
+    /// registered with the radio. Real state either way: set when the
+    /// manager registers, cleared when it deregisters, so a handler left
+    /// dangling shows up as a failed assertion rather than as a
+    /// use-after-free somewhere later.
+    bool packetHandlerRegistered() const { return static_cast<bool>(rawHandler); }
+
     ReceiverComms comms;
     FakeFirmwareStore store;
     FirmwareUpdateManager* manager;
@@ -382,6 +396,11 @@ private:
             .WillByDefault(Invoke([this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
                 rawHandler = callback;
                 rawCtx = ctx;
+            }));
+        ON_CALL(comms, clearPacketHandler(PktType::kFirmwareUpdate))
+            .WillByDefault(Invoke([this](PktType) {
+                rawHandler = nullptr;
+                rawCtx = nullptr;
             }));
         manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY, [this]() { return eligible && !cableConnected; }, DeviceType::PDN);
     }
@@ -659,4 +678,18 @@ TEST(FirmwareReceiverTest, aSlowButProgressingReceiveIsNotAbandoned) {
     f.manager->sync();
     EXPECT_TRUE(f.manager->isReceiving());
     EXPECT_EQ(f.manager->receivedCount(), 3);
+}
+
+TEST(FirmwareReceiverTest, destroyingTheManagerDeregistersItsRadioHandlers) {
+    // The driver's handler tables hold a raw pointer to the manager, and
+    // ~Quickdraw deletes it with the radio still live: a frame arriving after
+    // that would be dispatched into freed memory.
+    FirmwareReceiverFixture f;
+    ASSERT_TRUE(f.packetHandlerRegistered());
+    ASSERT_TRUE(f.comms.hasSendStatusHandler(PktType::kFirmwareUpdate));
+
+    f.destroyManager();
+
+    EXPECT_FALSE(f.packetHandlerRegistered());
+    EXPECT_FALSE(f.comms.hasSendStatusHandler(PktType::kFirmwareUpdate));
 }

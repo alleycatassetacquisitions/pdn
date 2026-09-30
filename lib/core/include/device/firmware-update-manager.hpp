@@ -28,6 +28,12 @@ public:
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           const uint8_t* rootPublicKey, std::function<bool()> isEligible, DeviceType deviceType);
 
+    /// Deregisters both radio handlers. The driver's tables hold a raw
+    /// pointer to this manager, and ~Quickdraw deletes it while the radio is
+    /// still live, so leaving them registered would dispatch a later
+    /// kFirmwareUpdate frame into freed memory.
+    ~FirmwareUpdateManager();
+
     /// Evaluates an announced image. Ignores it outright unless the receive
     /// side is idle — a transfer in progress, a queued completion report and
     /// a pending post-commit restart are all one phase check — or if it

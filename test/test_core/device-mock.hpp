@@ -165,6 +165,13 @@ public:
         sendStatusHandlers.erase(packetType);
     }
 
+    /// Whether a send-status handler is currently registered for this type.
+    /// Real state, not an expectation, so a test can assert that something
+    /// actually deregistered rather than that it called a method.
+    bool hasSendStatusHandler(PktType packetType) const {
+        return sendStatusHandlers.count(packetType) != 0;
+    }
+
     /// Test hook: invokes the handler registered for packetType directly, standing
     /// in for the radio completion callback the driver has no radio to fire.
     void fireSendStatus(PktType packetType, bool success) {
