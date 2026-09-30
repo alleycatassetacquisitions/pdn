@@ -22,9 +22,10 @@ public:
                           const uint8_t* rootPublicKey);
 
     /// Evaluates an announced image. Ignores it outright if it matches the
-    /// running image or the image already being collected; otherwise, once
-    /// it verifies and fits the inactive slot, opens the slot for the
-    /// declared length and starts collecting chunks.
+    /// running image or the image already being collected, or if a commit
+    /// is waiting to restart; otherwise, once it verifies and fits the
+    /// inactive slot, opens the slot for the declared length and starts
+    /// collecting chunks.
     void onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer);
 
     /// Writes one chunk into the open slot at its declared index. Drops it
@@ -152,6 +153,16 @@ private:
     // frame once whichever frame is already in flight clears.
     bool completePending = false;
     FirmwareResult completeResult = FirmwareResult::OK;
+
+    // Set by evaluateCommit on a successful commit: the spec requires a
+    // restart after setting the boot partition, or the confirm timer armed
+    // at the next boot never means anything. onOffer checks this too, so a
+    // repeat OFFER in the window before the restart fires cannot reopen the
+    // slot that was just verified and pointed at. Sent from sync(), after
+    // completePending, so COMPLETE is handed to the radio first; never
+    // gated on a send report actually arriving.
+    bool restartPending = false;
+    SimpleTimer restartTimer;
 
     bool runningImageHashComputed = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};

@@ -43,6 +43,12 @@ constexpr unsigned long STATUS_BACKOFF_CEILING_MS = 500;
 // never end the run, so the seed gives up on it instead.
 constexpr int REPAIR_STALL_ROUNDS = 3;
 
+// How long a successful commit waits before restarting. Long enough for
+// sync() to hand the COMPLETE report to the radio first (one call, well
+// under this), short enough that the device is not left sitting on a
+// verified-but-unbooted image any longer than it has to be.
+constexpr unsigned long RESTART_DELAY_MS = 500;
+
 bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
     return (bitmap[index / 8] & (1 << (index % 8))) != 0;
 }
@@ -180,6 +186,10 @@ uint32_t FirmwareUpdateManager::nextRandomUint32() {
 
 void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer) {
     (void)fromMac;  // nothing unicasts a reply to the seed yet
+
+    if (restartPending) {
+        return;  // already committed and about to restart; do not re-erase a verified slot
+    }
 
     if (receiving && std::memcmp(offer.imageSha256, currentImageHash, FIRMWARE_SHA256_LENGTH) == 0) {
         return;  // the seed repeats OFFER once a second; don't reopen a transfer in flight
@@ -335,6 +345,12 @@ void FirmwareUpdateManager::evaluateCommit() {
 
     completeResult = FirmwareResult::OK;
     completePending = true;
+    // The spec requires a restart once the boot partition is set, or the
+    // confirm timer armed at the next boot never arms anything: the running
+    // hash cannot change without one, so nothing else stops a repeat OFFER
+    // from reopening this slot (the restartPending guard in onOffer does).
+    restartPending = true;
+    restartTimer.setTimer(RESTART_DELAY_MS);
 }
 
 void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
@@ -485,6 +501,15 @@ void FirmwareUpdateManager::sync() {
     if (completePending) {
         sendComplete(completeResult);
         return;
+    }
+
+    // Ordered after completePending: COMPLETE must have been handed to the
+    // radio before the device restarts out from under it. Not gated on
+    // onSendReport ever arriving for it — only on the local enqueue having
+    // succeeded, which is what clears completePending.
+    if (restartPending && restartTimer.expired()) {
+        firmwareStore->restart();
+        return;  // real hardware never returns from this; the fake does, for tests
     }
 
     if (statusReplyTimer.isRunning() && statusReplyTimer.expired()) {

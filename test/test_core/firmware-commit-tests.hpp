@@ -48,3 +48,30 @@ TEST(FirmwareCommitTest, commitWritesTheTrailerPastTheImage) {
     EXPECT_EQ(trailer.magic, FIRMWARE_TRAILER_MAGIC);
     EXPECT_EQ(trailer.imageLength, image.size());
 }
+
+TEST(FirmwareCommitTest, committedDeviceIgnoresARepeatOfferForTheSameImage) {
+    // The seed rebroadcasts OFFER every second for the life of the run; a
+    // committed-but-not-yet-restarted device must not let one reopen the
+    // slot it just verified and pointed the boot selector at.
+    FirmwareReceiverFixture f;
+    f.receiveCompleteValidImage();
+    ASSERT_EQ(f.store.beginWriteCalls(), 1);
+
+    f.manager->onOffer(SEED_MAC, f.signedOfferForImage(f.commitImageBytes()));
+
+    EXPECT_EQ(f.store.beginWriteCalls(), 1);
+    EXPECT_TRUE(f.store.bootSet());
+}
+
+TEST(FirmwareCommitTest, committedDeviceRestarts) {
+    // The spec requires a restart after setting the boot partition, or the
+    // confirm timer armed at the next boot never arms anything.
+    FirmwareReceiverFixture f;
+    f.receiveCompleteValidImage();
+    ASSERT_FALSE(f.store.didRestart());
+
+    f.advance(600);
+    f.manager->sync();
+
+    EXPECT_TRUE(f.store.didRestart());
+}

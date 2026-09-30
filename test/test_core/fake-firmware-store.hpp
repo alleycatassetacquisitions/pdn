@@ -101,6 +101,10 @@ public:
     /// No slot promotion to simulate: the fake models one boot session.
     void confirmRunningImage() override {}
 
+    /// Records the call for didRestart() assertions rather than tearing down
+    /// the process a real esp_restart() would.
+    void restart() override { restartCalled = true; }
+
     /// Generation floor configured via setMinGeneration.
     uint8_t getMinGeneration() const override { return minGeneration; }
     /// Stores the generation floor for later getMinGeneration calls.
@@ -114,6 +118,8 @@ public:
     int beginWriteCalls() const { return beginWriteCallCount; }
     /// Whether setBootToWritten has been called.
     bool bootSet() const { return bootToWrittenSet; }
+    /// Whether restart has been called.
+    bool didRestart() const { return restartCalled; }
     /// Whether a writeAt call ever landed outside the declared slot bounds.
     bool wroteOutsideImage() const { return writeOutsideImageOccurred; }
 
@@ -140,6 +146,7 @@ private:
     int beginWriteCallCount = 0;
     bool writeInProgress = false;
     bool bootToWrittenSet = false;
+    bool restartCalled = false;
     bool writeOutsideImageOccurred = false;
     bool failWritesEnabled = false;
     size_t failFromOffset = 0;

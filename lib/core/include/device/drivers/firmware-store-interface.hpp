@@ -47,6 +47,10 @@ public:
     virtual bool setBootToWritten() = 0;
     /// Confirms the running image so the bootloader stops treating it as pending.
     virtual void confirmRunningImage() = 0;
+    /// Restarts the device. The spec's commit-and-rollback requirement is "set the boot
+    /// partition, then restart" — nothing else in the tree can do this, so it lives here
+    /// rather than a second platform seam.
+    virtual void restart() = 0;
 
     /// Lowest firmware generation this device will accept.
     virtual uint8_t getMinGeneration() const = 0;
