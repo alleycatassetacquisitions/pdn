@@ -58,31 +58,22 @@ public:
     /// Length of the image configured via setRunningImage.
     size_t getRunningImageLength() const override { return runningImage.size(); }
 
-    /// Fails if the requested range falls outside the running image plus
-    /// its trailer. A real running partition is one contiguous flash
-    /// region, so a read starting past getRunningImageLength() reaches the
-    /// trailer the same way it reaches the image: through this call, not a
-    /// separate accessor.
+    /// Fails if the requested range falls outside the running image.
     bool readRunningImage(size_t offset, uint8_t* out, size_t length) const override {
-        const size_t total = runningImage.size() + runningTrailer.size();
-        if (offset > total || length > total - offset) {
+        if (offset > runningImage.size() || length > runningImage.size() - offset) {
             return false;
         }
-        size_t pos = offset;
-        size_t remaining = length;
-        if (pos < runningImage.size()) {
-            const size_t fromImage = std::min(remaining, runningImage.size() - pos);
-            std::copy(runningImage.begin() + static_cast<std::ptrdiff_t>(pos),
-                      runningImage.begin() + static_cast<std::ptrdiff_t>(pos + fromImage), out);
-            out += fromImage;
-            pos += fromImage;
-            remaining -= fromImage;
+        std::copy(runningImage.begin() + static_cast<std::ptrdiff_t>(offset),
+                  runningImage.begin() + static_cast<std::ptrdiff_t>(offset + length), out);
+        return true;
+    }
+
+    /// Fails if `length` exceeds the trailer configured via setRunningTrailer.
+    bool readRunningTrailer(uint8_t* out, size_t length) const override {
+        if (length > runningTrailer.size()) {
+            return false;
         }
-        if (remaining > 0) {
-            const size_t trailerOffset = pos - runningImage.size();
-            std::copy(runningTrailer.begin() + static_cast<std::ptrdiff_t>(trailerOffset),
-                      runningTrailer.begin() + static_cast<std::ptrdiff_t>(trailerOffset + remaining), out);
-        }
+        std::copy(runningTrailer.begin(), runningTrailer.begin() + static_cast<std::ptrdiff_t>(length), out);
         return true;
     }
 
@@ -126,8 +117,8 @@ public:
     void setInactiveSlotSize(size_t bytes) { inactiveSlotSize = bytes; }
     /// Seeds the bytes readRunningImage and getRunningImageLength serve.
     void setRunningImage(const std::vector<uint8_t>& bytes) { runningImage = bytes; }
-    /// Seeds the bytes readRunningImage serves past getRunningImageLength():
-    /// the signer cert and image signature a seed reads before offering.
+    /// Seeds the bytes readRunningTrailer serves: the signer cert and image
+    /// signature a seed reads before offering.
     void setRunningTrailer(const std::vector<uint8_t>& bytes) { runningTrailer = bytes; }
     /// Makes writeAt fail for any offset at or past `offset`, simulating a
     /// flash write fault partway through an image.

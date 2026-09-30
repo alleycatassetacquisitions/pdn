@@ -213,17 +213,26 @@ bool FirmwareUpdateManager::beginSeeding() {
 
     seedImageLength = firmwareStore->getRunningImageLength();
 
-    // The trailer (signer cert, then image signature) sits in flash
-    // immediately past the declared image, so it is read through the same
-    // primitive that reads the image itself rather than a dedicated
-    // accessor.
-    const size_t trailerOffset = seedImageLength;
-    if (!firmwareStore->readRunningImage(trailerOffset, reinterpret_cast<uint8_t*>(&seedCert), sizeof(seedCert)) ||
-        !firmwareStore->readRunningImage(trailerOffset + sizeof(seedCert), seedImageSignature,
-                                         sizeof(seedImageSignature))) {
+    FirmwareTrailer trailer{};
+    if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer))) {
         LOG_E(TAG, "beginSeeding: could not read the running image's trailer");
         return false;
     }
+    // An unsigned or unprovisioned device must not broadcast garbage
+    // credentials: the magic catches an absent/blank trailer, and the
+    // length catches one signed for a different build than what's running.
+    if (trailer.magic != FIRMWARE_TRAILER_MAGIC) {
+        LOG_E(TAG, "beginSeeding: trailer magic mismatch; device is unsigned or unprovisioned");
+        return false;
+    }
+    if (static_cast<size_t>(trailer.imageLength) != seedImageLength) {
+        LOG_E(TAG, "beginSeeding: trailer imageLength %u does not match the running image (%zu)",
+              trailer.imageLength, seedImageLength);
+        return false;
+    }
+
+    seedCert = trailer.cert;
+    std::memcpy(seedImageSignature, trailer.imageSignature, FIRMWARE_SIG_LENGTH);
 
     seedChunkCount =
         static_cast<uint16_t>((seedImageLength + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE);
@@ -278,8 +287,12 @@ void FirmwareUpdateManager::sendOffer() {
     offer.cert = seedCert;
     std::memcpy(offer.imageSignature, seedImageSignature, FIRMWARE_SIG_LENGTH);
 
-    peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
-                        reinterpret_cast<const uint8_t*>(&offer), sizeof(offer));
+    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
+                                           reinterpret_cast<const uint8_t*>(&offer), sizeof(offer));
+    if (result != 0) {
+        LOG_E(TAG, "sendOffer: sendData refused the frame (%d); retrying next sync()", result);
+        return;  // sendInFlight stays false: nothing was queued, so no report will ever arrive for it
+    }
     sendInFlight = true;
 }
 
@@ -300,8 +313,12 @@ void FirmwareUpdateManager::sendNextChunk() {
         return;  // sendInFlight stays false; sync() retries this same index next tick
     }
 
-    peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
-                        sizeof(FirmwareChunkHeader) + length);
+    const int result = peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
+                                           sizeof(FirmwareChunkHeader) + length);
+    if (result != 0) {
+        LOG_E(TAG, "sendNextChunk: sendData refused chunk %u (%d); retrying next sync()", index, result);
+        return;  // seedNextChunkIndex not advanced, sendInFlight stays false: nothing was queued
+    }
     seedNextChunkIndex++;
     sendInFlight = true;
 }

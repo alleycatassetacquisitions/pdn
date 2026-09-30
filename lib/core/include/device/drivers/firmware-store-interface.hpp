@@ -27,6 +27,10 @@ public:
     virtual size_t getRunningImageLength() const = 0;
     /// Reads `length` bytes at `offset` from the currently running image.
     virtual bool readRunningImage(size_t offset, uint8_t* out, size_t length) const = 0;
+    /// Reads the trailer appended after the running image's declared length. Separate
+    /// from readRunningImage because the trailer is credentials, not image bytes, and a
+    /// caller must not have to know where one ends to find the other.
+    virtual bool readRunningTrailer(uint8_t* out, size_t length) const = 0;
     /// Reads back what was written to the inactive slot, so a caller can verify the
     /// assembled image against its expected hash before booting it. Chunks arrive out
     /// of order, so the image cannot be hashed as it is written.

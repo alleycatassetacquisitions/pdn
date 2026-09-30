@@ -192,3 +192,16 @@ struct FirmwareCompletePayload {
     /// FirmwareResult: OK or error code.
     uint8_t result;
 } __attribute__((packed));
+
+/// Appended after the image's declared length by the signing script. The ESP image
+/// loader ignores bytes past that length, so a device carries its own credentials
+/// in the partition it runs from.
+struct FirmwareTrailer {
+    SignerCert cert;
+    uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
+    uint32_t imageLength;
+    uint32_t magic;
+} __attribute__((packed));
+
+/// Identifies a well-formed trailer. "ODNP" little-endian.
+constexpr uint32_t FIRMWARE_TRAILER_MAGIC = 0x504E444F;
