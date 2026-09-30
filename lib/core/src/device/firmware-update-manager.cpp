@@ -731,13 +731,18 @@ void FirmwareUpdateManager::sendOffer() {
 }
 
 bool FirmwareUpdateManager::sendFrame(const uint8_t* data, size_t length, const char* what) {
+    // Latched before the call, never after: the driver may report this frame's
+    // completion before sendData returns, and an assignment afterwards would
+    // overwrite that report's clear. Nothing else can reopen the slot, so the
+    // gate would stay shut for the rest of the boot.
+    sendInFlight = true;
     const int result =
         peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, data, length);
     if (result != 0) {
+        sendInFlight = false;  // nothing was queued, so no send report will ever arrive to clear it
         LOG_E(TAG, "%s: sendData refused the frame (%d); retrying next sync()", what, result);
-        return false;  // nothing was queued, so no send report will ever arrive for it
+        return false;
     }
-    sendInFlight = true;
     return true;
 }
 
