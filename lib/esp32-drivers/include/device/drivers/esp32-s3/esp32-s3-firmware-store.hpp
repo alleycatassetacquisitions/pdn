@@ -4,11 +4,16 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
-#include <Preferences.h>
 
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-types.hpp"
+#include "device/drivers/storage-interface.hpp"
 #include "device/drivers/logger.hpp"
+
+/// NVS namespace holding this device's generation floor. Registered on the
+/// shared Esp32S3PrefsDriver at construction (src/pdn/main.cpp,
+/// src/fdn/main.cpp), which throws on any namespace it was not given.
+inline constexpr const char FIRMWARE_STORE_NVS_NAMESPACE[] = "fw-store";
 
 /// FirmwareStoreInterface over the ESP32-S3's OTA partitions (esp_ota_*
 /// against ota_0/ota_1) and NVS (the generation floor). The only
@@ -17,9 +22,11 @@
 /// header's own contract, so it builds and runs in the native test suite too.
 class Esp32S3FirmwareStore : public FirmwareStoreInterface {
 public:
-    /// Resolves the running and inactive OTA partitions and opens this
-    /// device's generation-floor NVS namespace.
-    Esp32S3FirmwareStore() {
+    /// Resolves the running and inactive OTA partitions. `storage` is the
+    /// shared NVS driver the generation floor lives in; the caller owns it
+    /// and it must outlive this store.
+    explicit Esp32S3FirmwareStore(StorageInterface* storage)
+        : storage(storage) {
         runningPartition = esp_ota_get_running_partition();
         updatePartition = esp_ota_get_next_update_partition(nullptr);
         if (updatePartition != nullptr && updatePartition->size != OTA_PARTITION_SIZE) {
@@ -30,15 +37,13 @@ public:
             // can catch that drift.
             LOG_E(TAG, "OTA partition is %u bytes, code assumes %zu", updatePartition->size, OTA_PARTITION_SIZE);
         }
-        prefs.begin(FIRMWARE_STORE_NVS_NAMESPACE, /*readOnly=*/false);
     }
 
-    /// Aborts any write left open and closes the NVS namespace.
+    /// Aborts any write left open.
     ~Esp32S3FirmwareStore() override {
         if (writeOpen) {
             esp_ota_abort(otaHandle);
         }
-        prefs.end();
     }
 
     /// Erases the inactive OTA partition for `length` bytes plus headroom for
@@ -181,11 +186,15 @@ public:
     void restart() override { esp_restart(); }
 
     /// Reads the generation floor from NVS; 0 (accept everything) if never set.
-    uint8_t getMinGeneration() const override { return prefs.getUChar(MIN_GENERATION_KEY, 0); }
+    uint8_t getMinGeneration() const override {
+        return storage->readUChar(FIRMWARE_STORE_NVS_NAMESPACE, MIN_GENERATION_KEY, 0);
+    }
 
     /// Persists the generation floor to NVS so it survives a reboot —
     /// revocation only works if the floor a device refuses below is durable.
-    void setMinGeneration(uint8_t generation) override { prefs.putUChar(MIN_GENERATION_KEY, generation); }
+    void setMinGeneration(uint8_t generation) override {
+        storage->writeUChar(FIRMWARE_STORE_NVS_NAMESPACE, MIN_GENERATION_KEY, generation);
+    }
 
 private:
     // Walks the running image's own header exactly as the ROM bootloader
@@ -222,8 +231,9 @@ private:
     }
 
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
-    static constexpr const char* FIRMWARE_STORE_NVS_NAMESPACE = "fw-store";
     static constexpr const char* MIN_GENERATION_KEY = "minGen";
+
+    StorageInterface* storage = nullptr;
 
     const esp_partition_t* runningPartition = nullptr;
     const esp_partition_t* updatePartition = nullptr;
@@ -232,6 +242,4 @@ private:
 
     mutable bool runningImageLengthComputed = false;
     mutable size_t cachedRunningImageLength = 0;
-
-    mutable Preferences prefs;
 };
