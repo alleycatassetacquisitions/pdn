@@ -57,6 +57,15 @@ constexpr unsigned long RECEIVE_STALL_TIMEOUT_MS = 10000;
 // it is what makes the rollback window mean anything.
 constexpr int COMPLETE_SEND_ATTEMPTS = 5;
 
+// Minimum gap between two offer signature verifications. An OFFER is
+// unauthenticated until one runs, and one costs two software P-256 verifies
+// (~100ms each on the S3, which has no ECC accelerator) on the main loop
+// while exec() drains the whole receive queue per tick, so a flood of forged
+// offers would otherwise own the device. Matched to SEED_OFFER_INTERVAL_MS:
+// an honest seed repeats its offer once a second, so an offer dropped inside
+// the gap is re-announced rather than lost.
+constexpr unsigned long OFFER_VERIFY_MIN_INTERVAL_MS = 1000;
+
 bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
     return (bitmap[index / 8] & (1 << (index % 8))) != 0;
 }
@@ -260,7 +269,15 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
 
     // Cheapest checks first: two P-256 verifies cost ~100ms+ on the S3, and
     // ESP-NOW handlers run on the main loop, so only an offer surviving the
-    // checks above reaches the curve operations.
+    // checks above reaches the curve operations. Every check above is also
+    // forgeable, so surviving them is not evidence of anything — hence the
+    // rate limit: at most one verification per interval, whoever sent it.
+    if (offerVerifyTimer.isRunning() && !offerVerifyTimer.expired()) {
+        LOG_D(TAG, "an offer arrived inside the verification rate limit; dropped");
+        return;
+    }
+    offerVerifyTimer.setTimer(OFFER_VERIFY_MIN_INTERVAL_MS);
+
     const FirmwareResult result = verifyOffer(offer, rootPublicKey, firmwareStore->getMinGeneration());
     if (result != FirmwareResult::OK) {
         LOG_E(TAG, "offer failed verification (%d)", static_cast<int>(result));

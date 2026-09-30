@@ -236,6 +236,11 @@ private:
     // onPoll, fired by sync() once it expires.
     SimpleTimer statusReplyTimer;
 
+    // Rate limiter on offer signature verification, which is the first
+    // expensive thing an unauthenticated OFFER can make this device do.
+    // Armed whenever a verification runs, whatever its result.
+    SimpleTimer offerVerifyTimer;
+
     // Deadline on a transfer making progress, not on its total length: armed
     // when an offer is accepted and re-armed by every chunk that lands, so a
     // slow-but-healthy image is never cut off while an abandoned one still
