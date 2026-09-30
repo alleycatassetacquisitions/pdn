@@ -145,3 +145,42 @@ TEST(FirmwareRepairTest, aSecondSeedFixtureWithoutASharedClockFailsLoudly) {
         },
         "already installed");
 }
+
+TEST(FirmwareRepairTest, aFinishedTransferSendsNoStaleStatus) {
+    // The poll answer is deferred behind a random delay, so a transfer can
+    // conclude while one is still counting down. The seed folds whatever a
+    // STATUS reports into its repair set, so a bitmap from a transfer that
+    // has already ended would ask it to resend gaps nobody is waiting for.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE] = {0};
+    f.deliverChunk(0, body, sizeof(body));
+    f.manager->onPoll(f.pollForCurrentImage());
+    f.deliverChunk(1, body, sizeof(body));
+    f.deliverChunk(2, body, sizeof(body));
+    f.deliverChunk(3, body, /*length=*/800);  // fills the bitmap: the transfer concludes here
+
+    f.advance(600);
+    f.manager->sync();  // flushes COMPLETE
+    f.manager->onSendReport(true);
+    f.manager->sync();
+
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::STATUS), 0);
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 1);
+}
+
+TEST(FirmwareRepairTest, anAbortedReceiveSendsNoStaleStatus) {
+    // Same stale reply, reached the other way: the device becomes ineligible
+    // and sync() aborts the receive with a poll answer still pending.
+    FirmwareReceiverFixture f;
+    f.beginReceivingPartial();
+    f.manager->onPoll(f.pollForCurrentImage());
+    f.setEligible(false);
+    f.manager->sync();
+    ASSERT_FALSE(f.manager->isReceiving());
+
+    f.advance(600);
+    f.manager->sync();
+
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::STATUS), 0);
+}
