@@ -22,7 +22,8 @@ public:
 
     /// Capacity of the slot not currently running, in bytes.
     virtual size_t getInactiveSlotSize() const = 0;
-    /// Length in bytes of the currently running image.
+    /// Length in bytes of the currently running image's declared payload,
+    /// excluding any trailer (cert/signature) appended after it.
     virtual size_t getRunningImageLength() const = 0;
     /// Reads `length` bytes at `offset` from the currently running image.
     virtual bool readRunningImage(size_t offset, uint8_t* out, size_t length) const = 0;
