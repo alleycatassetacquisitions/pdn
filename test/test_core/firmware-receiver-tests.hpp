@@ -735,3 +735,25 @@ TEST(FirmwareReceiverTest, anHonestChunkOverwritesAShortForgery) {
     EXPECT_EQ(f.store.slot()[3 * FirmwareReceiverFixture::CHUNK_SIZE - 1], 0xAB)
         << "the honest chunk's tail must land, not just its head";
 }
+
+TEST(FirmwareReceiverTest, offerVerificationIsRateLimited) {
+    // Everything onOffer checks before the signature is cheap and forgeable,
+    // so without a limit each forged OFFER buys ~200ms of curve arithmetic on
+    // the main loop. The first offer here fails verification, which leaves the
+    // receive phase idle and the limiter armed; the honest offer behind it is
+    // dropped until the interval passes, and the seed's next rebroadcast
+    // lands.
+    FirmwareReceiverFixture f;
+    FirmwareOfferPayload forged = f.signedOffer(5000, 4);
+    forged.imageSignature[0] = static_cast<uint8_t>(forged.imageSignature[0] ^ 0xFF);
+    f.manager->onOffer(SEED_MAC, forged);
+    ASSERT_FALSE(f.manager->isReceiving());
+
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    EXPECT_FALSE(f.manager->isReceiving()) << "a second verification inside the interval must not run";
+    EXPECT_EQ(f.store.beginWriteCalls(), 0);
+
+    f.advance(1001);
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    EXPECT_TRUE(f.manager->isReceiving()) << "the limit must lift, not lock the device out";
+}
