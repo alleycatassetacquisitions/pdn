@@ -44,6 +44,11 @@ public:
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onStateLoop(Device *PDN) override;
 
+    /// The firmware-update manager this Quickdraw owns, so main.cpp's loop()
+    /// can pump its sync() whatever app is active. Null when constructed
+    /// without a firmware store (the headless simulator).
+    FirmwareUpdateManager* getFirmwareUpdateManager();
+
 private:
     void onChainStateChanged();
 

@@ -82,9 +82,10 @@ public:
     /// Sends the next frame once the radio has cleared the last one: an
     /// OFFER when the one-second cadence has elapsed, otherwise the next
     /// unstreamed chunk. The only place a frame is sent, and the only place
-    /// the post-commit restart fires from; must be pumped every tick
-    /// regardless of game state, since receiving an offer is passive and not
-    /// tied to any one state.
+    /// the post-commit restart fires from. Pumped from src/pdn/main.cpp's
+    /// loop(): receiving an offer is passive, and Device::loop() dispatches
+    /// onStateLoop to the active app alone, so anything pumped from a state
+    /// machine stops being serviced the moment another app takes over.
     void sync();
 
     /// Routes a raw radio frame to onOffer/onChunk/onPoll/onStatus, validating
