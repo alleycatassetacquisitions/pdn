@@ -28,9 +28,10 @@ public:
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           const uint8_t* rootPublicKey, std::function<bool()> isEligible, DeviceType deviceType);
 
-    /// Evaluates an announced image. Ignores it outright if it matches the
-    /// running image or the image already being collected, or if a commit
-    /// is waiting to restart; otherwise, once it verifies and fits the
+    /// Evaluates an announced image. Ignores it outright unless the receive
+    /// side is idle — a transfer in progress, a queued completion report and
+    /// a pending post-commit restart are all one phase check — or if it
+    /// matches the running image; otherwise, once it verifies and fits the
     /// inactive slot, opens the slot for the declared length and starts
     /// collecting chunks.
     void onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer);
@@ -97,6 +98,31 @@ public:
     void onPacketReceived(const uint8_t* src, const uint8_t* data, size_t length);
 
 private:
+    // Stage of an inbound transfer. Linear, and the receive side is only ever
+    // in one of these: an accepted offer moves IDLE -> RECEIVING, a full
+    // bitmap moves RECEIVING -> REPORTING whether the commit passed or
+    // failed, and REPORTING ends at RESTARTING (commit passed, report
+    // shipped) or back at IDLE (commit failed). completeResult, not a phase,
+    // says which.
+    enum class ReceivePhase : uint8_t {
+        IDLE = 0,
+        RECEIVING = 1,
+        REPORTING = 2,
+        RESTARTING = 3,
+    };
+
+    // Stage of the run this device is distributing. Also linear:
+    // beginSeeding moves IDLE -> STREAMING, the last streamed chunk moves
+    // STREAMING -> POLLING, a POLL whose window found gaps moves POLLING ->
+    // REPAIRING, and a resend round ends back at POLLING. A round that finds
+    // nothing missing, or one whose gap set stops shrinking, ends at IDLE.
+    enum class SeedPhase : uint8_t {
+        IDLE = 0,
+        STREAMING = 1,
+        POLLING = 2,
+        REPAIRING = 3,
+    };
+
     // Trampoline for the driver's packet callback; forwards straight to
     // onPacketReceived.
     static void dispatchPacket(const uint8_t* src, const uint8_t* data, size_t length, void* ctx);
@@ -126,8 +152,8 @@ private:
     // aborts the write and queues why for sendComplete.
     void evaluateCommit();
     // Sends completeResult behind the same single-frame-in-flight gate as
-    // every other outbound frame; queued by evaluateCommit via
-    // completePending rather than called directly.
+    // every other outbound frame; reached from sync() while the receive
+    // phase is REPORTING rather than called by evaluateCommit directly.
     void sendComplete(FirmwareResult result);
 
     // Drives the seed's state once its initial broadcast has streamed every
@@ -155,14 +181,14 @@ private:
     FirmwareStoreInterface* firmwareStore;
     const uint8_t* rootPublicKey;
     // Gates onOffer: consulted before anything else, including the
-    // restartPending/deviceType/geometry guards below.
+    // phase/deviceType/geometry guards below.
     std::function<bool()> isEligible;
     // This device's own build; onOffer refuses any offer whose deviceType
     // field does not match, and sendOffer stamps outgoing offers with it.
     DeviceType deviceType;
     uint32_t rngState;
 
-    bool receiving = false;
+    ReceivePhase receivePhase = ReceivePhase::IDLE;
     uint16_t chunkCount = 0;
     uint16_t chunkSize = 0;
     uint16_t receivedChunkCount = 0;
@@ -180,18 +206,10 @@ private:
     // image once that passes.
     FirmwareOfferPayload acceptedOffer = {};
 
-    // Set by evaluateCommit, sent from sync() like every other outbound
-    // frame once whichever frame is already in flight clears.
-    bool completePending = false;
+    // What REPORTING reports: set by evaluateCommit, read by sendComplete
+    // when sync() flushes the report, and the difference between a REPORTING
+    // that ends at RESTARTING and one that ends back at IDLE.
     FirmwareResult completeResult = FirmwareResult::OK;
-
-    // Set by evaluateCommit on a successful commit: the spec requires a
-    // restart after setting the boot partition, or the confirm timer armed
-    // at the next boot never means anything. onOffer checks this too, so a
-    // repeat OFFER arriving before the restart fires cannot reopen the slot
-    // that was just verified and pointed at. Fired from sync(), after
-    // completePending, so COMPLETE is handed to the radio first.
-    bool restartPending = false;
 
     bool runningImageHashComputed = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};
@@ -201,10 +219,10 @@ private:
     // onPoll, fired by sync() once it expires.
     SimpleTimer statusReplyTimer;
 
-    // Kept separate from the receiving fields above: a device offering its
-    // own image and collecting someone else's at the same time must not have
-    // one role's beginSeeding corrupt the other's in-progress geometry.
-    bool seeding = false;
+    // Kept separate from the receive fields above: a device offering its own
+    // image and collecting someone else's at the same time must not have one
+    // role's beginSeeding corrupt the other's in-progress geometry.
+    SeedPhase seedPhase = SeedPhase::IDLE;
     bool sendInFlight = false;
     uint16_t seedChunkCount = 0;
     uint16_t seedNextChunkIndex = 0;
@@ -230,8 +248,10 @@ private:
     uint8_t lastRepairSet[FIRMWARE_BITMAP_BYTES] = {};
     bool haveLastRepairSet = false;
     int identicalRepairRounds = 0;
-    bool pollSentForRound = false;
-    bool repairRoundReady = false;
     uint16_t repairCursor = 0;
+    // Running means this round's POLL is out and its replies are still being
+    // collected; POLLING with it stopped means the POLL has yet to be
+    // queued. Invalidated on every entry into POLLING so a previous round's
+    // expired window cannot resolve the next one before its POLL goes out.
     SimpleTimer pollWindowTimer;
 };
