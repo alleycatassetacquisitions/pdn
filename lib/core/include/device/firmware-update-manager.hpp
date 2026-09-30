@@ -23,7 +23,8 @@ public:
     /// never even evaluated unless it returns true (e.g. idle, no cable,
     /// no match in progress). deviceType is this device's own build
     /// (Device::getDeviceType()); onOffer refuses any offer built for a
-    /// different one, and beginSeeding stamps outgoing offers with it.
+    /// different one, and sendOffer stamps it onto every outgoing offer —
+    /// beginSeeding's first broadcast and every rebroadcast after it.
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           const uint8_t* rootPublicKey, std::function<bool()> isEligible, DeviceType deviceType);
 
@@ -54,8 +55,9 @@ public:
     /// reply heard, not a per-device ledger.
     void onStatus(const FirmwareStatusPayload& status);
 
-    /// True once an offer has been accepted. Cleared when the image commits, or
-    /// when the device becomes ineligible mid-transfer and sync() aborts it.
+    /// True once an offer has been accepted. Cleared as soon as collection
+    /// ends, whether the commit that follows passes or fails, and when the
+    /// device becomes ineligible mid-transfer and sync() aborts it.
     bool isReceiving() const;
 
     /// Count of distinct chunk indices written so far.

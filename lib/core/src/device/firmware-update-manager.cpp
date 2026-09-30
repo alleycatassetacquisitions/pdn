@@ -14,9 +14,9 @@ namespace {
 constexpr const char* TAG = "FirmwareUpdate";
 
 // Bytes per chunk the seed streams at. Fixed rather than negotiated: the
-// build-time signer signs imageSha256|imageLength|chunkSize|chunkCount, so
-// the device must reproduce the exact chunkSize/chunkCount the signature
-// covers rather than choosing one at runtime.
+// build-time signer signs imageSha256|imageLength|chunkSize|chunkCount|
+// deviceType, so the device must reproduce the exact chunkSize/chunkCount
+// the signature covers rather than choosing one at runtime.
 constexpr uint16_t SEED_CHUNK_SIZE = 1400;
 
 // OTA_PARTITION_SIZE (firmware-store-interface.hpp) is the partitions.csv
