@@ -87,7 +87,7 @@ FirmwareResult verifyOffer(const FirmwareOfferPayload& offer, const uint8_t* roo
         LOG_E(TAG, "cert generation below the device floor");
         return FirmwareResult::STALE_CERT;
     }
-    // The signed span is imageSha256|imageLength|chunkSize|chunkCount — the
+    // The signed span is imageSha256|imageLength|chunkSize|chunkCount|deviceType — the
     // field's own contract in peer-comms-types.hpp — so a relay cannot
     // rewrite the declared length or chunk framing once the image is
     // signed; binding just the hash would leave those free to tamper with.

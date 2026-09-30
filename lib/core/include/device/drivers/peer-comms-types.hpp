@@ -145,9 +145,13 @@ struct FirmwareOfferPayload {
     uint16_t chunkSize;
     /// Number of chunks; at most FIRMWARE_MAX_CHUNKS.
     uint16_t chunkCount;
+    /// DeviceType (device-type.hpp) this image is built to run on. Falls inside the
+    /// signed span below, so a relay cannot retarget a correctly-signed image at a
+    /// device type its signer never intended.
+    uint8_t deviceType;
     /// Delegation cert and root signature.
     SignerCert cert;
-    /// Signature over imageSha256|imageLength|chunkSize|chunkCount.
+    /// Signature over imageSha256|imageLength|chunkSize|chunkCount|deviceType.
     uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
     /// Image version string.
     char version[FIRMWARE_LABEL_LENGTH];

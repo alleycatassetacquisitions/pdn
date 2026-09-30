@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace {
 
@@ -108,10 +109,13 @@ void hashRange(FirmwareStoreInterface* firmwareStore,
 
 FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms,
                                              FirmwareStoreInterface* firmwareStore,
-                                             const uint8_t* rootPublicKey)
+                                             const uint8_t* rootPublicKey, std::function<bool()> isEligible,
+                                             DeviceType deviceType)
     : peerComms(peerComms)
     , firmwareStore(firmwareStore)
     , rootPublicKey(rootPublicKey)
+    , isEligible(std::move(isEligible))
+    , deviceType(deviceType)
     , rngState(seedFromMac(peerComms->getMacAddress())) {
     peerComms->setPacketHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchPacket, this);
     peerComms->setSendStatusHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchSendStatus, this);
@@ -186,6 +190,16 @@ uint32_t FirmwareUpdateManager::nextRandomUint32() {
 
 void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer) {
     (void)fromMac;  // nothing unicasts a reply to the seed yet
+
+    if (!isEligible()) {
+        return;  // not idle, cabled, or mid-match: don't even look at the offer
+    }
+
+    if (static_cast<DeviceType>(offer.deviceType) != deviceType) {
+        LOG_E(TAG, "offer targets device type %d, this device is %d", offer.deviceType,
+              static_cast<int>(deviceType));
+        return;  // a correctly-signed offer for another device type must still be refused
+    }
 
     if (restartPending) {
         return;  // already committed and about to restart; do not re-erase a verified slot
@@ -616,6 +630,7 @@ void FirmwareUpdateManager::sendOffer() {
     offer.imageLength = static_cast<uint32_t>(seedImageLength);
     offer.chunkSize = SEED_CHUNK_SIZE;
     offer.chunkCount = seedChunkCount;
+    offer.deviceType = static_cast<uint8_t>(deviceType);
     offer.cert = seedCert;
     std::memcpy(offer.imageSignature, seedImageSignature, FIRMWARE_SIG_LENGTH);
 

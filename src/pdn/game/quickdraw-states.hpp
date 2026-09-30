@@ -46,6 +46,7 @@ enum QuickdrawStateId {
     // in parallel with shootout taking 22-27; they were renumbered here on merge.
     SYMBOL = 28,
     SYMBOL_MATCHED = 29,
+    FIRMWARE_UPDATE = 30,
 };
 
 class Sleep : public TypedState<PDN> {
@@ -99,6 +100,9 @@ public:
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
+    /// True once the secondary button's DURING_LONG_PRESS callback has
+    /// observed FIRMWARE_UPDATE_HOLD_MS of hold time.
+    bool transitionToFirmwareUpdate() const;
 
 private:
     Player *player;
@@ -117,6 +121,16 @@ private:
     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
 
     bool transitionToSymbolState = false;
+
+    // Raw signal from the secondary button's DURING_LONG_PRESS callback;
+    // promoted to transitionToFirmwareUpdateState in onStateLoop per the
+    // state-machine pattern, rather than set directly from the callback.
+    bool secondaryHeldForFirmwareUpdate = false;
+    bool transitionToFirmwareUpdateState = false;
+    // Set in onStateMounted so the button callback (which only receives
+    // `this` as its void* context) can reach the button driver.
+    PDN* cachedPdn = nullptr;
+    static constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
     // void serialEventCallbacks(const std::string& message);
 };
@@ -228,6 +242,7 @@ private:
 };
 
 class ShootoutManager;
+class FirmwareUpdateManager;
 
 class Duel : public ConnectState<PDN> {
 public:
@@ -583,4 +598,29 @@ private:
 
     void renderSymbolScreen(PDN* pdn);
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
+};
+
+class FirmwareUpdate : public TypedState<PDN> {
+public:
+    /// Renders seed progress. Does not own firmwareUpdateManager: Quickdraw
+    /// constructs it once and pumps its sync() every tick regardless of
+    /// state, since a device can be passively receiving without ever
+    /// mounting this state.
+    explicit FirmwareUpdate(FirmwareUpdateManager* firmwareUpdateManager);
+
+    /// Starts distributing this device's own running image.
+    void onStateMounted(PDN* pdn) override;
+    /// Watches for the seed run to end, one way or another.
+    void onStateLoop(PDN* pdn) override;
+    /// Resets the transition flag; the seed run itself is owned by
+    /// firmwareUpdateManager, not this state, so there's nothing else to
+    /// tear down here.
+    void onStateDismounted(PDN* pdn) override;
+
+    /// True once beginSeeding's run is no longer streaming or repairing.
+    bool transitionToIdle();
+
+private:
+    FirmwareUpdateManager* firmwareUpdateManager;
+    bool transitionToIdleState = false;
 };

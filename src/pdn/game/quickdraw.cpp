@@ -2,24 +2,42 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/firmware-root-key.hpp"
+#include "device/firmware-update-manager.hpp"
 #include <array>
 #include <cstring>
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore)
+    : StateMachine(QUICKDRAW_APP_ID)
+    , wirelessManager(pdn->getWirelessManager())
+    , storageManager(pdn->getStorage())
+    , peerComms(pdn->getPeerComms())
+    , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator()) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
-    this->storageManager = PDN->getStorage();
-    this->peerComms = PDN->getPeerComms();
-    this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
     this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
     this->shootoutManager_->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager_);
+
+    // Idle alone doesn't rule out a cable: a device can sit in Idle with a
+    // peer chained for the whole match, so both conditions are checked
+    // separately rather than folded into one state check.
+    this->firmwareUpdateManager = new FirmwareUpdateManager(
+        peerComms, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
+        [this]() {
+            State* current = getCurrentState();
+            bool idle = current != nullptr && current->getStateId() == IDLE;
+            bool cableConnected =
+                remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
+                remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
+            return idle && !cableConnected;
+        },
+        pdn->getDeviceType());
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
     matchManager->setBoostProvider([this]() -> unsigned long {
@@ -130,6 +148,10 @@ void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* d
 
 void Quickdraw::onStateLoop(Device *PDN) {
     if (chainDuelManager) chainDuelManager->sync();
+    // Pumped unconditionally, not from the FirmwareUpdate state: a device
+    // passively receiving an offer while sitting in Idle never mounts that
+    // state, and the post-commit restart only fires from here.
+    if (firmwareUpdateManager) firmwareUpdateManager->sync();
 
     if (chainDuelManager) {
         bool loopNow = chainDuelManager->isLoop();
@@ -283,6 +305,8 @@ Quickdraw::~Quickdraw() {
     chainDuelManager = nullptr;
     delete shootoutManager_;
     shootoutManager_ = nullptr;
+    delete firmwareUpdateManager;
+    firmwareUpdateManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
@@ -321,6 +345,8 @@ void Quickdraw::populateStateMap() {
 
     SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
     SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
+
+    FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(firmwareUpdateManager);
 
     // --- Transitions from PlayerRegistration app ---
     playerRegistration->addTransition(
@@ -589,6 +615,17 @@ void Quickdraw::populateStateMap() {
             std::bind(&SymbolMatched::transitionToIdle, symbolMatched),
             idle));
 
+    // --- Firmware update transitions ---
+    idle->addTransition(
+        new StateTransition(
+            [idle]() { return idle->transitionToFirmwareUpdate(); },
+            firmwareUpdate));
+
+    firmwareUpdate->addTransition(
+        new StateTransition(
+            [firmwareUpdate]() { return firmwareUpdate->transitionToIdle(); },
+            idle));
+
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerRegistration);
     stateMap.push_back(awakenSequence);
@@ -611,4 +648,5 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(shAborted);
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
+    stateMap.push_back(firmwareUpdate);
 }
