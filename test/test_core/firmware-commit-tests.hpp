@@ -63,6 +63,31 @@ TEST(FirmwareCommitTest, committedDeviceIgnoresARepeatOfferForTheSameImage) {
     EXPECT_TRUE(f.store.bootSet());
 }
 
+TEST(FirmwareCommitTest, anOfferIsRefusedWhileACompletionReportIsStillQueued) {
+    // A failed commit leaves receiving false and restartPending unset, so
+    // nothing else stops an offer arriving before sync() flushes the report:
+    // it would overwrite the hash sendComplete has yet to read, and the
+    // failure would go out named after an image that never failed.
+    FirmwareReceiverFixture f;
+    f.receiveCompleteImageWithOneCorruptChunk(/*flushComplete=*/false);
+    ASSERT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 0);
+
+    f.manager->onOffer(SEED_MAC, f.signedOfferForImage(f.imageBytes()));
+
+    EXPECT_FALSE(f.manager->isReceiving());
+    EXPECT_EQ(f.store.beginWriteCalls(), 1) << "an offer must not reopen the slot behind a pending report";
+
+    f.manager->sync();
+    ASSERT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 1);
+    EXPECT_EQ(f.lastResult(), FirmwareResult::BAD_HASH);
+
+    const std::vector<uint8_t> failedImage = f.commitImageBytes();
+    uint8_t failedHash[FIRMWARE_SHA256_LENGTH];
+    sha256(failedImage.data(), failedImage.size(), failedHash);
+    EXPECT_EQ(std::memcmp(f.comms.lastCompleteImageHash(), failedHash, FIRMWARE_SHA256_LENGTH), 0)
+        << "COMPLETE must name the image that actually failed";
+}
+
 TEST(FirmwareCommitTest, committedDeviceRestarts) {
     // The spec requires a restart after setting the boot partition, or the
     // confirm timer armed at the next boot never arms anything.
