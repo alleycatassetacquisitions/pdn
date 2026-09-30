@@ -77,6 +77,9 @@ public:
         if (length >= sizeof(FirmwareChunkHeader) && data[0] == static_cast<uint8_t>(FirmwareCmd::CHUNK)) {
             chunkIndices.insert(reinterpret_cast<const FirmwareChunkHeader*>(data)->index);
         }
+        if (reportTarget != nullptr) {
+            reportTarget->onSendReport(true);
+        }
         return 0;
     }
 
@@ -95,6 +98,11 @@ public:
     /// the frame, then reverts to succeeding.
     void refuseNextSend() { refuseNext = true; }
 
+    /// Makes every sendData call from here on report completion to `manager`
+    /// before it returns — the radio's callback landing inside the send call
+    /// rather than after it, which is what the real driver can do.
+    void reportFromInsideSend(FirmwareUpdateManager* manager) { reportTarget = manager; }
+
 private:
     int totalSent = 0;
     std::array<int, 5> commandCounts{};
@@ -102,6 +110,7 @@ private:
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0};
     bool refuseNext = false;
+    FirmwareUpdateManager* reportTarget = nullptr;
 };
 
 /// Shared by the seed suite: a manager wired to a fake flash slot holding a
@@ -404,4 +413,19 @@ TEST(FirmwareSeedTest, aFailureReportFreesTheSendSlot) {
     f.manager->onSendReport(false);
     f.manager->sync();
     EXPECT_EQ(f.comms.sentCount(), afterFirst + 1) << "a failure report must free the send slot";
+}
+
+TEST(FirmwareSeedTest, aReportLandingInsideTheSendDoesNotWedgeTheSlot) {
+    // The driver's send-status callback can run before sendData returns. An
+    // in-flight flag latched after that call would overwrite the report's
+    // clear, and no later report exists to free the slot: the seed would sit
+    // on UPDATING until it was power-cycled.
+    FirmwareSeedFixture f;
+    f.comms.reportFromInsideSend(f.manager);
+    f.manager->beginSeeding();
+    const int afterFirst = f.comms.sentCount();
+
+    f.manager->sync();  // no report from outside the send at all
+
+    EXPECT_EQ(f.comms.sentCount(), afterFirst + 1) << "the send slot never reopened";
 }
