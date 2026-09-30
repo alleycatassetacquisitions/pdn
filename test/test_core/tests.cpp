@@ -11,6 +11,7 @@
 #include "firmware-wire-tests.hpp"
 #include "firmware-verify-tests.hpp"
 #include "firmware-receiver-tests.hpp"
+#include "firmware-seed-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
