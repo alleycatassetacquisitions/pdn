@@ -391,3 +391,17 @@ TEST(FirmwareSeedTest, aRefusedSendIsRetriedNotWedged) {
     f.manager->sync();  // sendInFlight stayed false, so this retries
     EXPECT_EQ(f.comms.sentCount(), 2) << "the seed must retry a refused send, not wedge";
 }
+
+TEST(FirmwareSeedTest, aFailureReportFreesTheSendSlot) {
+    // The radio reports failure once its retries run out, and that report is
+    // the only thing that can free the slot: the IDF gives the callback no
+    // frame identity, so nothing may time the slot out instead. A seed that
+    // treated failure as "still in flight" would sit on UPDATING until it was
+    // power-cycled.
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    const int afterFirst = f.comms.sentCount();
+    f.manager->onSendReport(false);
+    f.manager->sync();
+    EXPECT_EQ(f.comms.sentCount(), afterFirst + 1) << "a failure report must free the send slot";
+}

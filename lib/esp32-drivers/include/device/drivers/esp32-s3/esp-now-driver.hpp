@@ -147,7 +147,7 @@ public:
 
         if(willNeedToStartSend)
         {
-            SendFrontPkt();
+            return SendFrontPkt();
         }
         return 0;
     }
@@ -397,6 +397,10 @@ private:
                 if(m_curRetries >= m_maxRetries)
                 {
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
+                    // The send callback never runs for a frame esp_now_send would not
+                    // take, so this is the only place a caller waiting on delivery can
+                    // be told. Before MoveToNextSendPkt: it reads the front of the queue.
+                    DispatchSendStatus(false);
                     MoveToNextSendPkt();
                     SendFrontPkt();
                     //TODO: Return correct error code
