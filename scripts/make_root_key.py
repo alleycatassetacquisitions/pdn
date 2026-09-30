@@ -16,13 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from firmware_signing_io import SigningInputError, write_new_file  # noqa: E402
-
-
-def refuse_if_under_repo(path):
-    resolved = pathlib.Path(path).resolve()
-    if resolved == REPO_ROOT or REPO_ROOT in resolved.parents:
-        raise SystemExit(f"refusing to write key material under the repo: {resolved}")
+from firmware_signing_io import SigningInputError, refuse_if_under_repo, write_new_file  # noqa: E402
 
 
 def format_c_array(public_key_bytes):

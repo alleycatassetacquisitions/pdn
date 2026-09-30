@@ -8,12 +8,20 @@ Centralizes the two ways this tooling can fail badly and silently:
   - A generated key or cert landing world-readable, or a root key generation
     silently clobbering an existing one.
 
+It also holds the raw P-256 signing the device verifies against, and the
+refusal to write key material inside the working tree.
+
 Used by make_root_key.py, issue_signer_cert.py, and sign_firmware.py so
 there is exactly one implementation of each, not one per script.
 """
 import os
+import pathlib
 
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 class SigningInputError(Exception):
@@ -70,3 +78,19 @@ def write_new_file(path, data):
         raise SigningInputError(f"refusing to overwrite existing file: {path}") from None
     with os.fdopen(fd, "wb") as f:
         f.write(data)
+
+
+def refuse_if_under_repo(path):
+    """Refuses a destination inside the working tree. Key material committed
+    by accident cannot be un-leaked, so the check is on the write, not on the
+    operator remembering."""
+    resolved = pathlib.Path(path).resolve()
+    if resolved == REPO_ROOT or REPO_ROOT in resolved.parents:
+        raise SystemExit(f"refusing to write key material under the repo: {resolved}")
+
+
+def sign_raw(private_key, data):
+    """Raw P-256 R||S over SHA-256(data) — never DER, matching verifyP256."""
+    der_sig = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
+    r, s = decode_dss_signature(der_sig)
+    return r.to_bytes(32, "big") + s.to_bytes(32, "big")

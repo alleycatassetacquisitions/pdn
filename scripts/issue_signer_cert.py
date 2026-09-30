@@ -21,11 +21,17 @@ import sys
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature, encode_dss_signature
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from firmware_signing_io import SigningInputError, load_private_key_from_file, write_new_file  # noqa: E402
+from firmware_signing_io import (  # noqa: E402
+    SigningInputError,
+    load_private_key_from_file,
+    refuse_if_under_repo,
+    sign_raw,
+    write_new_file,
+)
 
 KEY_ID_LENGTH = 4
 PUBLIC_KEY_LENGTH = 64
@@ -35,22 +41,9 @@ UNSIGNED_CERT_LENGTH = KEY_ID_LENGTH + 1 + PUBLIC_KEY_LENGTH + LABEL_LENGTH  # 8
 CERT_LENGTH = UNSIGNED_CERT_LENGTH + SIG_LENGTH  # 149
 
 
-def refuse_if_under_repo(path):
-    resolved = pathlib.Path(path).resolve()
-    if resolved == REPO_ROOT or REPO_ROOT in resolved.parents:
-        raise SystemExit(f"refusing to write key material under the repo: {resolved}")
-
-
 def public_key_raw(private_key):
     numbers = private_key.public_key().public_numbers()
     return numbers.x.to_bytes(32, "big") + numbers.y.to_bytes(32, "big")
-
-
-def sign_raw(private_key, data):
-    """Raw P-256 R||S over SHA-256(data) — never DER, matching verifyP256."""
-    der_sig = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
-    r, s = decode_dss_signature(der_sig)
-    return r.to_bytes(32, "big") + s.to_bytes(32, "big")
 
 
 def verify_raw(public_key_raw_bytes, data, signature):

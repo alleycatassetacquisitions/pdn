@@ -25,8 +25,6 @@ import struct
 import sys
 
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 try:
     Import("env")  # noqa: F821  (PlatformIO injects this; SCons execs the script, so
@@ -37,7 +35,12 @@ except NameError:
 
 REPO_ROOT = pathlib.Path(env["PROJECT_DIR"]) if env is not None else pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from firmware_signing_io import SigningInputError, load_private_key_from_file, read_bytes_or_die  # noqa: E402
+from firmware_signing_io import (  # noqa: E402
+    SigningInputError,
+    load_private_key_from_file,
+    read_bytes_or_die,
+    sign_raw,
+)
 
 CERT_LENGTH = 149  # keyId[4] + generation:u8 + publicKey[64] + label[16] + rootSignature[64]
 
@@ -70,13 +73,6 @@ def read_trailer_magic():
 def read_device_type(name):
     path = REPO_ROOT / "lib/core/include/device/device-type.hpp"
     return int(_extract(rf"\b{name}\s*=\s*(\d+)", path, f"DeviceType::{name}"))
-
-
-def sign_raw(private_key, data):
-    """Raw P-256 R||S over SHA-256(data) — never DER, matching verifyP256."""
-    der_sig = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
-    r, s = decode_dss_signature(der_sig)
-    return r.to_bytes(32, "big") + s.to_bytes(32, "big")
 
 
 def signed_span(image_bytes, device_type, chunk_size=None):
