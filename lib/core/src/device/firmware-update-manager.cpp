@@ -44,6 +44,13 @@ constexpr unsigned long STATUS_BACKOFF_CEILING_MS = 500;
 // never end the run, so the seed gives up on it instead.
 constexpr int REPAIR_STALL_ROUNDS = 3;
 
+// How long a receive may go without a chunk landing before its seed counts
+// as gone. Measured from the last chunk accepted, never from the offer: a
+// 2.68MB image is ~1900 chunks of streaming plus however many repair rounds
+// the run needs, so a cap on the total would cut off a slow-but-healthy
+// transfer. Ten seconds of silence is a seed that died, not a slow one.
+constexpr unsigned long RECEIVE_STALL_TIMEOUT_MS = 10000;
+
 bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
     return (bitmap[index / 8] & (1 << (index % 8))) != 0;
 }
@@ -200,7 +207,9 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
     // whatever image a later one carries — two seeds on different builds both
     // repeat OFFER once a second, and reopening the slot for each would mean a
     // multi-second blocking erase every second with neither transfer ever
-    // finishing. REPORTING: sendComplete reads currentImageHash when sync()
+    // finishing — and a receive whose seed goes silent ends on
+    // receiveDeadlineTimer, so losing a seed is not a lockout for the boot.
+    // REPORTING: sendComplete reads currentImageHash when sync()
     // flushes the report, so accepting here would make that report name the
     // new image while carrying the old transfer's result code. RESTARTING:
     // the slot is verified and already the boot target; re-erasing it would
@@ -261,6 +270,12 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
     writeFailed = false;
     acceptedOffer = offer;  // re-verified at commit time; its cert/signature seed the trailer written past the image
     receivePhase = ReceivePhase::RECEIVING;
+    receiveDeadlineTimer.setTimer(RECEIVE_STALL_TIMEOUT_MS);
+}
+
+void FirmwareUpdateManager::abortReceive() {
+    firmwareStore->abortWrite();
+    receivePhase = ReceivePhase::IDLE;
 }
 
 void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uint8_t* data) {
@@ -285,6 +300,7 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
 
     setBitmapBit(header.index);
     receivedChunkCount++;
+    receiveDeadlineTimer.setTimer(RECEIVE_STALL_TIMEOUT_MS);  // progress, so the deadline moves with it
     if (receivedChunkCount == chunkCount) {
         evaluateCommit();
     }
@@ -508,10 +524,18 @@ void FirmwareUpdateManager::sync() {
     // device someone is using. No resume: the seed repeats OFFER for the
     // whole run, so an eligible-again device rejoins at the next one on its
     // own.
-    if (receivePhase == ReceivePhase::RECEIVING && !isEligible()) {
-        LOG_E(TAG, "eligibility lost mid-transfer; aborting the receive");
-        firmwareStore->abortWrite();
-        receivePhase = ReceivePhase::IDLE;
+    if (receivePhase == ReceivePhase::RECEIVING) {
+        if (!isEligible()) {
+            LOG_E(TAG, "eligibility lost mid-transfer; aborting the receive");
+            abortReceive();
+        } else if (receiveDeadlineTimer.expired()) {
+            // The seed stopped sending. Without this the phase would hold
+            // RECEIVING for the rest of the boot, refusing every later offer
+            // while sitting on a partial image and an open write.
+            LOG_E(TAG, "no chunk for %lu ms with %u of %u landed; abandoning the receive",
+                  RECEIVE_STALL_TIMEOUT_MS, receivedChunkCount, chunkCount);
+            abortReceive();
+        }
     }
 
     if (sendInFlight) {
