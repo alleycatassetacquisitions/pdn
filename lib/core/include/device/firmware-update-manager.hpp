@@ -84,8 +84,11 @@ public:
     bool beginSeeding();
 
     /// Reports what the radio did with the last frame this manager sent for
-    /// kFirmwareUpdate. Clears the in-flight gate either way: a lost frame
-    /// is the repair loop's job, not a per-frame retry here.
+    /// kFirmwareUpdate. Clears the in-flight gate either way, and no frame is
+    /// resent on the strength of a failure: a lost CHUNK is the repair loop's
+    /// job, a lost STATUS is re-answered at the seed's next POLL, and a lost
+    /// COMPLETE is not recovered at all — nothing in the fleet decodes it,
+    /// and the restart sequenced behind it must not wait on it.
     void onSendReport(bool success);
 
     /// True once beginSeeding has armed streaming.
