@@ -75,3 +75,29 @@ TEST(FirmwareCommitTest, committedDeviceRestarts) {
 
     EXPECT_TRUE(f.store.didRestart());
 }
+
+TEST(FirmwareCommitTest, commitRaisesTheStoredGenerationFloor) {
+    // Revocation is by generation: taking an image signed under a higher one
+    // is what retires the certificates below it. Without this the floor stays
+    // at its NVS default for the life of the device and a leaked signer key
+    // never expires.
+    FirmwareReceiverFixture f;
+    ASSERT_EQ(f.store.getMinGeneration(), 0);
+
+    f.receiveCompleteValidImage();  // the fixture signs its offers at generation 1
+
+    ASSERT_TRUE(f.store.bootSet());
+    EXPECT_EQ(f.store.getMinGeneration(), 1);
+}
+
+TEST(FirmwareCommitTest, anOfferBelowTheStoredFloorIsRefused) {
+    // The other half of revocation: once the floor has risen, a certificate
+    // under it buys nothing, so the leaked signer's offers open no slot.
+    FirmwareReceiverFixture f;
+    f.store.setMinGeneration(2);
+
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
+
+    EXPECT_FALSE(f.manager->isReceiving());
+    EXPECT_EQ(f.store.beginWriteCalls(), 0);
+}
