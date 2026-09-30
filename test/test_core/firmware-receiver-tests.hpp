@@ -614,3 +614,40 @@ TEST(FirmwareReceiverTest, aWellFormedChunkFrameLandsViaTheWirePath) {
     EXPECT_EQ(f.manager->receivedCount(), 1);
     EXPECT_EQ(f.store.slot()[1 * 1400], 0xEF);
 }
+
+TEST(FirmwareReceiverTest, anAbandonedReceiveEndsAndTheNextOfferIsAccepted) {
+    // A seed that dies mid-transfer used to leave the receiver holding a
+    // partial image and an open write for the rest of the boot, refusing
+    // every later offer.
+    FirmwareReceiverFixture f;
+    f.beginReceivingPartial();
+    ASSERT_TRUE(f.manager->isReceiving());
+
+    f.advance(10001);
+    f.manager->sync();
+
+    EXPECT_FALSE(f.manager->isReceiving());
+    EXPECT_TRUE(f.store.slot().empty()) << "the write must be aborted, not left open";
+
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    EXPECT_TRUE(f.manager->isReceiving());
+    EXPECT_EQ(f.store.beginWriteCalls(), 2);
+}
+
+TEST(FirmwareReceiverTest, aSlowButProgressingReceiveIsNotAbandoned) {
+    // The deadline is on progress, not on elapsed time: this transfer runs
+    // nearly three times the deadline without ever going quiet for it.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE] = {0};
+    for (uint16_t index = 0; index < 3; index++) {
+        f.advance(9000);
+        f.manager->sync();
+        ASSERT_TRUE(f.manager->isReceiving()) << "cut off before chunk " << index;
+        f.deliverChunk(index, body, sizeof(body));
+    }
+    f.advance(9000);
+    f.manager->sync();
+    EXPECT_TRUE(f.manager->isReceiving());
+    EXPECT_EQ(f.manager->receivedCount(), 3);
+}

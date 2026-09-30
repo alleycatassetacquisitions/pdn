@@ -57,8 +57,9 @@ public:
     void onStatus(const FirmwareStatusPayload& status);
 
     /// True once an offer has been accepted. Cleared as soon as collection
-    /// ends, whether the commit that follows passes or fails, and when the
-    /// device becomes ineligible mid-transfer and sync() aborts it.
+    /// ends, whether the commit that follows passes or fails, when the
+    /// device becomes ineligible mid-transfer and sync() aborts it, and when
+    /// no chunk has landed for long enough that the seed is gone.
     bool isReceiving() const;
 
     /// Count of distinct chunk indices written so far.
@@ -146,6 +147,10 @@ private:
     // cursor they advance once it is queued.
     bool sendChunkAt(uint16_t index, const char* what);
 
+    // Discards an in-progress receive and returns the phase to IDLE, so the
+    // next offer heard can open the slot again. The caller logs why.
+    void abortReceive();
+
     // Runs once the receive bitmap is full: hashes the assembled image,
     // checks it against the offer, re-verifies the offer's signature chain,
     // writes the trailer, and only then marks the slot bootable. Any failure
@@ -218,6 +223,13 @@ private:
     // hearing the same POLL doesn't reply in the same instant; armed by
     // onPoll, fired by sync() once it expires.
     SimpleTimer statusReplyTimer;
+
+    // Deadline on a transfer making progress, not on its total length: armed
+    // when an offer is accepted and re-armed by every chunk that lands, so a
+    // slow-but-healthy image is never cut off while an abandoned one still
+    // ends. Read only while the phase is RECEIVING, and every entry into
+    // RECEIVING re-arms it, so it needs no invalidation on the way out.
+    SimpleTimer receiveDeadlineTimer;
 
     // Kept separate from the receive fields above: a device offering its own
     // image and collecting someone else's at the same time must not have one
