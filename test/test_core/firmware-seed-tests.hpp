@@ -44,11 +44,20 @@ private:
 class SeedComms : public NiceMock<MockPeerComms> {
 public:
     /// Stubs getGlobalBroadcastAddress so the destination sendData is given
-    /// is a valid pointer rather than NiceMock's default nullptr.
+    /// is a valid pointer rather than NiceMock's default nullptr, and
+    /// getMacAddress so FirmwareUpdateManager's constructor (which seeds its
+    /// per-device PRNG from it) has a real 6 bytes to fold rather than a
+    /// null deref.
     SeedComms() {
         ON_CALL(*this, getGlobalBroadcastAddress())
             .WillByDefault(Invoke([this]() -> const uint8_t* { return broadcastAddress; }));
+        ON_CALL(*this, getMacAddress()).WillByDefault(Invoke([this]() -> uint8_t* { return selfMac; }));
     }
+
+    /// Overwrites the MAC getMacAddress() reports; must be called before the
+    /// FirmwareUpdateManager under test is constructed, since it reads this
+    /// only once, at construction.
+    void setMacAddress(const uint8_t mac[6]) { std::memcpy(selfMac, mac, 6); }
 
     /// Real behavior rather than a MOCK_METHOD: records every send so a
     /// pacing test can assert counts without an EXPECT_CALL per frame.
@@ -90,6 +99,7 @@ private:
     std::array<int, 5> commandCounts{};
     std::set<uint16_t> chunkIndices;
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0};
     bool refuseNext = false;
 };
 
