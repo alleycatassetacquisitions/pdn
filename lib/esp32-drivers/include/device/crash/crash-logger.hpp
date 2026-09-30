@@ -57,7 +57,8 @@ struct CrashPacket {
 /**
  * Captures and persists crash records across reboots, then transmits when wireless is up.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized; call transmitPending() after ESP-NOW is ready; poll serial in loop().
+ * storage is initialized; poll serial and call transmitPending() in loop(), which waits
+ * for the radio itself and offers each pending record once per boot.
  */
 class CrashLogger {
 public:
@@ -81,6 +82,24 @@ public:
         , useHttp(false)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
+        // A record counts as sent when the radio reports its frame, not when the
+        // frame is offered. A queued frame can still be discarded — a WiFi excursion
+        // drops the driver's queue — so marking records as they are queued would
+        // retire ones that never reached the air.
+        espNowDriver->setSendStatusHandler(
+            PktType::kCrashLog,
+            [](const uint8_t*, const uint8_t* data, const size_t length,
+               bool success, void* ctx) {
+                if (!success || ctx == nullptr || length != sizeof(CrashPacket)) return;
+                CrashPacket reported{};
+                memcpy(&reported, data, sizeof(reported));
+                CrashLogger* self = static_cast<CrashLogger*>(ctx);
+                // sentSeq is a high-water mark, so only ever move it forward.
+                if (reported.crashNumber > self->readSentSeq()) {
+                    self->writeSentSeq(reported.crashNumber);
+                }
+            },
+            this);
     }
 
     /// Records the last reset if it was not a clean one. Runs once; safe to
@@ -125,9 +144,18 @@ public:
         return readSentSeq() < readCrashSeq();
     }
 
-    /// Sends the outstanding record, if any, over whichever transport this
-    /// logger was built with. Call once the transport is ready.
+    /// Offers every unreported record once per boot. Call each tick: nothing can
+    /// add a record after capture(), so the first pass with the radio up is the
+    /// only one that has anything to do. A record the radio never reports stays
+    /// pending and goes out on the next boot, which is the retry.
     void transmitPending() {
+        if (offeredThisBoot) return;
+        // A send offered while the radio is down is accepted by the driver's queue
+        // and then dropped with no report, so the one pass has to wait for the radio
+        // rather than be spent against it.
+        if (espNowDriver != nullptr &&
+            espNowDriver->getPeerCommsState() != PeerCommsState::CONNECTED) return;
+        offeredThisBoot = true;
         if (!hasPending()) return;
         useHttp ? transmitHttp() : transmitEspNow();
     }
@@ -301,6 +329,7 @@ private:
 
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
+    bool offeredThisBoot = false;
 
     bool isCleanReason(esp_reset_reason_t reason) const {
         return reason == ESP_RST_POWERON
@@ -311,21 +340,13 @@ private:
             || reason == ESP_RST_JTAG;
     }
 
-    uint32_t readCrashSeq() const {
-        return readUint32Pref(SEQ_KEY);
-    }
+    uint32_t readCrashSeq() const { return readUint32Pref(SEQ_KEY); }
 
-    uint32_t readSentSeq() const {
-        return readUint32Pref(SENT_SEQ_KEY);
-    }
+    uint32_t readSentSeq() const { return readUint32Pref(SENT_SEQ_KEY); }
 
-    void writeCrashSeq(uint32_t value) {
-        writeUint32Pref(SEQ_KEY, value);
-    }
+    void writeCrashSeq(uint32_t value) { writeUint32Pref(SEQ_KEY, value); }
 
-    void writeSentSeq(uint32_t value) {
-        writeUint32Pref(SENT_SEQ_KEY, value);
-    }
+    void writeSentSeq(uint32_t value) { writeUint32Pref(SENT_SEQ_KEY, value); }
 
     uint32_t readUint32Pref(const char* key) const {
         std::string s = prefsDriver->read(CRASH_LOG_NAMESPACE, std::string(key), "0");
@@ -439,7 +460,6 @@ private:
             );
 
             if (result == 0) {
-                writeSentSeq(n);
                 LOG_I(CRASH_LOG_TAG, "Queued crash #%lu for broadcast", static_cast<unsigned long>(n));
             } else {
                 LOG_E(CRASH_LOG_TAG, "Failed to queue crash #%lu — will retry on next boot",

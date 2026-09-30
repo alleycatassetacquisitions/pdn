@@ -183,7 +183,6 @@ void setup() {
 
     crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
     crashLogger->capture();
-    crashLogger->transmitPending();
 
     gameSession = new GameSession(player, pdn, quickdrawWirelessManager, symbolWirelessManager);
 
@@ -214,8 +213,10 @@ void setup() {
 }
 
 void loop() {
-    if (crashLogger != nullptr) {
-        crashLogger->pollSerialCommand();
-    }
+    if (crashLogger != nullptr) crashLogger->pollSerialCommand();
     pdn->loop();
+    // After the device loop, so the one offer per boot runs with exec() having
+    // pumped the radio at least once: the channel pin is retried from there, and a
+    // frame sent before it lands goes out where nobody is listening.
+    if (crashLogger != nullptr) crashLogger->transmitPending();
 }
