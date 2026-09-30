@@ -64,6 +64,7 @@ namespace QuickdrawRequests {
             path,
             "GET",
             "",
+            "",
             onSuccess,
             onError
         );
@@ -86,6 +87,7 @@ namespace QuickdrawRequests {
         HttpRequest request(
             path,
             "GET",
+            "",
             "",
             [onSuccess, onError](const std::string& response) {
                 PlayerResponse playerResponse;
@@ -118,6 +120,7 @@ namespace QuickdrawRequests {
         HttpRequest request(
             "/api/matches",
             "PUT",
+            "application/json",
             matchesJson,
             onSuccess,
             onError
