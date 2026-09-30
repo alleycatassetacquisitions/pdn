@@ -43,10 +43,12 @@ public:
     void onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer);
 
     /// Writes one chunk into the open slot at its declared index. Drops it
-    /// if no offer is open, the index is out of range for it, or that index
-    /// already landed. Once every index has landed, hashes the assembled
-    /// image, re-verifies the offer it was accepted under, writes the
-    /// trailer, and commits — or reports why it did not.
+    /// if no offer is open, or if its index or declared length is out of
+    /// range for that offer; an index that already landed is written again,
+    /// so honest bytes can replace a forgery, but counts no further
+    /// progress. Once every index has landed, hashes the assembled image,
+    /// re-verifies the offer it was accepted under, writes the trailer, and
+    /// commits — or reports why it did not.
     void onChunk(const FirmwareChunkHeader& header, const uint8_t* data);
 
     /// A seed asking who's still missing chunks for `poll`'s image. Ignored
