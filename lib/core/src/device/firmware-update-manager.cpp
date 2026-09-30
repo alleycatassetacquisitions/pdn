@@ -44,12 +44,6 @@ constexpr unsigned long STATUS_BACKOFF_CEILING_MS = 500;
 // never end the run, so the seed gives up on it instead.
 constexpr int REPAIR_STALL_ROUNDS = 3;
 
-// How long a successful commit waits before restarting. Long enough for
-// sync() to hand the COMPLETE report to the radio first (one call, well
-// under this), short enough that the device is not left sitting on a
-// verified-but-unbooted image any longer than it has to be.
-constexpr unsigned long RESTART_DELAY_MS = 500;
-
 bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
     return (bitmap[index / 8] & (1 << (index % 8))) != 0;
 }
@@ -383,7 +377,6 @@ void FirmwareUpdateManager::evaluateCommit() {
     // hash cannot change without one, so nothing else stops a repeat OFFER
     // from reopening this slot (the restartPending guard in onOffer does).
     restartPending = true;
-    restartTimer.setTimer(RESTART_DELAY_MS);
 }
 
 void FirmwareUpdateManager::onPoll(const FirmwarePollPayload& poll) {
@@ -547,11 +540,11 @@ void FirmwareUpdateManager::sync() {
         return;
     }
 
-    // Ordered after completePending: COMPLETE must have been handed to the
-    // radio before the device restarts out from under it. Not gated on
-    // onSendReport ever arriving for it — only on the local enqueue having
-    // succeeded, which is what clears completePending.
-    if (restartPending && restartTimer.expired()) {
+    // Ordered after completePending, and behind the sendInFlight gate above:
+    // COMPLETE must have been handed to the radio and reported on before the
+    // device restarts out from under it. No delay of its own — that ordering
+    // is the whole guarantee a timer here could offer.
+    if (restartPending) {
         // esp_restart() does not return, so clearing this matters only for a store
         // whose restart() does — without it such a store would be restarted every tick.
         restartPending = false;

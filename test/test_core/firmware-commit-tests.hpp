@@ -95,7 +95,6 @@ TEST(FirmwareCommitTest, committedDeviceRestarts) {
     f.receiveCompleteValidImage();
     ASSERT_FALSE(f.store.didRestart());
 
-    f.advance(600);
     f.manager->sync();
 
     EXPECT_TRUE(f.store.didRestart());
