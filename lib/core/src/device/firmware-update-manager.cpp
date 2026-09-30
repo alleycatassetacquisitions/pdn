@@ -10,7 +10,7 @@
 
 namespace {
 
-const char* TAG = "FirmwareUpdate";
+constexpr const char* TAG = "FirmwareUpdate";
 
 // Bytes per chunk the seed streams at. Fixed rather than negotiated: the
 // build-time signer signs imageSha256|imageLength|chunkSize|chunkCount, so

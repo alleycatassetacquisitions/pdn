@@ -10,7 +10,7 @@
 
 namespace {
 
-const char* TAG = "FirmwareVerify";
+constexpr const char* TAG = "FirmwareVerify";
 
 /// Verifies `signature` (raw R||S, 64 bytes) over SHA-256(`data`, `len`)
 /// under the uncompressed P-256 public key `publicKey` (X||Y, 64 bytes).
