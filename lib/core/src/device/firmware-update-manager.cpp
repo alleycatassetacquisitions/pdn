@@ -12,6 +12,15 @@ namespace {
 
 const char* TAG = "FirmwareUpdate";
 
+// Bytes per chunk the seed streams at. Fixed rather than negotiated: the
+// build-time signer signs imageSha256|imageLength|chunkSize|chunkCount, so
+// the device must reproduce the exact chunkSize/chunkCount the signature
+// covers rather than choosing one at runtime.
+constexpr uint16_t SEED_CHUNK_SIZE = 1400;
+
+// How often the seed re-broadcasts OFFER for the life of a run.
+constexpr unsigned long SEED_OFFER_INTERVAL_MS = 1000;
+
 // Hashes the running image by streaming it through flash in fixed-size
 // chunks rather than buffering the whole thing: a running image can be
 // several megabytes. Called at most once per boot (the caller caches the
@@ -47,6 +56,7 @@ FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms,
     , firmwareStore(firmwareStore)
     , rootPublicKey(rootPublicKey) {
     peerComms->setPacketHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchPacket, this);
+    peerComms->setSendStatusHandler(PktType::kFirmwareUpdate, &FirmwareUpdateManager::dispatchSendStatus, this);
 }
 
 void FirmwareUpdateManager::dispatchPacket(const uint8_t* src, const uint8_t* data, size_t length, void* ctx) {
@@ -194,4 +204,104 @@ bool FirmwareUpdateManager::bitmapBit(uint16_t index) const {
 
 void FirmwareUpdateManager::setBitmapBit(uint16_t index) {
     bitmap[index / 8] |= static_cast<uint8_t>(1 << (index % 8));
+}
+
+bool FirmwareUpdateManager::beginSeeding() {
+    if (seeding) {
+        return false;  // a run is already streaming; let it finish rather than restart mid-image
+    }
+
+    seedImageLength = firmwareStore->getRunningImageLength();
+
+    // The trailer (signer cert, then image signature) sits in flash
+    // immediately past the declared image, so it is read through the same
+    // primitive that reads the image itself rather than a dedicated
+    // accessor.
+    const size_t trailerOffset = seedImageLength;
+    if (!firmwareStore->readRunningImage(trailerOffset, reinterpret_cast<uint8_t*>(&seedCert), sizeof(seedCert)) ||
+        !firmwareStore->readRunningImage(trailerOffset + sizeof(seedCert), seedImageSignature,
+                                         sizeof(seedImageSignature))) {
+        LOG_E(TAG, "beginSeeding: could not read the running image's trailer");
+        return false;
+    }
+
+    seedChunkCount =
+        static_cast<uint16_t>((seedImageLength + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE);
+    seedNextChunkIndex = 0;
+    seeding = true;
+
+    sendOffer();
+    offerTimer.setTimer(SEED_OFFER_INTERVAL_MS);
+    return true;
+}
+
+void FirmwareUpdateManager::onSendReport(bool success) {
+    (void)success;  // any terminal report frees the slot; loss is the repair loop's job, not a retry here
+    sendInFlight = false;
+}
+
+bool FirmwareUpdateManager::isSeeding() const {
+    return seeding;
+}
+
+void FirmwareUpdateManager::sync() {
+    if (!seeding || sendInFlight) {
+        return;  // at most one frame in flight: nothing to do until the radio reports the last one done
+    }
+
+    if (!offerTimer.isRunning() || offerTimer.expired()) {
+        sendOffer();
+        offerTimer.setTimer(SEED_OFFER_INTERVAL_MS);
+        return;
+    }
+
+    if (seedNextChunkIndex < seedChunkCount) {
+        sendNextChunk();
+    }
+}
+
+void FirmwareUpdateManager::dispatchSendStatus(const uint8_t* dstMac, const uint8_t* data, size_t length,
+                                               bool success, void* ctx) {
+    (void)dstMac;
+    (void)data;
+    (void)length;
+    static_cast<FirmwareUpdateManager*>(ctx)->onSendReport(success);
+}
+
+void FirmwareUpdateManager::sendOffer() {
+    FirmwareOfferPayload offer{};
+    offer.command = static_cast<uint8_t>(FirmwareCmd::OFFER);
+    std::memcpy(offer.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH);
+    offer.imageLength = static_cast<uint32_t>(seedImageLength);
+    offer.chunkSize = SEED_CHUNK_SIZE;
+    offer.chunkCount = seedChunkCount;
+    offer.cert = seedCert;
+    std::memcpy(offer.imageSignature, seedImageSignature, FIRMWARE_SIG_LENGTH);
+
+    peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate,
+                        reinterpret_cast<const uint8_t*>(&offer), sizeof(offer));
+    sendInFlight = true;
+}
+
+void FirmwareUpdateManager::sendNextChunk() {
+    const uint16_t index = seedNextChunkIndex;
+    const size_t offset = static_cast<size_t>(index) * SEED_CHUNK_SIZE;
+    const uint16_t length =
+        static_cast<uint16_t>(std::min<size_t>(SEED_CHUNK_SIZE, seedImageLength - offset));
+
+    uint8_t frame[sizeof(FirmwareChunkHeader) + SEED_CHUNK_SIZE];
+    FirmwareChunkHeader* header = reinterpret_cast<FirmwareChunkHeader*>(frame);
+    header->command = static_cast<uint8_t>(FirmwareCmd::CHUNK);
+    header->index = index;
+    header->length = length;
+
+    if (!firmwareStore->readRunningImage(offset, frame + sizeof(FirmwareChunkHeader), length)) {
+        LOG_E(TAG, "sendNextChunk: failed to read the running image at offset %zu", offset);
+        return;  // sendInFlight stays false; sync() retries this same index next tick
+    }
+
+    peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
+                        sizeof(FirmwareChunkHeader) + length);
+    seedNextChunkIndex++;
+    sendInFlight = true;
 }
