@@ -3,6 +3,7 @@
 #include <esp_app_format.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_system.h>
 #include <Preferences.h>
 
 #include "device/drivers/firmware-store-interface.hpp"
@@ -104,8 +105,12 @@ public:
     }
 
     /// Real size of the OTA partition esp_ota_get_next_update_partition
-    /// returned at construction.
-    size_t getInactiveSlotSize() const override { return updatePartition != nullptr ? updatePartition->size : 0; }
+    /// returned at construction, less the trailer's own room: beginWrite
+    /// erases `length + sizeof(FirmwareTrailer)`, so an offer this check
+    /// accepted at the raw partition size would still fail there.
+    size_t getInactiveSlotSize() const override {
+        return updatePartition != nullptr ? updatePartition->size - sizeof(FirmwareTrailer) : 0;
+    }
 
     /// Derived once per boot by walking the running image's own header (see
     /// computeRunningImageLength) and cached from then on: the image cannot
@@ -171,6 +176,9 @@ public:
         }
         esp_ota_mark_app_valid_cancel_rollback();
     }
+
+    /// Restarts the device (esp_restart()); does not return.
+    void restart() override { esp_restart(); }
 
     /// Reads the generation floor from NVS; 0 (accept everything) if never set.
     uint8_t getMinGeneration() const override { return prefs.getUChar(MIN_GENERATION_KEY, 0); }

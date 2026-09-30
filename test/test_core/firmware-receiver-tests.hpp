@@ -266,14 +266,29 @@ public:
         return bytes;
     }
 
+    /// A signed offer for `image`'s real hash, tiled at CHUNK_SIZE — the
+    /// commit path hashes what was actually written, so a commit test needs
+    /// content that matches its own offer, unlike the fixed TEST_IMAGE_SHA
+    /// every other builder here declares without backing bytes. Also what a
+    /// repeat-OFFER test re-announces after a commit.
+    FirmwareOfferPayload signedOfferForImage(const std::vector<uint8_t>& image) {
+        uint8_t hash[FIRMWARE_SHA256_LENGTH];
+        sha256(image.data(), image.size(), hash);
+        const uint16_t chunks = static_cast<uint16_t>((image.size() + CHUNK_SIZE - 1) / CHUNK_SIZE);
+        return buildSignedOffer(hash, static_cast<uint32_t>(image.size()), CHUNK_SIZE, chunks);
+    }
+
     /// Accepts a signed offer for commitImageBytes() and delivers every
     /// chunk with its real content, so the assembled hash matches the
-    /// offer's declared one and the commit path runs to completion.
+    /// offer's declared one and the commit path runs to completion. Confirms
+    /// the COMPLETE send too, so sendInFlight doesn't wedge a later sync()
+    /// call (e.g. one driving the post-commit restart timer) behind it.
     void receiveCompleteValidImage() {
         const std::vector<uint8_t> image = commitImageBytes();
         manager->onOffer(SEED_MAC, signedOfferForImage(image));
         deliverImage(image);
         manager->sync();  // flushes the COMPLETE evaluateCommit queues
+        manager->onSendReport(true);
     }
 
     /// Like receiveCompleteValidImage, but corrupts one byte of what is sent
@@ -365,17 +380,6 @@ private:
             offsetof(FirmwareOfferPayload, cert) - offsetof(FirmwareOfferPayload, imageSha256);
         firmware_test_keys::signRaw(firmware_test_keys::signerKeypair().privateKey, signedStart,
                                     signedLength, offer.imageSignature);
-    }
-
-    // A signed offer for `image`'s real hash, tiled at CHUNK_SIZE — the
-    // commit path hashes what was actually written, so a commit test needs
-    // content that matches its own offer, unlike the fixed TEST_IMAGE_SHA
-    // every other builder here declares without backing bytes.
-    FirmwareOfferPayload signedOfferForImage(const std::vector<uint8_t>& image) {
-        uint8_t hash[FIRMWARE_SHA256_LENGTH];
-        sha256(image.data(), image.size(), hash);
-        const uint16_t chunks = static_cast<uint16_t>((image.size() + CHUNK_SIZE - 1) / CHUNK_SIZE);
-        return buildSignedOffer(hash, static_cast<uint32_t>(image.size()), CHUNK_SIZE, chunks);
     }
 
     // Delivers every chunk of `image`, in order, at CHUNK_SIZE boundaries.
