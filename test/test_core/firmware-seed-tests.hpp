@@ -21,12 +21,13 @@
 using ::testing::Invoke;
 using ::testing::NiceMock;
 
-/// Clock this suite drives by hand so offer cadence can be fast-forwarded
-/// without a real 1Hz wait. Kept local to this file rather than reused from
-/// utility-tests.hpp: this fixture's lifetime owns registering and clearing
-/// SimpleTimer's global clock, and that ownership should not depend on
-/// another test file's class staying available.
-class FakeSeedClock : public PlatformClock {
+/// Clock the firmware-distribution fixtures drive by hand so offer/poll
+/// cadence can be fast-forwarded without a real wait. Shared by
+/// FirmwareSeedFixture and FirmwareReceiverFixture (firmware-receiver-tests.hpp
+/// includes this file for it) rather than duplicated per file: SimpleTimer's
+/// clock is one static pointer, so a two-device test needs both fixtures
+/// driving the *same* concrete clock object, not two independent ones.
+class FakeClock : public PlatformClock {
 public:
     /// Current simulated time in milliseconds.
     unsigned long milliseconds() override { return currentTime; }
@@ -121,9 +122,37 @@ public:
 
     /// Wires a fresh manager to a store already holding a synthetic running
     /// image and a trailer signed for it, and to a comms fake that counts
-    /// sends instead of a gmock-expectation-driven one.
-    FirmwareSeedFixture() {
-        SimpleTimer::setPlatformClock(&clock);
+    /// sends instead of a gmock-expectation-driven one. Installs `clock` as
+    /// SimpleTimer's global clock.
+    FirmwareSeedFixture()
+        : FirmwareSeedFixture(nullptr) {}
+
+    /// Like the default constructor, but drives `sharedClock` (another live
+    /// fixture's `clock`) instead of installing its own — for a test where a
+    /// seed and a receiver are two devices on one timeline, not two
+    /// independent ones racing for SimpleTimer's single global clock.
+    explicit FirmwareSeedFixture(FakeClock* sharedClock) {
+        if (sharedClock != nullptr) {
+            activeClock = sharedClock;
+            ownsClock = false;
+        } else {
+            // SimpleTimer's clock is one static pointer: a second fixture
+            // installing its own here would silently steal this one's
+            // timeline out from under it (and whichever destructs first
+            // would leave the survivor reading a null clock). Loud failure
+            // instead of that.
+            if (SimpleTimer::getPlatformClock() != nullptr) {
+                // Not FAIL(): that macro expands to a `return`, which is not
+                // legal in a constructor. ADD_FAILURE() records the same
+                // failure without one.
+                ADD_FAILURE() << "FirmwareSeedFixture: a clock is already installed by another live "
+                                 "fixture; construct with FirmwareSeedFixture(FakeClock*) sharing that "
+                                 "fixture's clock instead of two independent fixtures";
+            }
+            activeClock = &clock;
+            ownsClock = true;
+            SimpleTimer::setPlatformClock(activeClock);
+        }
 
         std::vector<uint8_t> image(IMAGE_LENGTH);
         for (size_t i = 0; i < image.size(); i++) {
@@ -135,12 +164,20 @@ public:
         manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY);
     }
 
-    /// Frees the manager this fixture owns and un-registers the fake clock
-    /// so it does not outlive this fixture for a later test's SimpleTimer.
+    /// Frees the manager this fixture owns and, only if this fixture
+    /// installed the clock itself (rather than sharing another's), clears
+    /// SimpleTimer's global clock so it does not outlive this fixture.
     ~FirmwareSeedFixture() {
         delete manager;
-        SimpleTimer::setPlatformClock(nullptr);
+        if (ownsClock) {
+            SimpleTimer::setPlatformClock(nullptr);
+        }
     }
+
+    /// This fixture's own clock. Only the active timeline if constructed
+    /// without a shared one — pass `&clock` to another fixture's
+    /// shared-clock constructor to put both devices on this timeline.
+    FakeClock clock;
 
     /// Advances the fake clock in small steps for `ms` milliseconds,
     /// calling sync() each step and immediately confirming whatever it
@@ -149,7 +186,7 @@ public:
     void runSeedFor(unsigned long ms) {
         const unsigned long stepMs = 10;
         for (unsigned long elapsed = 0; elapsed < ms; elapsed += stepMs) {
-            clock.advance(stepMs);
+            activeClock->advance(stepMs);
             manager->sync();
             manager->onSendReport(true);
         }
@@ -165,7 +202,7 @@ public:
     void streamHalfTheChunks() {
         const uint16_t half = static_cast<uint16_t>((IMAGE_LENGTH / CHUNK_SIZE) / 2);
         for (uint16_t i = 0; i < half; i++) {
-            clock.advance(10);
+            activeClock->advance(10);
             manager->sync();
             manager->onSendReport(true);
         }
@@ -180,7 +217,7 @@ public:
     void runRepairRound() {
         comms.resetChunkIndicesSent();
         drainSync();
-        clock.advance(SEED_POLL_WINDOW_MARGIN_MS);
+        activeClock->advance(SEED_POLL_WINDOW_MARGIN_MS);
         drainSync();
     }
 
@@ -243,7 +280,7 @@ private:
         manager->onSendReport(true);
         for (int i = 0; i < 1000; i++) {
             const int before = comms.sentCount();
-            clock.advance(10);
+            activeClock->advance(10);
             manager->sync();
             manager->onSendReport(true);
             if (comms.sentCount() == before) {
@@ -290,7 +327,12 @@ private:
     SignerCert cert = {};
     uint8_t imageSignature[FIRMWARE_SIG_LENGTH] = {};
 
-    FakeSeedClock clock;
+    // The clock this fixture actually drives: &clock when it installed its
+    // own, or another fixture's clock when constructed to share one.
+    // ownsClock says which, so only the fixture that installed a clock
+    // clears it on destruction.
+    FakeClock* activeClock = nullptr;
+    bool ownsClock = false;
 };
 
 TEST(FirmwareSeedTest, holdsOneFrameInFlight) {

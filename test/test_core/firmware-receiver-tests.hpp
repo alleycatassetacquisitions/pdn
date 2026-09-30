@@ -5,6 +5,7 @@
 
 #include "device-mock.hpp"
 #include "fake-firmware-store.hpp"
+#include "firmware-seed-tests.hpp"
 #include "firmware-test-keys.hpp"
 #include "device/firmware-update-manager.hpp"
 #include "device/firmware-verify.hpp"
@@ -27,21 +28,6 @@ using ::testing::NiceMock;
 /// A MAC standing in for the seed device throughout the firmware-distribution
 /// suites.
 inline constexpr uint8_t SEED_MAC[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
-
-/// Clock this suite drives by hand so a receiver's POLL-reply backoff can be
-/// fast-forwarded without a real wait. Duplicated from firmware-seed-tests.hpp's
-/// FakeSeedClock rather than shared: each fixture file owns registering and
-/// clearing SimpleTimer's global clock for its own lifetime.
-class FakeReceiverClock : public PlatformClock {
-public:
-    /// Current simulated time in milliseconds.
-    unsigned long milliseconds() override { return currentTime; }
-    /// Moves the simulated clock forward by `delta` milliseconds.
-    void advance(unsigned long delta) { currentTime += delta; }
-
-private:
-    unsigned long currentTime = 0;
-};
 
 /// Records every frame FirmwareUpdateManager sends, the same way
 /// firmware-seed-tests.hpp's SeedComms does for the seed suite: real
@@ -102,38 +88,44 @@ public:
 
     /// Wires a fresh manager to `comms`/`store`, gives the slot its real
     /// size, and captures the radio callback the manager registers so
-    /// deliverFrame can drive the actual wire-receive path.
+    /// deliverFrame can drive the actual wire-receive path. Installs `clock`
+    /// as SimpleTimer's global clock.
     FirmwareReceiverFixture()
-        : FirmwareReceiverFixture(nullptr) {}
+        : FirmwareReceiverFixture(nullptr, nullptr) {}
 
     /// Like the default constructor, but overrides the MAC getMacAddress()
     /// reports before the manager reads it — for tests comparing two
     /// devices' PRNG state, which is seeded from that MAC.
-    explicit FirmwareReceiverFixture(const uint8_t* mac) {
-        SimpleTimer::setPlatformClock(&clock);
-        if (mac != nullptr) {
-            comms.setMacAddress(mac);
-        }
-        store.setInactiveSlotSize(INACTIVE_SLOT_SIZE);
-        ON_CALL(comms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
-            .WillByDefault(Invoke([this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
-                rawHandler = callback;
-                rawCtx = ctx;
-            }));
-        manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY);
-    }
+    explicit FirmwareReceiverFixture(const uint8_t* mac)
+        : FirmwareReceiverFixture(mac, nullptr) {}
 
-    /// Frees the manager this fixture owns and un-registers the fake clock
-    /// so it does not outlive this fixture for a later test's SimpleTimer.
+    /// Like the default constructor, but drives `sharedClock` (another live
+    /// fixture's `clock`) instead of installing its own — for a test where a
+    /// seed and a receiver are two devices on one timeline, not two
+    /// independent ones racing for SimpleTimer's single global clock.
+    explicit FirmwareReceiverFixture(FakeClock* sharedClock)
+        : FirmwareReceiverFixture(nullptr, sharedClock) {}
+
+    /// Frees the manager this fixture owns and, only if this fixture
+    /// installed the clock itself (rather than sharing another's), clears
+    /// SimpleTimer's global clock so it does not outlive this fixture.
     ~FirmwareReceiverFixture() {
         delete manager;
-        SimpleTimer::setPlatformClock(nullptr);
+        if (ownsClock) {
+            SimpleTimer::setPlatformClock(nullptr);
+        }
     }
 
-    /// Moves the fixture's fake clock forward by `ms` milliseconds, without
-    /// calling sync() — callers drive sync() themselves so they control
-    /// exactly when a deferred send is attempted.
-    void advance(unsigned long ms) { clock.advance(ms); }
+    /// Moves the clock this fixture actually drives forward by `ms`
+    /// milliseconds, without calling sync() — callers drive sync()
+    /// themselves so they control exactly when a deferred send is
+    /// attempted.
+    void advance(unsigned long ms) { activeClock->advance(ms); }
+
+    /// This fixture's own clock. Only the active timeline if constructed
+    /// without a shared one — pass `&clock` to another fixture's
+    /// shared-clock constructor to put both devices on this timeline.
+    FakeClock clock;
 
     /// Accepts a signed offer, then delivers one chunk — a receiver mid-run
     /// with more chunks still missing than landed.
@@ -257,6 +249,42 @@ public:
     FirmwareUpdateManager* manager;
 
 private:
+    // The combined constructor every public overload delegates to.
+    FirmwareReceiverFixture(const uint8_t* mac, FakeClock* sharedClock) {
+        if (sharedClock != nullptr) {
+            activeClock = sharedClock;
+            ownsClock = false;
+        } else {
+            // SimpleTimer's clock is one static pointer: a second fixture
+            // installing its own here would silently steal this one's
+            // timeline out from under it (and whichever destructs first
+            // would leave the survivor reading a null clock). Loud failure
+            // instead of that.
+            if (SimpleTimer::getPlatformClock() != nullptr) {
+                // Not FAIL(): that macro expands to a `return`, which is not
+                // legal in a constructor. ADD_FAILURE() records the same
+                // failure without one.
+                ADD_FAILURE() << "FirmwareReceiverFixture: a clock is already installed by another live "
+                                 "fixture; construct with FirmwareReceiverFixture(FakeClock*) sharing that "
+                                 "fixture's clock instead of two independent fixtures";
+            }
+            activeClock = &clock;
+            ownsClock = true;
+            SimpleTimer::setPlatformClock(activeClock);
+        }
+
+        if (mac != nullptr) {
+            comms.setMacAddress(mac);
+        }
+        store.setInactiveSlotSize(INACTIVE_SLOT_SIZE);
+        ON_CALL(comms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
+            .WillByDefault(Invoke([this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
+                rawHandler = callback;
+                rawCtx = ctx;
+            }));
+        manager = new FirmwareUpdateManager(&comms, &store, TEST_ROOT_PUBLIC_KEY);
+    }
+
     // Builds a signed offer for `hash`, asserting that chunkSizeBytes/chunks
     // actually tile length: a mismatched pair here would silently produce an
     // offer the manager rejects for a reason the test never intended,
@@ -294,7 +322,13 @@ private:
 
     PeerCommsInterface::PacketCallback rawHandler;
     void* rawCtx = nullptr;
-    FakeReceiverClock clock;
+
+    // The clock this fixture actually drives: &clock when it installed its
+    // own, or another fixture's clock when constructed to share one.
+    // ownsClock says which, so only the fixture that installed a clock
+    // clears it on destruction.
+    FakeClock* activeClock = nullptr;
+    bool ownsClock = false;
 };
 
 TEST(FirmwareReceiverTest, offerOpensTheSlotForTheDeclaredLength) {
