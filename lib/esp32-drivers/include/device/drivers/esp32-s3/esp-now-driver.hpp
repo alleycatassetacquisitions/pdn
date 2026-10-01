@@ -95,6 +95,14 @@ public:
             return;
         }
 
+        // The deinit took the IDF callback path with it, so a frame that was in flight
+        // will never report. Dispatch its failure while it is still at the head, where
+        // the handler can be resolved from it, and only then drop the queue: otherwise
+        // a caller waiting on delivery stays latched, and the stale head stops sendData
+        // from ever starting another transmission this boot.
+        DispatchSendStatus(false);
+        clearSendQueue();
+
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
 
@@ -431,6 +439,19 @@ private:
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         transmissionClaimed = false;
         xSemaphoreGive(sendMutex);
+    }
+
+    // Drop every queued frame. Nothing queued here will ever be reported on, so the
+    // frame at the head has to be dispatched before this runs.
+    void clearSendQueue() {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        while (!m_sendQueue.empty()) {
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+        }
+        transmissionClaimed = false;
+        xSemaphoreGive(sendMutex);
+        m_curRetries = 0;
     }
 
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
