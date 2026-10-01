@@ -67,13 +67,16 @@ def is_jtag_port(port_description, vid, pid):
     return False
 
 
+PROBE_TIMEOUT_SECONDS = 20
+
+
 def test_esp32_on_port(port_name):
     """Probe the port with esptool chip-id. Returns (is_esp32: bool, chip_info: str)."""
     for subcmd in ("chip-id", "chip_id"):
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "esptool", "--port", port_name, subcmd],
-                capture_output=True, text=True, timeout=2,
+                _esptool("--port", port_name, subcmd),
+                capture_output=True, text=True, timeout=PROBE_TIMEOUT_SECONDS,
                 encoding="utf-8", errors="replace",
             )
             if result.returncode == 0 and "ESP32" in result.stdout:
@@ -88,8 +91,11 @@ def test_esp32_on_port(port_name):
         except subprocess.TimeoutExpired:
             return False, "Timeout"
         except Exception as exc:
-            return False, str(exc)[:30]
-    return False, ""
+            return False, str(exc)[:60]
+    # Every subcmd failed. Hand back what esptool actually said: a missing
+    # dependency and a device that is not listening look identical otherwise.
+    detail = (result.stderr or result.stdout or "").strip().splitlines()
+    return False, detail[-1][:60] if detail else ""
 
 
 # ---------------------------------------------------------------------------
@@ -115,14 +121,53 @@ def find_boot_app0():
                         "tools", "partitions", "boot_app0.bin")
 
 
-def _esptool(*args):
-    """Return a subprocess arg list that invokes esptool via the current Python interpreter.
+_ESPTOOL_PYTHON = None
 
-    Using sys.executable -m esptool avoids relying on an 'esptool' entry-point
-    on PATH, which on Windows would resolve to esptool.py and trigger an
-    "Open with" dialog if .py files have no shell association.
+
+def _esptool_python():
+    """The first interpreter that can actually import esptool.
+
+    `sys.executable` is not it when PlatformIO's multi_flash target runs this
+    script: that target invokes the system python, which has no esptool. Probing
+    for an interpreter that does beats assuming, because the failure otherwise
+    surfaces as every device reporting "not in bootloader" and sends you looking
+    at the hardware.
     """
-    return [sys.executable, "-m", "esptool"] + list(args)
+    global _ESPTOOL_PYTHON
+    if _ESPTOOL_PYTHON is not None:
+        return _ESPTOOL_PYTHON
+    candidates = [
+        sys.executable,
+        os.path.join(os.path.expanduser("~"), ".platformio", "penv", "bin", "python"),
+        os.path.join(os.path.expanduser("~"), ".platformio", "penv", "Scripts", "python.exe"),
+        "python3",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            probe = subprocess.run([candidate, "-c", "import esptool"],
+                                   capture_output=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if probe.returncode == 0:
+            _ESPTOOL_PYTHON = candidate
+            return candidate
+    raise SystemExit(
+        "no Python interpreter with esptool importable. Tried: "
+        + ", ".join(str(c) for c in candidates)
+        + "\nInstall esptool, or run this through PlatformIO's penv."
+    )
+
+
+def _esptool(*args):
+    """Return a subprocess arg list that invokes esptool.
+
+    Goes through `-m esptool` rather than an 'esptool' entry-point on PATH,
+    which on Windows resolves to esptool.py and opens an "Open with" dialog when
+    .py has no shell association.
+    """
+    return [_esptool_python(), "-m", "esptool"] + list(args)
 
 
 def _run_esptool(port_name, cmd, timeout):
