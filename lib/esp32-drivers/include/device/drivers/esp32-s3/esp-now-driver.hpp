@@ -371,17 +371,19 @@ private:
         }
 
         //TODO: Catch error and do reporting and push to next pkt
+        manager->releaseTransmissionClaim();
         manager->SendFrontPkt();
     }
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
-        if(m_sendQueue.empty()) {
+        if (m_sendQueue.empty() || transmissionClaimed) {
             xSemaphoreGive(sendMutex);
             return 0;
         }
-        auto buffer = m_sendQueue.front();
+        transmissionClaimed = true;
+        DataSendBuffer buffer = m_sendQueue.front();
         xSemaphoreGive(sendMutex);
 
         if (memcmp(buffer.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
@@ -402,6 +404,7 @@ private:
                     // be told. Before MoveToNextSendPkt: it reads the front of the queue.
                     DispatchSendStatus(false);
                     MoveToNextSendPkt();
+                    releaseTransmissionClaim();
                     SendFrontPkt();
                     //TODO: Return correct error code
                     return -1;
@@ -421,6 +424,13 @@ private:
         }
         xSemaphoreGive(sendMutex);
         m_curRetries = 0;
+    }
+
+    // Hand the claim back so the next caller can start a transmission
+    void releaseTransmissionClaim() {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        transmissionClaimed = false;
+        xSemaphoreGive(sendMutex);
     }
 
     int EnsurePeerIsRegistered(const uint8_t* mac_addr) {
@@ -544,6 +554,11 @@ private:
 
     //Packet send queue
     std::queue<DataSendBuffer> m_sendQueue;
+
+    // Set while a frame has been handed to esp_now_send and its completion has not
+    // been reported yet. Guarded by sendMutex: the main loop and the WiFi task both
+    // reach SendFrontPkt, and without the claim both can transmit the same entry.
+    bool transmissionClaimed = false;
 
     //Storage for rssi, which is captured by wifi promiscuous callback
     std::unordered_map<uint64_t, int> m_rssiTracker;
