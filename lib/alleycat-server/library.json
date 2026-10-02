@@ -1,0 +1,5 @@
+{
+  "name": "alleycat-server",
+  "version": "1.0.0",
+  "description": "Alleycat server API — request builders, response parsers, and protobuf encoding"
+}
