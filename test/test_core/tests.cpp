@@ -26,6 +26,7 @@
 #include "reliable-transport-tests.hpp"
 #include "storage-tests.hpp"
 #include "crash-encoder-tests.hpp"
+#include "player-response-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -974,6 +975,22 @@ TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) {
 
 TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
     encoderReturnZeroWhenBufferTooSmall(this);
+}
+
+// ============================================
+// PLAYER RESPONSE (JSON) TESTS
+// ============================================
+
+TEST(PlayerResponse, parsesValidPayload) {
+    playerResponseParsesValidPayload();
+}
+
+TEST(PlayerResponse, rejectsErrorsArray) {
+    playerResponseRejectsErrorsArray();
+}
+
+TEST(PlayerResponse, rejectsMissingData) {
+    playerResponseRejectsMissingData();
 }
 
 // ============================================
