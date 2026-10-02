@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package alleycat.device;
+
+// Request body for POST /device-logs.
+//
+// The server generates:
+// - id
+// - received_at
+message WriteDeviceLogRequest {
+  // Colon-separated 48-bit address, such as "aa:bb:cc:dd:ee:ff".
+  optional string device_mac = 1;
+
+  // Device-assigned crash report number.
+  optional uint64 crash_number = 2;
+
+  // Milliseconds since the device booted\
+  optional uint64 uptime_ms = 3;
+
+  // Firmware/software build identifier.
+  optional string software_version = 4;
+
+  // Raw numeric reset-reason code reported by the device.
+  optional uint32 reset_reason = 5;
+
+  // Address of the instruction being executed when the exception occurred.
+  optional fixed32 program_counter = 6;
+
+  // Raw numeric exception-cause code.
+  optional uint32 exception_cause = 7;
+
+  // FreeRTOS task active when the exception occurred.
+  optional string task_name = 8;
+}

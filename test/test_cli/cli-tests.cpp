@@ -87,6 +87,14 @@ TEST_F(MockHttpServerTestSuite, ClearHistory) {
     httpServerClearHistory(this);
 }
 
+TEST_F(MockHttpServerTestSuite, DeviceLogsReturns204) {
+    httpServerDeviceLogsReturns204(this);
+}
+
+TEST_F(MockHttpServerTestSuite, DeviceLogsEmptyBodyReturns400) {
+    httpServerDeviceLogsEmptyBodyReturns400(this);
+}
+
 // ============================================
 // NATIVE HTTP CLIENT DRIVER TESTS
 // ============================================
@@ -105,6 +113,10 @@ TEST_F(NativeHttpClientDriverTestSuite, TracksHistory) {
 
 TEST_F(NativeHttpClientDriverTestSuite, DisabledMockServerFails) {
     httpClientDisabledMockServerFails(this);
+}
+
+TEST_F(NativeHttpClientDriverTestSuite, UploadsEncodedCrashLog) {
+    httpClientUploadsEncodedCrashLog(this);
 }
 
 // ============================================

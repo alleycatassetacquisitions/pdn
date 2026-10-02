@@ -2,7 +2,6 @@
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
-#include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "PlayerRegistrationState";
