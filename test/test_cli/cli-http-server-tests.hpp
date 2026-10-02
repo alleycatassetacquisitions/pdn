@@ -5,7 +5,10 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <cstring>
 #include "cli/cli-http-server.hpp"
+#include "alleycat-server/crash-encoder.hpp"
+#include "device/crash/crash-record.hpp"
 #include "device/drivers/native/native-http-client-driver.hpp"
 #include "wireless/wireless-types.hpp"
 
@@ -113,6 +116,24 @@ void httpServerClearHistory(MockHttpServerTestSuite* suite) {
     
     suite->server_->clearHistory();
     ASSERT_EQ(suite->server_->getHistory().size(), 0);
+}
+
+// ============================================
+// POST /device-logs TESTS
+// ============================================
+
+void httpServerDeviceLogsReturns204(MockHttpServerTestSuite* suite) {
+    std::string response;
+    int status = suite->server_->handleRequest("POST", "/device-logs", "payload", response);
+
+    ASSERT_EQ(status, 204);
+    ASSERT_TRUE(response.empty());
+}
+
+void httpServerDeviceLogsEmptyBodyReturns400(MockHttpServerTestSuite* suite) {
+    std::string response;
+    int status = suite->server_->handleRequest("POST", "/device-logs", "", response);
+    ASSERT_EQ(status, 400);
 }
 
 // ============================================
@@ -228,7 +249,39 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
     ASSERT_GE(history.size(), 1);
 }
 
-// Test: Client fails when mock server is disabled
+void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
+    CrashRecord rec{};
+    rec.crashNumber = 1;
+    rec.timestamp   = 5000;
+    rec.resetReason   = 4;
+    strncpy(rec.commitHash, "testhash", COMMIT_HASH_LENGTH - 1);
+
+    const uint8_t mac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    uint8_t buf[CrashEncoder::MAX_ENCODED_SIZE];
+    const size_t len = CrashEncoder::encode(rec, mac, buf, sizeof(buf));
+    ASSERT_GT(len, 0u);
+
+    HttpRequest request(
+        "/device-logs",
+        "POST",
+        "application/protobuf",
+        std::string(reinterpret_cast<const char*>(buf), len),
+        [suite](const std::string&) {
+            suite->successCallbackCalled_ = true;
+        },
+        [suite](const WirelessErrorInfo&) {
+            suite->errorCallbackCalled_ = true;
+        }
+    );
+
+    suite->driver_->setMockServerEnabled(true);
+    suite->driver_->queueRequest(request);
+    suite->driver_->exec();
+
+    ASSERT_TRUE(suite->successCallbackCalled_);
+    ASSERT_FALSE(suite->errorCallbackCalled_);
+}
+
 void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
     suite->driver->setMockServerEnabled(false);
 

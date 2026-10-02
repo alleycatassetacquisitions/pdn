@@ -74,10 +74,21 @@ def generate(protoFile: Path, optionsFile: Path | None, generatorScript: Path,
         outSrcDir.mkdir(parents=True, exist_ok=True)
         outIncludeDir.mkdir(parents=True, exist_ok=True)
 
-        shutil.copy(pbC, outSrcDir / pbC.name)
+        # Rewrite the flat include in .pb.c to the namespaced header path so
+        # that external consumers can find it via the standard include/ directory.
+        stem = pbC.stem.replace(".pb", "")
+        pbCText = pbC.read_text(encoding="utf-8")
+        pbCText = pbCText.replace(
+            f'#include "{stem}.pb.h"',
+            f'#include "alleycat-server/{stem}.pb.h"',
+        )
+        (outSrcDir / pbC.name).write_text(pbCText, encoding="utf-8", newline="\n")
         shutil.copy(pbH, outIncludeDir / pbH.name)
-        print(f"  {outSrcDir.relative_to(outSrcDir.parent.parent.parent)}/{pbC.name}")
-        print(f"  {outIncludeDir.relative_to(outIncludeDir.parent.parent.parent)}/{pbH.name}")
+
+        relSrc = outSrcDir.relative_to(outSrcDir.parent.parent.parent)
+        relInc = outIncludeDir.relative_to(outIncludeDir.parent.parent.parent)
+        print(f"  {relSrc}/{pbC.name}")
+        print(f"  {relInc}/{pbH.name}")
 
 
 def main() -> int:

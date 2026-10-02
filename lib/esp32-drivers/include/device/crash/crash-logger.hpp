@@ -7,15 +7,16 @@
 #include <strings.h>
 #include <cstdlib>
 #include <cstdarg>
+#include <Arduino.h>
 #include <esp_system.h>
-#include <esp_timer.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
-#include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/crash/crash-record.hpp"
+#include "device/wireless-manager.hpp"
+#include "alleycat-server/crash-api.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
 #define FIRMWARE_COMMIT_HASH "unknown"
@@ -40,13 +41,15 @@ struct CrashPacket {
 /**
  * Captures and persists crash records across reboots, then transmits when wireless is up.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized; call transmitPending() after ESP-NOW is ready; poll serial in loop().
+ * storage is initialized; poll serial and call transmitPending() in loop(), which waits
+ * for the radio itself and offers each pending record once per boot.
  */
 class CrashLogger {
 public:
-    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, Esp32S3HttpClient* httpClientDriver)
+    /** Reports over HTTP. Capture still works before the radio is up. */
+    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, WirelessManager* wirelessManager)
         : prefsDriver(prefsDriver)
-        , httpClientDriver(httpClientDriver)
+        , wirelessManager(wirelessManager)
         , espNowDriver(nullptr)
         , hasCaptured(false)
         , useHttp(true)
@@ -54,31 +57,62 @@ public:
         serialCommandBuffer[0] = '\0';
     }
 
+    /** Reports over ESP-NOW, for devices with no route to the server. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, EspNowDriver* espNowDriver)
         : prefsDriver(prefsDriver)
-        , httpClientDriver(nullptr)
+        , wirelessManager(nullptr)
         , espNowDriver(espNowDriver)
         , hasCaptured(false)
         , useHttp(false)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
+        // A record counts as sent when the radio reports its frame, not when the
+        // frame is offered. A queued frame can still be discarded — a WiFi excursion
+        // drops the driver's queue — so marking records as they are queued would
+        // retire ones that never reached the air.
+        espNowDriver->setSendStatusHandler(
+            PktType::kCrashLog,
+            [](const uint8_t*, const uint8_t* data, const size_t length,
+               bool success, void* ctx) {
+                if (!success || ctx == nullptr || length != sizeof(CrashPacket)) return;
+                CrashPacket reported{};
+                memcpy(&reported, data, sizeof(reported));
+                CrashLogger* self = static_cast<CrashLogger*>(ctx);
+                // sentSeq is a high-water mark, so only ever move it forward.
+                if (reported.crashNumber > self->readSentSeq()) {
+                    self->writeSentSeq(reported.crashNumber);
+                }
+            },
+            this);
     }
 
+    /**
+     * Records the last reset if it was not a clean one. Runs once; safe to
+     * call before the radio exists, since it only touches storage.
+     */
     void capture() {
         if (hasCaptured) return;
         hasCaptured = true;
 
         esp_reset_reason_t reason = esp_reset_reason();
-        if (isCleanReason(reason)) return;
-
-        CrashRecord rec{};
-        rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
         bool hadCoreDumpSummary = false;
         esp_core_dump_summary_t summary{};
         if (esp_core_dump_get_summary(&summary) == ESP_OK) {
             hadCoreDumpSummary = true;
+        }
+
+        if (!shouldCaptureReset(reason, hadCoreDumpSummary)) {
+            LOG_I(CRASH_LOG_TAG, "Reset reason %u (%s) — not recording crash",
+                  static_cast<unsigned>(reason), resetReasonName(static_cast<uint8_t>(reason)));
+            return;
+        }
+
+        CrashRecord rec{};
+        rec.resetReason = static_cast<uint8_t>(reason);
+        rec.timestamp   = millis();
+
+        if (hadCoreDumpSummary) {
             rec.programCounter = summary.exc_pc;
             rec.exceptionCause = summary.ex_info.exc_cause;
             strncpy(rec.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
@@ -87,6 +121,7 @@ public:
             rec.programCounter = 0;
             rec.exceptionCause = 0;
             strncpy(rec.taskName, "unknown", TASK_NAME_LENGTH - 1);
+            rec.taskName[TASK_NAME_LENGTH - 1] = '\0';
         }
 
         copyBuildCommitHash(rec.commitHash);
@@ -99,15 +134,38 @@ public:
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
 
+    /** True while a recorded crash has not been reported yet. */
     bool hasPending() const {
         return readSentSeq() < readCrashSeq();
     }
 
+    /**
+     * Offers every unreported record once per boot. Call each tick: nothing can
+     * add a record after capture(), so the first pass with the radio up is the
+     * only one that has anything to do. A record the radio never reports stays
+     * pending and goes out on the next boot, which is the retry.
+     */
     void transmitPending() {
+        if (offeredThisBoot) return;
+        // A send offered while the radio is down is accepted by the driver's queue
+        // and then dropped with no report, so the one pass has to wait for the radio
+        // rather than be spent against it.
+        if (useHttp) {
+            if (wirelessManager == nullptr) return;
+            if (!wirelessManager->isWifiConnected()) {
+                wirelessManager->enableWifiMode();
+                return;
+            }
+        } else if (espNowDriver != nullptr &&
+            espNowDriver->getPeerCommsState() != PeerCommsState::CONNECTED) {
+            return;
+        }
+        offeredThisBoot = true;
         if (!hasPending()) return;
         useHttp ? transmitHttp() : transmitEspNow();
     }
 
+    /** Dumps every stored record to the USB monitor, for a device on a bench. */
     void flushToSerial() const {
         const uint32_t crashSeq = readCrashSeq();
         const uint32_t sentSeq  = readSentSeq();
@@ -276,31 +334,36 @@ private:
 
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
+    bool offeredThisBoot = false;
 
-    bool isCleanReason(esp_reset_reason_t reason) const {
-        return reason == ESP_RST_POWERON
-            || reason == ESP_RST_SW
-            || reason == ESP_RST_EXT
-            || reason == ESP_RST_DEEPSLEEP
-            || reason == ESP_RST_USB
-            || reason == ESP_RST_JTAG;
+    /**
+     * Panics often reboot as ESP_RST_SW; capture when a core dump exists or the
+     * reset reason is an explicit fault (not a deliberate esp_restart()).
+     */
+    bool shouldCaptureReset(esp_reset_reason_t reason, bool hasCoreDumpSummary) const {
+        if (hasCoreDumpSummary) {
+            return true;
+        }
+        switch (reason) {
+            case ESP_RST_PANIC:
+            case ESP_RST_INT_WDT:
+            case ESP_RST_TASK_WDT:
+            case ESP_RST_WDT:
+            case ESP_RST_BROWNOUT:
+            case ESP_RST_CPU_LOCKUP:
+                return true;
+            default:
+                return false;
+        }
     }
 
-    uint32_t readCrashSeq() const {
-        return readUint32Pref(SEQ_KEY);
-    }
+    uint32_t readCrashSeq() const { return readUint32Pref(SEQ_KEY); }
 
-    uint32_t readSentSeq() const {
-        return readUint32Pref(SENT_SEQ_KEY);
-    }
+    uint32_t readSentSeq() const { return readUint32Pref(SENT_SEQ_KEY); }
 
-    void writeCrashSeq(uint32_t value) {
-        writeUint32Pref(SEQ_KEY, value);
-    }
+    void writeCrashSeq(uint32_t value) { writeUint32Pref(SEQ_KEY, value); }
 
-    void writeSentSeq(uint32_t value) {
-        writeUint32Pref(SENT_SEQ_KEY, value);
-    }
+    void writeSentSeq(uint32_t value) { writeUint32Pref(SENT_SEQ_KEY, value); }
 
     uint32_t readUint32Pref(const char* key) const {
         std::string s = prefsDriver->read(CRASH_LOG_NAMESPACE, std::string(key), "0");
@@ -380,7 +443,36 @@ private:
     }
 
     void transmitHttp() {
-        LOG_W(CRASH_LOG_TAG, "HTTP crash transmission not yet implemented.");
+        if (!wirelessManager) return;
+
+        const uint32_t crashSeq = readCrashSeq();
+        const uint32_t sentSeq  = readSentSeq();
+        uint8_t* mac = wirelessManager->getMacAddress();
+
+        for (uint32_t n = sentSeq + 1; n <= crashSeq; n++) {
+            CrashRecord rec{};
+            if (!loadRecordByNumber(n, rec)) {
+                LOG_W(CRASH_LOG_TAG, "Crash #%lu not in ring buffer — skipping",
+                      static_cast<unsigned long>(n));
+                writeSentSeq(n);
+                continue;
+            }
+
+            CrashApi::uploadCrash(
+                wirelessManager,
+                rec,
+                mac,
+                [this, n](const std::string&) {
+                    LOG_I(CRASH_LOG_TAG, "Uploaded crash #%lu",
+                          static_cast<unsigned long>(n));
+                    writeSentSeq(n);
+                },
+                [n](const WirelessErrorInfo& err) {
+                    LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
+                          static_cast<unsigned long>(n), err.message.c_str());
+                }
+            );
+        }
     }
 
     void transmitEspNow() {
@@ -414,7 +506,6 @@ private:
             );
 
             if (result == 0) {
-                writeSentSeq(n);
                 LOG_I(CRASH_LOG_TAG, "Queued crash #%lu for broadcast", static_cast<unsigned long>(n));
             } else {
                 LOG_E(CRASH_LOG_TAG, "Failed to queue crash #%lu — will retry on next boot",
@@ -430,7 +521,7 @@ private:
     }
 
     Esp32S3PrefsDriver* prefsDriver;
-    Esp32S3HttpClient*  httpClientDriver;
+    WirelessManager*    wirelessManager;
     EspNowDriver*       espNowDriver;
     bool                hasCaptured;
     bool                useHttp;

@@ -21,6 +21,7 @@
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "storage-tests.hpp"
+#include "crash-encoder-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -773,6 +774,22 @@ TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
 
 TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
     storageUCharRoundTripInRegisteredNamespace();
+}
+
+// ============================================
+// CRASH ENCODER TESTS
+// ============================================
+
+TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) {
+    encoderRoundTripPopulatesAllFields(this);
+}
+
+TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) {
+    encoderOmitsUnsetOptionalFields(this);
+}
+
+TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
+    encoderReturnZeroWhenBufferTooSmall(this);
 }
 
 // ============================================
