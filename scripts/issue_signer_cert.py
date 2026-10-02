@@ -25,7 +25,9 @@ from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from firmware_signing_io import (  # noqa: E402
+from firmware_signing_io import (
+    derive_root_private_key,
+    prompt_root_passphrase,  # noqa: E402
     SigningInputError,
     load_private_key_from_file,
     refuse_if_under_repo,
@@ -77,19 +79,27 @@ def build_cert(root_private_key, signer_public_key_raw, key_id, generation, labe
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--root-key", required=True, help="path to the root's 32-byte raw private key")
+    parser.add_argument("--root-key", help="path to the root's 32-byte raw private key")
     parser.add_argument("--label", required=True, help="signer label, at most 16 ASCII bytes")
     parser.add_argument("--generation", type=int, default=1, help="cert generation counter (default 1)")
     parser.add_argument("--key-id", type=lambda s: int(s, 0), default=1, help="4-byte key identifier (default 1)")
     parser.add_argument("--out-cert", required=True, help="path to write the 149-byte SignerCert (outside the repo)")
     parser.add_argument("--out-key", required=True, help="path to write the signer's private key (outside the repo)")
+    parser.add_argument("--root-from-passphrase", action="store_true",
+                        help="derive the root from a passphrase instead of reading a key file, so the "
+                             "root never touches disk")
     args = parser.parse_args()
 
     refuse_if_under_repo(args.out_cert)
     refuse_if_under_repo(args.out_key)
 
     try:
-        root_private_key = load_private_key_from_file(args.root_key, what="root private key")
+        if args.root_from_passphrase:
+            root_private_key = derive_root_private_key(prompt_root_passphrase(confirm=False))
+        elif args.root_key:
+            root_private_key = load_private_key_from_file(args.root_key, what="root private key")
+        else:
+            sys.exit("error: pass --root-key or --root-from-passphrase")
     except SigningInputError as e:
         sys.exit(f"error: {e}")
 

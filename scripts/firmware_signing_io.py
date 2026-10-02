@@ -14,12 +14,14 @@ refusal to write key material inside the working tree.
 Used by make_root_key.py, issue_signer_cert.py, and sign_firmware.py so
 there is exactly one implementation of each, not one per script.
 """
+import getpass
 import os
 import pathlib
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -94,3 +96,60 @@ def sign_raw(private_key, data):
     der_sig = private_key.sign(data, ec.ECDSA(hashes.SHA256()))
     r, s = decode_dss_signature(der_sig)
     return r.to_bytes(32, "big") + s.to_bytes(32, "big")
+
+# Fixed, non-secret salt. It only domain-separates, so the same passphrase cannot
+# produce this fleet's root key and some unrelated system's. Changing it changes
+# every derived root, so it is a constant, not a knob.
+ROOT_KDF_SALT = b"pdn-firmware-root-v1"
+# scrypt at n=2**20 costs roughly 1GB of RAM per guess, which is what makes a
+# written-down passphrase a defensible root rather than a convenience.
+ROOT_KDF_N = 2 ** 20
+ROOT_KDF_R = 8
+ROOT_KDF_P = 1
+# Below this a passphrase is not carrying enough entropy to stand in for 32 random
+# bytes. Eight diceware words land around 60 characters; this refuses the obviously
+# too-short rather than pretending to measure entropy.
+ROOT_PASSPHRASE_MIN_CHARS = 32
+
+SECP256R1_ORDER = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+
+
+def derive_root_private_key(passphrase):
+    """Derive the root P-256 private key deterministically from a passphrase.
+
+    The root then has no at-rest form: it is reconstructed when needed and
+    discarded. What gets stored is the passphrase, which a personal password
+    manager and a sheet of paper both handle well — unlike 32 random bytes that
+    need a shared vault nobody has.
+    """
+    if not isinstance(passphrase, str) or not passphrase.strip():
+        raise SigningInputError("empty passphrase")
+    if len(passphrase) < ROOT_PASSPHRASE_MIN_CHARS:
+        raise SigningInputError(
+            f"passphrase is {len(passphrase)} characters; at least "
+            f"{ROOT_PASSPHRASE_MIN_CHARS} are required. Use 8 diceware words."
+        )
+    kdf = Scrypt(salt=ROOT_KDF_SALT, length=32,
+                 n=ROOT_KDF_N, r=ROOT_KDF_R, p=ROOT_KDF_P)
+    raw = kdf.derive(passphrase.encode("utf-8"))
+    # Map the KDF output onto [1, n-1]. Rejecting out-of-range would make the
+    # derivation non-total; folding keeps it deterministic for every passphrase.
+    scalar = (int.from_bytes(raw, "big") % (SECP256R1_ORDER - 1)) + 1
+    return ec.derive_private_key(scalar, ec.SECP256R1())
+
+
+def prompt_root_passphrase(confirm):
+    """Read the root passphrase from the terminal, never from argv.
+
+    argv lands in shell history and in every process listing on the machine, so a
+    passphrase passed as a flag is a passphrase published locally. When confirm is
+    set the phrase is entered twice: a typo yields a different-but-perfectly-valid
+    root, which would otherwise surface much later as every device rejecting every
+    image.
+    """
+    first = getpass.getpass("Root passphrase: ")
+    if confirm:
+        second = getpass.getpass("Repeat passphrase: ")
+        if first != second:
+            raise SigningInputError("passphrases do not match")
+    return first

@@ -16,7 +16,13 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from firmware_signing_io import SigningInputError, refuse_if_under_repo, write_new_file  # noqa: E402
+from firmware_signing_io import (  # noqa: E402
+    SigningInputError,
+    derive_root_private_key,
+    prompt_root_passphrase,
+    refuse_if_under_repo,
+    write_new_file,
+)
 
 
 def format_c_array(public_key_bytes):
@@ -40,19 +46,37 @@ def generate_root_keypair():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", required=True, help="path to write the 32-byte root private key (outside the repo)")
+    parser.add_argument("--out", help="path to write the 32-byte root private key (outside the repo)")
+    parser.add_argument("--from-passphrase", action="store_true",
+                        help="derive the root from a passphrase instead of generating random bytes; "
+                             "writes no private key unless --out is given")
     args = parser.parse_args()
 
-    refuse_if_under_repo(args.out)
+    if args.from_passphrase:
+        try:
+            passphrase = prompt_root_passphrase(confirm=True)
+            root_private_key = derive_root_private_key(passphrase)
+        except SigningInputError as e:
+            sys.exit(f"error: {e}")
+        public_numbers = root_private_key.private_numbers().public_numbers
+        public_raw = (public_numbers.x.to_bytes(32, "big")
+                      + public_numbers.y.to_bytes(32, "big"))
+        private_raw = root_private_key.private_numbers().private_value.to_bytes(32, "big")
+    else:
+        if not args.out:
+            sys.exit("error: --out is required unless --from-passphrase is used")
+        private_raw, public_raw = generate_root_keypair()
 
-    private_raw, public_raw = generate_root_keypair()
+    if args.out:
+        refuse_if_under_repo(args.out)
+        try:
+            write_new_file(args.out, private_raw)
+        except SigningInputError as e:
+            sys.exit(f"error: {e}")
+        print(f"Root private key written to {args.out} — keep this OFFLINE, never commit it.\n")
+    elif args.from_passphrase:
+        print("No private key written. The passphrase IS the root: store the phrase, not a file.\n")
 
-    try:
-        write_new_file(args.out, private_raw)
-    except SigningInputError as e:
-        sys.exit(f"error: {e}")
-
-    print(f"Root private key written to {args.out} — keep this OFFLINE, never commit it.\n")
     print("Paste into lib/core/include/device/firmware-root-key.hpp:\n")
     print(format_c_array(public_raw))
     return 0
