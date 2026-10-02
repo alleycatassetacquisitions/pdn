@@ -1,18 +1,18 @@
 #pragma once
 
+#include "alleycat-server/crash-encoder.hpp"
 #include "device/wireless-manager.hpp"
-#include "wireless/wireless-types.hpp"
 #include "device/crash/crash-record.hpp"
+#include "wireless/wireless-types.hpp"
+#include <cstring>
 #include <functional>
 #include <string>
 
 namespace CrashApi {
 
 /**
- * Queue a POST /device-logs request for the given crash record.
- *
- * Encodes @p record as a protobuf WriteDeviceLogRequest, sets Content-Type
- * to application/protobuf, and hands the request to @p wirelessManager.
+ * Encodes @p record as a WriteDeviceLogRequest protobuf and queues a
+ * POST /device-logs request via @p wirelessManager.
  *
  * @param wirelessManager  Active wireless manager (auto-switches to WiFi mode).
  * @param record           Crash record to upload.
@@ -27,13 +27,19 @@ inline void uploadCrash(
     const std::function<void(const std::string&)>& onSuccess,
     const std::function<void(const WirelessErrorInfo&)>& onError
 ) {
-    // TODO: encode record + deviceMac into a WriteDeviceLogRequest protobuf
-    // payload using the nanopb-generated device_api.pb.h once codegen is wired.
+    uint8_t buf[CrashEncoder::MAX_ENCODED_SIZE];
+    const size_t len = CrashEncoder::encode(record, deviceMac, buf, sizeof(buf));
+
+    if (len == 0) {
+        onError({WirelessError::INVALID_STATE, "protobuf encode failed", false});
+        return;
+    }
+
     HttpRequest request(
         "/device-logs",
         "POST",
         "application/protobuf",
-        "",  // payload populated by encoder
+        std::string(reinterpret_cast<const char*>(buf), len),
         onSuccess,
         onError
     );
