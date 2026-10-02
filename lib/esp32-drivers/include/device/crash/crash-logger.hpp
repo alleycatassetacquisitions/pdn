@@ -15,34 +15,17 @@
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
+#include "device/crash/crash-record.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
 #define FIRMWARE_COMMIT_HASH "unknown"
 #endif
-
-constexpr size_t  TASK_NAME_LENGTH   = 16;
-constexpr size_t  COMMIT_HASH_LENGTH = 9;
-constexpr uint8_t MAX_CRASH_ENTRIES = 10;
 
 /** NVS namespace for persisted crash records (shared with Esp32S3PrefsDriver registration). */
 inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
 
 /** USB serial command (line-terminated) to dump the crash log via flushToSerial(). */
 inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
-
-struct CrashRecord {
-    // Monotonic crash count for this device (1 = first crash ever recorded).
-    uint32_t crashNumber;
-
-    // millis() at the moment the crash is detected on reboot.
-    uint32_t timestamp;
-
-    uint8_t resetReason;
-    uint32_t programCounter;
-    uint32_t exceptionCause;
-    char taskName[TASK_NAME_LENGTH];
-    char commitHash[COMMIT_HASH_LENGTH];
-};
 
 struct CrashPacket {
     uint32_t crashNumber;
