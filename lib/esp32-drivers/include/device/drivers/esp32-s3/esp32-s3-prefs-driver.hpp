@@ -53,7 +53,11 @@ public:
 
     /** Reads a string back, or `defaultValue` when the key is unset. */
     std::string read(const std::string& ns, const std::string& key, const std::string& defaultValue) override {
-        return std::string(requirePrefs(ns)->getString(key.c_str(), defaultValue.c_str()).c_str());
+        Preferences* prefs = requirePrefs(ns);
+        if (!prefs->isKey(key.c_str())) {
+            return defaultValue;
+        }
+        return std::string(prefs->getString(key.c_str(), defaultValue.c_str()).c_str());
     }
 
     /** Drops one key from `ns`. */
@@ -73,7 +77,11 @@ public:
 
     /** Reads one byte back, or `defaultValue` when the key is unset. */
     uint8_t readUChar(const std::string& ns, const std::string& key, uint8_t defaultValue) override {
-        return requirePrefs(ns)->getUChar(key.c_str(), defaultValue);
+        Preferences* prefs = requirePrefs(ns);
+        if (!prefs->isKey(key.c_str())) {
+            return defaultValue;
+        }
+        return prefs->getUChar(key.c_str(), defaultValue);
     }
 
     /** Stores one byte under `ns`. */

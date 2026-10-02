@@ -86,6 +86,8 @@ public:
             statusCode = handleGetPlayer(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
+        } else if (method == "POST" && path == "/device-logs") {
+            statusCode = handlePostDeviceLogs(body, responseBody);
         } else {
             statusCode = 404;
             responseBody = R"({"errors":["Not found"]})";
@@ -228,6 +230,18 @@ private:
         // In a real server, we'd parse and store the matches
         responseBody = R"({"success":true,"message":"Matches uploaded"})";
         return 200;
+    }
+
+    /**
+     * Handle POST /device-logs — acknowledges any non-empty protobuf body with 204.
+     */
+    int handlePostDeviceLogs(const std::string& body, std::string& responseBody) {
+        responseBody = "";
+        if (body.empty()) {
+            responseBody = R"({"errors":["Empty body"]})";
+            return 400;
+        }
+        return 204;
     }
 };
 
