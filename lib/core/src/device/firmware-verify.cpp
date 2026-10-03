@@ -4,7 +4,7 @@
 
 #include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
-#include <mbedtls/sha256.h>
+#include <mbedtls/md.h>
 
 #include <cstring>
 
@@ -20,7 +20,7 @@ constexpr const char* TAG = "FirmwareVerify";
 bool verifyP256(const uint8_t* publicKey, const uint8_t* data, size_t len,
                 const uint8_t* signature) {
     uint8_t hash[32];
-    if (mbedtls_sha256(data, len, hash, 0) != 0) {
+    if (mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), data, len, hash) != 0) {
         LOG_E(TAG, "sha256 failed");
         return false;
     }
@@ -66,7 +66,10 @@ bool verifyP256(const uint8_t* publicKey, const uint8_t* data, size_t len,
 }  // namespace
 
 bool sha256(const uint8_t* data, size_t len, uint8_t out[32]) {
-    return mbedtls_sha256(data, len, out, 0) == 0;
+    // mbedtls_md rather than mbedtls_sha256: the latter returns int in mbedTLS 3
+    // and a deprecated void in 2.x, so it does not compile against both. This
+    // interface is unchanged across them and is what ESP-IDF's bundled copy ships.
+    return mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), data, len, out) == 0;
 }
 
 FirmwareResult verifyOffer(const FirmwareOfferPayload& offer, const uint8_t* rootPublicKey,

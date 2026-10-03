@@ -3,7 +3,7 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/ecdsa.h>
 #include <mbedtls/ecp.h>
-#include <mbedtls/sha256.h>
+#include <mbedtls/md.h>
 
 #include "device/drivers/peer-comms-types.hpp"
 
@@ -98,7 +98,8 @@ inline const Keypair& signerKeypair() {
 inline void signRaw(const uint8_t privateKey[32], const uint8_t* data, size_t len,
                     uint8_t signatureOut[64]) {
     uint8_t hash[32];
-    checkMbedtls(mbedtls_sha256(data, len, hash, 0), "mbedtls_sha256");
+    checkMbedtls(mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), data, len, hash),
+                 "mbedtls_md sha256");
 
     mbedtls_ecp_group grp;
     mbedtls_mpi d;
