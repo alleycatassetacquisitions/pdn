@@ -48,6 +48,8 @@ void FetchUserDataState::onStateMounted(PDN* pdn) {
         transitionToPlayerRegistrationState = true;
         fetchTimer.invalidate();
         isFetchingUserData = false;
+    } else if(player->getUserID() ==  HEALTH_CHECK) {
+        healthCheck();
     } else if(matchManager->getStoredMatchCount() > 0) {
         uploadMatches();
     } else {
@@ -127,6 +129,20 @@ void FetchUserDataState::fetchUserData() {
                 player->setAllegiance("None");
                 transitionToConfirmOfflineState = true;
             }
+        }
+    );
+}
+
+void FetchUserDataState::healthCheck() {
+    QuickdrawRequests::healthCheck(
+        wirelessManager,
+        [this](const std::string& success) {
+            transitionToPlayerRegistrationState = true;
+            LOG_I(TAG, "HEALTH CHECK SUCCESS");
+        },
+        [this](const WirelessErrorInfo& error) {
+            LOG_E(TAG, "HEALTH CHECK ERROR: %s", error.message.c_str());
+            transitionToPlayerRegistrationState = true;
         }
     );
 }
