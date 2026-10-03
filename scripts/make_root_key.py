@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Generates the offline firmware-signing root keypair.
+
+Run this once, on an offline machine, to provision a production root. It
+never touches the repo: the private half goes to whatever path the operator
+names (outside the working tree), and the public half is printed as the C
+array to hand-paste into firmware-root-key.hpp. This script does not modify
+that header itself — custody of a production root is the operator's call,
+not the tooling's.
+"""
+import argparse
+import pathlib
+import sys
+
+from cryptography.hazmat.primitives.asymmetric import ec
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from firmware_signing_io import (  # noqa: E402
+    SigningInputError,
+    derive_root_private_key,
+    prompt_root_passphrase,
+    refuse_if_under_repo,
+    write_new_file,
+)
+
+
+def format_c_array(public_key_bytes):
+    lines = []
+    for i in range(0, len(public_key_bytes), 12):
+        chunk = public_key_bytes[i : i + 12]
+        lines.append("    " + ", ".join(f"0x{b:02x}" for b in chunk) + ",")
+    body = "\n".join(lines)
+    return f"constexpr uint8_t FIRMWARE_ROOT_PUBLIC_KEY[64] = {{\n{body}\n}};"
+
+
+def generate_root_keypair():
+    """Returns (private_key_raw_32_bytes, public_key_raw_64_bytes)."""
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    numbers = private_key.private_numbers()
+    public_numbers = numbers.public_numbers
+    private_raw = numbers.private_value.to_bytes(32, "big")
+    public_raw = public_numbers.x.to_bytes(32, "big") + public_numbers.y.to_bytes(32, "big")
+    return private_raw, public_raw
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", help="path to write the 32-byte root private key (outside the repo)")
+    parser.add_argument("--from-passphrase", action="store_true",
+                        help="derive the root from a passphrase instead of generating random bytes; "
+                             "writes no private key unless --out is given")
+    args = parser.parse_args()
+
+    if args.from_passphrase:
+        try:
+            passphrase = prompt_root_passphrase(confirm=True)
+            root_private_key = derive_root_private_key(passphrase)
+        except SigningInputError as e:
+            sys.exit(f"error: {e}")
+        public_numbers = root_private_key.private_numbers().public_numbers
+        public_raw = (public_numbers.x.to_bytes(32, "big")
+                      + public_numbers.y.to_bytes(32, "big"))
+        private_raw = root_private_key.private_numbers().private_value.to_bytes(32, "big")
+    else:
+        if not args.out:
+            sys.exit("error: --out is required unless --from-passphrase is used")
+        private_raw, public_raw = generate_root_keypair()
+
+    if args.out:
+        refuse_if_under_repo(args.out)
+        try:
+            write_new_file(args.out, private_raw)
+        except SigningInputError as e:
+            sys.exit(f"error: {e}")
+        print(f"Root private key written to {args.out} — keep this OFFLINE, never commit it.\n")
+    elif args.from_passphrase:
+        print("No private key written. The passphrase IS the root: store the phrase, not a file.\n")
+
+    print("Paste into lib/core/include/device/firmware-root-key.hpp:\n")
+    print(format_c_array(public_raw))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

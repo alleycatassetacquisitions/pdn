@@ -14,7 +14,9 @@
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
+#include "device/firmware-update-manager.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -44,10 +46,15 @@
 #error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
 #endif
 
+// The Arduino core confirms a pending image before setup() runs, which makes
+// rollback unreachable while appearing to work. Overriding this weak symbol is
+// what keeps a bad image from becoming permanent the moment it boots once.
+extern "C" bool verifyRollbackLater() { return true; }
+
 WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
-
+Esp32S3FirmwareStore* firmwareStore = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
@@ -132,7 +139,8 @@ void setup() {
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
+    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE, FIRMWARE_STORE_NVS_NAMESPACE});
+    firmwareStore = new Esp32S3FirmwareStore(storageDriver);
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -178,8 +186,8 @@ void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    
+    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, firmwareStore);
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
@@ -194,9 +202,28 @@ void setup() {
     pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
 }
 
+// How long the main loop must have free-run before a pending image confirms
+// itself. loop() has no delay()/vTaskDelay() in its chain, so a tick count
+// would not be a duration — it could elapse in a few milliseconds and confirm
+// a bad image before it had any chance to fail. Ten seconds outlives the boot
+// path, the radio bring-up and several state-machine transitions.
+constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
+bool rollbackConfirmed = false;
+
 void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
+    }
+    if (!rollbackConfirmed && clockDriver->milliseconds() >= ROLLBACK_CONFIRM_DELAY_MS) {
+        firmwareStore->confirmRunningImage();
+        rollbackConfirmed = true;
+    }
+    // Here rather than inside a state machine: Device::loop() dispatches
+    // onStateLoop to the active app alone, and a device holding a verified
+    // image needs sync() to fire its restart whichever app is running.
+    FirmwareUpdateManager* firmwareUpdateManager = game->getFirmwareUpdateManager();
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->sync();
     }
     pdn->loop();
 }

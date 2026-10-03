@@ -15,6 +15,7 @@
 #include "apps/handshake/handshake-states.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "utility-tests.hpp"
+#include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
 
 using ::testing::_;
@@ -97,7 +98,7 @@ public:
 // Test: Idle state mounts and registers button callbacks
 inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -108,7 +109,7 @@ inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
 // Test: Idle state does not transition without a connection
 inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -122,7 +123,7 @@ inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
 // Test: State cleanup on dismount
 inline void idleStateClearsOnDismount(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(3);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -135,7 +136,7 @@ inline void idleStateClearsOnDismount(IdleStateTests* suite) {
 // Test: Button callbacks are registered and removed properly
 inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(3);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -145,10 +146,45 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
+// Test: the DURING_LONG_PRESS slot is detached on dismount, and the callback
+// itself is harmless if something still manages to fire it afterward — the
+// two-part fix for the callback surviving into a later state and reading a
+// null cachedPdn.
+inline void idleFirmwareHoldCallbackHarmlessAfterDismount(IdleStateTests* suite) {
+    parameterizedCallbackFunction capturedCallback = nullptr;
+    void* capturedCtx = nullptr;
+
+    // Catch-all for the CLICK registrations on both buttons; the two specific
+    // expectations below (declared after, so gmock tries them first) pick off
+    // the DURING_LONG_PRESS calls this test actually cares about.
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(testing::AnyNumber());
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(testing::NotNull(), testing::NotNull(), ButtonInteraction::DURING_LONG_PRESS))
+        .Times(1)
+        .WillOnce(Invoke([&](parameterizedCallbackFunction cb, void* ctx, ButtonInteraction) {
+            capturedCallback = cb;
+            capturedCtx = ctx;
+        }));
+    EXPECT_CALL(*suite->device.mockSecondaryButton,
+                setButtonPress(testing::IsNull(), testing::IsNull(), ButtonInteraction::DURING_LONG_PRESS))
+        .Times(1);
+
+    suite->idleState->onStateMounted(&suite->device);
+    ASSERT_NE(capturedCallback, nullptr);
+
+    suite->idleState->onStateDismounted(&suite->device);
+
+    // A stale callback still firing after dismount (the driver's
+    // removeButtonCallbacks does not itself clear callback pointers) must not
+    // crash: cachedPdn is null by then.
+    capturedCallback(capturedCtx);
+}
+
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received
 inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates but has not yet received MATCH_ID_ACK
@@ -162,7 +198,7 @@ inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
 // Test: transitionToDuelCountdown returns true once matchIsReady is set via the full handshake
 inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates match, then receives ACK from bounty
@@ -1207,8 +1243,8 @@ inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
     Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(3);
+
     idleState.onStateMounted(&suite->device);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
@@ -1615,10 +1651,21 @@ public:
 // Create + destroy many Quickdraw instances; under ASAN (env:native_asan) a
 // leak in ~Quickdraw's ownership of matchManager / chainDuelManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
+// Half the rounds pass a firmware store, because a null one leaves
+// firmwareUpdateManager unbuilt: without them nothing here exercises the
+// manager's own construction and teardown, including the radio handlers its
+// destructor has to hand back.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, nullptr);
         delete qd;
+    }
+    FakeFirmwareStore firmwareStore;
+    for (int i = 0; i < 5; i++) {
+        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, &firmwareStore);
+        EXPECT_TRUE(suite->device.mockPeerComms->hasSendStatusHandler(PktType::kFirmwareUpdate));
+        delete qd;
+        EXPECT_FALSE(suite->device.mockPeerComms->hasSendStatusHandler(PktType::kFirmwareUpdate));
     }
 }
 

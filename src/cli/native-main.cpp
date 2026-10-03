@@ -114,9 +114,11 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     instance.symbolWirelessManager->initialize(
         instance.pdn->getWirelessManager(),
         instance.pdn->getRemoteDeviceCoordinator());
-    
+
     // Create game
-    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr, instance.symbolWirelessManager);
+    // Trailing nullptr: no firmware store — the simulator has no flash to distribute.
+    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr,
+                                  instance.symbolWirelessManager, nullptr);
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
