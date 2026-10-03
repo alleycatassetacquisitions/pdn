@@ -3,7 +3,7 @@
 #include "device/firmware-verify.hpp"
 #include "device/drivers/logger.hpp"
 
-#include <mbedtls/sha256.h>
+#include <mbedtls/md.h>
 
 #include <algorithm>
 #include <cstring>
@@ -102,9 +102,13 @@ uint32_t seedFromMac(const uint8_t mac[6]) {
 void hashRange(FirmwareStoreInterface* firmwareStore,
                bool (FirmwareStoreInterface::*read)(size_t, uint8_t*, size_t) const, size_t length,
                uint8_t out[FIRMWARE_SHA256_LENGTH]) {
-    mbedtls_sha256_context ctx;
-    mbedtls_sha256_init(&ctx);
-    mbedtls_sha256_starts(&ctx, /*is224=*/0);
+    // mbedtls_md rather than the mbedtls_sha256_* family: those are named
+    // mbedtls_sha256_starts_ret/_update_ret in mbedTLS 2.x and lose the suffix in
+    // 3.x, so they do not compile against both. This interface is unchanged.
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), /*hmac=*/0);
+    mbedtls_md_starts(&ctx);
 
     uint8_t buffer[256];
     size_t offset = 0;
@@ -114,11 +118,11 @@ void hashRange(FirmwareStoreInterface* firmwareStore,
             LOG_E(TAG, "hashRange: read failed at offset %zu of %zu; hash is incomplete", offset, length);
             break;
         }
-        mbedtls_sha256_update(&ctx, buffer, chunk);
+        mbedtls_md_update(&ctx, buffer, chunk);
         offset += chunk;
     }
-    mbedtls_sha256_finish(&ctx, out);
-    mbedtls_sha256_free(&ctx);
+    mbedtls_md_finish(&ctx, out);
+    mbedtls_md_free(&ctx);
 }
 
 }  // namespace
