@@ -67,13 +67,16 @@ def is_jtag_port(port_description, vid, pid):
     return False
 
 
+PROBE_TIMEOUT_SECONDS = 20
+
+
 def test_esp32_on_port(port_name):
     """Probe the port with esptool chip-id. Returns (is_esp32: bool, chip_info: str)."""
     for subcmd in ("chip-id", "chip_id"):
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "esptool", "--port", port_name, subcmd],
-                capture_output=True, text=True, timeout=2,
+                _esptool("--port", port_name, subcmd),
+                capture_output=True, text=True, timeout=PROBE_TIMEOUT_SECONDS,
                 encoding="utf-8", errors="replace",
             )
             if result.returncode == 0 and "ESP32" in result.stdout:
@@ -88,8 +91,11 @@ def test_esp32_on_port(port_name):
         except subprocess.TimeoutExpired:
             return False, "Timeout"
         except Exception as exc:
-            return False, str(exc)[:30]
-    return False, ""
+            return False, str(exc)[:60]
+    # Every subcmd failed. Hand back what esptool actually said: a missing
+    # dependency and a device that is not listening look identical otherwise.
+    detail = (result.stderr or result.stdout or "").strip().splitlines()
+    return False, detail[-1][:60] if detail else ""
 
 
 # ---------------------------------------------------------------------------
@@ -98,16 +104,70 @@ def test_esp32_on_port(port_name):
 
 NVS_OFFSET = 0x9000
 NVS_SIZE = 0x5000  # 20 KB — matches default_8MB.csv
+OTADATA_OFFSET = "0xe000"
+
+
+def find_boot_app0():
+    """Path to boot_app0.bin in the installed framework package, as PlatformIO resolves it.
+
+    Writing it at otadata resets the boot selector to ota_0. A device that has
+    taken a wireless update is running ota_1, so without this a re-flash writes
+    ota_0 and the device keeps booting the old image — indistinguishable from a
+    dead device to whoever just flashed it.
+    """
+    core_dir = os.environ.get("PLATFORMIO_CORE_DIR") or os.path.join(
+        os.path.expanduser("~"), ".platformio")
+    return os.path.join(core_dir, "packages", "framework-arduinoespressif32",
+                        "tools", "partitions", "boot_app0.bin")
+
+
+_ESPTOOL_PYTHON = None
+
+
+def _esptool_python():
+    """The first interpreter that can actually import esptool.
+
+    `sys.executable` is not it when PlatformIO's multi_flash target runs this
+    script: that target invokes the system python, which has no esptool. Probing
+    for an interpreter that does beats assuming, because the failure otherwise
+    surfaces as every device reporting "not in bootloader" and sends you looking
+    at the hardware.
+    """
+    global _ESPTOOL_PYTHON
+    if _ESPTOOL_PYTHON is not None:
+        return _ESPTOOL_PYTHON
+    candidates = [
+        sys.executable,
+        os.path.join(os.path.expanduser("~"), ".platformio", "penv", "bin", "python"),
+        os.path.join(os.path.expanduser("~"), ".platformio", "penv", "Scripts", "python.exe"),
+        "python3",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            probe = subprocess.run([candidate, "-c", "import esptool"],
+                                   capture_output=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if probe.returncode == 0:
+            _ESPTOOL_PYTHON = candidate
+            return candidate
+    raise SystemExit(
+        "no Python interpreter with esptool importable. Tried: "
+        + ", ".join(str(c) for c in candidates)
+        + "\nInstall esptool, or run this through PlatformIO's penv."
+    )
 
 
 def _esptool(*args):
-    """Return a subprocess arg list that invokes esptool via the current Python interpreter.
+    """Return a subprocess arg list that invokes esptool.
 
-    Using sys.executable -m esptool avoids relying on an 'esptool' entry-point
-    on PATH, which on Windows would resolve to esptool.py and trigger an
-    "Open with" dialog if .py files have no shell association.
+    Goes through `-m esptool` rather than an 'esptool' entry-point on PATH,
+    which on Windows resolves to esptool.py and opens an "Open with" dialog when
+    .py has no shell association.
     """
-    return [sys.executable, "-m", "esptool"] + list(args)
+    return [_esptool_python(), "-m", "esptool"] + list(args)
 
 
 def _run_esptool(port_name, cmd, timeout):
@@ -173,8 +233,8 @@ def clear_nvs_partition(port_name):
         return False
 
 
-def flash_to_port(port_name, port_desc, build_dir, chip_info="", erase_flash=False,
-                  has_littlefs=False, clear_nvs=False):
+def flash_to_port(port_name, port_desc, build_dir, boot_app0, chip_info="", erase_flash=False,
+                  clear_nvs=False):
     """Flash firmware (from build_dir) to a single port. Returns True on success."""
     if _abort.is_set():
         return False
@@ -190,16 +250,14 @@ def flash_to_port(port_name, port_desc, build_dir, chip_info="", erase_flash=Fal
     bootloader = os.path.join(build_dir, "bootloader.bin")
     partitions = os.path.join(build_dir, "partitions.bin")
     firmware = os.path.join(build_dir, "firmware.bin")
-    littlefs = os.path.join(build_dir, "littlefs.bin")
 
     cmd = _esptool(
         "--chip", "esp32s3", "--port", port_name, "--baud", "921600",
         "--before", "usb-reset", "--after", "hard-reset",
         "write-flash", "--flash-mode", "dio", "--flash-freq", "80m", "--flash-size", "8MB",
-        "0x0000", bootloader, "0x8000", partitions, "0x10000", firmware,
+        "0x0000", bootloader, "0x8000", partitions, OTADATA_OFFSET, boot_app0,
+        "0x10000", firmware,
     )
-    if has_littlefs:
-        cmd += ["0x670000", littlefs]
 
     try:
         _run_esptool(port_name, cmd, timeout=60)
@@ -253,9 +311,11 @@ def main():
         print("Run 'pio run -e esp32-s3_pdn_release' first to build.")
         sys.exit(1)
 
-    has_littlefs = os.path.exists(os.path.join(build_dir, "littlefs.bin"))
-    print("littlefs.bin found — filesystem will be flashed." if has_littlefs
-          else "littlefs.bin not found — skipping filesystem partition.")
+    boot_app0 = find_boot_app0()
+    if not os.path.exists(boot_app0):
+        print(f"Error: Missing {boot_app0}")
+        print("Run 'pio run -e esp32-s3_pdn_release' once so PlatformIO installs the framework.")
+        sys.exit(1)
 
     print("Scanning for devices...")
     ports_info = list_com_ports_with_pyserial()
@@ -292,8 +352,8 @@ def main():
         futures = {
             executor.submit(
                 flash_to_port,
-                port, desc, build_dir, chip_info,
-                args.erase, has_littlefs, args.clear_nvs,
+                port, desc, build_dir, boot_app0, chip_info,
+                args.erase, args.clear_nvs,
             ): port
             for port, desc, chip_info in esp32_devices
         }

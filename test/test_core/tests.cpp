@@ -7,6 +7,14 @@
 #include "device-tests.hpp"
 
 // New test headers
+#include "peer-comms-types-tests.hpp"
+#include "firmware-wire-tests.hpp"
+#include "firmware-verify-tests.hpp"
+#include "firmware-receiver-tests.hpp"
+#include "firmware-seed-tests.hpp"
+#include "firmware-repair-tests.hpp"
+#include "firmware-commit-tests.hpp"
+#include "firmware-eligibility-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
@@ -21,6 +29,7 @@
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "storage-tests.hpp"
+#include "send-status-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -829,6 +838,10 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
+}
+
+TEST_F(IdleStateTests, firmwareHoldCallbackHarmlessAfterDismount) {
+    idleFirmwareHoldCallbackHarmlessAfterDismount(this);
 }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {

@@ -3,8 +3,7 @@
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
-enum class PktType : uint8_t
-{
+enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
     kDebugPacket = 2,
@@ -21,17 +20,22 @@ enum class PktType : uint8_t
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
     kCrashLog = 15,
-    kNumPacketTypes //Not a real packet type, DO NOT USE
+    kFirmwareUpdate = 16,
+    kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
 struct DataPktHdr
 {
-    //Total packet length including header
-    uint8_t pktLen;
+    /// Total packet length including this header. Two bytes because a v2 frame
+    /// carries more than a byte can count.
+    uint16_t pktLen;
     PktType packetType;
-    uint8_t numPktsInCluster;
-    uint8_t idxInCluster;
 } __attribute__((packed));
+
+/// One ESP-NOW v2 frame's payload, less this protocol's header. Stated here
+/// rather than derived from the IDF macro so the native suite can see it; the
+/// driver asserts the two agree.
+constexpr size_t MAX_PKT_DATA_SIZE = 1470 - sizeof(DataPktHdr);
 
 struct ChainConfirmPayload
 {
@@ -79,3 +83,126 @@ struct ShootoutAckPayload
     ShootoutCmd cmd;
     uint8_t     seqId;
 } __attribute__((packed));
+
+/// Bitmap covers 3072 chunks, keeping status report in one frame.
+constexpr size_t FIRMWARE_BITMAP_BYTES = 384;
+
+/// Maximum chunks per firmware offer; floors chunk size at 1322 bytes.
+constexpr size_t FIRMWARE_MAX_CHUNKS = FIRMWARE_BITMAP_BYTES * 8;
+
+/// SHA-256 digest length.
+constexpr size_t FIRMWARE_SHA256_LENGTH = 32;
+
+/// P-256 R||S signature length (no DER, no ASN.1).
+constexpr size_t FIRMWARE_SIG_LENGTH = 64;
+
+/// Version and label string length.
+constexpr size_t FIRMWARE_LABEL_LENGTH = 16;
+
+/// Firmware distribution commands: offer, chunk, poll, status, complete.
+enum class FirmwareCmd : uint8_t {
+    OFFER = 0,
+    CHUNK = 1,
+    POLL = 2,
+    STATUS = 3,
+    COMPLETE = 4,
+};
+
+/// Firmware distribution results: success, validation, flash errors.
+enum class FirmwareResult : uint8_t {
+    OK = 0,
+    BAD_HASH = 1,
+    BAD_SIGNATURE = 2,
+    BAD_CERT = 3,
+    STALE_CERT = 4,
+    FLASH_FAILED = 5,
+};
+
+/// Delegation record: root signs this, signer signs images.
+struct SignerCert {
+    /// Key identifier, allows revocation by ID.
+    uint8_t keyId[4];
+    /// Generation counter for key rotation.
+    uint8_t generation;
+    /// P-256 public key (uncompressed, 64 bytes).
+    uint8_t publicKey[64];
+    /// Signer name or version label.
+    char label[FIRMWARE_LABEL_LENGTH];
+    /// Root signature over keyId|generation|publicKey|label.
+    uint8_t rootSignature[FIRMWARE_SIG_LENGTH];
+} __attribute__((packed));
+
+/// Firmware offer: announces image, delegates signing, provides cert and sig.
+struct FirmwareOfferPayload {
+    /// Command type: FirmwareCmd::OFFER.
+    uint8_t command;
+    /// SHA-256 of complete image.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// Total image length in bytes.
+    uint32_t imageLength;
+    /// Bytes per chunk (except possibly the last).
+    uint16_t chunkSize;
+    /// Number of chunks; at most FIRMWARE_MAX_CHUNKS.
+    uint16_t chunkCount;
+    /// DeviceType (device-type.hpp) this image is built to run on. Falls inside the
+    /// signed span below, so a relay cannot retarget a correctly-signed image at a
+    /// device type its signer never intended.
+    uint8_t deviceType;
+    /// Delegation cert and root signature.
+    SignerCert cert;
+    /// Signature over imageSha256|imageLength|chunkSize|chunkCount|deviceType.
+    uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
+} __attribute__((packed));
+
+/// Chunk header prepended to chunk data in a frame.
+struct FirmwareChunkHeader {
+    /// Command type: FirmwareCmd::CHUNK.
+    uint8_t command;
+    /// Chunk index; at most FIRMWARE_MAX_CHUNKS - 1.
+    uint16_t index;
+    /// Bytes in this chunk (chunkSize except possibly last).
+    uint16_t length;
+} __attribute__((packed));
+
+/// Poll: request status for an image.
+struct FirmwarePollPayload {
+    /// Command type: FirmwareCmd::POLL.
+    uint8_t command;
+    /// SHA-256 of image to poll.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+} __attribute__((packed));
+
+/// Status: bitmap of received chunks.
+struct FirmwareStatusPayload {
+    /// Command type: FirmwareCmd::STATUS.
+    uint8_t command;
+    /// SHA-256 of image; matches poll.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// Count of chunks received so far.
+    uint16_t receivedCount;
+    /// Bitmap: bit N set means chunk N received (384 bytes = 3072 bits).
+    uint8_t bitmap[FIRMWARE_BITMAP_BYTES];
+} __attribute__((packed));
+
+/// Complete: reports final result after flashing.
+struct FirmwareCompletePayload {
+    /// Command type: FirmwareCmd::COMPLETE.
+    uint8_t command;
+    /// SHA-256 of image; confirms which update completed.
+    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
+    /// FirmwareResult: OK or error code.
+    uint8_t result;
+} __attribute__((packed));
+
+/// Appended after the image's declared length by the signing script. The ESP image
+/// loader ignores bytes past that length, so a device carries its own credentials
+/// in the partition it runs from.
+struct FirmwareTrailer {
+    SignerCert cert;
+    uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
+    uint32_t imageLength;
+    uint32_t magic;
+} __attribute__((packed));
+
+/// Identifies a well-formed trailer. "ODNP" little-endian.
+constexpr uint32_t FIRMWARE_TRAILER_MAGIC = 0x504E444F;

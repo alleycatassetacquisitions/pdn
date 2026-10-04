@@ -229,7 +229,8 @@ public:
             instance.pdn,
             instance.quickdrawWirelessManager,
             nullptr,
-            instance.symbolWirelessManager);
+            instance.symbolWirelessManager,
+            nullptr);  // no firmware store: the simulator has no flash to distribute
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {

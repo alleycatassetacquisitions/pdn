@@ -2,24 +2,47 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/firmware-root-key.hpp"
+#include "device/firmware-update-manager.hpp"
 #include <array>
 #include <cstring>
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore)
+    : StateMachine(QUICKDRAW_APP_ID)
+    , wirelessManager(pdn->getWirelessManager())
+    , storageManager(pdn->getStorage())
+    , peerComms(pdn->getPeerComms())
+    , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator()) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
-    this->storageManager = PDN->getStorage();
-    this->peerComms = PDN->getPeerComms();
-    this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
     this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
     this->shootoutManager_->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager_);
+
+    // Idle alone doesn't rule out a cable: a device can sit in Idle with a
+    // peer chained for the whole match, so both conditions are checked
+    // separately rather than folded into one state check.
+    // No store means no flash to distribute from or into — the headless
+    // simulator's case — so the whole feature stays unbuilt rather than
+    // holding a manager that would fault on the first offer it heard.
+    if (firmwareStore != nullptr) {
+        this->firmwareUpdateManager = new FirmwareUpdateManager(
+            peerComms, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
+            [this]() {
+                State* current = getCurrentState();
+                bool idle = current != nullptr && current->getStateId() == IDLE;
+                bool cableConnected =
+                    remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
+                    remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
+                return idle && !cableConnected;
+            },
+            pdn->getDeviceType());
+    }
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
     matchManager->setBoostProvider([this]() -> unsigned long {
@@ -283,9 +306,15 @@ Quickdraw::~Quickdraw() {
     chainDuelManager = nullptr;
     delete shootoutManager_;
     shootoutManager_ = nullptr;
+    delete firmwareUpdateManager;
+    firmwareUpdateManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
+}
+
+FirmwareUpdateManager* Quickdraw::getFirmwareUpdateManager() {
+    return firmwareUpdateManager;
 }
 
 void Quickdraw::populateStateMap() {
@@ -611,4 +640,20 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(shAborted);
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
+
+    // Last in the map so the indices above it stay put when it is absent:
+    // with no firmware store there is no manager for this state to drive, and
+    // nothing wires the hold that would reach it.
+    if (firmwareUpdateManager != nullptr) {
+        FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(firmwareUpdateManager);
+        idle->addTransition(
+            new StateTransition(
+                [idle]() { return idle->transitionToFirmwareUpdate(); },
+                firmwareUpdate));
+        firmwareUpdate->addTransition(
+            new StateTransition(
+                [firmwareUpdate]() { return firmwareUpdate->transitionToIdle(); },
+                idle));
+        stateMap.push_back(firmwareUpdate);
+    }
 }

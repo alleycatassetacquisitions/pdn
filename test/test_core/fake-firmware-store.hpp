@@ -1,0 +1,154 @@
+#pragma once
+
+#include "device/drivers/firmware-store-interface.hpp"
+#include "device/drivers/peer-comms-types.hpp"
+#include <algorithm>
+#include <vector>
+
+/// In-memory FirmwareStoreInterface for native tests: backs the inactive
+/// slot with a vector instead of flash so Tasks 8-12 can drive firmware
+/// distribution without an ESP32.
+class FakeFirmwareStore : public FirmwareStoreInterface {
+public:
+    /// Fails if `length` exceeds the configured inactive slot size.
+    bool beginWrite(size_t length) override {
+        beginWriteCallCount++;
+        pendingBeginWriteLength = length;
+        if (length > inactiveSlotSize) {
+            return false;
+        }
+        // Real flash erases headroom past the declared length so the commit
+        // path can write a FirmwareTrailer there before the slot is marked
+        // bootable (writeAt below must accept that range too).
+        writeSlot.assign(length + sizeof(FirmwareTrailer), 0);
+        writeInProgress = true;
+        return true;
+    }
+
+    /// Fails past the slot bounds (recorded via wroteOutsideImage) or past a
+    /// configured failWritesFrom offset, to let tests simulate a flash fault.
+    bool writeAt(size_t offset, const uint8_t* data, size_t length) override {
+        if (!writeInProgress) {
+            return false;
+        }
+        if (offset > writeSlot.size() || length > writeSlot.size() - offset) {
+            writeOutsideImageOccurred = true;
+            return false;
+        }
+        if (failWritesEnabled && offset >= failFromOffset) {
+            return false;
+        }
+        std::copy(data, data + length, writeSlot.begin() + static_cast<std::ptrdiff_t>(offset));
+        return true;
+    }
+
+    /// Closes the write opened by beginWrite; fails if none is open.
+    bool finishWrite() override {
+        if (!writeInProgress) {
+            return false;
+        }
+        writeInProgress = false;
+        return true;
+    }
+
+    /// Discards the in-progress write and clears the slot contents.
+    void abortWrite() override {
+        writeInProgress = false;
+        writeSlot.clear();
+    }
+
+    /// Capacity configured via setInactiveSlotSize.
+    size_t getInactiveSlotSize() const override { return inactiveSlotSize; }
+    /// Length of the image configured via setRunningImage.
+    size_t getRunningImageLength() const override { return runningImage.size(); }
+
+    /// Fails if the requested range falls outside the running image.
+    bool readRunningImage(size_t offset, uint8_t* out, size_t length) const override {
+        if (offset > runningImage.size() || length > runningImage.size() - offset) {
+            return false;
+        }
+        std::copy(runningImage.begin() + static_cast<std::ptrdiff_t>(offset),
+                  runningImage.begin() + static_cast<std::ptrdiff_t>(offset + length), out);
+        return true;
+    }
+
+    /// Fails if `length` exceeds the trailer configured via setRunningTrailer.
+    bool readRunningTrailer(uint8_t* out, size_t length) const override {
+        if (length > runningTrailer.size()) {
+            return false;
+        }
+        std::copy(runningTrailer.begin(), runningTrailer.begin() + static_cast<std::ptrdiff_t>(length), out);
+        return true;
+    }
+
+    /// Reads back from the same backing store writeAt fills, regardless of
+    /// chunk order, so a caller can hash the assembled image once complete.
+    bool readWrittenSlot(size_t offset, uint8_t* out, size_t length) const override {
+        if (offset > writeSlot.size() || length > writeSlot.size() - offset) {
+            return false;
+        }
+        std::copy(writeSlot.begin() + static_cast<std::ptrdiff_t>(offset),
+                  writeSlot.begin() + static_cast<std::ptrdiff_t>(offset + length), out);
+        return true;
+    }
+
+    /// Records the call for bootSet() assertions.
+    bool setBootToWritten() override {
+        bootToWrittenSet = true;
+        return true;
+    }
+
+    /// No slot promotion to simulate: the fake models one boot session.
+    void confirmRunningImage() override {}
+
+    /// Records the call for didRestart() assertions rather than tearing down
+    /// the process a real esp_restart() would.
+    void restart() override { restartCalled = true; }
+
+    /// Generation floor configured via setMinGeneration.
+    uint8_t getMinGeneration() const override { return minGeneration; }
+    /// Stores the generation floor for later getMinGeneration calls.
+    void setMinGeneration(uint8_t generation) override { minGeneration = generation; }
+
+    /// Bytes written so far into the open (or last finished) slot.
+    const std::vector<uint8_t>& slot() const { return writeSlot; }
+    /// Length passed to the most recent beginWrite call.
+    size_t beginWriteLength() const { return pendingBeginWriteLength; }
+    /// Number of times beginWrite has been called.
+    int beginWriteCalls() const { return beginWriteCallCount; }
+    /// Whether setBootToWritten has been called.
+    bool bootSet() const { return bootToWrittenSet; }
+    /// Whether restart has been called.
+    bool didRestart() const { return restartCalled; }
+    /// Whether a writeAt call ever landed outside the declared slot bounds.
+    bool wroteOutsideImage() const { return writeOutsideImageOccurred; }
+
+    /// Configures the capacity beginWrite checks against.
+    void setInactiveSlotSize(size_t bytes) { inactiveSlotSize = bytes; }
+    /// Seeds the bytes readRunningImage and getRunningImageLength serve.
+    void setRunningImage(const std::vector<uint8_t>& bytes) { runningImage = bytes; }
+    /// Seeds the bytes readRunningTrailer serves: the signer cert and image
+    /// signature a seed reads before offering.
+    void setRunningTrailer(const std::vector<uint8_t>& bytes) { runningTrailer = bytes; }
+    /// Makes writeAt fail for any offset at or past `offset`, simulating a
+    /// flash write fault partway through an image.
+    void failWritesFrom(size_t offset) {
+        failWritesEnabled = true;
+        failFromOffset = offset;
+    }
+
+private:
+    std::vector<uint8_t> writeSlot;
+    std::vector<uint8_t> runningImage;
+    std::vector<uint8_t> runningTrailer;
+    size_t inactiveSlotSize = 0;
+    size_t pendingBeginWriteLength = 0;
+    int beginWriteCallCount = 0;
+    bool writeInProgress = false;
+    bool bootToWrittenSet = false;
+    bool restartCalled = false;
+    bool writeOutsideImageOccurred = false;
+    bool failWritesEnabled = false;
+    size_t failFromOffset = 0;
+    uint8_t minGeneration = 0;
+};
