@@ -30,6 +30,7 @@ idf_component_register(
         esp_partition
         esp_timer
         esp_wifi
+        u8g2
         espcoredump
         mbedtls
         nvs_flash
