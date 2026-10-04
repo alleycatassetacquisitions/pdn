@@ -311,7 +311,7 @@ private:
         }
 
         if (request.method == "POST" || request.method == "PUT") {
-            esp_http_client_set_header(httpClient, "Content-Type", "application/json");
+            esp_http_client_set_header(httpClient, "Content-Type", request.contentType.c_str());
             esp_http_client_set_post_field(httpClient, request.payload.c_str(), request.payload.length());
         }
 

@@ -39,6 +39,7 @@ using HttpErrorCallback = std::function<void(const WirelessErrorInfo& error)>;
 struct HttpRequest {
     std::string path;
     std::string method;
+    std::string contentType;
     std::string payload;
     HttpSuccessCallback onSuccess;
     HttpErrorCallback onError;
@@ -47,6 +48,6 @@ struct HttpRequest {
     int retryCount;
     std::string responseData;
 
-    HttpRequest(const std::string& path, const std::string& method, const std::string& payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
-        : path(path), method(method), payload(payload), onSuccess(onSuccess), onError(onError), inProgress(false), lastAttemptTime(0), retryCount(0), responseData("") {}
+    HttpRequest(const std::string& path, const std::string& method, const std::string& contentType, const std::string& payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
+        : path(path), method(method), contentType(contentType), payload(payload), onSuccess(onSuccess), onError(onError), inProgress(false), lastAttemptTime(0), retryCount(0), responseData("") {}
 };

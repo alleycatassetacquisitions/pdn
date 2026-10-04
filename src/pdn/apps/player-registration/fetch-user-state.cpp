@@ -1,7 +1,10 @@
 #include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "game/quickdraw-requests.hpp"
+#include "alleycat-server/health-api.hpp"
+#include "alleycat-server/matches-api.hpp"
+#include "alleycat-server/player-api.hpp"
+#include "alleycat-server/player-response.hpp"
 #include "device/drivers/logger.hpp"
 #include "wireless/remote-debug-manager.hpp"
 
@@ -84,7 +87,7 @@ void FetchUserDataState::onStateDismounted(PDN* pdn) {
 void FetchUserDataState::uploadMatches() {
     isUploadingMatches = true;
     fetchTimer.setTimer(MATCHES_UPLOAD_TIMEOUT);
-    QuickdrawRequests::updateMatches(
+    MatchesApi::updateMatches(
         wirelessManager,
         matchManager->toJson(),
         [this](const std::string& jsonResponse) {
@@ -105,7 +108,7 @@ void FetchUserDataState::uploadMatches() {
 void FetchUserDataState::fetchUserData() {
     isFetchingUserData = true;
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT);
-    QuickdrawRequests::getPlayer(
+    PlayerApi::getPlayer(
         wirelessManager,
         player->getUserID(),
         [this](const PlayerResponse& response) {
@@ -134,7 +137,7 @@ void FetchUserDataState::fetchUserData() {
 }
 
 void FetchUserDataState::healthCheck() {
-    QuickdrawRequests::healthCheck(
+    HealthApi::healthCheck(
         wirelessManager,
         [this](const std::string& success) {
             transitionToPlayerRegistrationState = true;

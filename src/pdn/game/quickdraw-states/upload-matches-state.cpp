@@ -1,6 +1,6 @@
 #include "game/quickdraw-states.hpp"
 #include "device/device.hpp"
-#include "game/quickdraw-requests.hpp"
+#include "alleycat-server/matches-api.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
 #include "device/drivers/logger.hpp"
@@ -23,7 +23,7 @@ UploadMatchesState::~UploadMatchesState() {
 }
 
 void UploadMatchesState::attemptUpload() {
-    QuickdrawRequests::updateMatches(
+    MatchesApi::updateMatches(
         wirelessManager,
         matchesJson,
         [this](const std::string& jsonResponse) {
