@@ -51,7 +51,7 @@ void IdleState::onStateMounted(FDN* fdn) {
     parameterizedCallbackFunction checkFirmwareUpdateHold = [](void* ctx) {
         IdleState* idle = static_cast<IdleState*>(ctx);
         if (idle->cachedFdn == nullptr) {
-            return;  // dismounted; the detach in onStateDismounted is the primary fix, this is the belt
+            return;  // dismounted; removeButtonCallbacks() clears the slot, this is the belt
         }
         if (idle->cachedFdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
             idle->secondaryHeldForFirmwareUpdate = true;
@@ -85,9 +85,10 @@ void IdleState::onStateDismounted(FDN* fdn) {
     uploadTimer.invalidate();
     connectionResolved = false;
     fdn->getSecondaryButton()->removeButtonCallbacks();
-    // removeButtonCallbacks() does not clear callback pointers (OneButton::reset()
-    // only touches its own click/press-tracking state), so DURING_LONG_PRESS has to
-    // be detached explicitly or it keeps firing into a dismounted IdleState.
+    // Belt, not the mechanism: removeButtonCallbacks() already clears every
+    // slot on both real drivers. Kept because nothing in the ButtonDriverInterface
+    // contract requires that, and DURING_LONG_PRESS is the one slot no later
+    // state re-registers over.
     fdn->getSecondaryButton()->setButtonPress(nullptr, nullptr, ButtonInteraction::DURING_LONG_PRESS);
     secondaryHeldForFirmwareUpdate = false;
     transitionToFirmwareUpdateState = false;

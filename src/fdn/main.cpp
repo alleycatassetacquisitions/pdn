@@ -255,8 +255,8 @@ static void setup() {
 }
 
 // How long the main loop must have free-run before a pending image confirms
-// itself. loop() has no delay()/vTaskDelay() in its chain, so a tick count
-// would not be a duration — it could elapse in a few milliseconds and confirm
+// itself. Measured in wall-clock rather than ticks, because a tick count says
+// nothing about elapsed time: it could pass in a few milliseconds and confirm
 // a bad image before it had any chance to fail. Ten seconds outlives the boot
 // path, the radio bring-up and several state-machine transitions.
 constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
