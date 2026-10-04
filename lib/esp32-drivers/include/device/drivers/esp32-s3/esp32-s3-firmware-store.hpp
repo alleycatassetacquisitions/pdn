@@ -10,6 +10,16 @@
 #include "device/drivers/storage-interface.hpp"
 #include "device/drivers/logger.hpp"
 
+// Rollback is the whole reason setBootToWritten() and confirmRunningImage()
+// are safe to call: without it esp_ota_set_boot_partition() marks the new slot
+// ESP_OTA_IMG_UNDEFINED instead of NEW, the bootloader never promotes it to
+// PENDING_VERIFY, the confirm below always early-returns, and an image that
+// fails to boot is permanent. Nothing reads the flag at runtime, so the
+// divergence is otherwise silent -- which is exactly how it was missed once.
+#if !defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE)
+#error "firmware distribution requires CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE"
+#endif
+
 /// NVS namespace holding this device's generation floor. Registered on the
 /// shared Esp32S3PrefsDriver at construction (src/pdn/main.cpp,
 /// src/fdn/main.cpp), which throws on any namespace it was not given.

@@ -83,8 +83,11 @@ jobs:
         sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
         sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
     
+    # Both families, because the drivers in lib/esp32-drivers are shared: a
+    # change made for one device can stop the other compiling, and building a
+    # single environment cannot see that.
     - name: Build ESP32-S3 Release
-      run: pio run -e esp32-s3_pdn_release
+      run: pio run -e esp32-s3_pdn_release -e esp32-s3_fdn_release
   
   # Native CLI build verification (Unix only)
   build-cli:
