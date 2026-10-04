@@ -1,1 +1,35 @@
+# ESP-IDF's defaults are not Arduino's. Every line here is a divergence that
+# either broke the build or would have changed behaviour without saying so.
+# Values come from boards/esp32-s3-n8r8.json and platformio.ini, not from the
+# generic esp32s3 Arduino sdkconfig, which assumes 16MB flash and quad PSRAM.
+#
+# This file is the only channel into the IDF configuration on the component
+# path: custom_sdkconfig is ignored when espidf is in the framework list
+# (espidf.py gates HandleArduinoIDFsettings on "espidf" not in PIOFRAMEWORK).
+
+# 8MB part, DIO because platformio.ini sets memory_type = dio_opi. IDF defaults
+# to 2MB, which cannot hold a slot at 0x3F0000.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+
+# 8MB octal PSRAM. -DBOARD_HAS_PSRAM is an Arduino define and configures
+# nothing under IDF.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+
+# The two-slot table. Without this, board_build.partitions sets only
+# CUSTOM_FILENAME and IDF silently builds partitions_singleapp.csv, leaving no
+# second slot to receive an image.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+
+# esp32-s3-prefs-driver.hpp uses try/catch. IDF compiles C++ without exceptions.
+CONFIG_COMPILER_CXX_EXCEPTIONS=y
+
+# crash-logger.hpp calls esp_core_dump_get_summary, which is not compiled in
+# under IDF's default of routing core dumps nowhere.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+
+# Arduino ticks at 1kHz, IDF at 100Hz.
 CONFIG_FREERTOS_HZ=1000
