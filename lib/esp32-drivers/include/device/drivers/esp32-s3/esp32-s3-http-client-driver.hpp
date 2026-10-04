@@ -1,7 +1,12 @@
 #pragma once
 
-#include <WiFi.h>
+#include <atomic>
+#include <cstdio>
+#include <esp_event.h>
+#include <esp_netif.h>
 #include <esp_wifi.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
@@ -30,6 +35,7 @@ inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
  */
 class Esp32S3HttpClient : public HttpClientDriverInterface {
 public:
+    static const int CONNECT_POLL_MS = 100;
     static const int WIFI_CONNECTION_TIMEOUT_MS = 12500;  // 2.5 sec * 5 attempts
     static const uint8_t MAX_RETRIES = 1;
 
@@ -83,7 +89,8 @@ public:
 
     void disconnect() override {
         cleanupHttpClient();
-        WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
+        autoReconnect.store(false);
+        esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
         
         wifiConnected = false;
         httpClientInitialized = false;
@@ -135,7 +142,7 @@ public:
     void connect() {
         LOG_I(HTTP_TAG, "Enabling HTTP mode...");
         
-        if (wifiConnected && WiFi.status() == WL_CONNECTED) {
+        if (wifiConnected && isStationConnected()) {
             LOG_D(HTTP_TAG, "Already connected to WiFi");
         }
         
@@ -145,17 +152,17 @@ public:
         // Wait for connection with timeout
         int attempts = 0;
         const int maxAttempts = 50;  // 5 seconds max (50 * 100ms)
-        while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
-            delay(100);
+        while (!isStationConnected() && attempts < maxAttempts) {
+            vTaskDelay(pdMS_TO_TICKS(CONNECT_POLL_MS));
             attempts++;
         }
         
-        if (WiFi.status() == WL_CONNECTED) {
+        if (isStationConnected()) {
             wifiConnected = true;
             wifiGivenUp = false;
-            channel = WiFi.channel();
+            channel = stationChannel();
             LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", 
-                  WiFi.localIP().toString().c_str(), channel);
+                  stationIpString().c_str(), channel);
             
             if (!httpClientInitialized) {
                 httpClientInitialized = initializeHttpClient();
@@ -169,12 +176,124 @@ public:
     friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
 private:
+    /**
+     * Station states this driver distinguishes. Arduino's wl_status_t was a
+     * polled value backed by its own event handlers; IDF only delivers events,
+     * so the equivalent is tracked here.
+     */
+    enum class StationStatus { DISCONNECTED, NO_SSID_AVAIL, CONNECT_FAILED, CONNECTION_LOST, CONNECTED };
+
+    // Written from the WiFi event task and read from exec() on the main loop,
+    // so unlike the ESP-NOW callbacks these really are cross-task.
+    static inline std::atomic<StationStatus> stationStatus{StationStatus::DISCONNECTED};
+    static inline std::atomic<uint32_t> stationIp{0};
+    // Arduino's setAutoReconnect(true) retried on its own. IDF does not, so the
+    // disconnect handler consults this and re-dials.
+    static inline std::atomic<bool> autoReconnect{false};
+    static inline bool wifiStackReady = false;
+
+    static void onWifiEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
+        (void)arg;
+        if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+            // Arduino reported WL_CONNECTED only once an IP existed, not on
+            // association, so this is the event that means connected.
+            auto* event = static_cast<ip_event_got_ip_t*>(data);
+            stationIp.store(event->ip_info.ip.addr);
+            stationStatus.store(StationStatus::CONNECTED);
+            return;
+        }
+        if (base != WIFI_EVENT || id != WIFI_EVENT_STA_DISCONNECTED) {
+            return;
+        }
+        auto* event = static_cast<wifi_event_sta_disconnected_t*>(data);
+        bool wasConnected = stationStatus.load() == StationStatus::CONNECTED;
+        stationIp.store(0);
+        switch (event->reason) {
+            case WIFI_REASON_NO_AP_FOUND:
+                stationStatus.store(StationStatus::NO_SSID_AVAIL);
+                break;
+            case WIFI_REASON_AUTH_FAIL:
+            case WIFI_REASON_ASSOC_FAIL:
+            case WIFI_REASON_HANDSHAKE_TIMEOUT:
+                stationStatus.store(StationStatus::CONNECT_FAILED);
+                break;
+            default:
+                stationStatus.store(wasConnected ? StationStatus::CONNECTION_LOST
+                                                 : StationStatus::DISCONNECTED);
+                break;
+        }
+        if (autoReconnect.load()) {
+            esp_wifi_connect();
+        }
+    }
+
+    /**
+     * Brings up what a station needs beyond the radio: a default STA netif for
+     * DHCP and the two event handlers. The ESP-NOW driver raises the radio
+     * without either, so whichever gets here first does its own half only.
+     */
+    void ensureWifiStack() {
+        if (wifiStackReady) {
+            return;
+        }
+        esp_netif_init();
+        esp_event_loop_create_default();
+        wifi_mode_t mode;
+        if (esp_wifi_get_mode(&mode) == ESP_ERR_WIFI_NOT_INIT) {
+            wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+            if (esp_wifi_init(&init) != ESP_OK) {
+                LOG_E(HTTP_TAG, "esp_wifi_init failed");
+                return;
+            }
+            esp_wifi_set_storage(WIFI_STORAGE_RAM);
+        }
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == nullptr) {
+            esp_netif_create_default_wifi_sta();
+        }
+        esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &onWifiEvent, nullptr, nullptr);
+        esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &onWifiEvent, nullptr, nullptr);
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        esp_wifi_start();
+        wifiStackReady = true;
+    }
+
+    static bool isStationConnected() {
+        return stationStatus.load() == StationStatus::CONNECTED;
+    }
+
+    static int stationChannel() {
+        uint8_t primary = 0;
+        wifi_second_chan_t secondary = WIFI_SECOND_CHAN_NONE;
+        esp_wifi_get_channel(&primary, &secondary);
+        return primary;
+    }
+
+    static std::string stationIpString() {
+        uint32_t addr = stationIp.load();
+        char text[16] = {};
+        std::snprintf(text, sizeof(text), "%u.%u.%u.%u",
+                      static_cast<unsigned>(addr & 0xFF), static_cast<unsigned>((addr >> 8) & 0xFF),
+                      static_cast<unsigned>((addr >> 16) & 0xFF), static_cast<unsigned>((addr >> 24) & 0xFF));
+        return text;
+    }
+
     void startWifiConnection() {
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect(false);  // Clear any previous connection but keep radio on
-        WiFi.setAutoReconnect(true);  // Let WiFi stack handle reconnection attempts
-        WiFi.channel(6);
-        WiFi.begin(wifiConfig->ssid.c_str(), wifiConfig->password.c_str());
+        ensureWifiStack();
+        autoReconnect.store(true);
+        esp_wifi_disconnect();
+        // WiFi.channel(6) before begin. The AP's own channel wins once
+        // associated; this only pins where the radio sits until then.
+        esp_wifi_set_channel(ESPNOW_FALLBACK_CHANNEL, WIFI_SECOND_CHAN_NONE);
+
+        wifi_config_t config = {};
+        std::snprintf(reinterpret_cast<char*>(config.sta.ssid), sizeof(config.sta.ssid),
+                      "%s", wifiConfig->ssid.c_str());
+        std::snprintf(reinterpret_cast<char*>(config.sta.password), sizeof(config.sta.password),
+                      "%s", wifiConfig->password.c_str());
+        esp_wifi_set_config(WIFI_IF_STA, &config);
+
+        stationStatus.store(StationStatus::DISCONNECTED);
+        esp_wifi_connect();
         LOG_I(HTTP_TAG, "Starting WiFi connection, timeout: %dms", WIFI_CONNECTION_TIMEOUT_MS);
     }
 
@@ -182,9 +301,9 @@ private:
         connectionAttemptTimer.updateTime();
         
         // Check if we've connected
-        if (WiFi.status() == WL_CONNECTED) {
-            channel = WiFi.channel();
-            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", WiFi.localIP().toString().c_str(), channel);
+        if (isStationConnected()) {
+            channel = stationChannel();
+            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", stationIpString().c_str(), channel);
             wifiConnected = true;
             wifiGivenUp = false;
             connectionAttemptTimer.invalidate();
@@ -198,12 +317,12 @@ private:
             logWifiStatusError();
             wifiGivenUp = true;
             LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
-            WiFi.setAutoReconnect(false);  // Disable auto-reconnect to stop retry spam
-            WiFi.disconnect(false);  // Disconnect from AP but keep WiFi radio on for ESP-NOW
+            autoReconnect.store(false);  // Stop the retry spam
+            esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
             
             // Force fallback channel for ESP-NOW compatibility
             // IMPORTANT: Configure your WiFi AP to use this same channel!
-            WiFi.channel(ESPNOW_FALLBACK_CHANNEL);
+            esp_wifi_set_channel(ESPNOW_FALLBACK_CHANNEL, WIFI_SECOND_CHAN_NONE);
             LOG_I(HTTP_TAG, "Set fallback WiFi channel to %d for ESP-NOW", ESPNOW_FALLBACK_CHANNEL);
             
             connectionAttemptTimer.invalidate();
@@ -211,14 +330,13 @@ private:
     }
 
     void logWifiStatusError() {
-        wl_status_t status = WiFi.status();
         const char* msg = "Unknown error";
         
-        switch (status) {
-            case WL_NO_SSID_AVAIL: msg = "SSID not found"; break;
-            case WL_CONNECT_FAILED: msg = "Connection failed"; break;
-            case WL_CONNECTION_LOST: msg = "Connection lost"; break;
-            case WL_DISCONNECTED: msg = "Disconnected"; break;
+        switch (stationStatus.load()) {
+            case StationStatus::NO_SSID_AVAIL:  msg = "SSID not found";    break;
+            case StationStatus::CONNECT_FAILED: msg = "Connection failed"; break;
+            case StationStatus::CONNECTION_LOST: msg = "Connection lost";  break;
+            case StationStatus::DISCONNECTED:   msg = "Disconnected";      break;
             default: break;
         }
         
@@ -285,7 +403,7 @@ private:
             }
         }
         
-        if (WiFi.status() != WL_CONNECTED) {
+        if (!isStationConnected()) {
             handleRequestError(request, {WirelessError::WIFI_NOT_CONNECTED, "WiFi lost", false});
             return;
         }
@@ -369,7 +487,10 @@ private:
             httpQueue.pop();
         } else {
             request.retryCount++;
-            unsigned long backoffTime = pow(2, request.retryCount) * 1000;
+            // Was pow(2, n), which Arduino's <math.h> supplied. A shift is exact
+            // for integer powers, where a double pow can land on 7.999... and
+            // truncate a backoff short. retryCount is bounded by MAX_RETRIES.
+            unsigned long backoffTime = (1UL << request.retryCount) * 1000;
             request.lastAttemptTime = SimpleTimer::getPlatformClock()->milliseconds() + backoffTime - 1000;
         }
     }
