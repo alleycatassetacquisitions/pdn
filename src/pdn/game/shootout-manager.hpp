@@ -276,6 +276,11 @@ private:
      * head relayed round the ring. nullptr off a ring or before one propagates.
      */
     const uint8_t* ringHead() const;
+    /**
+     * True in the reveal before any bracket arrives: every confirm this device
+     * saw is in, and nobody has drawn yet.
+     */
+    bool isAwaitingBracket() const;
     std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;

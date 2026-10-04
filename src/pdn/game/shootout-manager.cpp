@@ -300,7 +300,13 @@ void ShootoutManager::onRingClosed() {
 
 void ShootoutManager::onRingClosedReceived(
     const uint8_t* fromMac, const std::vector<std::array<uint8_t, 6>>& members) {
-    if (phase != Phase::IDLE) return;
+    // A member's roster is its head's. One it recorded from a latch of its own
+    // that ring detection resolved away names nobody else, so the head's
+    // rebroadcast replaces it through the proposal too.
+    const uint8_t* head = ringHead();
+    const bool fromOurHead = phase == Phase::PROPOSAL && !headsRing() && head != nullptr &&
+                             memcmp(fromMac, head, 6) == 0;
+    if (phase != Phase::IDLE && !fromOurHead) return;
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) {
         LOG_E(TAG, "onRingClosedReceived with no local MAC");
@@ -356,7 +362,8 @@ void ShootoutManager::confirmLocal() {
 }
 
 void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name) {
-    if (phase != Phase::PROPOSAL) return;
+    // A device waiting on a bracket may yet become the head that has to draw it.
+    if (phase != Phase::PROPOSAL && !isAwaitingBracket()) return;
     // Fast path: already-confirmed peers bypass the loop-membership scan (this
     // is the common case during 1Hz rebroadcasts — the gate only needs to
     // block first-time stray CONFIRMs from outside the ring).
@@ -370,7 +377,7 @@ void ShootoutManager::onConfirmReceived(const uint8_t* fromMac, const char* name
         LOG_W(TAG, "onConfirmReceived from=%s count=%zu",
               MacToString(fromMac), confirmedSet.size());
     }
-    if (allMembersConfirmed()) {
+    if (phase == Phase::PROPOSAL && allMembersConfirmed()) {
         LOG_W(TAG, "allMembersConfirmed -> advanceToBracketReveal");
         advanceToBracketReveal();
     }
@@ -434,6 +441,10 @@ const uint8_t* ShootoutManager::ringHead() const {
     if (headsRing()) return wirelessManager->getMacAddress();
     if (rdc == nullptr || !rdc->isInRing()) return nullptr;
     return rdc->getHeadMac();
+}
+
+bool ShootoutManager::isAwaitingBracket() const {
+    return phase == Phase::BRACKET_REVEAL && bracket.empty();
 }
 
 bool ShootoutManager::isCoordinator() const {
@@ -582,7 +593,7 @@ void ShootoutManager::sync() {
         abortTournament();
     }
 
-    if (phase == Phase::PROPOSAL) {
+    if (phase == Phase::PROPOSAL || isAwaitingBracket()) {
         // One rebuild per tick, shared by everything below: getLoopMembers goes to
         // the RDC for a fresh vector on the coordinator, and the proposal asks the
         // same question three times.
@@ -594,14 +605,17 @@ void ShootoutManager::sync() {
         // A member that missed the closure frame stays in Idle with nothing to
         // poll, while the coordinator waits on a confirm it will never get. No ack
         // needed: a repeat is a no-op once the member is out of Phase::IDLE.
-        if (ringClosedRebroadcastTimer.expired() && headsRing() && !everyoneIn) {
+        if (phase == Phase::PROPOSAL && ringClosedRebroadcastTimer.expired() && headsRing() &&
+            !everyoneIn) {
             // Re-send against the roster as it reads now: a member whose announce
             // to the head was still in flight at closure only appears in it now.
             ringMembers = members;
             sendRingClosed();
         }
 
-        if (confirmRebroadcastTimer.expired() && confirmedLocally && !everyoneIn) {
+        // Seeing every confirm says nothing about whether the head has: it may
+        // have dropped this device's frame. Only the bracket proves it counted.
+        if (confirmRebroadcastTimer.expired() && confirmedLocally) {
             sendLocalConfirm();
         }
 
@@ -610,8 +624,8 @@ void ShootoutManager::sync() {
         // Held over a window because the roster is still filling just after a ring
         // closes, and gated on a local confirm, which leaves an untouched
         // self-cabled device sitting here idle rather than flashing ABORTED.
-        const bool ringTooSmallToPlay =
-            headsRing() && confirmedLocally && members.size() < MIN_PARTICIPANTS;
+        const bool ringTooSmallToPlay = phase == Phase::PROPOSAL && headsRing() &&
+                                        confirmedLocally && members.size() < MIN_PARTICIPANTS;
         if (shortRosterDebounce.heldFor(ringTooSmallToPlay, SHORT_ROSTER_TIMEOUT_MS)) {
             // Lands in ABORTED like every other giving-up path, so the player
             // gets the same screen. Nothing goes out on the wire: the only
@@ -619,9 +633,11 @@ void ShootoutManager::sync() {
             // and a fan-out naming nobody sends nothing.
             LOG_E(TAG, "ring has too few participants to draw a bracket; aborting");
             abortTournament();
-        } else if (everyoneIn) {
-            // The roster can change under a waiting device and complete it with no
-            // CONFIRM left to arrive, so the proposal advances on the state.
+        } else if (everyoneIn && (phase == Phase::PROPOSAL || headsRing())) {
+            // Drawing is a standing duty of whoever heads the ring, not a chance
+            // taken on the CONFIRM that completes the proposal: the head can be
+            // unlatched for a moment right then, and a device waiting in the
+            // reveal can since have become head.
             advanceToBracketReveal();
         }
     }
@@ -935,6 +951,12 @@ std::vector<std::array<uint8_t, 6>> ShootoutManager::buildLoopMemberSet() const 
         std::array<uint8_t, 6> self;
         memcpy(self.data(), selfMac, 6);
         members.push_back(self);
+    }
+    // The roster only grows: ring detection can drop a member for a moment while
+    // the cables stay put, and a member that really leaves breaks the ring, which
+    // aborts. Drawing off the pruned roster would seat a bracket without it.
+    for (const auto& m : ringMembers) {
+        if (!containsMac(members, m.data())) members.push_back(m);
     }
     return members;
 }
