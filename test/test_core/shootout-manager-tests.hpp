@@ -119,12 +119,7 @@ public:
         rdc.sync(&device);
     }
 
-    /**
-     * Puts this device mid-chain on a closed loop the way a member really gets
-     * there: a downstream link, and an upstream link under a foreign head whose
-     * HELLO carries the relayed ring-closed flag.
-     * `head` defaults to a device nothing else in the fixture uses.
-     */
+    /** Connects both jacks as a relayed ring member under `head` (defaults to 0x06). */
     void joinRelayedRing(const uint8_t* head = nullptr) {
         const uint8_t downstream[6] = {0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
         const uint8_t upstream[6] = {0x05, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -133,15 +128,18 @@ public:
         connectJackTo(inJack, upstream, head != nullptr ? head : defaultHead, HELLO_FLAG_RING_CLOSED);
     }
 
-    /**
-     * Puts this device on a ring as a member under `head`, as its ring detection
-     * would report it. Rebinds the manager to a stand-in RDC, so call it before
-     * anything else touches `shootout`.
-     */
+    /** Rebinds `shootout` to `memberRdc` as a relayed ring child under `head`. */
     void followRingHead(const std::array<uint8_t, 6>& head) {
         memberRdc.chainRole = ChainRole::CHILD;
-        memberRdc.relayedMember = true;
         memberRdc.headMac = head;
+        delete shootout;
+        shootout = new ShootoutManager(&player, device.wirelessManager, &memberRdc);
+    }
+
+    /** Rebinds `shootout` to `memberRdc` as a latched ring head serving `served`. */
+    void headRingServing(const std::vector<std::array<uint8_t, 6>>& served) {
+        memberRdc.chainRole = ChainRole::RING;
+        memberRdc.chainMembers = served;
         delete shootout;
         shootout = new ShootoutManager(&player, device.wirelessManager, &memberRdc);
     }
@@ -215,9 +213,6 @@ inline void confirmRebroadcastsEverySecondDuringProposal(ShootoutManagerTests* s
     EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 }
 
-// The coordinator is the ring head that drew the bracket, not whoever holds the
-// lowest MAC: self is the lowest of the three and coordinates only because its
-// ring detection has it latched as head.
 inline void coordinatorIsTheRingHeadThatDrew(ShootoutManagerTests* suite) {
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
@@ -238,8 +233,6 @@ inline void coordinatorIsTheRingHeadThatDrew(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getBracket().size(), 3u);
 }
 
-// The head announces the roster of the ring it closed. A member needs that broadcast to
-// open its proposal window, and needs to still be on the ring when it polls.
 inline void ringClosedAnnouncesRosterToMembers(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
@@ -399,10 +392,6 @@ inline void ringHeadLoopMembersComeFromRdcRoster(ShootoutManagerTests* suite) {
     EXPECT_TRUE(ringShootout.getLoopMembers().empty());
 }
 
-// BRACKET is a broadcast, so an unrelated ring's tournament reaches us. Before
-// this guard the lower-MAC stand-down ran first and wiped a live tournament into
-// a state nothing recovers: no coordinator, no bracket, phase still
-// MATCH_IN_PROGRESS, and every restart path gated on isCoordinator().
 inline void foreignRingBracketLeavesLiveTournamentIntact(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x09, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x09, 0, 0, 0, 0, 0};
@@ -439,8 +428,6 @@ inline void foreignRingBracketLeavesLiveTournamentIntact(ShootoutManagerTests* s
     EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), selfMac, 6), 0);
 }
 
-// The ring-closed claim is an edge; ring detection's head is the standing fact.
-// A device that claimed and has since stopped heading the ring does not draw.
 inline void onlyTheRingHeadDrawsTheBracket(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> peer = {0x02, 0, 0, 0, 0, 0};
@@ -453,13 +440,11 @@ inline void onlyTheRingHeadDrawsTheBracket(ShootoutManagerTests* suite) {
     suite->shootout->confirmLocal();
     suite->shootout->onConfirmReceived(peer.data());
 
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
     EXPECT_TRUE(suite->shootout->getBracket().empty())
         << "a device that does not head the ring drew a bracket";
 }
 
-// A member joins the bracket its ring detection's head drew, whoever else
-// announces one: a claimant the ring has already resolved away is not its head.
 inline void memberJoinsOnlyItsRingHeadsBracket(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> head = {0x06, 0, 0, 0, 0, 0};
@@ -482,33 +467,115 @@ inline void memberJoinsOnlyItsRingHeadsBracket(ShootoutManagerTests* suite) {
     EXPECT_EQ(suite->shootout->getCoordinatorMac(), head);
 }
 
-// A roster can change under a device that is waiting on confirms, and the
-// change can complete them with no CONFIRM left to arrive. The proposal advances
-// on the state, not on the frame.
-inline void proposalAdvancesWhenTheRosterCompletesIt(ShootoutManagerTests* suite) {
-    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+inline void headKeepsWaitingOnAMemberPrunedFromTheRoster(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> peer = {0x02, 0, 0, 0, 0, 0};
-    std::array<uint8_t, 6> gone = {0x03, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> pruned = {0x03, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
 
-    suite->closeRingOnJacks();
-    suite->shootout->setLoopMembersForTest({me, peer, gone});
+    suite->headRingServing({peer});
+    suite->shootout->onRingClosed();
     suite->shootout->startProposal();
+    suite->memberRdc.chainMembers = {peer, pruned};
+    suite->shootout->sync();
     suite->shootout->confirmLocal();
     suite->shootout->onConfirmReceived(peer.data());
     ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
 
-    suite->shootout->setLoopMembersForTest({me, peer});
+    suite->memberRdc.chainMembers = {peer};
     suite->shootout->sync();
 
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL)
-        << "a proposal every member had confirmed never advanced";
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
+        << "a member pruned from the roster for a moment lost its seat in the bracket";
 }
 
-// Every member hears the coordinator's BRACKET retries meant for a silent one. A
-// follower that already holds that bracket re-acks it and stays put; refusing its
-// own coordinator would make it the silent member the retries give up on.
+inline void deviceThatComesToHeadTheRingDrawsTheBracket(ShootoutManagerTests* suite) {
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> peer = {0x02, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->shootout->setLoopMembersForTest({me, peer});
+    suite->shootout->startProposal();
+    suite->shootout->confirmLocal();
+    suite->shootout->onConfirmReceived(peer.data());
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+    ASSERT_TRUE(suite->shootout->getBracket().empty());
+
+    suite->closeRingOnJacks();
+    suite->shootout->sync();
+
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_EQ(suite->shootout->getBracket().size(), 2u)
+        << "the device heading the ring never drew the bracket everyone waits on";
+    EXPECT_EQ(suite->shootout->getCoordinatorMac(), me);
+}
+
+inline void deviceWaitingOnABracketStillCountsConfirms(ShootoutManagerTests* suite) {
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> head = {0x06, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> late = {0x03, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->followRingHead(head);
+    suite->shootout->onRingClosedReceived(head.data(), {me, head});
+    suite->shootout->startProposal();
+    suite->shootout->confirmLocal();
+    suite->shootout->onConfirmReceived(head.data());
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+
+    suite->shootout->onRingClosedReceived(head.data(), {me, head, late});
+    suite->shootout->onConfirmReceived(late.data());
+
+    EXPECT_TRUE(suite->shootout->hasConfirmed(late.data()))
+        << "a confirm reaching a device that may have to draw was dropped";
+}
+
+inline void memberKeepsConfirmingUntilItHoldsABracket(ShootoutManagerTests* suite) {
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> head = {0x06, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->followRingHead(head);
+    suite->shootout->setLoopMembersForTest({me, head});
+    suite->shootout->startProposal();
+    suite->shootout->confirmLocal();
+    suite->shootout->onConfirmReceived(head.data());
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(testing::_, PktType::kShootoutCommand,
+                         testing::Pointee(static_cast<uint8_t>(ShootoutCmd::CONFIRM)), testing::_))
+        .Times(testing::AtLeast(1))
+        .WillRepeatedly(testing::Return(1));
+
+    suite->fakeClock->advance(ShootoutManager::kConfirmRebroadcastMs + 1);
+    suite->shootout->sync();
+}
+
+inline void memberTakesItsHeadsRosterDuringTheProposal(ShootoutManagerTests* suite) {
+    std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> head = {0x06, 0, 0, 0, 0, 0};
+    std::array<uint8_t, 6> other = {0x03, 0, 0, 0, 0, 0};
+    ON_CALL(*suite->device.mockPeerComms, sendData(testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault(testing::Return(1));
+
+    suite->followRingHead(head);
+    suite->shootout->onRingClosedReceived(head.data(), {me});
+    suite->shootout->startProposal();
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::PROPOSAL);
+
+    suite->shootout->onRingClosedReceived(other.data(), {me, other});
+    EXPECT_EQ(suite->shootout->getLoopMembers().size(), 1u)
+        << "a member took its roster from a device that is not its head";
+
+    suite->shootout->onRingClosedReceived(head.data(), {me, head, other});
+    EXPECT_EQ(suite->shootout->getLoopMembers().size(), 3u)
+        << "a member kept a roster its head's rebroadcast replaces";
+}
+
 inline void followerReacksItsCoordinatorsBracketRetransmit(ShootoutManagerTests* suite) {
     std::array<uint8_t, 6> me = {0x01, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> coord = {0x06, 0, 0, 0, 0, 0};
@@ -520,7 +587,8 @@ inline void followerReacksItsCoordinatorsBracketRetransmit(ShootoutManagerTests*
     suite->shootout->setLoopMembersForTest({coord, me, other});
     suite->shootout->startProposal();
     suite->shootout->onBracketReceived(coord.data(), {me, coord, other}, 1);
-    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    suite->shootout->onMatchStartReceived(coord.data(), me.data(), coord.data(), 0, 2);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
 
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(testing::_, PktType::kShootoutCommandAck, testing::_, testing::_))
@@ -529,14 +597,10 @@ inline void followerReacksItsCoordinatorsBracketRetransmit(ShootoutManagerTests*
 
     suite->shootout->onBracketReceived(coord.data(), {me, coord, other}, 1);
 
-    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
+    EXPECT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::MATCH_IN_PROGRESS);
     EXPECT_EQ(memcmp(suite->shootout->getCoordinatorMac().data(), coord.data(), 6), 0);
 }
 
-// An abort from retry exhaustion drops the ring roster with the cables still in
-// place, and the RDC latch is edge-triggered so it never fires again. The head
-// has to notice the ring is still there and re-announce it, or the whole ring
-// waits for someone to unplug.
 inline void abortedRingReclaimsWhileStillCabled(ShootoutManagerTests* suite) {
     uint8_t selfMac[6] = {0x01, 0, 0, 0, 0, 0};
     ON_CALL(*suite->device.mockPeerComms, getMacAddress())
@@ -793,7 +857,6 @@ inline void matchStartWaitsOutTheBracketRevealWindow(ShootoutManagerTests* suite
     suite->closeRingOnJacks();
     suite->shootout->setLoopMembersForTest(members);
 
-    suite->closeRingOnJacks();
     suite->shootout->onRingClosed();
     suite->shootout->startProposal();
     for (auto& m : members) suite->shootout->onConfirmReceived(m.data());
@@ -936,7 +999,6 @@ inline void eachBoutGetsItsOwnResultRetry(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(1));
 
     suite->followRingHead(coord);
-    suite->closeRingOnJacks();
     suite->shootout->setLoopMembersForTest({coord, me, other, fourth});
     suite->shootout->startProposal();
     for (const auto& m : {coord, me, other, fourth})
@@ -1018,7 +1080,6 @@ inline void coordinatorMissingOurResultIsRecoveredBySender(ShootoutManagerTests*
     suite->followRingHead(coord);
     suite->shootout->setLoopMembersForTest({coord, me, other});
     suite->shootout->startProposal();
-    suite->closeRingOnJacks();
     suite->shootout->onConfirmReceived(coord.data());
     suite->shootout->onConfirmReceived(me.data());
     suite->shootout->onConfirmReceived(other.data());
@@ -1916,12 +1977,7 @@ inline void aRosterThatFillsInsideTheWindowStillRuns(ShootoutManagerTests* suite
         << "a roster that filled before the deadline was still given up on";
 }
 
-// A device that has already ended its tournament stays ended. The coordinator can
-// still be retransmitting BRACKET to some other silent member, and nothing but the
-// terminal phase tells that retransmit from a new bracket.
 inline void aBracketDoesNotReopenAnEndedTournament(ShootoutManagerTests* suite) {
-    // Self takes the higher MAC: a lower-MAC head would stand down rather than
-    // follow this coordinator, and never adopt the bracket in the first place.
     uint8_t selfMac[6] = {0x05, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> me = {0x05, 0, 0, 0, 0, 0};
     std::array<uint8_t, 6> coord = {0x01, 0, 0, 0, 0, 0};
@@ -1932,7 +1988,6 @@ inline void aBracketDoesNotReopenAnEndedTournament(ShootoutManagerTests* suite) 
         .WillByDefault(testing::Return(1));
 
     suite->followRingHead(coord);
-    suite->closeRingOnJacks();
     suite->shootout->setLoopMembersForTest({me, coord});
     suite->shootout->onRingClosedReceived(coord.data(), {me, coord});
     suite->shootout->onBracketReceived(coord.data(), {me, coord}, 1);
@@ -2090,11 +2145,13 @@ inline void frameFromANonCoordinatorIsRefused(ShootoutManagerTests* suite) {
             sendData(testing::_, testing::_, testing::_, testing::_))
         .WillByDefault(testing::Return(1));
 
+    suite->followRingHead(coord);
     suite->shootout->setLoopMembersForTest({coord, me, other});
     suite->shootout->startProposal();
     for (const std::array<uint8_t, 6>& m : {coord, me, other})
         suite->shootout->onConfirmReceived(m.data());
     suite->shootout->onBracketReceived(coord.data(), {me, other, coord}, 1);
+    ASSERT_EQ(suite->shootout->getPhase(), ShootoutManager::Phase::BRACKET_REVEAL);
     ASSERT_EQ(suite->shootout->getCurrentMatchIndex(), -1);
 
     // Both payloads are entirely well-formed against our own bracket; only the

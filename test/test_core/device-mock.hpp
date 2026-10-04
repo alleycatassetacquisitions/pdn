@@ -257,16 +257,15 @@ public:
      * closure sits on a live loop with no latch of its own.
      */
     bool isInRing() const override {
-        return chainRole == ChainRole::RING || relayedMember;
+        return chainRole == ChainRole::RING || headMac != std::array<uint8_t, 6>{};
     }
 
-    /** The head relayed to a member; the base answers only for a real chain. */
+    /** Stubbed upstream head MAC, or nullptr when unset. */
     const uint8_t* getHeadMac() const override {
         return headMac == std::array<uint8_t, 6>{} ? nullptr : headMac.data();
     }
 
     ChainRole chainRole = ChainRole::RING;
-    bool relayedMember = false;
     std::vector<std::array<uint8_t, 6>> chainMembers;
     std::array<uint8_t, 6> headMac{};
 };

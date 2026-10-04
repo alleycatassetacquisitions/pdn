@@ -57,16 +57,7 @@ public:
     // Test-only: override the loop-member set. Pass an empty vector to clear.
     void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
 
-    /**
-     * RDC ring-closed observer: snapshots the ring roster and announces it to the
-     * other members. Who coordinates is read from the RDC when a bracket is drawn.
-     */
     void onRingClosed();
-    /**
-     * Inbound RING_CLOSED: records `members` as the ring roster, which a member
-     * gates confirms against. A member has no other proposal trigger, though it
-     * must also still be on the ring when the gate is polled.
-     */
     void onRingClosedReceived(const uint8_t* fromMac,
                               const std::vector<std::array<uint8_t, 6>>& members);
     /**
@@ -89,7 +80,6 @@ public:
     bool hasConfirmed(const uint8_t* mac) const;
 
     std::array<uint8_t, 6> getCoordinatorMac() const;
-    /** True when this device drew the bracket it holds. */
     bool isCoordinator() const;
     std::vector<std::array<uint8_t, 6>> getBracket() const;
     bool hasBye() const;
@@ -115,10 +105,6 @@ public:
      */
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
-    /**
-     * Adopts the bracket the RDC's ring head drew and acks it; once a bracket is
-     * held, only its author's retransmits. Anything else is refused, unacked.
-     */
     void onBracketReceived(const uint8_t* fromMac,
                            const std::vector<std::array<uint8_t, 6>>& offeredBracket,
                            uint8_t seqId);
@@ -224,9 +210,6 @@ private:
     Phase phase = Phase::IDLE;
 
     void primeMatchManagerForMatch();
-    // resetToIdle() clears the ring roster on top of this; startProposal() does
-    // not, because the ring closure that drove the mount announced it moments
-    // earlier.
     void resetTournamentState();
 
     uint8_t nextSeqId();
@@ -234,14 +217,6 @@ private:
                             const uint8_t* mac);
     /** True when `mac` is the coordinator this device is following. */
     bool isFromCoordinator(const uint8_t* mac) const;
-    /**
-     * True in the two phases a tournament ends in. Every handler that would
-     * advance a tournament refuses them, so a late frame cannot reopen one; the
-     * two terminal screens end them deliberately, via resetToIdle on dismount.
-     * ENDED leaves the coordinator anchor and the bracket standing, so its
-     * coordinator's frames still pass the sender checks; an abort clears both,
-     * so a retransmitted BRACKET would otherwise be adopted afresh.
-     */
     bool isTerminalPhase() const {
         return phase == Phase::ENDED || phase == Phase::ABORTED;
     }
@@ -275,12 +250,7 @@ private:
     std::vector<NameEntry> names;
     void recordName(const uint8_t* mac, const char* name);
 
-    /** True while the RDC has this device latched as the ring's head. */
     bool headsRing() const;
-    /**
-     * The ring's head as the RDC reports it: this device when latched, else the
-     * head relayed round the ring. nullptr off a ring or before one propagates.
-     */
     const uint8_t* ringHead() const;
     std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
     void sendLocalConfirm();
@@ -320,8 +290,7 @@ private:
         ShootoutCmd cmd, uint8_t seqId,
         const std::vector<std::array<uint8_t, 6>>& macs) const;
 
-    // The author of the bracket held: self on the head that drew it, the sender on
-    // every other member. All-zero while no bracket is held.
+    // Author of the current bracket; all-zero while no bracket is held.
     std::array<uint8_t, 6> coordinatorMac{};
 
     std::array<uint8_t, 6> opponentMac{};

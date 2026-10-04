@@ -780,7 +780,6 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
                   ShootoutManager::Phase::BRACKET_REVEAL)
             << "node " << i << " phase";
     }
-    // The ring head drew the bracket, so it coordinates.
     EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
     // Advance past the bracket-reveal window and let the coordinator fire

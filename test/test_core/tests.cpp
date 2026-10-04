@@ -1895,7 +1895,11 @@ TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoo
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
 TEST_F(ShootoutManagerTests, onlyTheRingHeadDrawsTheBracket) { onlyTheRingHeadDrawsTheBracket(this); }
 TEST_F(ShootoutManagerTests, memberJoinsOnlyItsRingHeadsBracket) { memberJoinsOnlyItsRingHeadsBracket(this); }
-TEST_F(ShootoutManagerTests, proposalAdvancesWhenTheRosterCompletesIt) { proposalAdvancesWhenTheRosterCompletesIt(this); }
+TEST_F(ShootoutManagerTests, headKeepsWaitingOnAMemberPrunedFromTheRoster) { headKeepsWaitingOnAMemberPrunedFromTheRoster(this); }
+TEST_F(ShootoutManagerTests, deviceThatComesToHeadTheRingDrawsTheBracket) { deviceThatComesToHeadTheRingDrawsTheBracket(this); }
+TEST_F(ShootoutManagerTests, deviceWaitingOnABracketStillCountsConfirms) { deviceWaitingOnABracketStillCountsConfirms(this); }
+TEST_F(ShootoutManagerTests, memberKeepsConfirmingUntilItHoldsABracket) { memberKeepsConfirmingUntilItHoldsABracket(this); }
+TEST_F(ShootoutManagerTests, memberTakesItsHeadsRosterDuringTheProposal) { memberTakesItsHeadsRosterDuringTheProposal(this); }
 TEST_F(ShootoutManagerTests, followerReacksItsCoordinatorsBracketRetransmit) { followerReacksItsCoordinatorsBracketRetransmit(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
 TEST_F(ShootoutManagerTests, anAbortRetiresTheBoutTheTournamentPrimed) { anAbortRetiresTheBoutTheTournamentPrimed(this); }
