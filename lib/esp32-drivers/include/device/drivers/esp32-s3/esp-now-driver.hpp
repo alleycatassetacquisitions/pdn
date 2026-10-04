@@ -4,11 +4,14 @@
 #include <vector>
 #include <queue>
 #include <unordered_map>
-#include <Arduino.h>
-#include <WiFi.h>
+#include <esp_event.h>
+#include <esp_heap_caps.h>
+#include <esp_mac.h>
+#include <esp_netif.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include <esp_mac.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "device/drivers/logger.hpp"
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
@@ -62,15 +65,36 @@ public:
     }
 
     void connect() override {
-        // Set WiFi to station mode
-        WiFi.mode(WIFI_STA);
-        
-        // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
+        // WiFi.mode(WIFI_STA) brought the radio up and, on the way, created
+        // default AP and STA netifs. ESP-NOW needs the radio and nothing from
+        // the TCP/IP stack, so only the radio half is done here. The guard is
+        // because this is not the only owner: the HTTP driver takes the radio
+        // for an upload excursion and hands it back.
+        wifi_mode_t currentMode;
+        if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
+            esp_netif_init();
+            // Already-created is the normal case when something else got here
+            // first, and is not an error.
+            esp_event_loop_create_default();
+            wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+            esp_err_t initErr = esp_wifi_init(&config);
+            if (initErr != ESP_OK) {
+                LOG_E("ENC", "esp_wifi_init failed: %s", esp_err_to_name(initErr));
+                return;
+            }
+            // RAM rather than flash, matching the Arduino path, so no radio
+            // configuration is persisted to NVS behind our back.
+            esp_wifi_set_storage(WIFI_STORAGE_RAM);
+        }
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        esp_wifi_start();
+
+        // Disconnect from any AP but keep WiFi radio ON.
         // ESP-NOW requires the WiFi radio to be active!
-        WiFi.disconnect(false);
-        
+        esp_wifi_disconnect();
+
         // Small delay to let WiFi stabilize after mode change
-        delay(100);
+        vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
         
         // Set the channel using ESP-IDF API for reliability
         esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
@@ -137,7 +161,11 @@ public:
         for(int i = 0; i < numInCluster; ++i)
         {
             size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
-            sendBuffers[i] = (uint8_t*)ps_malloc(sizeof(DataPktHdr) + thisBuffer);
+            // Arduino's PSRAM allocator returned null when no PSRAM was detected
+            // rather than falling back to internal RAM. The null check below is
+            // the same check it needed.
+            sendBuffers[i] = static_cast<uint8_t*>(
+                heap_caps_malloc(sizeof(DataPktHdr) + thisBuffer, MALLOC_CAP_SPIRAM));
             if(!sendBuffers[i])
             {
                 //free anything we already allocated
@@ -394,7 +422,8 @@ private:
         }
 
         DataRecvBuffer newBuffer;
-        newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
+        newBuffer.data = static_cast<uint8_t*>(
+            heap_caps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE, MALLOC_CAP_SPIRAM));
         newBuffer.expectedNextIdx = 1;
         m_recvBuffers[macAddr64] = newBuffer;
     }

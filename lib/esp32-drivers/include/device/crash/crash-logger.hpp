@@ -7,8 +7,8 @@
 #include <strings.h>
 #include <cstdlib>
 #include <cstdarg>
-#include <Arduino.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
@@ -34,7 +34,7 @@ struct CrashRecord {
     // Monotonic crash count for this device (1 = first crash ever recorded).
     uint32_t crashNumber;
 
-    // millis() at the moment the crash is detected on reboot.
+    // Milliseconds since boot at the moment the crash is detected on reboot.
     uint32_t timestamp;
 
     uint8_t resetReason;
@@ -90,7 +90,7 @@ public:
 
         CrashRecord rec{};
         rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp   = millis();
+        rec.timestamp   = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
         bool hadCoreDumpSummary = false;
         esp_core_dump_summary_t summary{};
