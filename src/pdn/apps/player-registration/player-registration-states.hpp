@@ -56,6 +56,14 @@ public:
     void onStateDismounted(PDN* pdn) override;
     
 private:
+    enum class CallInProgress {
+        NONE,
+        USER_DATA_FETCH,
+        HEALTH_CHECK,
+        MATCHES_UPLOAD,
+    };
+    CallInProgress callInProgress = CallInProgress::NONE;
+
     RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
     bool transitionToPlayerRegistrationState = false;
@@ -68,6 +76,7 @@ private:
     Player* player;
     SimpleTimer fetchTimer;
     const int USER_DATA_FETCH_TIMEOUT = 10000;
+    const int HEALTH_CHECK_TIMEOUT = 10000;
     const int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 

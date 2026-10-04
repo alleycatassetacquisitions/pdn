@@ -82,7 +82,7 @@ void FetchUserDataState::onStateDismounted(PDN* pdn) {
 }   
 
 void FetchUserDataState::uploadMatches() {
-    isUploadingMatches = true;
+    callInProgress = CallInProgress::MATCHES_UPLOAD;
     fetchTimer.setTimer(MATCHES_UPLOAD_TIMEOUT);
     QuickdrawRequests::updateMatches(
         wirelessManager,
@@ -102,7 +102,8 @@ void FetchUserDataState::uploadMatches() {
     );
 }
 
-void FetchUserDataState::fetchUserData() {
+void FetchUserDataState::fetchUserData() {  
+    callInProgress = CallInProgress::USER_DATA_FETCH;
     isFetchingUserData = true;
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT);
     QuickdrawRequests::getPlayer(
@@ -134,6 +135,8 @@ void FetchUserDataState::fetchUserData() {
 }
 
 void FetchUserDataState::healthCheck() {
+    callInProgress = CallInProgress::HEALTH_CHECK;
+    fetchTimer.setTimer(HEALTH_CHECK_TIMEOUT);
     QuickdrawRequests::healthCheck(
         wirelessManager,
         [this](const std::string& success) {
