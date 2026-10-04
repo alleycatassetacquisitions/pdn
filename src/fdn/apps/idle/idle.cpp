@@ -1,22 +1,26 @@
 #include "apps/idle/idle.hpp"
 #include "apps/idle/idle-states.hpp"
 #include "apps/fdn-app-ids.hpp"
+#include "device/firmware-update-state.hpp"
 
 Idle::Idle(RemotePlayerManager* remotePlayerManager,
            HackedPlayersManager* hackedPlayersManager,
            FDNConnectWirelessManager* fdnConnectWirelessManager,
-           RemoteDeviceCoordinator* remoteDeviceCoordinator)
+           RemoteDeviceCoordinator* remoteDeviceCoordinator,
+           FirmwareUpdateManager* firmwareUpdateManager)
     : StateMachine(IDLE_APP_ID)
     , remotePlayerManager(remotePlayerManager)
     , hackedPlayersManager(hackedPlayersManager)
     , fdnConnectWirelessManager(fdnConnectWirelessManager)
-    , remoteDeviceCoordinator(remoteDeviceCoordinator) {}
+    , remoteDeviceCoordinator(remoteDeviceCoordinator)
+    , firmwareUpdateManager(firmwareUpdateManager) {}
 
 Idle::~Idle() {
     remotePlayerManager       = nullptr;
     hackedPlayersManager      = nullptr;
     fdnConnectWirelessManager = nullptr;
     remoteDeviceCoordinator   = nullptr;
+    firmwareUpdateManager = nullptr;
 }
 
 void Idle::populateStateMap() {
@@ -83,4 +87,16 @@ void Idle::populateStateMap() {
     stateMap.push_back(unauthorizedDetectedState);  // [3] UNAUTHORIZED_PDN
     stateMap.push_back(connectionDetectedState);    // [4] CONNECTION_DETECTED
     stateMap.push_back(uploadPendingState);         // [5] UPLOAD_PENDING
+
+    // No manager means no flash to distribute from or into, so the state is
+    // left out of the map entirely rather than mounted to fault on entry.
+    if (firmwareUpdateManager != nullptr) {
+        FirmwareUpdate* firmwareUpdate =
+            new FirmwareUpdate(IdleStateId::FIRMWARE_UPDATE, firmwareUpdateManager);
+        idleState->addTransition(new StateTransition(
+            std::bind(&IdleState::transitionToFirmwareUpdate, idleState), firmwareUpdate));
+        firmwareUpdate->addTransition(new StateTransition(
+            std::bind(&FirmwareUpdate::transitionToIdle, firmwareUpdate), idleState));
+        stateMap.push_back(firmwareUpdate);  // [6] FIRMWARE_UPDATE
+    }
 }

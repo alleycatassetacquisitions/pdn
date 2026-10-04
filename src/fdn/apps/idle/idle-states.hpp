@@ -12,12 +12,13 @@
 #include "utils/simple-timer.hpp"
 
 enum IdleStateId {
-    IDLE                = 0,
-    PLAYER_DETECTED     = 1,
-    AUTHORIZED_PDN      = 2,
-    UNAUTHORIZED_PDN    = 3,
+    IDLE = 0,
+    PLAYER_DETECTED = 1,
+    AUTHORIZED_PDN = 2,
+    UNAUTHORIZED_PDN = 3,
     CONNECTION_DETECTED = 4,
-    UPLOAD_PENDING      = 5,
+    UPLOAD_PENDING = 5,
+    FIRMWARE_UPDATE = 6,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,9 @@ public:
     bool transitionToPlayerDetected();
     bool transitionToConnectionDetected();
     bool transitionToUploadPending();
+    /// True once the operator has held the secondary button for
+    /// FIRMWARE_UPDATE_HOLD_MS, which is the only way to start a seed run.
+    bool transitionToFirmwareUpdate() const;
 
 private:
     RemotePlayerManager* remotePlayerManager;
@@ -52,7 +56,14 @@ private:
     bool connectionResolved = false;
     bool wasConnected       = false;
 
+    // The button callback runs outside the lifecycle, so it reaches the device
+    // through this rather than the FDN* a lifecycle method was handed.
+    FDN* cachedFdn = nullptr;
+    bool secondaryHeldForFirmwareUpdate = false;
+    bool transitionToFirmwareUpdateState = false;
+
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+    static constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 };
 
 // ---------------------------------------------------------------------------
