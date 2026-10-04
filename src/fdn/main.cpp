@@ -1,14 +1,22 @@
-#include <Arduino.h>
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <nvs_flash.h>
 
-#include <WiFi.h>
-#include <FastLED.h>
-#include <Preferences.h>
+// How long the splash screen stays up before the first app mounts.
+constexpr unsigned long SPLASH_HOLD_MS = 2000;
+
+// The task shape Arduino's core used for loop(): core 1, priority 1, 8KB.
+constexpr uint32_t LOOP_TASK_STACK_BYTES = 8192;
+constexpr UBaseType_t LOOP_TASK_PRIORITY = 1;
+constexpr BaseType_t LOOP_TASK_CORE = 1;
+
 
 #include "device/crash/crash-logger.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
-#include "device/drivers/esp32-s3/ws2812b-fastled-driver.hpp"
+#include "device/drivers/esp32-s3/ws2812b-led-strip-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-haptics-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
@@ -48,11 +56,6 @@
 #error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
 #endif
 
-// The Arduino core confirms a pending image before setup() runs, which makes
-// rollback unreachable while appearing to work. Overriding this weak symbol is
-// what keeps a bad image from becoming permanent the moment it boots once.
-extern "C" bool verifyRollbackLater() { return true; }
-
 WifiConfig* wifiConfig = nullptr;
 CrashLogger* crashLogger = nullptr;
 Esp32S3FirmwareStore* firmwareStore = nullptr;
@@ -64,7 +67,7 @@ Esp32S31ButtonDriver* primaryButtonDriver   = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* tertiaryButtonDriver  = nullptr;
 // Recess lights on DISPLAY pin slot, fin lights on GRIP pin slot
-WS2812BFastLEDDriver<fdnRecessLightsPin, fdnFinLightsPin>* lightDriver = nullptr;
+WS2812BLedStripDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver      = nullptr;
 Esp32s3SerialIn* serialInDriver          = nullptr;
 Esp32s3SerialInSecondary* serialInSecondaryDriver = nullptr;
@@ -116,9 +119,20 @@ static void setupEspNow(PeerCommsInterface* peerComms) {
         symbolWirelessManager);
 }
 
-void setup() {
-    Serial.begin(115200);
-    // Do not block on Serial — USB CDC may have no host in the field; setup must run anyway.
+static void setup() {
+    // No console bring-up: ESP-IDF has UART0 up before app_main runs.
+
+    // Before any driver, because two of them need it and neither can bring it
+    // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
+    // and the preferences driver cannot open a namespace.
+    esp_err_t nvsStatus = nvs_flash_init();
+    if (nvsStatus == ESP_ERR_NVS_NO_FREE_PAGES || nvsStatus == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvsStatus = nvs_flash_init();
+    }
+    if (nvsStatus != ESP_OK) {
+        ESP_LOGE("FDN", "nvs_flash_init failed: %s", esp_err_to_name(nvsStatus));
+    }
 
     // Construct platform drivers first — logging and timers depend on these.
     loggerDriver = new Esp32S3Logger(LOGGER_DRIVER_NAME);
@@ -134,8 +148,8 @@ void setup() {
     primaryButtonDriver   = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME,   fdnPrimaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, fdnSecondaryButtonPin);
     tertiaryButtonDriver  = new Esp32S31ButtonDriver(TERTIARY_BUTTON_DRIVER_NAME,  fdnTertiaryButtonPin);
-    lightDriver = new WS2812BFastLEDDriver<fdnRecessLightsPin, fdnFinLightsPin>(
-        LIGHT_DRIVER_NAME, fdnNumRecessLights, fdnNumFinLights);
+    lightDriver = new WS2812BLedStripDriver(LIGHT_DRIVER_NAME, fdnRecessLightsPin, fdnFinLightsPin,
+                                           fdnNumRecessLights, fdnNumFinLights);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, fdnMotorPin);
     serialInDriver          = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, fdnRXt, fdnRXr);
     serialInSecondaryDriver = new Esp32s3SerialInSecondary(SERIAL_IN_SECONDARY_DRIVER_NAME, fdnRXt2, fdnRXr2);
@@ -229,7 +243,7 @@ void setup() {
         ->invalidateScreen()
         ->drawText("ALLEYCAT", 20, 32)
         ->render();
-    delay(2000);
+    vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
     AppConfig apps = {
         {StateId(SYMBOL_MATCH_APP_ID), symbolMatchApp},
@@ -248,7 +262,7 @@ void setup() {
 constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
 bool rollbackConfirmed = false;
 
-void loop() {
+static void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
     }
@@ -264,4 +278,24 @@ void loop() {
         firmwareUpdateManager->sync();
     }
     fdn->loop();
+}
+
+/**
+ * Runs setup() once and then loop() forever, on core 1 at priority 1 with an
+ * 8KB stack: the same task shape Arduino's core created, so loop() keeps the
+ * core it has always had. It deliberately does not reset the task watchdog,
+ * because Arduino did not either -- CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
+ * is off, which is what makes a loop that never yields legal here.
+ */
+static void loopTask(void* parameters) {
+    (void)parameters;
+    setup();
+    for (;;) {
+        loop();
+    }
+}
+
+extern "C" void app_main() {
+    xTaskCreatePinnedToCore(loopTask, "loopTask", LOOP_TASK_STACK_BYTES, nullptr,
+                            LOOP_TASK_PRIORITY, nullptr, LOOP_TASK_CORE);
 }
