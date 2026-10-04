@@ -28,19 +28,23 @@ public:
         ABORTED = 6,
     };
 
-    /// Subscribes to the coordinator's ring-closed edge when given one. That
-    /// callback is a single slot, so at most one ShootoutManager per coordinator:
-    /// a second built on the same one takes the slot over, and whichever is
-    /// destroyed first empties it for both.
+    /**
+     * Subscribes to the coordinator's ring-closed edge when given one. That
+     * callback is a single slot, so at most one ShootoutManager per coordinator:
+     * a second built on the same one takes the slot over, and whichever is
+     * destroyed first empties it for both.
+     */
     ShootoutManager(Player* player,
                     WirelessManager* wirelessManager,
                     RemoteDeviceCoordinator* rdc);
-    /// Drops the coordinator subscriptions the constructor took, which hold `this`.
+    /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
     ~ShootoutManager();
 
-    /// Optional MatchManager injection. When set, Shootout primes the
-    /// MatchManager with the duelist pair on each MATCH_START so duel
-    /// states find a ready match. Tests leave this unset.
+    /**
+     * Optional MatchManager injection. When set, Shootout primes the
+     * MatchManager with the duelist pair on each MATCH_START so duel
+     * states find a ready match. Tests leave this unset.
+     */
     void setMatchManager(MatchManager* manager) { matchManager = manager; }
 
     bool active() const;
@@ -53,17 +57,23 @@ public:
     // Test-only: override the loop-member set. Pass an empty vector to clear.
     void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
 
-    /// RDC ring-closed observer. The head that detected closure IS the
-    /// coordinator — there is no election — so this claims the role, snapshots
-    /// the ring roster and announces it to the other members.
+    /**
+     * RDC ring-closed observer. The head that detected closure IS the
+     * coordinator — there is no election — so this claims the role, snapshots
+     * the ring roster and announces it to the other members.
+     */
     void onRingClosed();
-    /// Inbound RING_CLOSED: adopt `fromMac` as coordinator and `members` as the
-    /// ring roster. A non-coordinator has no other proposal trigger, though it
-    /// must also still be on the ring when the gate is polled.
+    /**
+     * Inbound RING_CLOSED: adopt `fromMac` as coordinator and `members` as the
+     * ring roster. A non-coordinator has no other proposal trigger, though it
+     * must also still be on the ring when the gate is polled.
+     */
     void onRingClosedReceived(const uint8_t* fromMac,
                               const std::vector<std::array<uint8_t, 6>>& members);
-    /// True while this device sits on a closed ring and no tournament is running:
-    /// the Idle -> ShootoutProposal transition predicate.
+    /**
+     * True while this device sits on a closed ring and no tournament is running:
+     * the Idle -> ShootoutProposal transition predicate.
+     */
     bool shouldEnterProposal() const;
 
     void startProposal();
@@ -84,29 +94,39 @@ public:
     std::vector<std::array<uint8_t, 6>> getBracket() const;
     bool hasBye() const;
 
-    /// Cumulative retry counters for this manager's command channel. Sends and
-    /// retries count frames, abandons count recipients; see Resender::Stats.
+    /**
+     * Cumulative retry counters for this manager's command channel. Sends and
+     * retries count frames, abandons count recipients; see Resender::Stats.
+     */
     const Resender::Stats& getRetryStats() const { return resender.getStats(); }
 
-    /// Recipients of the fan-out sent under `seqId` that have not yet acked.
-    /// Zero once every one of them has answered or been given up on.
+    /**
+     * Recipients of the fan-out sent under `seqId` that have not yet acked.
+     * Zero once every one of them has answered or been given up on.
+     */
     size_t getPendingAckCount(uint8_t seqId) const;
     uint8_t getLastBracketSeqId() const;
 
     int getCurrentMatchIndex() const;
-    /// The two devices of the current match index. Zero MACs only before the
-    /// first match; the index is not cleared at a match boundary, so between
-    /// matches and after the tournament ends this still names the last pair.
+    /**
+     * The two devices of the current match index. Zero MACs only before the
+     * first match; the index is not cleared at a match boundary, so between
+     * matches and after the tournament ends this still names the last pair.
+     */
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
-    /// Adopts a bracket announced by the coordinator and acks it. A bracket from
-    /// a lower-MAC coordinator also demotes this device.
+    /**
+     * Adopts a bracket announced by the coordinator and acks it. A bracket from
+     * a lower-MAC coordinator also demotes this device.
+     */
     void onBracketReceived(const uint8_t* fromMac,
                            const std::vector<std::array<uint8_t, 6>>& offeredBracket,
                            uint8_t seqId);
-    /// Inbound MATCH_START. Admitted on `fromMac` being our coordinator, which
-    /// is the authority BRACKET propagated; the duelist pair is game content and
-    /// cannot answer whether a broadcast frame is ours.
+    /**
+     * Inbound MATCH_START. Admitted on `fromMac` being our coordinator, which
+     * is the authority BRACKET propagated; the duelist pair is game content and
+     * cannot answer whether a broadcast frame is ours.
+     */
     void onMatchStartReceived(const uint8_t* fromMac,
                               const uint8_t* duelistA, const uint8_t* duelistB,
                               uint8_t matchIndex, uint8_t seqId);
@@ -114,27 +134,31 @@ public:
     std::array<uint8_t, 6> getOpponentMac() const;
 
     void reportLocalWin();
-    /// An ack for one of this manager's fan-outs, named by the seqId it answers.
+    /** An ack for one of this manager's fan-outs, named by the seqId it answers. */
     void onCommandAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
     void onMatchResultReceived(const uint8_t* winner, const uint8_t* loser,
                                uint8_t matchIndex, uint8_t seqId,
                                const uint8_t* fromMac);
-    /// seqId of the MATCH_RESULT this device most recently sent.
+    /** seqId of the MATCH_RESULT this device most recently sent. */
     uint8_t getLastMatchResultSeqId() const { return lastMatchResultSeqId; }
     bool isEliminated(const uint8_t* mac) const;
 
     uint8_t getLastMatchStartSeqId() const;
 
-    /// Inbound TOURNAMENT_END, admitted on `fromMac` for the same reason as
-    /// onMatchStartReceived.
+    /**
+     * Inbound TOURNAMENT_END, admitted on `fromMac` for the same reason as
+     * onMatchStartReceived.
+     */
     void onTournamentEndReceived(const uint8_t* fromMac, const uint8_t* winner,
                                  uint8_t seqId);
-    /// seqId of the TOURNAMENT_END this device most recently sent.
+    /** seqId of the TOURNAMENT_END this device most recently sent. */
     uint8_t getLastTournamentEndSeqId() const { return lastTournamentEndSeqId; }
-    /// Tears down on a peer's ABORT. fromMac identifies the sending ring: the
-    /// command carries no MACs of its own, and a broadcast reaches every ring
-    /// in radio range.
+    /**
+     * Tears down on a peer's ABORT. fromMac identifies the sending ring: the
+     * command carries no MACs of its own, and a broadcast reaches every ring
+     * in radio range.
+     */
     void onAbortReceived(const uint8_t* fromMac, uint8_t seqId);
     std::array<uint8_t, 6> getTournamentWinner() const;
 
@@ -143,28 +167,36 @@ public:
     // broken after TOURNAMENT_END or ABORTED.
     void resetToIdle();
 
-    /// Tears down, lands in Phase::ABORTED, and only then fans ABORT out to the
-    /// ring (bracket, or confirmedSet before a bracket exists). Armed after the
-    /// teardown because the teardown cancels the fan-outs in flight, sparing only
-    /// the seqId already recorded as terminal — which this one is not yet.
-    /// Idempotent, and refuses ENDED as well as ABORTED.
+    /**
+     * Tears down, lands in Phase::ABORTED, and only then fans ABORT out to the
+     * ring (bracket, or confirmedSet before a bracket exists). Armed after the
+     * teardown because the teardown cancels the fan-outs in flight, sparing only
+     * the seqId already recorded as terminal — which this one is not yet.
+     * Idempotent, and refuses ENDED as well as ABORTED.
+     */
     void abortTournament();
 
-    /// Ring-break debounce. A cable nudge flickers the loop on real hardware; act
-    /// only once the break has settled. This covers the flicker, not a recovery:
-    /// healing a nudge costs a link re-handshake, the latching device's own MAC
-    /// walking the loop to re-latch, then the flag walking back, all of which
-    /// outlast it. Calibrated against how long a nudge flickers, so it is not the
-    /// RDC's propagation window even though both are 500 — widening this one is a
-    /// rig question and does not imply widening that one.
+    /**
+     * Ring-break debounce. A cable nudge flickers the loop on real hardware; act
+     * only once the break has settled. This covers the flicker, not a recovery:
+     * healing a nudge costs a link re-handshake, the latching device's own MAC
+     * walking the loop to re-latch, then the flag walking back, all of which
+     * outlast it. Calibrated against how long a nudge flickers, so it is not the
+     * RDC's propagation window even though both are 500 — widening this one is a
+     * rig question and does not imply widening that one.
+     */
     static constexpr unsigned long LOOP_BREAK_DEBOUNCE_MS = 500;
-    /// Confirmed members needed to draw a bracket. Two is the structural floor —
-    /// a duel needs two duelists — so a two-device ring is exactly at it and runs.
+    /**
+     * Confirmed members needed to draw a bracket. Two is the structural floor —
+     * a duel needs two duelists — so a two-device ring is exactly at it and runs.
+     */
     static constexpr size_t MIN_PARTICIPANTS = 2;
-    /// How long a roster stays below MIN_PARTICIPANTS before the proposal is
-    /// given up on. Wall-clock, and generous: what fills the roster is members
-    /// announcing themselves to the head, which nothing here drives or can
-    /// predict. Raise it if a venue's larger rings are seen to fill slower.
+    /**
+     * How long a roster stays below MIN_PARTICIPANTS before the proposal is
+     * given up on. Wall-clock, and generous: what fills the roster is members
+     * announcing themselves to the head, which nothing here drives or can
+     * predict. Raise it if a venue's larger rings are seen to fill slower.
+     */
     static constexpr unsigned long SHORT_ROSTER_TIMEOUT_MS = 3000;
     static constexpr unsigned long kConfirmRebroadcastMs = 1000;
     static constexpr unsigned long kBracketRevealMs = 5000;
@@ -194,13 +226,15 @@ private:
     uint8_t nextSeqId();
     static bool containsMac(const std::vector<std::array<uint8_t, 6>>& set,
                             const uint8_t* mac);
-    /// True when `mac` is the coordinator this device is following.
+    /** True when `mac` is the coordinator this device is following. */
     bool isFromCoordinator(const uint8_t* mac) const;
-    /// True in the two phases a tournament ends in. Every handler that would
-    /// advance a tournament refuses them, so a late frame cannot reopen one; the
-    /// two terminal screens end them deliberately, via resetToIdle on dismount.
-    /// ENDED is the phase that needs the refusals: unlike an abort it leaves the
-    /// coordinator anchor and the bracket standing.
+    /**
+     * True in the two phases a tournament ends in. Every handler that would
+     * advance a tournament refuses them, so a late frame cannot reopen one; the
+     * two terminal screens end them deliberately, via resetToIdle on dismount.
+     * ENDED is the phase that needs the refusals: unlike an abort it leaves the
+     * coordinator anchor and the bracket standing.
+     */
     bool isTerminalPhase() const {
         return phase == Phase::ENDED || phase == Phase::ABORTED;
     }
@@ -212,7 +246,7 @@ private:
     void broadcastCommand(const uint8_t* packet, size_t len);
     void broadcastToRing(const std::vector<std::array<uint8_t, 6>>& peers,
                          const uint8_t* packet, size_t len);
-    /// The peers a ring fan-out is addressed to: `peers` without this device.
+    /** The peers a ring fan-out is addressed to: `peers` without this device. */
     std::vector<std::array<uint8_t, 6>> peersExcludingSelf(
         const std::vector<std::array<uint8_t, 6>>& peers) const;
     void sendReliablyToPeers(const std::vector<std::array<uint8_t, 6>>& peers,
@@ -234,15 +268,19 @@ private:
     std::vector<NameEntry> names;
     void recordName(const uint8_t* mac, const char* name);
 
-    /// True while this device both claims the ring and still heads it. Only
-    /// meaningful while the anchor is a ring claim, which is why both callers
-    /// are IDLE-gated.
+    /**
+     * True while this device both claims the ring and still heads it. Only
+     * meaningful while the anchor is a ring claim, which is why both callers
+     * are IDLE-gated.
+     */
     bool headsThisRing() const;
     std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;
-    /// Overload for a roster the caller already has, so a tick that asks several
-    /// questions of it rebuilds it once.
+    /**
+     * Overload for a roster the caller already has, so a tick that asks several
+     * questions of it rebuilds it once.
+     */
     bool allMembersConfirmed(const std::vector<std::array<uint8_t, 6>>& members) const;
     void advanceToBracketReveal();
     void generateBracket();
@@ -288,8 +326,10 @@ private:
     std::array<uint8_t, 6> currentDuelistB{};
     uint8_t lastMatchStartSeqId = 0;
     SimpleTimer bracketRevealTimer;
-    /// Advances the bracket. Called only from sync(), on the main loop — a second
-    /// caller on the packet path would need its own guard against double-advance.
+    /**
+     * Advances the bracket. Called only from sync(), on the main loop — a second
+     * caller on the packet path would need its own guard against double-advance.
+     */
     void maybeStartNextMatch();
     void sendMatchStartToPeers(int matchIndex);
     std::vector<uint8_t> buildMatchStartPacket(int matchIndex) const;
@@ -309,9 +349,11 @@ private:
     uint8_t lastObservedTournamentEndSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
-    /// Applies an elimination. `endsCurrentBout` false records it without
-    /// leaving MATCH_IN_PROGRESS — a late result for an older bout must not pull
-    /// this device out of the one it is fighting now.
+    /**
+     * Applies an elimination. `endsCurrentBout` false records it without
+     * leaving MATCH_IN_PROGRESS — a late result for an older bout must not pull
+     * this device out of the one it is fighting now.
+     */
     void applyMatchResult(const uint8_t* winner, const uint8_t* loser,
                           bool endsCurrentBout = true);
     std::vector<uint8_t> buildMatchResultPacket(const uint8_t* winner,

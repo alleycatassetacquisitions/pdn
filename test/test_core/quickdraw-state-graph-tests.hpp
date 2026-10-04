@@ -135,7 +135,7 @@ struct QuickdrawAppsForTest {
     ShootoutApp* shootout = nullptr;
     SymbolApp* symbol = nullptr;
 
-    /// Constructs and populates the five apps without mounting any of them.
+    /** Constructs and populates the five apps without mounting any of them. */
     QuickdrawAppsForTest() {
         GameContext context;
         playerRegistration = new PlayerRegistrationApp(nullptr, nullptr, nullptr, nullptr);
@@ -150,7 +150,7 @@ struct QuickdrawAppsForTest {
         symbol->populateStateMap();
     }
 
-    /// Frees the apps, and with them every state they registered.
+    /** Frees the apps, and with them every state they registered. */
     ~QuickdrawAppsForTest() {
         delete playerRegistration;
         delete hub;
@@ -159,8 +159,10 @@ struct QuickdrawAppsForTest {
         delete symbol;
     }
 
-    /// The gameplay apps' states in registration order: hub, duel, shootout,
-    /// symbol.
+    /**
+     * The gameplay apps' states in registration order: hub, duel, shootout,
+     * symbol.
+     */
     std::vector<State*> gameplayStates() const {
         std::vector<State*> states;
         for (const StateMachine* app : {static_cast<const StateMachine*>(hub),
@@ -174,7 +176,7 @@ struct QuickdrawAppsForTest {
         return states;
     }
 
-    /// The same states, keyed by state id.
+    /** The same states, keyed by state id. */
     std::map<int, State*> statesById() const {
         std::map<int, State*> byId;
         for (State* state : gameplayStates()) {
@@ -183,8 +185,10 @@ struct QuickdrawAppsForTest {
         return byId;
     }
 
-    /// Where an edge actually lands: an intra-app edge names its target
-    /// directly, a hand-off names an app plus the state id to enter it at.
+    /**
+     * Where an edge actually lands: an intra-app edge names its target
+     * directly, a hand-off names an app plus the state id to enter it at.
+     */
     State* resolveTarget(const StateTransition* edge) const {
         if (edge->getNextState() != nullptr) return edge->getNextState();
         const StateMachine* target = nullptr;

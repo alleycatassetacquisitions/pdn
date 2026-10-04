@@ -22,10 +22,12 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 
-/// Bundle of the shared game-wide managers a state may need. Built by the
-/// GameSession that owns them and handed to every state so a new manager is a
-/// one-line addition here rather than a constructor change across every state.
-/// All pointers are non-owning; states read only the fields they use.
+/**
+ * Bundle of the shared game-wide managers a state may need. Built by the
+ * GameSession that owns them and handed to every state so a new manager is a
+ * one-line addition here rather than a constructor change across every state.
+ * All pointers are non-owning; states read only the fields they use.
+ */
 struct GameContext {
     Player* player = nullptr;
     MatchManager* matchManager = nullptr;
@@ -175,11 +177,13 @@ private:
     bool isAuxRequired() override;
 };
 
-/// A duel state returns to Idle on a persistent disconnect, but never while a
-/// tournament is live — the shootout's own ring-break/ABORT teardown owns that
-/// path. The debounce ages on wall clock even when unsampled, so a run started
-/// before the tournament went live would fire the instant the shootout ends;
-/// reset it while active so a fresh full window is always required afterward.
+/**
+ * A duel state returns to Idle on a persistent disconnect, but never while a
+ * tournament is live — the shootout's own ring-break/ABORT teardown owns that
+ * path. The debounce ages on wall clock even when unsampled, so a run started
+ * before the tournament went live would fire the instant the shootout ends;
+ * reset it while active so a fresh full window is always required afterward.
+ */
 inline bool duelReturnsToIdle(ConnectState<PDN>& duel, ShootoutManager* shootout) {
     if (shootout && shootout->active()) {
         duel.resetDisconnectDebounce();
@@ -529,7 +533,7 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
     uint8_t* fdnMac = nullptr;
-    /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
+    /** PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN). */
     SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
     SymbolId fdnSymbol;
 

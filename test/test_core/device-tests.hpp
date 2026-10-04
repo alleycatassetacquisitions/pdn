@@ -16,7 +16,7 @@ const StateId APP_THREE(300);
 // Simple mock state for MockStateMachine
 class MockState : public State {
 public:
-    /// Identifiable by id so a test can tell which slot a mount landed on.
+    /** Identifiable by id so a test can tell which slot a mount landed on. */
     explicit MockState(int stateId = 999)
         : State(stateId) {}
     // Minimal implementation - just exists to satisfy StateMachine requirements
@@ -27,11 +27,11 @@ public:
 // both a second call and a grown state map.
 class IndexedStateMachine : public StateMachine {
 public:
-    /// Registers nothing until the first mount, like every real app.
+    /** Registers nothing until the first mount, like every real app. */
     explicit IndexedStateMachine(int appId)
         : StateMachine(appId) {}
 
-    /// Appends three states and records that it was asked to.
+    /** Appends three states and records that it was asked to. */
     void populateStateMap() override {
         populateCount++;
         for (int stateId = 0; stateId < 3; stateId++) {
@@ -47,7 +47,7 @@ public:
 // observable.
 class ForkingState : public State {
 public:
-    /// Both edges are inert until a test raises the matching flag.
+    /** Both edges are inert until a test raises the matching flag. */
     explicit ForkingState(int stateId)
         : State(stateId) {}
 
@@ -58,13 +58,13 @@ public:
 // Boot state forks to a state in another app or to its own second state.
 class ForkingStateMachine : public StateMachine {
 public:
-    /// The hand-off names `targetAppId` and the state in it to enter at.
+    /** The hand-off names `targetAppId` and the state in it to enter at. */
     ForkingStateMachine(int appId, StateId targetAppId, StateId entryStateId)
         : StateMachine(appId)
         , targetAppId(targetAppId)
         , entryStateId(entryStateId) {}
 
-    /// Boot state gets the hand-off first, then a local edge to its sibling.
+    /** Boot state gets the hand-off first, then a local edge to its sibling. */
     void populateStateMap() override {
         ForkingState* fork = new ForkingState(0);
         ForkingState* local = new ForkingState(1);
@@ -76,7 +76,7 @@ public:
         stateMap.push_back(local);
     }
 
-    /// The boot state, so a test can raise its edge conditions.
+    /** The boot state, so a test can raise its edge conditions. */
     ForkingState* forkState() {
         return static_cast<ForkingState*>(getStateMap()[0]);
     }
@@ -157,7 +157,7 @@ public:
     IndexedStateMachine* appTwo;
     ForkingStateMachine* appThree;
 
-    /// Apps are built here but populate lazily on their first mount.
+    /** Apps are built here but populate lazily on their first mount. */
     void SetUp() override {
         device = new MockDevice();
         appOne = new IndexedStateMachine(APP_ONE.id);
@@ -165,7 +165,7 @@ public:
         appThree = new ForkingStateMachine(APP_THREE.id, APP_TWO, StateId(2));
     }
 
-    /// Each app frees the states it registered.
+    /** Each app frees the states it registered. */
     void TearDown() override {
         delete appOne;
         delete appTwo;
@@ -173,7 +173,7 @@ public:
         delete device;
     }
 
-    /// Registers all three apps and boots into `launchAppId`.
+    /** Registers all three apps and boots into `launchAppId`. */
     void loadAllApps(StateId launchAppId) {
         AppConfig config;
         config[APP_ONE] = appOne;

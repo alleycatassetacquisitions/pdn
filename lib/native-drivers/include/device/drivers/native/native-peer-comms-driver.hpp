@@ -123,13 +123,15 @@ public:
         handlers_.erase(packetType);
     }
 
-    /// Registers the SEND_SUCCESS/SEND_FAIL observer for a PktType; the sim
-    /// reports success for every send on the next exec().
+    /**
+     * Registers the SEND_SUCCESS/SEND_FAIL observer for a PktType; the sim
+     * reports success for every send on the next exec().
+     */
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
         sendStatusHandlers[packetType] = {callback, ctx};
     }
 
-    /// Drops the send-status observer for a PktType.
+    /** Drops the send-status observer for a PktType. */
     void clearSendStatusHandler(PktType packetType) override {
         sendStatusHandlers.erase(packetType);
     }

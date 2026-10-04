@@ -13,23 +13,25 @@
 
 class SerialFrameParserTests : public testing::Test {
 public:
-    /// Installs a fake clock so timeout behavior is deterministic.
+    /** Installs a fake clock so timeout behavior is deterministic. */
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
     }
 
-    /// Restores the real platform clock.
+    /** Restores the real platform clock. */
     void TearDown() override {
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
 
-    /// Build a valid binary frame for a given opcode + payload; appends the CRC-16
-    /// computed over (opcode + payload). The 0xAA 0x55 preamble is prepended.
-    /// Built by hand rather than via encodeFramed so the tests cross-check the
-    /// encoder and parser against an independent construction.
+    /**
+     * Build a valid binary frame for a given opcode + payload; appends the CRC-16
+     * computed over (opcode + payload). The 0xAA 0x55 preamble is prepended.
+     * Built by hand rather than via encodeFramed so the tests cross-check the
+     * encoder and parser against an independent construction.
+     */
     std::vector<uint8_t> buildFrame(uint8_t opcode, const std::vector<uint8_t>& payload) {
         std::vector<uint8_t> crcInput;
         crcInput.push_back(opcode);
@@ -46,7 +48,7 @@ public:
         return out;
     }
 
-    /// HELLO payload bytes: source mac[6] + deviceType[1] + headMac[6] + flags[1].
+    /** HELLO payload bytes: source mac[6] + deviceType[1] + headMac[6] + flags[1]. */
     std::vector<uint8_t> helloPayload(uint8_t firstMacByte = 0x10) {
         std::vector<uint8_t> p = {firstMacByte, 0x20, 0x30, 0x40, 0x50, 0x60,  // source
                                   0x01,                                        // deviceType
@@ -56,7 +58,7 @@ public:
         return p;
     }
 
-    /// Feeds the whole byte vector to the parser in one burst.
+    /** Feeds the whole byte vector to the parser in one burst. */
     void feed(const std::vector<uint8_t>& bytes) {
         parser.feed(bytes.data(), bytes.size());
     }

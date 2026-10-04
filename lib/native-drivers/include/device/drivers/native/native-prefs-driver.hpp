@@ -14,7 +14,7 @@
  */
 class NativePrefsDriver : public StorageDriverInterface {
 public:
-    /// Registers the namespaces this driver will accept; any other throws.
+    /** Registers the namespaces this driver will accept; any other throws. */
     NativePrefsDriver(const std::string& name, std::initializer_list<const char*> namespaces)
         : StorageDriverInterface(name) {
         for (const char* ns : namespaces) {
@@ -22,29 +22,29 @@ public:
         }
     }
 
-    /// Nothing owned: both maps clean themselves up.
+    /** Nothing owned: both maps clean themselves up. */
     ~NativePrefsDriver() override = default;
 
-    /// Always succeeds; there is no backing store to open.
+    /** Always succeeds; there is no backing store to open. */
     int initialize() override { return 0; }
-    /// No periodic work.
+    /** No periodic work. */
     void exec() override {}
 
-    /// Stores a string under a registered namespace; returns its length.
+    /** Stores a string under a registered namespace; returns its length. */
     size_t write(const std::string& ns, const std::string& key, const std::string& value) override {
         requireRegisteredNamespace(ns);
         stringStorage[compositeKey(ns, key)] = value;
         return value.size();
     }
 
-    /// Reads a string back, or `defaultValue` when the key is unset.
+    /** Reads a string back, or `defaultValue` when the key is unset. */
     std::string read(const std::string& ns, const std::string& key, const std::string& defaultValue) override {
         requireRegisteredNamespace(ns);
         auto it = stringStorage.find(compositeKey(ns, key));
         return it != stringStorage.end() ? it->second : defaultValue;
     }
 
-    /// Drops both the string and byte entries for one key.
+    /** Drops both the string and byte entries for one key. */
     bool remove(const std::string& ns, const std::string& key) override {
         requireRegisteredNamespace(ns);
         const std::string composite = compositeKey(ns, key);
@@ -58,7 +58,7 @@ public:
         return removed;
     }
 
-    /// Drops every entry in one namespace.
+    /** Drops every entry in one namespace. */
     bool clear(const std::string& ns) override {
         requireRegisteredNamespace(ns);
         const std::string prefix = ns + "/";
@@ -71,17 +71,17 @@ public:
         return true;
     }
 
-    /// No backing store to flush or close.
+    /** No backing store to flush or close. */
     void end() override {}
 
-    /// Reads one byte back, or `defaultValue` when the key is unset.
+    /** Reads one byte back, or `defaultValue` when the key is unset. */
     uint8_t readUChar(const std::string& ns, const std::string& key, uint8_t defaultValue) override {
         requireRegisteredNamespace(ns);
         auto it = ucharStorage.find(compositeKey(ns, key));
         return it != ucharStorage.end() ? it->second : defaultValue;
     }
 
-    /// Stores one byte under a registered namespace; throws if it is not one.
+    /** Stores one byte under a registered namespace; throws if it is not one. */
     size_t writeUChar(const std::string& ns, const std::string& key, uint8_t value) override {
         requireRegisteredNamespace(ns);
         ucharStorage[compositeKey(ns, key)] = value;

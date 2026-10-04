@@ -44,28 +44,30 @@ static_assert(sizeof(HeadTransferPayload) <= MAX_PKT_DATA_SIZE,
 class EspNowDriver : public PeerCommsDriverInterface
 {
 public:
-    /// Creates the process-wide singleton; call once at driver registration.
+    /** Creates the process-wide singleton; call once at driver registration. */
     static EspNowDriver* CreateEspNowManager(const std::string& name) {
         instance = new EspNowDriver(name);
         return instance;
     }
 
-    /// The process-wide singleton, or nullptr before CreateEspNowManager.
+    /** The process-wide singleton, or nullptr before CreateEspNowManager. */
     static EspNowDriver* GetInstance() {
         return instance;
     }
 
     // === PEER COMMS INTERFACE === //
 
-    /// Main-loop tick: retries a pending channel pin, drains the deferred receive
-    /// queue into the per-type packet handlers, then resolves any finished send
-    /// and hands the radio the next frame.
-    ///
-    /// Claims at most one frame per call, so a backlog drains over as many
-    /// Device::loop() iterations. sendData pumps its own frame, so this is the
-    /// path for frames left queued behind a busy slot, not for every send.
-    /// DriverManager walks a std::map keyed by driver name, and "peer_comms"
-    /// sorts ahead of "serial_in"/"serial_out".
+    /**
+     * Main-loop tick: retries a pending channel pin, drains the deferred receive
+     * queue into the per-type packet handlers, then resolves any finished send
+     * and hands the radio the next frame.
+     *
+     * Claims at most one frame per call, so a backlog drains over as many
+     * Device::loop() iterations. sendData pumps its own frame, so this is the
+     * path for frames left queued behind a busy slot, not for every send.
+     * DriverManager walks a std::map keyed by driver name, and "peer_comms"
+     * sorts ahead of "serial_in"/"serial_out".
+     */
     void exec() override {
         // Re-pin armed by connect(): retry (paced) until the readback sticks,
         // re-issuing the disconnect each attempt to kill whatever STA attempt
@@ -102,8 +104,10 @@ public:
         startNextSend();
     }
 
-    /// Brings the radio into ESP-NOW mode: STA, auto-reconnect off, PS_NONE,
-    /// channel pinned (with exec() retry when a STA scan blocks the pin).
+    /**
+     * Brings the radio into ESP-NOW mode: STA, auto-reconnect off, PS_NONE,
+     * channel pinned (with exec() retry when a STA scan blocks the pin).
+     */
     void connect() override {
         // ESP-NOW requires station mode.
         WiFi.mode(WIFI_STA);
@@ -146,8 +150,10 @@ public:
         peerCommsState = PeerCommsState::CONNECTED;
     }
 
-    /// Tears down ESP-NOW for a WiFi excursion, releasing both the queued frames
-    /// and the one the radio holds.
+    /**
+     * Tears down ESP-NOW for a WiFi excursion, releasing both the queued frames
+     * and the one the radio holds.
+     */
     void disconnect() override {
         // An excursion owns the radio now; the next connect() re-evaluates.
         channelPinPending = false;
@@ -171,12 +177,12 @@ public:
         peerCommsState = PeerCommsState::DISCONNECTED;
     }
 
-    /// Current radio mode (ESP-NOW connected vs released for WiFi).
+    /** Current radio mode (ESP-NOW connected vs released for WiFi). */
     PeerCommsState getPeerCommsState() override {
         return peerCommsState;
     }
 
-    /// Transitions the radio between ESP-NOW and released states.
+    /** Transitions the radio between ESP-NOW and released states. */
     void setPeerCommsState(PeerCommsState state) override {
         if(state == PeerCommsState::CONNECTED && peerCommsState != PeerCommsState::CONNECTED) {
             connect();
@@ -186,8 +192,10 @@ public:
         }
     }
 
-    /// Queues the frame and offers it to the radio; a frame behind a busy slot
-    /// waits for a later exec().
+    /**
+     * Queues the frame and offers it to the radio; a frame behind a busy slot
+     * waits for a later exec().
+     */
     int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
         // Refused rather than queued while the radio is down. A queued frame
         // would outlive the excursion and go out afterwards as stale traffic,
@@ -238,44 +246,50 @@ public:
     // the existing handler is automatically unregistered
     // userArg will be saved per packet type and will be passed in unmodified to
     // packet handler for that packet type (when a packet of that type is receieved)
-    /// One handler per packet type; registering replaces any existing one.
-    /// ctx is stored per type and passed back unmodified to the handler.
+    /**
+     * One handler per packet type; registering replaces any existing one.
+     * ctx is stored per type and passed back unmodified to the handler.
+     */
     void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) override {
         pktHandlerCallbacks[(int)packetType].first = callback;
         pktHandlerCallbacks[(int)packetType].second = ctx;
     }
 
     // Unregister packet handler for specified packet type
-    /// Removes the handler for a packet type.
+    /** Removes the handler for a packet type. */
     void clearPacketHandler(PktType packetType) override {
         pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
-    /// Radio send-result handler, one per PktType. Fired on the main loop, from
-    /// whichever call resolves the frame, when the send callback reports
-    /// SEND_SUCCESS or a final SEND_FAIL for a packet of this type. Drives the
-    /// reliable-transport ack.
+    /**
+     * Radio send-result handler, one per PktType. Fired on the main loop, from
+     * whichever call resolves the frame, when the send callback reports
+     * SEND_SUCCESS or a final SEND_FAIL for a packet of this type. Drives the
+     * reliable-transport ack.
+     */
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
         sendStatusHandlers[(int)packetType].first = callback;
         sendStatusHandlers[(int)packetType].second = ctx;
     }
 
-    /// Removes the send-result handler for a packet type.
+    /** Removes the send-result handler for a packet type. */
     void clearSendStatusHandler(PktType packetType) override {
         sendStatusHandlers[(int)packetType].first = nullptr;
     }
 
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
     // because WiFi must be set up first. Actual init happens in connect().
-    /// Driver-interface initialization hook; radio setup happens in connect().
+    /** Driver-interface initialization hook; radio setup happens in connect(). */
     int initialize() override {
         // No-op: ESP-NOW initialization requires WiFi to be running first.
         // The actual initialization happens in connect() -> initializeEspNow()
         return 0;
     }
 
-    /// Last RSSI captured for a peer from its receive callbacks; RSSI_UNKNOWN if
-    /// none seen.
+    /**
+     * Last RSSI captured for a peer from its receive callbacks; RSSI_UNKNOWN if
+     * none seen.
+     */
     int getRssiForPeer(const uint8_t* macAddr) override {
         const uint64_t macAddr64 = MacToUInt64(macAddr);
         int rssi = RSSI_UNKNOWN;
@@ -432,14 +446,16 @@ private:
             std::memory_order_release);
     }
 
-    /// Resolves a recorded completion against the slot: retry, or report and
-    /// release. Main loop only, from exec().
-    ///
-    /// A frame the radio accepts but never reports on holds the slot for good and
-    /// every later send queues behind it. Do not answer that with a timer: the
-    /// callback hands over no reference to the frame it finished, so a slot
-    /// released on a deadline charges the late verdict to whichever frame replaced
-    /// it, turning a stall into a wrong ack.
+    /**
+     * Resolves a recorded completion against the slot: retry, or report and
+     * release. Main loop only, from exec().
+     *
+     * A frame the radio accepts but never reports on holds the slot for good and
+     * every later send queues behind it. Do not answer that with a timer: the
+     * callback hands over no reference to the frame it finished, so a slot
+     * released on a deadline charges the late verdict to whichever frame replaced
+     * it, turning a stall into a wrong ack.
+     */
     void applySendResult() {
         const Completion outcome =
             pendingCompletion.exchange(Completion::NONE, std::memory_order_acquire);
@@ -474,12 +490,14 @@ private:
         finishInFlight(false);
     }
 
-    /// Hands the radio the next waiting frame, if it is not already holding one.
-    /// Main loop only.
-    ///
-    /// The frame outlives the attempt for this driver's sake, not the radio's: the
-    /// radio copies it before esp_now_send returns (esp_now.h attention 4). A retry
-    /// re-sends the same bytes and the completion reads the payload back.
+    /**
+     * Hands the radio the next waiting frame, if it is not already holding one.
+     * Main loop only.
+     *
+     * The frame outlives the attempt for this driver's sake, not the radio's: the
+     * radio copies it before esp_now_send returns (esp_now.h attention 4). A retry
+     * re-sends the same bytes and the completion reads the payload back.
+     */
     void startNextSend() {
         // exec() runs whatever the state, and esp_now_send must not follow a
         // deinit.
@@ -509,8 +527,10 @@ private:
         pendingCompletion.store(Completion::FAILED, std::memory_order_release);
     }
 
-    /// Hands `inFlight` to the radio. True when the radio took it and a completion
-    /// is owed. Main loop only.
+    /**
+     * Hands `inFlight` to the radio. True when the radio took it and a completion
+     * is owed. Main loop only.
+     */
     bool transmitInFlight() {
         if (memcmp(inFlight.dstMac, PEER_BROADCAST_ADDR, ESP_NOW_ETH_ALEN) != 0)
             EnsurePeerIsRegistered(inFlight.dstMac);
@@ -521,11 +541,13 @@ private:
         return false;
     }
 
-    /// Reports the slot's frame upward and releases it. Main loop only.
-    ///
-    /// Reports the failure verdict even though nothing consumes it today:
-    /// Both registrants drop `!success` on their first
-    /// line. An outcome class is the driver's to report, not to decide against.
+    /**
+     * Reports the slot's frame upward and releases it. Main loop only.
+     *
+     * Reports the failure verdict even though nothing consumes it today:
+     * Both registrants drop `!success` on their first
+     * line. An outcome class is the driver's to report, not to decide against.
+     */
     void finishInFlight(bool success) {
         const DataSendBuffer frame = inFlight;
         inFlight = {};
@@ -556,10 +578,12 @@ private:
         xSemaphoreGive(sendMutex);
     }
 
-    /// Releases the slot without reporting, for a teardown where no completion
-    /// will clear it. Safe even with a send outstanding: the radio copies the
-    /// frame before esp_now_send returns (esp_now.h attention 4), so it holds no
-    /// pointer into this buffer.
+    /**
+     * Releases the slot without reporting, for a teardown where no completion
+     * will clear it. Safe even with a send outstanding: the radio copies the
+     * frame before esp_now_send returns (esp_now.h attention 4), so it holds no
+     * pointer into this buffer.
+     */
     void discardInFlight() {
         free(inFlight.ptr);
         inFlight = {};

@@ -52,8 +52,10 @@ public:
         delete fakeClock;
     }
 
-    /// Feeds a peer's PdnConnectionContext in through the handler the reliable
-    /// transport registered with the radio driver — the production receive path.
+    /**
+     * Feeds a peer's PdnConnectionContext in through the handler the reliable
+     * transport registered with the radio driver — the production receive path.
+     */
     void deliverPdnContext(const uint8_t* peerMac) {
         if (contextHandler == nullptr) return;
         std::vector<uint8_t> bytes = pdnContextBytes(/*chainRole=*/0, /*userId=*/4242,
@@ -61,8 +63,10 @@ public:
         contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }
 
-    /// Brings `jack` from Idle to Connected against `peerMac`, optionally
-    /// carrying an advertised chain head.
+    /**
+     * Brings `jack` from Idle to Connected against `peerMac`, optionally
+     * carrying an advertised chain head.
+     */
     void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
                        const uint8_t* advertisedHead = nullptr) {
         deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
@@ -71,17 +75,19 @@ public:
         rdc.sync(&device);
     }
 
-    /// Only the peer's first HELLO: the jack holds its MAC but the exchange has
-    /// not completed, so it stays CONNECTING.
+    /**
+     * Only the peer's first HELLO: the jack holds its MAC but the exchange has
+     * not completed, so it stays CONNECTING.
+     */
     void beginConnectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac) {
         deliverFrame(jack, chainHelloFrame(peerMac, nullptr));
         rdc.sync(&device);
     }
 
-    /// Brings the supporter-side jack up against supporterMac.
+    /** Brings the supporter-side jack up against supporterMac. */
     void connectInputPort() { connectJackTo(inJack, supporterMac); }
 
-    /// Brings the opponent-side jack up against opponentMac.
+    /** Brings the opponent-side jack up against opponentMac. */
     void connectOutputPort() { connectJackTo(outJack, opponentMac); }
 
     // Set up the physical hunter-champion topology (direct peers only — no
@@ -95,8 +101,10 @@ public:
         connectInputPort();
     }
 
-    /// Closes a ring around this device: it heads a chain out of OUTPUT and its
-    /// own MAC comes back on INPUT, which is the only local evidence of closure.
+    /**
+     * Closes a ring around this device: it heads a chain out of OUTPUT and its
+     * own MAC comes back on INPUT, which is the only local evidence of closure.
+     */
     void closeRingAroundSelf() {
         connectOutputPort();
         connectJackTo(inJack, supporterMac, localMac);
@@ -116,8 +124,10 @@ public:
     FakePlatformClock* fakeClock;
     Player player;
 
-    /// Replays a radio send result for a role announce, the way the driver
-    /// would after the frame goes out. success=false is SEND_FAIL.
+    /**
+     * Replays a radio send result for a role announce, the way the driver
+     * would after the frame goes out. success=false is SEND_FAIL.
+     */
     void deliverRoleAnnounceSendResult(const uint8_t* toMac, uint8_t seqId, bool success) {
         if (roleAnnounceSendStatus == nullptr) return;
         RoleAnnouncePayload echoed{};

@@ -56,29 +56,33 @@ struct HelloLinkContext {
 
 class HelloIdleState : public State {
 public:
-    /// Binds the shared per-jack context; the machine owns the state.
+    /** Binds the shared per-jack context; the machine owns the state. */
     explicit HelloIdleState(HelloLinkContext* context)
         : State(HELLO_LINK_IDLE)
         , context(context) {}
 
-    /// Every teardown (silent link, context timeout, peer swap) converges on Idle,
-    /// so this is the one seam for link-death cleanup: the owner drops any
-    /// half-read frame, releases the tracked peer, and tears down chain state.
-    /// Fires on the initial mount too (all-zero peerMac), a no-op on zero state;
-    /// clearing peerMac keeps peer()'s all-zero-while-Idle contract true.
+    /**
+     * Every teardown (silent link, context timeout, peer swap) converges on Idle,
+     * so this is the one seam for link-death cleanup: the owner drops any
+     * half-read frame, releases the tracked peer, and tears down chain state.
+     * Fires on the initial mount too (all-zero peerMac), a no-op on zero state;
+     * clearing peerMac keeps peer()'s all-zero-while-Idle contract true.
+     */
     void onStateMounted(Device*) override {
         transitionToConnectingState = false;
         if (context->onLinkDown) context->onLinkDown(context->jack, context->peerMac);
         context->peerMac = {};
     }
 
-    /// The armed peer is published on the way out, not when it arrives: the
-    /// jack is down for as long as this state is current, and peer() promises
-    /// all-zero there. Dismount runs before Connecting mounts, so the peer is in
-    /// place for the context request that mount fires.
+    /**
+     * The armed peer is published on the way out, not when it arrives: the
+     * jack is down for as long as this state is current, and peer() promises
+     * all-zero there. Dismount runs before Connecting mounts, so the peer is in
+     * place for the context request that mount fires.
+     */
     void onStateDismounted(Device*) override { context->peerMac = armedPeer; }
 
-    /// Opens the link on the next tick, with `source` as the peer it tracks.
+    /** Opens the link on the next tick, with `source` as the peer it tracks. */
     void arm(const uint8_t* source) {
         memcpy(armedPeer.data(), source, 6);
         transitionToConnectingState = true;
@@ -201,15 +205,17 @@ public:
         return currentState ? currentState->getStateId() : HELLO_LINK_IDLE;
     }
 
-    /// True in the window between the exchange completing and the Connecting ->
-    /// Connected commit (which lands at the end of the next tick); the jack still
-    /// reports Connecting there, so callers use this to spot the duplicate.
+    /**
+     * True in the window between the exchange completing and the Connecting ->
+     * Connected commit (which lands at the end of the next tick); the jack still
+     * reports Connecting there, so callers use this to spot the duplicate.
+     */
     bool didMarkContextComplete() const {
         return currentState && currentState->getStateId() == HELLO_LINK_CONNECTING &&
                static_cast<HelloConnectingState*>(currentState)->transitionToConnected();
     }
 
-    /// The peer this link tracks (last HELLO source); all-zero while Idle.
+    /** The peer this link tracks (last HELLO source); all-zero while Idle. */
     const std::array<uint8_t, 6>& peer() const { return context.peerMac; }
 
 private:

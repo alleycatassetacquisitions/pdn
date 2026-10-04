@@ -24,7 +24,7 @@
 // when it landed, which is what the replay-ordering tests assert on.
 class RecordingConnectState : public ConnectState<Device> {
 public:
-    /// Binds the recorder to the coordinator whose jack events it captures.
+    /** Binds the recorder to the coordinator whose jack events it captures. */
     RecordingConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator, int stateId)
         : ConnectState<Device>(remoteDeviceCoordinator, stateId) {}
 
@@ -44,16 +44,18 @@ public:
     int mountedCount = 0;
     int dismountedCount = 0;
 
-    /// Registers the recorder and counts mounts, so a replayed event can be shown
-    /// to land after this ran. Registration belongs here: the mount replay runs
-    /// after the subclass's own mount hook.
+    /**
+     * Registers the recorder and counts mounts, so a replayed event can be shown
+     * to land after this ran. Registration belongs here: the mount replay runs
+     * after the subclass's own mount hook.
+     */
     void onStateMounted(Device*) override {
         mountedCount++;
         setOnJackChange([this](SerialIdentifier jack, const JackConnectionState& state) {
             record(jack, state);
         });
     }
-    /// Counts dismounts; paired with mountedCount to tell mounted from not.
+    /** Counts dismounts; paired with mountedCount to tell mounted from not. */
     void onStateDismounted(Device*) override { dismountedCount++; }
 
 protected:
@@ -82,7 +84,7 @@ private:
 // tenure rather than what the payload carries.
 class ConstructorRegisteredConnectState : public ConnectState<Device> {
 public:
-    /// Binds the coordinator and registers the handler in one step.
+    /** Binds the coordinator and registers the handler in one step. */
     ConstructorRegisteredConnectState(RemoteDeviceCoordinator* remoteDeviceCoordinator,
                                       int stateId)
         : ConnectState<Device>(remoteDeviceCoordinator, stateId) {
@@ -112,13 +114,15 @@ inline void dismountState(State* state, Device* device) {
     static_cast<StateLifecycle*>(state)->dismount(device);
 }
 
-/// RDCHelloTests::SetUp installs its own jack observer for connectCount /
-/// disconnectCount. The slot is single and the setter overwrites it without
-/// complaint, so a mounting ConnectState would silently detach the fixture's
-/// counters; these tests hand the slot over deliberately instead.
+/**
+ * RDCHelloTests::SetUp installs its own jack observer for connectCount /
+ * disconnectCount. The slot is single and the setter overwrites it without
+ * complaint, so a mounting ConnectState would silently detach the fixture's
+ * counters; these tests hand the slot over deliberately instead.
+ */
 class ConnectStateTests : public RDCHelloTests {
 public:
-    /// Builds the HELLO fixture, then hands the jack observer slot back.
+    /** Builds the HELLO fixture, then hands the jack observer slot back. */
     void SetUp() override {
         RDCHelloTests::SetUp();
         rdc.setOnJackChange(nullptr);

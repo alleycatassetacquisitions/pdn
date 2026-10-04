@@ -40,8 +40,10 @@ public:
         shootout = new ShootoutManager(&player, device.wirelessManager, &rdc);
     }
 
-    /// Feeds a peer's PdnConnectionContext in through the handler the reliable
-    /// transport registered with the radio driver — the production receive path.
+    /**
+     * Feeds a peer's PdnConnectionContext in through the handler the reliable
+     * transport registered with the radio driver — the production receive path.
+     */
     void deliverPdnContext(const uint8_t* peerMac) {
         if (contextHandler == nullptr) return;
         std::vector<uint8_t> bytes = pdnContextBytes(/*chainRole=*/0, /*userId=*/4242,
@@ -49,28 +51,34 @@ public:
         contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }
 
-    /// Head a chain out of OUTPUT, then take our own MAC back on INPUT — the only
-    /// local evidence that a loop closed. A tournament only exists on a closed
-    /// ring, and sync()'s ring-break guard reads that directly, so any case that
-    /// drives a tournament forward has to stand one up.
+    /**
+     * Head a chain out of OUTPUT, then take our own MAC back on INPUT — the only
+     * local evidence that a loop closed. A tournament only exists on a closed
+     * ring, and sync()'s ring-break guard reads that directly, so any case that
+     * drives a tournament forward has to stand one up.
+     */
     void closeRingOnJacks() {
         const uint8_t upstream[6] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
         connectJackTo(outJack, peerMac);
         connectJackTo(inJack, upstream, localMac);
     }
 
-    /// Lets both jacks fall silent, so the RDC declares the links lost on its
-    /// next sync and the latch opens. A single device cannot be argued out of a
-    /// ring any other way, and this is what a pulled cable looks like from here.
-    /// Costs HELLO_SILENT_LINK_MS of clock — a fifth of the abort debounce.
+    /**
+     * Lets both jacks fall silent, so the RDC declares the links lost on its
+     * next sync and the latch opens. A single device cannot be argued out of a
+     * ring any other way, and this is what a pulled cable looks like from here.
+     * Costs HELLO_SILENT_LINK_MS of clock — a fifth of the abort debounce.
+     */
     void openRingOnJacks() {
         fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
         rdc.sync(&device);
     }
 
-    /// Ring closed, everyone confirmed, bracket acked, first match started. The
-    /// ramp almost every tournament case needs before it can say anything.
-    /// `members` must start with this device's own MAC.
+    /**
+     * Ring closed, everyone confirmed, bracket acked, first match started. The
+     * ramp almost every tournament case needs before it can say anything.
+     * `members` must start with this device's own MAC.
+     */
     void driveToFirstMatch(const std::vector<std::array<uint8_t, 6>>& members) {
         closeRingOnJacks();
         shootout->setLoopMembersForTest(members);
@@ -86,8 +94,10 @@ public:
         shootout->sync();
     }
 
-    /// `n` retry rounds, each advancing past any backoff a recipient could be
-    /// sitting on, so counting rounds is how a case reads a retry budget.
+    /**
+     * `n` retry rounds, each advancing past any backoff a recipient could be
+     * sitting on, so counting rounds is how a case reads a retry budget.
+     */
     void runRetryRounds(uint8_t n) {
         for (uint8_t i = 0; i < n; ++i) {
             fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
@@ -95,8 +105,10 @@ public:
         }
     }
 
-    /// Brings `jack` from Idle to Connected against `peerMac`, optionally carrying
-    /// an advertised chain head and HELLO flag bits.
+    /**
+     * Brings `jack` from Idle to Connected against `peerMac`, optionally carrying
+     * an advertised chain head and HELLO flag bits.
+     */
     void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
                        const uint8_t* advertisedHead = nullptr, uint8_t flags = 0) {
         deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead, flags));
@@ -105,9 +117,11 @@ public:
         rdc.sync(&device);
     }
 
-    /// Puts this device mid-chain on a closed loop the way a member really gets
-    /// there: a downstream link, and an upstream link under a foreign head whose
-    /// HELLO carries the relayed ring-closed flag.
+    /**
+     * Puts this device mid-chain on a closed loop the way a member really gets
+     * there: a downstream link, and an upstream link under a foreign head whose
+     * HELLO carries the relayed ring-closed flag.
+     */
     void joinRelayedRing() {
         const uint8_t downstream[6] = {0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
         const uint8_t upstream[6] = {0x05, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -116,7 +130,7 @@ public:
         connectJackTo(inJack, upstream, chainHead, HELLO_FLAG_RING_CLOSED);
     }
 
-    /// Both cables go quiet: the links lapse and the loop is provably open.
+    /** Both cables go quiet: the links lapse and the loop is provably open. */
     void loseTheRing() {
         fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
         rdc.sync(&device);

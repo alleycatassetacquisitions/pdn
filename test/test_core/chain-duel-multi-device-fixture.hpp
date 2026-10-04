@@ -163,10 +163,12 @@ public:
         settleLinks();
     }
 
-    /// One HELLO cycle across every plugged cable: emit on both jacks of every
-    /// node, move the bytes each cable carries, drain them through the real
-    /// exec() pump, then let each RDC and the radio queue catch up. Unpumped
-    /// jack output is dropped — an unplugged jack transmits into open air.
+    /**
+     * One HELLO cycle across every plugged cable: emit on both jacks of every
+     * node, move the bytes each cable carries, drain them through the real
+     * exec() pump, then let each RDC and the radio queue catch up. Unpumped
+     * jack output is dropped — an unplugged jack transmits into open air.
+     */
     void pumpHelloCycle() {
         for (auto& n : nodes)
             n->rdc->emitHello();
@@ -185,8 +187,10 @@ public:
         deliverAllPackets();
     }
 
-    /// Enough HELLO cycles for a fresh cable to reach CONNECTED and for the head
-    /// MAC (and any ring closure it implies) to propagate the length of the chain.
+    /**
+     * Enough HELLO cycles for a fresh cable to reach CONNECTED and for the head
+     * MAC (and any ring closure it implies) to propagate the length of the chain.
+     */
     void settleLinks() {
         for (size_t round = 0; round < nodes.size() + 8; ++round) {
             pumpHelloCycle();
@@ -194,18 +198,22 @@ public:
         }
     }
 
-    /// Ring closure the way production delivers it: the head's RDC callback, the
-    /// roster broadcast, then each member's Idle -> ShootoutProposal mount.
-    ///
-    /// Index of the node that latched the ring, set by claimRing().
+    /**
+     * Ring closure the way production delivers it: the head's RDC callback, the
+     * roster broadcast, then each member's Idle -> ShootoutProposal mount.
+     *
+     * Index of the node that latched the ring, set by claimRing().
+     */
     size_t ringHeadIndex = 0;
 
-    /// Claims on whichever node latched, which `closeRing()` makes the last-indexed
-    /// one. Production fires onRingClosed() only from that RDC callback, so a
-    /// self-claim on any other node is a state no device can reach. The roster is
-    /// injected because `dispatch()` has no kConnectionAnnounce case, so the
-    /// announces the RDC really sends fall through to `default:` and no roster
-    /// ever reaches a head here.
+    /**
+     * Claims on whichever node latched, which `closeRing()` makes the last-indexed
+     * one. Production fires onRingClosed() only from that RDC callback, so a
+     * self-claim on any other node is a state no device can reach. The roster is
+     * injected because `dispatch()` has no kConnectionAnnounce case, so the
+     * announces the RDC really sends fall through to `default:` and no roster
+     * ever reaches a head here.
+     */
     void claimRing() {
         size_t headIndex = nodes.size();
         for (size_t i = 0; i < nodes.size(); ++i) {
@@ -254,9 +262,11 @@ public:
         seedRingRoster();
     }
 
-    /// Hands every node the ring's member list. Ring detection is local and
-    /// real here; the member list is not — it lives on the head only, and no
-    /// coordinator broadcast (#169) hands it to followers yet.
+    /**
+     * Hands every node the ring's member list. Ring detection is local and
+     * real here; the member list is not — it lives on the head only, and no
+     * coordinator broadcast (#169) hands it to followers yet.
+     */
     void seedRingRoster() {
         std::vector<std::array<uint8_t, 6>> members;
         for (auto& n : nodes) {
