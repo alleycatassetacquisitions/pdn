@@ -62,7 +62,7 @@ struct CrashPacket {
  */
 class CrashLogger {
 public:
-    /// Reports over HTTP. Capture still works before the radio is up.
+    /** Reports over HTTP. Capture still works before the radio is up. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, Esp32S3HttpClient* httpClientDriver)
         : prefsDriver(prefsDriver)
         , httpClientDriver(httpClientDriver)
@@ -73,7 +73,7 @@ public:
         serialCommandBuffer[0] = '\0';
     }
 
-    /// Reports over ESP-NOW, for devices with no route to the server.
+    /** Reports over ESP-NOW, for devices with no route to the server. */
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, EspNowDriver* espNowDriver)
         : prefsDriver(prefsDriver)
         , httpClientDriver(nullptr)
@@ -102,8 +102,10 @@ public:
             this);
     }
 
-    /// Records the last reset if it was not a clean one. Runs once; safe to
-    /// call before the radio exists, since it only touches storage.
+    /**
+     * Records the last reset if it was not a clean one. Runs once; safe to
+     * call before the radio exists, since it only touches storage.
+     */
     void capture() {
         if (hasCaptured) return;
         hasCaptured = true;
@@ -139,15 +141,17 @@ public:
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
 
-    /// True while a recorded crash has not been reported yet.
+    /** True while a recorded crash has not been reported yet. */
     bool hasPending() const {
         return readSentSeq() < readCrashSeq();
     }
 
-    /// Offers every unreported record once per boot. Call each tick: nothing can
-    /// add a record after capture(), so the first pass with the radio up is the
-    /// only one that has anything to do. A record the radio never reports stays
-    /// pending and goes out on the next boot, which is the retry.
+    /**
+     * Offers every unreported record once per boot. Call each tick: nothing can
+     * add a record after capture(), so the first pass with the radio up is the
+     * only one that has anything to do. A record the radio never reports stays
+     * pending and goes out on the next boot, which is the retry.
+     */
     void transmitPending() {
         if (offeredThisBoot) return;
         // A send offered while the radio is down is accepted by the driver's queue
@@ -160,7 +164,7 @@ public:
         useHttp ? transmitHttp() : transmitEspNow();
     }
 
-    /// Dumps every stored record to the USB monitor, for a device on a bench.
+    /** Dumps every stored record to the USB monitor, for a device on a bench. */
     void flushToSerial() const {
         const uint32_t crashSeq = readCrashSeq();
         const uint32_t sentSeq  = readSentSeq();

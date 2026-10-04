@@ -100,17 +100,21 @@ public:
         stringCallback_ = callback;
     }
 
-    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    /** Routes RX bytes to the byte callback in exec(); see HWSerialWrapper. */
     void setByteCallback(const SerialByteCallback& callback) override {
         byteCallback_ = callback;
     }
 
-    /// True when a byte callback is installed (HELLO/binary mode), so the cable
-    /// broker delivers raw bytes rather than re-framing STRING_START messages.
+    /**
+     * True when a byte callback is installed (HELLO/binary mode), so the cable
+     * broker delivers raw bytes rather than re-framing STRING_START messages.
+     */
     bool hasByteCallback() const { return static_cast<bool>(byteCallback_); }
 
-    /// Test/broker helper: buffers raw bytes for exec() to drain to the byte
-    /// callback. The binary-framing analogue of injectInput().
+    /**
+     * Test/broker helper: buffers raw bytes for exec() to drain to the byte
+     * callback. The binary-framing analogue of injectInput().
+     */
     void injectBytes(const std::vector<uint8_t>& bytes) {
         while (inputBuffer_.size() >= MAX_INPUT_QUEUE_SIZE) {
             inputBuffer_.pop();

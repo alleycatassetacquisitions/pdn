@@ -40,20 +40,24 @@ public:
 
     virtual int begin() = 0;
 
-    /// Dismounts the running app and mounts `appId`, entering it at the state
-    /// named by `entryStateId`. The default enters at the target's boot state,
-    /// which is what an app transition that names no entry point asks for. An id
-    /// with no app registered against it logs and returns, dismounting nothing.
+    /**
+     * Dismounts the running app and mounts `appId`, entering it at the state
+     * named by `entryStateId`. The default enters at the target's boot state,
+     * which is what an app transition that names no entry point asks for. An id
+     * with no app registered against it logs and returns, dismounting nothing.
+     */
     void setActiveApp(StateId appId, StateId entryStateId = StateId(-1));
 
-    /// The mounted app, or null before loadAppConfig.
+    /** The mounted app, or null before loadAppConfig. */
     StateMachine* getActiveApp();
 
-    /// Runs every tick between the drivers and the mounted app's loop, so work
-    /// that has to outlive an app swap can live here: only the mounted app gets an
-    /// onStateLoop. One slot, and setting it displaces whatever held it, so it
-    /// belongs to a single owner — on the PDN that is GameSession, which installs
-    /// it in its constructor and clears it in its destructor.
+    /**
+     * Runs every tick between the drivers and the mounted app's loop, so work
+     * that has to outlive an app swap can live here: only the mounted app gets an
+     * onStateLoop. One slot, and setting it displaces whatever held it, so it
+     * belongs to a single owner — on the PDN that is GameSession, which installs
+     * it in its constructor and clears it in its destructor.
+     */
     void setTickCallback(std::function<void()> tickCallback);
 
     virtual void loop();

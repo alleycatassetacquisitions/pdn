@@ -19,7 +19,7 @@
  */
 class Esp32S3PrefsDriver : public StorageDriverInterface {
 public:
-    /// Opens one Preferences handle per namespace; any other name throws.
+    /** Opens one Preferences handle per namespace; any other name throws. */
     Esp32S3PrefsDriver(const std::string& name, std::initializer_list<const char*> namespaces)
         : StorageDriverInterface(name) {
         psramInit();
@@ -28,12 +28,12 @@ public:
         }
     }
 
-    /// Closes every namespace handle this driver opened.
+    /** Closes every namespace handle this driver opened. */
     ~Esp32S3PrefsDriver() override {
         endAllNamespaces();
     }
 
-    /// Begins each namespace read-write. Non-zero when one refuses to open.
+    /** Begins each namespace read-write. Non-zero when one refuses to open. */
     int initialize() override {
         for (auto& entry : namespacePrefs) {
             if (!entry.second.begin(entry.first.c_str(), false)) {
@@ -43,40 +43,40 @@ public:
         return 0;
     }
 
-    /// No periodic work.
+    /** No periodic work. */
     void exec() override {}
 
-    /// Stores a string under `ns`; returns the number of bytes written.
+    /** Stores a string under `ns`; returns the number of bytes written. */
     size_t write(const std::string& ns, const std::string& key, const std::string& value) override {
         return requirePrefs(ns)->putString(key.c_str(), value.c_str());
     }
 
-    /// Reads a string back, or `defaultValue` when the key is unset.
+    /** Reads a string back, or `defaultValue` when the key is unset. */
     std::string read(const std::string& ns, const std::string& key, const std::string& defaultValue) override {
         return std::string(requirePrefs(ns)->getString(key.c_str(), defaultValue.c_str()).c_str());
     }
 
-    /// Drops one key from `ns`.
+    /** Drops one key from `ns`. */
     bool remove(const std::string& ns, const std::string& key) override {
         return requirePrefs(ns)->remove(key.c_str());
     }
 
-    /// Drops every key in `ns`.
+    /** Drops every key in `ns`. */
     bool clear(const std::string& ns) override {
         return requirePrefs(ns)->clear();
     }
 
-    /// Closes every namespace handle; the driver is unusable afterwards.
+    /** Closes every namespace handle; the driver is unusable afterwards. */
     void end() override {
         endAllNamespaces();
     }
 
-    /// Reads one byte back, or `defaultValue` when the key is unset.
+    /** Reads one byte back, or `defaultValue` when the key is unset. */
     uint8_t readUChar(const std::string& ns, const std::string& key, uint8_t defaultValue) override {
         return requirePrefs(ns)->getUChar(key.c_str(), defaultValue);
     }
 
-    /// Stores one byte under `ns`.
+    /** Stores one byte under `ns`. */
     size_t writeUChar(const std::string& ns, const std::string& key, uint8_t value) override {
         return requirePrefs(ns)->putUChar(key.c_str(), value);
     }

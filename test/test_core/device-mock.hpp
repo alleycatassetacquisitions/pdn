@@ -80,7 +80,7 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         stringCallback = callback;
     }
 
-    /// Routes RX bytes to the byte callback; see HWSerialWrapper.
+    /** Routes RX bytes to the byte callback; see HWSerialWrapper. */
     void setByteCallback(const SerialByteCallback& callback) override {
         byteCallback = callback;
     }
@@ -240,12 +240,14 @@ private:
 // HELLO stack. Only the chain surface ShootoutManager reads is overridden.
 class FakeRingRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
-    /// The role this stand-in reports; RING by default.
+    /** The role this stand-in reports; RING by default. */
     ChainRole getChainRole() const override { return chainRole; }
-    /// The roster this stand-in serves, as a real head's RDC would.
+    /** The roster this stand-in serves, as a real head's RDC would. */
     std::vector<std::array<uint8_t, 6>> getChainMembers() const override { return chainMembers; }
-    /// Membership is broader than the RING role: a device relaying another head's
-    /// closure sits on a live loop with no latch of its own.
+    /**
+     * Membership is broader than the RING role: a device relaying another head's
+     * closure sits on a live loop with no latch of its own.
+     */
     bool isInRing() const override {
         return chainRole == ChainRole::RING || relayedMember;
     }

@@ -96,7 +96,7 @@ public:
         stringCallback = callback;
     }
 
-    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    /** Routes RX bytes to the byte callback in exec(); see HWSerialWrapper. */
     void setByteCallback(const SerialByteCallback& callback) override {
         byteCallback = callback;
     }
@@ -192,7 +192,7 @@ public:
         stringCallback = callback;
     }
 
-    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    /** Routes RX bytes to the byte callback in exec(); see HWSerialWrapper. */
     void setByteCallback(const SerialByteCallback& callback) override {
         byteCallback = callback;
     }
@@ -268,7 +268,7 @@ public:
         stringCallback = callback;
     }
 
-    /// Routes RX bytes to the byte callback in exec(); see HWSerialWrapper.
+    /** Routes RX bytes to the byte callback in exec(); see HWSerialWrapper. */
     void setByteCallback(const SerialByteCallback& callback) override {
         byteCallback = callback;
     }

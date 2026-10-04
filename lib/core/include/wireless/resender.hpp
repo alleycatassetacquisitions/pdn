@@ -47,10 +47,12 @@ public:
     enum class BudgetPolicy { TRANSMITTED_ONLY,
                               EVERY_ROUND };
 
-    /// Wall-clock span from a frame's first send to a recipient being given up
-    /// on, so every retransmit of it falls inside. Holds under EVERY_ROUND; a
-    /// TRANSMITTED_ONLY entry against a shut send path has no bound at all,
-    /// because a refused round costs no budget.
+    /**
+     * Wall-clock span from a frame's first send to a recipient being given up
+     * on, so every retransmit of it falls inside. Holds under EVERY_ROUND; a
+     * TRANSMITTED_ONLY entry against a shut send path has no bound at all,
+     * because a refused round costs no budget.
+     */
     static constexpr unsigned long retransmitSpanMs() {
         unsigned long total = 0;
         for (uint8_t r = 0; r <= MAX_RETRIES; ++r)
@@ -58,49 +60,55 @@ public:
         return total;
     }
 
-    /// The soonest a caller may treat a frame as finished with: past every
-    /// retransmit of it, plus margin. Bounded only for an EVERY_ROUND sender —
-    /// see retransmitSpanMs; a TRANSMITTED_ONLY entry behind a shut send path
-    /// has no bound, so a caller relying on this must tolerate a later copy. Both the receiver's duplicate-claim window
-    /// and a sender's repair cadence are this same question, so they read it
-    /// here rather than each re-deriving the arithmetic.
+    /**
+     * The soonest a caller may treat a frame as finished with: past every
+     * retransmit of it, plus margin. Bounded only for an EVERY_ROUND sender —
+     * see retransmitSpanMs; a TRANSMITTED_ONLY entry behind a shut send path
+     * has no bound, so a caller relying on this must tolerate a later copy. Both the receiver's duplicate-claim window
+     * and a sender's repair cadence are this same question, so they read it
+     * here rather than each re-deriving the arithmetic.
+     */
     static constexpr unsigned long staleAfterMs() { return retransmitSpanMs() + 500; }
 
-    /// Exponential backoff for the given retry number: 100, 200, 400 ...
+    /** Exponential backoff for the given retry number: 100, 200, 400 ... */
     static constexpr unsigned long backoffMs(uint8_t retryNum) {
         // Clamp the shift so raising MAX_RETRIES past ~25 can't hit shift UB
         // (unsigned long is 32-bit on the ESP32).
         return INITIAL_TIMEOUT_MS << (retryNum > 16 ? 16u : retryNum);
     }
 
-    /// Fires once per recipient that is given up on. Invoked from sync() AFTER
-    /// every retransmit has been processed and the abandoned recipients removed,
-    /// so a callback may freely send(), cancel() or cancelAll() on this Resender
-    /// without invalidating the iteration. `payload` is the frame that was given
-    /// up on, so a caller multiplexing several command families onto one PktType
-    /// can read which one it was straight off the bytes.
+    /**
+     * Fires once per recipient that is given up on. Invoked from sync() AFTER
+     * every retransmit has been processed and the abandoned recipients removed,
+     * so a callback may freely send(), cancel() or cancelAll() on this Resender
+     * without invalidating the iteration. `payload` is the frame that was given
+     * up on, so a caller multiplexing several command families onto one PktType
+     * can read which one it was straight off the bytes.
+     */
     using AbandonCallback = std::function<void(PktType type, uint8_t seqId,
                                                const uint8_t* targetMac,
                                                const uint8_t* payload, size_t payloadLen)>;
 
-    /// wirelessManager may be nullptr in unit tests; transmit() then no-ops.
+    /** wirelessManager may be nullptr in unit tests; transmit() then no-ops. */
     explicit Resender(WirelessManager* wirelessManager,
                       BudgetPolicy budgetPolicy = BudgetPolicy::TRANSMITTED_ONLY)
         : wirelessManager(wirelessManager)
         , budgetPolicy(budgetPolicy) {}
-    /// Groups own their payload copies; nothing external to release.
+    /** Groups own their payload copies; nothing external to release. */
     ~Resender() = default;
 
-    /// Registers the once-per-abandoned-recipient callback (see AbandonCallback).
+    /** Registers the once-per-abandoned-recipient callback (see AbandonCallback). */
     void setAbandonCallback(AbandonCallback cb) {
         abandonCallback = std::move(cb);
     }
 
-    /// Cumulative counters for everything this Resender carries. Sends and
-    /// retries count FRAMES — one fan-out retransmit is one retry however many
-    /// recipients it covers — while abandons count RECIPIENTS given up on, since
-    /// that is the number that names devices rather than airtime. The two do not
-    /// divide into one another.
+    /**
+     * Cumulative counters for everything this Resender carries. Sends and
+     * retries count FRAMES — one fan-out retransmit is one retry however many
+     * recipients it covers — while abandons count RECIPIENTS given up on, since
+     * that is the number that names devices rather than airtime. The two do not
+     * divide into one another.
+     */
     struct Stats {
         uint32_t sends = 0;
         uint32_t retries = 0;
@@ -108,61 +116,73 @@ public:
     };
     const Stats& getStats() const { return stats; }
 
-    /// Reliable send to one peer: the frame is addressed to that peer and it is
-    /// the only recipient expected to answer. payload bytes are copied exactly as
-    /// given — every sender writes `seqId` into them before calling.
+    /**
+     * Reliable send to one peer: the frame is addressed to that peer and it is
+     * the only recipient expected to answer. payload bytes are copied exactly as
+     * given — every sender writes `seqId` into them before calling.
+     */
     void send(const uint8_t* target, PktType type, uint8_t seqId,
               const uint8_t* payload, size_t len,
               SendMode mode = SendMode::SUPERSEDE_PER_TARGET);
 
-    /// Reliable fan-out: ONE frame addressed to the broadcast MAC, with every
-    /// named recipient expected to answer for it separately. Each carries its own
-    /// retry budget and is given up on independently, but a retransmit round
-    /// emits a single frame however many still owe an ack.
-    ///
-    /// Broadcast rather than a unicast per recipient because the ESP-NOW peer
-    /// table holds 20 entries, so a ring larger than that cannot be addressed by
-    /// unicast at all, while the broadcast slot is registered once at radio init.
-    ///
-    /// Naming no recipients sends nothing: a frame nobody is expected to answer
-    /// for is not a delivery.
-    ///
-    /// Always KEEP_DISTINCT. Superseding is per-recipient, so on a fan-out it
-    /// would retire only the recipients the new frame happens to name, leaving a
-    /// member that has since left the ring still owing an ack on the old one. A
-    /// caller that wants the previous fan-out gone wants all of it gone, which is
-    /// cancelAll.
+    /**
+     * Reliable fan-out: ONE frame addressed to the broadcast MAC, with every
+     * named recipient expected to answer for it separately. Each carries its own
+     * retry budget and is given up on independently, but a retransmit round
+     * emits a single frame however many still owe an ack.
+     *
+     * Broadcast rather than a unicast per recipient because the ESP-NOW peer
+     * table holds 20 entries, so a ring larger than that cannot be addressed by
+     * unicast at all, while the broadcast slot is registered once at radio init.
+     *
+     * Naming no recipients sends nothing: a frame nobody is expected to answer
+     * for is not a delivery.
+     *
+     * Always KEEP_DISTINCT. Superseding is per-recipient, so on a fan-out it
+     * would retire only the recipients the new frame happens to name, leaving a
+     * member that has since left the ring still owing an ack on the old one. A
+     * caller that wants the previous fan-out gone wants all of it gone, which is
+     * cancelAll.
+     */
     void sendBroadcast(const std::vector<std::array<uint8_t, 6>>& recipients,
                        PktType type, uint8_t seqId,
                        const uint8_t* payload, size_t len);
 
-    /// Clears this recipient's obligation for the frame sent under `seqId`.
-    /// Returns true when one matched. For a unicast that is the radio's
-    /// SEND_SUCCESS (the peer's MAC ack); a fan-out gets no per-recipient radio
-    /// evidence, so there it is an application ack. A SEND_FAIL is deliberately
-    /// ignored: the backoff timer retransmits on timeout, which avoids burning
-    /// the whole budget on a briefly-absent peer.
+    /**
+     * Clears this recipient's obligation for the frame sent under `seqId`.
+     * Returns true when one matched. For a unicast that is the radio's
+     * SEND_SUCCESS (the peer's MAC ack); a fan-out gets no per-recipient radio
+     * evidence, so there it is an application ack. A SEND_FAIL is deliberately
+     * ignored: the backoff timer retransmits on timeout, which avoids burning
+     * the whole budget on a briefly-absent peer.
+     */
     bool onAck(PktType type, uint8_t seqId, const uint8_t* fromMac);
 
-    /// Silent drop of one recipient's obligations on this channel; use when the
-    /// target is known unreachable. No abandon callback.
+    /**
+     * Silent drop of one recipient's obligations on this channel; use when the
+     * target is known unreachable. No abandon callback.
+     */
     void cancel(PktType type, const uint8_t* target);
 
-    /// Silent drop of every obligation on this channel, to every recipient. For
-    /// when the conversation itself is over, not just one peer's part in it.
+    /**
+     * Silent drop of every obligation on this channel, to every recipient. For
+     * when the conversation itself is over, not just one peer's part in it.
+     */
     void cancelAll(PktType type);
 
-    /// cancelAll, sparing the frame sent under `keepSeqId`. For the frame that
-    /// announces the conversation is over: it owes delivery to exactly the peers
-    /// that have not yet heard the news, so it must outlive the teardown it is
-    /// reporting. 0 spares nothing, so a caller that allocates seqId 0 cannot
-    /// spare that frame.
+    /**
+     * cancelAll, sparing the frame sent under `keepSeqId`. For the frame that
+     * announces the conversation is over: it owes delivery to exactly the peers
+     * that have not yet heard the news, so it must outlive the teardown it is
+     * reporting. 0 spares nothing, so a caller that allocates seqId 0 cannot
+     * spare that frame.
+     */
     void cancelAllExcept(PktType type, uint8_t keepSeqId);
 
-    /// Drives retransmits and abandonment. Must be called every loop tick.
+    /** Drives retransmits and abandonment. Must be called every loop tick. */
     void sync();
 
-    /// Recipients on this channel that still owe an ack, across all frames.
+    /** Recipients on this channel that still owe an ack, across all frames. */
     size_t pendingCount(PktType type) const {
         size_t count = 0;
         for (const Group& g : groups) {
@@ -171,8 +191,10 @@ public:
         return count;
     }
 
-    /// Recipients of the frame sent under `seqId` that still owe an ack. Zero
-    /// once every one of them has answered or been given up on.
+    /**
+     * Recipients of the frame sent under `seqId` that still owe an ack. Zero
+     * once every one of them has answered or been given up on.
+     */
     size_t pendingCount(PktType type, uint8_t seqId) const {
         size_t count = 0;
         for (const Group& g : groups) {
@@ -181,8 +203,10 @@ public:
         return count;
     }
 
-    /// True when this target still owes an ack on this channel, whether it was
-    /// addressed directly or named as one recipient of a fan-out.
+    /**
+     * True when this target still owes an ack on this channel, whether it was
+     * addressed directly or named as one recipient of a fan-out.
+     */
     bool isPending(PktType type, const uint8_t* target) const {
         if (target == nullptr) return false;
         for (const Group& g : groups) {

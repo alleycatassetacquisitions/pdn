@@ -37,37 +37,45 @@ struct ChainGameEventPayload {
 
 class ChainDuelManager {
 public:
-    /// Subscribes to the coordinator's chain-change and role-change edges, and
-    /// requires a live coordinator — the class dereferences it unguarded throughout.
-    /// One callback exists per edge, so at most one ChainDuelManager per coordinator:
-    /// a second built on the same one takes both slots over, and whichever is
-    /// destroyed first empties them for both. A test does this deliberately and
-    /// stays correct only because it drives no jack edge afterwards.
+    /**
+     * Subscribes to the coordinator's chain-change and role-change edges, and
+     * requires a live coordinator — the class dereferences it unguarded throughout.
+     * One callback exists per edge, so at most one ChainDuelManager per coordinator:
+     * a second built on the same one takes both slots over, and whichever is
+     * destroyed first empties them for both. A test does this deliberately and
+     * stays correct only because it drives no jack edge afterwards.
+     */
     ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
-    /// Drops the coordinator subscriptions the constructor took, which hold `this`.
+    /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
     virtual ~ChainDuelManager();
 
     bool isChampion() const;
     bool isSupporter() const;
     virtual bool isLoop() const;
     bool canInitiateMatch() const;
-    /// This champion's supporter chain at any depth: the direct supporter-jack
-    /// peer, which a cable proves, plus every device that named this one as its
-    /// champion in a kChainJoin. Empty inside a ring, which has no champion.
+    /**
+     * This champion's supporter chain at any depth: the direct supporter-jack
+     * peer, which a cable proves, plus every device that named this one as its
+     * champion in a kChainJoin. Empty inside a ring, which has no champion.
+     */
     std::vector<std::array<uint8_t, 6>> getSupporterChainPeers() const;
 
     void sendGameEventToSupporters(ChainGameEventType eventType);
     void sendConfirm();
 
-    /// Re-sends the confirm this device is standing on to whichever champion it
-    /// now holds. No-op until a press has produced one, so a topology event can
-    /// never register a supporter who never pressed.
+    /**
+     * Re-sends the confirm this device is standing on to whichever champion it
+     * now holds. No-op until a press has produced one, so a topology event can
+     * never register a supporter who never pressed.
+     */
     void resendConfirm();
 
-    /// Supporter-side view of an inbound chain game event. A COUNTDOWN voids the
-    /// standing confirm: the champion wipes its roll call at that same moment, so
-    /// re-sending the old press would register a supporter for a round it has not
-    /// yet answered.
+    /**
+     * Supporter-side view of an inbound chain game event. A COUNTDOWN voids the
+     * standing confirm: the champion wipes its roll call at that same moment, so
+     * re-sending the old press would register a supporter for a round it has not
+     * yet answered.
+     */
     void onChainGameEventReceived(uint8_t eventType);
 
     // Supporter-side: ACK a received WIN/LOSS game event back to the
@@ -79,14 +87,18 @@ public:
     // matching pending game event so retransmission stops.
     void onChainGameEventAckReceived(const uint8_t* fromMac, uint8_t seqId);
 
-    /// True when a broadcast game event names the champion this device follows.
-    /// The frame reaches every device in radio range, so this is the only thing
-    /// separating our champion's round from a neighbouring chain's.
+    /**
+     * True when a broadcast game event names the champion this device follows.
+     * The frame reaches every device in radio range, so this is the only thing
+     * separating our champion's round from a neighbouring chain's.
+     */
     bool isEventFromOwnChampion(const uint8_t* eventChampionMac) const;
 
-    /// Champion-side: records `supporterMac` as part of this device's chain, so
-    /// a press from a device it shares no cable with can be counted. Ignores a
-    /// join naming any champion but this device.
+    /**
+     * Champion-side: records `supporterMac` as part of this device's chain, so
+     * a press from a device it shares no cable with can be counted. Ignores a
+     * join naming any champion but this device.
+     */
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
     void onConfirmReceived(
         const uint8_t* fromMac,
@@ -108,24 +120,30 @@ public:
         const uint8_t* championMac,
         uint8_t seqId);
 
-    /// Announces this device's role and champion to the supporter-jack peer.
-    /// Silent when the link is not proven yet.
+    /**
+     * Announces this device's role and champion to the supporter-jack peer.
+     * Silent when the link is not proven yet.
+     */
     void broadcastRoleAndChampion();
-    /// Announces this device's role to the opponent-jack peer, unless that peer
-    /// has already been told or is still being told. With no peer it forgets
-    /// whoever was last told, so a cable returning on the same MAC is announced
-    /// to again.
+    /**
+     * Announces this device's role to the opponent-jack peer, unless that peer
+     * has already been told or is still being told. With no peer it forgets
+     * whoever was last told, so a cable returning on the same MAC is announced
+     * to again.
+     */
     void sendRoleToOpponentJack();
 
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
-    /// How often an undelivered role announce is re-offered, in either
-    /// direction. A settled chain raises no events, so nothing else would.
-    ///
-    /// Longer than the retry span on purpose: a tick landing inside that window
-    /// supersedes the live entry and restarts its budget, so the announce would
-    /// retransmit forever instead of going quiet between offers.
+    /**
+     * How often an undelivered role announce is re-offered, in either
+     * direction. A settled chain raises no events, so nothing else would.
+     *
+     * Longer than the retry span on purpose: a tick landing inside that window
+     * supersedes the live entry and restarts its budget, so the announce would
+     * retransmit forever instead of going quiet between offers.
+     */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::staleAfterMs();
 
     // Retry observability for this manager's two channels.
@@ -136,14 +154,16 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /// Cumulative retry counters for the role-announce and game-event channels.
-    /// ackLatencyMsSum / ackCount is a mean delivery time, mixing two kinds of
-    /// sample: the role announce measures to the radio's SEND_SUCCESS, the game
-    /// event to a reply packet. Sends and retries are
-    /// counted in frames, abandons in recipients, so the three do not divide into
-    /// one another: on a fan-out one frame can be given up on by many members.
-    /// Latency is measured here because the Resender does not stamp a send time;
-    /// it holds the retry schedule, not a record of when a frame first went out.
+    /**
+     * Cumulative retry counters for the role-announce and game-event channels.
+     * ackLatencyMsSum / ackCount is a mean delivery time, mixing two kinds of
+     * sample: the role announce measures to the radio's SEND_SUCCESS, the game
+     * event to a reply packet. Sends and retries are
+     * counted in frames, abandons in recipients, so the three do not divide into
+     * one another: on a fan-out one frame can be given up on by many members.
+     * Latency is measured here because the Resender does not stamp a send time;
+     * it holds the retry schedule, not a record of when a frame first went out.
+     */
     RetryStats getRetryStats() const {
         const Resender::Stats& carried = resender.getStats();
         return {carried.sends, carried.retries, carried.abandons,
@@ -245,7 +265,7 @@ private:
         uint8_t seqId = 0;
         bool delivered = false;
 
-        /// True when this records a delivered announce of exactly `content`.
+        /** True when this records a delivered announce of exactly `content`. */
         bool told(const RoleAnnounceState& content) const {
             return delivered && peer == content.peer && role == content.role &&
                    champion == content.champion;

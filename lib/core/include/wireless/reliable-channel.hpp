@@ -34,46 +34,58 @@ class ReliableChannelBase {
 public:
     using OnAbandon = std::function<void(uint8_t seqId, const uint8_t* targetMac)>;
 
-    /// wirelessManager may be nullptr in probe-style unit tests; every use is
-    /// null-tolerant.
+    /**
+     * wirelessManager may be nullptr in probe-style unit tests; every use is
+     * null-tolerant.
+     */
     ReliableChannelBase(WirelessManager* wirelessManager,
                         Resender* resender,
                         PktType type,
                         OnAbandon onAbandon,
                         Resender::SendMode sendMode = Resender::SendMode::SUPERSEDE_PER_TARGET);
-    /// Virtual: channels are owned and deleted through the base pointer. Drops
-    /// both driver registrations the constructor installed.
+    /**
+     * Virtual: channels are owned and deleted through the base pointer. Drops
+     * both driver registrations the constructor installed.
+     */
     virtual ~ReliableChannelBase();
 
-    /// The PktType this channel claims.
+    /** The PktType this channel claims. */
     PktType type() const { return packetType; }
 
-    /// Relays a Resender abandonment to this channel's OnAbandon callback.
+    /** Relays a Resender abandonment to this channel's OnAbandon callback. */
     void onResenderAbandon(uint8_t seqId, const uint8_t* targetMac);
 
-    /// True when at least one send to this MAC is still awaiting its ack.
+    /** True when at least one send to this MAC is still awaiting its ack. */
     bool isPending(const uint8_t* mac) const;
 
-    /// Silently drops every pending send to this MAC (no abandon callback).
+    /** Silently drops every pending send to this MAC (no abandon callback). */
     void cancel(const uint8_t* mac);
 
-    /// Typed subclass deserializes bytes into its payload type and dispatches
-    /// to its onReceive callback. Returns true if delivered.
+    /**
+     * Typed subclass deserializes bytes into its payload type and dispatches
+     * to its onReceive callback. Returns true if delivered.
+     */
     virtual bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) = 0;
 
-    /// Radio send-result for one of this channel's outbound packets. The typed
-    /// subclass reads the stamped seqId back from `data` and, on success,
-    /// clears the pending entry (replacing the old ack round-trip).
+    /**
+     * Radio send-result for one of this channel's outbound packets. The typed
+     * subclass reads the stamped seqId back from `data` and, on success,
+     * clears the pending entry (replacing the old ack round-trip).
+     */
     virtual void onSendResult(const uint8_t* toMac, const uint8_t* data,
                               size_t len, bool success) = 0;
 
-    /// sizeof the payload struct this channel is typed on. The transport uses
-    /// it to tell a same-type re-claim from a different-payload collision on
-    /// the same PktType.
+    /**
+     * sizeof the payload struct this channel is typed on. The transport uses
+     * it to tell a same-type re-claim from a different-payload collision on
+     * the same PktType.
+     */
     virtual size_t payloadSize() const = 0;
 
-    /// Rebinds the abandon callback; used when a re-created owner re-claims an
-    /// already-registered channel so the callback points at the live instance.
+    /**
+     * Rebinds the abandon callback; used when a re-created owner re-claims an
+     * already-registered channel so the callback points at the live instance.
+     */
     void setOnAbandon(OnAbandon cb) { onAbandon = std::move(cb); }
 
 protected:
@@ -125,7 +137,7 @@ public:
     using OnReceive = std::function<void(const uint8_t* fromMac, const P&)>;
     using OnDelivered = std::function<void(uint8_t seqId, const uint8_t* toMac)>;
 
-    /// See ReliableChannelBase; the payload struct P is the wire format.
+    /** See ReliableChannelBase; the payload struct P is the wire format. */
     ReliableChannel(WirelessManager* wirelessManager,
                     Resender* resender,
                     PktType type,
@@ -134,12 +146,14 @@ public:
         : ReliableChannelBase(wirelessManager, resender, type,
                               std::move(onAbandon), sendMode) {}
 
-    /// Reliable send: allocates a fresh nonzero seqId, writes it into `p`, hands
-    /// the payload to the Resender for retry-until-ack, and returns the id. By
-    /// reference rather than by value so a 770-byte HeadTransferPayload is not
-    /// copied onto this frame on the way past; the id lands in the caller's struct
-    /// as a consequence, which costs nothing because every caller passes a local
-    /// it built for this send.
+    /**
+     * Reliable send: allocates a fresh nonzero seqId, writes it into `p`, hands
+     * the payload to the Resender for retry-until-ack, and returns the id. By
+     * reference rather than by value so a 770-byte HeadTransferPayload is not
+     * copied onto this frame on the way past; the id lands in the caller's struct
+     * as a consequence, which costs nothing because every caller passes a local
+     * it built for this send.
+     */
     uint8_t sendReliable(const uint8_t* mac, P& p) {
         p.seqId = nextSeqId();
         resender->send(mac, packetType, p.seqId,
@@ -147,11 +161,13 @@ public:
         return p.seqId;
     }
 
-    /// Decode + dispatch one inbound packet: dedup, then the onReceive
-    /// callback. No ack is emitted; the sender's Resender is cleared by its own
-    /// radio SEND_SUCCESS, not a round-trip. Dedup still matters because a
-    /// sender that missed SEND_SUCCESS retransmits, and the duplicate must be
-    /// suppressed here.
+    /**
+     * Decode + dispatch one inbound packet: dedup, then the onReceive
+     * callback. No ack is emitted; the sender's Resender is cleared by its own
+     * radio SEND_SUCCESS, not a round-trip. Dedup still matters because a
+     * sender that missed SEND_SUCCESS retransmits, and the duplicate must be
+     * suppressed here.
+     */
     bool deliver(const uint8_t* fromMac, const uint8_t* data, size_t len) {
         if (len != sizeof(P)) {
             // A corrupt/truncated ESP-NOW frame (no CRC on this path); log so
@@ -166,16 +182,18 @@ public:
         return true;
     }
 
-    /// Untyped entry point used by the transport's rx routing.
+    /** Untyped entry point used by the transport's rx routing. */
     bool deliverBytes(const uint8_t* fromMac, const uint8_t* data, size_t len) override {
         return deliver(fromMac, data, len);
     }
 
-    /// Radio send-result for one of this channel's outbound packets, routed
-    /// from the driver's send callback via the transport. `data` is the exact
-    /// payload handed to the radio, so the stamped seqId reads straight back
-    /// out. SEND_SUCCESS clears the pending entry (the peer's MAC acked it);
-    /// SEND_FAIL is ignored and left to the backoff timer.
+    /**
+     * Radio send-result for one of this channel's outbound packets, routed
+     * from the driver's send callback via the transport. `data` is the exact
+     * payload handed to the radio, so the stamped seqId reads straight back
+     * out. SEND_SUCCESS clears the pending entry (the peer's MAC acked it);
+     * SEND_FAIL is ignored and left to the backoff timer.
+     */
     void onSendResult(const uint8_t* toMac, const uint8_t* data, size_t len,
                       bool success) override {
         if (!success || len != sizeof(P)) return;
@@ -188,13 +206,13 @@ public:
         if (onDeliveredCallback) onDeliveredCallback(p.seqId, toMac);
     }
 
-    /// This channel's payload struct size, for the transport's claim guard.
+    /** This channel's payload struct size, for the transport's claim guard. */
     size_t payloadSize() const override { return sizeof(P); }
 
-    /// Registers the decoded-payload handler.
+    /** Registers the decoded-payload handler. */
     void onReceive(OnReceive cb) { onReceiveCallback = std::move(cb); }
 
-    /// Registers the SEND_SUCCESS observer (see onSendResult).
+    /** Registers the SEND_SUCCESS observer (see onSendResult). */
     void setOnDelivered(OnDelivered cb) { onDeliveredCallback = std::move(cb); }
 
 private:

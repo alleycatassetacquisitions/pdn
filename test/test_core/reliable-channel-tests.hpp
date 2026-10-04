@@ -19,11 +19,11 @@ public:
     using ReliableChannelBase::nextSeqId;
     using ReliableChannelBase::ReliableChannelBase;
     using ReliableChannelBase::RX_SEQ_CLAIM_MS;
-    /// No-op body so the otherwise pure-virtual base becomes instantiable.
+    /** No-op body so the otherwise pure-virtual base becomes instantiable. */
     bool deliverBytes(const uint8_t*, const uint8_t*, size_t) override { return false; }
-    /// Untyped probe: no payload struct, so report 0.
+    /** Untyped probe: no payload struct, so report 0. */
     size_t payloadSize() const override { return 0; }
-    /// No-op: this probe exercises only the base's seqId/dedup helpers.
+    /** No-op: this probe exercises only the base's seqId/dedup helpers. */
     void onSendResult(const uint8_t*, const uint8_t*, size_t, bool) override {}
 };
 
@@ -172,9 +172,11 @@ TEST(ResenderTest, supersedeDropsPriorAndStaleAckDoesNotResurrect) {
 // contract that makes one frame safe to treat as N reliable deliveries.
 
 namespace {
-/// Fan-out harness: a mocked radio whose frames are counted, a fake clock, and
-/// a Resender wired to both. Counts frames rather than trusting bookkeeping,
-/// since "one frame, N pending" is the whole claim.
+/**
+ * Fan-out harness: a mocked radio whose frames are counted, a fake clock, and
+ * a Resender wired to both. Counts frames rather than trusting bookkeeping,
+ * since "one frame, N pending" is the whole claim.
+ */
 struct BroadcastFixture {
     ::testing::NiceMock<MockPeerComms> comms;
     WirelessManager wm{&comms, nullptr};

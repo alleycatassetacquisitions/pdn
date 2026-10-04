@@ -29,20 +29,24 @@ class WirelessManager;
 //     receive path live.
 class ReliableTransport {
 public:
-    /// Routes Resender abandonment back to the owning channel; wm may be nullptr
-    /// in unit tests (channels then run without a radio).
+    /**
+     * Routes Resender abandonment back to the owning channel; wm may be nullptr
+     * in unit tests (channels then run without a radio).
+     */
     explicit ReliableTransport(WirelessManager* wm);
 
-    /// Deletes every vended channel; each drops its own driver handlers as it goes.
+    /** Deletes every vended channel; each drops its own driver handlers as it goes. */
     ~ReliableTransport();
 
-    /// Get-or-create the channel owning a PktType. A first claim creates and
-    /// registers it. A re-claim of the same PktType with the same payload type
-    /// (e.g. a re-created owner re-initializing) returns the existing channel
-    /// with its abandon callback rebound, so the caller just re-sets onReceive.
-    /// A re-claim with a DIFFERENT payload type is a wiring collision — two
-    /// subsystems fighting over one PktType — and returns nullptr after logging.
-    /// The returned pointer stays owned by the transport.
+    /**
+     * Get-or-create the channel owning a PktType. A first claim creates and
+     * registers it. A re-claim of the same PktType with the same payload type
+     * (e.g. a re-created owner re-initializing) returns the existing channel
+     * with its abandon callback rebound, so the caller just re-sets onReceive.
+     * A re-claim with a DIFFERENT payload type is a wiring collision — two
+     * subsystems fighting over one PktType — and returns nullptr after logging.
+     * The returned pointer stays owned by the transport.
+     */
     template <class P>
     ReliableChannel<P>* channel(PktType type,
                                 ReliableChannelBase::OnAbandon onAbandon = {},
@@ -62,21 +66,27 @@ public:
         return raw;
     }
 
-    /// Test seam: drives a radio send-result into the channel claiming this
-    /// PktType, for a caller holding a type rather than a channel handle.
-    /// Not on the driver's path — each channel installs its own send-status
-    /// handler and the driver calls it directly.
+    /**
+     * Test seam: drives a radio send-result into the channel claiming this
+     * PktType, for a caller holding a type rather than a channel handle.
+     * Not on the driver's path — each channel installs its own send-status
+     * handler and the driver calls it directly.
+     */
     void onSendResult(PktType type, const uint8_t* toMac,
                       const uint8_t* data, size_t len, bool success);
 
-    /// Test seam, paired with onSendResult: dispatches an inbound packet to the
-    /// channel claiming this PktType. Returns false if no channel is registered.
-    /// Not on the driver's path — see the receive note above.
+    /**
+     * Test seam, paired with onSendResult: dispatches an inbound packet to the
+     * channel claiming this PktType. Returns false if no channel is registered.
+     * Not on the driver's path — see the receive note above.
+     */
     bool deliverIncoming(PktType type, const uint8_t* fromMac,
                          const uint8_t* data, size_t len);
 
-    /// Drives Resender retransmits and abandon dispatch. Called every loop
-    /// tick by the platform loop only.
+    /**
+     * Drives Resender retransmits and abandon dispatch. Called every loop
+     * tick by the platform loop only.
+     */
     void sync();
 
 private:

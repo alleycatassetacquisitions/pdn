@@ -13,10 +13,12 @@ public:
     static constexpr size_t UUID_BUFFER_SIZE = 37;   // Length with null terminator
     static constexpr size_t UUID_BINARY_SIZE = 16;   // Size of binary UUID in bytes
 
-    /// Copies an id into a fixed-width field, truncating at N-1 and always
-    /// terminating. A caller can assume neither bound about its source: it may be
-    /// shorter than the field, as a 4-digit player id is, or fill the field with no
-    /// terminator, as a received frame's matchId can.
+    /**
+     * Copies an id into a fixed-width field, truncating at N-1 and always
+     * terminating. A caller can assume neither bound about its source: it may be
+     * shorter than the field, as a 4-digit player id is, or fill the field with no
+     * terminator, as a received frame's matchId can.
+     */
     template <size_t N>
     static void copyId(char (&destination)[N], const char* source) {
         static_assert(N > 1, "an id field needs room for a character and a terminator");

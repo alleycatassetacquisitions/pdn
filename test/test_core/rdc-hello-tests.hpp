@@ -52,8 +52,10 @@ inline void deliverFrame(NativeSerialDriver& jack, const std::vector<uint8_t>& f
 
 class RDCHelloTests : public testing::Test {
 public:
-    /// Fake clock, mocked radio, native jacks swapped in, RDC in HELLO mode with
-    /// the emit task externalized so the test drives it single-threaded.
+    /**
+     * Fake clock, mocked radio, native jacks swapped in, RDC in HELLO mode with
+     * the emit task externalized so the test drives it single-threaded.
+     */
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
@@ -78,13 +80,13 @@ public:
         });
     }
 
-    /// Restores the real platform clock.
+    /** Restores the real platform clock. */
     void TearDown() override {
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
 
-    /// A HELLO frame whose source MAC starts with firstByte (rest fixed).
+    /** A HELLO frame whose source MAC starts with firstByte (rest fixed). */
     std::vector<uint8_t> helloFrame(uint8_t firstByte) {
         HelloPayload hello{};
         hello.source[0] = firstByte;
@@ -97,14 +99,16 @@ public:
         return encodeFramed(hello);
     }
 
-    /// Pushes a frame into a jack's RX and drains it via the real exec() pump.
+    /** Pushes a frame into a jack's RX and drains it via the real exec() pump. */
     void deliverHello(NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
         deliverFrame(jack, frame);
     }
 
-    /// The RDC's owned transport, reached via friendship so a test can inject
-    /// SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
-    /// radio. Not part of the production API.
+    /**
+     * The RDC's owned transport, reached via friendship so a test can inject
+     * SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
+     * radio. Not part of the production API.
+     */
     ReliableTransport* transport() { return rdc.transport; }
 
     MockDevice device;
@@ -1126,7 +1130,7 @@ inline void rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(RDCHelloTests* su
 
 // One node bundling an RDC, its device and jacks, for the two-live-RDC ring test.
 struct ChainRingNode {
-    /// Wires the node's RDC to its own jacks under the given MAC.
+    /** Wires the node's RDC to its own jacks under the given MAC. */
     explicit ChainRingNode(const uint8_t m[6]) {
         memcpy(mac, m, 6);
         wireRadioDefaults(device, mac);
