@@ -1,3 +1,6 @@
 #!/bin/bash
 # Style gate on the staged diff. Enable with: git config core.hooksPath hooks
-cd "$(git rev-parse --show-toplevel)" && exec python3 scripts/check_style.py
+# Windows installs usually ship `python`, not `python3`.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if command -v python3 >/dev/null 2>&1; then exec python3 scripts/check_style.py; fi
+exec python scripts/check_style.py
