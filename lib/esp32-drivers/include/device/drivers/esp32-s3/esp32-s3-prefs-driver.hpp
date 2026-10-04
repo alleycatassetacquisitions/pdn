@@ -35,19 +35,9 @@ public:
     }
 
     int initialize() override {
-        // Preferences::begin() did this implicitly on first use. Raw NVS does
-        // not, and a namespace cannot be opened before the partition is
-        // initialised.
-        esp_err_t err = nvs_flash_init();
-        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-            nvs_flash_erase();
-            err = nvs_flash_init();
-        }
-        if (err != ESP_OK) {
-            LOG_E(name.c_str(), "nvs_flash_init failed: %d", static_cast<int>(err));
-            return 1;
-        }
-
+        // nvs_flash_init() is the platform's job, in main before any driver:
+        // the radio needs NVS too, and whichever of the two initialised first
+        // would otherwise decide whether the other worked.
         for (auto& entry : namespaceHandles) {
             if (nvs_open(entry.first.c_str(), NVS_READWRITE, &entry.second) != ESP_OK) {
                 LOG_E(name.c_str(), "nvs_open failed for namespace %s", entry.first.c_str());
