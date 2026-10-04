@@ -33,3 +33,9 @@ CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 
 # Arduino ticks at 1kHz, IDF at 100Hz.
 CONFIG_FREERTOS_HZ=1000
+
+# Arduino's loop task busy-looped on core 1 and never fed the task watchdog,
+# which only worked because its config left this off. loopTask in main.cpp has
+# the same shape, so the same exemption applies; with it on, the first loop
+# that does not yield panics the device.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n

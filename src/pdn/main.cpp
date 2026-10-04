@@ -1,13 +1,19 @@
-#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
-#include <WiFi.h>
-#include <FastLED.h>
-#include <Preferences.h>
+// How long the splash screen stays up before the first app mounts.
+constexpr unsigned long SPLASH_HOLD_MS = 3000;
+
+// The task shape Arduino's core used for loop(): core 1, priority 1, 8KB.
+constexpr uint32_t LOOP_TASK_STACK_BYTES = 8192;
+constexpr UBaseType_t LOOP_TASK_PRIORITY = 1;
+constexpr BaseType_t LOOP_TASK_CORE = 1;
+
 
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
-#include "device/drivers/esp32-s3/ws2812b-fastled-driver.hpp"
+#include "device/drivers/esp32-s3/ws2812b-led-strip-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-haptics-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
@@ -54,7 +60,7 @@ Esp32S3Clock* clockDriver = nullptr;
 SSD1306U8G2Driver* displayDriver = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
-WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>* lightDriver = nullptr;
+WS2812BLedStripDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
@@ -106,9 +112,8 @@ void setupEspNow(
     );
 }
 
-void setup() {
-    Serial.begin(115200);
-    // Do not block on Serial — USB CDC may have no host in the field; setup must run anyway.
+static void setup() {
+    // No console bring-up: ESP-IDF has UART0 up before app_main runs.
 
     // Construct drivers FIRST (before anything that might use logging or timers)
     loggerDriver = new Esp32S3Logger(LOGGER_DRIVER_NAME);
@@ -123,7 +128,8 @@ void setup() {
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
-    lightDriver = new WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>(LIGHT_DRIVER_NAME, numDisplayLights, numGripLights);
+    lightDriver = new WS2812BLedStripDriver(LIGHT_DRIVER_NAME, displayLightsPin, gripLightsPin,
+                                           numDisplayLights, numGripLights);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
     serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME, TXt, TXr);
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
@@ -185,7 +191,7 @@ void setup() {
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
-    delay(3000);
+    vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
@@ -199,4 +205,24 @@ void loop() {
         crashLogger->pollSerialCommand();
     }
     pdn->loop();
+}
+
+/**
+ * Runs setup() once and then loop() forever, on core 1 at priority 1 with an
+ * 8KB stack: the same task shape Arduino's core created, so loop() keeps the
+ * core it has always had. It deliberately does not reset the task watchdog,
+ * because Arduino did not either -- CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
+ * is off, which is what makes a loop that never yields legal here.
+ */
+static void loopTask(void* parameters) {
+    (void)parameters;
+    setup();
+    for (;;) {
+        loop();
+    }
+}
+
+extern "C" void app_main() {
+    xTaskCreatePinnedToCore(loopTask, "loopTask", LOOP_TASK_STACK_BYTES, nullptr,
+                            LOOP_TASK_PRIORITY, nullptr, LOOP_TASK_CORE);
 }
