@@ -31,7 +31,7 @@ Before contributing, please ensure that you follow these steps:
 
 1. **Propose Your Contribution**: Submit a brief outline of your contribution idea or feature request via GitHub issues.
 
-2. **Develop Locally**: Set up your development environment using PlatformIO (see the `README.md` for details) and develop your feature or bug fix locally. Be sure to follow coding standards and best practices outlined in the project.
+2. **Develop Locally**: Set up your development environment using PlatformIO (see the `README.md` for details) and develop your feature or bug fix locally. Enable the style hook with `git config core.hooksPath hooks`. It runs `scripts/check_style.py` against the staged diff of each commit, which needs clang-format, clang-tidy and a compile database from `pio run -e native_cli -t compiledb`.
 
 3. **Test Your Changes**: Test your changes thoroughly by flashing the firmware to a compatible microcontroller (ESP32-s3) and ensuring it works as intended in the game environment. Make use of the test files in the `test/` folder.
 
