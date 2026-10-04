@@ -17,6 +17,13 @@ CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 
+# Rollback. Without it esp_ota_set_boot_partition marks the new slot
+# ESP_OTA_IMG_UNDEFINED rather than NEW, the bootloader never promotes it to
+# PENDING_VERIFY, and confirmRunningImage() early-returns forever -- so an
+# image that fails to boot is permanent. The Arduino config had this on;
+# esp32-s3-firmware-store.hpp #errors without it.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # The two-slot table. Without this, board_build.partitions sets only
 # CUSTOM_FILENAME and IDF silently builds partitions_singleapp.csv, leaving no
 # second slot to receive an image.
