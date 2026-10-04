@@ -384,8 +384,11 @@ def run_scoped_tidy(files, added_by_path, repo_root):
     if not line_filter:
         return
     targets, skipped = tidy_targets(files, db)
-    for path in skipped:
-        notices.append(f"{path}: not in compile_commands.json, clang-tidy skipped; {COMPILEDB_HINT}")
+    if skipped:
+        # Expected for test/, FDN, ESP32-only and header-only files: the
+        # native_cli database never has a unit that includes them.
+        notices.append("clang-tidy skipped, no translation unit in compile_commands.json: "
+                       + ", ".join(skipped))
     if not targets:
         return
     proc = subprocess.run(
