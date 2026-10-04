@@ -53,6 +53,24 @@ struct PlayerResponse {
 
 namespace QuickdrawRequests {
 
+    inline void healthCheck(
+        WirelessManager* wirelessManager,
+        const std::function<void(const std::string&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError
+    ) {
+        std::string path = "/health_check";
+        
+        HttpRequest request(
+            path,
+            "GET",
+            "",
+            onSuccess,
+            onError
+        );
+        
+        wirelessManager->queueHttpRequest(request);
+    }
+
     /**
      * Fetch player data from the server.
      * Automatically switches to WiFi mode if needed.
