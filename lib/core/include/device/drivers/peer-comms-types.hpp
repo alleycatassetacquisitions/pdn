@@ -84,10 +84,12 @@ struct ShootoutAckPayload
     uint8_t     seqId;
 } __attribute__((packed));
 
-/// Bitmap covers 3072 chunks, keeping status report in one frame.
+/// Chosen so a whole status report fits one ESP-NOW v2 frame, not derived from
+/// any other bitmap: 384 bytes covers 3072 chunks.
 constexpr size_t FIRMWARE_BITMAP_BYTES = 384;
 
-/// Maximum chunks per firmware offer; floors chunk size at 1322 bytes.
+/// Maximum chunks per firmware offer. A 0x3E0000 slot therefore needs a chunk
+/// size of at least 1323 bytes; firmware-update-manager.cpp static_asserts it.
 constexpr size_t FIRMWARE_MAX_CHUNKS = FIRMWARE_BITMAP_BYTES * 8;
 
 /// SHA-256 digest length.
