@@ -52,7 +52,16 @@ public:
 
         for (int interaction = 0; interaction < INTERACTION_COUNT; interaction++) {
             button_event_t event = eventFor(static_cast<ButtonInteraction>(interaction));
-            if (iot_button_register_cb(handle, event, nullptr, onButtonEvent, this) != ESP_OK) {
+            // BUTTON_MULTIPLE_CLICK is the one event the component refuses to
+            // register without arguments, because the count is what it matches
+            // on. OneButton's attachMultiClick fired from the third click.
+            button_event_args_t args = {};
+            button_event_args_t* argsPtr = nullptr;
+            if (event == BUTTON_MULTIPLE_CLICK) {
+                args.multiple_clicks.clicks = MULTI_CLICK_COUNT;
+                argsPtr = &args;
+            }
+            if (iot_button_register_cb(handle, event, argsPtr, onButtonEvent, this) != ESP_OK) {
                 LOG_E(name.c_str(), "iot_button_register_cb failed for event %d", event);
                 return -1;
             }
@@ -120,6 +129,7 @@ private:
     static constexpr int INTERACTION_COUNT = 7;
     static constexpr uint16_t CLICK_MS = 400;
     static constexpr uint16_t LONG_PRESS_MS = 800;
+    static constexpr uint16_t MULTI_CLICK_COUNT = 3;
 
     static button_event_t eventFor(ButtonInteraction interaction) {
         switch (interaction) {
