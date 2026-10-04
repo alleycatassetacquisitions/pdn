@@ -12,4 +12,11 @@ if(NOT DEFINED PDN_DEVICE)
         "board_build.cmake_extra_args for this environment.")
 endif()
 
+# u8g2 only enables its user pointer for unix and ARM-Linux builds, so on
+# ESP-IDF the field is absent and a HAL has to reach its context some other
+# way. Set globally rather than per-component on purpose: the field changes
+# u8x8_t's layout, so u8g2's own sources and ours must agree or the offsets
+# diverge silently.
+idf_build_set_property(COMPILE_OPTIONS "-DU8X8_WITH_USER_PTR" APPEND)
+
 project(${PDN_DEVICE})
