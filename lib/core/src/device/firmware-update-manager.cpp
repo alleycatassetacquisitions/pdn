@@ -174,7 +174,7 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
                 LOG_D(TAG, "CHUNK declares %u bytes, frame carries %zu", header->length, bodyLength);
                 return;
             }
-            onChunk(*header, body);
+            onChunk(src, *header, body);
             return;
         }
         case FirmwareCmd::POLL:
@@ -300,6 +300,7 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
     receivedChunkCount = 0;
     std::memset(bitmap, 0, sizeof(bitmap));
     writeFailed = false;
+    std::memcpy(acceptedSeedMac, fromMac, sizeof(acceptedSeedMac));
     acceptedOffer = offer;  // re-verified at commit time; its cert/signature seed the trailer written past the image
     receivePhase = ReceivePhase::RECEIVING;
     receiveDeadlineTimer.setTimer(RECEIVE_STALL_TIMEOUT_MS);
@@ -311,8 +312,16 @@ void FirmwareUpdateManager::abortReceive() {
     statusReplyTimer.invalidate();  // a bitmap for a dead transfer is worse than no reply
 }
 
-void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uint8_t* data) {
+void FirmwareUpdateManager::onChunk(const uint8_t* fromMac, const FirmwareChunkHeader& header,
+                                   const uint8_t* data) {
     if (receivePhase != ReceivePhase::RECEIVING || header.index >= chunkCount) {
+        return;
+    }
+    // Only the seed this transfer accepted. Two builds are in the room by
+    // definition during a rollout, and both seeds repeat OFFER once a second;
+    // the offer guard keeps the second one from restarting the transfer but
+    // does nothing about its chunks.
+    if (std::memcmp(fromMac, acceptedSeedMac, sizeof(acceptedSeedMac)) != 0) {
         return;
     }
 

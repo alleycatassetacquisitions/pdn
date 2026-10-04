@@ -49,7 +49,7 @@ public:
     /// progress. Once every index has landed, hashes the assembled image,
     /// re-verifies the offer it was accepted under, writes the trailer, and
     /// commits — or reports why it did not.
-    void onChunk(const FirmwareChunkHeader& header, const uint8_t* data);
+    void onChunk(const uint8_t* fromMac, const FirmwareChunkHeader& header, const uint8_t* data);
 
     /// A seed asking who's still missing chunks for `poll`'s image. Ignored
     /// unless it names the image currently being collected. Otherwise arms a
@@ -221,6 +221,13 @@ private:
     // commit time, and its cert/signature seed the trailer written past the
     // image once that passes.
     FirmwareOfferPayload acceptedOffer = {};
+    // The seed whose offer opened this transfer. A CHUNK frame carries no image
+    // identity -- unlike POLL, STATUS and COMPLETE, which all carry the hash --
+    // so the sender is the only thing tying the bytes to the accepted offer.
+    // Without it a second seed streaming a different build writes into this
+    // slot and the mismatch only surfaces as BAD_HASH, after a full erase and
+    // a full transfer.
+    uint8_t acceptedSeedMac[6] = {};
 
     // What REPORTING reports: set by evaluateCommit, read by sendComplete
     // when sync() flushes the report, and the difference between a REPORTING

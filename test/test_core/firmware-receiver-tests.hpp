@@ -29,6 +29,8 @@ using ::testing::NiceMock;
 /// A MAC standing in for the seed device throughout the firmware-distribution
 /// suites.
 inline constexpr uint8_t SEED_MAC[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01};
+/// A second seed, for the case where two builds are in the room at once.
+inline constexpr uint8_t OTHER_SEED_MAC[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02};
 
 /// Records every frame FirmwareUpdateManager sends, the same way
 /// firmware-seed-tests.hpp's SeedComms does for the seed suite: real
@@ -253,13 +255,15 @@ public:
     }
 
     /// Delivers one chunk directly to the manager, as if the radio had just
-    /// handed it a CHUNK frame's body.
-    void deliverChunk(uint16_t index, const uint8_t* data, uint16_t length) {
+    /// handed it a CHUNK frame's body. Defaults to the seed whose offer the
+    /// fixture accepted; pass a different MAC to act as a second seed.
+    void deliverChunk(uint16_t index, const uint8_t* data, uint16_t length,
+                      const uint8_t* fromMac = SEED_MAC) {
         FirmwareChunkHeader header{};
         header.command = static_cast<uint8_t>(FirmwareCmd::CHUNK);
         header.index = index;
         header.length = length;
-        manager->onChunk(header, data);
+        manager->onChunk(fromMac, header, data);
     }
 
     /// Delivers a raw radio frame through the same path the driver would
@@ -561,6 +565,28 @@ TEST(FirmwareReceiverTest, aSecondSeedsDifferentImageDoesNotRestartTheTransfer) 
 
     EXPECT_EQ(f.store.beginWriteCalls(), 1) << "a competing offer must not re-erase the slot";
     EXPECT_EQ(f.manager->receivedCount(), 1);
+}
+
+TEST(FirmwareReceiverTest, chunksFromASecondSeedDoNotLandInTheAcceptedSlot) {
+    // The sibling test above covers the OFFER path. The chunk stream is a
+    // separate exposure: a CHUNK frame carries no image identity, so without
+    // binding to the seed that was accepted, a second operator's chunks write
+    // into this slot and the mismatch only surfaces as BAD_HASH, after a full
+    // erase and a full transfer.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
+
+    uint8_t mine[1400];
+    memset(mine, 0xA1, sizeof(mine));
+    f.deliverChunk(/*index=*/0, mine, sizeof(mine));
+
+    uint8_t theirs[1400];
+    memset(theirs, 0xB2, sizeof(theirs));
+    f.deliverChunk(/*index=*/1, theirs, sizeof(theirs), OTHER_SEED_MAC);
+
+    EXPECT_EQ(f.manager->receivedCount(), 1) << "a second seed's chunk must not count as received";
+    EXPECT_EQ(f.store.slot()[1400], 0x00) << "and must not reach the slot";
+    EXPECT_EQ(f.store.slot()[0], 0xA1) << "the accepted seed's chunk is untouched";
 }
 
 TEST(FirmwareReceiverTest, aChunkPastTheDeclaredImageLengthIsDropped) {
