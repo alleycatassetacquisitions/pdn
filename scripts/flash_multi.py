@@ -244,6 +244,18 @@ def main():
         print("pyserial is required. Install it with: pip install pyserial")
         sys.exit(1)
 
+    # esptool is invoked as `sys.executable -m esptool`, so it has to live in
+    # THIS interpreter. Checked up front because the per-port probe reports a
+    # missing module the same way it reports a silent device, which reads as
+    # four dead boards instead of the wrong python.
+    try:
+        import esptool  # noqa: F401
+    except ImportError:
+        print(f"esptool is not importable from {sys.executable}.")
+        print("Run this with PlatformIO's interpreter: "
+              "~/.platformio/penv/bin/python scripts/flash_multi.py ...")
+        sys.exit(1)
+
     build_dir = args.build_dir
     required = ["bootloader.bin", "partitions.bin", "firmware.bin"]
     missing = [f for f in required if not os.path.exists(os.path.join(build_dir, f))]
@@ -279,7 +291,8 @@ def main():
         if is_esp32:
             esp32_devices.append((port, desc, chip_info))
         else:
-            print(f"  {port}: not ESP32 or not in bootloader")
+            print(f"  {port}: not ESP32 or not in bootloader"
+                  + (f" ({chip_info})" if chip_info else ""))
 
     if not esp32_devices:
         print("No ESP32 devices responded.")
