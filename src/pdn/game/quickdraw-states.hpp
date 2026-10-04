@@ -12,6 +12,7 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/firmware-update-state.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -598,29 +599,4 @@ private:
 
     void renderSymbolScreen(PDN* pdn);
     void onSymbolMatchCommandReceived(SymbolMatchCommand command);
-};
-
-class FirmwareUpdate : public TypedState<PDN> {
-public:
-    /// Draws a static "UPDATING" label and waits out the seed run. Does not
-    /// own firmwareUpdateManager: Quickdraw constructs it once and main.cpp's
-    /// loop() pumps its sync(), since a device can be passively receiving
-    /// without ever mounting this state.
-    explicit FirmwareUpdate(FirmwareUpdateManager* firmwareUpdateManager);
-
-    /// Starts distributing this device's own running image.
-    void onStateMounted(PDN* pdn) override;
-    /// Watches for the seed run to end, one way or another.
-    void onStateLoop(PDN* pdn) override;
-    /// Resets the transition flag; the seed run itself is owned by
-    /// firmwareUpdateManager, not this state, so there's nothing else to
-    /// tear down here.
-    void onStateDismounted(PDN* pdn) override;
-
-    /// True once beginSeeding's run is no longer streaming or repairing.
-    bool transitionToIdle();
-
-private:
-    FirmwareUpdateManager* firmwareUpdateManager;
-    bool transitionToIdleState = false;
 };

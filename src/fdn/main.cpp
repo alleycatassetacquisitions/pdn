@@ -16,6 +16,8 @@
 #include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
+#include "device/firmware-update-manager.hpp"
+#include "device/firmware-root-key.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -28,6 +30,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "apps/main-menu/main-menu.hpp"
 #include "apps/idle/idle.hpp"
+#include "apps/idle/idle-states.hpp"
 #include "apps/hacking/hacking.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
@@ -53,6 +56,7 @@ extern "C" bool verifyRollbackLater() { return true; }
 WifiConfig* wifiConfig = nullptr;
 CrashLogger* crashLogger = nullptr;
 Esp32S3FirmwareStore* firmwareStore = nullptr;
+FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;
 SSD1309U8G2Driver* displayDriver         = nullptr;
@@ -179,10 +183,35 @@ void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
+    // Constructed before the apps because the Idle app takes it, so the
+    // eligibility predicate has to tolerate idleApp still being null: an offer
+    // can arrive between here and loadAppConfig below.
+    if (firmwareStore != nullptr) {
+        firmwareUpdateManager = new FirmwareUpdateManager(
+            peerCommsDriver, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
+            []() {
+                // Only the Idle app resting on IdleState is a safe moment to
+                // take an image. getCurrentState() on a state machine that is
+                // not the active app answers with whatever it last ran, so the
+                // app check has to come first.
+                if (idleApp == nullptr || fdn->getActiveAppId().id != IDLE_APP_ID) {
+                    return false;
+                }
+                State* current = idleApp->getCurrentState();
+                if (current == nullptr || current->getStateId() != IdleStateId::IDLE) {
+                    return false;
+                }
+                RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
+                return rdc->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::DISCONNECTED && rdc->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::DISCONNECTED;
+            },
+            fdn->getDeviceType());
+    }
+
     // Apps
     idleApp = new Idle(
         remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
+        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator(),
+        firmwareUpdateManager);
 
     mainMenu = new MainMenu(fdn, remotePlayerManager);
 
@@ -226,6 +255,13 @@ void loop() {
     if (!rollbackConfirmed && clockDriver->milliseconds() >= ROLLBACK_CONFIRM_DELAY_MS) {
         firmwareStore->confirmRunningImage();
         rollbackConfirmed = true;
+    }
+    // Here rather than inside a state machine: Device::loop() dispatches
+    // onStateLoop to the active app alone, and the FDN swaps apps, so a device
+    // receiving an image needs sync() to keep running and fire its restart
+    // whichever app is mounted.
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->sync();
     }
     fdn->loop();
 }

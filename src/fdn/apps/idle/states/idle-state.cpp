@@ -41,6 +41,24 @@ void IdleState::onStateMounted(FDN* fdn) {
 
     uploadTimer.setTimer(UPLOAD_CHECK_INTERVAL_MS);
 
+    // The operator's firmware-update trigger, the same gesture as the PDN's:
+    // hold the secondary button for FIRMWARE_UPDATE_HOLD_MS. DURING_LONG_PRESS
+    // fires every tick the button stays held past OneButton's own long-press
+    // threshold, so this just watches longPressedMillis() cross the named
+    // constant; onStateLoop promotes the raw signal into the transition flag
+    // per the state-machine pattern.
+    cachedFdn = fdn;
+    parameterizedCallbackFunction checkFirmwareUpdateHold = [](void* ctx) {
+        IdleState* idle = static_cast<IdleState*>(ctx);
+        if (idle->cachedFdn == nullptr) {
+            return;  // dismounted; the detach in onStateDismounted is the primary fix, this is the belt
+        }
+        if (idle->cachedFdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
+            idle->secondaryHeldForFirmwareUpdate = true;
+        }
+    };
+    fdn->getSecondaryButton()->setButtonPress(checkFirmwareUpdateHold, this, ButtonInteraction::DURING_LONG_PRESS);
+
     fdn->getDisplay()
         ->invalidateScreen()
         ->drawText("ALLEYCAT", centeredTextX("ALLEYCAT"), 32)
@@ -55,14 +73,25 @@ void IdleState::onStateLoop(FDN* fdn) {
         connectionResolved = true;
     }
     wasConnected = nowConnected;
+
+    if (secondaryHeldForFirmwareUpdate) {
+        transitionToFirmwareUpdateState = true;
+    }
 }
 
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
-    (void)fdn;
     fdnConnectWirelessManager->clearCallbacks();
     uploadTimer.invalidate();
     connectionResolved = false;
+    fdn->getSecondaryButton()->removeButtonCallbacks();
+    // removeButtonCallbacks() does not clear callback pointers (OneButton::reset()
+    // only touches its own click/press-tracking state), so DURING_LONG_PRESS has to
+    // be detached explicitly or it keeps firing into a dismounted IdleState.
+    fdn->getSecondaryButton()->setButtonPress(nullptr, nullptr, ButtonInteraction::DURING_LONG_PRESS);
+    secondaryHeldForFirmwareUpdate = false;
+    transitionToFirmwareUpdateState = false;
+    cachedFdn = nullptr;
 }
 
 bool IdleState::transitionToPlayerDetected() {
@@ -75,4 +104,8 @@ bool IdleState::transitionToConnectionDetected() {
 
 bool IdleState::transitionToUploadPending() {
     return uploadTimer.expired() && !hackedPlayersManager->getPendingUploads().empty();
+}
+
+bool IdleState::transitionToFirmwareUpdate() const {
+    return transitionToFirmwareUpdateState;
 }
