@@ -184,9 +184,9 @@ private:
             // FastLED applied its global brightness at show() rather than into
             // the buffer, so the same scaling happens here on the way out. It
             // is an identity in practice: nothing calls setGlobalBrightness and
-            // FastLED's own default was 255, which is also why losing its
-            // binary dithering changes nothing -- at full scale there is no
-            // residue left to dither.
+            // FastLED's own default was 255. Losing FastLED's binary dithering
+            // costs nothing for a different reason: show() disabled it on every
+            // frame below 100 FPS and this ran at 60.
             if (globalBrightness != 255) {
                 pixel.scale(globalBrightness);
             }

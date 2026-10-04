@@ -82,8 +82,9 @@ public:
                 LOG_E("ENC", "esp_wifi_init failed: %s", esp_err_to_name(initErr));
                 return;
             }
-            // RAM rather than flash, matching the Arduino path, so no radio
-            // configuration is persisted to NVS behind our back.
+            // RAM rather than flash. This is a change: Arduino set RAM only
+            // when WiFi.persistent(false) had been called, which nothing here
+            // did, so the old path wrote radio config to NVS on every change.
             esp_wifi_set_storage(WIFI_STORAGE_RAM);
         }
         esp_wifi_set_mode(WIFI_MODE_STA);
