@@ -50,14 +50,6 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # watchdog never subscribed the main task, only the idle tasks.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
 
-# Rollback. The Arduino config had this on, so it is Arduino parity like the
-# clocks below. It also has to be set before firmware distribution can land on
-# top of this branch: esp32-s3-firmware-store.hpp #errors without it, and
-# without it esp_ota_set_boot_partition marks a new slot ESP_OTA_IMG_UNDEFINED
-# rather than NEW, so the bootloader never promotes it to PENDING_VERIFY and an
-# image that fails to boot would be permanent.
-CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
-
 # Arduino ran this board at 240MHz with 80MHz PSRAM. board_build.f_cpu is an
 # Arduino key and does not reach sdkconfig on the component path, so without
 # these IDF's 160MHz/40MHz defaults apply and every loop-rate-sensitive path --
