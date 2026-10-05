@@ -5,8 +5,10 @@
 
 TEST(FirmwareWireTest, everyFrameFitsOneV2Frame) {
     EXPECT_LE(sizeof(FirmwareOfferPayload), MAX_PKT_DATA_SIZE);
+    EXPECT_LE(sizeof(FirmwarePollPayload), MAX_PKT_DATA_SIZE);
     EXPECT_LE(sizeof(FirmwareStatusPayload), MAX_PKT_DATA_SIZE);
     EXPECT_LE(sizeof(FirmwareCompletePayload), MAX_PKT_DATA_SIZE);
+    EXPECT_LE(sizeof(FirmwareChunkHeader), MAX_PKT_DATA_SIZE);
 }
 
 TEST(FirmwareWireTest, bitmapCoversTheDeclaredChunkCeiling) {
