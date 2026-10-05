@@ -16,9 +16,10 @@
  * Upstream u8g2 registers itself as an ESP-IDF component but ships no platform
  * HAL: supplying these two callbacks was the Arduino library's job, and
  * u8g2_Setup_*() takes them directly. They are deliberately ours rather than a
- * third party's, because the bus clock and the reset timing are exactly what a
- * panel gets tuned on, and both are read from u8g2's own display_info so each
- * panel keeps the values its driver declares.
+ * third party's, because the bus clock and SPI mode are exactly what a panel
+ * gets tuned on, and both are read from u8g2's own display_info so each panel
+ * keeps the values its driver declares. Reset timing is not read here; u8g2's
+ * panel driver asks for it through U8X8_MSG_DELAY_MILLI and this HAL obeys.
  */
 struct U8g2Esp32SpiPins {
     gpio_num_t sclk;
@@ -35,14 +36,17 @@ struct U8g2Esp32SpiContext {
     uint8_t* dmaScratch;
 };
 
-/** Largest BYTE_SEND u8g2 issues is one tile row; 256 leaves headroom. */
+/** u8x8_byte_SendBytes passes its count as a uint8_t, so one BYTE_SEND can
+ * never exceed 255 bytes. */
 constexpr size_t U8G2_SPI_SCRATCH_BYTES = 256;
 
 /**
  * Moves bytes to the panel and drives DC and CS around them.
  *
- * The caller's buffer lives inside the u8g2 object, so it is copied through a
- * DMA-capable scratch rather than handed to the driver directly: with
+ * The bus is opened with DMA, so every transfer source has to be DMA-capable.
+ * u8g2 hands over whichever buffer it has -- its tile buffer is a file static,
+ * but command sequences come from .rodata -- so the bytes are copied through a
+ * known-DMA-capable scratch instead of being classified at each call site. With
  * CONFIG_SPIRAM_USE_MALLOC enabled, where an allocation lands depends on its
  * size, and a transfer from PSRAM would fail rather than merely be slow.
  */
@@ -54,6 +58,9 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
 
     switch (msg) {
         case U8X8_MSG_BYTE_SEND: {
+            if (context->dmaScratch == nullptr) {
+                return 0;  // BYTE_INIT's allocation failed; nothing to copy through
+            }
             const auto* source = static_cast<const uint8_t*>(argPtr);
             size_t remaining = argInt;
             while (remaining > 0) {
@@ -116,6 +123,23 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
 }
 
 /** Configures the control lines and serves u8g2's delay and reset requests. */
+/** Releases what BYTE_INIT took: the scratch, the SPI device and the bus. Safe
+ * when BYTE_INIT never ran or failed partway. */
+inline void u8g2Esp32SpiRelease(U8g2Esp32SpiContext* context) {
+    if (context == nullptr) {
+        return;
+    }
+    if (context->dmaScratch != nullptr) {
+        heap_caps_free(context->dmaScratch);
+        context->dmaScratch = nullptr;
+    }
+    if (context->device != nullptr) {
+        spi_bus_remove_device(context->device);
+        context->device = nullptr;
+        spi_bus_free(context->host);
+    }
+}
+
 inline uint8_t u8g2Esp32GpioAndDelayCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argInt, void* argPtr) {
     (void)argPtr;
     auto* context = static_cast<U8g2Esp32SpiContext*>(u8x8_GetUserPtr(u8x8));
@@ -143,12 +167,10 @@ inline uint8_t u8g2Esp32GpioAndDelayCallback(u8x8_t* u8x8, uint8_t msg, uint8_t 
             esp_rom_delay_us(argInt * 10);
             break;
         case U8X8_MSG_DELAY_100NANO:
-            // Below the resolution of any delay the IDF offers; a single
+        case U8X8_MSG_DELAY_NANO:
+            // Both are below the resolution of any delay the IDF offers; a single
             // microsecond is the shortest honest wait and is still correct,
             // since these are minimum setup times rather than exact ones.
-            esp_rom_delay_us(1);
-            break;
-        case U8X8_MSG_DELAY_NANO:
             esp_rom_delay_us(1);
             break;
         case U8X8_MSG_GPIO_CS:

@@ -37,9 +37,13 @@ void DuelCountdown::onStateMounted(PDN* pdn) {
         matchManager->getButtonMasher(),
         matchManager, ButtonInteraction::CLICK);
 
+    // CLICK, matching the primary above: the masher scores 75ms per count, and
+    // PRESS now fires on every press-down rather than once per click sequence,
+    // so leaving it on the default made a five-tap burst worth five counts on
+    // this button and one on the other.
     pdn->getSecondaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
-        matchManager);
+        matchManager, ButtonInteraction::CLICK);
 
     pdn->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);

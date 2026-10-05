@@ -21,8 +21,8 @@ public:
 
 
     unsigned long milliseconds() override {
-        // esp_timer counts microseconds since boot. This is the same division
-        // Arduino's millis() performs, so the wrap behaviour is unchanged.
+        // esp_timer counts microseconds since boot; the truncating division is
+        // what makes this wrap at the same point a 32-bit millisecond count does.
         return static_cast<unsigned long>(esp_timer_get_time() / 1000);
     }
 };

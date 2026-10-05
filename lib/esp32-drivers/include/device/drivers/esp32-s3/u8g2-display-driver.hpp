@@ -29,13 +29,19 @@ public:
         context.dmaScratch = nullptr;
     }
 
-    ~U8g2DisplayDriver() override = default;
+    /** Hands back the SPI bus, the device and the DMA scratch that the u8g2
+     * byte callback took on its first BYTE_INIT. */
+    ~U8g2DisplayDriver() override { u8g2Esp32SpiRelease(&context); }
 
     int initialize() override {
         setup(&screen, U8G2_R0, u8g2Esp32SpiByteCallback, u8g2Esp32GpioAndDelayCallback);
         u8g2_SetUserPtr(&screen, &context);
         u8g2_InitDisplay(&screen);
         u8g2_SetPowerSave(&screen, 0);  // begin() left the panel on
+        // Clears the panel's own GDDRAM, which powers up with garbage in it.
+        // ClearBuffer below only touches our RAM copy, so without this the
+        // garbage stays lit until the first render.
+        u8g2_ClearDisplay(&screen);
         u8g2_ClearBuffer(&screen);
         u8g2_SetContrast(&screen, DEFAULT_CONTRAST);
         u8g2_SetFont(&screen, u8g2_font_tenfatguys_tf);
@@ -105,15 +111,8 @@ public:
 
     int getWidth() override { return 128; }
 
-    void reset() {
-        u8g2_ClearBuffer(&screen);
-        u8g2_ClearDisplay(&screen);
-    }
-
     Display* setGlyphMode(FontMode mode) override {
         // The C API draws UTF8 through u8g2_DrawUTF8 regardless, so the
-        // enable/disableUTF8Print() pairs this replaced are gone: they only
-        // ever affected the C++ Print stream, which nothing here used.
         switch (mode) {
             case FontMode::TEXT:
                 u8g2_SetFont(&screen, u8g2_font_tenfatguys_tr);

@@ -12,9 +12,9 @@
  * One WS2812B pixel, carrying FastLED's colour arithmetic rather than an
  * approximation of it.
  *
- * The animations were tuned against these exact operations, so each is the
- * formula FastLED actually compiled with FASTLED_SCALE8_FIXED = 1, which is
- * its default. Rounding differently here would shift every dimmed colour.
+ * Each is the formula FastLED compiled with FASTLED_SCALE8_FIXED = 1, its
+ * default. Rounding differently shifts every dimmed colour, so re-tune the
+ * animations on hardware if these change.
  */
 struct LedPixel {
     uint8_t red = 0;
@@ -104,7 +104,9 @@ public:
         pixel->scale(color.brightness);
     }
 
-    void setLightBrightness(LightIdentifier lightSet, uint8_t index, uint8_t brightness) {
+    /** Scales one pixel's colour by `brightness`, in place. Nothing in the game
+     * calls this; `setLight` carries all production traffic. */
+    void setLightBrightness(LightIdentifier lightSet, uint8_t index, uint8_t brightness) override {
         LedPixel* pixel = pixelAt(lightSet, index);
         if (pixel != nullptr) {
             pixel->scale(brightness);

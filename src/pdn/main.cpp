@@ -6,12 +6,6 @@
 // How long the splash screen stays up before the first app mounts.
 constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
-// The task shape Arduino's core used for loop(): core 1, priority 1, 8KB.
-constexpr uint32_t LOOP_TASK_STACK_BYTES = 8192;
-constexpr UBaseType_t LOOP_TASK_PRIORITY = 1;
-constexpr BaseType_t LOOP_TASK_CORE = 1;
-
-
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
@@ -222,22 +216,9 @@ void loop() {
     pdn->loop();
 }
 
-/**
- * Runs setup() once and then loop() forever, on core 1 at priority 1 with an
- * 8KB stack: the same task shape Arduino's core created, so loop() keeps the
- * core it has always had. It deliberately does not reset the task watchdog,
- * because Arduino did not either -- CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
- * is off, which is what makes a loop that never yields legal here.
- */
-static void loopTask(void* parameters) {
-    (void)parameters;
+extern "C" void app_main() {
     setup();
     for (;;) {
         loop();
     }
-}
-
-extern "C" void app_main() {
-    xTaskCreatePinnedToCore(loopTask, "loopTask", LOOP_TASK_STACK_BYTES, nullptr,
-                            LOOP_TASK_PRIORITY, nullptr, LOOP_TASK_CORE);
 }

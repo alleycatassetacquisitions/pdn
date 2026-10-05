@@ -10,8 +10,6 @@
 
 #include <driver/gpio.h>
 #include <driver/uart.h>
-#include <esp_rom_gpio.h>
-#include <esp_timer.h>
 #include <hal/uart_ll.h>
 #include <string>
 
@@ -19,7 +17,8 @@
  * One serial jack on a UART peripheral.
  *
  * The three jacks below differ only in which UART they sit on, so the behaviour
- * lives here once. Every method reproduces what Arduino's HardwareSerial did,
+ * lives here once. The methods reproduce what Arduino's HardwareSerial did,
+ * with one deliberate exception noted at the clock source in initialize(),
  * because SerialManager reads this driver through Stream-shaped calls: it peeks
  * for STRING_START, then takes the frame with readStringUntil.
  */
@@ -52,9 +51,6 @@ public:
     int initialize() override {
         gpio_reset_pin(static_cast<gpio_num_t>(txPin));
         gpio_reset_pin(static_cast<gpio_num_t>(rxPin));
-
-        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(txPin));
-        esp_rom_gpio_pad_select_gpio(static_cast<gpio_num_t>(rxPin));
 
         uart_config_t config = {};
         config.baud_rate = BAUDRATE;

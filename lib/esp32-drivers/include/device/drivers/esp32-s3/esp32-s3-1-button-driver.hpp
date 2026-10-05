@@ -87,9 +87,13 @@ public:
 
     void removeButtonCallbacks() override {
         // OneButton::reset() cleared only its own press-tracking state and left
-        // the callback pointers attached, which is why callers detach
-        // DURING_LONG_PRESS by hand. This clears the slots outright, so that
-        // habit is now belt rather than the only thing holding.
+        // the callback pointers attached. This clears the slots outright.
+        //
+        // pending is cleared with them, on purpose: an event the timer task
+        // recorded but exec() has not dispatched belongs to the state that is
+        // going away, and dispatching it afterwards is the teardown race this
+        // project has already been bitten by. A dropped press beats a press
+        // delivered into a dismounted state.
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             slots[i] = Slot{};
         }
@@ -111,12 +115,22 @@ public:
         }
     }
 
+    /** True only while the button is still held past the long-press threshold,
+     * which is what OneButton's _state == OCS_PRESS meant. Read from the current
+     * event rather than from a duration: the component does not reset its tick
+     * counter when a long press is released, so a duration alone keeps reporting
+     * the press that already ended. */
     bool isLongPressed() override {
-        return handle != nullptr && iot_button_get_ticks_time(handle) >= LONG_PRESS_MS;
+        if (handle == nullptr) {
+            return false;
+        }
+        const button_event_t current = iot_button_get_event(handle);
+        return current == BUTTON_LONG_PRESS_START || current == BUTTON_LONG_PRESS_HOLD;
     }
 
+    /** How long the press still in progress has been held, 0 when none is. */
     unsigned long longPressedMillis() override {
-        return handle == nullptr ? 0 : iot_button_get_ticks_time(handle);
+        return isLongPressed() ? iot_button_get_pressed_time(handle) : 0;
     }
 
 private:
@@ -126,7 +140,7 @@ private:
         void* parameter = nullptr;
     };
 
-    static constexpr int INTERACTION_COUNT = 7;
+    static constexpr int INTERACTION_COUNT = static_cast<int>(ButtonInteraction::RELEASE) + 1;
     static constexpr uint16_t CLICK_MS = 400;
     static constexpr uint16_t LONG_PRESS_MS = 800;
     static constexpr uint16_t MULTI_CLICK_COUNT = 3;

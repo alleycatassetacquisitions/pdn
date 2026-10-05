@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstring>
 #include <esp_event.h>
 #include <esp_netif.h>
 #include <esp_wifi.h>
@@ -183,8 +185,7 @@ private:
      */
     enum class StationStatus { DISCONNECTED, NO_SSID_AVAIL, CONNECT_FAILED, CONNECTION_LOST, CONNECTED };
 
-    // Written from the WiFi event task and read from exec() on the main loop,
-    // so unlike the ESP-NOW callbacks these really are cross-task.
+    // Written from the WiFi event task and read from exec() on the main loop.
     static inline std::atomic<StationStatus> stationStatus{StationStatus::DISCONNECTED};
     static inline std::atomic<uint32_t> stationIp{0};
     // Arduino's setAutoReconnect(true) retried on its own. IDF does not, so the
@@ -228,9 +229,10 @@ private:
     }
 
     /**
-     * Brings up what a station needs beyond the radio: a default STA netif for
-     * DHCP and the two event handlers. The ESP-NOW driver raises the radio
-     * without either, so whichever gets here first does its own half only.
+     * Brings up everything a station needs: the netif and event loop, the radio
+     * if nothing has started it, a default STA netif for DHCP, and the two event
+     * handlers. Guarded so whichever driver arrives first does the work once --
+     * the ESP-NOW driver raises the same radio and creates the same netif.
      */
     void ensureWifiStack() {
         if (wifiStackReady) {
@@ -286,10 +288,19 @@ private:
         esp_wifi_set_channel(ESPNOW_FALLBACK_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
         wifi_config_t config = {};
-        std::snprintf(reinterpret_cast<char*>(config.sta.ssid), sizeof(config.sta.ssid),
-                      "%s", wifiConfig->ssid.c_str());
-        std::snprintf(reinterpret_cast<char*>(config.sta.password), sizeof(config.sta.password),
-                      "%s", wifiConfig->password.c_str());
+        // WiFi.begin set both of these and a zero-initialised config does not:
+        // without pmf.capable an AP that requires management-frame protection
+        // refuses the association, and an authmode floor of OPEN would also join
+        // an open AP broadcasting our SSID.
+        config.sta.pmf_cfg.capable = true;
+        config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+        // memcpy rather than snprintf: a 32-character SSID or a 64-character key
+        // fills the field exactly and has no room for a terminator, which is why
+        // the wire format carries a length and not a C string.
+        std::memcpy(config.sta.ssid, wifiConfig->ssid.data(),
+                    std::min(wifiConfig->ssid.size(), sizeof(config.sta.ssid)));
+        std::memcpy(config.sta.password, wifiConfig->password.data(),
+                    std::min(wifiConfig->password.size(), sizeof(config.sta.password)));
         esp_wifi_set_config(WIFI_IF_STA, &config);
 
         stationStatus.store(StationStatus::DISCONNECTED);
@@ -487,9 +498,6 @@ private:
             httpQueue.pop();
         } else {
             request.retryCount++;
-            // Was pow(2, n), which Arduino's <math.h> supplied. A shift is exact
-            // for integer powers, where a double pow can land on 7.999... and
-            // truncate a backoff short. retryCount is bounded by MAX_RETRIES.
             unsigned long backoffTime = (1UL << request.retryCount) * 1000;
             request.lastAttemptTime = SimpleTimer::getPlatformClock()->milliseconds() + backoffTime - 1000;
         }

@@ -7,8 +7,11 @@
 # path: custom_sdkconfig is ignored when espidf is in the framework list
 # (espidf.py gates HandleArduinoIDFsettings on "espidf" not in PIOFRAMEWORK).
 
-# 8MB part, DIO because platformio.ini sets memory_type = dio_opi. IDF defaults
-# to 2MB, which cannot hold a slot at 0x3F0000.
+# 8MB part. IDF defaults to 2MB, which cannot hold a partition at 0x3F0000.
+# DIO is what the Arduino build shipped: board_build.arduino.memory_type was
+# dio_opi, which overrode the board JSON's qio. Kept so flash timing does not
+# change in the same step as the framework. QIO is what the module supports and
+# is worth revisiting on hardware, as a separate change with its own boot test.
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 
@@ -17,12 +20,13 @@ CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 
-# The two-slot table. Without this, board_build.partitions sets only
-# CUSTOM_FILENAME and IDF silently builds partitions_singleapp.csv, leaving no
-# second slot to receive an image.
+# Build the table from partitions.csv rather than IDF's built-in single-app
+# table, so the coredump, nvs_keys and spiffs entries survive.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
-# esp32-s3-prefs-driver.hpp uses try/catch. IDF compiles C++ without exceptions.
+# esp32-s3-prefs-driver.hpp throws UnknownStorageNamespaceException and
+# lib/core/src/game/symbol.cpp catches std::stol's. IDF compiles C++ without
+# exceptions, so a bare throw would not build.
 CONFIG_COMPILER_CXX_EXCEPTIONS=y
 
 # crash-logger.hpp calls esp_core_dump_get_summary, which is not compiled in
@@ -34,8 +38,42 @@ CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 # Arduino ticks at 1kHz, IDF at 100Hz.
 CONFIG_FREERTOS_HZ=1000
 
-# Arduino's loop task busy-looped on core 1 and never fed the task watchdog,
-# which only worked because its config left this off. loopTask in main.cpp has
-# the same shape, so the same exemption applies; with it on, the first loop
-# that does not yield panics the device.
+# Arduino ran loop() on core 1 at priority 1 with an 8KB stack. IDF's main task
+# is the same task, so these three lines are the whole shape and app_main() just
+# calls setup() then loops. ESP_TASK_MAIN_PRIO is already priority 1.
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Arduino's loop busy-looped on core 1 and never fed the task watchdog, which
+# only worked because its config left this off. The same exemption applies here;
+# with it on, the first loop that does not yield panics the device. The task
+# watchdog never subscribed the main task, only the idle tasks.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+
+# Arduino ran this board at 240MHz with 80MHz PSRAM. board_build.f_cpu is an
+# Arduino key and does not reach sdkconfig on the component path, so without
+# these IDF's 160MHz/40MHz defaults apply and every loop-rate-sensitive path --
+# the serial jack drain, the 20ms RDC task, the loop latency that samples a duel
+# press -- runs a third slower than the build these numbers were measured on.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# OneButton debounced for 50ms. iot_button has no debounce field in its config
+# struct, so the only channel is Kconfig, and debounce is ticks x period. Ticks
+# are capped at 7 by the component's own range, so the period carries the rest:
+# 5 x 10ms is the exact 50ms. Without it the default 2 x 5ms = 10ms lets a
+# bouncy switch yield two press-downs 10-40ms apart, which the masher counter
+# scores twice and a click sequence can lose entirely. The 10ms scan interval is
+# still far finer than the main loop, which is what sampled the button before.
+CONFIG_BUTTON_PERIOD_TIME_MS=10
+CONFIG_BUTTON_DEBOUNCE_TICKS=5
+
+# Arduino reserved a static WiFi TX pool. Dynamic buffers let esp_now_send fail
+# with ESP_ERR_ESPNOW_NO_MEM under heap pressure, and SendFrontPkt spends all
+# five retries back to back when it does.
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER=y
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=8
+
+# Arduino panicked on a task-watchdog trip, so a wedged CPU0 rebooted itself
+# instead of logging forever.
+CONFIG_ESP_TASK_WDT_PANIC=y

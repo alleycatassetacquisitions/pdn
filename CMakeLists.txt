@@ -4,8 +4,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # PDN_DEVICE arrives from board_build.cmake_extra_args in platformio.ini and is
 # the only per-environment channel into CMake. It names the project, which also
 # names esp_app_desc_t.project_name -- useful in a boot log, and better than
-# defaulting to whatever the checkout directory is called. Nothing reads it:
-# a receiver discriminates on the signed offer.deviceType byte.
+# defaulting to whatever the checkout directory is called. Nothing reads it.
 if(NOT DEFINED PDN_DEVICE)
     message(FATAL_ERROR
         "PDN_DEVICE is not set. Add -DPDN_DEVICE=pdn or -DPDN_DEVICE=fdn to "

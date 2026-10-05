@@ -8,7 +8,6 @@
 #include "device/drivers/unknown-storage-namespace-exception.hpp"
 
 #include <nvs.h>
-#include <nvs_flash.h>
 
 /**
  * NVS-backed storage driver for ESP32-S3.

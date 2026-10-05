@@ -19,9 +19,9 @@ public:
     }
 
     int initialize() override {
-        // 8-bit at 1kHz reproduces what analogWrite() did on the Arduino core,
-        // whose defaults these are. The motor's feel is tuned against it, so
-        // these two are a calibration, not an arbitrary choice.
+        // 8-bit at 1kHz. These two are a calibration against the physical motor,
+        // not an arbitrary choice: changing either changes how every haptic cue
+        // feels, so re-tune on hardware rather than on a spec sheet.
         ledc_timer_config_t timer = {};
         timer.speed_mode = LEDC_LOW_SPEED_MODE;
         timer.duty_resolution = LEDC_TIMER_8_BIT;
