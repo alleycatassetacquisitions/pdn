@@ -34,11 +34,18 @@ public:
     }
 
     int initialize() override {
-        // OneButton's own defaults, kept because the press timings are what
-        // the interactions were designed around.
         button_config_t buttonConfig = {};
         buttonConfig.long_press_time = LONG_PRESS_MS;
-        buttonConfig.short_press_time = CLICK_MS;
+        // Not OneButton's 400ms _click_ms, deliberately. That number was never a
+        // wait there: OneButton resolved a click the moment the button came up
+        // unless a double- or multi-click handler was attached (`_nClicks ==
+        // _maxClicks` short-circuits the wait at OneButton.cpp:293), and nothing
+        // in this project attaches one. iot_button has no such short-circuit --
+        // it always waits short_press_time after release to rule out a second
+        // press -- so carrying 400ms across made every click resolve 400ms late
+        // and folded anything faster into a multi-click that nothing handles.
+        // Entering a four-digit pairing code is unusable at that rate.
+        buttonConfig.short_press_time = CLICK_RESOLVE_MS;
 
         button_gpio_config_t gpioConfig = {};
         gpioConfig.gpio_num = buttonPin;
@@ -141,7 +148,19 @@ private:
     };
 
     static constexpr int INTERACTION_COUNT = static_cast<int>(ButtonInteraction::RELEASE) + 1;
-    static constexpr uint16_t CLICK_MS = 400;
+    // Post-release wait before a press resolves as a single click. 50ms is the
+    // floor, chosen because nothing registers DOUBLE_CLICK or MULTI_CLICK and a
+    // click that waits is a click that feels broken -- entering a four-digit
+    // pairing code taps faster than any disambiguation window.
+    //
+    // This is the ceiling, not an oversight. The component spends this
+    // window telling a single click from a double or a triple, so at 50ms those
+    // are unreachable by a human finger and would silently never fire. If a
+    // double-click gesture is ever wanted, this has to rise to ~250-300ms and
+    // every single click pays that latency; iot_button offers no way to have
+    // both. OneButton did, by resolving on release whenever no double-click
+    // handler was attached, which is why 400ms looked free there and is not here.
+    static constexpr uint16_t CLICK_RESOLVE_MS = 50;
     static constexpr uint16_t LONG_PRESS_MS = 800;
     static constexpr uint16_t MULTI_CLICK_COUNT = 3;
 
