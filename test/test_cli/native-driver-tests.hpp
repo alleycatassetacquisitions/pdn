@@ -15,6 +15,7 @@
 #include "game/quickdraw-states.hpp"
 #include "apps/player-registration/player-registration-states.hpp"
 #include "apps/player-registration/player-registration.hpp"
+#include "game/quickdraw-resources.hpp"
 
 // ============================================
 // NATIVE SERIAL DRIVER TEST SUITE
@@ -930,6 +931,25 @@ public:
     NativeLoggerDriver* globalLogger_;
 };
 
+static void setPlayerUserId(CliCommandTestSuite* suite, const std::string& userId) {
+    char* idPtr = new char[userId.size() + 1];
+    strcpy(idPtr, userId.c_str());
+    suite->device.player->setUserID(idPtr);
+}
+
+static void enterFetchUserDataState(CliCommandTestSuite* suite, bool mockServerEnabled = true) {
+    // SetUp mounts FetchUserData and queues HTTP before the first loop; drain so remounts
+    // are not raced by stale callbacks.
+    suite->device.httpClientDriver->setMockServerEnabled(false);
+    while (suite->device.httpClientDriver->getPendingRequestCount() > 0) {
+        suite->device.httpClientDriver->exec();
+    }
+    suite->device.httpClientDriver->setMockServerEnabled(mockServerEnabled);
+    suite->device.httpClientDriver->setConnected(true);
+    suite->device.pdn->setActiveApp(StateId(PLAYER_REGISTRATION_APP_ID),
+                                    StateId(FETCH_USER_DATA));
+}
+
 // Test: Mock HTTP fetch transitions device from FetchUserData to WelcomeMessage
 void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
     ASSERT_EQ(suite->device.pdn->getActiveApp(), suite->device.playerRegistrationApp);
@@ -947,6 +967,44 @@ void cliDeviceMockHttpFetchTransitions(CliCommandTestSuite* suite) {
     state = suite->device.getCurrentState();
     ASSERT_NE(state, nullptr);
     ASSERT_EQ(state->getStateId(), WELCOME_MESSAGE);
+}
+
+// Test: Built-in test bounty ID skips HTTP and goes straight to welcome
+void cliFetchUserDataTestBountyIdSkipsHttp(CliCommandTestSuite* suite) {
+    setPlayerUserId(suite, TEST_BOUNTY_ID);
+    enterFetchUserDataState(suite);
+
+    for (int i = 0; i < 5; i++) {
+        suite->device.pdn->loop();
+    }
+
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), WELCOME_MESSAGE);
+    ASSERT_EQ(suite->device.player->getName(), "KO-NA-MI");
+}
+
+// Test: HTTP failure on player fetch transitions to ConfirmOffline
+void cliFetchUserDataHttpFailureGoesConfirmOffline(CliCommandTestSuite* suite) {
+    setPlayerUserId(suite, suite->device.deviceId);
+    enterFetchUserDataState(suite, false);
+
+    for (int i = 0; i < 10; i++) {
+        suite->device.pdn->loop();
+    }
+
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), CONFIRM_OFFLINE);
+    suite->device.httpClientDriver->setMockServerEnabled(true);
+}
+
+// Test: Health-check user ID completes and returns to player registration
+void cliFetchUserDataHealthCheckReturnsToRegistration(CliCommandTestSuite* suite) {
+    setPlayerUserId(suite, HEALTH_CHECK);
+    enterFetchUserDataState(suite);
+
+    for (int i = 0; i < 10; i++) {
+        suite->device.pdn->loop();
+    }
+
+    ASSERT_EQ(suite->device.getCurrentState()->getStateId(), PLAYER_REGISTRATION);
 }
 
 // Test: Reboot resets device back to FetchUserData

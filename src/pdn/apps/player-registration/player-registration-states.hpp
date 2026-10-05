@@ -49,25 +49,37 @@ public:
     bool transitionToPlayerRegistration();
     void fetchUserData();
     void uploadMatches();
+    void healthCheck();
     void showLoadingGlyphs(PDN* pdn);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     
 private:
+    enum class ActiveRequest {
+        NONE,
+        USER_DATA_FETCH,
+        HEALTH_CHECK,
+        MATCHES_UPLOAD,
+    };
+
+    void clearActiveRequest();
+    void onActiveRequestTimedOut();
+
+    ActiveRequest activeRequest = ActiveRequest::NONE;
+
     RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     WirelessManager* wirelessManager;
-    bool isFetchingUserData = false;
-    bool isUploadingMatches = false;
 
     Player* player;
     SimpleTimer fetchTimer;
-    const int USER_DATA_FETCH_TIMEOUT = 10000;
-    const int MATCHES_UPLOAD_TIMEOUT = 10000;
+    static constexpr int USER_DATA_FETCH_TIMEOUT = 10000;
+    static constexpr int HEALTH_CHECK_TIMEOUT = 10000;
+    static constexpr int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 
 class ConfirmOfflineState : public TypedState<PDN> {

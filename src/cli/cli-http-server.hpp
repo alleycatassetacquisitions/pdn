@@ -82,7 +82,9 @@ public:
         responseBody = R"({"errors":["Internal server error"]})";
         
         // Route the request
-        if (method == "GET" && path.find("/api/players/") == 0) {
+        if (method == "GET" && path == "/health_check") {
+            statusCode = handleHealthCheck(responseBody);
+        } else if (method == "GET" && path.find("/api/players/") == 0) {
             statusCode = handleGetPlayer(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
@@ -220,6 +222,11 @@ private:
         return 200;
     }
     
+    int handleHealthCheck(std::string& responseBody) {
+        responseBody = R"({"status":"ok"})";
+        return 200;
+    }
+
     /**
      * Handle PUT /api/matches
      */

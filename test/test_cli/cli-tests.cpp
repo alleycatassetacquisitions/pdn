@@ -71,6 +71,10 @@ TEST_F(MockHttpServerTestSuite, PutMatchesAccepts) {
     httpServerPutMatchesAccepts(this);
 }
 
+TEST_F(MockHttpServerTestSuite, HealthCheckReturnsOk) {
+    httpServerHealthCheckReturnsOk(this);
+}
+
 TEST_F(MockHttpServerTestSuite, UnknownEndpointReturns404) {
     httpServerUnknownEndpointReturns404(this);
 }
@@ -397,6 +401,18 @@ TEST_F(CliRoleCommandTestSuite, NoDevices) {
 
 TEST_F(CliCommandTestSuite, MockHttpFetchTransitions) {
     cliDeviceMockHttpFetchTransitions(this);
+}
+
+TEST_F(CliCommandTestSuite, FetchUserDataTestBountyIdSkipsHttp) {
+    cliFetchUserDataTestBountyIdSkipsHttp(this);
+}
+
+TEST_F(CliCommandTestSuite, FetchUserDataHttpFailureGoesConfirmOffline) {
+    cliFetchUserDataHttpFailureGoesConfirmOffline(this);
+}
+
+TEST_F(CliCommandTestSuite, FetchUserDataHealthCheckReturnsToRegistration) {
+    cliFetchUserDataHealthCheckReturnsToRegistration(this);
 }
 
 TEST_F(CliCommandTestSuite, RebootResetsState) {
