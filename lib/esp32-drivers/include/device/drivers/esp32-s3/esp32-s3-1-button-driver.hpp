@@ -153,23 +153,10 @@ private:
     };
 
     static constexpr int INTERACTION_COUNT = static_cast<int>(ButtonInteraction::RELEASE) + 1;
-    // Post-release wait before a press resolves as a single click. It has to stay
-    // strictly below the debounce window, because the component checks for a new
-    // press before it checks this deadline: if a re-press can be debounce-confirmed
-    // first it takes the repeat path, which emits DOUBLE_CLICK and no SINGLE_CLICK,
-    // and nothing registers DOUBLE_CLICK -- so both taps are lost rather than
-    // merged. At 10ms the click resolves two ticks after the release is confirmed,
-    // three ticks before any re-press can be.
-    //
-    // The cost is that double and multi click become unreachable at any speed.
-    // Nothing registers them, and OneButton did not offer them either: it
-    // short-circuited its own wait whenever no double-click handler was attached
-    // (OneButton.cpp:294), which is why its 400ms was never actually spent. A
-    // double-click gesture would need this at ~250-300ms, a debounce window wider
-    // than that, and every single click paying the latency.
-    static constexpr uint16_t CLICK_RESOLVE_MS = 10;
-    static_assert(CLICK_RESOLVE_MS < (CONFIG_BUTTON_DEBOUNCE_TICKS - 1) * CONFIG_BUTTON_PERIOD_TIME_MS,
-                  "click resolve must beat the debounce window or fast taps emit nothing");
+    // Only the double/multi-click disambiguation window now -- CLICK maps to
+    // PRESS_UP, which does not wait on it. OneButton's _click_ms default, so a
+    // double-click gesture is reachable at the cadence it was designed for.
+    static constexpr uint16_t CLICK_RESOLVE_MS = 400;
     static_assert(CONFIG_BUTTON_DEBOUNCE_TICKS * CONFIG_BUTTON_PERIOD_TIME_MS == 50,
                   "debounce must stay at OneButton's 50ms; iot_button has no config field for it");
     static constexpr uint16_t LONG_PRESS_MS = 800;
@@ -178,7 +165,12 @@ private:
     static button_event_t eventFor(ButtonInteraction interaction) {
         switch (interaction) {
             case ButtonInteraction::PRESS:             return BUTTON_PRESS_DOWN;
-            case ButtonInteraction::CLICK:             return BUTTON_SINGLE_CLICK;
+            // A completed press, which the component reports the moment the
+            // button comes up. BUTTON_SINGLE_CLICK is a different thing: it
+            // cannot fire until short_press_time has ruled out a second press,
+            // so using it would make every click wait out the double-click
+            // window. OneButton reported on release too.
+            case ButtonInteraction::CLICK: return BUTTON_PRESS_UP;
             case ButtonInteraction::DOUBLE_CLICK:      return BUTTON_DOUBLE_CLICK;
             case ButtonInteraction::MULTI_CLICK:       return BUTTON_MULTIPLE_CLICK;
             case ButtonInteraction::LONG_PRESS:        return BUTTON_LONG_PRESS_START;
@@ -193,6 +185,20 @@ private:
     static void onButtonEvent(void* buttonHandle, void* userData) {
         auto* driver = static_cast<Esp32S31ButtonDriver*>(userData);
         button_event_t event = iot_button_get_event(static_cast<button_handle_t>(buttonHandle));
+
+        // The component raises PRESS_UP on every release, including the release
+        // that ends a long press. OneButton sent that one to attachLongPressStop
+        // and never to the click handler, so it is swallowed here rather than
+        // counted as a click. Both writes and the read happen on the component's
+        // timer task, in event order.
+        if (event == BUTTON_LONG_PRESS_START) {
+            driver->longPressSeen = true;
+        } else if (event == BUTTON_PRESS_DOWN) {
+            driver->longPressSeen = false;
+        } else if (event == BUTTON_PRESS_UP && driver->longPressSeen) {
+            return;
+        }
+
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             if (eventFor(static_cast<ButtonInteraction>(i)) == event) {
                 driver->pending[i].fetch_add(1);
@@ -205,4 +211,5 @@ private:
     Slot slots[INTERACTION_COUNT];
     // Written on the timer task, drained on the main loop.
     std::atomic<uint8_t> pending[INTERACTION_COUNT] = {};
+    std::atomic<bool> longPressSeen{false};
 };
