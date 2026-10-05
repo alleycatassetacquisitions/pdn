@@ -253,6 +253,24 @@ public:
         manager->onStatus(status);
     }
 
+    /** Delivers a receiver's verdict over the wire path rather than straight
+     * to onComplete, so the frame's own dispatch and length guard run. */
+    void deliverComplete(const uint8_t* fromMac, FirmwareResult result) {
+        deliverCompleteForImage(fromMac, imageHash, result);
+    }
+
+    /** Like deliverComplete, but for a caller-chosen image hash. */
+    void deliverCompleteForImage(const uint8_t* fromMac,
+                                 const uint8_t hash[FIRMWARE_SHA256_LENGTH],
+                                 FirmwareResult result) {
+        FirmwareCompletePayload complete{};
+        complete.command = static_cast<uint8_t>(FirmwareCmd::COMPLETE);
+        std::memcpy(complete.imageSha256, hash, FIRMWARE_SHA256_LENGTH);
+        complete.result = static_cast<uint8_t>(result);
+        manager->onPacketReceived(fromMac, reinterpret_cast<const uint8_t*>(&complete),
+                                  sizeof(complete));
+    }
+
     /// The signed OFFER this fixture's seed is currently broadcasting —
     /// same image hash, geometry, cert and signature sendOffer() builds.
     FirmwareOfferPayload currentOffer() const {

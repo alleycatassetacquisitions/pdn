@@ -52,9 +52,9 @@ constexpr int REPAIR_STALL_ROUNDS = 3;
 constexpr unsigned long RECEIVE_STALL_TIMEOUT_MS = 10000;
 
 // Times sendComplete may be refused by the radio before the report is
-// dropped and the phase moves on. Deliberately small: nothing in the fleet
-// decodes COMPLETE, so it is a diagnostic, while the restart sequenced behind
-// it is what makes the rollback window mean anything.
+// dropped and the phase moves on. Deliberately small: the seed only logs the
+// verdict, while the restart sequenced behind it is what makes the rollback
+// window mean anything.
 constexpr int COMPLETE_SEND_ATTEMPTS = 5;
 
 // Minimum gap between two offer signature verifications. An OFFER is
@@ -68,6 +68,24 @@ constexpr unsigned long OFFER_VERIFY_MIN_INTERVAL_MS = 1000;
 
 bool bitAt(const uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
     return (bitmap[index / 8] & (1 << (index % 8))) != 0;
+}
+
+const char* describeResult(FirmwareResult result) {
+    switch (result) {
+        case FirmwareResult::OK:
+            return "ok";
+        case FirmwareResult::BAD_HASH:
+            return "image hash mismatch";
+        case FirmwareResult::BAD_SIGNATURE:
+            return "bad image signature";
+        case FirmwareResult::BAD_CERT:
+            return "bad signer certificate";
+        case FirmwareResult::STALE_CERT:
+            return "revoked signer generation";
+        case FirmwareResult::FLASH_FAILED:
+            return "flash write failed";
+    }
+    return "unknown";
 }
 
 void setBitAt(uint8_t bitmap[FIRMWARE_BITMAP_BYTES], uint16_t index) {
@@ -191,8 +209,16 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
             }
             onStatus(*reinterpret_cast<const FirmwareStatusPayload*>(data));
             return;
+        case FirmwareCmd::COMPLETE:
+            if (length < sizeof(FirmwareCompletePayload)) {
+                LOG_D(TAG, "COMPLETE frame too short (%zu < %zu)", length,
+                      sizeof(FirmwareCompletePayload));
+                return;
+            }
+            onComplete(src, *reinterpret_cast<const FirmwareCompletePayload*>(data));
+            return;
         default:
-            return;  // OFFER, CHUNK, POLL and STATUS are the only frames handled on the receive side
+            return;  // every frame the protocol defines is handled above
     }
 }
 
@@ -484,12 +510,49 @@ void FirmwareUpdateManager::onStatus(const FirmwareStatusPayload& status) {
     }
 }
 
+void FirmwareUpdateManager::logRunVerdicts() const {
+    if (committedReports == 0 && rejectedReports == 0) {
+        LOG_E(TAG, "run ended with no verdict from any receiver");
+        return;
+    }
+    LOG_I(TAG, "run ended: %u committed, %u rejected", committedReports, rejectedReports);
+}
+
+void FirmwareUpdateManager::onComplete(const uint8_t* fromMac,
+                                       const FirmwareCompletePayload& complete) {
+    if (seedPhase == SeedPhase::IDLE) {
+        return;  // no run in progress for a verdict to apply to
+    }
+    if (std::memcmp(complete.imageSha256, seedImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
+        return;  // a verdict on some other image says nothing about this run
+    }
+
+    const FirmwareResult result = static_cast<FirmwareResult>(complete.result);
+    if (result == FirmwareResult::OK) {
+        committedReports++;
+        LOG_I(TAG, "%02X:%02X:%02X:%02X:%02X:%02X committed the image", fromMac[0], fromMac[1],
+              fromMac[2], fromMac[3], fromMac[4], fromMac[5]);
+        return;
+    }
+    rejectedReports++;
+    LOG_E(TAG, "%02X:%02X:%02X:%02X:%02X:%02X rejected the image: %s", fromMac[0], fromMac[1],
+          fromMac[2], fromMac[3], fromMac[4], fromMac[5], describeResult(result));
+}
+
 bool FirmwareUpdateManager::isReceiving() const {
     return receivePhase == ReceivePhase::RECEIVING;
 }
 
 uint16_t FirmwareUpdateManager::receivedCount() const {
     return receivedChunkCount;
+}
+
+uint16_t FirmwareUpdateManager::committedCount() const {
+    return committedReports;
+}
+
+uint16_t FirmwareUpdateManager::rejectedCount() const {
+    return rejectedReports;
 }
 
 void FirmwareUpdateManager::fillBitmap(uint8_t out[FIRMWARE_BITMAP_BYTES]) const {
@@ -576,6 +639,8 @@ bool FirmwareUpdateManager::beginSeeding() {
     // its own collection from nothing.
     std::memset(repairBitmap, 0, sizeof(repairBitmap));
     haveLastRepairSet = false;
+    committedReports = 0;
+    rejectedReports = 0;
     identicalRepairRounds = 0;
     repairCursor = 0;
     pollWindowTimer.invalidate();
@@ -698,6 +763,7 @@ void FirmwareUpdateManager::syncRepair() {
 void FirmwareUpdateManager::resolveRepairRound() {
     if (bitmapIsEmpty(repairBitmap)) {
         seedPhase = SeedPhase::IDLE;  // nobody reported a gap: the run is done
+        logRunVerdicts();
         return;
     }
 
@@ -712,6 +778,7 @@ void FirmwareUpdateManager::resolveRepairRound() {
     if (identicalRepairRounds >= REPAIR_STALL_ROUNDS) {
         LOG_E(TAG, "repair set unchanged for %d rounds in a row; ending the run", identicalRepairRounds);
         seedPhase = SeedPhase::IDLE;  // waiting out a chunk that never lands would never end the run
+        logRunVerdicts();
         std::memset(repairBitmap, 0, sizeof(repairBitmap));
         return;
     }

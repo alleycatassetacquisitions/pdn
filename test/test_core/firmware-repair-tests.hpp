@@ -184,3 +184,37 @@ TEST(FirmwareRepairTest, anAbortedReceiveSendsNoStaleStatus) {
 
     EXPECT_EQ(f.comms.countOf(FirmwareCmd::STATUS), 0);
 }
+
+TEST(FirmwareRepairTest, seedTalliesEachReceiversVerdict) {
+    // The seed's only sight of a receiver that rejected the offer: a rejection
+    // reports no gap, so it leaves no trace in the repair set.
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    f.streamAllChunks();
+    f.deliverComplete(DEVICE_A, FirmwareResult::OK);
+    f.deliverComplete(DEVICE_B, FirmwareResult::BAD_SIGNATURE);
+    EXPECT_EQ(f.manager->committedCount(), 1);
+    EXPECT_EQ(f.manager->rejectedCount(), 1);
+}
+
+TEST(FirmwareRepairTest, verdictForAnotherImageIsNotTallied) {
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    f.streamAllChunks();
+    f.deliverComplete(DEVICE_A, FirmwareResult::OK);
+    ASSERT_EQ(f.manager->committedCount(), 1) << "verdicts are not being tallied at all";
+    f.deliverCompleteForImage(DEVICE_B, OTHER_IMAGE_SHA, FirmwareResult::OK);
+    EXPECT_EQ(f.manager->committedCount(), 1);
+}
+
+TEST(FirmwareRepairTest, aNewRunStartsWithNoVerdicts) {
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    f.streamAllChunks();
+    f.deliverComplete(DEVICE_A, FirmwareResult::OK);
+    ASSERT_EQ(f.manager->committedCount(), 1) << "verdicts are not being tallied at all";
+    f.runRepairRound();  // nobody reports a gap: the run ends
+    ASSERT_FALSE(f.manager->isSeeding());
+    f.manager->beginSeeding();
+    EXPECT_EQ(f.manager->committedCount(), 0) << "last run's verdicts leaked into this one";
+}

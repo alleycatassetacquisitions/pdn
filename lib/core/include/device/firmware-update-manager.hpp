@@ -64,6 +64,19 @@ public:
     /// reply heard, not a per-device ledger.
     void onStatus(const FirmwareStatusPayload& status);
 
+    /** A receiver's terminal verdict on the run currently being seeded.
+     * Advisory only: the run ends when no receiver reports a gap, never on a
+     * tally of verdicts, because a broadcast seed has no roster of who was
+     * meant to hear it. It is the operator's only sight of a receiver that
+     * rejected the offer outright, which reports no gap and so leaves no
+     * trace in the repair set. */
+    void onComplete(const uint8_t* fromMac, const FirmwareCompletePayload& complete);
+
+    /** Prints what the run's receivers reported, on either path out of
+     * seeding. Silence from every receiver is logged as an error: it is
+     * indistinguishable from a run nobody heard. */
+    void logRunVerdicts() const;
+
     /// True once an offer has been accepted. Cleared as soon as collection
     /// ends, whether the commit that follows passes or fails, when the
     /// device becomes ineligible mid-transfer and sync() aborts it, and when
@@ -87,12 +100,21 @@ public:
     /// kFirmwareUpdate. Clears the in-flight gate either way, and no frame is
     /// resent on the strength of a failure: a lost CHUNK is the repair loop's
     /// job, a lost STATUS is re-answered at the seed's next POLL, and a lost
-    /// COMPLETE is not recovered at all — nothing in the fleet decodes it,
-    /// and the restart sequenced behind it must not wait on it.
+    /// COMPLETE is never recovered — it costs the seed one verdict in its
+    /// log, and the restart sequenced behind it must not wait on it.
     void onSendReport(bool success);
 
     /// True once beginSeeding has armed streaming.
     bool isSeeding() const;
+
+    /** Receivers that reported committing this run's image. Reset at
+     * beginSeeding. A receiver heard twice counts twice: the seed keeps no
+     * roster to deduplicate against. */
+    uint16_t committedCount() const;
+
+    /** Receivers that reported rejecting this run's image, for any reason
+     * from a bad signature to a failed flash write. Reset at beginSeeding. */
+    uint16_t rejectedCount() const;
 
     /// Sends the next frame once the radio has cleared the last one: an
     /// OFFER when the one-second cadence has elapsed, otherwise the next
@@ -103,8 +125,9 @@ public:
     /// machine stops being serviced the moment another app takes over.
     void sync();
 
-    /// Routes a raw radio frame to onOffer/onChunk/onPoll/onStatus, validating
-    /// its length against the relevant wire struct before any cast. Public so
+    /// Routes a raw radio frame to onOffer/onChunk/onPoll/onStatus/onComplete,
+    /// validating its length against the relevant wire struct before any
+    /// cast. Public so
     /// the driver's packet callback (dispatchPacket) can reach it and so a
     /// test can drive the wire-receive path directly without a driver.
     void onPacketReceived(const uint8_t* src, const uint8_t* data, size_t length);
@@ -286,6 +309,8 @@ private:
     uint8_t repairStreamSet[FIRMWARE_BITMAP_BYTES] = {};
     uint8_t lastRepairSet[FIRMWARE_BITMAP_BYTES] = {};
     bool haveLastRepairSet = false;
+    uint16_t committedReports = 0;
+    uint16_t rejectedReports = 0;
     int identicalRepairRounds = 0;
     uint16_t repairCursor = 0;
     // Running means this round's POLL is out and its replies are still being
