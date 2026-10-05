@@ -12,7 +12,7 @@ if(NOT device_sources)
     message(FATAL_ERROR "No sources found under src/${PDN_DEVICE}")
 endif()
 
-# "." is src/, matching -I src on the prebuilt path; ${PDN_DEVICE} is src/pdn or
+# "." is src/; ${PDN_DEVICE} is src/pdn or
 # src/fdn, whose headers sit beside their own sources and are included by paths
 # relative to it. lib/core and lib/esp32-drivers are not listed: PlatformIO
 # still builds those as its own libraries and prepends their include dirs.

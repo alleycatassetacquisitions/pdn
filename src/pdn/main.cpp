@@ -114,7 +114,6 @@ static void setup() {
     // Before any driver, because two of them need it and neither can bring it
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace. Arduino's
-    // initArduino() did this before setup() was ever called.
     esp_err_t nvsStatus = nvs_flash_init();
     if (nvsStatus == ESP_ERR_NVS_NO_FREE_PAGES || nvsStatus == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();

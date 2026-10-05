@@ -231,8 +231,10 @@ private:
     /**
      * Brings up everything a station needs: the netif and event loop, the radio
      * if nothing has started it, a default STA netif for DHCP, and the two event
-     * handlers. Guarded so whichever driver arrives first does the work once --
-     * the ESP-NOW driver raises the same radio and creates the same netif.
+     * handlers. The ESP-NOW driver raises the same radio and creates the same
+     * netif, so those two steps are individually guarded and no-op on the second
+     * caller; the event handlers are registered only here, so this body still
+     * runs in full even when ESP-NOW got there first.
      */
     void ensureWifiStack() {
         if (wifiStackReady) {
@@ -295,8 +297,7 @@ private:
         config.sta.pmf_cfg.capable = true;
         config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
         // memcpy rather than snprintf: a 32-character SSID or a 64-character key
-        // fills the field exactly and has no room for a terminator, which is why
-        // the wire format carries a length and not a C string.
+        // fills the field exactly, leaving no room for a terminator to be written.
         std::memcpy(config.sta.ssid, wifiConfig->ssid.data(),
                     std::min(wifiConfig->ssid.size(), sizeof(config.sta.ssid)));
         std::memcpy(config.sta.password, wifiConfig->password.data(),

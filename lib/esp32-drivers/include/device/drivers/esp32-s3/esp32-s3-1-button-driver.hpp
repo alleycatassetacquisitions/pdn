@@ -6,6 +6,7 @@
 #include <atomic>
 
 #include <button_gpio.h>
+#include <sdkconfig.h>
 #include <iot_button.h>
 
 #include "device/drivers/driver-interface.hpp"
@@ -104,20 +105,24 @@ public:
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             slots[i] = Slot{};
         }
-        pending.store(0);
+        for (auto& count : pending) {
+            count.store(0);
+        }
     }
 
     void exec() override {
-        uint32_t fired = pending.exchange(0);
         for (int i = 0; i < INTERACTION_COUNT; i++) {
-            if ((fired & (1U << i)) == 0) {
-                continue;
-            }
-            const Slot& slot = slots[i];
-            if (slot.parameterized != nullptr) {
-                slot.parameterized(slot.parameter);
-            } else if (slot.plain != nullptr) {
-                slot.plain();
+            // Counted rather than flagged: the masher scores one penalty per tap,
+            // so two taps inside one loop pass have to dispatch twice. Drained in
+            // enum order, which is the order the component raises them in.
+            uint8_t fired = pending[i].exchange(0);
+            for (; fired > 0; fired--) {
+                const Slot& slot = slots[i];
+                if (slot.parameterized != nullptr) {
+                    slot.parameterized(slot.parameter);
+                } else if (slot.plain != nullptr) {
+                    slot.plain();
+                }
             }
         }
     }
@@ -135,7 +140,7 @@ public:
         return current == BUTTON_LONG_PRESS_START || current == BUTTON_LONG_PRESS_HOLD;
     }
 
-    /** How long the press still in progress has been held, 0 when none is. */
+    /** How long a long press still in progress has been held, 0 otherwise. */
     unsigned long longPressedMillis() override {
         return isLongPressed() ? iot_button_get_pressed_time(handle) : 0;
     }
@@ -148,19 +153,25 @@ private:
     };
 
     static constexpr int INTERACTION_COUNT = static_cast<int>(ButtonInteraction::RELEASE) + 1;
-    // Post-release wait before a press resolves as a single click. 50ms is the
-    // floor, chosen because nothing registers DOUBLE_CLICK or MULTI_CLICK and a
-    // click that waits is a click that feels broken -- entering a four-digit
-    // pairing code taps faster than any disambiguation window.
+    // Post-release wait before a press resolves as a single click. It has to stay
+    // strictly below the debounce window, because the component checks for a new
+    // press before it checks this deadline: if a re-press can be debounce-confirmed
+    // first it takes the repeat path, which emits DOUBLE_CLICK and no SINGLE_CLICK,
+    // and nothing registers DOUBLE_CLICK -- so both taps are lost rather than
+    // merged. At 10ms the click resolves two ticks after the release is confirmed,
+    // three ticks before any re-press can be.
     //
-    // This is the ceiling, not an oversight. The component spends this
-    // window telling a single click from a double or a triple, so at 50ms those
-    // are unreachable by a human finger and would silently never fire. If a
-    // double-click gesture is ever wanted, this has to rise to ~250-300ms and
-    // every single click pays that latency; iot_button offers no way to have
-    // both. OneButton did, by resolving on release whenever no double-click
-    // handler was attached, which is why 400ms looked free there and is not here.
-    static constexpr uint16_t CLICK_RESOLVE_MS = 50;
+    // The cost is that double and multi click become unreachable at any speed.
+    // Nothing registers them, and OneButton did not offer them either: it
+    // short-circuited its own wait whenever no double-click handler was attached
+    // (OneButton.cpp:294), which is why its 400ms was never actually spent. A
+    // double-click gesture would need this at ~250-300ms, a debounce window wider
+    // than that, and every single click paying the latency.
+    static constexpr uint16_t CLICK_RESOLVE_MS = 10;
+    static_assert(CLICK_RESOLVE_MS < (CONFIG_BUTTON_DEBOUNCE_TICKS - 1) * CONFIG_BUTTON_PERIOD_TIME_MS,
+                  "click resolve must beat the debounce window or fast taps emit nothing");
+    static_assert(CONFIG_BUTTON_DEBOUNCE_TICKS * CONFIG_BUTTON_PERIOD_TIME_MS == 50,
+                  "debounce must stay at OneButton's 50ms; iot_button has no config field for it");
     static constexpr uint16_t LONG_PRESS_MS = 800;
     static constexpr uint16_t MULTI_CLICK_COUNT = 3;
 
@@ -184,7 +195,7 @@ private:
         button_event_t event = iot_button_get_event(static_cast<button_handle_t>(buttonHandle));
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             if (eventFor(static_cast<ButtonInteraction>(i)) == event) {
-                driver->pending.fetch_or(1U << i);
+                driver->pending[i].fetch_add(1);
             }
         }
     }
@@ -193,5 +204,5 @@ private:
     button_handle_t handle = nullptr;
     Slot slots[INTERACTION_COUNT];
     // Written on the timer task, drained on the main loop.
-    std::atomic<uint32_t> pending{0};
+    std::atomic<uint8_t> pending[INTERACTION_COUNT] = {};
 };

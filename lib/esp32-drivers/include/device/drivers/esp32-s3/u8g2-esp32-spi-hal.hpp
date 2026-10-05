@@ -5,6 +5,7 @@
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 #include <esp_heap_caps.h>
+#include "device/drivers/logger.hpp"
 #include <esp_rom_sys.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -36,8 +37,10 @@ struct U8g2Esp32SpiContext {
     uint8_t* dmaScratch;
 };
 
-/** u8x8_byte_SendBytes passes its count as a uint8_t, so one BYTE_SEND can
- * never exceed 255 bytes. */
+/** The callback signature caps a single BYTE_SEND: u8x8_msg_cb takes its count
+ * as a uint8_t. The bulk path is u8x8_cad_001, which forwards straight to this
+ * callback rather than going through u8x8_byte.c. */
+constexpr const char* U8G2_HAL_TAG = "U8g2Hal";
 constexpr size_t U8G2_SPI_SCRATCH_BYTES = 256;
 
 /**
@@ -59,7 +62,8 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
     switch (msg) {
         case U8X8_MSG_BYTE_SEND: {
             if (context->dmaScratch == nullptr) {
-                return 0;  // BYTE_INIT's allocation failed; nothing to copy through
+                LOG_E(U8G2_HAL_TAG, "BYTE_SEND with no scratch; BYTE_INIT must have failed");
+                return 0;
             }
             const auto* source = static_cast<const uint8_t*>(argPtr);
             size_t remaining = argInt;
@@ -70,6 +74,7 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
                 transaction.length = chunk * 8;
                 transaction.tx_buffer = context->dmaScratch;
                 if (spi_device_polling_transmit(context->device, &transaction) != ESP_OK) {
+                    LOG_E(U8G2_HAL_TAG, "polling transmit of %u bytes failed", (unsigned)chunk);
                     return 0;
                 }
                 source += chunk;
@@ -86,6 +91,7 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
             bus.quadhd_io_num = -1;
             bus.max_transfer_sz = U8G2_SPI_SCRATCH_BYTES;
             if (spi_bus_initialize(context->host, &bus, SPI_DMA_CH_AUTO) != ESP_OK) {
+                LOG_E(U8G2_HAL_TAG, "spi_bus_initialize failed on host %d", (int)context->host);
                 return 0;
             }
             spi_device_interface_config_t device = {};
@@ -96,11 +102,14 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
             device.spics_io_num = -1;  // CS is driven by hand, as u8g2 expects
             device.queue_size = 1;
             if (spi_bus_add_device(context->host, &device, &context->device) != ESP_OK) {
+                LOG_E(U8G2_HAL_TAG, "spi_bus_add_device failed; the bus stays held");
                 return 0;
             }
             context->dmaScratch = static_cast<uint8_t*>(
                 heap_caps_malloc(U8G2_SPI_SCRATCH_BYTES, MALLOC_CAP_DMA));
             if (context->dmaScratch == nullptr) {
+                LOG_E(U8G2_HAL_TAG, "could not allocate %u DMA-capable scratch bytes",
+                      (unsigned)U8G2_SPI_SCRATCH_BYTES);
                 return 0;
             }
             break;
@@ -122,9 +131,10 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
     return 1;
 }
 
-/** Configures the control lines and serves u8g2's delay and reset requests. */
 /** Releases what BYTE_INIT took: the scratch, the SPI device and the bus. Safe
- * when BYTE_INIT never ran or failed partway. */
+ * to call when BYTE_INIT never ran. A BYTE_INIT that failed between
+ * spi_bus_initialize and spi_bus_add_device leaves the bus held, because the
+ * device handle is the only sentinel there is. */
 inline void u8g2Esp32SpiRelease(U8g2Esp32SpiContext* context) {
     if (context == nullptr) {
         return;
@@ -140,6 +150,7 @@ inline void u8g2Esp32SpiRelease(U8g2Esp32SpiContext* context) {
     }
 }
 
+/** Configures the control lines and serves u8g2's delay and reset requests. */
 inline uint8_t u8g2Esp32GpioAndDelayCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argInt, void* argPtr) {
     (void)argPtr;
     auto* context = static_cast<U8g2Esp32SpiContext*>(u8x8_GetUserPtr(u8x8));

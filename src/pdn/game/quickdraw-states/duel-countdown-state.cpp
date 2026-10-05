@@ -37,10 +37,8 @@ void DuelCountdown::onStateMounted(PDN* pdn) {
         matchManager->getButtonMasher(),
         matchManager, ButtonInteraction::CLICK);
 
-    // CLICK, matching the primary above: the masher scores 75ms per count, and
-    // PRESS now fires on every press-down rather than once per click sequence,
-    // so leaving it on the default made a five-tap burst worth five counts on
-    // this button and one on the other.
+    // CLICK on both buttons, so one tap scores one count on either. The masher
+    // adds BUTTON_MASHER_PENALTY_MS per count straight onto the reaction time.
     pdn->getSecondaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
         matchManager, ButtonInteraction::CLICK);

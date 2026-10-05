@@ -21,8 +21,9 @@ public:
 
 
     unsigned long milliseconds() override {
-        // esp_timer counts microseconds since boot; the truncating division is
-        // what makes this wrap at the same point a 32-bit millisecond count does.
+        // esp_timer counts microseconds since boot in 64 bits. The division only
+        // converts units; narrowing to 32 bits is what makes this wrap where a
+        // 32-bit millisecond count does.
         return static_cast<unsigned long>(esp_timer_get_time() / 1000);
     }
 };

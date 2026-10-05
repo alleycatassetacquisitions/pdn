@@ -81,6 +81,12 @@ public:
 
 private:
     void setDuty(int duty) {
+        // Full scale goes one past the 8-bit maximum, which LEDC reads as
+        // constant-high with no switching. analogWrite did the same, so without
+        // it max intensity would PWM at 255/256 and pulse low every millisecond.
+        if (duty >= 255) {
+            duty = 256;
+        }
         ledc_set_duty(LEDC_LOW_SPEED_MODE, HAPTICS_CHANNEL, duty);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, HAPTICS_CHANNEL);
     }

@@ -37,12 +37,11 @@ public:
         setup(&screen, U8G2_R0, u8g2Esp32SpiByteCallback, u8g2Esp32GpioAndDelayCallback);
         u8g2_SetUserPtr(&screen, &context);
         u8g2_InitDisplay(&screen);
-        u8g2_SetPowerSave(&screen, 0);  // begin() left the panel on
-        // Clears the panel's own GDDRAM, which powers up with garbage in it.
-        // ClearBuffer below only touches our RAM copy, so without this the
-        // garbage stays lit until the first render.
+        // Cleared before the panel comes on, so power-on GDDRAM garbage is never
+        // lit. ClearBuffer only touches our RAM copy, which is why both are here.
         u8g2_ClearDisplay(&screen);
         u8g2_ClearBuffer(&screen);
+        u8g2_SetPowerSave(&screen, 0);
         u8g2_SetContrast(&screen, DEFAULT_CONTRAST);
         u8g2_SetFont(&screen, u8g2_font_tenfatguys_tf);
         u8g2_SetFontMode(&screen, 1);
@@ -112,7 +111,6 @@ public:
     int getWidth() override { return 128; }
 
     Display* setGlyphMode(FontMode mode) override {
-        // The C API draws UTF8 through u8g2_DrawUTF8 regardless, so the
         switch (mode) {
             case FontMode::TEXT:
                 u8g2_SetFont(&screen, u8g2_font_tenfatguys_tr);

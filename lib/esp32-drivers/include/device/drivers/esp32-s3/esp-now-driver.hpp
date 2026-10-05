@@ -74,10 +74,21 @@ public:
         // HTTP driver takes the radio for an upload excursion and hands it back.
         wifi_mode_t currentMode;
         if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
-            esp_netif_init();
+            // Both are checked because esp_netif_create_default_wifi_sta below
+            // aborts through ESP_ERROR_CHECK rather than returning, so a failure
+            // here would panic on the boot path instead of leaving a dead radio.
             // Already-created is the normal case when something else got here
             // first, and is not an error.
-            esp_event_loop_create_default();
+            const esp_err_t netifErr = esp_netif_init();
+            const esp_err_t loopErr = esp_event_loop_create_default();
+            if (netifErr != ESP_OK && netifErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_netif_init failed: %s", esp_err_to_name(netifErr));
+                return;
+            }
+            if (loopErr != ESP_OK && loopErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_event_loop_create_default failed: %s", esp_err_to_name(loopErr));
+                return;
+            }
             wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
             esp_err_t initErr = esp_wifi_init(&config);
             if (initErr != ESP_OK) {
@@ -101,7 +112,6 @@ public:
         // ESP-NOW requires the WiFi radio to be active!
         esp_wifi_disconnect();
 
-        // Small delay to let WiFi stabilize after mode change
         // The radio is given a moment to settle between the mode change and the
         // channel pin. Carried over from the pre-IDF bring-up, which delayed the
         // same 100ms here; the readback below is what actually proves the pin.
