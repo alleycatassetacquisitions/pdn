@@ -8,6 +8,7 @@
 
 // New test headers
 #include "player-tests.hpp"
+#include "player-response-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
 #include "match-manager-tests.hpp"
@@ -634,6 +635,10 @@ TEST(QuickdrawStateGraph, registrationHandsOffFromWelcomeMessage) {
     registrationHandsOffFromWelcomeMessage();
 }
 
+TEST(QuickdrawStateGraph, registrationFetchUserDataHasExpectedTransitions) {
+    registrationFetchUserDataHasExpectedTransitions();
+}
+
 // ============================================
 // SERIAL TESTS
 // ============================================
@@ -648,6 +653,22 @@ TEST_F(SerialTestSuite, headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue) 
 
 TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
     whenHeadIsEmptyReadStringStillReturnsNextString();
+}
+
+// ============================================
+// PLAYER RESPONSE TESTS
+// ============================================
+
+TEST(PlayerResponse, parsesValidPayload) {
+    playerResponseParsesValidPayload();
+}
+
+TEST(PlayerResponse, rejectsMalformedJson) {
+    playerResponseRejectsMalformedJson();
+}
+
+TEST(PlayerResponse, rejectsErrorsArray) {
+    playerResponseRejectsErrorsArray();
 }
 
 // ============================================

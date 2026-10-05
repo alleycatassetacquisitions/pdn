@@ -71,6 +71,15 @@ void httpServerPutMatchesAccepts(MockHttpServerTestSuite* suite) {
     ASSERT_TRUE(response.find("success") != std::string::npos);
 }
 
+// Test: Health check endpoint returns ok
+void httpServerHealthCheckReturnsOk(MockHttpServerTestSuite* suite) {
+    std::string response;
+    int status = suite->server_->handleRequest("GET", "/health_check", "", response);
+
+    ASSERT_EQ(status, 200);
+    ASSERT_TRUE(response.find("ok") != std::string::npos);
+}
+
 // Test: Unknown endpoint returns 404
 void httpServerUnknownEndpointReturns404(MockHttpServerTestSuite* suite) {
     std::string response;

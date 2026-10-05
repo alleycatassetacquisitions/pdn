@@ -303,6 +303,23 @@ inline void quickdrawCrossAppEdgesAreAppTransitions() {
 // object, guarded by "the current state is WelcomeMessage and it wants
 // gameplay"; nothing checks a top-level app's own transition list, so it moved
 // onto WelcomeMessage, which was its only trigger.
+inline void registrationFetchUserDataHasExpectedTransitions() {
+    PlayerRegistrationApp* registration =
+        new PlayerRegistrationApp(nullptr, nullptr, nullptr, nullptr);
+    registration->populateStateMap();
+
+    State* fetchUserData = nullptr;
+    for (State* state : registration->getStateMap()) {
+        if (state->getStateId() == PlayerRegistrationStateId::FETCH_USER_DATA) {
+            fetchUserData = state;
+        }
+    }
+    ASSERT_NE(fetchUserData, nullptr);
+    ASSERT_EQ(fetchUserData->getTransitions().size(), 3u);
+
+    delete registration;
+}
+
 inline void registrationHandsOffFromWelcomeMessage() {
     QuickdrawAppsForTest apps;
 

@@ -56,13 +56,17 @@ public:
     void onStateDismounted(PDN* pdn) override;
     
 private:
-    enum class CallInProgress {
+    enum class ActiveRequest {
         NONE,
         USER_DATA_FETCH,
         HEALTH_CHECK,
         MATCHES_UPLOAD,
     };
-    CallInProgress callInProgress = CallInProgress::NONE;
+
+    void clearActiveRequest();
+    void onActiveRequestTimedOut();
+
+    ActiveRequest activeRequest = ActiveRequest::NONE;
 
     RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
@@ -70,14 +74,12 @@ private:
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     WirelessManager* wirelessManager;
-    bool isFetchingUserData = false;
-    bool isUploadingMatches = false;
 
     Player* player;
     SimpleTimer fetchTimer;
-    const int USER_DATA_FETCH_TIMEOUT = 10000;
-    const int HEALTH_CHECK_TIMEOUT = 10000;
-    const int MATCHES_UPLOAD_TIMEOUT = 10000;
+    static constexpr int USER_DATA_FETCH_TIMEOUT = 10000;
+    static constexpr int HEALTH_CHECK_TIMEOUT = 10000;
+    static constexpr int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 
 class ConfirmOfflineState : public TypedState<PDN> {

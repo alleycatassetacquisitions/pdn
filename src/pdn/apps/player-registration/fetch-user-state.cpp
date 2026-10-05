@@ -22,35 +22,58 @@ FetchUserDataState::~FetchUserDataState() {
     player = nullptr;
 }   
 
+void FetchUserDataState::clearActiveRequest() {
+    fetchTimer.invalidate();
+    activeRequest = ActiveRequest::NONE;
+}
+
+void FetchUserDataState::onActiveRequestTimedOut() {
+    switch (activeRequest) {
+        case ActiveRequest::USER_DATA_FETCH:
+            LOG_W(TAG, "User data fetch timer expired");
+            transitionToConfirmOfflineState = true;
+            break;
+        case ActiveRequest::HEALTH_CHECK:
+            LOG_W(TAG, "Health check timer expired");
+            transitionToPlayerRegistrationState = true;
+            break;
+        case ActiveRequest::MATCHES_UPLOAD:
+            LOG_W(TAG, "Matches upload timer expired");
+            transitionToPlayerRegistrationState = true;
+            break;
+        case ActiveRequest::NONE:
+            LOG_E(TAG, "No active request, but timer expired");
+            transitionToPlayerRegistrationState = true;
+            break;
+    }
+    clearActiveRequest();
+}
+
 void FetchUserDataState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting user data fetch");
     showLoadingGlyphs(pdn);
-    isFetchingUserData = true;
     
     LOG_I(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
 
-    if(player->getUserID() == TEST_BOUNTY_ID) {
+    if (player->getUserID() == TEST_BOUNTY_ID) {
         player->setIsHunter(false);
         player->setName("KO-NA-MI");
         player->setFaction("Bounty");
         transitionToWelcomeMessageState = true;
-        fetchTimer.invalidate();
-        isFetchingUserData = false;
-    } else if(player->getUserID() == TEST_HUNTER_ID) {
+        clearActiveRequest();
+    } else if (player->getUserID() == TEST_HUNTER_ID) {
         player->setIsHunter(true);
         player->setName("Nesting Bot");
         player->setFaction("Hunter");
         transitionToWelcomeMessageState = true;
-        fetchTimer.invalidate();
-        isFetchingUserData = false;
-    } else if(player->getUserID() == BROADCAST_WIFI) { 
+        clearActiveRequest();
+    } else if (player->getUserID() == BROADCAST_WIFI) { 
         remoteDebugManager->BroadcastDebugPacket();
         transitionToPlayerRegistrationState = true;
-        fetchTimer.invalidate();
-        isFetchingUserData = false;
-    } else if(player->getUserID() ==  HEALTH_CHECK) {
+        clearActiveRequest();
+    } else if (player->getUserID() == HEALTH_CHECK) {
         healthCheck();
-    } else if(matchManager->getStoredMatchCount() > 0) {
+    } else if (matchManager->getStoredMatchCount() > 0) {
         uploadMatches();
     } else {
         fetchUserData();
@@ -60,11 +83,10 @@ void FetchUserDataState::onStateMounted(PDN* pdn) {
 void FetchUserDataState::onStateLoop(PDN* pdn) {
     fetchTimer.updateTime();
 
-    if(fetchTimer.expired()) {
-        LOG_W(TAG, "User data fetch timer expired");
-        transitionToConfirmOfflineState = true;
-    } else if(fetchTimer.isRunning()) {
-        if(SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
+    if (fetchTimer.expired()) {
+        onActiveRequestTimedOut();
+    } else if (fetchTimer.isRunning()) {
+        if (SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
             showLoadingGlyphs(pdn);
         }
     }
@@ -73,16 +95,14 @@ void FetchUserDataState::onStateLoop(PDN* pdn) {
 void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
-    isFetchingUserData = false;
-    isUploadingMatches = false;
+    clearActiveRequest();
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
     transitionToPlayerRegistrationState = false;
-    fetchTimer.invalidate();
 }   
 
 void FetchUserDataState::uploadMatches() {
-    callInProgress = CallInProgress::MATCHES_UPLOAD;
+    activeRequest = ActiveRequest::MATCHES_UPLOAD;
     fetchTimer.setTimer(MATCHES_UPLOAD_TIMEOUT);
     QuickdrawRequests::updateMatches(
         wirelessManager,
@@ -90,21 +110,20 @@ void FetchUserDataState::uploadMatches() {
         [this](const std::string& jsonResponse) {
             LOG_I(TAG, "Successfully uploaded matches: %s", jsonResponse.c_str());
             matchManager->clearStorage();
-            fetchTimer.invalidate();
+            clearActiveRequest();
             fetchUserData();
         },
         [this](const WirelessErrorInfo& error) {
             LOG_E(TAG, "Failed to upload matches: %s (code: %d)", 
                 error.message.c_str(), static_cast<int>(error.code));
-            fetchTimer.invalidate();
+            clearActiveRequest();
             fetchUserData();
         }
     );
 }
 
 void FetchUserDataState::fetchUserData() {  
-    callInProgress = CallInProgress::USER_DATA_FETCH;
-    isFetchingUserData = true;
+    activeRequest = ActiveRequest::USER_DATA_FETCH;
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT);
     QuickdrawRequests::getPlayer(
         wirelessManager,
@@ -118,16 +137,16 @@ void FetchUserDataState::fetchUserData() {
             player->setAllegiance(response.allegiance);
             player->setFaction(response.faction.c_str());
 
-            fetchTimer.invalidate();
+            clearActiveRequest();
             transitionToWelcomeMessageState = true;
         },
         [this](const WirelessErrorInfo& error) {
             LOG_E(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
                 error.message.c_str(), static_cast<int>(error.code), error.willRetry);
-            if(!error.willRetry) {
-                isFetchingUserData = false;
+            if (!error.willRetry) {
                 player->setName("Unknown");
                 player->setAllegiance("None");
+                clearActiveRequest();
                 transitionToConfirmOfflineState = true;
             }
         }
@@ -135,16 +154,18 @@ void FetchUserDataState::fetchUserData() {
 }
 
 void FetchUserDataState::healthCheck() {
-    callInProgress = CallInProgress::HEALTH_CHECK;
+    activeRequest = ActiveRequest::HEALTH_CHECK;
     fetchTimer.setTimer(HEALTH_CHECK_TIMEOUT);
     QuickdrawRequests::healthCheck(
         wirelessManager,
         [this](const std::string& success) {
-            transitionToPlayerRegistrationState = true;
             LOG_I(TAG, "HEALTH CHECK SUCCESS");
+            clearActiveRequest();
+            transitionToPlayerRegistrationState = true;
         },
         [this](const WirelessErrorInfo& error) {
             LOG_E(TAG, "HEALTH CHECK ERROR: %s", error.message.c_str());
+            clearActiveRequest();
             transitionToPlayerRegistrationState = true;
         }
     );
