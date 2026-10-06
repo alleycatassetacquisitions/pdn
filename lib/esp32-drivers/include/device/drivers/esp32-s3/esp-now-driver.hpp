@@ -72,13 +72,11 @@ public:
     }
 
     void connect() override {
-        // WiFi.mode(WIFI_STA) brought the radio up and, on the way, created
-        // default AP and STA netifs. ESP-NOW itself needs no netif, but the STA
-        // netif has to exist before esp_wifi_start(): WIFI_EVENT_STA_START is
-        // posted once per boot and esp_netif_start() runs only off that event,
-        // so a netif created afterwards never starts, never gets an MTU, and
-        // DHCP refuses it. The guard is because this is not the only owner: the
-        // HTTP driver takes the radio for an upload excursion and hands it back.
+        // The STA netif must exist before esp_wifi_start(): WIFI_EVENT_STA_START
+        // is posted once per boot and esp_netif_start() runs only off that event,
+        // so a netif created later never starts, never gets an MTU, and DHCP
+        // refuses it. ESP-NOW needs no netif; the HTTP driver's WiFi excursion
+        // does, and either may arrive here first, hence the guards.
         wifi_mode_t currentMode;
         if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
             // Both are checked because esp_netif_create_default_wifi_sta below
@@ -115,13 +113,12 @@ public:
         }
         esp_wifi_start();
 
-        // Disconnect from any AP but keep WiFi radio ON.
-        // ESP-NOW requires the WiFi radio to be active!
+        // Drops the AP association without stopping the radio, which ESP-NOW needs
+        // left running.
         esp_wifi_disconnect();
 
-        // The radio is given a moment to settle between the mode change and the
-        // channel pin. Carried over from the pre-IDF bring-up, which delayed the
-        // same 100ms here; the readback below is what actually proves the pin.
+        // Settle between the mode change and the channel pin. The readback below
+        // is what actually proves the pin took.
         static constexpr uint32_t WIFI_SETTLE_MS = 100;
         vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
         
