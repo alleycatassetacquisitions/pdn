@@ -58,6 +58,11 @@ public:
             return -1;
         }
 
+        // Every interaction is registered with the component whether or not the
+        // game has a handler for it, and LONG_PRESS in particular must stay even
+        // though nothing registers one: onButtonEvent reads BUTTON_LONG_PRESS_START
+        // to know a long press is running, and without it the release that ends a
+        // long press would be dispatched as a click.
         for (int interaction = 0; interaction < INTERACTION_COUNT; interaction++) {
             button_event_t event = eventFor(static_cast<ButtonInteraction>(interaction));
             // BUTTON_MULTIPLE_CLICK is the one event the component refuses to
