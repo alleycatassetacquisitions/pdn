@@ -18,6 +18,13 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "esp32-driver-constants.hpp"
 
+// Both the cluster send buffers and the receive reassembly buffer are allocated
+// with MALLOC_CAP_SPIRAM. Without PSRAM those return nullptr and every multi-packet
+// transfer fails its allocation check instead of failing to build.
+#if !defined(CONFIG_SPIRAM)
+#error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
+#endif
+
 #define DEBUG_PRINT_ESP_NOW 0
 
 //Change to 1 to enable tracking rssi for peers
