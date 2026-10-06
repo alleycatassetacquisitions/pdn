@@ -15,12 +15,12 @@
  * SPI and GPIO backing for u8g2 on the ESP32-S3.
  *
  * Upstream u8g2 registers itself as an ESP-IDF component but ships no platform
- * HAL: supplying these two callbacks was the Arduino library's job, and
- * u8g2_Setup_*() takes them directly. They are deliberately ours rather than a
- * third party's, because the bus clock and SPI mode are exactly what a panel
- * gets tuned on, and both are read from u8g2's own display_info so each panel
- * keeps the values its driver declares. Reset timing is not read here; u8g2's
- * panel driver asks for it through U8X8_MSG_DELAY_MILLI and this HAL obeys.
+ * HAL, and u8g2_Setup_*() takes these two callbacks directly. They are ours
+ * rather than a third party's because the bus clock and SPI mode are exactly
+ * what a panel gets tuned on, and both are read from u8g2's own display_info so
+ * each panel keeps the values its driver declares. Reset timing is not read
+ * here; u8g2's panel driver asks for it through U8X8_MSG_DELAY_MILLI and this
+ * HAL obeys.
  */
 struct U8g2Esp32SpiPins {
     gpio_num_t sclk;

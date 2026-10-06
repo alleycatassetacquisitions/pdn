@@ -17,9 +17,9 @@
  * One serial jack on a UART peripheral.
  *
  * The three jacks below differ only in which UART they sit on, so the behaviour
- * lives here once. The methods reproduce what Arduino's HardwareSerial did,
- * because SerialManager reads this driver through Stream-shaped calls: it peeks
- * for STRING_START, then takes the frame with readStringUntil.
+ * lives here once. The methods are Stream-shaped because SerialManager reads
+ * this driver that way: it peeks for STRING_START, then takes the frame with
+ * readStringUntil.
  */
 class Esp32s3SerialPort : public SerialDriverInterface {
 public:
@@ -57,13 +57,11 @@ public:
         config.parity = UART_PARITY_DISABLE;
         config.stop_bits = UART_STOP_BITS_1;
         config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-        // APB, where Arduino picked XTAL for every SoC that supports it. Both
-        // divide to 19199.4 baud at 19200, and the reason Arduino gave was that a
-        // light-sleep wake does not restore the rate -- which nothing here enters.
+        // Resolves to APB. XTAL also divides to 19199.4 baud at 19200; it matters
+        // only across a light-sleep wake, which nothing here enters.
         config.source_clk = UART_SCLK_DEFAULT;
 
-        // 256-byte receive ring and no transmit ring, which is what
-        // HardwareSerial defaulted to, so writes block the same way they did.
+        // 256-byte receive ring, no transmit ring, so writes block until drained.
         if (uart_driver_install(port, RX_BUFFER_BYTES, 0, 0, nullptr, 0) != ESP_OK) {
             LOG_E(logTag, "uart_driver_install failed");
             return -1;

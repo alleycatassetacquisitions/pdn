@@ -179,25 +179,24 @@ public:
 
 private:
     /**
-     * Station states this driver distinguishes. Arduino's wl_status_t was a
-     * polled value backed by its own event handlers; IDF only delivers events,
-     * so the equivalent is tracked here.
+     * Station states this driver distinguishes. IDF only delivers these as
+     * events, so the current state is tracked here for callers that poll.
      */
     enum class StationStatus { DISCONNECTED, NO_SSID_AVAIL, CONNECT_FAILED, CONNECTION_LOST, CONNECTED };
 
     // Written from the WiFi event task and read from exec() on the main loop.
     static inline std::atomic<StationStatus> stationStatus{StationStatus::DISCONNECTED};
     static inline std::atomic<uint32_t> stationIp{0};
-    // Arduino's setAutoReconnect(true) retried on its own. IDF does not, so the
-    // disconnect handler consults this and re-dials.
+    // IDF does not retry a dropped association, so the disconnect handler
+    // consults this and re-dials.
     static inline std::atomic<bool> autoReconnect{false};
     static inline bool wifiStackReady = false;
 
     static void onWifiEvent(void* arg, esp_event_base_t base, int32_t id, void* data) {
         (void)arg;
         if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-            // Arduino reported WL_CONNECTED only once an IP existed, not on
-            // association, so this is the event that means connected.
+            // Connected means an IP exists, not merely associated, so this is the
+            // event that counts.
             auto* event = static_cast<ip_event_got_ip_t*>(data);
             stationIp.store(event->ip_info.ip.addr);
             stationStatus.store(StationStatus::CONNECTED);

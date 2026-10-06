@@ -8,8 +8,8 @@
  *
  * The SSD1306 and SSD1309 subclasses below differ only in which u8g2 setup
  * function describes the panel, so the drawing lives here once. Calls are the
- * C API rather than the U8G2 C++ class: upstream u8g2 registers only csrc/ as
- * an ESP-IDF component, and its C++ wrapper binds to Arduino HAL symbols.
+ * C API rather than the U8G2 C++ class, because upstream u8g2 registers only
+ * csrc/ as an ESP-IDF component and the C++ wrapper is not in it.
  */
 class U8g2DisplayDriver : public DisplayDriverInterface {
 public:
@@ -170,8 +170,8 @@ public:
     }
 
 private:
-    // The Arduino _4W_HW_SPI constructors took only cs/dc/reset and picked up
-    // the clock and data lines from the board variant's SPI defaults.
+    // Board wiring. Only cs/dc/reset vary per panel, so those are constructor
+    // arguments and these are not.
     static constexpr uint8_t DISPLAY_SCLK_PIN = 12;
     static constexpr uint8_t DISPLAY_MOSI_PIN = 11;
     static constexpr spi_host_device_t DISPLAY_SPI_HOST = SPI2_HOST;

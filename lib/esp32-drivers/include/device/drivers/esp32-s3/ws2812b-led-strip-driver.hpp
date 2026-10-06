@@ -9,19 +9,17 @@
 #include "utils/simple-timer.hpp"
 
 /**
- * One WS2812B pixel, carrying FastLED's colour arithmetic rather than an
- * approximation of it.
+ * One WS2812B pixel and its fixed-point colour arithmetic.
  *
- * Each is the formula FastLED compiled with FASTLED_SCALE8_FIXED = 1, its
- * default. Rounding differently shifts every dimmed colour, so re-tune the
- * animations on hardware if these change.
+ * The rounding in these formulas is exact, not incidental: changing it shifts
+ * every dimmed colour, so the animations need re-tuning on hardware if it does.
  */
 struct LedPixel {
     uint8_t red = 0;
     uint8_t green = 0;
     uint8_t blue = 0;
 
-    /** FastLED's nscale8x3: the +1 makes a scale of 255 an exact identity. */
+    /** Scales all three channels. The +1 makes a scale of 255 an exact identity. */
     void scale(uint8_t amount) {
         uint16_t fixed = static_cast<uint16_t>(amount) + 1;
         red = static_cast<uint8_t>((static_cast<uint16_t>(red) * fixed) >> 8);
@@ -46,10 +44,8 @@ private:
 /**
  * Two WS2812B strips over RMT.
  *
- * Replaces FastLED, which owned both the wire protocol and the colour maths.
- * The protocol is now led_strip's; the maths is LedPixel's above. Pins are
- * constructor arguments rather than template parameters, which FastLED needed
- * them to be.
+ * The wire protocol is led_strip's, the colour arithmetic is LedPixel's above.
+ * Pins are constructor arguments, so one class serves both strips.
  */
 class WS2812BLedStripDriver : public LightDriverInterface {
 public:
@@ -122,9 +118,7 @@ public:
         if (pixel == nullptr) {
             return LEDState::SingleLEDState();
         }
-        // Nothing calls this. The FastLED version dropped blue, because
-        // LEDColor's parameters default and it passed only two, so the real
-        // blue landed in brightness instead.
+        // Nothing calls this.
         return LEDState::SingleLEDState(LEDColor(pixel->red, pixel->green, pixel->blue), 255);
     }
 
@@ -164,7 +158,7 @@ private:
         strip.strip_gpio_num = pin;
         strip.max_leds = count;
         strip.led_model = LED_MODEL_WS2812;
-        // FastLED's addLeds<WS2812B, PIN, GRB> declared the wire order.
+        // WS2812B takes green before red on the wire.
         strip.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
 
         led_strip_rmt_config_t rmt = {};
@@ -183,12 +177,9 @@ private:
         }
         for (uint8_t i = 0; i < count; i++) {
             LedPixel pixel = lights[i];
-            // FastLED applied its global brightness at show() rather than into
-            // the buffer, so the same scaling happens here on the way out. It
-            // is an identity in practice: nothing calls setGlobalBrightness and
-            // FastLED's own default was 255. Losing FastLED's binary dithering
-            // costs nothing for a different reason: show() disabled it on every
-            // frame below 100 FPS and this ran at 60.
+            // Scaled on the way out rather than into the buffer, so a brightness
+            // change does not degrade the stored colours. Nothing calls
+            // setGlobalBrightness, so this is an identity today.
             if (globalBrightness != 255) {
                 pixel.scale(globalBrightness);
             }
