@@ -18,9 +18,9 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "esp32-driver-constants.hpp"
 
-// Both the cluster send buffers and the receive reassembly buffer are allocated
-// with MALLOC_CAP_SPIRAM. Without PSRAM those return nullptr and every multi-packet
-// transfer fails its allocation check instead of failing to build.
+// sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, cluster size 1
+// included, so without PSRAM every send fails its allocation check at runtime
+// instead of failing to build.
 #if !defined(CONFIG_SPIRAM)
 #error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
 #endif
@@ -72,11 +72,12 @@ public:
     }
 
     void connect() override {
-        // The STA netif must exist before esp_wifi_start(): WIFI_EVENT_STA_START
-        // is posted once per boot and esp_netif_start() runs only off that event,
-        // so a netif created later never starts, never gets an MTU, and DHCP
-        // refuses it. ESP-NOW needs no netif; the HTTP driver's WiFi excursion
-        // does, and either may arrive here first, hence the guards.
+        // The STA netif must exist before esp_wifi_start(): esp_netif_start() runs
+        // only off WIFI_EVENT_STA_START, so a netif created after that event has
+        // been posted never starts, never gets an MTU, and DHCP refuses it.
+        // ESP-NOW needs no netif; the HTTP driver's WiFi excursion does. This
+        // runs first on every boot, but connect() re-runs on each return to
+        // ESP-NOW mode, so the steps are guarded rather than assumed-once.
         wifi_mode_t currentMode;
         if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
             // Both are checked because esp_netif_create_default_wifi_sta below
@@ -117,8 +118,8 @@ public:
         // left running.
         esp_wifi_disconnect();
 
-        // Settle between the mode change and the channel pin. The readback below
-        // is what actually proves the pin took.
+        // Settle between the mode change and the channel pin: esp_wifi_set_channel
+        // fails while a connect or scan is in flight.
         static constexpr uint32_t WIFI_SETTLE_MS = 100;
         vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
         
@@ -127,12 +128,15 @@ public:
         if (err != ESP_OK) {
             LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
         }
-        
-        // Verify the channel was set correctly
+
         uint8_t primary_channel;
         wifi_second_chan_t secondary_channel;
         esp_wifi_get_channel(&primary_channel, &secondary_channel);
-        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
+        if (primary_channel != ESPNOW_CHANNEL) {
+            LOG_E("ENC", "Channel pin did not take: on %d, wanted %d", primary_channel, ESPNOW_CHANNEL);
+        } else {
+            LOG_I("ENC", "WiFi channel set to: %d", primary_channel);
+        }
 
         initializeEspNow();
         peerCommsState = PeerCommsState::CONNECTED;

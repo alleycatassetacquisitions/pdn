@@ -4,6 +4,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 
 #include <button_gpio.h>
 #include <sdkconfig.h>
@@ -105,7 +106,10 @@ public:
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             // Counted rather than flagged: the masher scores one penalty per tap,
             // so two taps inside one loop pass have to dispatch twice. Drained in
-            // enum order, which is the order the component raises them in.
+            // enum order, not arrival order -- a double tap raises PRESS_DOWN,
+            // PRESS_UP, PRESS_DOWN, PRESS_UP, DOUBLE_CLICK but dispatches both
+            // PRESSes, then both CLICKs. Nothing registers two interactions on one
+            // button today, which is the only reason that is invisible.
             uint8_t fired = pending[i].exchange(0);
             for (; fired > 0; fired--) {
                 const Slot& slot = slots[i];
@@ -192,7 +196,14 @@ private:
 
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             if (eventFor(static_cast<ButtonInteraction>(i)) == event) {
-                driver->pending[i].fetch_add(1);
+                // Saturating compare-exchange, not a load/store pair: exec() drains
+                // this with exchange(0) from the main loop, so a plain store could
+                // resurrect counts it had already dispatched. Saturating at all
+                // because the counter is 8-bit and wrapping would report zero.
+                uint8_t queued = driver->pending[i].load();
+                while (queued < UINT8_MAX &&
+                       !driver->pending[i].compare_exchange_weak(queued, queued + 1)) {
+                }
             }
         }
     }

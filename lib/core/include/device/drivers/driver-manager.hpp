@@ -14,20 +14,19 @@ class DriverManager {
 
     ~DriverManager() = default;
 
-    // Every driver is given its chance regardless of what failed before it.
-    // driverConfig is a map, so the order is its keys' -- alphabetical, chosen by
-    // nobody -- and returning early made one peripheral's failure silently skip
-    // every driver whose name sorts after it.
-    int initialize() {
-        int failures = 0;
+    /**
+     * Initializes every registered driver, logging the ones that fail.
+     *
+     * driverConfig is a map, so init order is alphabetical. Every driver is given
+     * its chance regardless of what failed before it: a dead peripheral must not
+     * silently take its neighbours with it.
+     */
+    void initialize() {
         for(auto& driver : driverConfig) {
             if(driver.second->initialize() != 0) {
                 LOG_E("DRV", "%s failed to initialize", driver.first.c_str());
-                failures++;
             }
         }
-
-        return failures;
     }
 
     void execDrivers() {
