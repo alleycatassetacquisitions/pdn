@@ -284,8 +284,11 @@ private:
         ensureWifiStack();
         autoReconnect.store(true);
         esp_wifi_disconnect();
-        // WiFi.channel(6) before begin. The AP's own channel wins once
-        // associated; this only pins where the radio sits until then.
+        // Not a port of anything: WiFi.channel(uint8_t) bound the scan-result
+        // getter, so the old build never pinned the channel here at all. The AP's
+        // own channel wins once associated, so this only decides where the radio
+        // sits while the association is in flight -- which is the window ESP-NOW
+        // peers are still trying to reach it on.
         esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
         wifi_config_t config = {};

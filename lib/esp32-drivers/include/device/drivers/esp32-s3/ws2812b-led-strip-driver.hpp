@@ -234,7 +234,9 @@ private:
         for (uint8_t i = 0; i < count; i++) {
             LedPixel pixel = lights[i];
             // Scaled on the way out rather than into the buffer, so a brightness
-            // change does not degrade the stored colours.
+            // change does not degrade the stored colours. An identity in practice:
+            // LightManager::setGlobalBrightness is the only route here and nothing
+            // calls it.
             if (globalBrightness != 255) {
                 pixel.scale(globalBrightness);
             }

@@ -38,9 +38,10 @@ CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 # Arduino ticks at 1kHz, IDF at 100Hz.
 CONFIG_FREERTOS_HZ=1000
 
-# Arduino ran loop() on core 1 at priority 1 with an 8KB stack. IDF's main task
-# is the same task, so these three lines are the whole shape and app_main() just
-# calls setup() then loops. ESP_TASK_MAIN_PRIO is already priority 1.
+# Arduino created a separate loopTask for loop() -- core 1, priority 1, 8KB --
+# while its own main task sat on CPU0 with 4KB. These two lines give IDF's main
+# task loopTask's shape instead, so app_main() can just call setup() and loop.
+# ESP_TASK_MAIN_PRIO is already priority 1.
 CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
@@ -50,11 +51,11 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # watchdog never subscribed the main task, only the idle tasks.
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
 
-# Arduino ran this board at 240MHz with 80MHz PSRAM. board_build.f_cpu is an
-# Arduino key and does not reach sdkconfig on the component path, so without
-# these IDF's 160MHz/40MHz defaults apply and every loop-rate-sensitive path --
-# the serial jack drain, the 20ms RDC task, the loop latency that samples a duel
-# press -- runs a third slower than the build these numbers were measured on.
+# Arduino ran this board at 240MHz with 80MHz PSRAM, set in its own prebuilt
+# sdkconfig rather than by any platformio.ini key. Without these two lines IDF's
+# 160MHz/40MHz defaults apply and every loop-rate-sensitive path -- the serial
+# jack drain, the RDC poll, the reaction time a duel measures -- runs a third
+# slower than the build those numbers were measured on.
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_SPIRAM_SPEED_80M=y
 

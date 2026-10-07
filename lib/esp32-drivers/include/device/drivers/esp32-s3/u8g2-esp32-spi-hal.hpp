@@ -46,12 +46,10 @@ constexpr size_t U8G2_SPI_SCRATCH_BYTES = 256;
 /**
  * Moves bytes to the panel and drives DC and CS around them.
  *
- * The bus is opened with DMA, so every transfer source has to be DMA-capable.
- * u8g2 hands over whichever buffer it has -- its tile buffer is a file static,
- * but command sequences come from .rodata -- so the bytes are copied through a
- * known-DMA-capable scratch instead of being classified at each call site. With
- * CONFIG_SPIRAM_USE_MALLOC enabled, where an allocation lands depends on its
- * size, and a transfer from PSRAM would fail rather than merely be slow.
+ * u8g2 hands over whichever buffer it has, and command sequences come from
+ * .rodata, which is flash-mapped and cannot be a DMA source. The driver would
+ * bounce such a buffer itself, allocating per transfer; the bytes go through one
+ * long-lived scratch instead so the per-frame path never allocates.
  */
 inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argInt, void* argPtr) {
     auto* context = static_cast<U8g2Esp32SpiContext*>(u8x8_GetUserPtr(u8x8));
@@ -65,20 +63,18 @@ inline uint8_t u8g2Esp32SpiByteCallback(u8x8_t* u8x8, uint8_t msg, uint8_t argIn
                 LOG_E(U8G2_HAL_TAG, "BYTE_SEND with no scratch; BYTE_INIT must have failed");
                 return 0;
             }
-            const auto* source = static_cast<const uint8_t*>(argPtr);
-            size_t remaining = argInt;
-            while (remaining > 0) {
-                size_t chunk = remaining < U8G2_SPI_SCRATCH_BYTES ? remaining : U8G2_SPI_SCRATCH_BYTES;
-                std::memcpy(context->dmaScratch, source, chunk);
-                spi_transaction_t transaction = {};
-                transaction.length = chunk * 8;
-                transaction.tx_buffer = context->dmaScratch;
-                if (spi_device_polling_transmit(context->device, &transaction) != ESP_OK) {
-                    LOG_E(U8G2_HAL_TAG, "polling transmit of %u bytes failed", (unsigned)chunk);
-                    return 0;
-                }
-                source += chunk;
-                remaining -= chunk;
+            // One transfer, never a loop: argInt is a uint8_t, so a single
+            // BYTE_SEND is at most 255 bytes against a 256-byte scratch.
+            if (argInt == 0) {
+                break;
+            }
+            std::memcpy(context->dmaScratch, argPtr, argInt);
+            spi_transaction_t transaction = {};
+            transaction.length = static_cast<size_t>(argInt) * 8;
+            transaction.tx_buffer = context->dmaScratch;
+            if (spi_device_polling_transmit(context->device, &transaction) != ESP_OK) {
+                LOG_E(U8G2_HAL_TAG, "polling transmit of %u bytes failed", (unsigned)argInt);
+                return 0;
             }
             break;
         }

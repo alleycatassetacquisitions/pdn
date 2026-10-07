@@ -16,7 +16,7 @@
 /**
  * One serial jack on a UART peripheral.
  *
- * The three jacks below differ only in which UART they sit on, so the behaviour
+ * The three jacks below differ only in which UART and which role, so the behaviour
  * lives here once. The methods are Stream-shaped because SerialManager reads
  * this driver that way: it peeks for STRING_START, then takes the frame with
  * readStringUntil.
@@ -57,8 +57,8 @@ public:
         config.parity = UART_PARITY_DISABLE;
         config.stop_bits = UART_STOP_BITS_1;
         config.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-        // Resolves to APB. XTAL also divides to 19199.4 baud at 19200; it matters
-        // only across a light-sleep wake, which nothing here enters.
+        // Resolves to APB. Either clock divides to within a baud of 19200, so the
+        // choice matters only across a light-sleep wake, which nothing here enters.
         config.source_clk = UART_SCLK_DEFAULT;
 
         // 256-byte receive ring, no transmit ring, so writes block until drained.

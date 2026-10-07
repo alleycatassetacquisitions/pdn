@@ -34,9 +34,10 @@ public:
     }
 
     int initialize() override {
-        // nvs_flash_init() is the platform's job, in main before any driver:
-        // the radio needs NVS too, and whichever of the two initialised first
-        // would otherwise decide whether the other worked.
+        // nvs_flash_init() is the platform's job, in main before any driver. It
+        // is idempotent, so the cost of calling it twice is nil; the reason it
+        // belongs upstairs is that the radio needs NVS too and neither driver
+        // owns it.
         for (auto& entry : namespaceHandles) {
             if (nvs_open(entry.first.c_str(), NVS_READWRITE, &entry.second) != ESP_OK) {
                 LOG_E(name.c_str(), "nvs_open failed for namespace %s", entry.first.c_str());

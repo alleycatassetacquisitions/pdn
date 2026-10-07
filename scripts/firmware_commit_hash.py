@@ -22,12 +22,11 @@ def readCommitHash():
 def invalidateStaleSdkconfig():
     # sdkconfig.defaults only seeds a per-env sdkconfig that does not exist yet;
     # afterwards kconfgen layers the generated file back over defaults, so editing
-    # defaults changes nothing and reports nothing. Nor does the edit prompt a
-    # reconfigure: kconfig.cmake puts CMAKE_CONFIGURE_DEPENDS on the generated
-    # sdkconfig, its header and confgen.py, and not on defaults. Deleting the
-    # generated file is the only lever, since board_build.esp-idf.sdkconfig_path
-    # is read through os.path.expandvars and so can never resolve $BUILD_DIR to
-    # put it somewhere disposable.
+    # defaults changes nothing and reports nothing. PlatformIO does notice the edit
+    # and reconfigures, but a reconfigure alone re-runs the same layering, so
+    # deleting the generated file is the only lever. It cannot be moved somewhere
+    # disposable either: board_build.esp-idf.sdkconfig_path is read through
+    # os.path.expandvars, which never resolves $BUILD_DIR.
     #
     # Keyed on a hash of defaults rather than its mtime: a defaults file restored
     # with its timestamp preserved (cp -p, tar extract) is older than the generated

@@ -19,9 +19,10 @@ public:
     }
 
     int initialize() override {
-        // 8-bit at 1kHz. These two are a calibration against the physical motor,
-        // not an arbitrary choice: changing either changes how every haptic cue
-        // feels, so re-tune on hardware rather than on a spec sheet.
+        // 8-bit at 1kHz, which is what analogWrite used and therefore what every
+        // haptic cue was tuned against. Not a motor calibration -- they were its
+        // defaults -- but changing either still changes how the cues feel, so
+        // re-tune on hardware rather than on a spec sheet.
         ledc_timer_config_t timer = {};
         timer.speed_mode = LEDC_LOW_SPEED_MODE;
         timer.duty_resolution = LEDC_TIMER_8_BIT;

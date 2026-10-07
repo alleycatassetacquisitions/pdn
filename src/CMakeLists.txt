@@ -20,8 +20,8 @@ endif()
 # requirements, and these sources reach past them: esp_core_dump_* for the crash
 # logger, nvs for the preferences driver, esp_wifi for ESP-NOW, esp_http_client
 # and esp_netif for uploads, and driver for UART/LEDC/RMT. The three managed
-# components are injected as private requirements by the component manager, so
-# they are deliberately not listed here.
+# components are injected by the component manager, so they are deliberately not
+# listed here.
 idf_component_register(
     SRCS ${device_sources}
     INCLUDE_DIRS "." "${PDN_DEVICE}"

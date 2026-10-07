@@ -6,7 +6,7 @@
 /**
  * A 128x64 monochrome panel driven through u8g2 over 4-wire SPI.
  *
- * The SSD1306 and SSD1309 subclasses below differ only in which u8g2 setup
+ * The SSD1306 and SSD1309 subclasses, in their own headers, differ only in which u8g2 setup
  * function describes the panel, so the drawing lives here once. Calls are the
  * C API rather than the U8G2 C++ class, because upstream u8g2 registers only
  * csrc/ as an ESP-IDF component and the C++ wrapper is not in it.

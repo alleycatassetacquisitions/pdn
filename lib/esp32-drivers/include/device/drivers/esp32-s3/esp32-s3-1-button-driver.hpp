@@ -122,11 +122,13 @@ public:
         }
     }
 
-    /** True only while the button is still held past the long-press threshold,
-     * Read from the current event rather than from a
-     * duration: the component does not reset its tick
-     * counter when a long press is released, so a duration alone keeps reporting
-     * the press that already ended. */
+    /**
+     * True only while the button is still held past the long-press threshold.
+     *
+     * Read from the current event rather than from a duration: the component does
+     * not reset its tick counter when a long press is released, so a duration
+     * alone keeps reporting the press that already ended.
+     */
     bool isLongPressed() override {
         if (handle == nullptr) {
             return false;
