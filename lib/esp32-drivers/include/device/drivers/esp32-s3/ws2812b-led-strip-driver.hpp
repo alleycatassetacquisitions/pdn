@@ -2,7 +2,9 @@
 
 #include <cstdint>
 
-#include <led_strip.h>
+#include <driver/rmt_tx.h>
+#include <driver/rmt_encoder.h>
+#include <esp_err.h>
 
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/logger.hpp"
@@ -42,9 +44,17 @@ private:
 };
 
 /**
- * Two WS2812B strips over RMT.
+ * Two WS2812B strips on IDF's RMT transmitter.
  *
- * The wire protocol is led_strip's, the colour arithmetic is LedPixel's above.
+ * rmt_transmit queues a descriptor and returns, so a frame costs the main loop
+ * the encode and nothing else; the clock-out overlaps the next ~16ms of game
+ * logic. led_strip would do the same work but ends its refresh in
+ * rmt_tx_wait_all_done(-1), which blocks for the whole frame.
+ *
+ * No end-of-frame reset symbol is encoded. WS2812B latches on the line sitting
+ * low, and eot_level leaves it there between frames, so the inter-frame gap the
+ * frame timer already enforces is ~16ms against a 280us requirement.
+ *
  * Pins are constructor arguments, so one class serves both strips.
  */
 class WS2812BLedStripDriver : public LightDriverInterface {
@@ -62,25 +72,20 @@ public:
     }
 
     ~WS2812BLedStripDriver() override {
+        closeStrip(displayStrip);
+        closeStrip(gripStrip);
         delete[] displayLights;
         delete[] gripLights;
-        if (displayStrip != nullptr) {
-            led_strip_del(displayStrip);
-        }
-        if (gripStrip != nullptr) {
-            led_strip_del(gripStrip);
-        }
     }
 
     int initialize() override {
-        if (!openStrip(displayPin, numDisplayLights, &displayStrip)) {
-            return -1;
-        }
-        if (!openStrip(gripPin, numGripLights, &gripStrip)) {
-            return -1;
-        }
+        // Both strips are attempted and the frame timer is armed either way:
+        // pushStrip skips a null handle, so one strip failing to open must not
+        // leave the other dark by never starting the timer that drives exec().
+        const bool displayOpen = openStrip(displayPin, numDisplayLights, displayStrip);
+        const bool gripOpen = openStrip(gripPin, numGripLights, gripStrip);
         setFPS(DEFAULT_FPS);
-        return 0;
+        return (displayOpen && gripOpen) ? 0 : -1;
     }
 
     void exec() override {
@@ -153,39 +158,103 @@ public:
     }
 
 private:
-    bool openStrip(uint8_t pin, uint8_t count, led_strip_handle_t* out) {
-        led_strip_config_t strip = {};
-        strip.strip_gpio_num = pin;
-        strip.max_leds = count;
-        strip.led_model = LED_MODEL_WS2812;
-        // WS2812B takes green before red on the wire.
-        strip.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
+    /** One strip: its RMT channel, its encoder, and the GRB bytes in flight. */
+    struct RmtStrip {
+        rmt_channel_handle_t channel = nullptr;
+        rmt_encoder_handle_t encoder = nullptr;
+        uint8_t* grb = nullptr;
+        uint8_t count = 0;
+        bool inFlight = false;
+    };
 
-        led_strip_rmt_config_t rmt = {};
-        rmt.resolution_hz = RMT_RESOLUTION_HZ;
-
-        if (led_strip_new_rmt_device(&strip, &rmt, out) != ESP_OK) {
-            LOG_E(name.c_str(), "led_strip_new_rmt_device failed on pin %u", pin);
+    bool openStrip(uint8_t pin, uint8_t count, RmtStrip& strip) {
+        rmt_tx_channel_config_t channelConfig = {};
+        channelConfig.gpio_num = static_cast<gpio_num_t>(pin);
+        channelConfig.clk_src = RMT_CLK_SRC_DEFAULT;
+        channelConfig.resolution_hz = RMT_RESOLUTION_HZ;
+        channelConfig.mem_block_symbols = RMT_MEM_BLOCK_SYMBOLS;
+        channelConfig.trans_queue_depth = 1;
+        if (rmt_new_tx_channel(&channelConfig, &strip.channel) != ESP_OK) {
+            LOG_E(name.c_str(), "rmt_new_tx_channel failed on pin %u", pin);
             return false;
         }
+
+        // WS2812B at 10MHz resolution: one tick is 100ns. T0H 0.3us / T0L 0.9us,
+        // T1H 0.9us / T1L 0.3us, green before red on the wire, MSB first.
+        rmt_bytes_encoder_config_t encoderConfig = {};
+        encoderConfig.bit0 = {.duration0 = 3, .level0 = 1, .duration1 = 9, .level1 = 0};
+        encoderConfig.bit1 = {.duration0 = 9, .level0 = 1, .duration1 = 3, .level1 = 0};
+        encoderConfig.flags.msb_first = 1;
+        if (rmt_new_bytes_encoder(&encoderConfig, &strip.encoder) != ESP_OK) {
+            LOG_E(name.c_str(), "rmt_new_bytes_encoder failed on pin %u", pin);
+            closeStrip(strip);
+            return false;
+        }
+
+        if (rmt_enable(strip.channel) != ESP_OK) {
+            LOG_E(name.c_str(), "rmt_enable failed on pin %u", pin);
+            closeStrip(strip);
+            return false;
+        }
+
+        strip.count = count;
+        strip.grb = new uint8_t[static_cast<size_t>(count) * 3]();
         return true;
     }
 
-    void pushStrip(led_strip_handle_t strip, const LedPixel* lights, uint8_t count) {
-        if (strip == nullptr) {
+    void closeStrip(RmtStrip& strip) {
+        if (strip.channel != nullptr) {
+            rmt_disable(strip.channel);
+            rmt_del_channel(strip.channel);
+            strip.channel = nullptr;
+        }
+        if (strip.encoder != nullptr) {
+            rmt_del_encoder(strip.encoder);
+            strip.encoder = nullptr;
+        }
+        delete[] strip.grb;
+        strip.grb = nullptr;
+    }
+
+    void pushStrip(RmtStrip& strip, const LedPixel* lights, uint8_t count) {
+        if (strip.channel == nullptr || strip.grb == nullptr) {
             return;
         }
+        // The buffer handed to rmt_transmit must stay untouched until that frame
+        // has clocked out. The frame timer leaves ~16ms against a ~2ms transmit,
+        // so this has always completed; it is bounded rather than assumed.
+        if (strip.inFlight) {
+            if (rmt_tx_wait_all_done(strip.channel, TX_DRAIN_TIMEOUT_MS) != ESP_OK) {
+                LOG_W(name.c_str(), "previous LED frame still in flight, skipping this one");
+                return;
+            }
+            strip.inFlight = false;
+        }
+
         for (uint8_t i = 0; i < count; i++) {
             LedPixel pixel = lights[i];
             // Scaled on the way out rather than into the buffer, so a brightness
-            // change does not degrade the stored colours. Nothing calls
-            // setGlobalBrightness, so this is an identity today.
+            // change does not degrade the stored colours.
             if (globalBrightness != 255) {
                 pixel.scale(globalBrightness);
             }
-            led_strip_set_pixel(strip, i, pixel.red, pixel.green, pixel.blue);
+            uint8_t* out = &strip.grb[static_cast<size_t>(i) * 3];
+            out[0] = pixel.green;
+            out[1] = pixel.red;
+            out[2] = pixel.blue;
         }
-        led_strip_refresh(strip);
+
+        rmt_transmit_config_t txConfig = {};
+        txConfig.loop_count = 0;
+        // Leaves the line low after the last bit, which is the latch WS2812B
+        // wants and why no reset symbol is encoded.
+        txConfig.flags.eot_level = 0;
+        if (rmt_transmit(strip.channel, strip.encoder, strip.grb,
+                         static_cast<size_t>(count) * 3, &txConfig) != ESP_OK) {
+            LOG_E(name.c_str(), "rmt_transmit failed");
+            return;
+        }
+        strip.inFlight = true;
     }
 
     LedPixel* bufferFor(LightIdentifier lightSet) {
@@ -209,6 +278,8 @@ private:
     }
 
     static constexpr uint32_t RMT_RESOLUTION_HZ = 10000000;
+    static constexpr size_t RMT_MEM_BLOCK_SYMBOLS = 64;
+    static constexpr int TX_DRAIN_TIMEOUT_MS = 20;
     static constexpr uint8_t DEFAULT_FPS = 60;
 
     uint8_t displayPin;
@@ -217,8 +288,8 @@ private:
     LedPixel* gripLights;
     uint8_t numDisplayLights;
     uint8_t numGripLights;
-    led_strip_handle_t displayStrip = nullptr;
-    led_strip_handle_t gripStrip = nullptr;
+    RmtStrip displayStrip;
+    RmtStrip gripStrip;
     SimpleTimer frameTimer;
     uint8_t globalBrightness = 255;
     uint8_t fps = DEFAULT_FPS;

@@ -1,8 +1,8 @@
 dependencies:
   idf: ">=5.4"
-  # Replacements for the Arduino libraries the drivers used to wrap.
+  # Replacement for the Arduino button library the driver used to wrap.
+  # LEDs are driven straight off esp_driver_rmt, so no component there.
   espressif/button: "^4.2.1"
-  espressif/led_strip: "^3.0.3"
   # Upstream u8g2 is already a valid ESP-IDF component: its CMakeLists calls
   # idf_component_register on csrc/ when it sees the IDF build, and registers
   # only csrc, so the Arduino C++ wrapper under cppsrc/ never comes along. It
