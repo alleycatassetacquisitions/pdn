@@ -14,6 +14,7 @@
 #include <queue>
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/wireless-types.hpp"
+#include "esp32-driver-constants.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
@@ -22,7 +23,6 @@ static const char* const HTTP_TAG = "HttpClient";
 
 // Fallback channel for ESP-NOW when WiFi connection fails
 // IMPORTANT: Configure your WiFi AP to use this same channel for reliable ESP-NOW!
-static constexpr uint8_t ESPNOW_FALLBACK_CHANNEL = 6;
 
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
@@ -286,10 +286,10 @@ private:
         esp_wifi_disconnect();
         // WiFi.channel(6) before begin. The AP's own channel wins once
         // associated; this only pins where the radio sits until then.
-        esp_wifi_set_channel(ESPNOW_FALLBACK_CHANNEL, WIFI_SECOND_CHAN_NONE);
+        esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
         wifi_config_t config = {};
-        // WiFi.begin set both of these and a zero-initialised config does not:
+        // WiFi.begin set these two and a zero-initialised config does not:
         // without pmf.capable an AP that requires management-frame protection
         // refuses the association, and an authmode floor of OPEN would also join
         // an open AP broadcasting our SSID.
@@ -333,9 +333,9 @@ private:
             
             // Force fallback channel for ESP-NOW compatibility
             // IMPORTANT: Configure your WiFi AP to use this same channel!
-            esp_wifi_set_channel(ESPNOW_FALLBACK_CHANNEL, WIFI_SECOND_CHAN_NONE);
-            LOG_I(HTTP_TAG, "Set fallback WiFi channel to %d for ESP-NOW", ESPNOW_FALLBACK_CHANNEL);
-            
+            esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
+            LOG_I(HTTP_TAG, "Set fallback WiFi channel to %d for ESP-NOW", ESPNOW_CHANNEL);
+
             connectionAttemptTimer.invalidate();
         }
     }
