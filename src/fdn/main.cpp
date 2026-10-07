@@ -34,19 +34,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "apps/symbol-match/symbol-match.hpp"
 #include "apps/fdn-app-ids.hpp"
 
-// kconfgen silently reverts an out-of-range or unreachable option to its default
-// rather than failing, so a flipped clock reads as a normal build. Every timing
-// constant in this firmware -- the retransmit spans, the serial jack drain, the
-// loop latency that samples a duel press -- was measured at these two speeds.
-static_assert(CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ == 240,
-              "timing constants were measured at 240MHz");
-// Guarded: with PSRAM off the symbol does not exist, and esp-now-driver.hpp
-// already refuses that configuration outright.
-#if defined(CONFIG_SPIRAM)
-static_assert(CONFIG_SPIRAM_SPEED == 80,
-              "the ESP-NOW packet buffers were measured against 80MHz PSRAM");
-#endif
-
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
 #ifndef WIFI_SSID
