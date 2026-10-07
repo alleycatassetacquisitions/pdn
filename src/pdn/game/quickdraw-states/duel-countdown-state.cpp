@@ -37,11 +37,9 @@ void DuelCountdown::onStateMounted(PDN* pdn) {
         matchManager->getButtonMasher(),
         matchManager, ButtonInteraction::CLICK);
 
-    // CLICK on both buttons, so one tap scores one count on either. The masher
-    // adds BUTTON_MASHER_PENALTY_MS per count straight onto the reaction time.
     pdn->getSecondaryButton()->setButtonPress(
         matchManager->getButtonMasher(),
-        matchManager, ButtonInteraction::CLICK);
+        matchManager);
 
     pdn->getHaptics()->setIntensity(HAPTIC_INTENSITY);
     hapticTimer.setTimer(HAPTIC_DURATION);
