@@ -42,7 +42,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
 ### Prerequisites
 
 - **PlatformIO Core**: Ensure you have PlatformIO installed as it is used for development and flashing the firmware.
-- **pioarduino Platform**: This project uses [pioarduino](https://github.com/pioarduino/platform-espressif32), a community fork of the Espressif32 platform that tracks current ESP-IDF releases. Installing it brings the whole device toolchain with it, so no separate CMake, Ninja, xtensa or esptool install is needed.
+- **Espressif32 Platform**: The firmware builds on PlatformIO's [espressif32](https://github.com/platformio/platform-espressif32) platform with `framework = espidf`. Installing it brings the whole device toolchain with it, so no separate CMake, Ninja, xtensa or esptool install is needed.
 - **Unix Style Terminal**: Required for the CLI simulator tool. Windows users should use WSL (Windows Subsystem for Linux).
 
 ### Steps
@@ -84,20 +84,17 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    platformio run --target upload
    ```
 
-### Migration from Standard PlatformIO Espressif32
+### Migration from pioarduino
 
-This project migrated from the standard PlatformIO Espressif32 platform to **pioarduino** for access to current ESP-IDF releases. The firmware builds on `framework = espidf`; the Arduino framework is no longer used, so the package removal below is worth doing once even if your builds are fine.
+This project builds on PlatformIO's own espressif32 platform with `framework = espidf`; neither pioarduino nor the Arduino framework is used. If you installed the pioarduino IDE extension, uninstall it, install the PlatformIO IDE extension, and restart your IDE.
 
-Uninstall PlatformIO from your IDE.
-Install pioarduino.
-Restart your IDE.
-
-If you're experiencing build issues after pulling recent changes, perform a clean install:
+pioarduino and the official platform install into the same package directories, so remove the old packages once:
 
 ```bash
 # Remove old platform packages
 rm -rf ~/.platformio/platforms/espressif32*
 rm -rf ~/.platformio/packages/framework-arduinoespressif32*
+rm -rf ~/.platformio/packages/tool-esptoolpy*
 
 # Clean the project build cache
 rm -rf .pio/
