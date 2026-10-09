@@ -7,7 +7,8 @@
 
 #define TAG "OUTPUT_IDLE_STATE"
 
-OutputIdleState::OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager) : State(HandshakeStateId::OUTPUT_IDLE_STATE) {
+OutputIdleState::OutputIdleState(HandshakeWirelessManager* handshakeWirelessManager)
+    : TypedState<Device>(HandshakeStateId::OUTPUT_IDLE_STATE) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 

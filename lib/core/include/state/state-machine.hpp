@@ -39,9 +39,13 @@
  * reachable via virtual dispatch from StateMachine.
 */
 
-class StateMachine : public State {
+class StateMachine : public TypedState<Device> {
 public:
-    explicit StateMachine(int stateId) : State(stateId) {}
+    /**
+     * @param stateId Id this machine reports when nested as a state.
+     */
+    explicit StateMachine(int stateId)
+        : TypedState<Device>(stateId) {}
 
     ~StateMachine() override {
         for (auto state: stateMap) {

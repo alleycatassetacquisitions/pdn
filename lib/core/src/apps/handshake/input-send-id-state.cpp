@@ -4,7 +4,8 @@
 #define TAG "INPUT_SEND_ID_STATE"
 
 InputSendIdState::InputSendIdState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack)
-    : State(HandshakeStateId::INPUT_SEND_ID_STATE), jack(jack) {
+    : TypedState<Device>(HandshakeStateId::INPUT_SEND_ID_STATE)
+    , jack(jack) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 

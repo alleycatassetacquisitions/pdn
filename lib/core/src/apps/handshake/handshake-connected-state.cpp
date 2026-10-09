@@ -2,7 +2,8 @@
 #include "device/device.hpp"
 
 HandshakeConnectedState::HandshakeConnectedState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack, int stateId)
-    : State(stateId), jack(jack) {
+    : TypedState<Device>(stateId)
+    , jack(jack) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 

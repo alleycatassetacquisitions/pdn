@@ -64,12 +64,12 @@ public:
  * the conditions for state transitions - ie invalidating timers and resetting hardware
  * peripherals on the PDN.
  *
- * State inherits StateLifecycle, which is the dispatch interface StateMachine uses.
- * The mount/loop/dismount bridge methods are private so state implementers only ever
- * see and override the onState* user API below.
+ * State holds the transition machinery and the state id; it declares no lifecycle
+ * hooks of its own. Concrete states inherit TypedState<DeviceT> (defined below),
+ * which delivers a typed DeviceT* to every onState* method and keeps the
+ * StateLifecycle bridge private so implementers cannot reach it.
  *
- * Device-specific states should inherit TypedState<DeviceT> (defined below) which
- * delivers a typed DeviceT* to every onState* method, eliminating manual casting.
+ * Device-agnostic states use TypedState<Device>.
  */
 class State : public StateLifecycle {
 public:
@@ -110,12 +110,6 @@ public:
 
     virtual bool isTerminalState() { return false; }
 
-    // --- Device*-typed user API ---
-    // Override these in derived classes.
-    virtual void onStateMounted(Device* device) {}
-    virtual void onStateLoop(Device* device) {}
-    virtual void onStateDismounted(Device* device) {}
-
 protected:
     std::vector<StateTransition*> transitions;
 
@@ -125,12 +119,6 @@ private:
         StateId targetAppId;
     };
     std::vector<AppTransitionEntry> appTransitions;
-
-    // StateLifecycle bridge — private so state subclasses cannot call or override
-    // these entry points. StateMachine dispatches through StateLifecycle* to reach them.
-    void mount(Device* device) override    { onStateMounted(device); }
-    void loop(Device* device) override     { onStateLoop(device); }
-    void dismount(Device* device) override { onStateDismounted(device); }
 
     StateId name;
 };
@@ -152,8 +140,8 @@ private:
  *       void onStateLoop(PDN* pdn) override    { ... }
  *   };
  *
- * Device-agnostic states (e.g. handshake states) should inherit State directly
- * and override onStateMounted(Device*) as before.
+ * Device-agnostic states (e.g. handshake states) use TypedState<Device>, whose
+ * cast is an identity conversion.
  */
 template<typename DeviceT>
 class TypedState : public State {
