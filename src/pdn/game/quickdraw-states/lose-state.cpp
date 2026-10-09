@@ -28,7 +28,7 @@ void Lose::onStateMounted(PDN* pdn) {
         if (d.hasData) {
             pdn->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
             char myLine[16];
-            char boostLine[16];
+            char boostLine[17];
             char oppLine[16];
             snprintf(myLine, sizeof(myLine), "You:%4lu", d.myTimeMs);
             snprintf(oppLine, sizeof(oppLine), "Opp:%4lu", d.opponentTimeMs);
