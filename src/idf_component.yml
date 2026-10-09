@@ -1,6 +1,5 @@
 dependencies:
   idf: ">=5.4"
-  # Replacement for the Arduino button library the driver used to wrap.
   # LEDs are driven straight off esp_driver_rmt, so no component there.
   espressif/button: "4.2.1"
   # Pulled in by button; named here so its version is pinned rather than

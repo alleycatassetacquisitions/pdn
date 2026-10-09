@@ -19,9 +19,8 @@ public:
     }
 
     int initialize() override {
-        // 8-bit at 1kHz, which is what analogWrite used and therefore what every
-        // haptic cue was tuned against. Not a motor calibration -- they were its
-        // defaults -- but changing either still changes how the cues feel, so
+        // 8-bit at 1kHz is what every haptic cue was tuned against. Not a motor
+        // calibration, but changing either still changes how the cues feel, so
         // re-tune on hardware rather than on a spec sheet.
         ledc_timer_config_t timer = {};
         timer.speed_mode = LEDC_LOW_SPEED_MODE;
@@ -83,8 +82,8 @@ public:
 private:
     void setDuty(int duty) {
         // Full scale goes one past the 8-bit maximum, which LEDC reads as
-        // constant-high with no switching. analogWrite did the same, so without
-        // it max intensity would PWM at 255/256 and pulse low every millisecond.
+        // constant-high with no switching; at 255 max intensity would PWM at
+        // 255/256 and pulse low every millisecond.
         if (duty >= 255) {
             duty = 256;
         }

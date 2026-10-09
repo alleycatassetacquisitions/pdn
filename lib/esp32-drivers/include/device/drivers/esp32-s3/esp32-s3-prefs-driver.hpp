@@ -54,8 +54,8 @@ public:
         if (nvs_set_str(handle, key.c_str(), value.c_str()) != ESP_OK) {
             return 0;
         }
-        // Preferences committed on every put; callers depend on a write being
-        // durable as soon as it returns.
+        // Committed on every put: callers depend on a write being durable as soon
+        // as it returns.
         if (nvs_commit(handle) != ESP_OK) {
             return 0;
         }

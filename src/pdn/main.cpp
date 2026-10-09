@@ -109,8 +109,6 @@ void setupEspNow(
 }
 
 static void setup() {
-    // No console bring-up: ESP-IDF has UART0 up before app_main runs.
-
     // Before any driver, because two of them need it and neither can bring it
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.

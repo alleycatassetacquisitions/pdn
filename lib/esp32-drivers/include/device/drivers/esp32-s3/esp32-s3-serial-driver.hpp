@@ -17,9 +17,8 @@
  * One serial jack on a UART peripheral.
  *
  * The three jacks below differ only in which UART and which role, so the behaviour
- * lives here once. The methods are Stream-shaped because SerialManager reads
- * this driver that way: it peeks for STRING_START, then takes the frame with
- * readStringUntil.
+ * lives here once. Live frames are read in exec() and handed to the string
+ * callback; the peek/read methods exist because HWSerialWrapper declares them.
  */
 class Esp32s3SerialPort : public SerialDriverInterface {
 public:
@@ -61,7 +60,8 @@ public:
         // choice matters only across a light-sleep wake, which nothing here enters.
         config.source_clk = UART_SCLK_DEFAULT;
 
-        // 256-byte receive ring, no transmit ring, so writes block until drained.
+        // 256-byte receive ring, no transmit ring: a write returns once its last
+        // bytes are in the hardware FIFO.
         if (uart_driver_install(port, RX_BUFFER_BYTES, 0, 0, nullptr, 0) != ESP_OK) {
             LOG_E(logTag, "uart_driver_install failed");
             return -1;
@@ -74,8 +74,8 @@ public:
             LOG_E(logTag, "uart_set_pin failed");
             return -1;
         }
-        // Serial1.begin(..., true) passed invert=true. The jack drives an
-        // inverted line, so dropping this reads nothing but noise.
+        // The jack drives an inverted line, so without this the port reads
+        // nothing but noise.
         if (uart_set_line_inverse(port, UART_SIGNAL_TXD_INV | UART_SIGNAL_RXD_INV) != ESP_OK) {
             LOG_E(logTag, "uart_set_line_inverse failed");
             return -1;
@@ -99,10 +99,7 @@ public:
         }
     }
 
-    /**
-     * Free space in the transmit FIFO, which is what HardwareSerial reported
-     * with no transmit ring buffer configured.
-     */
+    /** Free space in the transmit FIFO; there is no transmit ring buffer. */
     int availableForWrite() override {
         return static_cast<int>(uart_ll_get_txfifo_len(UART_LL_GET_HW(port)));
     }
@@ -138,8 +135,8 @@ public:
 
     /**
      * Reads up to the terminator, which is consumed and left out of the result.
-     * The timeout is per byte, as Stream::timedRead applied it, so a frame
-     * arriving slowly is still assembled whole.
+     * The timeout is per byte, so a frame arriving slowly is still assembled
+     * whole.
      */
     std::string readStringUntil(char terminator) override {
         std::string result;
