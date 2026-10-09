@@ -22,7 +22,7 @@
  */
 class Esp32S31ButtonDriver : public ButtonDriverInterface {
 public:
-    /** Takes the GPIO; the button is active-low with the internal pull-up, as before. */
+    /** Takes the GPIO; the button is active-low with the internal pull-up. */
     Esp32S31ButtonDriver(const std::string& name, int buttonPin)
         : ButtonDriverInterface(name), buttonPin(buttonPin) {}
 
@@ -78,6 +78,7 @@ public:
         slot.plain = newFunction;
         slot.parameterized = nullptr;
         slot.parameter = nullptr;
+        pending[static_cast<int>(interactionType)].store(0);
     }
 
     void setButtonPress(parameterizedCallbackFunction newFunction, void* parameter,
@@ -86,14 +87,15 @@ public:
         slot.plain = nullptr;
         slot.parameterized = newFunction;
         slot.parameter = parameter;
+        // The timer task records presses from initialize() on, including through
+        // the boot splash; a press made before any handler existed belongs to no
+        // one and must not reach the handler registered now.
+        pending[static_cast<int>(interactionType)].store(0);
     }
 
     void removeButtonCallbacks() override {
-        // pending is cleared with them, on purpose: an event the timer task
-        // recorded but exec() has not dispatched belongs to the state that is
-        // going away, and dispatching it afterwards is the teardown race this
-        // project has already been bitten by. A dropped press beats a press
-        // delivered into a dismounted state.
+        // Undispatched presses are cleared too: they belong to the state that is
+        // going away, and a dropped press beats one delivered after it dismounts.
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             slots[i] = Slot{};
         }
@@ -106,10 +108,8 @@ public:
         for (int i = 0; i < INTERACTION_COUNT; i++) {
             // Counted rather than flagged: the masher scores one penalty per tap,
             // so two taps inside one loop pass have to dispatch twice. Drained in
-            // enum order, not arrival order -- a double tap raises PRESS_DOWN,
-            // PRESS_UP, PRESS_DOWN, PRESS_UP, DOUBLE_CLICK but dispatches both
-            // PRESSes, then both CLICKs. Nothing registers two interactions on one
-            // button today, which is the only reason that is invisible.
+            // enum order, not arrival order, so a state that registers two
+            // interactions on one button sees all PRESSes before all CLICKs.
             uint8_t fired = pending[i].exchange(0);
             for (; fired > 0; fired--) {
                 const Slot& slot = slots[i];
@@ -155,9 +155,7 @@ private:
     // keeps a double-click reachable at a human cadence.
     static constexpr uint16_t CLICK_RESOLVE_MS = 400;
     static_assert(CONFIG_BUTTON_DEBOUNCE_TICKS * CONFIG_BUTTON_PERIOD_TIME_MS == 50,
-                  "50ms debounce: a bouncy switch yields two press-downs inside 40ms, "
-                  "which the masher counter scores twice; iot_button has no config field "
-                  "for this, so ticks x period is the only channel");
+                  "debounce is ticks x period in sdkconfig.defaults; see the comment there");
     static constexpr uint16_t LONG_PRESS_MS = 800;
     static constexpr uint16_t MULTI_CLICK_COUNT = 3;
 
