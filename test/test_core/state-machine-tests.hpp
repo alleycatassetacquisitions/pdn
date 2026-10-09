@@ -20,10 +20,11 @@ const int THIRD_TRANSITION_THRESHOLD = 3;
 const int SECOND_TRANSITION_THRESHOLD = 2;
 const int LOOPS_TO_COMPLETE_MACHINE = INITIAL_TRANSITION_THRESHOLD + SECOND_TRANSITION_THRESHOLD + THIRD_TRANSITION_THRESHOLD;
 
-class InitialTestState : public State {
+class InitialTestState : public TypedState<Device> {
 public:
-
-    InitialTestState() : State(INITIAL_STATE) {
+    /** Registers this test state under its fixed TestStateId. */
+    InitialTestState()
+        : TypedState<Device>(INITIAL_STATE) {
     }
 
     ~InitialTestState() {
@@ -59,10 +60,11 @@ public:
     bool stateDismountedInvoked = false;
 };
 
-class SecondTestState : public State {
+class SecondTestState : public TypedState<Device> {
 public:
-
-    SecondTestState() : State(SECOND_STATE) {
+    /** Registers this test state under its fixed TestStateId. */
+    SecondTestState()
+        : TypedState<Device>(SECOND_STATE) {
     }
 
     ~SecondTestState() {
@@ -99,10 +101,11 @@ public:
     bool transitionToThird = false;
 };
 
-class ThirdTestState : public State {
+class ThirdTestState : public TypedState<Device> {
 public:
-
-    ThirdTestState() : State(THIRD_STATE) {
+    /** Registers this test state under its fixed TestStateId. */
+    ThirdTestState()
+        : TypedState<Device>(THIRD_STATE) {
     }
 
     ~ThirdTestState() {
@@ -139,9 +142,11 @@ public:
     bool transitionToFourth = false;
 };
 
-class TerminalTestState : public State {
+class TerminalTestState : public TypedState<Device> {
 public:
-    TerminalTestState() : State(TERMINAL_STATE) {
+    /** Registers this test state under its fixed TestStateId. */
+    TerminalTestState()
+        : TypedState<Device>(TERMINAL_STATE) {
     }
 
     ~TerminalTestState() {
@@ -184,7 +189,6 @@ public:
     bool transitionToSecond = false;
     bool transitionToFirst = false;
 };
-
 
 class TestStateMachine : public StateMachine {
 public:
