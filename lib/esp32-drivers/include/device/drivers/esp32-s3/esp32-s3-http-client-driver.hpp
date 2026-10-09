@@ -14,15 +14,11 @@
 #include <queue>
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/wireless-types.hpp"
-#include "esp32-driver-constants.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
 class Esp32S3HttpClient;
 static const char* const HTTP_TAG = "HttpClient";
-
-// Fallback channel for ESP-NOW when WiFi connection fails
-// IMPORTANT: Configure your WiFi AP to use this same channel for reliable ESP-NOW!
 
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
 
@@ -284,19 +280,10 @@ private:
         ensureWifiStack();
         autoReconnect.store(true);
         esp_wifi_disconnect();
-        // Not a port of anything: WiFi.channel(uint8_t) bound the scan-result
-        // getter, so the old build never pinned the channel here at all. The AP's
-        // own channel wins once associated, so this only decides where the radio
-        // sits while the association is in flight -- which is the window ESP-NOW
-        // peers are still trying to reach it on.
-        esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
 
         wifi_config_t config = {};
-        // WiFi.begin set these two and a zero-initialised config does not:
-        // without pmf.capable an AP that requires management-frame protection
-        // refuses the association, and an authmode floor of OPEN would also join
-        // an open AP broadcasting our SSID.
-        config.sta.pmf_cfg.capable = true;
+        // IDF assumes a WPA2 floor only for passwords of 8+ characters; set it
+        // outright so a shorter one cannot join an open AP broadcasting our SSID.
         config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
         // memcpy rather than snprintf: a 32-character SSID or a 64-character key
         // fills the field exactly, leaving no room for a terminator to be written.
@@ -333,11 +320,6 @@ private:
             LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
             autoReconnect.store(false);  // Stop the retry spam
             esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
-            
-            // Force fallback channel for ESP-NOW compatibility
-            // IMPORTANT: Configure your WiFi AP to use this same channel!
-            esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
-            LOG_I(HTTP_TAG, "Set fallback WiFi channel to %d for ESP-NOW", ESPNOW_CHANNEL);
 
             connectionAttemptTimer.invalidate();
         }
