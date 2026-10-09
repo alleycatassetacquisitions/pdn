@@ -75,11 +75,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    pio run -e <build-target>
    ```
    Depending on your use case, there are a number of build targets:
-   - `esp32-s3_pdn_release` - Release build. Errors and warnings only: it builds at
-     `CORE_DEBUG_LEVEL=2`, which compiles out every `LOG_I`, so a flow that logs at info
-     level leaves no trace and success is indistinguishable from nothing happening.
-   - `esp32-s3_pdn_release_verbose` - Release build with all log levels. Use this to
-     diagnose anything.
+   - `esp32-s3_pdn_release` - Release build (NO LOGS)
    - `esp32-s3_pdn_debug` - Standard Development build
    - `native_cli` - Build the native CLI tool for simulated development (Unix/WSL only)
 
