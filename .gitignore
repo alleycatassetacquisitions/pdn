@@ -78,3 +78,8 @@ callgrind*
 # manager's downloaded components.
 sdkconfig.esp32-s3_*
 managed_components/
+# Rewritten by every build, and not portable: the u8g2 hash in it covers a
+# submodule .git file that holds the builder's own cache path, so it only
+# verifies on the machine that wrote it. src/idf_component.yml pins every
+# dependency exactly instead.
+dependencies.lock
