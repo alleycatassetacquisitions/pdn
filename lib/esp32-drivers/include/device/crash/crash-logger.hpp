@@ -8,7 +8,6 @@
 #include <cstdlib>
 #include <cstdarg>
 #include <esp_system.h>
-#include "utils/simple-timer.hpp"
 #include <esp_timer.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
@@ -91,7 +90,7 @@ public:
 
         CrashRecord rec{};
         rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp = static_cast<uint32_t>(SimpleTimer::getPlatformClock()->milliseconds());
+        rec.timestamp = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
         bool hadCoreDumpSummary = false;
         esp_core_dump_summary_t summary{};

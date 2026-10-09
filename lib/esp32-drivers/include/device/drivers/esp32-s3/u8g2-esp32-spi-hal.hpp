@@ -37,10 +37,10 @@ struct U8g2Esp32SpiContext {
     uint8_t* dmaScratch;
 };
 
+constexpr const char* U8G2_HAL_TAG = "U8g2Hal";
 /** The callback signature caps a single BYTE_SEND: u8x8_msg_cb takes its count
  * as a uint8_t. The bulk path is u8x8_cad_001, which forwards straight to this
  * callback rather than going through u8x8_byte.c. */
-constexpr const char* U8G2_HAL_TAG = "U8g2Hal";
 constexpr size_t U8G2_SPI_SCRATCH_BYTES = 256;
 
 /**
@@ -158,10 +158,8 @@ inline uint8_t u8g2Esp32GpioAndDelayCallback(u8x8_t* u8x8, uint8_t msg, uint8_t 
         case U8X8_MSG_GPIO_AND_DELAY_INIT: {
             gpio_config_t control = {};
             control.mode = GPIO_MODE_OUTPUT;
-            control.pin_bit_mask = (1ULL << context->pins.cs) | (1ULL << context->pins.dc);
-            if (context->pins.reset != GPIO_NUM_NC) {
-                control.pin_bit_mask |= (1ULL << context->pins.reset);
-            }
+            control.pin_bit_mask = (1ULL << context->pins.cs) | (1ULL << context->pins.dc) |
+                                   (1ULL << context->pins.reset);
             gpio_config(&control);
             gpio_set_level(context->pins.cs, u8x8->display_info->chip_disable_level);
             gpio_set_level(context->pins.dc, 0);
@@ -187,9 +185,7 @@ inline uint8_t u8g2Esp32GpioAndDelayCallback(u8x8_t* u8x8, uint8_t msg, uint8_t 
             gpio_set_level(context->pins.dc, argInt);
             break;
         case U8X8_MSG_GPIO_RESET:
-            if (context->pins.reset != GPIO_NUM_NC) {
-                gpio_set_level(context->pins.reset, argInt);
-            }
+            gpio_set_level(context->pins.reset, argInt);
             break;
         default:
             return 1;  // u8g2 polls for messages a HAL may legitimately ignore
