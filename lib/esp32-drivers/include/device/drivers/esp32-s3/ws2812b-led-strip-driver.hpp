@@ -29,7 +29,7 @@ struct LedPixel {
         blue = static_cast<uint8_t>((static_cast<uint16_t>(blue) * fixed) >> 8);
     }
 
-    /** CRGB::operator+= saturates per channel; it does not wrap. */
+    /** Saturates per channel; it does not wrap. */
     void add(const LedPixel& other) {
         red = saturatingAdd(red, other.red);
         green = saturatingAdd(green, other.green);
@@ -132,7 +132,7 @@ public:
         if (lights == nullptr) {
             return;
         }
-        // fadeToBlackBy(n, amount) is nscale8(n, 255 - amount).
+        // Fading by amount keeps (256 - amount)/256 of each channel.
         uint8_t remaining = static_cast<uint8_t>(255 - fadeAmount);
         for (uint8_t i = 0; i < countFor(lightSet); i++) {
             lights[i].scale(remaining);
@@ -163,8 +163,6 @@ private:
         rmt_channel_handle_t channel = nullptr;
         rmt_encoder_handle_t encoder = nullptr;
         uint8_t* grb = nullptr;
-        uint8_t count = 0;
-        bool inFlight = false;
     };
 
     bool openStrip(uint8_t pin, uint8_t count, RmtStrip& strip) {
@@ -197,7 +195,6 @@ private:
             return false;
         }
 
-        strip.count = count;
         strip.grb = new uint8_t[static_cast<size_t>(count) * 3]();
         return true;
     }
@@ -221,14 +218,12 @@ private:
             return;
         }
         // The buffer handed to rmt_transmit must stay untouched until that frame
-        // has clocked out. The frame timer leaves ~16ms against a ~2ms transmit,
-        // so this has always completed; it is bounded rather than assumed.
-        if (strip.inFlight) {
-            if (rmt_tx_wait_all_done(strip.channel, TX_DRAIN_TIMEOUT_MS) != ESP_OK) {
-                LOG_W(name.c_str(), "previous LED frame still in flight, skipping this one");
-                return;
-            }
-            strip.inFlight = false;
+        // has clocked out. A frame takes well under a millisecond against a frame
+        // timer of ~16ms, so this normally returns at once; it is bounded rather
+        // than assumed.
+        if (rmt_tx_wait_all_done(strip.channel, TX_DRAIN_TIMEOUT_MS) != ESP_OK) {
+            LOG_W(name.c_str(), "previous LED frame still in flight, skipping this one");
+            return;
         }
 
         for (uint8_t i = 0; i < count; i++) {
@@ -256,7 +251,6 @@ private:
             LOG_E(name.c_str(), "rmt_transmit failed");
             return;
         }
-        strip.inFlight = true;
     }
 
     LedPixel* bufferFor(LightIdentifier lightSet) {
