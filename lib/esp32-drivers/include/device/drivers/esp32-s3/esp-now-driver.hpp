@@ -418,8 +418,11 @@ private:
 
         // pktLen sizes the memcpy in copyPacketData and arrives off the air, so
         // it is checked here rather than trusted: below the header it underflows
-        // the length to a huge size_t, above data_len it reads past the frame.
-        if (pktHdr->pktLen < sizeof(DataPktHdr) || pktHdr->pktLen > data_len) {
+        // the length to a huge size_t, above data_len it reads past the frame, and
+        // above ESP_NOW_MAX_DATA_LEN it overruns a cluster slot of
+        // MAX_PKT_DATA_SIZE, since an ESP-NOW v2 frame can be longer than that.
+        if (pktHdr->pktLen < sizeof(DataPktHdr) || pktHdr->pktLen > data_len ||
+            pktHdr->pktLen > ESP_NOW_MAX_DATA_LEN) {
             LOG_E("ENC", "Declared pktLen %u outside the %i bytes received\n", pktHdr->pktLen, data_len);
             return;
         }
