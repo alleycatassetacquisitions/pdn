@@ -126,6 +126,12 @@ void Player::setAllegiance(Allegiance allegiance)
         case Allegiance::ENDLINE:
             allegianceStr = "Endline";
             break;
+        case Allegiance::HELIX:
+            allegianceStr = "Helix";
+            break;
+        case Allegiance::RESISTANCE:
+            allegianceStr = "The Resistance";
+            break;
     }
     
 }

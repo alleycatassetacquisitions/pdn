@@ -56,9 +56,9 @@ public:
 
     void exec() override {
         std::queue<DeferredPacket> pending;
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
         std::swap(pending, recvQueue_);
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreGive(recvMutex);
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
@@ -207,7 +207,7 @@ public:
             bytesLeft -= thisBuffer;
         }
 
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         bool willNeedToStartSend = m_sendQueue.empty();
 
         //Build up each packet
@@ -239,7 +239,7 @@ public:
 
             bytesLeft -= thisBuffer;
         }
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
         if(willNeedToStartSend)
         {
@@ -322,14 +322,13 @@ private:
         uint8_t numPktsInCluster;
     };
 
-    explicit EspNowDriver(const std::string& name) :
-        PeerCommsDriverInterface(name),
-        m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr)),
-        m_maxRetries(5),
-        m_curRetries(0),
-        recvMutex_(xSemaphoreCreateMutex()),
-        sendMutex_(xSemaphoreCreateMutex())
-    {
+    explicit EspNowDriver(const std::string& name)
+        : PeerCommsDriverInterface(name)
+        , recvMutex(xSemaphoreCreateMutex())
+        , sendMutex(xSemaphoreCreateMutex())
+        , m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
+        , m_maxRetries(5)
+        , m_curRetries(0) {
 
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
@@ -569,13 +568,13 @@ private:
 
     //Attempt to send the next packet in send queue
     int SendFrontPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         if(m_sendQueue.empty()) {
-            xSemaphoreGive(sendMutex_);
+            xSemaphoreGive(sendMutex);
             return 0;
         }
         auto buffer = m_sendQueue.front();
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
 
         //If this is the first packet in cluster, make sure the peer is registered
         auto* hdr = reinterpret_cast<DataPktHdr*>(buffer.ptr);
@@ -606,12 +605,12 @@ private:
 
     //Free front packet in send queue and pop it from queue
     void MoveToNextSendPkt() {
-        xSemaphoreTake(sendMutex_, portMAX_DELAY);
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
         if (!m_sendQueue.empty()) {
             free(m_sendQueue.front().ptr);
             m_sendQueue.pop();
         }
-        xSemaphoreGive(sendMutex_);
+        xSemaphoreGive(sendMutex);
         m_curRetries = 0;
     }
 
@@ -647,10 +646,10 @@ private:
         return 0;
     }
 
-    SemaphoreHandle_t recvMutex_;
+    SemaphoreHandle_t recvMutex;
     std::queue<DeferredPacket> recvQueue_;
 
-    SemaphoreHandle_t sendMutex_;
+    SemaphoreHandle_t sendMutex;
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
@@ -667,9 +666,9 @@ private:
         memcpy(pkt.srcMac, srcMacAddr, 6);
         pkt.data.assign(pktData, pktData + pktLen);
 
-        xSemaphoreTake(recvMutex_, portMAX_DELAY);
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
         recvQueue_.push(std::move(pkt));
-        xSemaphoreGive(recvMutex_);
+        xSemaphoreGive(recvMutex);
     }
 
     uint8_t* getMacAddress() override {
