@@ -109,11 +109,11 @@ public:
         
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
 
-        // Unconditional, not just when CONNECTED: an attempt that is still pending
-        // has already armed the driver's auto-reconnect, and leaving it armed lets
-        // its event handler re-dial the AP out from under the channel pin below.
-        LOG_D(WM_TAG, "Disconnecting HTTP client...");
-        httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        // Step 1: Disconnect HTTP client first (releases WiFi AP connection but keeps radio on)
+        if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
+            LOG_D(WM_TAG, "Disconnecting HTTP client...");
+            httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
+        }
 
         // Step 2: Connect ESP-NOW (will set WiFi to station mode on fixed channel)
         LOG_D(WM_TAG, "Connecting ESP-NOW...");
