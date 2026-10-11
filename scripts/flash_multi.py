@@ -15,6 +15,10 @@ import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Path to the platform's esptool.py, set from --esptool. None runs the esptool
+# module installed in this interpreter instead.
+_esptool_script = None
+
 ESPRESSIF_VID = 0x303A
 ESP32S3_JTAG_PID = 0x1001
 
@@ -68,27 +72,26 @@ def is_jtag_port(port_description, vid, pid):
 
 
 def test_esp32_on_port(port_name):
-    """Probe the port with esptool chip-id. Returns (is_esp32: bool, chip_info: str)."""
-    for subcmd in ("chip-id", "chip_id"):
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "esptool", "--port", port_name, subcmd],
-                capture_output=True, text=True, timeout=2,
-                encoding="utf-8", errors="replace",
+    """Probe the port with esptool chip_id. Returns (is_esp32: bool, chip_info: str)."""
+    try:
+        result = subprocess.run(
+            _esptool("--port", port_name, "chip_id"),
+            capture_output=True, text=True, timeout=2,
+            encoding="utf-8", errors="replace",
+        )
+        if result.returncode == 0 and "ESP32" in result.stdout:
+            out = result.stdout
+            chip = (
+                "ESP32-S3" if "ESP32-S3" in out
+                else "ESP32-C3" if "ESP32-C3" in out
+                else "ESP32-S2" if "ESP32-S2" in out
+                else "ESP32"
             )
-            if result.returncode == 0 and "ESP32" in result.stdout:
-                out = result.stdout
-                chip = (
-                    "ESP32-S3" if "ESP32-S3" in out
-                    else "ESP32-C3" if "ESP32-C3" in out
-                    else "ESP32-S2" if "ESP32-S2" in out
-                    else "ESP32"
-                )
-                return True, chip
-        except subprocess.TimeoutExpired:
-            return False, "Timeout"
-        except Exception as exc:
-            return False, str(exc)[:30]
+            return True, chip
+    except subprocess.TimeoutExpired:
+        return False, "Timeout"
+    except Exception as exc:
+        return False, str(exc)[:30]
     return False, ""
 
 
@@ -103,13 +106,19 @@ NVS_SIZE = 0x5000  # 20 KB — matches default_8MB.csv
 def _esptool(*args):
     """Return a subprocess arg list that invokes esptool via the current Python interpreter.
 
-    Commands and options use the underscore spellings: esptool 4.x accepts only
-    those, and 5.x still accepts them with a deprecation warning.
+    The multi_flash target passes the platform's own esptool.py, the one
+    `pio run -t upload` runs: the platform does not install esptool as a module.
+    Run standalone without --esptool, this falls back to an installed esptool.
 
-    Using sys.executable -m esptool avoids relying on an 'esptool' entry-point
-    on PATH, which on Windows would resolve to esptool.py and trigger an
-    "Open with" dialog if .py files have no shell association.
+    Commands and options use the underscore spellings: the platform's esptool 4.x
+    accepts only those, and 5.x still accepts them with a deprecation warning.
+
+    Running the script through sys.executable avoids relying on an 'esptool'
+    entry-point on PATH, which on Windows would resolve to esptool.py and trigger
+    an "Open with" dialog if .py files have no shell association.
     """
+    if _esptool_script:
+        return [sys.executable, _esptool_script] + list(args)
     return [sys.executable, "-m", "esptool"] + list(args)
 
 
@@ -239,7 +248,11 @@ def main():
     )
     parser.add_argument("--erase", action="store_true", help="Erase entire flash before writing")
     parser.add_argument("--clear-nvs", action="store_true", help="Wipe NVS partition after each flash")
+    parser.add_argument("--esptool", help="Path to esptool.py (the multi_flash target passes the platform's)")
     args = parser.parse_args()
+
+    global _esptool_script
+    _esptool_script = args.esptool
 
     try:
         import serial.tools.list_ports  # noqa: F401
