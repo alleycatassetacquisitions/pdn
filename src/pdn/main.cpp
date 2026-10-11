@@ -128,11 +128,6 @@ static void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
-    // CORE_DEBUG_LEVEL caps only the LOG_x macros, at compile time. IDF's own
-    // components ignore it and are filtered here at runtime instead, so a
-    // release build would otherwise print their INFO lines. The two scales share
-    // values: 2 is ESP_LOG_WARN, 5 is ESP_LOG_VERBOSE.
-    esp_log_level_set("*", static_cast<esp_log_level_t>(CORE_DEBUG_LEVEL));
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
