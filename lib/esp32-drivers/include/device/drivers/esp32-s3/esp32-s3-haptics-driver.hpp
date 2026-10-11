@@ -19,9 +19,8 @@ public:
     }
 
     int initialize() override {
-        // 8-bit at 1kHz is what every haptic cue was tuned against. Not a motor
-        // calibration, but changing either still changes how the cues feel, so
-        // re-tune on hardware rather than on a spec sheet.
+        // 8-bit at 1kHz is what every haptic cue was tuned against; changing either
+        // changes how the cues feel, so re-tune on hardware if one moves.
         ledc_timer_config_t timer = {};
         timer.speed_mode = LEDC_LOW_SPEED_MODE;
         timer.duty_resolution = LEDC_TIMER_8_BIT;

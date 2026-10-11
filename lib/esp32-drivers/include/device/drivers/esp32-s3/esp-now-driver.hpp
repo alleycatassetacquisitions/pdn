@@ -19,8 +19,9 @@
 #include "esp32-driver-constants.hpp"
 
 // sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, cluster size 1
-// included, so without PSRAM every send fails its allocation check at runtime
-// instead of failing to build.
+// included, so a build without PSRAM support fails here rather than at every
+// send. A board whose PSRAM fails at boot still boots (SPIRAM_IGNORE_NOTFOUND),
+// and then every send fails its allocation.
 #if !defined(CONFIG_SPIRAM)
 #error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
 #endif
@@ -423,7 +424,7 @@ private:
         // MAX_PKT_DATA_SIZE, since an ESP-NOW v2 frame can be longer than that.
         if (pktHdr->pktLen < sizeof(DataPktHdr) || pktHdr->pktLen > data_len ||
             pktHdr->pktLen > ESP_NOW_MAX_DATA_LEN) {
-            LOG_E("ENC", "Declared pktLen %u outside the %i bytes received\n", pktHdr->pktLen, data_len);
+            LOG_E("ENC", "Declared pktLen %u invalid for a %i-byte frame\n", pktHdr->pktLen, data_len);
             return;
         }
 

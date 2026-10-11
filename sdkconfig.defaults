@@ -1,14 +1,14 @@
-# Every line here departs from an ESP-IDF default that would either fail the
-# build or change how the firmware behaves on this board. Board values come from
-# boards/esp32-s3-n8r8.json and platformio.ini.
+# Each line either changes an ESP-IDF default that would fail the build or change
+# how the firmware behaves on this board, or pins a value the configuration
+# depends on. Board values come from boards/esp32-s3-n8r8.json and platformio.ini.
 #
 # This file is the only channel into the IDF configuration on the component
 # path: espidf.py applies custom_sdkconfig only when PIOFRAMEWORK contains
 # "arduino" and not "espidf".
 
 # 8MB part. IDF defaults to 2MB, which cannot hold a partition at 0x3F0000.
-# DIO, not the board JSON's QIO: DIO is the flash timing the fleet has been
-# tested on. The module supports QIO; moving needs its own boot test.
+# DIO, not the board JSON's QIO: DIO is the flash mode the fleet has been tested
+# on. The module supports QIO; moving needs its own boot test.
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 
@@ -31,11 +31,13 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 
-# IDF ticks at 100Hz; vTaskDelay and timer resolution here assume 1kHz.
+# IDF ticks at 100Hz; the fleet ran at 1kHz, and at 100Hz any delay under 10ms
+# rounds to zero ticks.
 CONFIG_FREERTOS_HZ=1000
 
-# The game loop runs in IDF's main task, on core 1 with an 8KB stack, so the
-# radio and timer tasks keep core 0. ESP_TASK_MAIN_PRIO is already priority 1.
+# The game loop runs in IDF's main task and never yields, so it goes on core 1,
+# away from core 0's idle task, which the task watchdog watches. 8KB of stack.
+# ESP_TASK_MAIN_PRIO is already priority 1.
 CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
@@ -52,20 +54,20 @@ CONFIG_SPIRAM_SPEED_80M=y
 
 # About 50ms of debounce. iot_button has no debounce field in its config struct,
 # so the only channel is Kconfig: a level must hold for DEBOUNCE_TICKS
-# consecutive samples taken every PERIOD_TIME_MS. Ticks are capped at 7, so the
-# period carries the rest. A change is accepted 40-50ms after the edge, since
-# the first sample lands anywhere in a period. The default 2 x 5ms lets one
-# bouncy press count twice on the masher.
+# consecutive samples taken every PERIOD_TIME_MS, and any bounce restarts the
+# count. Ticks are capped at 7, so the period carries the rest. A change is
+# accepted 40-50ms after the line settles, since the first sample lands anywhere
+# in a period. The default 2 x 5ms lets one bouncy press count twice on the masher.
 CONFIG_BUTTON_PERIOD_TIME_MS=10
 CONFIG_BUTTON_DEBOUNCE_TICKS=5
 
 # The memory layout the fleet has been tested on: WiFi TX buffers allocated per
-# send rather than a static internal pool, WiFi and lwIP buffers in PSRAM, and
-# only allocations under 4KB kept internal, with no internal-only reserve. IDF's
-# defaults instead pin ~15KB of static WiFi buffers and a 32KB reserve in
-# internal RAM. Kconfig offers dynamic TX buffers alongside WiFi-in-PSRAM only
-# with IGNORE_NOTFOUND set, which also lets a board whose PSRAM fails to start
-# boot without it rather than halt.
+# send, 8 static RX buffers rather than IDF's 10, WiFi and lwIP buffers in PSRAM,
+# allocations up to 4KB preferring internal RAM (IDF: 16KB), and no internal-only
+# reserve (IDF: 32KB). Kconfig offers dynamic TX buffers alongside WiFi-in-PSRAM
+# only with IGNORE_NOTFOUND set, which also lets a board whose PSRAM fails to
+# start boot without it rather than halt; ESP-NOW then cannot send, because
+# esp-now-driver.hpp allocates every packet from PSRAM.
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER=y
 CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
@@ -74,8 +76,8 @@ CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0
 
-# A task-watchdog trip resets the device, so a wedged core reboots instead of
-# logging forever.
+# A task-watchdog trip resets the device, so a wedged core 0 reboots instead of
+# logging forever. Core 1 is not watched (see CHECK_IDLE_TASK_CPU1 above).
 CONFIG_ESP_TASK_WDT_PANIC=y
 
 # IDF builds at -Og by default. The fleet has been tested on size-optimised

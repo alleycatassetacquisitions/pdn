@@ -18,7 +18,7 @@
  *
  * The three jacks below differ only in which UART and which role, so the behaviour
  * lives here once. Live frames are read in exec() and handed to the string
- * callback; the peek/read methods exist because HWSerialWrapper declares them.
+ * callback; peek() exists only because HWSerialWrapper declares it.
  */
 class Esp32s3SerialPort : public SerialDriverInterface {
 public:
