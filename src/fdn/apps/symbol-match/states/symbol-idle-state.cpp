@@ -210,8 +210,8 @@ void SymbolIdle::renderSymbolScreen(FDN* fdn) {
 
     d->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
 
-    // Elapsed can overshoot the interval by a frame before the refresh fires,
-    // and the five-character field holds at most 99 minutes.
+    // Elapsed can pass the interval before the refresh fires, so floor at zero.
+    // The 99 cap bounds %02d for -Wformat-truncation; the interval is far shorter.
     int timeLeft = std::max(0, symbolManager->getTimeLeftToRefresh());
     int minutes = std::min(timeLeft / 60000, 99);
     int seconds  = (timeLeft % 60000) / 1000;
