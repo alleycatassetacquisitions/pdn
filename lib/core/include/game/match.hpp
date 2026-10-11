@@ -16,6 +16,9 @@ constexpr const char* JSON_KEY_BOUNTY_ID = "bounty";
 constexpr const char* JSON_KEY_WINNER_IS_HUNTER = "winner_is_hunter";
 constexpr const char* JSON_KEY_HUNTER_TIME = "hunter_time";
 constexpr const char* JSON_KEY_BOUNTY_TIME = "bounty_time";
+constexpr const char* JSON_KEY_SYNC_SUCCESS = "sync_success";
+constexpr const char* JSON_KEY_DELTA_MS = "delta_ms";
+constexpr const char* JSON_KEY_FAILED_ATTEMPTS = "failed_attempts";
 
 /**
  * Represents a duel match between a hunter and bounty player.
@@ -100,10 +103,17 @@ public:
     unsigned long getHunterDrawTime() const { return hunter_draw_time_ms; }
     unsigned long getBountyDrawTime() const { return bounty_draw_time_ms; }
 
+    void setNetworkEdgeMetadata(bool syncSuccess, unsigned long deltaMs, unsigned failedAttempts);
+
 private:
     char match_id[IdGenerator::UUID_BUFFER_SIZE] = {};
     char hunter[5] = {};
     char bounty[5] = {};
     unsigned long hunter_draw_time_ms = 0;
     unsigned long bounty_draw_time_ms = 0;
+
+    bool hasNetworkEdgeMetadata_ = false;
+    bool syncSuccess_ = false;
+    unsigned long deltaMs_ = 0;
+    unsigned failedAttempts_ = 0;
 };

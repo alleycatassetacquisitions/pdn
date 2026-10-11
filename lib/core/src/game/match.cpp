@@ -29,6 +29,13 @@ void Match::setBountyDrawTime(unsigned long timeMs) {
     bounty_draw_time_ms = timeMs;
 }
 
+void Match::setNetworkEdgeMetadata(bool syncSuccess, unsigned long deltaMs, unsigned failedAttempts) {
+    hasNetworkEdgeMetadata_ = true;
+    syncSuccess_ = syncSuccess;
+    deltaMs_ = deltaMs;
+    failedAttempts_ = failedAttempts;
+}
+
 std::string Match::toJson() const
 {
     // LOG_I("Match", "Serializing JSON: %s", match_id.c_str());
@@ -45,6 +52,12 @@ std::string Match::toJson() const
     matchObj[JSON_KEY_WINNER_IS_HUNTER] = hunter_draw_time_ms < bounty_draw_time_ms;
     matchObj[JSON_KEY_HUNTER_TIME] = hunter_draw_time_ms;
     matchObj[JSON_KEY_BOUNTY_TIME] = bounty_draw_time_ms;
+
+    if (hasNetworkEdgeMetadata_) {
+        matchObj[JSON_KEY_SYNC_SUCCESS] = syncSuccess_;
+        matchObj[JSON_KEY_DELTA_MS] = deltaMs_;
+        matchObj[JSON_KEY_FAILED_ATTEMPTS] = failedAttempts_;
+    }
 
     std::string json;
     serializeJson(matchObj, json);

@@ -23,7 +23,12 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "game/player.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
+#ifdef NODE_NETWORK_BUILD
+#include "game/node-network.hpp"
+#include "game/node-network-resources.hpp"
+#else
 #include "game/quickdraw.hpp"
+#endif
 #include "id-generator.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
@@ -70,7 +75,7 @@ Device* pdn = nullptr;
 Player* player = nullptr;
 
 // Game instance
-Quickdraw* game = nullptr;
+StateMachine* game = nullptr;
 
 // Remote player management
 QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -171,18 +176,39 @@ static void setup() {
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
     quickdrawWirelessManager = new QuickdrawWirelessManager();
-    LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager();
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
-    
+
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
     quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
+
+#ifdef NODE_NETWORK_BUILD
+    setupEspNow(quickdrawWirelessManager, remoteDebugManager, nullptr, peerCommsDriver);
+
+    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger->capture();
+    crashLogger->transmitPending();
+
+    game = new NodeNetwork(player, pdn, quickdrawWirelessManager, remoteDebugManager);
+
+    pdn->getDisplay()->
+        invalidateScreen()->
+        drawImage(getNodeImage(ImageType::LOGO_LEFT))->
+        drawImage(getNodeImage(ImageType::STAMP))->
+        render();
+    delay(3000);
+
+    AppConfig apps = {
+        {StateId(NODE_NETWORK_APP_ID), game}
+    };
+    pdn->loadAppConfig(apps, StateId(NODE_NETWORK_APP_ID));
+#else
+    LOG_I("SETUP", "Creating SymbolWirelessManager...");
+    symbolWirelessManager = new SymbolWirelessManager();
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
-    
-    // Register ESP-NOW packet handlers
+
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
@@ -190,19 +216,19 @@ static void setup() {
     crashLogger->transmitPending();
 
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    
+
     pdn->getDisplay()->
-    invalidateScreen()->
+        invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
     vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
-    // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
         {StateId(QUICKDRAW_APP_ID), game}
     };
     pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+#endif
 }
 
 void loop() {

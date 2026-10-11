@@ -6,13 +6,13 @@
 #include "device/device.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "game/match-manager.hpp"
+#include "game/stored-match-upload-source.hpp"
 
 constexpr int PLAYER_REGISTRATION_APP_ID = 0;
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
+    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, StoredMatchUploadSource* matchUploadSource, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 
     void populateStateMap() override;
@@ -24,5 +24,5 @@ private:
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
+    StoredMatchUploadSource* matchUploadSource;
 };

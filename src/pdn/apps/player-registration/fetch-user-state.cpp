@@ -7,12 +7,12 @@
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager) : TypedState<PDN>(PlayerRegistrationStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, StoredMatchUploadSource* matchUploadSource) : TypedState<PDN>(PlayerRegistrationStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->matchManager = matchManager;
+    this->matchUploadSource = matchUploadSource;
 }   
 
 FetchUserDataState::~FetchUserDataState() {
@@ -48,7 +48,7 @@ void FetchUserDataState::onStateMounted(PDN* pdn) {
         transitionToPlayerRegistrationState = true;
         fetchTimer.invalidate();
         isFetchingUserData = false;
-    } else if(matchManager->getStoredMatchCount() > 0) {
+    } else if(matchUploadSource->getStoredMatchCount() > 0) {
         uploadMatches();
     } else {
         fetchUserData();
@@ -84,10 +84,10 @@ void FetchUserDataState::uploadMatches() {
     fetchTimer.setTimer(MATCHES_UPLOAD_TIMEOUT);
     QuickdrawRequests::updateMatches(
         wirelessManager,
-        matchManager->toJson(),
+        matchUploadSource->toJson(),
         [this](const std::string& jsonResponse) {
             LOG_I(TAG, "Successfully uploaded matches: %s", jsonResponse.c_str());
-            matchManager->clearStorage();
+            matchUploadSource->clearStorage();
             fetchTimer.invalidate();
             fetchUserData();
         },

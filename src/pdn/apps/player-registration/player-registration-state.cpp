@@ -7,10 +7,10 @@
 
 static const char* TAG = "PlayerRegistrationState";
 
-PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : TypedState<PDN>(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
+PlayerRegistrationState::PlayerRegistrationState(Player* player, StoredMatchUploadSource* matchUploadSource) : TypedState<PDN>(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
     LOG_I(TAG, "Initializing PlayerRegistrationState");
     this->player = player;
-    this->matchManager = matchManager;
+    this->matchUploadSource = matchUploadSource;
 }
 
 PlayerRegistrationState::~PlayerRegistrationState() {
@@ -61,8 +61,8 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
         }
     }, this, ButtonInteraction::CLICK);
 
-    LOG_I(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
-    if(matchManager->getStoredMatchCount() > 0) {
+    LOG_I(TAG, "Stored match count: %d", matchUploadSource->getStoredMatchCount());
+    if(matchUploadSource->getStoredMatchCount() > 0) {
         LOG_I(TAG, "Starting transmit breath animation");
         AnimationConfig config;
         config.loop = true;

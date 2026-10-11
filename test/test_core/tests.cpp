@@ -11,6 +11,8 @@
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
 #include "match-manager-tests.hpp"
+#include "node-match-manager-tests.hpp"
+#include "node-duel-integration-tests.hpp"
 #include "integration-tests.hpp"
 #include "quickdraw-tests.hpp"
 #include "quickdraw-integration-tests.hpp"
@@ -753,6 +755,58 @@ TEST_F(MatchManagerTestSuite, clearMatchResetsMatchIsReadyFlag) {
 
 TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
     matchManagerRoleMismatchClearsInitiatorMatch(matchManager, player);
+}
+
+// ============================================
+// NODE MATCH MANAGER TESTS
+// ============================================
+
+TEST_F(NodeMatchManagerTestSuite, initializeAsInitiatorCreatesMatch) {
+    nodeMatchManagerInitializeAsInitiatorCreatesMatch(this);
+}
+
+TEST_F(NodeMatchManagerTestSuite, initiatorSendsWireIsInitiator) {
+    nodeMatchManagerInitiatorSendsWireIsInitiator(this);
+}
+
+TEST_F(NodeMatchManagerTestSuite, responderReceivesHandshake) {
+    nodeMatchManagerResponderReceivesHandshake(this);
+}
+
+TEST_F(NodeDuelHandshakeTest, sameRegistrationRoleHandshake) {
+    nodeMatchManagerSameRegistrationRoleHandshake(this);
+}
+
+TEST_F(NodeDuelIntegrationTestSuite, syncSuccessBothSides) {
+    nodeDuelIntegrationSyncSuccessBothSides(this);
+}
+
+TEST_F(NodeDuelIntegrationTestSuite, syncFailNoFinalize) {
+    nodeDuelIntegrationSyncFailNoFinalize(this);
+}
+
+TEST_F(NodeMatchManagerTestSuite, syncSuccessWhenDeltaWithinWindow) {
+    nodeMatchManagerSyncSuccessWhenDeltaWithinWindow(matchManager);
+}
+
+TEST_F(NodeMatchManagerTestSuite, syncFailsWhenDeltaTooLarge) {
+    nodeMatchManagerSyncFailsWhenDeltaTooLarge(matchManager);
+}
+
+TEST_F(NodeMatchManagerTestSuite, failedAttemptsIncrementOnFail) {
+    nodeMatchManagerFailedAttemptsIncrementOnFail(matchManager);
+}
+
+TEST_F(NodeMatchManagerTestSuite, opponentNeverPressedIsNotSync) {
+    nodeMatchManagerOpponentNeverPressedIsNotSync(matchManager);
+}
+
+TEST_F(NodeMatchManagerTestSuite, initiatorNotReadyBeforeAck) {
+    nodeMatchManagerInitiatorNotReadyBeforeAck(this);
+}
+
+TEST_F(NodeMatchManagerTestSuite, initiatorReadyAfterAck) {
+    nodeMatchManagerInitiatorReadyAfterAck(this);
 }
 
 // ============================================

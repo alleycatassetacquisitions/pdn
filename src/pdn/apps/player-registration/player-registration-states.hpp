@@ -3,7 +3,7 @@
 #include "device/pdn.hpp"
 #include "state/state.hpp"
 #include "game/player.hpp"
-#include "game/match-manager.hpp"
+#include "game/stored-match-upload-source.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "utils/simple-timer.hpp"
@@ -20,7 +20,7 @@ enum PlayerRegistrationStateId {
 
 class PlayerRegistrationState : public TypedState<PDN> {
 public:
-    PlayerRegistrationState(Player* player, MatchManager* matchManager);
+    PlayerRegistrationState(Player* player, StoredMatchUploadSource* matchUploadSource);
     ~PlayerRegistrationState();
 
     void onStateMounted(PDN* pdn) override;
@@ -32,7 +32,7 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
-    MatchManager* matchManager;
+    StoredMatchUploadSource* matchUploadSource;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
@@ -41,7 +41,7 @@ private:
 
 class FetchUserDataState : public TypedState<PDN> {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager);
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, StoredMatchUploadSource* matchUploadSource);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -56,7 +56,7 @@ public:
     
 private:
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
+    StoredMatchUploadSource* matchUploadSource;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;

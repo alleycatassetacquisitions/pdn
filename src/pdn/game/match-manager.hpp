@@ -19,6 +19,7 @@
 #include "game/player.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "device/drivers/storage-interface.hpp"
+#include "game/stored-match-upload-source.hpp"
 
 class ShootoutManager;
 
@@ -49,7 +50,7 @@ struct ActiveDuelState {
     };
 };
 
-class MatchManager {
+class MatchManager : public StoredMatchUploadSource {
 public:
 
     MatchManager();
@@ -106,18 +107,18 @@ public:
      * Converts all stored matches to a JSON array string
      * @return JSON string containing all stored matches
      */
-    std::string toJson();
+    std::string toJson() override;
 
     /**
      * Clears all matches from storage
      */
-    void clearStorage();
+    void clearStorage() override;
 
     /**
      * Gets the number of stored matches
      * @return Number of matches
      */
-    size_t getStoredMatchCount();
+    size_t getStoredMatchCount() override;
 
     void clearCurrentMatch();
 
