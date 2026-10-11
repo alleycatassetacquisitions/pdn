@@ -65,10 +65,13 @@ jobs:
       with:
         python-version: '3.11'  # pioarduino requires Python 3.10-3.13
     
+    # pioarduino's fork of PlatformIO core, matching the pinned platform. Upstream
+    # core installs its own tool-scons, which the platform deletes as the wrong
+    # version while the build is running from it.
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
-        pip install platformio
+        pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
     
     - name: Create WiFi credentials file for CI
       run: |

@@ -4,7 +4,9 @@
 
 #pragma once
 #include "device/drivers/driver-interface.hpp"
-#include <Arduino.h>
+#include "device/drivers/logger.hpp"
+
+#include <driver/ledc.h>
 
 class Esp32S3HapticsDriver : public HapticsMotorDriverInterface {
 public:
@@ -13,11 +15,34 @@ public:
     }
 
     ~Esp32S3HapticsDriver() override {
-        analogWrite(pinNumber, 0);
+        setDuty(0);
     }
 
     int initialize() override {
-        pinMode(pinNumber, OUTPUT);
+        // 8-bit at 1kHz is what every haptic cue was tuned against; changing either
+        // changes how the cues feel, so re-tune on hardware if one moves.
+        ledc_timer_config_t timer = {};
+        timer.speed_mode = LEDC_LOW_SPEED_MODE;
+        timer.duty_resolution = LEDC_TIMER_8_BIT;
+        timer.timer_num = HAPTICS_TIMER;
+        timer.freq_hz = PWM_FREQUENCY_HZ;
+        timer.clk_cfg = LEDC_AUTO_CLK;
+        if (ledc_timer_config(&timer) != ESP_OK) {
+            LOG_E(name.c_str(), "haptics LEDC timer config failed");
+            return -1;
+        }
+
+        ledc_channel_config_t channel = {};
+        channel.gpio_num = pinNumber;
+        channel.speed_mode = LEDC_LOW_SPEED_MODE;
+        channel.channel = HAPTICS_CHANNEL;
+        channel.timer_sel = HAPTICS_TIMER;
+        channel.duty = 0;
+        channel.hpoint = 0;
+        if (ledc_channel_config(&channel) != ESP_OK) {
+            LOG_E(name.c_str(), "haptics LEDC channel config failed");
+            return -1;
+        }
         return 0;
     }
 
@@ -32,7 +57,7 @@ public:
     void max() override {
         intensity = 255;
         active = true;
-        analogWrite(pinNumber, 255);
+        setDuty(255);
     }
 
     void setIntensity(int value) override {
@@ -40,7 +65,7 @@ public:
         else if (value < 0) intensity = 0;
         else intensity = value;
 
-        analogWrite(pinNumber, intensity);
+        setDuty(intensity);
     }
 
     int getIntensity() override {
@@ -50,10 +75,26 @@ public:
     void off() override {
         intensity = 0;
         active = false;
-        analogWrite(pinNumber, 0);
+        setDuty(0);
     }
 
 private:
+    void setDuty(int duty) {
+        // Full scale goes one past the 8-bit maximum, which LEDC reads as
+        // constant-high with no switching; at 255 max intensity would PWM at
+        // 255/256 and pulse low every millisecond.
+        if (duty >= 255) {
+            duty = 256;
+        }
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, HAPTICS_CHANNEL, duty);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, HAPTICS_CHANNEL);
+    }
+
+    // Nothing else in the tree drives LEDC, so timer 0 and channel 0 are free.
+    static constexpr ledc_timer_t HAPTICS_TIMER = LEDC_TIMER_0;
+    static constexpr ledc_channel_t HAPTICS_CHANNEL = LEDC_CHANNEL_0;
+    static constexpr uint32_t PWM_FREQUENCY_HZ = 1000;
+
     int pinNumber;
     int intensity;
     bool active;
