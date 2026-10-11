@@ -7,8 +7,8 @@ class Device;
 
 /*
  * StateLifecycle defines the internal dispatch contract used by StateMachine.
- * Concrete state classes should NOT inherit this directly — instead, inherit
- * State (device-agnostic) or TypedState<DeviceT> (device-specific).
+ * Concrete state classes inherit TypedState<DeviceT>, never this or State
+ * directly; State re-declares these pure and private, so neither compiles alone.
  *
  * The mount/loop/dismount methods are the only entry points StateMachine calls.
  * TypedState<DeviceT> overrides them as final to perform a single cast from
