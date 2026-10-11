@@ -47,12 +47,10 @@ public:
  *
  * The process looks like this:
  *
- * onStateMounted: Invoked exactly one time the first time this state becomes
- * the "current" state in a state machine.
+ * onStateMounted: Invoked each time this state becomes the "current" state in
+ * a state machine.
  *  - this method should include "setup" code for a state like starting timers,
  *  attaching callbacks to hardware, etc.
- *  - when mounting a new state is also when we register valid Serial messages for
- *  sending and receiving.
  *
  * onStateLoop: Invoked 1 to N times.
  * - this method is where the bulk of the functionality of a state occurs in.
@@ -64,10 +62,9 @@ public:
  * the conditions for state transitions - ie invalidating timers and resetting hardware
  * peripherals on the PDN.
  *
- * State holds the transition machinery and the state id; it declares no lifecycle
- * hooks of its own. Concrete states inherit TypedState<DeviceT> (defined below),
- * which delivers a typed DeviceT* to every onState* method and keeps the
- * StateLifecycle bridge private so implementers cannot reach it.
+ * State holds the transition machinery and the state id. Its lifecycle bridge is
+ * pure and private: only TypedState<DeviceT> (defined below) supplies it, so every
+ * concrete state goes through TypedState, and only StateMachine calls it.
  *
  * Device-agnostic states use TypedState<Device>.
  */
@@ -121,10 +118,14 @@ private:
     std::vector<AppTransitionEntry> appTransitions;
 
     StateId name;
+
+    void mount(Device* device) override = 0;
+    void loop(Device* device) override = 0;
+    void dismount(Device* device) override = 0;
 };
 
 /*
- * TypedState<DeviceT> is the preferred base for device-specific states.
+ * TypedState<DeviceT> is the base every concrete state inherits.
  *
  * It overrides the StateLifecycle bridge (mount/loop/dismount) as private final,
  * performs a single static_cast<DeviceT*> per lifecycle call, and forwards to

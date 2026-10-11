@@ -14,9 +14,11 @@ const StateId APP_TWO(200);
 const StateId APP_THREE(300);
 
 // Simple mock state for MockStateMachine
-class MockState : public State {
+class MockState : public TypedState<Device> {
 public:
-    explicit MockState() : State(999) {}
+    /** Constructs the mock with a fixed id no other test state uses. */
+    explicit MockState()
+        : TypedState<Device>(999) {}
     // Minimal implementation - just exists to satisfy StateMachine requirements
 };
 
