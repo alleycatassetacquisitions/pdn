@@ -82,6 +82,14 @@ jobs:
     
     - name: Build ESP32-S3 Release
       run: pio run -e esp32-s3_pdn_release
+
+    # IDF compiles with -Werror. FDN sources build in no other env, and debug's
+    # -Og changes which warnings GCC reports, so either can fail on its own.
+    - name: Build FDN Release
+      run: pio run -e esp32-s3_fdn_release
+
+    - name: Build ESP32-S3 Debug
+      run: pio run -e esp32-s3_pdn_debug
   
   # Native CLI build verification (Unix only)
   build-cli:
