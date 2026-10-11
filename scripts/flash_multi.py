@@ -103,6 +103,9 @@ NVS_SIZE = 0x5000  # 20 KB — matches default_8MB.csv
 def _esptool(*args):
     """Return a subprocess arg list that invokes esptool via the current Python interpreter.
 
+    Commands and options use the underscore spellings: esptool 4.x accepts only
+    those, and 5.x still accepts them with a deprecation warning.
+
     Using sys.executable -m esptool avoids relying on an 'esptool' entry-point
     on PATH, which on Windows would resolve to esptool.py and trigger an
     "Open with" dialog if .py files have no shell association.
@@ -142,7 +145,7 @@ def erase_flash_if_needed(port_name, erase_flash):
     if not erase_flash:
         return True
     _print(port_name, "Erasing flash...")
-    cmd = _esptool("--chip", "esp32s3", "--port", port_name, "--before", "usb-reset", "erase-flash")
+    cmd = _esptool("--chip", "esp32s3", "--port", port_name, "--before", "usb_reset", "erase_flash")
     try:
         _run_esptool(port_name, cmd, timeout=30)
         import time
@@ -161,7 +164,7 @@ def clear_nvs_partition(port_name):
     _print(port_name, "Clearing NVS partition...")
     cmd = _esptool(
         "--chip", "esp32s3", "--port", port_name,
-        "--before", "usb-reset", "--after", "hard-reset",
+        "--before", "usb_reset", "--after", "hard_reset",
         "erase_region", str(NVS_OFFSET), str(NVS_SIZE),
     )
     try:
@@ -194,8 +197,8 @@ def flash_to_port(port_name, port_desc, build_dir, chip_info="", erase_flash=Fal
 
     cmd = _esptool(
         "--chip", "esp32s3", "--port", port_name, "--baud", "921600",
-        "--before", "usb-reset", "--after", "hard-reset",
-        "write-flash", "--flash-mode", "dio", "--flash-freq", "80m", "--flash-size", "8MB",
+        "--before", "usb_reset", "--after", "hard_reset",
+        "write_flash", "--flash_mode", "dio", "--flash_freq", "80m", "--flash_size", "8MB",
         "0x0000", bootloader, "0x8000", partitions, "0x10000", firmware,
     )
     if has_littlefs:
