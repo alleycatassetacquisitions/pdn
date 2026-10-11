@@ -8,7 +8,8 @@ class Device;
 /*
  * StateLifecycle defines the internal dispatch contract used by StateMachine.
  * Concrete state classes inherit TypedState<DeviceT>, never this or State
- * directly; State re-declares these pure and private, so neither compiles alone.
+ * directly; State re-declares these pure and private, so a class deriving State
+ * without TypedState is abstract.
  *
  * The mount/loop/dismount methods are the only entry points StateMachine calls.
  * TypedState<DeviceT> overrides them as final to perform a single cast from
