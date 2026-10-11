@@ -71,7 +71,7 @@ jobs:
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
-        pip install https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+        pip install pioarduino==6.1.19
     
     - name: Create WiFi credentials file for CI
       run: |
