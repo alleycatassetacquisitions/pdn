@@ -1,5 +1,6 @@
 #pragma once
 
+#include "device/crash/crash-record-source.hpp"
 #include "device/pdn.hpp"
 #include "state/state.hpp"
 #include "game/player.hpp"
@@ -41,7 +42,12 @@ private:
 
 class FetchUserDataState : public TypedState<PDN> {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager);
+    /**
+     * After a successful player fetch, uploads pending records from
+     * `crashRecordSource` oldest first, until one fails or CRASH_UPLOAD_TIMEOUT
+     * runs out; nullptr skips that step.
+     */
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager, CrashRecordSource* crashRecordSource);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -55,19 +61,34 @@ public:
     void onStateDismounted(PDN* pdn) override;
     
 private:
+    void uploadNextCrashRecord();
+    void finishCrashUpload();
+    uint32_t beginRequest();
+    bool isCurrentRequest(uint32_t requestId) const;
+
     RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
+    CrashRecordSource* crashRecordSource;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     WirelessManager* wirelessManager;
-    bool isFetchingUserData = false;
-    bool isUploadingMatches = false;
+    // Which exchange the shared fetchTimer is timing, so expiry knows where to go.
+    enum class FetchPhase { IDLE,
+                            UPLOADING_MATCHES,
+                            FETCHING_PLAYER,
+                            UPLOADING_CRASH_RECORDS };
+    FetchPhase phase = FetchPhase::IDLE;
+    // Every request captures the id it was issued under; dismount and each new
+    // request move it on, so a late answer to an earlier one is ignored.
+    uint32_t currentRequestId = 0;
 
     Player* player;
     SimpleTimer fetchTimer;
     const int USER_DATA_FETCH_TIMEOUT = 10000;
     const int MATCHES_UPLOAD_TIMEOUT = 10000;
+    // For all pending crash records together; whatever is left goes on a later boot.
+    static constexpr int CRASH_UPLOAD_TIMEOUT = 15000;
 };
 
 class ConfirmOfflineState : public TypedState<PDN> {

@@ -288,10 +288,14 @@ Quickdraw::~Quickdraw() {
     matches.clear();
 }
 
+void Quickdraw::setCrashRecordSource(CrashRecordSource* source) {
+    crashRecordSource = source;
+}
+
 void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
-    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager, crashRecordSource);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);

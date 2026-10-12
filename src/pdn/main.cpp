@@ -185,12 +185,12 @@ static void setup() {
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger = new CrashLogger(storageDriver);
     crashLogger->capture();
-    crashLogger->transmitPending();
 
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    
+    game->setCrashRecordSource(crashLogger);
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

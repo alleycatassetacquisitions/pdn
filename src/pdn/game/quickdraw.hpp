@@ -25,6 +25,12 @@ public:
 
     void populateStateMap() override;
 
+    /**
+     * Crash records for registration to upload. Call before the app is first
+     * mounted; without it registration uploads none.
+     */
+    void setCrashRecordSource(CrashRecordSource* source);
+
     // Static entry points for ESP-NOW packet handlers. Route to the
     // current state if it's SupporterReady (for game events) or to the
     // MatchManager/champion-side confirm tracker (for confirms).
@@ -51,6 +57,7 @@ private:
     QuickdrawWirelessManager* quickdrawWirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
+    CrashRecordSource* crashRecordSource = nullptr;
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;

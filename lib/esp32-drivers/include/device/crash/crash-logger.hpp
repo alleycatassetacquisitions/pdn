@@ -12,37 +12,20 @@
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
-#include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
-#include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
+#include "device/crash/crash-record-source.hpp"
+#include "device/crash/crash-record.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
 #define FIRMWARE_COMMIT_HASH "unknown"
 #endif
-
-constexpr size_t  TASK_NAME_LENGTH   = 16;
-constexpr size_t  COMMIT_HASH_LENGTH = 9;
-constexpr uint8_t MAX_CRASH_ENTRIES = 10;
 
 /** NVS namespace for persisted crash records (shared with Esp32S3PrefsDriver registration). */
 inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
 
 /** USB serial command (line-terminated) to dump the crash log via flushToSerial(). */
 inline constexpr const char CRASH_LOG_SERIAL_COMMAND[] = "CRASHLOG";
-
-struct CrashRecord {
-    // Monotonic crash count for this device (1 = first crash ever recorded).
-    uint32_t crashNumber;
-
-    // Milliseconds since boot at the moment the crash is detected on reboot.
-    uint32_t timestamp;
-
-    uint8_t resetReason;
-    uint32_t programCounter;
-    uint32_t exceptionCause;
-    char taskName[TASK_NAME_LENGTH];
-    char commitHash[COMMIT_HASH_LENGTH];
-};
 
 struct CrashPacket {
     uint32_t crashNumber;
@@ -55,28 +38,27 @@ struct CrashPacket {
 } __attribute__((packed));
 
 /**
- * Captures and persists crash records across reboots, then transmits when wireless is up.
+ * Captures and persists crash records across reboots.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized; call transmitPending() after ESP-NOW is ready; poll serial in loop().
+ * storage is initialized; poll serial in loop(). Records leave the device either by
+ * ESP-NOW broadcast (transmitPending(), when built with an EspNowDriver) or through
+ * the CrashRecordSource interface, which the PDN uploads over HTTP.
  */
-class CrashLogger {
+class CrashLogger : public CrashRecordSource {
 public:
-    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, Esp32S3HttpClient* httpClientDriver)
+    /** A logger whose records leave only through CrashRecordSource. */
+    explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver)
         : prefsDriver(prefsDriver)
-        , httpClientDriver(httpClientDriver)
         , espNowDriver(nullptr)
         , hasCaptured(false)
-        , useHttp(true)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
     }
 
     explicit CrashLogger(Esp32S3PrefsDriver* prefsDriver, EspNowDriver* espNowDriver)
         : prefsDriver(prefsDriver)
-        , httpClientDriver(nullptr)
         , espNowDriver(espNowDriver)
         , hasCaptured(false)
-        , useHttp(false)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
     }
@@ -122,7 +104,42 @@ public:
 
     void transmitPending() {
         if (!hasPending()) return;
-        useHttp ? transmitHttp() : transmitEspNow();
+        transmitEspNow();
+    }
+
+    /**
+     * Pending numbers older than the ring buffer's last MAX_CRASH_ENTRIES are
+     * gone and are counted as sent in one write. A record inside that window
+     * that cannot be read is skipped the same way, as transmitEspNow() does.
+     */
+    bool loadOldestPending(CrashRecord& out) override {
+        const uint32_t crashSeq = readCrashSeq();
+        const uint32_t oldestRetained = crashSeq > MAX_CRASH_ENTRIES ? crashSeq - MAX_CRASH_ENTRIES + 1 : 1;
+        uint32_t first = readSentSeq() + 1;
+        if (first < oldestRetained) {
+            LOG_W(CRASH_LOG_TAG, "Crashes #%lu-#%lu fell out of the ring buffer unsent",
+                  static_cast<unsigned long>(first), static_cast<unsigned long>(oldestRetained - 1));
+            writeSentSeq(oldestRetained - 1);
+            first = oldestRetained;
+        }
+        for (uint32_t n = first; n <= crashSeq; n++) {
+            if (loadRecordByNumber(n, out)) {
+                return true;
+            }
+            LOG_W(CRASH_LOG_TAG, "Crash #%lu unreadable — skipping", static_cast<unsigned long>(n));
+            writeSentSeq(n);
+        }
+        return false;
+    }
+
+    /**
+     * The sent counter is a high-water mark: records go oldest first, and a late
+     * or repeated answer for an older number must not move it back.
+     */
+    void markUploaded(uint32_t crashNumber) override {
+        if (crashNumber > readSentSeq()) {
+            writeSentSeq(crashNumber);
+        }
     }
 
     void flushToSerial() const {
@@ -175,7 +192,11 @@ public:
      * Poll the USB Serial/JTAG port (same link as esp_log) for the CRASHLOG command.
      */
     void pollSerialCommand() {
-        ensureUsbSerialJtagDriver();
+        // A failed install (it allocates from internal RAM) leaves the driver's
+        // state null, and reading through it then faults.
+        if (!ensureUsbSerialJtagDriver()) {
+            return;
+        }
 
         uint8_t chunk[16];
         const int bytesRead = usb_serial_jtag_read_bytes(chunk, sizeof(chunk), 0);
@@ -238,16 +259,17 @@ private:
         }
     }
 
-    static void ensureUsbSerialJtagDriver() {
+    static bool ensureUsbSerialJtagDriver() {
         static bool driverReady = false;
         if (driverReady) {
-            return;
+            return true;
         }
         usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
         esp_err_t err = usb_serial_jtag_driver_install(&cfg);
         if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
             driverReady = true;
         }
+        return driverReady;
     }
 
     static void usbMonitorWrite(const char* text) {
@@ -396,10 +418,6 @@ private:
         }
     }
 
-    void transmitHttp() {
-        LOG_W(CRASH_LOG_TAG, "HTTP crash transmission not yet implemented.");
-    }
-
     void transmitEspNow() {
         if (!espNowDriver) return;
 
@@ -447,10 +465,8 @@ private:
     }
 
     Esp32S3PrefsDriver* prefsDriver;
-    Esp32S3HttpClient*  httpClientDriver;
     EspNowDriver*       espNowDriver;
     bool                hasCaptured;
-    bool                useHttp;
 
     char   serialCommandBuffer[32];
     size_t serialCommandLength;
