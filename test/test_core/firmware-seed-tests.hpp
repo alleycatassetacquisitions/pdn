@@ -231,6 +231,12 @@ public:
         drainSync();
     }
 
+    /** Lets a finished run's verdict window run out, so the run ends. */
+    void waitOutVerdictWindow() {
+        activeClock->advance(SEED_VERDICT_WINDOW_MARGIN_MS);
+        manager->sync();
+    }
+
     /// Folds a STATUS report into the run's repair set as if `missing` were
     /// the chunk indices the reporting device does not have yet. Bypasses
     /// the wire: onStatus doesn't take a sender MAC, so `fromMac` exists
@@ -294,6 +300,8 @@ private:
     // How long runRepairRound() advances the clock to clear the seed's
     // SEED_POLL_WINDOW_MS collection window with margin.
     static constexpr unsigned long SEED_POLL_WINDOW_MARGIN_MS = 700;
+    // Clears the seed's SEED_VERDICT_WINDOW_MS with margin.
+    static constexpr unsigned long SEED_VERDICT_WINDOW_MARGIN_MS = 5100;
 
     // Drives sync()/onSendReport() in small steps until a call sends
     // nothing — the seed either ran out of work or is waiting on a timer

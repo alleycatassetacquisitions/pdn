@@ -133,6 +133,10 @@ public:
     void onPacketReceived(const uint8_t* src, const uint8_t* data, size_t length);
 
 private:
+    // Ends streaming and repair, and keeps the run open for SEED_VERDICT_WINDOW_MS
+    // so receivers still committing can report.
+    void collectVerdicts();
+
     // Stage of an inbound transfer. Linear, and the receive side is only ever
     // in one of these: an accepted offer moves IDLE -> RECEIVING, a full
     // bitmap moves RECEIVING -> REPORTING whether the commit passed or
@@ -156,6 +160,8 @@ private:
         STREAMING = 1,
         POLLING = 2,
         REPAIRING = 3,
+        // Every chunk is out and streaming is over; COMPLETE replies still count.
+        COLLECTING_VERDICTS = 4,
     };
 
     // Trampoline for the driver's packet callback; forwards straight to
@@ -318,4 +324,6 @@ private:
     // queued. Invalidated on every entry into POLLING so a previous round's
     // expired window cannot resolve the next one before its POLL goes out.
     SimpleTimer pollWindowTimer;
+    // Runs while COLLECTING_VERDICTS; the run ends when it expires.
+    SimpleTimer verdictWindowTimer;
 };

@@ -35,6 +35,12 @@ constexpr unsigned long SEED_OFFER_INTERVAL_MS = 1000;
 // seed already moved on.
 constexpr unsigned long SEED_POLL_WINDOW_MS = 600;
 
+// How long a finished run keeps listening for COMPLETE before it reports its
+// tally. A receiver sends COMPLETE only after hashing, verifying and closing
+// the image it just assembled, which took ~2.3s for a 2.2MB image on the rig,
+// by when every chunk was in and the last POLL had already come back clean.
+constexpr unsigned long SEED_VERDICT_WINDOW_MS = 5000;
+
 // Upper bound (exclusive) of a receiver's random delay before answering a
 // POLL, so every device that heard it doesn't reply in the same instant.
 constexpr unsigned long STATUS_BACKOFF_CEILING_MS = 500;
@@ -710,6 +716,14 @@ void FirmwareUpdateManager::sync() {
         return;
     }
 
+    if (seedPhase == SeedPhase::COLLECTING_VERDICTS) {
+        if (verdictWindowTimer.expired()) {
+            seedPhase = SeedPhase::IDLE;
+            logRunVerdicts();
+        }
+        return;  // no OFFER: a device that missed this run must not start receiving it now
+    }
+
     if (!offerTimer.isRunning() || offerTimer.expired()) {
         sendOffer();
         offerTimer.setTimer(SEED_OFFER_INTERVAL_MS);
@@ -762,8 +776,7 @@ void FirmwareUpdateManager::syncRepair() {
 
 void FirmwareUpdateManager::resolveRepairRound() {
     if (bitmapIsEmpty(repairBitmap)) {
-        seedPhase = SeedPhase::IDLE;  // nobody reported a gap: the run is done
-        logRunVerdicts();
+        collectVerdicts();  // nobody reported a gap: the run is done
         return;
     }
 
@@ -777,8 +790,7 @@ void FirmwareUpdateManager::resolveRepairRound() {
 
     if (identicalRepairRounds >= REPAIR_STALL_ROUNDS) {
         LOG_E(TAG, "repair set unchanged for %d rounds in a row; ending the run", identicalRepairRounds);
-        seedPhase = SeedPhase::IDLE;  // waiting out a chunk that never lands would never end the run
-        logRunVerdicts();
+        collectVerdicts();  // waiting out a chunk that never lands would never end the run
         std::memset(repairBitmap, 0, sizeof(repairBitmap));
         return;
     }
@@ -786,6 +798,11 @@ void FirmwareUpdateManager::resolveRepairRound() {
     std::memcpy(repairStreamSet, repairBitmap, sizeof(repairBitmap));
     std::memset(repairBitmap, 0, sizeof(repairBitmap));  // the next round starts collecting now
     seedPhase = SeedPhase::REPAIRING;
+}
+
+void FirmwareUpdateManager::collectVerdicts() {
+    seedPhase = SeedPhase::COLLECTING_VERDICTS;
+    verdictWindowTimer.setTimer(SEED_VERDICT_WINDOW_MS);
 }
 
 void FirmwareUpdateManager::dispatchSendStatus(const uint8_t* dstMac, const uint8_t* data, size_t length,

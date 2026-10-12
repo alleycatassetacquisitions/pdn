@@ -58,7 +58,32 @@ TEST(FirmwareRepairTest, runEndsWhenAPollFindsNothingMissing) {
     f.manager->beginSeeding();
     f.streamAllChunks();
     f.runRepairRound();  // nobody reports a gap
+    EXPECT_TRUE(f.manager->isSeeding()) << "ended before receivers could report";
+    f.waitOutVerdictWindow();
     EXPECT_FALSE(f.manager->isSeeding());
+}
+
+TEST(FirmwareRepairTest, verdictAfterTheLastCleanPollIsTallied) {
+    // Receivers only report once they have verified and committed, which is
+    // after the poll that found nothing missing.
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    f.streamAllChunks();
+    f.runRepairRound();
+    f.deliverComplete(DEVICE_A, FirmwareResult::OK);
+    f.waitOutVerdictWindow();
+    ASSERT_FALSE(f.manager->isSeeding());
+    EXPECT_EQ(f.manager->committedCount(), 1);
+}
+
+TEST(FirmwareRepairTest, noOfferWhileCollectingVerdicts) {
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    f.streamAllChunks();
+    f.runRepairRound();
+    const int offersBefore = f.comms.countOf(FirmwareCmd::OFFER);
+    f.runSeedFor(3000);
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::OFFER), offersBefore);
 }
 
 TEST(FirmwareRepairTest, receiverAnswersAPollWithinTheBackoffWindow) {
@@ -79,6 +104,7 @@ TEST(FirmwareRepairTest, aRunEndsWhenRepairStopsMakingProgress) {
         f.deliverStatus(DEVICE_A, {7});  // same gap every round
         f.runRepairRound();
     }
+    f.waitOutVerdictWindow();
     EXPECT_FALSE(f.manager->isSeeding());
 }
 
@@ -214,6 +240,7 @@ TEST(FirmwareRepairTest, aNewRunStartsWithNoVerdicts) {
     f.deliverComplete(DEVICE_A, FirmwareResult::OK);
     ASSERT_EQ(f.manager->committedCount(), 1) << "verdicts are not being tallied at all";
     f.runRepairRound();  // nobody reports a gap: the run ends
+    f.waitOutVerdictWindow();
     ASSERT_FALSE(f.manager->isSeeding());
     f.manager->beginSeeding();
     EXPECT_EQ(f.manager->committedCount(), 0) << "last run's verdicts leaked into this one";
