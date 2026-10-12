@@ -50,11 +50,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #error "BASE_URL not defined. Please create wifi_credentials.ini from wifi_credentials.ini.example"
 #endif
 
-// The Arduino core confirms a pending image before setup() runs, which makes
-// rollback unreachable while appearing to work. Overriding this weak symbol is
-// what keeps a bad image from becoming permanent the moment it boots once.
-extern "C" bool verifyRollbackLater() { return true; }
-
 WifiConfig* wifiConfig = nullptr;
 CrashLogger* crashLogger = nullptr;
 Esp32S3FirmwareStore* firmwareStore = nullptr;
