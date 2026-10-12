@@ -64,10 +64,11 @@ namespace QuickdrawRequests {
         const std::function<void(const WirelessErrorInfo&)>& onError
     ) {
         std::string path = "/api/players/" + playerId;
-        
+
         HttpRequest request(
             path,
             "GET",
+            "",
             "",
             [onSuccess, onError](const std::string& response) {
                 PlayerResponse playerResponse;
@@ -81,9 +82,8 @@ namespace QuickdrawRequests {
                     });
                 }
             },
-            onError
-        );
-        
+            onError);
+
         wirelessManager->queueHttpRequest(request);
     }
 
@@ -100,12 +100,31 @@ namespace QuickdrawRequests {
         HttpRequest request(
             "/api/matches",
             "PUT",
+            "application/json",
             matchesJson,
             onSuccess,
-            onError
-        );
-        
+            onError);
+
         wirelessManager->queueHttpRequest(request);
     }
 
+    /**
+     * Upload one crash record, already protobuf-encoded, to the server.
+     * Automatically switches to WiFi mode if needed.
+     */
+    inline void uploadCrashRecord(
+        WirelessManager* wirelessManager,
+        const std::string& encodedRecord,
+        const std::function<void(const std::string&)>& onSuccess,
+        const std::function<void(const WirelessErrorInfo&)>& onError) {
+        HttpRequest request(
+            "/device-logs",
+            "POST",
+            "application/protobuf",
+            encodedRecord,
+            onSuccess,
+            onError);
+
+        wirelessManager->queueHttpRequest(request);
+    }
 }

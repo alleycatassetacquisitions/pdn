@@ -33,6 +33,7 @@ void SymbolMatchUploadPendingHacksState::onStateMounted(FDN* fdn) {
         HttpRequest req(
             "/api/boxes",
             "POST",
+            "application/json",
             payload,
             [this, playerId](const std::string&) {
                 LOG_I(TAG, "Upload succeeded for %s", playerId.c_str());
