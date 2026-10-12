@@ -9,6 +9,7 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_crt_bundle.h>
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
@@ -346,8 +347,9 @@ private:
         config.user_data = this;
         config.keep_alive_enable = true;
         config.url = wifiConfig->baseUrl.c_str();
-        config.skip_cert_common_name_check = true;
-        config.cert_pem = nullptr;
+        // The server certificate is checked against the CA bundle compiled into
+        // IDF, hostname included.
+        config.crt_bundle_attach = esp_crt_bundle_attach;
         config.is_async = true;
         
         httpClient = esp_http_client_init(&config);
@@ -429,17 +431,42 @@ private:
             esp_http_client_set_post_field(httpClient, request.payload.c_str(), request.payload.length());
         }
 
+        loggedAsyncTransferPending = false;
+        // The first perform() runs in checkOngoingRequests() on the same exec() tick.
+    }
+
+    void handleHttpPerformFailure(HttpRequest& request, esp_err_t err) {
+        LOG_E(HTTP_TAG, "Request failed: %s", esp_err_to_name(err));
+        handleRequestError(request, {WirelessError::CONNECTION_FAILED,
+                                     esp_err_to_name(err),
+                                     request.retryCount < MAX_RETRIES});
+        cleanupHttpClient();
+        initializeHttpClient();
+        loggedAsyncTransferPending = false;
+    }
+
+    // An HTTPS request in async mode returns ESP_ERR_HTTP_EAGAIN until the TLS
+    // handshake and transfer finish, so perform() is called again each tick
+    // rather than once.
+    void pumpHttpTransfer(HttpRequest& request) {
+        if (!httpClient) {
+            LOG_E(HTTP_TAG, "HTTP client missing during transfer: %s", request.path.c_str());
+            handleHttpPerformFailure(request, ESP_FAIL);
+            return;
+        }
+
         esp_err_t err = esp_http_client_perform(httpClient);
-        
+        if (err == ESP_ERR_HTTP_EAGAIN) {
+            if (!loggedAsyncTransferPending) {
+                LOG_D(HTTP_TAG, "Async transfer in progress: %s", request.path.c_str());
+                loggedAsyncTransferPending = true;
+            }
+            return;
+        }
+
+        loggedAsyncTransferPending = false;
         if (err != ESP_OK) {
-            LOG_E(HTTP_TAG, "Request failed: %s", esp_err_to_name(err));
-            handleRequestError(request, {
-                WirelessError::CONNECTION_FAILED,
-                esp_err_to_name(err),
-                request.retryCount < MAX_RETRIES
-            });
-            cleanupHttpClient();
-            initializeHttpClient();
+            handleHttpPerformFailure(request, err);
         }
     }
 
@@ -458,7 +485,8 @@ private:
             request.retryCount++;
             request.inProgress = false;
             currentRequest = nullptr;
-            
+            loggedAsyncTransferPending = false;
+
             if (request.retryCount >= MAX_RETRIES) {
                 if (request.onError) {
                     request.onError({WirelessError::TIMEOUT, "Request timed out", false});
@@ -468,7 +496,10 @@ private:
             
             cleanupHttpClient();
             initializeHttpClient();
+            return;
         }
+
+        pumpHttpTransfer(request);
     }
 
     void handleRequestError(HttpRequest& request, const WirelessErrorInfo& error) {
@@ -552,6 +583,7 @@ private:
     void finalizeRequest(HttpRequest* request) {
         request->inProgress = false;
         currentRequest = nullptr;
+        loggedAsyncTransferPending = false;
         httpQueue.pop();
     }
 
@@ -571,6 +603,7 @@ private:
     esp_http_client_handle_t httpClient = nullptr;
     HttpRequest* currentRequest = nullptr;
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
+    bool loggedAsyncTransferPending = false;
 };
 
 // Event handler must be defined after the class
