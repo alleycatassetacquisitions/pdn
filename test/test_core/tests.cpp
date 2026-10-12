@@ -21,6 +21,7 @@
 #include "shootout-manager-tests.hpp"
 #include "match-manager-concurrent.hpp"
 #include "storage-tests.hpp"
+#include "crash-encoder-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1518,3 +1519,9 @@ int main(int argc, char **argv)
     return 0;
 }
 #endif
+
+TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) { encoderRoundTripPopulatesAllFields(this); }
+TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) { encoderOmitsUnsetOptionalFields(this); }
+TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZeroWithCoreDump) { encoderKeepsExceptionCauseZeroWithCoreDump(this); }
+TEST_F(CrashEncoderTestSuite, omitsTaskWithoutCoreDump) { encoderOmitsTaskWithoutCoreDump(this); }
+TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) { encoderReturnZeroWhenBufferTooSmall(this); }

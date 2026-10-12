@@ -1,0 +1,11 @@
+# Nanopb field options for WriteDeviceLogRequest. device_api.proto is a copy of
+# alleycat-rs's proto/device_api.proto at 09bffc6c. After changing either file,
+# regenerate the committed sources with nanopb 0.4.9.2's generator:
+#   nanopb_generator.py -I lib/alleycat-server/proto -D <tmp> \
+#     -Q '#include "alleycat-server/%s"' device_api.proto
+# then move device_api.pb.h to include/alleycat-server/ and device_api.pb.c to src/.
+# crash-encoder.cpp static_asserts that these sizes hold CrashRecord's strings.
+
+alleycat.device.WriteDeviceLogRequest.device_mac          max_size:18   # "aa:bb:cc:dd:ee:ff\0"
+alleycat.device.WriteDeviceLogRequest.software_version    max_size:16   # 8-char short commit hash + margin
+alleycat.device.WriteDeviceLogRequest.task_name           max_size:16   # TASK_NAME_LENGTH
