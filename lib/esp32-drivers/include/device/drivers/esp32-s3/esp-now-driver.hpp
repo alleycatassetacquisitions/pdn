@@ -59,7 +59,14 @@ public:
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex, portMAX_DELAY);
         std::swap(pending, recvQueue_);
+        recvQueueBytes = 0;
+        const uint32_t dropped = droppedRecvPackets;
+        droppedRecvPackets = 0;
         xSemaphoreGive(recvMutex);
+        if (dropped > 0) {
+            LOG_W("ENC", "Dropped %lu received packets: receive queue over %u bytes",
+                  static_cast<unsigned long>(dropped), static_cast<unsigned>(RECV_QUEUE_MAX_BYTES));
+        }
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
@@ -544,6 +551,15 @@ private:
 
     SemaphoreHandle_t recvMutex;
     std::queue<DeferredPacket> recvQueue_;
+    // Payload bytes waiting in recvQueue_. Each packet's buffer is under
+    // SPIRAM_MALLOC_ALWAYSINTERNAL, so it comes from internal RAM: a device
+    // that boots beside a seed streaming firmware chunks queued them through
+    // setup's splash hold, before exec() first ran, until a later internal
+    // allocation failed. ESP-NOW is already lossy and every protocol on it
+    // retries, so a packet over the budget is dropped instead.
+    size_t recvQueueBytes = 0;
+    uint32_t droppedRecvPackets = 0;
+    static constexpr size_t RECV_QUEUE_MAX_BYTES = 16384;
 
     SemaphoreHandle_t sendMutex;
 
@@ -583,6 +599,15 @@ private:
             LOG_E("ENC", "Recv invalid packet type: %u\n", (int)packetType);
             return;
         }
+
+        xSemaphoreTake(recvMutex, portMAX_DELAY);
+        if (recvQueueBytes + pktLen > RECV_QUEUE_MAX_BYTES) {
+            droppedRecvPackets++;
+            xSemaphoreGive(recvMutex);
+            return;
+        }
+        recvQueueBytes += pktLen;
+        xSemaphoreGive(recvMutex);
 
         DeferredPacket pkt;
         pkt.type = packetType;
