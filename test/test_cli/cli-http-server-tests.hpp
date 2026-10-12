@@ -146,6 +146,7 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
         "/api/players/0010",
         "GET",
         "",
+        "",
         [suite](const std::string& response) {
             suite->successCallbackCalled_ = true;
             suite->lastResponseBody_ = response;
@@ -153,9 +154,8 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
         [suite](const WirelessErrorInfo& error) {
             suite->errorCallbackCalled_ = true;
             suite->lastErrorCode_ = error.code;
-        }
-    );
-    
+        });
+
     suite->driver_->setMockServerEnabled(true);
     suite->driver_->queueRequest(request);
     suite->driver_->exec();  // Process the queue
@@ -167,19 +167,19 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
 // Test: Client handles offline server
 void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
     cli::MockHttpServer::getInstance().setOffline(true);
-    
+
     HttpRequest request(
         "/api/players/0010",
         "GET",
+        "",
         "",
         [suite](const std::string& response) {
             suite->successCallbackCalled_ = true;
         },
         [suite](const WirelessErrorInfo& error) {
             suite->errorCallbackCalled_ = true;
-        }
-    );
-    
+        });
+
     suite->driver_->setMockServerEnabled(true);
     suite->driver_->queueRequest(request);
     suite->driver_->exec();
@@ -195,10 +195,10 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
         "/api/players/0010",
         "GET",
         "",
+        "",
         [](const std::string&) {},
-        [](const WirelessErrorInfo&) {}
-    );
-    
+        [](const WirelessErrorInfo&) {});
+
     suite->driver_->setMockServerEnabled(true);
     suite->driver_->queueRequest(request);
     suite->driver_->exec();
@@ -210,19 +210,19 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
 // Test: Client fails when mock server is disabled
 void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
     suite->driver_->setMockServerEnabled(false);
-    
+
     HttpRequest request(
         "/api/players/0010",
         "GET",
+        "",
         "",
         [suite](const std::string& response) {
             suite->successCallbackCalled_ = true;
         },
         [suite](const WirelessErrorInfo& error) {
             suite->errorCallbackCalled_ = true;
-        }
-    );
-    
+        });
+
     suite->driver_->queueRequest(request);
     suite->driver_->exec();
     
