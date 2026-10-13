@@ -58,13 +58,22 @@ public:
 
     bool queueRequest(HttpRequest& request) override {
         // Queue the request for processing in exec()
-        pendingRequests_.push(request);
+        pendingRequests.push(request);
         return true;
     }
 
     void disconnect() override {
         connected = false;
         httpClientState = HttpClientState::DISCONNECTED;
+        // As the ESP32 driver does: every request still queued belongs to the
+        // WiFi trip that is ending.
+        while (!pendingRequests.empty()) {
+            HttpRequest request = std::move(pendingRequests.front());
+            pendingRequests.pop();
+            if (request.onError) {
+                request.onError({WirelessError::CONNECTION_FAILED, "Disconnected before an answer"});
+            }
+        }
     }
 
     void updateConfig(WifiConfig* config) override {
@@ -130,7 +139,7 @@ public:
      * Get the number of pending requests.
      */
     size_t getPendingRequestCount() const {
-        return pendingRequests_.size();
+        return pendingRequests.size();
     }
 
 private:
@@ -139,8 +148,8 @@ private:
     uint8_t currentChannel = 0;
     uint8_t macAddress[6];
     HttpClientState httpClientState = HttpClientState::DISCONNECTED;
-    
-    std::queue<HttpRequest> pendingRequests_;
+
+    std::queue<HttpRequest> pendingRequests;
     std::deque<HttpRequestHistoryEntry> requestHistory_;
     static constexpr size_t MAX_HISTORY = 5;
     bool mockServerEnabled_ = false;

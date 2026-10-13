@@ -95,6 +95,10 @@ TEST_F(NativeHttpClientDriverTestSuite, ProcessesRequests) {
     httpClientProcessesRequests(this);
 }
 
+TEST_F(NativeHttpClientDriverTestSuite, DisconnectFailsQueuedRequests) {
+    httpClientDisconnectFailsQueuedRequests(this);
+}
+
 TEST_F(NativeHttpClientDriverTestSuite, HandlesOfflineServer) {
     httpClientHandlesOfflineServer(this);
 }
