@@ -25,7 +25,7 @@ size_t encode(const CrashRecord& record, const uint8_t* mac, uint8_t* outBuf, si
     msg.crash_number = record.crashNumber;
 
     msg.has_uptime_ms = true;
-    msg.uptime_ms = record.timestamp;
+    msg.uptime_ms = record.uptimeMs;
 
     if (record.commitHash[0] != '\0') {
         strncpy(msg.software_version, record.commitHash, sizeof(msg.software_version) - 1);

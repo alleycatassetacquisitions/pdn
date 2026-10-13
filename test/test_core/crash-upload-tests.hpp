@@ -43,7 +43,7 @@ public:
     void addRecord(uint32_t crashNumber) {
         CrashRecord record{};
         record.crashNumber = crashNumber;
-        record.timestamp = 1200 + crashNumber;
+        record.uptimeMs = 1200 + crashNumber;
         record.resetReason = 4;
         record.programCounter = 0x42001234;
         record.exceptionCause = 28;

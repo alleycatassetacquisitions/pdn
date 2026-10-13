@@ -207,6 +207,7 @@ static void setup() {
 
 void loop() {
     if (crashLogger != nullptr) {
+        crashLogger->noteUptime();
         crashLogger->pollSerialCommand();
     }
     pdn->loop();

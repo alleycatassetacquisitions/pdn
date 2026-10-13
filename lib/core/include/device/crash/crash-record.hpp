@@ -15,8 +15,9 @@ struct CrashRecord {
     // Monotonic crash count for this device (1 = first crash ever recorded).
     uint32_t crashNumber;
 
-    // Milliseconds since boot at the moment the crash is detected on reboot.
-    uint32_t timestamp;
+    // Milliseconds the crashed boot had run, as of its last loop() pass. 0 when
+    // unknown: a crash before the first pass, or a reset that cleared RTC memory.
+    uint32_t uptimeMs;
 
     uint8_t resetReason;
     // Whether the reboot left a core dump summary. programCounter,

@@ -11,7 +11,7 @@
 inline CrashRecord makeFullRecord() {
     CrashRecord rec{};
     rec.crashNumber = 3;
-    rec.timestamp = 12500;
+    rec.uptimeMs = 12500;
     rec.resetReason = 7;
     rec.hasCoreDumpSummary = true;
     rec.programCounter = 0x400D1A2C;
@@ -49,7 +49,7 @@ inline void encoderRoundTripPopulatesAllFields(CrashEncoderTestSuite* suite) {
     EXPECT_TRUE(msg.has_crash_number);
     EXPECT_EQ(msg.crash_number, static_cast<uint64_t>(rec.crashNumber));
     EXPECT_TRUE(msg.has_uptime_ms);
-    EXPECT_EQ(msg.uptime_ms, static_cast<uint64_t>(rec.timestamp));
+    EXPECT_EQ(msg.uptime_ms, static_cast<uint64_t>(rec.uptimeMs));
     EXPECT_TRUE(msg.has_software_version);
     EXPECT_STREQ(msg.software_version, rec.commitHash);
     EXPECT_TRUE(msg.has_reset_reason);
