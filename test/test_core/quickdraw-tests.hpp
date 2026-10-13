@@ -98,7 +98,7 @@ public:
 // Test: Idle state mounts and registers button callbacks
 inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -109,7 +109,7 @@ inline void idleMountRegistersButtonCallbacks(IdleStateTests* suite) {
 // Test: Idle state does not transition without a connection
 inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -123,7 +123,7 @@ inline void idleDoesNotTransitionWhenDisconnected(IdleStateTests* suite) {
 // Test: State cleanup on dismount
 inline void idleStateClearsOnDismount(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(3);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -136,7 +136,7 @@ inline void idleStateClearsOnDismount(IdleStateTests* suite) {
 // Test: Button callbacks are registered and removed properly
 inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(3);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
 
     suite->idleState->onStateMounted(&suite->device);
 
@@ -146,45 +146,26 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-// Test: the DURING_LONG_PRESS slot is detached on dismount, and the callback
-// itself is harmless if something still manages to fire it afterward — the
-// two-part fix for the callback surviving into a later state and reading a
-// null cachedPdn.
-inline void idleFirmwareHoldCallbackHarmlessAfterDismount(IdleStateTests* suite) {
-    parameterizedCallbackFunction capturedCallback = nullptr;
-    void* capturedCtx = nullptr;
-
-    // Catch-all for the CLICK registrations on both buttons; the two specific
-    // expectations below (declared after, so gmock tries them first) pick off
-    // the DURING_LONG_PRESS calls this test actually cares about.
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(testing::AnyNumber());
-    EXPECT_CALL(*suite->device.mockSecondaryButton,
-                setButtonPress(testing::NotNull(), testing::NotNull(), ButtonInteraction::DURING_LONG_PRESS))
-        .Times(1)
-        .WillOnce(Invoke([&](parameterizedCallbackFunction cb, void* ctx, ButtonInteraction) {
-            capturedCallback = cb;
-            capturedCtx = ctx;
-        }));
-    EXPECT_CALL(*suite->device.mockSecondaryButton,
-                setButtonPress(testing::IsNull(), testing::IsNull(), ButtonInteraction::DURING_LONG_PRESS))
-        .Times(1);
-
+// Test: holding the secondary button for the full hold time in Idle starts a
+// firmware update; anything shorter does not.
+inline void idleFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     suite->idleState->onStateMounted(&suite->device);
-    ASSERT_NE(capturedCallback, nullptr);
 
-    suite->idleState->onStateDismounted(&suite->device);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(4999));
+    suite->idleState->onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->idleState->transitionToFirmwareUpdate());
 
-    // A stale callback still firing after dismount (the driver's
-    // removeButtonCallbacks does not itself clear callback pointers) must not
-    // crash: cachedPdn is null by then.
-    capturedCallback(capturedCtx);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(5000));
+    suite->idleState->onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
 }
 
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received
 inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates but has not yet received MATCH_ID_ACK
@@ -198,7 +179,7 @@ inline void idleDoesNotTransitionWithMatchButNotReady(IdleStateTests* suite) {
 // Test: transitionToDuelCountdown returns true once matchIsReady is set via the full handshake
 inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(2);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     suite->idleState->onStateMounted(&suite->device);
 
     // Hunter initiates match, then receives ACK from bounty
@@ -1243,7 +1224,7 @@ inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
     Idle idleState(suite->player, suite->matchManager, &suite->device.fakeRemoteDeviceCoordinator, suite->chainDuelManager);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(3);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
 
     idleState.onStateMounted(&suite->device);
     

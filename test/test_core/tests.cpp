@@ -840,8 +840,8 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
 }
 
-TEST_F(IdleStateTests, firmwareHoldCallbackHarmlessAfterDismount) {
-    idleFirmwareHoldCallbackHarmlessAfterDismount(this);
+TEST_F(IdleStateTests, firmwareHoldStartsAnUpdate) {
+    idleFirmwareHoldStartsAnUpdate(this);
 }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {

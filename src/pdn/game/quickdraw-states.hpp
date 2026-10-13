@@ -123,14 +123,7 @@ private:
 
     bool transitionToSymbolState = false;
 
-    // Raw signal from the secondary button's DURING_LONG_PRESS callback;
-    // promoted to transitionToFirmwareUpdateState in onStateLoop per the
-    // state-machine pattern, rather than set directly from the callback.
-    bool secondaryHeldForFirmwareUpdate = false;
     bool transitionToFirmwareUpdateState = false;
-    // Set in onStateMounted so the button callback (which only receives
-    // `this` as its void* context) can reach the button driver.
-    PDN* cachedPdn = nullptr;
     static constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
     // void serialEventCallbacks(const std::string& message);
@@ -243,7 +236,6 @@ private:
 };
 
 class ShootoutManager;
-class FirmwareUpdateManager;
 
 class Duel : public ConnectState<PDN> {
 public:

@@ -56,10 +56,6 @@ private:
     bool connectionResolved = false;
     bool wasConnected       = false;
 
-    // The button callback runs outside the lifecycle, so it reaches the device
-    // through this rather than the FDN* a lifecycle method was handed.
-    FDN* cachedFdn = nullptr;
-    bool secondaryHeldForFirmwareUpdate = false;
     bool transitionToFirmwareUpdateState = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
