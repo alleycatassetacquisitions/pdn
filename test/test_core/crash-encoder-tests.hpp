@@ -87,8 +87,7 @@ inline void encoderKeepsExceptionCauseZeroWithCoreDump(CrashEncoderTestSuite* su
 }
 
 inline void encoderKeepsACrashAtAddressZero(CrashEncoderTestSuite* suite) {
-    // A call through a null function pointer leaves a core dump summary whose
-    // PC is 0; its cause is what identifies it.
+    // Once a summary exists, no PC or cause value is treated as missing.
     CrashRecord rec = makeFullRecord();
     rec.programCounter = 0;
     rec.exceptionCause = 20;  // InstFetchProhibited

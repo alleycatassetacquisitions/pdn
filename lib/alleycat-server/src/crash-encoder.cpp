@@ -35,8 +35,8 @@ size_t encode(const CrashRecord& record, const uint8_t* mac, uint8_t* outBuf, si
     msg.has_reset_reason = true;
     msg.reset_reason = record.resetReason;
 
-    // Gated on the summary, not on the values: PC 0 (a call through a null
-    // function pointer) and cause 0 (IllegalInstruction) are both real.
+    // Gated on the summary, not on the values: cause 0 (IllegalInstruction) is
+    // a real cause.
     if (record.hasCoreDumpSummary) {
         msg.has_program_counter = true;
         msg.program_counter = record.programCounter;

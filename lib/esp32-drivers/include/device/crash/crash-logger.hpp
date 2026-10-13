@@ -9,7 +9,6 @@
 #include <cstdarg>
 #include <esp_system.h>
 #include <esp_timer.h>
-#include <esp_attr.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
 #include <ArduinoJson.h>
@@ -21,19 +20,6 @@
 #ifndef FIRMWARE_COMMIT_HASH
 #define FIRMWARE_COMMIT_HASH "unknown"
 #endif
-
-/**
- * The uptime noteUptime() last recorded. Lives in RTC memory (crash-logger.cpp),
- * which a panic or watchdog reset leaves intact, so the next boot can read how
- * long the crashed boot ran. `marker` tells a value written this way from the
- * random contents a power-on leaves.
- */
-struct CrashedBootUptime {
-    uint32_t marker;
-    uint32_t uptimeMs;
-};
-extern CrashedBootUptime crashedBootUptime;
-inline constexpr uint32_t CRASHED_BOOT_UPTIME_MARKER = 0x55505449;
 
 /** NVS namespace for persisted crash records (shared with Esp32S3PrefsDriver registration). */
 inline constexpr const char CRASH_LOG_NAMESPACE[] = "crashlog";
@@ -53,8 +39,9 @@ struct CrashPacket {
 
 /**
  * Captures and persists crash records across reboots.
- * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized; poll serial in loop(). Records leave the device either by
+ * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver. Call
+ * takeCrashedBootUptime() first in setup() and pass it to capture() once storage is
+ * initialized; call noteUptime() and poll serial in loop(). Records leave the device either by
  * ESP-NOW broadcast (transmitPending(), when built with an EspNowDriver) or through
  * the CrashRecordSource interface, which the PDN uploads over HTTP.
  */
@@ -77,23 +64,27 @@ public:
         serialCommandBuffer[0] = '\0';
     }
 
-    void capture() {
+    /**
+     * Call first in setup(), before anything that can crash: returns the uptime
+     * the previous boot last noted (0 if none) and clears it, so a crash later
+     * in this boot's setup is never reported with an earlier boot's uptime.
+     */
+    static uint32_t takeCrashedBootUptime();
+
+    /** Call every loop() pass: records the uptime a crash during this boot reports. */
+    static void noteUptime();
+
+    /** Records the reset as a crash unless it was clean; `crashedBootUptimeMs` from takeCrashedBootUptime(). */
+    void capture(uint32_t crashedBootUptimeMs) {
         if (hasCaptured) return;
         hasCaptured = true;
-
-        // Read and cleared before the clean-reset return below: otherwise a value
-        // a previous boot left would be reported for a crash this boot has before
-        // its first noteUptime().
-        const uint32_t crashedUptimeMs =
-            crashedBootUptime.marker == CRASHED_BOOT_UPTIME_MARKER ? crashedBootUptime.uptimeMs : 0;
-        crashedBootUptime.marker = 0;
 
         esp_reset_reason_t reason = esp_reset_reason();
         if (isCleanReason(reason)) return;
 
         CrashRecord rec{};
         rec.resetReason = static_cast<uint8_t>(reason);
-        rec.uptimeMs = crashedUptimeMs;
+        rec.uptimeMs = crashedBootUptimeMs;
 
         esp_core_dump_summary_t summary{};
         rec.hasCoreDumpSummary = esp_core_dump_get_summary(&summary) == ESP_OK;
@@ -113,12 +104,6 @@ public:
               rec.taskName[0] != '\0' ? rec.taskName : "unknown", rec.commitHash);
 
         eraseCoreDumpAfterCapture(rec.hasCoreDumpSummary);
-    }
-
-    /** Call every loop() pass: records the uptime a crash during this boot reports. */
-    void noteUptime() {
-        crashedBootUptime.uptimeMs = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-        crashedBootUptime.marker = CRASHED_BOOT_UPTIME_MARKER;
     }
 
     bool hasPending() const {
@@ -400,7 +385,7 @@ private:
     void serializeRecord(const CrashRecord& rec, char* buf, size_t bufSize) const {
         JsonDocument doc;
         doc["id"]              = rec.crashNumber;
-        doc["timestamp"] = rec.uptimeMs;
+        doc["uptimeMs"] = rec.uptimeMs;
         doc["resetReason"]     = rec.resetReason;
         doc["coreDump"] = rec.hasCoreDumpSummary;
         doc["programCounter"]  = rec.programCounter;
@@ -416,7 +401,9 @@ private:
         if (err) return false;
 
         out.crashNumber    = doc["id"] | 0u;
-        out.uptimeMs = doc["timestamp"] | doc["ts"] | 0u;
+        // Records written before this key existed held ms since the next boot,
+        // not the crashed boot's uptime, so they read as unknown.
+        out.uptimeMs = doc["uptimeMs"] | 0u;
         out.resetReason    = doc["resetReason"] | doc["rr"] | static_cast<uint8_t>(0);
         out.programCounter = doc["programCounter"] | doc["pc"] | 0u;
         out.exceptionCause = doc["exceptionCause"] | doc["ec"] | 0u;
