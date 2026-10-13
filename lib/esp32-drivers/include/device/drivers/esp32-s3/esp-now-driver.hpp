@@ -157,12 +157,24 @@ public:
             return;
         }
 
-        // The deinit took the IDF callback path with it, so a frame that was in flight
-        // will never report. Dispatch its failure while it is still at the head, where
-        // the handler can be resolved from it, and only then drop the queue: otherwise
-        // a caller waiting on delivery stays latched, and the stale head stops sendData
-        // from ever starting another transmission this boot.
-        DispatchSendStatus(false);
+        // The deinit took the IDF callback path with it, so no queued frame will
+        // ever report. Dispatch each one's failure while it is at the head, where
+        // its handler can be resolved from it, then drop it: a caller waiting on
+        // delivery of any of them would otherwise stay latched, and a stale head
+        // stops sendData from ever starting another transmission this boot.
+        while (true) {
+            xSemaphoreTake(sendMutex, portMAX_DELAY);
+            const bool empty = m_sendQueue.empty();
+            xSemaphoreGive(sendMutex);
+            if (empty) {
+                break;
+            }
+            DispatchSendStatus(false);
+            xSemaphoreTake(sendMutex, portMAX_DELAY);
+            free(m_sendQueue.front().ptr);
+            m_sendQueue.pop();
+            xSemaphoreGive(sendMutex);
+        }
         clearSendQueue();
 
         peerCommsState = PeerCommsState::DISCONNECTED;
@@ -553,10 +565,11 @@ private:
     std::queue<DeferredPacket> recvQueue_;
     // Payload bytes waiting in recvQueue_. Each packet's buffer is under
     // SPIRAM_MALLOC_ALWAYSINTERNAL, so it comes from internal RAM: a device
-    // that boots beside a seed streaming firmware chunks queued them through
-    // setup's splash hold, before exec() first ran, until a later internal
-    // allocation failed. ESP-NOW is already lossy and every protocol on it
-    // retries, so a packet over the budget is dropped instead.
+    // that boots beside a seed streaming firmware chunks queues them through
+    // setup's splash hold, before exec() first runs, until a later internal
+    // allocation fails. A packet over the budget is dropped instead, as the
+    // radio itself drops frames: whatever the protocol does about a lost
+    // frame, it does about this one.
     size_t recvQueueBytes = 0;
     uint32_t droppedRecvPackets = 0;
     static constexpr size_t RECV_QUEUE_MAX_BYTES = 16384;
