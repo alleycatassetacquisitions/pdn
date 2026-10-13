@@ -5,7 +5,7 @@
 #include <esp_partition.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
-
+#include <esp_timer.h>
 
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -40,6 +40,10 @@ public:
     explicit Esp32S3FirmwareStore(StorageInterface* storage)
         : storage(storage) {
         runningPartition = esp_ota_get_running_partition();
+        esp_ota_img_states_t state;
+        runningImagePending = runningPartition != nullptr &&
+                              esp_ota_get_state_partition(runningPartition, &state) == ESP_OK &&
+                              state == ESP_OTA_IMG_PENDING_VERIFY;
         updatePartition = esp_ota_get_next_update_partition(nullptr);
         if (updatePartition != nullptr && updatePartition->size != OTA_PARTITION_SIZE) {
             // The bitmap-ceiling static_assert in firmware-update-manager.cpp
@@ -180,47 +184,43 @@ public:
     /// one (ESP_OTA_IMG_PENDING_VERIFY). A USB-flashed image never is, and
     /// confirming it anyway only logs an error or rewrites otadata.
     void confirmRunningImage() override {
-        if (runningPartition == nullptr) {
+        if (!runningImagePending) {
             return;
         }
-        esp_ota_img_states_t state;
-        if (esp_ota_get_state_partition(runningPartition, &state) != ESP_OK) {
-            return;
-        }
-        if (state != ESP_OTA_IMG_PENDING_VERIFY) {
-            return;
-        }
+        runningImagePending = false;
         esp_ota_mark_app_valid_cancel_rollback();
-        if (guardingPendingImage) {
-            esp_task_wdt_delete(nullptr);
-            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000);
-            guardingPendingImage = false;
-        }
+        endPendingImageGuard();
     }
 
     /**
-     * Call from the main task at the end of setup(). If this image arrived over
-     * the air and is still unconfirmed, puts the main task on the task watchdog
-     * until confirmRunningImage(), so an image that hangs before confirming
-     * resets, and the reset rolls it back. Not used otherwise: the loop blocks
-     * for seconds in normal operation (WiFi connect, HTTP, a commit).
+     * Call from the main task as soon as the store exists. If this image
+     * arrived over the air and is still unconfirmed, puts the main task on the
+     * task watchdog until it confirms, so a hang in setup() or loop() before
+     * then resets the device and the bootloader rolls the image back.
      */
     void guardPendingImage() {
-        esp_ota_img_states_t state;
-        if (runningPartition == nullptr || esp_ota_get_state_partition(runningPartition, &state) != ESP_OK ||
-            state != ESP_OTA_IMG_PENDING_VERIFY) {
+        if (!runningImagePending) {
             return;
         }
         reconfigureTaskWatchdog(PENDING_IMAGE_WATCHDOG_MS);
         guardingPendingImage = esp_task_wdt_add(nullptr) == ESP_OK;
         if (!guardingPendingImage) {
             LOG_E(TAG, "could not put the main task on the task watchdog");
+            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000);
         }
     }
 
-    /** Call every loop() pass; feeds the watchdog while guardPendingImage holds. */
-    void feedPendingImageGuard() {
-        if (guardingPendingImage) {
+    /**
+     * Call every loop() pass: feeds the guard while the image is pending, and
+     * confirms it once it has run PENDING_IMAGE_CONFIRM_MS since boot.
+     */
+    void superviseRunningImage() {
+        if (!runningImagePending) {
+            return;
+        }
+        if (static_cast<uint64_t>(esp_timer_get_time()) / 1000 >= PENDING_IMAGE_CONFIRM_MS) {
+            confirmRunningImage();
+        } else if (guardingPendingImage) {
             esp_task_wdt_reset();
         }
     }
@@ -273,10 +273,25 @@ private:
         return offset;
     }
 
-    // Longer than the slowest blocking step a loop pass can take before the
-    // confirm (a 5s WiFi connect, then an HTTP read), short enough that a hung
-    // image is back on the old one within seconds.
-    static constexpr uint32_t PENDING_IMAGE_WATCHDOG_MS = 15000;
+    // Uptime before a pending image confirms itself: long enough to get through
+    // setup, the radio bring-up and the first states.
+    static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
+
+    // Covers setup() (a 3s splash and the radio bring-up), then the longest
+    // single blocking step the first loop passes can take: a 5s WiFi connect, an
+    // HTTP exchange of up to two 10s reads, or erasing the update slot. A server
+    // that stalls one read for longer than this can still reset a good image
+    // and roll it back.
+    static constexpr uint32_t PENDING_IMAGE_WATCHDOG_MS = 30000;
+
+    void endPendingImageGuard() {
+        if (!guardingPendingImage) {
+            return;
+        }
+        guardingPendingImage = false;
+        esp_task_wdt_delete(nullptr);
+        reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000);
+    }
 
     static void reconfigureTaskWatchdog(uint32_t timeoutMs) {
         esp_task_wdt_config_t config = {};
@@ -287,7 +302,9 @@ private:
 #if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
         config.idle_core_mask |= 1 << 1;
 #endif
+#if CONFIG_ESP_TASK_WDT_PANIC
         config.trigger_panic = true;
+#endif
         esp_task_wdt_reconfigure(&config);
     }
 
@@ -300,6 +317,9 @@ private:
     const esp_partition_t* updatePartition = nullptr;
     esp_ota_handle_t otaHandle = 0;
     bool writeOpen = false;
+    // Read once at construction: whether the bootloader is waiting on this
+    // image to confirm itself.
+    bool runningImagePending = false;
     bool guardingPendingImage = false;
 
     mutable bool runningImageLengthComputed = false;

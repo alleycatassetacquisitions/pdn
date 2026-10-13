@@ -150,6 +150,9 @@ static void setup() {
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE, FIRMWARE_STORE_NVS_NAMESPACE});
     firmwareStore = new Esp32S3FirmwareStore(storageDriver);
+    // As early as the store exists: an updated image that hangs anywhere in the
+    // rest of setup() must still reset and roll back.
+    firmwareStore->guardPendingImage();
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -237,24 +240,13 @@ static void setup() {
         {StateId(IDLE_APP_ID),         idleApp},
     };
     fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
-    firmwareStore->guardPendingImage();
 }
-
-// Uptime since boot before a pending image confirms itself: long enough to get
-// through setup, the radio bring-up and the first states. An image that crashes
-// or hangs first (the store's watchdog guard) resets and is rolled back.
-constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
-bool rollbackConfirmed = false;
 
 void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
     }
-    firmwareStore->feedPendingImageGuard();
-    if (!rollbackConfirmed && clockDriver->milliseconds() >= ROLLBACK_CONFIRM_DELAY_MS) {
-        firmwareStore->confirmRunningImage();
-        rollbackConfirmed = true;
-    }
+    firmwareStore->superviseRunningImage();
     // Here rather than inside a state machine: Device::loop() dispatches
     // onStateLoop to the active app alone, and the FDN swaps apps, so a device
     // receiving an image needs sync() to keep running and fire its restart
