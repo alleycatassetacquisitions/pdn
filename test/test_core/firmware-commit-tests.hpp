@@ -81,6 +81,37 @@ TEST(FirmwareCommitTest, anOfferAtTheRunningImagesVersionIsTaken) {
     EXPECT_TRUE(f.manager->isReceiving());
 }
 
+TEST(FirmwareCommitTest, aTrailerLeftByAnotherBuildSetsNoFloor) {
+    // Bytes past a shorter USB-flashed image can still hold an older build's
+    // trailer; its version says nothing about the image running.
+    FirmwareReceiverFixture f;
+    f.store.setRunningImage(std::vector<uint8_t>(64, 0xAB));
+    FirmwareTrailer trailer{};
+    trailer.magic = FIRMWARE_TRAILER_MAGIC;
+    trailer.imageLength = 128;
+    trailer.imageVersion = FirmwareReceiverFixture::IMAGE_VERSION + 1;
+    f.store.setRunningTrailer(std::vector<uint8_t>(reinterpret_cast<uint8_t*>(&trailer),
+                                                   reinterpret_cast<uint8_t*>(&trailer) + sizeof(trailer)));
+
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
+
+    EXPECT_TRUE(f.manager->isReceiving());
+}
+
+TEST(FirmwareCommitTest, aFailedTrailerReadRefusesTheOfferUntilARetrySucceeds) {
+    // Without the running image's version an older image cannot be told apart.
+    FirmwareReceiverFixture f;
+    runSignedImageAtVersion(f.store, FirmwareReceiverFixture::IMAGE_VERSION);
+    f.store.failRunningTrailerReads(true);
+
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
+    EXPECT_FALSE(f.manager->isReceiving());
+
+    f.store.failRunningTrailerReads(false);
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
+    EXPECT_TRUE(f.manager->isReceiving());
+}
+
 TEST(FirmwareCommitTest, committedDeviceIgnoresARepeatOfferForTheSameImage) {
     // The seed rebroadcasts OFFER every second for the life of the run; a
     // committed-but-not-yet-restarted device must not let one reopen the
@@ -154,7 +185,7 @@ TEST(FirmwareCommitTest, nothingOnTheWireDisturbsAPendingReport) {
 
 TEST(FirmwareCommitTest, committedDeviceRestarts) {
     // The spec requires a restart after setting the boot partition, or the
-    // confirm timer armed at the next boot never arms anything.
+    // image just written never boots.
     FirmwareReceiverFixture f;
     f.receiveCompleteValidImage();
     ASSERT_FALSE(f.store.didRestart());

@@ -141,10 +141,10 @@ private:
     // Ends streaming and repair, and keeps the run open for SEED_VERDICT_WINDOW_MS
     // so receivers still committing can report.
     void collectVerdicts();
-    // Reads the running image's trailer once per boot, before the first offer
-    // is judged: raises the persisted generation floor to its signer's, and
-    // takes its version as the image-version floor.
-    void applyRunningImageFloors();
+    // Reads and checks the running image's trailer once per boot, and raises
+    // the persisted generation floor to its signer's. False only when the read
+    // itself failed; the next call tries again.
+    bool loadRunningTrailer();
 
     // Stage of an inbound transfer. Linear, and the receive side is only ever
     // in one of these: an accepted offer moves IDLE -> RECEIVING, a full
@@ -305,11 +305,15 @@ private:
     SeedPhase seedPhase = SeedPhase::IDLE;
     // Cleared by onSendReport, which the ESP-NOW driver calls from the WiFi task.
     std::atomic<bool> sendInFlight{false};
-    bool runningImageFloorsApplied = false;
-    // The running image's signed version; 0 for an unsigned image. Read from
-    // the image itself rather than persisted, so an update that rolls back
-    // does not leave this device refusing images newer than the one it runs.
-    uint32_t runningImageVersion = 0;
+    // PRESENT only for a trailer whose magic and image length match the image
+    // running. Its version is the floor offers are judged against: read from
+    // the image rather than persisted, so an update that rolls back does not
+    // leave this device refusing images newer than the one it runs.
+    enum class RunningTrailerState : uint8_t { UNREAD,
+                                               ABSENT,
+                                               PRESENT };
+    RunningTrailerState runningTrailerState = RunningTrailerState::UNREAD;
+    FirmwareTrailer runningTrailer = {};
     // Restarted by every frame the radio accepts while seeding. Expired means
     // no frame was accepted for SEED_SEND_STALL_MS; the next refusal then
     // abandons the run.
@@ -323,9 +327,6 @@ private:
     // happens to equal cachedRunningImageHash() today.
     uint8_t seedImageHash[FIRMWARE_SHA256_LENGTH] = {};
     SimpleTimer offerTimer;
-    // The running image's trailer, read at beginSeeding(); sendOffer() copies
-    // its cert, signature and version into every OFFER.
-    FirmwareTrailer seedTrailer = {};
 
     // Repair loop: repairBitmap accumulates the complement of every STATUS
     // heard since the last round resolved; resolveRepairRound freezes it

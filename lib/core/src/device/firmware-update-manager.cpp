@@ -235,22 +235,30 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
     }
 }
 
-void FirmwareUpdateManager::applyRunningImageFloors() {
-    if (runningImageFloorsApplied) {
-        return;
+bool FirmwareUpdateManager::loadRunningTrailer() {
+    if (runningTrailerState != RunningTrailerState::UNREAD) {
+        return true;
     }
-    runningImageFloorsApplied = true;
-    // The persisted generation floor only rises at a commit, so a device
-    // USB-flashed with an image from a newer signer still has the older floor.
     FirmwareTrailer trailer{};
-    if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer)) ||
-        trailer.magic != FIRMWARE_TRAILER_MAGIC) {
-        return;  // unsigned image: nothing to raise the floor to
+    if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer))) {
+        LOG_E(TAG, "could not read the running image's trailer");
+        return false;
     }
+    // The magic catches an unsigned image; the length catches a trailer left
+    // by a different build than the one running.
+    if (trailer.magic != FIRMWARE_TRAILER_MAGIC ||
+        static_cast<size_t>(trailer.imageLength) != firmwareStore->getRunningImageLength()) {
+        runningTrailerState = RunningTrailerState::ABSENT;
+        return true;
+    }
+    runningTrailer = trailer;
+    runningTrailerState = RunningTrailerState::PRESENT;
+    // Without this the persisted floor rises only at a commit, so a device
+    // USB-flashed with an image from a newer signer would keep the older floor.
     if (trailer.cert.generation > firmwareStore->getMinGeneration()) {
         firmwareStore->setMinGeneration(trailer.cert.generation);
     }
-    runningImageVersion = trailer.imageVersion;
+    return true;
 }
 
 const uint8_t* FirmwareUpdateManager::cachedRunningImageHash() {
@@ -279,7 +287,9 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // not idle, cabled, or mid-match: don't even look at the offer
     }
 
-    applyRunningImageFloors();
+    if (!loadRunningTrailer()) {
+        return;  // without the running image's version an older image cannot be told apart
+    }
 
     if (static_cast<DeviceType>(offer.deviceType) != deviceType) {
         LOG_E(TAG, "offer targets device type %d, this device is %d", offer.deviceType,
@@ -287,6 +297,8 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // a correctly-signed offer for another device type must still be refused
     }
 
+    const uint32_t runningImageVersion =
+        runningTrailerState == RunningTrailerState::PRESENT ? runningTrailer.imageVersion : 0;
     if (offer.imageVersion < runningImageVersion) {
         LOG_W(TAG, "offer is image version %lu, older than the running %lu",
               static_cast<unsigned long>(offer.imageVersion), static_cast<unsigned long>(runningImageVersion));
@@ -517,8 +529,8 @@ void FirmwareUpdateManager::evaluateCommit() {
     }
 
     // REPORTING ends at RESTARTING for an OK result: the device has to
-    // restart once the boot partition is set, or the confirm timer armed at
-    // the next boot never arms anything. The running hash cannot change
+    // restart once the boot partition is set, or the image it just wrote
+    // never boots. The running hash cannot change
     // without one either, so until it fires the phase itself is what stops a
     // repeat OFFER reopening this slot.
     completeResult = FirmwareResult::OK;
@@ -640,32 +652,22 @@ bool FirmwareUpdateManager::beginSeeding() {
         return false;  // a run is already streaming; let it finish rather than restart mid-image
     }
 
+    if (!loadRunningTrailer()) {
+        return false;
+    }
+    // An unsigned device, or one whose trailer belongs to another build, must
+    // not broadcast credentials that do not sign what it runs.
+    if (runningTrailerState != RunningTrailerState::PRESENT) {
+        LOG_E(TAG, "beginSeeding: the running image has no trailer signed for it");
+        return false;
+    }
     seedImageLength = firmwareStore->getRunningImageLength();
-
-    FirmwareTrailer trailer{};
-    if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer))) {
-        LOG_E(TAG, "beginSeeding: could not read the running image's trailer");
-        return false;
-    }
-    // An unsigned or unprovisioned device must not broadcast garbage
-    // credentials: the magic catches an absent/blank trailer, and the
-    // length catches one signed for a different build than what's running.
-    if (trailer.magic != FIRMWARE_TRAILER_MAGIC) {
-        LOG_E(TAG, "beginSeeding: trailer magic mismatch; device is unsigned or unprovisioned");
-        return false;
-    }
-    if (static_cast<size_t>(trailer.imageLength) != seedImageLength) {
-        LOG_E(TAG, "beginSeeding: trailer imageLength %u does not match the running image (%zu)",
-              trailer.imageLength, seedImageLength);
-        return false;
-    }
 
     const uint8_t* runningHash = cachedRunningImageHash();
     if (runningHash == nullptr) {
         LOG_E(TAG, "beginSeeding: could not hash the running image");
         return false;
     }
-    seedTrailer = trailer;
     std::memcpy(seedImageHash, runningHash, FIRMWARE_SHA256_LENGTH);
 
     seedChunkCount =
@@ -869,9 +871,9 @@ void FirmwareUpdateManager::sendOffer() {
     offer.chunkSize = SEED_CHUNK_SIZE;
     offer.chunkCount = seedChunkCount;
     offer.deviceType = static_cast<uint8_t>(deviceType);
-    offer.imageVersion = seedTrailer.imageVersion;
-    offer.cert = seedTrailer.cert;
-    std::memcpy(offer.imageSignature, seedTrailer.imageSignature, FIRMWARE_SIG_LENGTH);
+    offer.imageVersion = runningTrailer.imageVersion;
+    offer.cert = runningTrailer.cert;
+    std::memcpy(offer.imageSignature, runningTrailer.imageSignature, FIRMWARE_SIG_LENGTH);
 
     sendFrame(reinterpret_cast<const uint8_t*>(&offer), sizeof(offer), "sendOffer");
 }

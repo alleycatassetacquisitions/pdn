@@ -72,12 +72,15 @@ public:
         return true;
     }
 
-    /// Fails if `length` exceeds the trailer configured via setRunningTrailer.
+    /// Serves the trailer configured via setRunningTrailer, padded with 0xFF as
+    /// erased flash past an unsigned image reads; fails while failRunningTrailerReads holds.
     bool readRunningTrailer(uint8_t* out, size_t length) const override {
-        if (length > runningTrailer.size()) {
+        if (runningTrailerReadsFail) {
             return false;
         }
-        std::copy(runningTrailer.begin(), runningTrailer.begin() + static_cast<std::ptrdiff_t>(length), out);
+        std::fill(out, out + length, 0xFF);
+        const size_t copied = std::min(length, runningTrailer.size());
+        std::copy(runningTrailer.begin(), runningTrailer.begin() + static_cast<std::ptrdiff_t>(copied), out);
         return true;
     }
 
@@ -128,6 +131,8 @@ public:
     /// Seeds the bytes readRunningTrailer serves: the signer cert and image
     /// signature a seed reads before offering.
     void setRunningTrailer(const std::vector<uint8_t>& bytes) { runningTrailer = bytes; }
+    /** Makes readRunningTrailer fail (true) or succeed again (false). */
+    void failRunningTrailerReads(bool fail) { runningTrailerReadsFail = fail; }
     /// Makes writeAt fail for any offset at or past `offset`, simulating a
     /// flash write fault partway through an image.
     void failWritesFrom(size_t offset) {
@@ -139,6 +144,7 @@ private:
     std::vector<uint8_t> writeSlot;
     std::vector<uint8_t> runningImage;
     std::vector<uint8_t> runningTrailer;
+    bool runningTrailerReadsFail = false;
     size_t inactiveSlotSize = 0;
     size_t pendingBeginWriteLength = 0;
     int beginWriteCallCount = 0;

@@ -429,6 +429,17 @@ TEST(FirmwareSeedTest, beginSeedingRefusesAnUnprovisionedTrailer) {
     EXPECT_EQ(f.comms.sentCount(), 0);
 }
 
+TEST(FirmwareSeedTest, beginSeedingRefusesATrailerSignedForAnotherBuild) {
+    FirmwareSeedFixture f;
+    FirmwareTrailer trailer{};
+    ASSERT_TRUE(f.store.readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer)));
+    trailer.imageLength /= 2;
+    f.store.setRunningTrailer(std::vector<uint8_t>(reinterpret_cast<uint8_t*>(&trailer),
+                                                   reinterpret_cast<uint8_t*>(&trailer) + sizeof(trailer)));
+    EXPECT_FALSE(f.manager->beginSeeding());
+    EXPECT_EQ(f.comms.sentCount(), 0);
+}
+
 TEST(FirmwareSeedTest, aRefusedSendIsRetriedNotWedged) {
     FirmwareSeedFixture f;
     f.manager->beginSeeding();      // the initial OFFER goes out and succeeds
