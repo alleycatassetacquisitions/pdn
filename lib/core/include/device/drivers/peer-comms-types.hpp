@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
@@ -150,9 +151,9 @@ struct FirmwareOfferPayload {
     /// signed span below, so a relay cannot retarget a correctly-signed image at a
     /// device type its signer never intended.
     uint8_t deviceType;
-    /// Stamped at signing and only ever higher for a newer build. Inside the
+    /// The signing time in UTC seconds unless the signer chose one. Inside the
     /// signed span, so a recorded older image cannot be replayed to roll devices
-    /// back: they refuse anything below the newest version they have run.
+    /// back: they refuse anything older than the image they are running.
     uint32_t imageVersion;
     /// Delegation cert and root signature.
     SignerCert cert;
@@ -213,3 +214,15 @@ struct FirmwareTrailer {
 
 /// Identifies a well-formed trailer. "ODNP" little-endian.
 constexpr uint32_t FIRMWARE_TRAILER_MAGIC = 0x504E444F;
+
+/// Bytes the image signature covers: FirmwareOfferPayload from imageSha256 up to
+/// cert. sign_firmware.py reads this and checks the span it packs against it.
+constexpr size_t FIRMWARE_SIGNED_SPAN_LENGTH = 45;
+static_assert(offsetof(FirmwareOfferPayload, cert) - offsetof(FirmwareOfferPayload, imageSha256) ==
+                  FIRMWARE_SIGNED_SPAN_LENGTH,
+              "sign_firmware.py packs the signed span to this length");
+
+/// sign_firmware.py reads this and checks the trailer it appends against it.
+constexpr size_t FIRMWARE_TRAILER_LENGTH = 225;
+static_assert(sizeof(FirmwareTrailer) == FIRMWARE_TRAILER_LENGTH,
+              "sign_firmware.py appends a trailer of this length");

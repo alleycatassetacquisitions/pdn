@@ -7,19 +7,22 @@ Runs two ways:
     build) -> prints a warning and leaves the build unsigned; the build still succeeds,
     since an unsigned image is still fine to flash over USB, it just can't seed onward.
   - As a standalone CLI: `sign_firmware.py firmware.bin --signer-key K --signer-cert C
-    --device-type PDN|FDN [--out OUT | --in-place]`.
+    --device-type PDN|FDN [--image-version N] [--out OUT | --in-place]`.
 
 The signed span and trailer layout are pinned by the device's own structs, not chosen
 here: FirmwareOfferPayload (peer-comms-types.hpp) signs imageSha256|imageLength|
 chunkSize|chunkCount|deviceType|imageVersion (see firmware-verify.cpp's verifyOffer),
-and FirmwareTrailer is SignerCert|imageSignature|imageLength|imageVersion|magic.
+and FirmwareTrailer is SignerCert|imageSignature|imageLength|imageVersion|magic. Both
+lengths are checked against FIRMWARE_SIGNED_SPAN_LENGTH and FIRMWARE_TRAILER_LENGTH.
 
-imageVersion is FIRMWARE_IMAGE_VERSION if set, else the signing time in UTC seconds:
-devices refuse any image below the newest version they have run, so a recorded older
-image cannot be replayed to roll them back. chunkSize must be the
-same SEED_CHUNK_SIZE the seed stamps into its OFFER (firmware-update-manager.cpp),
-not a value chosen here: receivers verify the offer's geometry against this
-signature, so a mismatch makes every offer come back BAD_SIGNATURE.
+chunkSize must be the same SEED_CHUNK_SIZE the seed stamps into its OFFER
+(firmware-update-manager.cpp), not a value chosen here: receivers verify the offer's
+geometry against this signature, so a mismatch makes every offer come back BAD_SIGNATURE.
+
+imageVersion is the signing time in UTC seconds. Devices refuse any image older than
+the one they run, so a recorded older image cannot be replayed to roll them back. The
+CLI's --image-version overrides it, for signing deliberately older test images; a
+version below the time-stamped builds already deployed is refused by every device.
 """
 import argparse
 import os
@@ -75,21 +78,18 @@ def read_trailer_magic():
     return int(value, 16)
 
 
+def read_layout_length(name):
+    path = REPO_ROOT / "lib/core/include/device/drivers/peer-comms-types.hpp"
+    return int(_extract(rf"constexpr\s+size_t\s+{name}\s*=\s*(\d+)\s*;", path, name))
+
+
 def read_device_type(name):
     path = REPO_ROOT / "lib/core/include/device/device-type.hpp"
     return int(_extract(rf"\b{name}\s*=\s*(\d+)", path, f"DeviceType::{name}"))
 
 
-def image_version():
-    """FIRMWARE_IMAGE_VERSION if set, else the current UTC time in seconds."""
-    explicit = os.environ.get("FIRMWARE_IMAGE_VERSION")
-    if explicit:
-        version = int(explicit)
-    else:
-        version = int(time.time())
-    if not 0 < version < 2**32:
-        raise SigningInputError(f"image version {version} does not fit 32 bits")
-    return version
+def signing_time_version():
+    return int(time.time())
 
 
 def signed_span(image_bytes, device_type, version, chunk_size=None):
@@ -103,21 +103,28 @@ def signed_span(image_bytes, device_type, version, chunk_size=None):
     image_sha256.update(image_bytes)
     digest = image_sha256.finalize()
     span = struct.pack("<32sIHHBI", digest, image_length, chunk_size, chunk_count, device_type, version)
+    expected = read_layout_length("FIRMWARE_SIGNED_SPAN_LENGTH")
+    if len(span) != expected:
+        raise RuntimeError(f"signed span is {len(span)} bytes, the device's struct says {expected}")
     return span, digest, image_length
 
 
-def build_trailer(image_bytes, device_type, signer_private_key, cert_bytes):
+def build_trailer(image_bytes, device_type, signer_private_key, cert_bytes, version):
     if len(cert_bytes) != CERT_LENGTH:
         raise SigningInputError(f"cert is {len(cert_bytes)} bytes, expected {CERT_LENGTH}")
-    version = image_version()
+    if not 0 < version < 2**32:
+        raise SigningInputError(f"image version {version} does not fit 32 bits")
     span, _digest, image_length = signed_span(image_bytes, device_type, version)
     image_signature = sign_raw(signer_private_key, span)
     magic = read_trailer_magic()
     trailer = cert_bytes + image_signature + struct.pack("<III", image_length, version, magic)
+    expected = read_layout_length("FIRMWARE_TRAILER_LENGTH")
+    if len(trailer) != expected:
+        raise RuntimeError(f"trailer is {len(trailer)} bytes, the device's struct says {expected}")
     return trailer
 
 
-def sign_file(firmware_bin_path, signer_key_path, cert_path, device_type):
+def sign_file(firmware_bin_path, signer_key_path, cert_path, device_type, version):
     image_bytes = read_bytes_or_die(firmware_bin_path, "firmware image")
     if len(image_bytes) < MIN_IMAGE_BYTES:
         raise SigningInputError(
@@ -126,7 +133,7 @@ def sign_file(firmware_bin_path, signer_key_path, cert_path, device_type):
         )
     signer_private_key = load_private_key_from_file(signer_key_path, what="signer private key")
     cert_bytes = read_bytes_or_die(cert_path, "signer cert")
-    return build_trailer(image_bytes, device_type, signer_private_key, cert_bytes)
+    return build_trailer(image_bytes, device_type, signer_private_key, cert_bytes, version)
 
 
 # ---- PlatformIO post-build hook ----
@@ -152,7 +159,8 @@ def _pio_sign_action(target, source, env):
     device_type_name = _pio_device_type_name(env["PIOENV"])
     device_type = read_device_type(device_type_name)
     try:
-        trailer = sign_file(bin_path, key_path, cert_path, device_type)
+        version = signing_time_version()
+        trailer = sign_file(bin_path, key_path, cert_path, device_type, version)
     except SigningInputError as e:
         print(f"ERROR: {e}")
         env.Exit(1)
@@ -161,7 +169,7 @@ def _pio_sign_action(target, source, env):
     with open(bin_path, "ab") as f:
         f.write(trailer)
     print(f"Signed {bin_path}: appended {len(trailer)}-byte trailer, deviceType={device_type_name}, "
-          f"imageVersion={struct.unpack_from('<I', trailer, len(trailer) - 8)[0]}")
+          f"imageVersion={version}")
 
 
 if env is not None:
@@ -178,6 +186,8 @@ def _cli_main():
     parser.add_argument("--signer-key", required=True)
     parser.add_argument("--signer-cert", required=True)
     parser.add_argument("--device-type", required=True, choices=["PDN", "FDN"])
+    parser.add_argument("--image-version", type=int, default=None,
+                        help="image version to sign with (default: the signing time in UTC seconds)")
     out_group = parser.add_mutually_exclusive_group(required=True)
     out_group.add_argument("--in-place", action="store_true", help="append the trailer to firmware_bin")
     out_group.add_argument("--out", help="write image+trailer to this path, leaving firmware_bin untouched")
@@ -185,7 +195,8 @@ def _cli_main():
 
     device_type = read_device_type(args.device_type)
     try:
-        trailer = sign_file(args.firmware_bin, args.signer_key, args.signer_cert, device_type)
+        version = args.image_version if args.image_version is not None else signing_time_version()
+        trailer = sign_file(args.firmware_bin, args.signer_key, args.signer_cert, device_type, version)
     except SigningInputError as e:
         sys.exit(f"error: {e}")
 
