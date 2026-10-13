@@ -4,6 +4,7 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_system.h>
+#include <esp_task_wdt.h>
 
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -189,6 +190,38 @@ public:
             return;
         }
         esp_ota_mark_app_valid_cancel_rollback();
+        if (guardingPendingImage) {
+            esp_task_wdt_delete(nullptr);
+            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000);
+            guardingPendingImage = false;
+        }
+    }
+
+    /**
+     * Call from the main task at the end of setup(). If this image arrived over
+     * the air and is still unconfirmed, puts the main task on the task watchdog
+     * until confirmRunningImage(), so an image that hangs before confirming
+     * resets, and the reset rolls it back. Not used otherwise: the loop blocks
+     * for seconds in normal operation (WiFi connect, HTTP, a commit).
+     */
+    void guardPendingImage() {
+        esp_ota_img_states_t state;
+        if (runningPartition == nullptr || esp_ota_get_state_partition(runningPartition, &state) != ESP_OK ||
+            state != ESP_OTA_IMG_PENDING_VERIFY) {
+            return;
+        }
+        reconfigureTaskWatchdog(PENDING_IMAGE_WATCHDOG_MS);
+        guardingPendingImage = esp_task_wdt_add(nullptr) == ESP_OK;
+        if (!guardingPendingImage) {
+            LOG_E(TAG, "could not put the main task on the task watchdog");
+        }
+    }
+
+    /** Call every loop() pass; feeds the watchdog while guardPendingImage holds. */
+    void feedPendingImageGuard() {
+        if (guardingPendingImage) {
+            esp_task_wdt_reset();
+        }
     }
 
     /// Restarts the device (esp_restart()); does not return.
@@ -239,6 +272,24 @@ private:
         return offset;
     }
 
+    // Longer than the slowest blocking step a loop pass can take before the
+    // confirm (a 5s WiFi connect, then an HTTP read), short enough that a hung
+    // image is back on the old one within seconds.
+    static constexpr uint32_t PENDING_IMAGE_WATCHDOG_MS = 15000;
+
+    static void reconfigureTaskWatchdog(uint32_t timeoutMs) {
+        esp_task_wdt_config_t config = {};
+        config.timeout_ms = timeoutMs;
+#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
+        config.idle_core_mask |= 1 << 0;
+#endif
+#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
+        config.idle_core_mask |= 1 << 1;
+#endif
+        config.trigger_panic = true;
+        esp_task_wdt_reconfigure(&config);
+    }
+
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
     static constexpr const char* MIN_GENERATION_KEY = "minGen";
 
@@ -248,6 +299,7 @@ private:
     const esp_partition_t* updatePartition = nullptr;
     esp_ota_handle_t otaHandle = 0;
     bool writeOpen = false;
+    bool guardingPendingImage = false;
 
     mutable bool runningImageLengthComputed = false;
     mutable size_t cachedRunningImageLength = 0;

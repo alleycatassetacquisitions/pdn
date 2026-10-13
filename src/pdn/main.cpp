@@ -206,12 +206,12 @@ static void setup() {
         {StateId(QUICKDRAW_APP_ID), game}
     };
     pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
+    firmwareStore->guardPendingImage();
 }
 
 // Uptime since boot before a pending image confirms itself: long enough to get
 // through setup, the radio bring-up and the first states. An image that crashes
-// first is rolled back on the reset; one that hangs first stays until a power
-// cycle, because the main task is not on the task watchdog.
+// or hangs first (the store's watchdog guard) resets and is rolled back.
 constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
 bool rollbackConfirmed = false;
 
@@ -219,6 +219,7 @@ void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
     }
+    firmwareStore->feedPendingImageGuard();
     if (!rollbackConfirmed && clockDriver->milliseconds() >= ROLLBACK_CONFIRM_DELAY_MS) {
         firmwareStore->confirmRunningImage();
         rollbackConfirmed = true;
