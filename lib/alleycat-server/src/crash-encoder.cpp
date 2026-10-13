@@ -35,17 +35,13 @@ size_t encode(const CrashRecord& record, const uint8_t* mac, uint8_t* outBuf, si
     msg.has_reset_reason = true;
     msg.reset_reason = record.resetReason;
 
-    // A zero program counter means the reboot left no core dump summary. The
-    // exception cause follows it rather than its own value, because cause 0
-    // (IllegalInstruction) is a real cause.
-    const bool hadCoreDumpSummary = record.programCounter != 0;
-    msg.has_program_counter = hadCoreDumpSummary;
-    msg.program_counter = record.programCounter;
-    msg.has_exception_cause = hadCoreDumpSummary;
-    msg.exception_cause = record.exceptionCause;
-
-    // Empty when the reboot left no core dump summary.
-    if (record.taskName[0] != '\0') {
+    // Gated on the summary, not on the values: PC 0 (a call through a null
+    // function pointer) and cause 0 (IllegalInstruction) are both real.
+    if (record.hasCoreDumpSummary) {
+        msg.has_program_counter = true;
+        msg.program_counter = record.programCounter;
+        msg.has_exception_cause = true;
+        msg.exception_cause = record.exceptionCause;
         strncpy(msg.task_name, record.taskName, sizeof(msg.task_name) - 1);
         msg.has_task_name = true;
     }

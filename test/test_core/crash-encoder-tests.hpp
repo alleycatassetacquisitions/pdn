@@ -13,6 +13,7 @@ inline CrashRecord makeFullRecord() {
     rec.crashNumber = 3;
     rec.timestamp = 12500;
     rec.resetReason = 7;
+    rec.hasCoreDumpSummary = true;
     rec.programCounter = 0x400D1A2C;
     rec.exceptionCause = 28;
     strncpy(rec.taskName, "loopTask", TASK_NAME_LENGTH - 1);
@@ -59,9 +60,7 @@ inline void encoderRoundTripPopulatesAllFields(CrashEncoderTestSuite* suite) {
 
 inline void encoderOmitsUnsetOptionalFields(CrashEncoderTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
-    rec.programCounter = 0;
-    rec.exceptionCause = 0;
-    rec.taskName[0] = '\0';
+    rec.hasCoreDumpSummary = false;
 
     size_t len = CrashEncoder::encode(rec, nullptr, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
@@ -87,17 +86,22 @@ inline void encoderKeepsExceptionCauseZeroWithCoreDump(CrashEncoderTestSuite* su
     EXPECT_EQ(msg.exception_cause, 0u);
 }
 
-inline void encoderKeepsTheTaskOfACrashAtAddressZero(CrashEncoderTestSuite* suite) {
-    // A call through a null function pointer has a core dump summary whose PC
-    // is 0: the PC and cause are omitted, but the task is still known.
+inline void encoderKeepsACrashAtAddressZero(CrashEncoderTestSuite* suite) {
+    // A call through a null function pointer leaves a core dump summary whose
+    // PC is 0; its cause is what identifies it.
     CrashRecord rec = makeFullRecord();
     rec.programCounter = 0;
+    rec.exceptionCause = 20;  // InstFetchProhibited
 
     size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
 
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
 
+    EXPECT_TRUE(msg.has_program_counter);
+    EXPECT_EQ(msg.program_counter, 0u);
+    EXPECT_TRUE(msg.has_exception_cause);
+    EXPECT_EQ(msg.exception_cause, 20u);
     EXPECT_TRUE(msg.has_task_name);
     EXPECT_STREQ(msg.task_name, "loopTask");
 }

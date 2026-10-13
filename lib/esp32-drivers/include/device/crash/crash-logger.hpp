@@ -74,18 +74,13 @@ public:
         rec.resetReason = static_cast<uint8_t>(reason);
         rec.timestamp = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
-        bool hadCoreDumpSummary = false;
         esp_core_dump_summary_t summary{};
-        if (esp_core_dump_get_summary(&summary) == ESP_OK) {
-            hadCoreDumpSummary = true;
+        rec.hasCoreDumpSummary = esp_core_dump_get_summary(&summary) == ESP_OK;
+        if (rec.hasCoreDumpSummary) {
             rec.programCounter = summary.exc_pc;
             rec.exceptionCause = summary.ex_info.exc_cause;
             strncpy(rec.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
             rec.taskName[TASK_NAME_LENGTH - 1] = '\0';
-        } else {
-            rec.programCounter = 0;
-            rec.exceptionCause = 0;
-            rec.taskName[0] = '\0';  // no summary, so no task
         }
 
         copyBuildCommitHash(rec.commitHash);
@@ -96,7 +91,7 @@ public:
               rec.resetReason, rec.programCounter, rec.exceptionCause,
               rec.taskName[0] != '\0' ? rec.taskName : "unknown", rec.commitHash);
 
-        eraseCoreDumpAfterCapture(hadCoreDumpSummary);
+        eraseCoreDumpAfterCapture(rec.hasCoreDumpSummary);
     }
 
     bool hasPending() const {
@@ -380,6 +375,7 @@ private:
         doc["id"]              = rec.crashNumber;
         doc["timestamp"]       = rec.timestamp;
         doc["resetReason"]     = rec.resetReason;
+        doc["coreDump"] = rec.hasCoreDumpSummary;
         doc["programCounter"]  = rec.programCounter;
         doc["exceptionCause"]  = rec.exceptionCause;
         doc["task"]        = rec.taskName;
@@ -397,6 +393,9 @@ private:
         out.resetReason    = doc["resetReason"] | doc["rr"] | static_cast<uint8_t>(0);
         out.programCounter = doc["programCounter"] | doc["pc"] | 0u;
         out.exceptionCause = doc["exceptionCause"] | doc["ec"] | 0u;
+        // Records written before the flag existed only marked a summary with a
+        // nonzero PC.
+        out.hasCoreDumpSummary = doc["coreDump"] | (out.programCounter != 0);
         const char* task = doc["task"] | "";
         strncpy(out.taskName, task, TASK_NAME_LENGTH - 1);
         out.taskName[TASK_NAME_LENGTH - 1] = '\0';

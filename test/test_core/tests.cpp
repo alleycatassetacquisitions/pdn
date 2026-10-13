@@ -1524,7 +1524,7 @@ int main(int argc, char **argv)
 TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) { encoderRoundTripPopulatesAllFields(this); }
 TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) { encoderOmitsUnsetOptionalFields(this); }
 TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZeroWithCoreDump) { encoderKeepsExceptionCauseZeroWithCoreDump(this); }
-TEST_F(CrashEncoderTestSuite, keepsTheTaskOfACrashAtAddressZero) { encoderKeepsTheTaskOfACrashAtAddressZero(this); }
+TEST_F(CrashEncoderTestSuite, keepsACrashAtAddressZero) { encoderKeepsACrashAtAddressZero(this); }
 TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) { encoderReturnZeroWhenBufferTooSmall(this); }
 
 TEST_F(CrashUploadTestSuite, sendsPendingRecordsOldestFirst) { crashUploadSendsPendingRecordsOldestFirst(this); }

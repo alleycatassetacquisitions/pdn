@@ -19,7 +19,9 @@ struct CrashRecord {
     uint32_t timestamp;
 
     uint8_t resetReason;
-    // Zero when the reboot left no core dump summary to read.
+    // Whether the reboot left a core dump summary. programCounter,
+    // exceptionCause and taskName come from it and mean nothing without it.
+    bool hasCoreDumpSummary;
     uint32_t programCounter;
     uint32_t exceptionCause;
     char taskName[TASK_NAME_LENGTH];
