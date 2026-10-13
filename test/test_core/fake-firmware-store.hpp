@@ -98,8 +98,6 @@ public:
         return true;
     }
 
-    /// No slot promotion to simulate: the fake models one boot session.
-    void confirmRunningImage() override {}
 
     /// Records the call for didRestart() assertions rather than tearing down
     /// the process a real esp_restart() would.

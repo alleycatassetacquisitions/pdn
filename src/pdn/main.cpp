@@ -147,9 +147,6 @@ static void setup() {
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE, FIRMWARE_STORE_NVS_NAMESPACE});
     firmwareStore = new Esp32S3FirmwareStore(storageDriver);
-    // As early as the store exists: an updated image that hangs anywhere in the
-    // rest of setup() must still reset and roll back.
-    firmwareStore->guardPendingImage();
 
     // Create driver configuration
     DriverConfig pdnConfig = {

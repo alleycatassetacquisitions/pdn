@@ -47,8 +47,6 @@ public:
 
     /// Marks the written slot as the boot target, pending confirmation.
     virtual bool setBootToWritten() = 0;
-    /// Confirms the running image so the bootloader stops treating it as pending.
-    virtual void confirmRunningImage() = 0;
     /// Restarts the device: committing is "set the boot partition, then restart",
     /// and nothing else in the tree can restart, so it lives here rather than in a
     /// second platform seam.

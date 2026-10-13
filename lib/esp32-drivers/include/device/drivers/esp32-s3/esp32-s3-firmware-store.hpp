@@ -12,8 +12,8 @@
 #include "device/drivers/storage-interface.hpp"
 #include "device/drivers/logger.hpp"
 
-// Rollback is the whole reason setBootToWritten() and confirmRunningImage()
-// are safe to call: without it esp_ota_set_boot_partition() marks the new slot
+// Rollback is the whole reason setBootToWritten() and the confirm in
+// superviseRunningImage() are safe to call: without it esp_ota_set_boot_partition() marks the new slot
 // ESP_OTA_IMG_UNDEFINED instead of NEW, the bootloader never promotes it to
 // PENDING_VERIFY, the confirm below always early-returns, and an image that
 // fails to boot is permanent. Nothing reads the flag at runtime, so the
@@ -36,7 +36,11 @@ class Esp32S3FirmwareStore : public FirmwareStoreInterface {
 public:
     /// Resolves the running and inactive OTA partitions. `storage` is the
     /// shared NVS driver the generation floor lives in; the caller owns it
-    /// and it must outlive this store.
+    /// and it must outlive this store. Construct it from the main task, as
+    /// early in setup() as the storage exists: if the running image arrived
+    /// over the air and is still unconfirmed, this puts the calling task on the
+    /// task watchdog, so a hang anywhere before the confirm resets the device
+    /// and the bootloader rolls the image back.
     explicit Esp32S3FirmwareStore(StorageInterface* storage)
         : storage(storage) {
         runningPartition = esp_ota_get_running_partition();
@@ -53,6 +57,7 @@ public:
             // can catch that drift.
             LOG_E(TAG, "OTA partition is %u bytes, code assumes %zu", updatePartition->size, OTA_PARTITION_SIZE);
         }
+        guardPendingImage();
     }
 
     /// Aborts any write left open.
@@ -180,48 +185,26 @@ public:
         return esp_ota_set_boot_partition(updatePartition) == ESP_OK;
     }
 
-    /// Confirms the running image only if the bootloader is still waiting on
-    /// one (ESP_OTA_IMG_PENDING_VERIFY). A USB-flashed image never is, and
-    /// confirming it anyway only logs an error or rewrites otadata.
-    void confirmRunningImage() override {
-        if (!runningImagePending) {
-            return;
-        }
-        runningImagePending = false;
-        esp_ota_mark_app_valid_cancel_rollback();
-        endPendingImageGuard();
-    }
-
     /**
-     * Call from the main task as soon as the store exists. If this image
-     * arrived over the air and is still unconfirmed, puts the main task on the
-     * task watchdog until it confirms, so a hang in setup() or loop() before
-     * then resets the device and the bootloader rolls the image back.
-     */
-    void guardPendingImage() {
-        if (!runningImagePending) {
-            return;
-        }
-        reconfigureTaskWatchdog(PENDING_IMAGE_WATCHDOG_MS);
-        guardingPendingImage = esp_task_wdt_add(nullptr) == ESP_OK;
-        if (!guardingPendingImage) {
-            LOG_E(TAG, "could not put the main task on the task watchdog");
-            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000);
-        }
-    }
-
-    /**
-     * Call every loop() pass: feeds the guard while the image is pending, and
-     * confirms it once it has run PENDING_IMAGE_CONFIRM_MS since boot.
+     * Call every loop() pass: feeds the watchdog while the image is pending,
+     * and confirms it once it has run PENDING_IMAGE_CONFIRM_MS since boot.
      */
     void superviseRunningImage() {
         if (!runningImagePending) {
             return;
         }
-        if (static_cast<uint64_t>(esp_timer_get_time()) / 1000 >= PENDING_IMAGE_CONFIRM_MS) {
-            confirmRunningImage();
-        } else if (guardingPendingImage) {
-            esp_task_wdt_reset();
+        if (static_cast<uint64_t>(esp_timer_get_time()) / 1000 < PENDING_IMAGE_CONFIRM_MS) {
+            if (guardingPendingImage) {
+                esp_task_wdt_reset();
+            }
+            return;
+        }
+        runningImagePending = false;
+        esp_ota_mark_app_valid_cancel_rollback();
+        if (guardingPendingImage) {
+            guardingPendingImage = false;
+            esp_task_wdt_delete(nullptr);
+            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000, BOOT_WATCHDOG_PANICS);
         }
     }
 
@@ -277,23 +260,36 @@ private:
     // setup, the radio bring-up and the first states.
     static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
 
-    // Covers setup() (a 3s splash and the radio bring-up), then the longest
-    // single blocking step the first loop passes can take: a 5s WiFi connect, an
-    // HTTP exchange of up to two 10s reads, or erasing the update slot. A server
-    // that stalls one read for longer than this can still reset a good image
-    // and roll it back.
+    // Covers setup() (a 2-3s splash and the radio bring-up), then the slowest
+    // loop pass before the confirm: a WiFi connect polls for up to 5s, and an
+    // HTTP exchange makes several blocking writes and reads, each capped at 10s.
+    // A server slow enough that those waits add up past this resets a good
+    // image and rolls it back. No update can be written meanwhile:
+    // esp_ota_begin() refuses while the running image is pending.
     static constexpr uint32_t PENDING_IMAGE_WATCHDOG_MS = 30000;
 
-    void endPendingImageGuard() {
-        if (!guardingPendingImage) {
+    // Whether the boot-time watchdog configuration panics; restored on confirm.
+#if CONFIG_ESP_TASK_WDT_PANIC
+    static constexpr bool BOOT_WATCHDOG_PANICS = true;
+#else
+    static constexpr bool BOOT_WATCHDOG_PANICS = false;
+#endif
+
+    void guardPendingImage() {
+        if (!runningImagePending) {
             return;
         }
-        guardingPendingImage = false;
-        esp_task_wdt_delete(nullptr);
-        reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000);
+        // Always panics: a watchdog that only logs would leave a hung image
+        // running instead of rolling it back.
+        reconfigureTaskWatchdog(PENDING_IMAGE_WATCHDOG_MS, true);
+        guardingPendingImage = esp_task_wdt_add(nullptr) == ESP_OK;
+        if (!guardingPendingImage) {
+            LOG_E(TAG, "could not put the main task on the task watchdog");
+            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000, BOOT_WATCHDOG_PANICS);
+        }
     }
 
-    static void reconfigureTaskWatchdog(uint32_t timeoutMs) {
+    static void reconfigureTaskWatchdog(uint32_t timeoutMs, bool panic) {
         esp_task_wdt_config_t config = {};
         config.timeout_ms = timeoutMs;
 #if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
@@ -302,9 +298,7 @@ private:
 #if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
         config.idle_core_mask |= 1 << 1;
 #endif
-#if CONFIG_ESP_TASK_WDT_PANIC
-        config.trigger_panic = true;
-#endif
+        config.trigger_panic = panic;
         esp_task_wdt_reconfigure(&config);
     }
 
