@@ -9,20 +9,21 @@ Runs two ways:
   - As a standalone CLI: `sign_firmware.py firmware.bin --signer-key K --signer-cert C
     --device-type PDN|FDN [--image-version N] [--out OUT | --in-place]`.
 
-The signed span and trailer layout are pinned by the device's own structs, not chosen
+The signed span and trailer layout come from the device's own structs, not chosen
 here: FirmwareOfferPayload (peer-comms-types.hpp) signs imageSha256|imageLength|
 chunkSize|chunkCount|deviceType|imageVersion (see firmware-verify.cpp's verifyOffer),
-and FirmwareTrailer is SignerCert|imageSignature|imageLength|imageVersion|magic. Both
-lengths are checked against FIRMWARE_SIGNED_SPAN_LENGTH and FIRMWARE_TRAILER_LENGTH.
+and FirmwareTrailer is SignerCert|imageSignature|imageLength|imageVersion|magic. Their
+lengths, not their field order, are checked against FIRMWARE_SIGNED_SPAN_LENGTH and
+FIRMWARE_TRAILER_LENGTH.
 
 chunkSize must be the same SEED_CHUNK_SIZE the seed stamps into its OFFER
 (firmware-update-manager.cpp), not a value chosen here: receivers verify the offer's
 geometry against this signature, so a mismatch makes every offer come back BAD_SIGNATURE.
 
-imageVersion is the signing time in UTC seconds. Devices refuse any image older than
-the one they run, so a recorded older image cannot be replayed to roll them back. The
-CLI's --image-version overrides it, for signing deliberately older test images; a
-version below the time-stamped builds already deployed is refused by every device.
+imageVersion is the signing time in UTC seconds. A device running a signed image refuses
+any image older than it, so a recorded older image cannot be replayed to roll it back.
+The CLI's --image-version overrides it, for signing deliberately older test images; a
+version below the deployed time-stamped builds is refused by every device running one.
 """
 import argparse
 import os
@@ -86,10 +87,6 @@ def read_layout_length(name):
 def read_device_type(name):
     path = REPO_ROOT / "lib/core/include/device/device-type.hpp"
     return int(_extract(rf"\b{name}\s*=\s*(\d+)", path, f"DeviceType::{name}"))
-
-
-def signing_time_version():
-    return int(time.time())
 
 
 def signed_span(image_bytes, device_type, version, chunk_size=None):
@@ -159,7 +156,7 @@ def _pio_sign_action(target, source, env):
     device_type_name = _pio_device_type_name(env["PIOENV"])
     device_type = read_device_type(device_type_name)
     try:
-        version = signing_time_version()
+        version = int(time.time())
         trailer = sign_file(bin_path, key_path, cert_path, device_type, version)
     except SigningInputError as e:
         print(f"ERROR: {e}")
@@ -195,7 +192,7 @@ def _cli_main():
 
     device_type = read_device_type(args.device_type)
     try:
-        version = args.image_version if args.image_version is not None else signing_time_version()
+        version = args.image_version if args.image_version is not None else int(time.time())
         trailer = sign_file(args.firmware_bin, args.signer_key, args.signer_cert, device_type, version)
     except SigningInputError as e:
         sys.exit(f"error: {e}")

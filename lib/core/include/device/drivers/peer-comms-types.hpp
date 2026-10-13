@@ -152,8 +152,8 @@ struct FirmwareOfferPayload {
     /// device type its signer never intended.
     uint8_t deviceType;
     /// The signing time in UTC seconds unless the signer chose one. Inside the
-    /// signed span, so a recorded older image cannot be replayed to roll devices
-    /// back: they refuse anything older than the image they are running.
+    /// signed span, so a recorded older image cannot be replayed to roll a device
+    /// back: one running a signed image refuses anything older than it.
     uint32_t imageVersion;
     /// Delegation cert and root signature.
     SignerCert cert;
