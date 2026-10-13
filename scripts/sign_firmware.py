@@ -11,8 +11,12 @@ Runs two ways:
 
 The signed span and trailer layout are pinned by the device's own structs, not chosen
 here: FirmwareOfferPayload (peer-comms-types.hpp) signs imageSha256|imageLength|
-chunkSize|chunkCount|deviceType (see firmware-verify.cpp's verifyOffer), and
-FirmwareTrailer is SignerCert|imageSignature|imageLength|magic. chunkSize must be the
+chunkSize|chunkCount|deviceType|imageVersion (see firmware-verify.cpp's verifyOffer),
+and FirmwareTrailer is SignerCert|imageSignature|imageLength|imageVersion|magic.
+
+imageVersion is FIRMWARE_IMAGE_VERSION if set, else the signing time in UTC seconds:
+devices refuse any image below the newest version they have run, so a recorded older
+image cannot be replayed to roll them back. chunkSize must be the
 same SEED_CHUNK_SIZE the seed stamps into its OFFER (firmware-update-manager.cpp),
 not a value chosen here: receivers verify the offer's geometry against this
 signature, so a mismatch makes every offer come back BAD_SIGNATURE.
@@ -23,6 +27,7 @@ import pathlib
 import re
 import struct
 import sys
+import time
 
 from cryptography.hazmat.primitives import hashes
 
@@ -75,9 +80,21 @@ def read_device_type(name):
     return int(_extract(rf"\b{name}\s*=\s*(\d+)", path, f"DeviceType::{name}"))
 
 
-def signed_span(image_bytes, device_type, chunk_size=None):
-    """The exact 41-byte span verifyOffer checks the image signature over:
-    imageSha256|imageLength|chunkSize|chunkCount|deviceType, packed little-endian."""
+def image_version():
+    """FIRMWARE_IMAGE_VERSION if set, else the current UTC time in seconds."""
+    explicit = os.environ.get("FIRMWARE_IMAGE_VERSION")
+    if explicit:
+        version = int(explicit)
+    else:
+        version = int(time.time())
+    if not 0 < version < 2**32:
+        raise SigningInputError(f"image version {version} does not fit 32 bits")
+    return version
+
+
+def signed_span(image_bytes, device_type, version, chunk_size=None):
+    """The exact 45-byte span verifyOffer checks the image signature over:
+    imageSha256|imageLength|chunkSize|chunkCount|deviceType|imageVersion, packed little-endian."""
     if chunk_size is None:
         chunk_size = read_seed_chunk_size()
     image_length = len(image_bytes)
@@ -85,17 +102,18 @@ def signed_span(image_bytes, device_type, chunk_size=None):
     image_sha256 = hashes.Hash(hashes.SHA256())
     image_sha256.update(image_bytes)
     digest = image_sha256.finalize()
-    span = struct.pack("<32sIHHB", digest, image_length, chunk_size, chunk_count, device_type)
+    span = struct.pack("<32sIHHBI", digest, image_length, chunk_size, chunk_count, device_type, version)
     return span, digest, image_length
 
 
 def build_trailer(image_bytes, device_type, signer_private_key, cert_bytes):
     if len(cert_bytes) != CERT_LENGTH:
         raise SigningInputError(f"cert is {len(cert_bytes)} bytes, expected {CERT_LENGTH}")
-    span, _digest, image_length = signed_span(image_bytes, device_type)
+    version = image_version()
+    span, _digest, image_length = signed_span(image_bytes, device_type, version)
     image_signature = sign_raw(signer_private_key, span)
     magic = read_trailer_magic()
-    trailer = cert_bytes + image_signature + struct.pack("<II", image_length, magic)
+    trailer = cert_bytes + image_signature + struct.pack("<III", image_length, version, magic)
     return trailer
 
 
@@ -142,7 +160,8 @@ def _pio_sign_action(target, source, env):
 
     with open(bin_path, "ab") as f:
         f.write(trailer)
-    print(f"Signed {bin_path}: appended {len(trailer)}-byte trailer, deviceType={device_type_name}")
+    print(f"Signed {bin_path}: appended {len(trailer)}-byte trailer, deviceType={device_type_name}, "
+          f"imageVersion={struct.unpack_from('<I', trailer, len(trailer) - 8)[0]}")
 
 
 if env is not None:

@@ -235,14 +235,14 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
     }
 }
 
-void FirmwareUpdateManager::applyRunningImageGeneration() {
+void FirmwareUpdateManager::applyRunningImageFloors() {
     if (runningGenerationApplied) {
         return;
     }
     runningGenerationApplied = true;
     // A device that has only ever been USB-flashed (--clear-nvs resets NVS)
-    // has a floor of 0 until its first wireless commit, so it would still take
-    // an image from a signer the fleet's own image already supersedes.
+    // has floors of 0, so it would still take an image from a signer the
+    // fleet's own image already supersedes, or an older image replayed.
     FirmwareTrailer trailer{};
     if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer)) ||
         trailer.magic != FIRMWARE_TRAILER_MAGIC) {
@@ -250,6 +250,9 @@ void FirmwareUpdateManager::applyRunningImageGeneration() {
     }
     if (trailer.cert.generation > firmwareStore->getMinGeneration()) {
         firmwareStore->setMinGeneration(trailer.cert.generation);
+    }
+    if (trailer.imageVersion > firmwareStore->getMinImageVersion()) {
+        firmwareStore->setMinImageVersion(trailer.imageVersion);
     }
 }
 
@@ -279,12 +282,19 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // not idle, cabled, or mid-match: don't even look at the offer
     }
 
-    applyRunningImageGeneration();
+    applyRunningImageFloors();
 
     if (static_cast<DeviceType>(offer.deviceType) != deviceType) {
         LOG_E(TAG, "offer targets device type %d, this device is %d", offer.deviceType,
               static_cast<int>(deviceType));
         return;  // a correctly-signed offer for another device type must still be refused
+    }
+
+    if (offer.imageVersion < firmwareStore->getMinImageVersion()) {
+        LOG_E(TAG, "offer is image version %lu, below this device's floor %lu",
+              static_cast<unsigned long>(offer.imageVersion),
+              static_cast<unsigned long>(firmwareStore->getMinImageVersion()));
+        return;  // an older signed image replayed to roll the device back
     }
 
     // One check for every stage that must not be interrupted, which is every
@@ -480,6 +490,7 @@ void FirmwareUpdateManager::evaluateCommit() {
     trailer.cert = acceptedOffer.cert;
     std::memcpy(trailer.imageSignature, acceptedOffer.imageSignature, FIRMWARE_SIG_LENGTH);
     trailer.imageLength = static_cast<uint32_t>(imageLength);
+    trailer.imageVersion = acceptedOffer.imageVersion;
     trailer.magic = FIRMWARE_TRAILER_MAGIC;
     if (!firmwareStore->writeAt(imageLength, reinterpret_cast<const uint8_t*>(&trailer), sizeof(trailer))) {
         LOG_E(TAG, "commit: failed to write the trailer past the image");
@@ -659,6 +670,7 @@ bool FirmwareUpdateManager::beginSeeding() {
         return false;
     }
     seedCert = trailer.cert;
+    seedImageVersion = trailer.imageVersion;
     std::memcpy(seedImageSignature, trailer.imageSignature, FIRMWARE_SIG_LENGTH);
     std::memcpy(seedImageHash, runningHash, FIRMWARE_SHA256_LENGTH);
 
@@ -863,6 +875,7 @@ void FirmwareUpdateManager::sendOffer() {
     offer.chunkSize = SEED_CHUNK_SIZE;
     offer.chunkCount = seedChunkCount;
     offer.deviceType = static_cast<uint8_t>(deviceType);
+    offer.imageVersion = seedImageVersion;
     offer.cert = seedCert;
     std::memcpy(offer.imageSignature, seedImageSignature, FIRMWARE_SIG_LENGTH);
 

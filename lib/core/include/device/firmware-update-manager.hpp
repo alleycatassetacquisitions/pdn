@@ -141,9 +141,9 @@ private:
     // Ends streaming and repair, and keeps the run open for SEED_VERDICT_WINDOW_MS
     // so receivers still committing can report.
     void collectVerdicts();
-    // Raises the generation floor to the running image's own signer
-    // generation, once per boot, before the first offer is judged.
-    void applyRunningImageGeneration();
+    // Raises the generation and image-version floors to the running image's
+    // own, once per boot, before the first offer is judged.
+    void applyRunningImageFloors();
 
     // Stage of an inbound transfer. Linear, and the receive side is only ever
     // in one of these: an accepted offer moves IDLE -> RECEIVING, a full
@@ -319,6 +319,7 @@ private:
     uint8_t seedImageHash[FIRMWARE_SHA256_LENGTH] = {};
     SimpleTimer offerTimer;
     SignerCert seedCert = {};
+    uint32_t seedImageVersion = 0;
     uint8_t seedImageSignature[FIRMWARE_SIG_LENGTH] = {};
 
     // Repair loop: repairBitmap accumulates the complement of every STATUS

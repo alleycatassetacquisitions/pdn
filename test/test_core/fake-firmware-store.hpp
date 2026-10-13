@@ -109,6 +109,10 @@ public:
     uint8_t getMinGeneration() const override { return minGeneration; }
     /// Stores the generation floor for later getMinGeneration calls.
     void setMinGeneration(uint8_t generation) override { minGeneration = generation; }
+    /** Image-version floor configured via setMinImageVersion. */
+    uint32_t getMinImageVersion() const override { return minImageVersion; }
+    /** Stores the image-version floor for later getMinImageVersion calls. */
+    void setMinImageVersion(uint32_t version) override { minImageVersion = version; }
 
     /// Bytes written so far into the open (or last finished) slot.
     const std::vector<uint8_t>& slot() const { return writeSlot; }
@@ -151,4 +155,5 @@ private:
     bool failWritesEnabled = false;
     size_t failFromOffset = 0;
     uint8_t minGeneration = 0;
+    uint32_t minImageVersion = 0;
 };

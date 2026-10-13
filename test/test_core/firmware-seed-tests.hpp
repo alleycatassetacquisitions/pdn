@@ -70,6 +70,9 @@ public:
             return -1;
         }
         totalSent++;
+        if (length >= sizeof(FirmwareOfferPayload) && data[0] == static_cast<uint8_t>(FirmwareCmd::OFFER)) {
+            std::memcpy(&lastOffer, data, sizeof(lastOffer));
+        }
         if (length > 0 && data[0] < commandCounts.size()) {
             commandCounts[data[0]]++;
         }
@@ -99,6 +102,9 @@ public:
 
     /** Makes every sendData call fail until called again with false. */
     void refuseAllSends(bool refuse) { refuseAll = refuse; }
+
+    /** The most recent OFFER frame sent, as the wire struct. */
+    FirmwareOfferPayload lastOffer{};
 
     /// Makes every sendData call from here on report completion to `manager`
     /// before it returns — the radio's callback landing inside the send call
@@ -131,6 +137,7 @@ public:
     /// enough headroom for a repair test to name any single-digit or
     /// low-teens chunk index without exceeding the image's real chunk count.
     static constexpr size_t IMAGE_LENGTH = 16 * CHUNK_SIZE;
+    static constexpr uint32_t IMAGE_VERSION = 7;
 
     /// Wires a fresh manager to a store already holding a synthetic running
     /// image and a trailer signed for it, and to a comms fake that counts
@@ -290,6 +297,7 @@ public:
         offer.chunkSize = CHUNK_SIZE;
         offer.chunkCount = static_cast<uint16_t>(IMAGE_LENGTH / CHUNK_SIZE);
         offer.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+        offer.imageVersion = IMAGE_VERSION;
         offer.cert = cert;
         std::memcpy(offer.imageSignature, imageSignature, FIRMWARE_SIG_LENGTH);
         return offer;
@@ -346,6 +354,7 @@ private:
         // stamps outgoing offers with it, and this signature has to cover
         // whatever value actually goes out on the wire.
         signedSpan.deviceType = static_cast<uint8_t>(DeviceType::PDN);
+        signedSpan.imageVersion = IMAGE_VERSION;
 
         const uint8_t* signedStart =
             reinterpret_cast<const uint8_t*>(&signedSpan) + offsetof(FirmwareOfferPayload, imageSha256);
@@ -360,6 +369,7 @@ private:
         trailer.cert = cert;
         std::memcpy(trailer.imageSignature, imageSignature, FIRMWARE_SIG_LENGTH);
         trailer.imageLength = static_cast<uint32_t>(image.size());
+        trailer.imageVersion = IMAGE_VERSION;
         trailer.magic = FIRMWARE_TRAILER_MAGIC;
 
         std::vector<uint8_t> bytes(sizeof(FirmwareTrailer));
@@ -428,6 +438,14 @@ TEST(FirmwareSeedTest, aRefusedSendIsRetriedNotWedged) {
     EXPECT_EQ(f.comms.sentCount(), 1) << "a refused send must not count as sent";
     f.manager->sync();  // sendInFlight stayed false, so this retries
     EXPECT_EQ(f.comms.sentCount(), 2) << "the seed must retry a refused send, not wedge";
+}
+
+TEST(FirmwareSeedTest, theOfferCarriesTheRunningImagesVersion) {
+    // The version is inside the signed span: an offer stamped with anything
+    // else would fail verification at every receiver.
+    FirmwareSeedFixture f;
+    ASSERT_TRUE(f.manager->beginSeeding());
+    EXPECT_EQ(f.comms.lastOffer.imageVersion, FirmwareSeedFixture::IMAGE_VERSION);
 }
 
 TEST(FirmwareSeedTest, aSeedWhoseRadioRefusesEverythingGivesUp) {

@@ -113,6 +113,8 @@ public:
     /// Chunk body size used by every offer this fixture builds, unless a
     /// caller asks for a different one via signedOfferWithChunkSize.
     static constexpr uint16_t CHUNK_SIZE = 1400;
+    /** The image version every signed offer this fixture builds carries. */
+    static constexpr uint32_t IMAGE_VERSION = 3;
 
     /// Wires a fresh manager to `comms`/`store`, gives the slot its real
     /// size, and captures the radio callback the manager registers so
@@ -443,6 +445,7 @@ private:
         offer.chunkSize = chunkSizeBytes;
         offer.chunkCount = chunks;
         offer.deviceType = static_cast<uint8_t>(type);
+        offer.imageVersion = IMAGE_VERSION;
         resign(offer);
         return offer;
     }

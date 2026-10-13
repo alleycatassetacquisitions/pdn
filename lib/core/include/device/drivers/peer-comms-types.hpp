@@ -150,9 +150,13 @@ struct FirmwareOfferPayload {
     /// signed span below, so a relay cannot retarget a correctly-signed image at a
     /// device type its signer never intended.
     uint8_t deviceType;
+    /// Stamped at signing and only ever higher for a newer build. Inside the
+    /// signed span, so a recorded older image cannot be replayed to roll devices
+    /// back: they refuse anything below the newest version they have run.
+    uint32_t imageVersion;
     /// Delegation cert and root signature.
     SignerCert cert;
-    /// Signature over imageSha256|imageLength|chunkSize|chunkCount|deviceType.
+    /// Signature over imageSha256|imageLength|chunkSize|chunkCount|deviceType|imageVersion.
     uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
 } __attribute__((packed));
 
@@ -203,6 +207,7 @@ struct FirmwareTrailer {
     SignerCert cert;
     uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
     uint32_t imageLength;
+    uint32_t imageVersion;
     uint32_t magic;
 } __attribute__((packed));
 
