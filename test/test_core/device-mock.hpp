@@ -153,9 +153,8 @@ public:
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
 
-    /// Real storage rather than MOCK_METHOD: registers a handler a test can
-    /// later trigger via fireSendStatus to simulate the radio reporting
-    /// completion, without needing gmock expectations set up first.
+    /// Real storage rather than MOCK_METHOD, so registration needs no gmock
+    /// expectations set up first.
     void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
         sendStatusHandlers[packetType] = {callback, ctx};
     }
@@ -170,15 +169,6 @@ public:
     /// actually deregistered rather than that it called a method.
     bool hasSendStatusHandler(PktType packetType) const {
         return sendStatusHandlers.count(packetType) != 0;
-    }
-
-    /// Test hook: invokes the handler registered for packetType directly, standing
-    /// in for the radio completion callback the driver has no radio to fire.
-    void fireSendStatus(PktType packetType, bool success) {
-        auto it = sendStatusHandlers.find(packetType);
-        if (it != sendStatusHandlers.end() && it->second.first) {
-            it->second.first(nullptr, nullptr, 0, success, it->second.second);
-        }
     }
 
 private:

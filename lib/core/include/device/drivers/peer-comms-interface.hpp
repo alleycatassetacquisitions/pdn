@@ -18,6 +18,9 @@ public:
     /// pointer, not std::function: a registrant hands over a static member
     /// function or a captureless lambda and gets its instance back through
     /// ctx, so the driver's handler table holds no allocation.
+    /// On ESP32 it runs on the WiFi task, not the main loop, and may also run
+    /// from inside sendData or disconnect: it must not send, and anything it
+    /// writes that the main loop reads has to be atomic.
     using SendStatusCallback = void (*)(const uint8_t* dstMac, const uint8_t* data, size_t length, bool success, void* ctx);
 
     virtual ~PeerCommsInterface() = default;

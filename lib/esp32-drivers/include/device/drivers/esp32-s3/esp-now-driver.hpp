@@ -170,10 +170,7 @@ public:
                 break;
             }
             DispatchSendStatus(false);
-            xSemaphoreTake(sendMutex, portMAX_DELAY);
-            free(m_sendQueue.front().ptr);
-            m_sendQueue.pop();
-            xSemaphoreGive(sendMutex);
+            MoveToNextSendPkt();
         }
         clearSendQueue();
 
@@ -516,8 +513,8 @@ private:
         xSemaphoreGive(sendMutex);
     }
 
-    // Drop every queued frame. Nothing queued here will ever be reported on, so the
-    // frame at the head has to be dispatched before this runs.
+    // Drop every queued frame without reporting it and hand the transmission
+    // claim back. disconnect() reports and drops each frame before calling this.
     void clearSendQueue() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         while (!m_sendQueue.empty()) {

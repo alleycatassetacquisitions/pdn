@@ -258,9 +258,7 @@ void loop() {
     // onStateLoop to the active app alone, and the FDN swaps apps, so a device
     // receiving an image needs sync() to keep running and fire its restart
     // whichever app is mounted.
-    if (firmwareUpdateManager != nullptr) {
-        firmwareUpdateManager->sync();
-    }
+    firmwareUpdateManager->sync();
     fdn->loop();
 }
 

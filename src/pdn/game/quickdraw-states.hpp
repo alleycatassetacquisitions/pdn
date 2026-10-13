@@ -101,8 +101,7 @@ public:
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
-    /// True once the secondary button's DURING_LONG_PRESS callback has
-    /// observed FIRMWARE_UPDATE_HOLD_MS of hold time.
+    /// True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS.
     bool transitionToFirmwareUpdate() const;
 
 private:
