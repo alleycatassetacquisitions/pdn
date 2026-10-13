@@ -6,8 +6,6 @@
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 
-#include <cstdlib>
-#include <string>
 
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-types.hpp"
@@ -241,17 +239,6 @@ public:
         storage->writeUChar(FIRMWARE_STORE_NVS_NAMESPACE, MIN_GENERATION_KEY, generation);
     }
 
-    /** Reads the image-version floor from NVS; 0 if never set. */
-    uint32_t getMinImageVersion() const override {
-        const std::string value = storage->read(FIRMWARE_STORE_NVS_NAMESPACE, MIN_IMAGE_VERSION_KEY, "0");
-        return static_cast<uint32_t>(std::strtoul(value.c_str(), nullptr, 10));
-    }
-
-    /** Persists the image-version floor, so a rollback by replay stays refused across reboots. */
-    void setMinImageVersion(uint32_t version) override {
-        storage->write(FIRMWARE_STORE_NVS_NAMESPACE, MIN_IMAGE_VERSION_KEY, std::to_string(version));
-    }
-
 private:
     // Walks the running image's own header as the second-stage bootloader
     // does: nothing else records this device's own image length. A
@@ -306,7 +293,6 @@ private:
 
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
     static constexpr const char* MIN_GENERATION_KEY = "minGen";
-    static constexpr const char* MIN_IMAGE_VERSION_KEY = "minVer";
 
     StorageInterface* storage = nullptr;
 

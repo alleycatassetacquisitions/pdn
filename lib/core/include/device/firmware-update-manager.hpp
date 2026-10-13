@@ -141,8 +141,9 @@ private:
     // Ends streaming and repair, and keeps the run open for SEED_VERDICT_WINDOW_MS
     // so receivers still committing can report.
     void collectVerdicts();
-    // Raises the generation and image-version floors to the running image's
-    // own, once per boot, before the first offer is judged.
+    // Reads the running image's trailer once per boot, before the first offer
+    // is judged: raises the persisted generation floor to its signer's, and
+    // takes its version as the image-version floor.
     void applyRunningImageFloors();
 
     // Stage of an inbound transfer. Linear, and the receive side is only ever
@@ -304,7 +305,11 @@ private:
     SeedPhase seedPhase = SeedPhase::IDLE;
     // Cleared by onSendReport, which the ESP-NOW driver calls from the WiFi task.
     std::atomic<bool> sendInFlight{false};
-    bool runningGenerationApplied = false;
+    bool runningImageFloorsApplied = false;
+    // The running image's signed version; 0 for an unsigned image. Read from
+    // the image itself rather than persisted, so an update that rolls back
+    // does not leave this device refusing images newer than the one it runs.
+    uint32_t runningImageVersion = 0;
     // Restarted by every frame the radio accepts while seeding. Expired means
     // no frame was accepted for SEED_SEND_STALL_MS; the next refusal then
     // abandons the run.
@@ -318,9 +323,9 @@ private:
     // happens to equal cachedRunningImageHash() today.
     uint8_t seedImageHash[FIRMWARE_SHA256_LENGTH] = {};
     SimpleTimer offerTimer;
-    SignerCert seedCert = {};
-    uint32_t seedImageVersion = 0;
-    uint8_t seedImageSignature[FIRMWARE_SIG_LENGTH] = {};
+    // The running image's trailer, read at beginSeeding(); sendOffer() copies
+    // its cert, signature and version into every OFFER.
+    FirmwareTrailer seedTrailer = {};
 
     // Repair loop: repairBitmap accumulates the complement of every STATUS
     // heard since the last round resolved; resolveRepairRound freezes it

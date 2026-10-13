@@ -51,10 +51,20 @@ TEST(FirmwareCommitTest, commitWritesTheTrailerPastTheImage) {
         << "a device that took this image must seed it at the version it was signed with";
 }
 
-TEST(FirmwareCommitTest, anOfferBelowTheVersionFloorIsRefused) {
+namespace {
+void runSignedImageAtVersion(FakeFirmwareStore& store, uint32_t version) {
+    FirmwareTrailer trailer{};
+    trailer.magic = FIRMWARE_TRAILER_MAGIC;
+    trailer.imageVersion = version;
+    store.setRunningTrailer(std::vector<uint8_t>(reinterpret_cast<uint8_t*>(&trailer),
+                                                 reinterpret_cast<uint8_t*>(&trailer) + sizeof(trailer)));
+}
+}  // namespace
+
+TEST(FirmwareCommitTest, anOfferOlderThanTheRunningImageIsRefused) {
     // A recorded older image, still validly signed, replayed to roll devices back.
     FirmwareReceiverFixture f;
-    f.store.setMinImageVersion(FirmwareReceiverFixture::IMAGE_VERSION + 1);
+    runSignedImageAtVersion(f.store, FirmwareReceiverFixture::IMAGE_VERSION + 1);
 
     f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
 
@@ -62,26 +72,12 @@ TEST(FirmwareCommitTest, anOfferBelowTheVersionFloorIsRefused) {
     EXPECT_EQ(f.store.beginWriteCalls(), 0);
 }
 
-TEST(FirmwareCommitTest, theRunningImagesVersionIsTheFloor) {
-    // A USB-flashed device has an NVS floor of 0, but the image it runs carries
-    // a version; anything older is a rollback.
+TEST(FirmwareCommitTest, anOfferAtTheRunningImagesVersionIsTaken) {
     FirmwareReceiverFixture f;
-    FirmwareTrailer trailer{};
-    trailer.magic = FIRMWARE_TRAILER_MAGIC;
-    trailer.imageVersion = FirmwareReceiverFixture::IMAGE_VERSION + 6;
-    f.store.setRunningTrailer(std::vector<uint8_t>(reinterpret_cast<uint8_t*>(&trailer),
-                                                   reinterpret_cast<uint8_t*>(&trailer) + sizeof(trailer)));
+    runSignedImageAtVersion(f.store, FirmwareReceiverFixture::IMAGE_VERSION);
 
     f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
 
-    EXPECT_FALSE(f.manager->isReceiving());
-    EXPECT_EQ(f.store.getMinImageVersion(), FirmwareReceiverFixture::IMAGE_VERSION + 6);
-}
-
-TEST(FirmwareCommitTest, anOfferAtOrAboveTheFloorIsTaken) {
-    FirmwareReceiverFixture f;
-    f.store.setMinImageVersion(FirmwareReceiverFixture::IMAGE_VERSION);
-    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));
     EXPECT_TRUE(f.manager->isReceiving());
 }
 

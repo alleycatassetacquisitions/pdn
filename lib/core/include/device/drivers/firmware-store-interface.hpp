@@ -58,8 +58,4 @@ public:
     virtual uint8_t getMinGeneration() const = 0;
     /// Sets the lowest firmware generation this device will accept.
     virtual void setMinGeneration(uint8_t generation) = 0;
-    /** Lowest image version this device will accept. */
-    virtual uint32_t getMinImageVersion() const = 0;
-    /** Sets the lowest image version this device will accept. */
-    virtual void setMinImageVersion(uint32_t version) = 0;
 };

@@ -236,13 +236,12 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
 }
 
 void FirmwareUpdateManager::applyRunningImageFloors() {
-    if (runningGenerationApplied) {
+    if (runningImageFloorsApplied) {
         return;
     }
-    runningGenerationApplied = true;
-    // A device that has only ever been USB-flashed (--clear-nvs resets NVS)
-    // has floors of 0, so it would still take an image from a signer the
-    // fleet's own image already supersedes, or an older image replayed.
+    runningImageFloorsApplied = true;
+    // The persisted generation floor only rises at a commit, so a device
+    // USB-flashed with an image from a newer signer still has the older floor.
     FirmwareTrailer trailer{};
     if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer)) ||
         trailer.magic != FIRMWARE_TRAILER_MAGIC) {
@@ -251,9 +250,7 @@ void FirmwareUpdateManager::applyRunningImageFloors() {
     if (trailer.cert.generation > firmwareStore->getMinGeneration()) {
         firmwareStore->setMinGeneration(trailer.cert.generation);
     }
-    if (trailer.imageVersion > firmwareStore->getMinImageVersion()) {
-        firmwareStore->setMinImageVersion(trailer.imageVersion);
-    }
+    runningImageVersion = trailer.imageVersion;
 }
 
 const uint8_t* FirmwareUpdateManager::cachedRunningImageHash() {
@@ -290,11 +287,10 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;  // a correctly-signed offer for another device type must still be refused
     }
 
-    if (offer.imageVersion < firmwareStore->getMinImageVersion()) {
-        LOG_E(TAG, "offer is image version %lu, below this device's floor %lu",
-              static_cast<unsigned long>(offer.imageVersion),
-              static_cast<unsigned long>(firmwareStore->getMinImageVersion()));
-        return;  // an older signed image replayed to roll the device back
+    if (offer.imageVersion < runningImageVersion) {
+        LOG_W(TAG, "offer is image version %lu, older than the running %lu",
+              static_cast<unsigned long>(offer.imageVersion), static_cast<unsigned long>(runningImageVersion));
+        return;  // a seed on an older build, or an older image replayed to roll this device back
     }
 
     // One check for every stage that must not be interrupted, which is every
@@ -669,9 +665,7 @@ bool FirmwareUpdateManager::beginSeeding() {
         LOG_E(TAG, "beginSeeding: could not hash the running image");
         return false;
     }
-    seedCert = trailer.cert;
-    seedImageVersion = trailer.imageVersion;
-    std::memcpy(seedImageSignature, trailer.imageSignature, FIRMWARE_SIG_LENGTH);
+    seedTrailer = trailer;
     std::memcpy(seedImageHash, runningHash, FIRMWARE_SHA256_LENGTH);
 
     seedChunkCount =
@@ -875,9 +869,9 @@ void FirmwareUpdateManager::sendOffer() {
     offer.chunkSize = SEED_CHUNK_SIZE;
     offer.chunkCount = seedChunkCount;
     offer.deviceType = static_cast<uint8_t>(deviceType);
-    offer.imageVersion = seedImageVersion;
-    offer.cert = seedCert;
-    std::memcpy(offer.imageSignature, seedImageSignature, FIRMWARE_SIG_LENGTH);
+    offer.imageVersion = seedTrailer.imageVersion;
+    offer.cert = seedTrailer.cert;
+    std::memcpy(offer.imageSignature, seedTrailer.imageSignature, FIRMWARE_SIG_LENGTH);
 
     sendFrame(reinterpret_cast<const uint8_t*>(&offer), sizeof(offer), "sendOffer");
 }
