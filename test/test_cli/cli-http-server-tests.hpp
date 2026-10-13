@@ -122,22 +122,22 @@ void httpServerClearHistory(MockHttpServerTestSuite* suite) {
 class NativeHttpClientDriverTestSuite : public testing::Test {
 public:  // Public for test function access
     void SetUp() override {
-        driver_ = new NativeHttpClientDriver("TestHttpClient");
-        successCallbackCalled_ = false;
-        errorCallbackCalled_ = false;
-        lastResponseBody_ = "";
-        lastErrorCode_ = WirelessError::TIMEOUT;
+        driver = new NativeHttpClientDriver("TestHttpClient");
+        successCallbackCalled = false;
+        errorCallbackCalled = false;
+        lastResponseBody = "";
+        lastErrorCode = WirelessError::TIMEOUT;
     }
     
     void TearDown() override {
-        delete driver_;
+        delete driver;
     }
-    
-    NativeHttpClientDriver* driver_;
-    bool successCallbackCalled_;
-    bool errorCallbackCalled_;
-    std::string lastResponseBody_;
-    WirelessError lastErrorCode_;
+
+    NativeHttpClientDriver* driver;
+    bool successCallbackCalled;
+    bool errorCallbackCalled;
+    std::string lastResponseBody;
+    WirelessError lastErrorCode;
 };
 
 // Test: Client processes requests
@@ -148,20 +148,41 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
         "",
         "",
         [suite](const std::string& response) {
-            suite->successCallbackCalled_ = true;
-            suite->lastResponseBody_ = response;
+            suite->successCallbackCalled = true;
+            suite->lastResponseBody = response;
         },
         [suite](const WirelessErrorInfo& error) {
-            suite->errorCallbackCalled_ = true;
-            suite->lastErrorCode_ = error.code;
+            suite->errorCallbackCalled = true;
+            suite->lastErrorCode = error.code;
         });
 
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();  // Process the queue
-    
+    suite->driver->setMockServerEnabled(true);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();  // Process the queue
+
     // One of success or error should be called
-    ASSERT_TRUE(suite->successCallbackCalled_ || suite->errorCallbackCalled_);
+    ASSERT_TRUE(suite->successCallbackCalled || suite->errorCallbackCalled);
+}
+
+// Test: disconnect fails every queued request, so none replays on a later trip
+void httpClientDisconnectFailsQueuedRequests(NativeHttpClientDriverTestSuite* suite) {
+    int errors = 0;
+    int successes = 0;
+    for (int i = 0; i < 2; i++) {
+        HttpRequest request(
+            "/api/players/0010", "GET", "", "",
+            [&successes](const std::string&) { successes++; },
+            [&errors](const WirelessErrorInfo&) { errors++; });
+        suite->driver->queueRequest(request);
+    }
+
+    suite->driver->disconnect();
+    suite->driver->setMockServerEnabled(true);
+    suite->driver->exec();
+
+    EXPECT_EQ(errors, 2);
+    EXPECT_EQ(successes, 0);
+    EXPECT_EQ(suite->driver->getPendingRequestCount(), 0u);
 }
 
 // Test: Client handles offline server
@@ -174,16 +195,16 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
         "",
         "",
         [suite](const std::string& response) {
-            suite->successCallbackCalled_ = true;
+            suite->successCallbackCalled = true;
         },
         [suite](const WirelessErrorInfo& error) {
-            suite->errorCallbackCalled_ = true;
+            suite->errorCallbackCalled = true;
         });
 
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
-    
+    suite->driver->setMockServerEnabled(true);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
+
     // With mock server in online mode (default), requests succeed
     // The offline behavior depends on driver implementation
     cli::MockHttpServer::getInstance().setOffline(false);
@@ -199,17 +220,17 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
         [](const std::string&) {},
         [](const WirelessErrorInfo&) {});
 
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
-    
-    const auto& history = suite->driver_->getRequestHistory();
+    suite->driver->setMockServerEnabled(true);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
+
+    const std::deque<HttpRequestHistoryEntry>& history = suite->driver->getRequestHistory();
     ASSERT_GE(history.size(), 1);
 }
 
 // Test: Client fails when mock server is disabled
 void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
-    suite->driver_->setMockServerEnabled(false);
+    suite->driver->setMockServerEnabled(false);
 
     HttpRequest request(
         "/api/players/0010",
@@ -217,16 +238,16 @@ void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
         "",
         "",
         [suite](const std::string& response) {
-            suite->successCallbackCalled_ = true;
+            suite->successCallbackCalled = true;
         },
         [suite](const WirelessErrorInfo& error) {
-            suite->errorCallbackCalled_ = true;
+            suite->errorCallbackCalled = true;
         });
 
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
-    
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
+
     // Without mock server, the request should fail (no actual HTTP)
     // Re-enable for other tests
-    suite->driver_->setMockServerEnabled(true);
+    suite->driver->setMockServerEnabled(true);
 }

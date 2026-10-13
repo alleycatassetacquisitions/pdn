@@ -5,10 +5,10 @@
 
 void NativeHttpClientDriver::processPendingRequests() {
     // Process all pending requests
-    while (!pendingRequests_.empty()) {
-        HttpRequest request = pendingRequests_.front();
-        pendingRequests_.pop();
-        
+    while (!pendingRequests.empty()) {
+        HttpRequest request = pendingRequests.front();
+        pendingRequests.pop();
+
         if (!mockServerEnabled_) {
             // Mock server disabled - fail immediately (original behavior)
             if (request.onError) {
