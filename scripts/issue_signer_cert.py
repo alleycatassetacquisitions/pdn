@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Issues a signer certificate delegated from the offline root key.
 
-Run this offline, once per signer. It takes the root's private key (from
-make_root_key.py) and a label, generates a fresh signer keypair, and writes
+Run this offline, once per signer. It takes the root (derived from the
+passphrase with --root-from-passphrase, or a key file from make_root_key.py)
+and a label, generates a fresh signer keypair, and writes
 out the 149-byte SignerCert plus the signer's private key. The root key
 itself never leaves the machine this runs on — only the cert and signer key
 travel to wherever sign_firmware.py runs (including CI).

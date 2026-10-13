@@ -17,8 +17,8 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
 # Two app slots for wireless updates. A new image must prove itself before it
-# becomes permanent: if it never confirms, the bootloader goes back to the
-# previous slot. The firmware store refuses to compile without this.
+# becomes permanent: if it resets before confirming, the bootloader goes back
+# to the previous slot. The firmware store refuses to compile without this.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # Our code throws and catches C++ exceptions; IDF turns them off by default.

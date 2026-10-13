@@ -3,8 +3,10 @@
 #include <cstdint>
 
 /// Pinned root public key (uncompressed P-256, X||Y), checked against every
-/// signer certificate's rootSignature. All-zero until the offline signing
-/// ceremony issues the real key: the zero point does not satisfy the P-256
+/// signer certificate's rootSignature. All-zero until the public half of the
+/// passphrase-derived root (make_root_key.py --from-passphrase) is pasted
+/// here; until then no device accepts any offer. The zero point does not
+/// satisfy the P-256
 /// curve equation. mbedtls_ecp_point_read_binary accepts the encoding
 /// anyway, but no signature any real key produced can verify against a point
 /// off the curve, so every check against this placeholder fails rather than

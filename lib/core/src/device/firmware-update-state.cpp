@@ -9,8 +9,6 @@ FirmwareUpdate::FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdat
 
 void FirmwareUpdate::onStateMounted(Device* device) {
     device->getLightManager()->stopAnimation();
-    // A run already streaming (e.g. a repeat hold) is left alone rather than
-    // restarted; beginSeeding() itself refuses that case.
     firmwareUpdateManager->beginSeeding();
 
     Display* d = device->getDisplay();

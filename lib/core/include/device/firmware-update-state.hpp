@@ -25,7 +25,7 @@ public:
     /// down here.
     void onStateDismounted(Device* device) override;
 
-    /// True once beginSeeding's run is no longer streaming or repairing.
+    /// True once the seed's run has ended (isSeeding() is false).
     bool transitionToIdle();
 
 private:

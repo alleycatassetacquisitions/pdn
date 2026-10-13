@@ -208,11 +208,10 @@ static void setup() {
     pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
 }
 
-// How long the main loop must have free-run before a pending image confirms
-// itself. loop() has no delay()/vTaskDelay() in its chain, so a tick count
-// would not be a duration — it could elapse in a few milliseconds and confirm
-// a bad image before it had any chance to fail. Ten seconds outlives the boot
-// path, the radio bring-up and several state-machine transitions.
+// Uptime since boot before a pending image confirms itself: long enough to get
+// through setup, the radio bring-up and the first states. An image that crashes
+// first is rolled back on the reset; one that hangs first stays until a power
+// cycle, because the main task is not on the task watchdog.
 constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
 bool rollbackConfirmed = false;
 
@@ -224,9 +223,9 @@ void loop() {
         firmwareStore->confirmRunningImage();
         rollbackConfirmed = true;
     }
-    // Here rather than inside a state machine: Device::loop() dispatches
-    // onStateLoop to the active app alone, and a device holding a verified
-    // image needs sync() to fire its restart whichever app is running.
+    // Here rather than inside a state: a device receiving an image needs
+    // sync() to keep running and fire its restart whatever Quickdraw state it
+    // is in, not only while FirmwareUpdate is mounted.
     FirmwareUpdateManager* firmwareUpdateManager = game->getFirmwareUpdateManager();
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->sync();

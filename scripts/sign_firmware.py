@@ -13,9 +13,9 @@ The signed span and trailer layout are pinned by the device's own structs, not c
 here: FirmwareOfferPayload (peer-comms-types.hpp) signs imageSha256|imageLength|
 chunkSize|chunkCount|deviceType (see firmware-verify.cpp's verifyOffer), and
 FirmwareTrailer is SignerCert|imageSignature|imageLength|magic. chunkSize must be the
-same SEED_CHUNK_SIZE the device recomputes at seed time (firmware-update-manager.cpp),
-not a value chosen here, or every receiving device's own recomputation disagrees with
-what got signed and every offer comes back BAD_SIGNATURE.
+same SEED_CHUNK_SIZE the seed stamps into its OFFER (firmware-update-manager.cpp),
+not a value chosen here: receivers verify the offer's geometry against this
+signature, so a mismatch makes every offer come back BAD_SIGNATURE.
 """
 import argparse
 import os

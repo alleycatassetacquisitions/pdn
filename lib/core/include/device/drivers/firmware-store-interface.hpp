@@ -18,7 +18,9 @@ public:
     /// Lets a derived store clean up through this base pointer.
     virtual ~FirmwareStoreInterface() = default;
 
-    /// Opens the inactive slot for `length` bytes, erasing only that much.
+    /// Opens the inactive slot for at least `length` bytes and erases what a
+    /// write may touch; the ESP32 store also covers the trailer and rounds up
+    /// to a flash sector.
     virtual bool beginWrite(size_t length) = 0;
     /// Writes `length` bytes at `offset` into the slot opened by beginWrite.
     virtual bool writeAt(size_t offset, const uint8_t* data, size_t length) = 0;
@@ -47,9 +49,9 @@ public:
     virtual bool setBootToWritten() = 0;
     /// Confirms the running image so the bootloader stops treating it as pending.
     virtual void confirmRunningImage() = 0;
-    /// Restarts the device. The spec's commit-and-rollback requirement is "set the boot
-    /// partition, then restart" — nothing else in the tree can do this, so it lives here
-    /// rather than a second platform seam.
+    /// Restarts the device: committing is "set the boot partition, then restart",
+    /// and nothing else in the tree can restart, so it lives here rather than in a
+    /// second platform seam.
     virtual void restart() = 0;
 
     /// Lowest firmware generation this device will accept.

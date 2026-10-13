@@ -174,10 +174,9 @@ public:
         return esp_ota_set_boot_partition(updatePartition) == ESP_OK;
     }
 
-    /// Confirms the running image only if the bootloader is actually still
-    /// waiting on one (ESP_OTA_IMG_PENDING_VERIFY) — a USB-flashed image
-    /// never is, and reaching into OTA machinery on every boot of every
-    /// device for no reason is the failure mode this guard avoids.
+    /// Confirms the running image only if the bootloader is still waiting on
+    /// one (ESP_OTA_IMG_PENDING_VERIFY). A USB-flashed image never is, and
+    /// confirming it anyway only logs an error or rewrites otadata.
     void confirmRunningImage() override {
         if (runningPartition == nullptr) {
             return;
@@ -207,7 +206,7 @@ public:
     }
 
 private:
-    // Walks the running image's own header exactly as the ROM bootloader
+    // Walks the running image's own header as the second-stage bootloader
     // does: nothing else records this device's own image length. A
     // USB-flashed device has no OFFER and no NVS entry for it, and that is
     // the only case that matters for a device's first-ever seed.

@@ -643,7 +643,7 @@ void Quickdraw::populateStateMap() {
 
     // Last in the map so the indices above it stay put when it is absent:
     // with no firmware store there is no manager for this state to drive, and
-    // nothing wires the hold that would reach it.
+    // no transition from Idle is added.
     if (firmwareUpdateManager != nullptr) {
         FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(FIRMWARE_UPDATE, firmwareUpdateManager);
         idle->addTransition(

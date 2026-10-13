@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Generates the offline firmware-signing root keypair.
 
-Run this once, on an offline machine, to provision a production root. It
-never touches the repo: the private half goes to whatever path the operator
-names (outside the working tree), and the public half is printed as the C
-array to hand-paste into firmware-root-key.hpp. This script does not modify
+Run this once, on an offline machine, to provision a production root. With
+--from-passphrase the root is derived from a passphrase and never written
+anywhere; otherwise the private half goes to a path outside the working tree
+(throwaway roots for rig tests). Either way the public half is printed as the
+C array to hand-paste into firmware-root-key.hpp. This script does not modify
 that header itself — custody of a production root is the operator's call,
 not the tooling's.
 """
