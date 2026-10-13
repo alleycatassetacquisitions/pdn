@@ -46,9 +46,11 @@ public:
     /// Writes one chunk into the open slot at its declared index. Drops it
     /// if no offer is open, if its index is out of range, if its length is
     /// not exactly what the offer's geometry gives that index, or if that
-    /// index already landed (flash writes can only clear bits). Once every index has landed, hashes the assembled image,
-    /// re-verifies the offer it was accepted under, writes the trailer, and
-    /// commits — or reports why it did not.
+    /// index already landed (flash writes can only clear bits), or if it is
+    /// not from the seed whose offer was accepted. Once every index has
+    /// landed, hashes the assembled image, re-verifies the offer it was
+    /// accepted under, writes the trailer, and commits — or reports why it
+    /// did not.
     void onChunk(const uint8_t* fromMac, const FirmwareChunkHeader& header, const uint8_t* data);
 
     /// A seed asking who's still missing chunks for `poll`'s image. Ignored
@@ -156,12 +158,13 @@ private:
         RESTARTING = 3,
     };
 
-    // Stage of the run this device is distributing. Also linear:
-    // beginSeeding moves IDLE -> STREAMING, the last streamed chunk moves
-    // STREAMING -> POLLING, a POLL whose window found gaps moves POLLING ->
-    // REPAIRING, and a resend round ends back at POLLING. A round that finds
-    // nothing missing, or one whose gap set stops shrinking, moves to
-    // COLLECTING_VERDICTS, and that window's expiry ends at IDLE.
+    // Stage of the run this device is distributing. beginSeeding moves IDLE ->
+    // STREAMING, the last streamed chunk moves STREAMING -> POLLING, a POLL
+    // whose window found gaps moves POLLING -> REPAIRING, and a resend round
+    // ends back at POLLING. A round that finds nothing missing, or one whose
+    // gap set stops shrinking, moves to COLLECTING_VERDICTS, and that window's
+    // expiry ends at IDLE. From any phase, a refused send after
+    // SEED_SEND_STALL_MS with no accepted frame abandons the run to IDLE.
     enum class SeedPhase : uint8_t {
         IDLE = 0,
         STREAMING = 1,
@@ -185,8 +188,9 @@ private:
     void sendStatus();
 
     // Hands one frame to the radio and latches the single-frame gate. False
-    // means nothing was queued, so no send report will ever arrive for it
-    // and the caller must leave its own progress alone for sync() to retry.
+    // means the radio refused the frame (its failure may already have been
+    // reported from inside sendData); the gate is open again and the caller
+    // leaves its own progress alone for sync() to retry.
     // `what` names the caller in the log line.
     bool sendFrame(const uint8_t* data, size_t length, const char* what);
     // Reads chunk `index` out of the running image and sends it. Shared by
@@ -218,6 +222,7 @@ private:
 
     // The running image's bytes cannot change while it is executing, so its
     // hash is computed at most once per boot and reused from then on.
+    // nullptr if the image could not be read.
     const uint8_t* cachedRunningImageHash();
 
     // Next draw from this device's own PRNG state, seeded from its MAC at
@@ -271,7 +276,9 @@ private:
     // not take. Reset by evaluateCommit for each transfer.
     int completeAttempts = 0;
 
-    bool runningImageHashComputed = false;
+    bool runningImageHashAttempted = false;
+
+    bool runningImageHashValid = false;
     uint8_t runningImageHash[FIRMWARE_SHA256_LENGTH] = {};
 
     // A poll answer is deferred behind a random delay so every receiver
@@ -298,8 +305,9 @@ private:
     // Cleared by onSendReport, which the ESP-NOW driver calls from the WiFi task.
     std::atomic<bool> sendInFlight{false};
     bool runningGenerationApplied = false;
-    // Restarted by every frame the radio accepts while seeding; expiry means the
-    // radio has refused everything for that long, and the run is abandoned.
+    // Restarted by every frame the radio accepts while seeding. Expired means
+    // no frame was accepted for SEED_SEND_STALL_MS; the next refusal then
+    // abandons the run.
     SimpleTimer seedSendStallTimer;
     uint16_t seedChunkCount = 0;
     uint16_t seedNextChunkIndex = 0;

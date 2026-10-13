@@ -174,6 +174,19 @@ TEST(FirmwareCommitTest, theRunningImagesGenerationIsTheFloor) {
     EXPECT_EQ(f.store.getMinGeneration(), 2);
 }
 
+TEST(FirmwareCommitTest, theCompleteDelayStartsAfterTheCommitFinishes) {
+    // The commit blocks for seconds on a real device. A delay armed inside it
+    // has run out by the first sync(), so every receiver would send at once.
+    FirmwareReceiverFixture f;
+    f.receiveCompleteImageWithOneCorruptChunk(/*flushComplete=*/false);
+    f.advance(3000);  // as if the commit had taken this long
+    f.manager->sync();
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 0) << "sent with no delay after the commit";
+    f.advance(500);
+    f.manager->sync();
+    EXPECT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 1);
+}
+
 TEST(FirmwareCommitTest, theRestartProceedsWhenTheReportCannotBeSent) {
     // COMPLETE is sequenced before the restart, but nothing in the fleet
     // decodes it: a radio that keeps refusing the frame used to leave the

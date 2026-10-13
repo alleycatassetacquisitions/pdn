@@ -187,6 +187,7 @@ TEST(FirmwareRepairTest, aFinishedTransferSendsNoStaleStatus) {
     f.deliverChunk(3, body, /*length=*/800);  // fills the bitmap: the transfer concludes here
 
     f.advance(600);
+    f.waitOutCompleteDelay();
     f.manager->sync();  // flushes COMPLETE
     f.manager->onSendReport(true);
     f.manager->sync();

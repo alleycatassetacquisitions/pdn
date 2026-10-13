@@ -22,7 +22,7 @@ constexpr uint16_t SEED_CHUNK_SIZE = 1400;
 // OTA_PARTITION_SIZE (firmware-store-interface.hpp) mirrors the partitions.csv
 // slot size by hand. Tied here to FIRMWARE_MAX_CHUNKS, so changing either
 // constant past what repairBitmap holds fails the build; a partitions.csv edit
-// alone is caught at runtime by the ESP32 store's size check.
+// alone is only logged at runtime, by the ESP32 store's size check.
 static_assert((OTA_PARTITION_SIZE + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE <= FIRMWARE_MAX_CHUNKS,
               "an OTA partition no longer fits FIRMWARE_MAX_CHUNKS chunks at SEED_CHUNK_SIZE");
 
@@ -254,13 +254,14 @@ void FirmwareUpdateManager::applyRunningImageGeneration() {
 }
 
 const uint8_t* FirmwareUpdateManager::cachedRunningImageHash() {
-    if (!runningImageHashComputed) {
-        // Cached only when complete: a truncated hash would make every receiver
-        // reject this device's offers for the rest of the boot.
-        runningImageHashComputed = hashRange(firmwareStore, &FirmwareStoreInterface::readRunningImage,
-                                             firmwareStore->getRunningImageLength(), runningImageHash);
+    if (!runningImageHashAttempted) {
+        // Attempted once per boot either way: a device that cannot read its own
+        // image would otherwise re-hash megabytes for every offer it hears.
+        runningImageHashAttempted = true;
+        runningImageHashValid = hashRange(firmwareStore, &FirmwareStoreInterface::readRunningImage,
+                                          firmwareStore->getRunningImageLength(), runningImageHash);
     }
-    return runningImageHash;
+    return runningImageHashValid ? runningImageHash : nullptr;
 }
 
 uint32_t FirmwareUpdateManager::nextRandomUint32() {
@@ -302,7 +303,11 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
         return;
     }
 
-    if (std::memcmp(offer.imageSha256, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH) == 0) {
+    const uint8_t* runningHash = cachedRunningImageHash();
+    if (runningHash == nullptr) {
+        return;  // cannot tell whether this is the image already running
+    }
+    if (std::memcmp(offer.imageSha256, runningHash, FIRMWARE_SHA256_LENGTH) == 0) {
         return;  // already running this image
     }
 
@@ -426,10 +431,6 @@ void FirmwareUpdateManager::onChunk(const uint8_t* fromMac, const FirmwareChunkH
 
 void FirmwareUpdateManager::evaluateCommit() {
     receivePhase = ReceivePhase::REPORTING;  // this transfer is concluding, pass or fail
-    // Every receiver finishes the same commit at about the same moment, and
-    // COMPLETE is broadcast once and never resent: without a per-device delay
-    // their reports collide and the seed loses verdicts.
-    completeDelayTimer.setTimer(nextRandomUint32() % STATUS_BACKOFF_CEILING_MS);
     completeAttempts = 0;
     // Any poll answer still counting down belongs to a transfer that is over.
     // Letting it fire would hand the seed a partial bitmap for an image this
@@ -460,8 +461,9 @@ void FirmwareUpdateManager::evaluateCommit() {
         return;
     }
 
-    // Re-run the chain the offer was accepted under rather than trusting the
-    // accept-time result: the generation floor may have risen since.
+    // Re-run the chain the offer was accepted under: the offer sat in RAM for
+    // the whole transfer, and one more check before the boot partition moves
+    // costs ~200ms once per commit.
     const FirmwareResult verifyResult = verifyOffer(acceptedOffer, rootPublicKey, firmwareStore->getMinGeneration());
     if (verifyResult != FirmwareResult::OK) {
         LOG_E(TAG, "commit: offer failed re-verification (%d)", static_cast<int>(verifyResult));
@@ -623,6 +625,7 @@ void FirmwareUpdateManager::sendComplete(FirmwareResult result) {
         LOG_E(TAG, "sendComplete: refused %d times; dropping the report and moving on", completeAttempts);
     }
     receivePhase = result == FirmwareResult::OK ? ReceivePhase::RESTARTING : ReceivePhase::IDLE;
+    completeDelayTimer.invalidate();
 }
 
 bool FirmwareUpdateManager::beginSeeding() {
@@ -650,9 +653,14 @@ bool FirmwareUpdateManager::beginSeeding() {
         return false;
     }
 
+    const uint8_t* runningHash = cachedRunningImageHash();
+    if (runningHash == nullptr) {
+        LOG_E(TAG, "beginSeeding: could not hash the running image");
+        return false;
+    }
     seedCert = trailer.cert;
     std::memcpy(seedImageSignature, trailer.imageSignature, FIRMWARE_SIG_LENGTH);
-    std::memcpy(seedImageHash, cachedRunningImageHash(), FIRMWARE_SHA256_LENGTH);
+    std::memcpy(seedImageHash, runningHash, FIRMWARE_SHA256_LENGTH);
 
     seedChunkCount =
         static_cast<uint16_t>((seedImageLength + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE);
@@ -712,6 +720,15 @@ void FirmwareUpdateManager::sync() {
     }
 
     if (receivePhase == ReceivePhase::REPORTING) {
+        // Every receiver finishes the same commit at about the same moment, and
+        // COMPLETE is broadcast once and never resent: without a per-device
+        // delay their reports collide and the seed loses verdicts. Armed here,
+        // on the first pass after evaluateCommit returns, because the commit
+        // itself blocks for seconds and would use up a delay armed inside it.
+        if (!completeDelayTimer.isRunning()) {
+            completeDelayTimer.setTimer(nextRandomUint32() % STATUS_BACKOFF_CEILING_MS);
+            return;
+        }
         if (!completeDelayTimer.expired()) {
             return;
         }
