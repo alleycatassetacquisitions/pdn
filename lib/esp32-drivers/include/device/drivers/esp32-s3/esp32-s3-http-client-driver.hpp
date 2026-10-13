@@ -88,11 +88,12 @@ public:
 
     void disconnect() override {
         cleanupHttpClient();
-        // An attempt in flight died with the client, and its caller has moved
-        // on with the radio. It ends here: replaying it on some later WiFi trip
-        // would act on an answer nobody is waiting for (a matches upload
-        // clearing storage that has since gained new matches).
-        if (!httpQueue.empty() && httpQueue.front().inProgress) {
+        // Every request still queued, whether in flight, waiting out a retry
+        // backoff or not yet started, belongs to the WiFi trip that is ending,
+        // and its caller has moved on with the radio. Replaying one on a later
+        // trip would deliver an answer to a caller that no longer expects it. A
+        // callback that queues a new request from here has it failed too.
+        while (!httpQueue.empty()) {
             completeFront(false, {WirelessError::CONNECTION_FAILED, "Disconnected before an answer"});
         }
         autoReconnect.store(false);
@@ -498,9 +499,6 @@ private:
         initializeHttpClient();
     }
 
-    // Ends the front request's failed attempt: schedules one more after a
-    // backoff while retries remain, otherwise completes the request with
-    // `error`.
     void endAttempt(const WirelessErrorInfo& error) {
         HttpRequest& request = httpQueue.front();
         request.inProgress = false;
