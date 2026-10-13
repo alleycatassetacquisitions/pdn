@@ -57,6 +57,11 @@ void UploadMatchesState::onStateMounted(PDN* pdn) {
     showLoadingGlyphs(pdn);
     uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
     matchUploadRetryCount = 0;
+    // An answer can land after the last dismount (the HTTP driver fails every
+    // queued request when WiFi is dropped), setting these on a state that has
+    // already left.
+    shouldRetryUpload = false;
+    transitionToSleepState = false;
 
     matchesJson = matchManager->toJson();
     LOG_I(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());
