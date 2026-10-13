@@ -151,26 +151,11 @@ inline void crashUploadServerErrorLeavesRecordPending(CrashUploadTestSuite* suit
     suite->answerPlayerFetch();
     ASSERT_EQ(suite->queued.size(), 2u);
 
-    suite->queued[1].onError({WirelessError::SERVER_ERROR, "HTTP Error: 500", false});
+    suite->queued[1].onError({WirelessError::SERVER_ERROR, "HTTP Error: 500"});
 
     EXPECT_TRUE(suite->source.uploaded.empty());
     EXPECT_TRUE(suite->state->transitionToWelcomeMessage());
     EXPECT_FALSE(suite->state->transitionToConfirmOffline());
-}
-
-inline void crashUploadWaitsOutARetryingError(CrashUploadTestSuite* suite) {
-    suite->source.addRecord(1);
-    suite->answerPlayerFetch();
-    ASSERT_EQ(suite->queued.size(), 2u);
-
-    suite->queued[1].onError({WirelessError::CONNECTION_FAILED, "ESP_ERR_HTTP_CONNECT", true});
-
-    EXPECT_FALSE(suite->state->transitionToWelcomeMessage());
-
-    suite->queued[1].onSuccess("");
-
-    EXPECT_EQ(suite->source.uploaded, (std::vector<uint32_t>{1}));
-    EXPECT_TRUE(suite->state->transitionToWelcomeMessage());
 }
 
 inline void crashUploadTimeoutMovesOnAndLateSuccessStillCounts(CrashUploadTestSuite* suite) {
@@ -248,7 +233,7 @@ inline void crashUploadSkippedWhenPlayerFetchFails(CrashUploadTestSuite* suite) 
     suite->state->fetchUserData();
     ASSERT_EQ(suite->queued.size(), 1u);
 
-    suite->queued[0].onError({WirelessError::WIFI_NOT_CONNECTED, "WiFi lost", false});
+    suite->queued[0].onError({WirelessError::WIFI_NOT_CONNECTED, "WiFi lost"});
 
     EXPECT_EQ(suite->queued.size(), 1u);
     EXPECT_TRUE(suite->source.uploaded.empty());

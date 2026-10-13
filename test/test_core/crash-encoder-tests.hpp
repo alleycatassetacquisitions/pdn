@@ -87,20 +87,19 @@ inline void encoderKeepsExceptionCauseZeroWithCoreDump(CrashEncoderTestSuite* su
     EXPECT_EQ(msg.exception_cause, 0u);
 }
 
-inline void encoderOmitsTaskWithoutCoreDump(CrashEncoderTestSuite* suite) {
+inline void encoderKeepsTheTaskOfACrashAtAddressZero(CrashEncoderTestSuite* suite) {
+    // A call through a null function pointer has a core dump summary whose PC
+    // is 0: the PC and cause are omitted, but the task is still known.
     CrashRecord rec = makeFullRecord();
     rec.programCounter = 0;
-    rec.exceptionCause = 0;
-    strncpy(rec.taskName, "unknown", TASK_NAME_LENGTH - 1);
 
     size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
 
     alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
 
-    EXPECT_FALSE(msg.has_task_name);
-    EXPECT_FALSE(msg.has_program_counter);
-    EXPECT_FALSE(msg.has_exception_cause);
+    EXPECT_TRUE(msg.has_task_name);
+    EXPECT_STREQ(msg.task_name, "loopTask");
 }
 
 inline void encoderReturnZeroWhenBufferTooSmall(CrashEncoderTestSuite* suite) {

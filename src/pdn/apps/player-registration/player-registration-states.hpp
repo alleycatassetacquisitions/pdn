@@ -79,8 +79,10 @@ private:
                             FETCHING_PLAYER,
                             UPLOADING_CRASH_RECORDS };
     FetchPhase phase = FetchPhase::IDLE;
-    // Every request captures the id it was issued under; dismount and each new
-    // request move it on, so a late answer to an earlier one is ignored.
+    // Every request captures the id it was issued under; dismount, each new
+    // request and the end of the crash upload move it on, so a late answer to an
+    // earlier one does not advance the flow (it still clears uploaded matches
+    // or marks an uploaded crash record).
     uint32_t currentRequestId = 0;
 
     Player* player;

@@ -44,8 +44,8 @@ size_t encode(const CrashRecord& record, const uint8_t* mac, uint8_t* outBuf, si
     msg.has_exception_cause = hadCoreDumpSummary;
     msg.exception_cause = record.exceptionCause;
 
-    // Without a summary the logger stores the placeholder "unknown", which is not a task.
-    if (hadCoreDumpSummary && record.taskName[0] != '\0') {
+    // Empty when the reboot left no core dump summary.
+    if (record.taskName[0] != '\0') {
         strncpy(msg.task_name, record.taskName, sizeof(msg.task_name) - 1);
         msg.has_task_name = true;
     }

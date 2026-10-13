@@ -85,7 +85,7 @@ public:
         } else {
             rec.programCounter = 0;
             rec.exceptionCause = 0;
-            strncpy(rec.taskName, "unknown", TASK_NAME_LENGTH - 1);
+            rec.taskName[0] = '\0';  // no summary, so no task
         }
 
         copyBuildCommitHash(rec.commitHash);
@@ -93,7 +93,8 @@ public:
         persistRecord(rec);
         LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u pc=0x%08X ec=%u task=%s commit=%s",
               static_cast<unsigned long>(rec.crashNumber),
-              rec.resetReason, rec.programCounter, rec.exceptionCause, rec.taskName, rec.commitHash);
+              rec.resetReason, rec.programCounter, rec.exceptionCause,
+              rec.taskName[0] != '\0' ? rec.taskName : "unknown", rec.commitHash);
 
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
@@ -110,7 +111,8 @@ public:
     /**
      * Pending numbers older than the ring buffer's last MAX_CRASH_ENTRIES are
      * gone and are counted as sent in one write. A record inside that window
-     * that cannot be read is skipped the same way, as transmitEspNow() does.
+     * that cannot be read is skipped and counted as sent too, as
+     * transmitEspNow() skips one.
      */
     bool loadOldestPending(CrashRecord& out) override {
         const uint32_t crashSeq = readCrashSeq();
@@ -180,9 +182,8 @@ public:
                 rec.programCounter,
                 rec.exceptionCause,
                 exceptionCauseName(rec.exceptionCause),
-                rec.taskName,
-                rec.commitHash[0] != '\0' ? rec.commitHash : "unknown"
-            );
+                rec.taskName[0] != '\0' ? rec.taskName : "unknown",
+                rec.commitHash[0] != '\0' ? rec.commitHash : "unknown");
         }
 
         usbMonitorWrite("=================\n\n");
@@ -396,7 +397,7 @@ private:
         out.resetReason    = doc["resetReason"] | doc["rr"] | static_cast<uint8_t>(0);
         out.programCounter = doc["programCounter"] | doc["pc"] | 0u;
         out.exceptionCause = doc["exceptionCause"] | doc["ec"] | 0u;
-        const char* task   = doc["task"] | "unknown";
+        const char* task = doc["task"] | "";
         strncpy(out.taskName, task, TASK_NAME_LENGTH - 1);
         out.taskName[TASK_NAME_LENGTH - 1] = '\0';
         const char* commitHash = doc["commitHash"] | "";

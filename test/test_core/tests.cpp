@@ -1524,12 +1524,11 @@ int main(int argc, char **argv)
 TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) { encoderRoundTripPopulatesAllFields(this); }
 TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) { encoderOmitsUnsetOptionalFields(this); }
 TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZeroWithCoreDump) { encoderKeepsExceptionCauseZeroWithCoreDump(this); }
-TEST_F(CrashEncoderTestSuite, omitsTaskWithoutCoreDump) { encoderOmitsTaskWithoutCoreDump(this); }
+TEST_F(CrashEncoderTestSuite, keepsTheTaskOfACrashAtAddressZero) { encoderKeepsTheTaskOfACrashAtAddressZero(this); }
 TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) { encoderReturnZeroWhenBufferTooSmall(this); }
 
 TEST_F(CrashUploadTestSuite, sendsPendingRecordsOldestFirst) { crashUploadSendsPendingRecordsOldestFirst(this); }
 TEST_F(CrashUploadTestSuite, serverErrorLeavesRecordPending) { crashUploadServerErrorLeavesRecordPending(this); }
-TEST_F(CrashUploadTestSuite, waitsOutARetryingError) { crashUploadWaitsOutARetryingError(this); }
 TEST_F(CrashUploadTestSuite, timeoutMovesOnAndLateSuccessStillCounts) { crashUploadTimeoutMovesOnAndLateSuccessStillCounts(this); }
 TEST_F(CrashUploadTestSuite, nothingPendingWelcomesAtOnce) { crashUploadWithNothingPendingWelcomesAtOnce(this); }
 TEST_F(CrashUploadTestSuite, notStartedByAFetchAnsweredAfterDismount) { crashUploadNotStartedByAFetchAnsweredAfterDismount(this); }
