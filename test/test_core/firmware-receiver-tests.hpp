@@ -150,6 +150,9 @@ public:
     /// attempted.
     void advance(unsigned long ms) { activeClock->advance(ms); }
 
+    /** Past the random delay a receiver waits before sending COMPLETE. */
+    void waitOutCompleteDelay() { advance(500); }
+
     /// Stands in for "idle, not mid-match" (true) or the opposite (false) in
     /// the eligibility predicate the manager was constructed with. Defaults
     /// true so every other test in this suite is unaffected.
@@ -326,6 +329,7 @@ public:
         const std::vector<uint8_t> image = commitImageBytes();
         manager->onOffer(SEED_MAC, signedOfferForImage(image));
         deliverImage(image);
+        waitOutCompleteDelay();
         manager->sync();  // flushes the COMPLETE evaluateCommit queues
         manager->onSendReport(true);
     }
@@ -341,6 +345,7 @@ public:
         image[image.size() / 2] ^= 0xFF;
         deliverImage(image);
         if (flushComplete) {
+            waitOutCompleteDelay();
             manager->sync();  // flushes the COMPLETE evaluateCommit queues
         }
     }

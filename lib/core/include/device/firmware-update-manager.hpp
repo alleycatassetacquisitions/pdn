@@ -333,6 +333,8 @@ private:
     // queued. Invalidated on every entry into POLLING so a previous round's
     // expired window cannot resolve the next one before its POLL goes out.
     SimpleTimer pollWindowTimer;
+    // Random delay before a receiver's COMPLETE goes out (see evaluateCommit).
+    SimpleTimer completeDelayTimer;
     // Runs while COLLECTING_VERDICTS; the run ends when it expires.
     SimpleTimer verdictWindowTimer;
 };

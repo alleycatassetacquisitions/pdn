@@ -77,6 +77,7 @@ TEST(FirmwareCommitTest, anOfferIsRefusedWhileACompletionReportIsStillQueued) {
     EXPECT_FALSE(f.manager->isReceiving());
     EXPECT_EQ(f.store.beginWriteCalls(), 1) << "an offer must not reopen the slot behind a pending report";
 
+    f.waitOutCompleteDelay();
     f.manager->sync();
     ASSERT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 1);
     EXPECT_EQ(f.lastResult(), FirmwareResult::BAD_HASH);
@@ -106,6 +107,7 @@ TEST(FirmwareCommitTest, nothingOnTheWireDisturbsAPendingReport) {
     EXPECT_FALSE(f.manager->isReceiving());
     EXPECT_EQ(f.store.beginWriteCalls(), 1);
 
+    f.waitOutCompleteDelay();
     f.manager->sync();
     ASSERT_EQ(f.comms.countOf(FirmwareCmd::COMPLETE), 1);
     EXPECT_EQ(f.comms.countOf(FirmwareCmd::STATUS), 0);

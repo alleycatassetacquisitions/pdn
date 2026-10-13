@@ -426,6 +426,10 @@ void FirmwareUpdateManager::onChunk(const uint8_t* fromMac, const FirmwareChunkH
 
 void FirmwareUpdateManager::evaluateCommit() {
     receivePhase = ReceivePhase::REPORTING;  // this transfer is concluding, pass or fail
+    // Every receiver finishes the same commit at about the same moment, and
+    // COMPLETE is broadcast once and never resent: without a per-device delay
+    // their reports collide and the seed loses verdicts.
+    completeDelayTimer.setTimer(nextRandomUint32() % STATUS_BACKOFF_CEILING_MS);
     completeAttempts = 0;
     // Any poll answer still counting down belongs to a transfer that is over.
     // Letting it fire would hand the seed a partial bitmap for an image this
@@ -708,6 +712,9 @@ void FirmwareUpdateManager::sync() {
     }
 
     if (receivePhase == ReceivePhase::REPORTING) {
+        if (!completeDelayTimer.expired()) {
+            return;
+        }
         sendComplete(completeResult);
         return;
     }
