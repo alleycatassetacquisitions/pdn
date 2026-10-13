@@ -156,6 +156,22 @@ TEST(FirmwareCommitTest, anOfferBelowTheStoredFloorIsRefused) {
     EXPECT_EQ(f.store.beginWriteCalls(), 0);
 }
 
+TEST(FirmwareCommitTest, theRunningImagesGenerationIsTheFloor) {
+    // A USB-flashed device has an NVS floor of 0, but the image it runs was
+    // signed at some generation; anything signed below that is superseded.
+    FirmwareReceiverFixture f;
+    FirmwareTrailer trailer{};
+    trailer.magic = FIRMWARE_TRAILER_MAGIC;
+    trailer.cert.generation = 2;
+    f.store.setRunningTrailer(std::vector<uint8_t>(reinterpret_cast<uint8_t*>(&trailer),
+                                                   reinterpret_cast<uint8_t*>(&trailer) + sizeof(trailer)));
+
+    f.manager->onOffer(SEED_MAC, f.signedOffer(/*length=*/5000, /*chunks=*/4));  // generation 1
+
+    EXPECT_FALSE(f.manager->isReceiving());
+    EXPECT_EQ(f.store.getMinGeneration(), 2);
+}
+
 TEST(FirmwareCommitTest, theRestartProceedsWhenTheReportCannotBeSent) {
     // COMPLETE is sequenced before the restart, but nothing in the fleet
     // decodes it: a radio that keeps refusing the frame used to leave the

@@ -19,10 +19,10 @@ constexpr const char* TAG = "FirmwareUpdate";
 // the signature covers rather than choosing one at runtime.
 constexpr uint16_t SEED_CHUNK_SIZE = 1400;
 
-// OTA_PARTITION_SIZE (firmware-store-interface.hpp) is the partitions.csv
-// slot size; tied here to FIRMWARE_MAX_CHUNKS so a partition resize that
-// would overflow repairBitmap fails the build instead of silently
-// corrupting it at runtime.
+// OTA_PARTITION_SIZE (firmware-store-interface.hpp) mirrors the partitions.csv
+// slot size by hand. Tied here to FIRMWARE_MAX_CHUNKS, so changing either
+// constant past what repairBitmap holds fails the build; a partitions.csv edit
+// alone is caught at runtime by the ESP32 store's size check.
 static_assert((OTA_PARTITION_SIZE + SEED_CHUNK_SIZE - 1) / SEED_CHUNK_SIZE <= FIRMWARE_MAX_CHUNKS,
               "an OTA partition no longer fits FIRMWARE_MAX_CHUNKS chunks at SEED_CHUNK_SIZE");
 
@@ -34,6 +34,10 @@ constexpr unsigned long SEED_OFFER_INTERVAL_MS = 1000;
 // reply jitter with margin, or a slow-but-honest reply arrives after the
 // seed already moved on.
 constexpr unsigned long SEED_POLL_WINDOW_MS = 600;
+
+// How long a seed keeps trying once the radio refuses every frame. Without a
+// limit the operator's device would show UPDATING until power-cycled.
+constexpr unsigned long SEED_SEND_STALL_MS = 5000;
 
 // How long a finished run keeps listening for COMPLETE before it reports its
 // tally. A receiver sends COMPLETE only after hashing, verifying and closing
@@ -123,7 +127,8 @@ uint32_t seedFromMac(const uint8_t mac[6]) {
 // image, readWrittenSlot for a just-assembled one — the two things this file
 // ever needs a SHA-256 of), streaming a fixed buffer rather than holding the
 // whole image: it can be several megabytes.
-void hashRange(FirmwareStoreInterface* firmwareStore,
+// Returns false if a read or a digest step failed; `out` is then meaningless.
+bool hashRange(FirmwareStoreInterface* firmwareStore,
                bool (FirmwareStoreInterface::*read)(size_t, uint8_t*, size_t) const, size_t length,
                uint8_t out[FIRMWARE_SHA256_LENGTH]) {
     // mbedtls_md rather than the mbedtls_sha256_* family: those are named
@@ -131,22 +136,24 @@ void hashRange(FirmwareStoreInterface* firmwareStore,
     // 3.x, so they do not compile against both. This interface is unchanged.
     mbedtls_md_context_t ctx;
     mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), /*hmac=*/0);
-    mbedtls_md_starts(&ctx);
+    bool ok = mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), /*hmac=*/0) == 0 &&
+              mbedtls_md_starts(&ctx) == 0;
 
     uint8_t buffer[256];
     size_t offset = 0;
-    while (offset < length) {
+    while (ok && offset < length) {
         const size_t chunk = std::min(sizeof(buffer), length - offset);
         if (!(firmwareStore->*read)(offset, buffer, chunk)) {
-            LOG_E(TAG, "hashRange: read failed at offset %zu of %zu; hash is incomplete", offset, length);
+            LOG_E(TAG, "hashRange: read failed at offset %zu of %zu", offset, length);
+            ok = false;
             break;
         }
-        mbedtls_md_update(&ctx, buffer, chunk);
+        ok = mbedtls_md_update(&ctx, buffer, chunk) == 0;
         offset += chunk;
     }
-    mbedtls_md_finish(&ctx, out);
+    ok = ok && mbedtls_md_finish(&ctx, out) == 0;
     mbedtls_md_free(&ctx);
+    return ok;
 }
 
 }  // namespace
@@ -228,11 +235,30 @@ void FirmwareUpdateManager::onPacketReceived(const uint8_t* src, const uint8_t* 
     }
 }
 
+void FirmwareUpdateManager::applyRunningImageGeneration() {
+    if (runningGenerationApplied) {
+        return;
+    }
+    runningGenerationApplied = true;
+    // A device that has only ever been USB-flashed (--clear-nvs resets NVS)
+    // has a floor of 0 until its first wireless commit, so it would still take
+    // an image from a signer the fleet's own image already supersedes.
+    FirmwareTrailer trailer{};
+    if (!firmwareStore->readRunningTrailer(reinterpret_cast<uint8_t*>(&trailer), sizeof(trailer)) ||
+        trailer.magic != FIRMWARE_TRAILER_MAGIC) {
+        return;  // unsigned image: nothing to raise the floor to
+    }
+    if (trailer.cert.generation > firmwareStore->getMinGeneration()) {
+        firmwareStore->setMinGeneration(trailer.cert.generation);
+    }
+}
+
 const uint8_t* FirmwareUpdateManager::cachedRunningImageHash() {
     if (!runningImageHashComputed) {
-        hashRange(firmwareStore, &FirmwareStoreInterface::readRunningImage, firmwareStore->getRunningImageLength(),
-                  runningImageHash);
-        runningImageHashComputed = true;
+        // Cached only when complete: a truncated hash would make every receiver
+        // reject this device's offers for the rest of the boot.
+        runningImageHashComputed = hashRange(firmwareStore, &FirmwareStoreInterface::readRunningImage,
+                                             firmwareStore->getRunningImageLength(), runningImageHash);
     }
     return runningImageHash;
 }
@@ -251,6 +277,8 @@ void FirmwareUpdateManager::onOffer(const uint8_t* fromMac, const FirmwareOfferP
     if (!isEligible()) {
         return;  // not idle, cabled, or mid-match: don't even look at the offer
     }
+
+    applyRunningImageGeneration();
 
     if (static_cast<DeviceType>(offer.deviceType) != deviceType) {
         LOG_E(TAG, "offer targets device type %d, this device is %d", offer.deviceType,
@@ -358,21 +386,24 @@ void FirmwareUpdateManager::onChunk(const uint8_t* fromMac, const FirmwareChunkH
     }
 
     // Chunks are unauthenticated by design — the image hash is what
-    // authenticates them — but a length outside the offer's own geometry has
-    // to be refused here, not left to the hash: it would mark an index
-    // received while writing a fraction of its bytes, and a partial write is
-    // exactly what the repair loop cannot see. The offer's chunkSize is the
-    // ceiling because every index but the last carries exactly that many
-    // bytes, and the length check below bounds the last one.
-    if (header.length == 0 || header.length > chunkSize) {
-        LOG_D(TAG, "chunk %u declares %u bytes, outside the offered %u", header.index, header.length,
-              chunkSize);
+    // authenticates them — but each index has exactly one valid length under
+    // the offer's geometry, and anything else is refused here rather than left
+    // to the hash: it would mark an index received while writing a fraction of
+    // its bytes, and a partial write is exactly what the repair loop cannot see.
+    const size_t offset = static_cast<size_t>(header.index) * chunkSize;
+    if (offset >= imageLength) {
+        LOG_D(TAG, "chunk %u would write past the declared image length", header.index);
+        return;
+    }
+    const size_t expectedLength = std::min<size_t>(chunkSize, imageLength - offset);
+    if (header.length != expectedLength) {
+        LOG_D(TAG, "chunk %u declares %u bytes, expected %zu", header.index, header.length, expectedLength);
         return;
     }
 
-    const size_t offset = static_cast<size_t>(header.index) * chunkSize;
-    if (offset > imageLength || header.length > imageLength - offset) {
-        LOG_D(TAG, "chunk %u would write past the declared image length", header.index);
+    // First writer wins. Flash writes can only clear bits, so rewriting an
+    // index would AND the two payloads together rather than replace the first.
+    if (bitAt(bitmap, header.index)) {
         return;
     }
 
@@ -385,16 +416,7 @@ void FirmwareUpdateManager::onChunk(const uint8_t* fromMac, const FirmwareChunkH
         writeFailed = true;
     }
 
-    // Last writer wins for a repeated index, rather than first: a short
-    // forgery that lands before the honest chunk would otherwise hold the
-    // index forever, and the repair loop cannot help because this device
-    // reports that index as received. Overwriting costs a duplicate write
-    // and buys back the only recovery path there is.
-    if (bitmapBit(header.index)) {
-        return;  // the bytes were refreshed, but nothing new landed
-    }
-
-    setBitmapBit(header.index);
+    setBitAt(bitmap, header.index);
     receivedChunkCount++;
     receiveDeadlineTimer.setTimer(RECEIVE_STALL_TIMEOUT_MS);  // progress, so the deadline moves with it
     if (receivedChunkCount == chunkCount) {
@@ -423,16 +445,19 @@ void FirmwareUpdateManager::evaluateCommit() {
     }
 
     uint8_t assembledHash[FIRMWARE_SHA256_LENGTH];
-    hashRange(firmwareStore, &FirmwareStoreInterface::readWrittenSlot, imageLength, assembledHash);
+    if (!hashRange(firmwareStore, &FirmwareStoreInterface::readWrittenSlot, imageLength, assembledHash)) {
+        LOG_E(TAG, "commit: could not read back the assembled image");
+        fail(FirmwareResult::FLASH_FAILED);
+        return;
+    }
     if (std::memcmp(assembledHash, currentImageHash, FIRMWARE_SHA256_LENGTH) != 0) {
         LOG_E(TAG, "commit: assembled image hash does not match the offer");
         fail(FirmwareResult::BAD_HASH);
         return;
     }
 
-    // Verification before commit: re-run the same chain the offer was
-    // accepted under (spec's "Verification before commit"), not just trust
-    // the accept-time result.
+    // Re-run the chain the offer was accepted under rather than trusting the
+    // accept-time result: the generation floor may have risen since.
     const FirmwareResult verifyResult = verifyOffer(acceptedOffer, rootPublicKey, firmwareStore->getMinGeneration());
     if (verifyResult != FirmwareResult::OK) {
         LOG_E(TAG, "commit: offer failed re-verification (%d)", static_cast<int>(verifyResult));
@@ -478,7 +503,7 @@ void FirmwareUpdateManager::evaluateCommit() {
         firmwareStore->setMinGeneration(acceptedOffer.cert.generation);
     }
 
-    // REPORTING ends at RESTARTING for an OK result: the spec requires a
+    // REPORTING ends at RESTARTING for an OK result: the device has to
     // restart once the boot partition is set, or the confirm timer armed at
     // the next boot never arms anything. The running hash cannot change
     // without one either, so until it fires the phase itself is what stops a
@@ -565,14 +590,6 @@ void FirmwareUpdateManager::fillBitmap(uint8_t out[FIRMWARE_BITMAP_BYTES]) const
     std::memcpy(out, bitmap, FIRMWARE_BITMAP_BYTES);
 }
 
-bool FirmwareUpdateManager::bitmapBit(uint16_t index) const {
-    return (bitmap[index / 8] & (1 << (index % 8))) != 0;
-}
-
-void FirmwareUpdateManager::setBitmapBit(uint16_t index) {
-    bitmap[index / 8] |= static_cast<uint8_t>(1 << (index % 8));
-}
-
 void FirmwareUpdateManager::sendStatus() {
     FirmwareStatusPayload status{};
     status.command = static_cast<uint8_t>(FirmwareCmd::STATUS);
@@ -650,6 +667,7 @@ bool FirmwareUpdateManager::beginSeeding() {
     identicalRepairRounds = 0;
     repairCursor = 0;
     pollWindowTimer.invalidate();
+    seedSendStallTimer.setTimer(SEED_SEND_STALL_MS);
 
     sendOffer();
     offerTimer.setTimer(SEED_OFFER_INTERVAL_MS);
@@ -836,9 +854,19 @@ bool FirmwareUpdateManager::sendFrame(const uint8_t* data, size_t length, const 
     const int result =
         peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, data, length);
     if (result != 0) {
-        sendInFlight = false;  // nothing was queued, so no send report will ever arrive to clear it
+        // A refused frame may already have reported its failure from inside
+        // sendData; clearing again is harmless either way.
+        sendInFlight = false;
         LOG_E(TAG, "%s: sendData refused the frame (%d); retrying next sync()", what, result);
+        if (seedPhase != SeedPhase::IDLE && seedSendStallTimer.expired()) {
+            LOG_E(TAG, "radio has refused every frame for %lu ms; abandoning the run", SEED_SEND_STALL_MS);
+            seedPhase = SeedPhase::IDLE;
+            logRunVerdicts();
+        }
         return false;
+    }
+    if (seedPhase != SeedPhase::IDLE) {
+        seedSendStallTimer.setTimer(SEED_SEND_STALL_MS);
     }
     return true;
 }

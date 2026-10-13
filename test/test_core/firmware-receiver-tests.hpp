@@ -741,25 +741,50 @@ TEST(FirmwareReceiverTest, aChunkLongerThanTheOfferedChunkSizeIsDropped) {
     EXPECT_EQ(f.manager->receivedCount(), 0);
 }
 
-TEST(FirmwareReceiverTest, anHonestChunkOverwritesAShortForgery) {
-    // A forged short chunk for an index cannot be stopped from landing — the
-    // frame is unauthenticated — so the honest chunk has to be able to land
-    // on top of it. First-writer-wins is what turned one forged frame into an
-    // unrecoverable run.
+TEST(FirmwareReceiverTest, aShortChunkIsDroppedAndTheHonestOneLands) {
+    // Each index has exactly one valid length, so a short forgery cannot claim
+    // the index ahead of the honest chunk.
     FirmwareReceiverFixture f;
     f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
     uint8_t forged[5] = {0};
     f.deliverChunk(/*index=*/2, forged, sizeof(forged));
-    ASSERT_EQ(f.manager->receivedCount(), 1);
+    ASSERT_EQ(f.manager->receivedCount(), 0);
 
     uint8_t honest[FirmwareReceiverFixture::CHUNK_SIZE];
     memset(honest, 0xAB, sizeof(honest));
     f.deliverChunk(/*index=*/2, honest, sizeof(honest));
 
-    EXPECT_EQ(f.manager->receivedCount(), 1) << "an overwrite is not new progress";
+    EXPECT_EQ(f.manager->receivedCount(), 1);
+    EXPECT_EQ(f.store.slot()[3 * FirmwareReceiverFixture::CHUNK_SIZE - 1], 0xAB);
+}
+
+TEST(FirmwareReceiverTest, aRepeatedIndexIsNotRewritten) {
+    // Flash writes only clear bits: a second write to the same bytes would AND
+    // the two payloads, so a landed index is never written again.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t first[FirmwareReceiverFixture::CHUNK_SIZE];
+    memset(first, 0xAB, sizeof(first));
+    f.deliverChunk(/*index=*/2, first, sizeof(first));
+    uint8_t second[FirmwareReceiverFixture::CHUNK_SIZE];
+    memset(second, 0x11, sizeof(second));
+    f.deliverChunk(/*index=*/2, second, sizeof(second));
+
+    EXPECT_EQ(f.manager->receivedCount(), 1);
     EXPECT_EQ(f.store.slot()[2 * FirmwareReceiverFixture::CHUNK_SIZE], 0xAB);
-    EXPECT_EQ(f.store.slot()[3 * FirmwareReceiverFixture::CHUNK_SIZE - 1], 0xAB)
-        << "the honest chunk's tail must land, not just its head";
+}
+
+TEST(FirmwareReceiverTest, theLastChunkMustCarryExactlyTheRemainder) {
+    // 5000 bytes at 1400 per chunk: index 3 carries 800. A full-size last chunk
+    // would claim bytes past the image; a short one would leave a hole.
+    FirmwareReceiverFixture f;
+    f.manager->onOffer(SEED_MAC, f.signedOffer(5000, 4));
+    uint8_t body[FirmwareReceiverFixture::CHUNK_SIZE] = {0};
+    f.deliverChunk(/*index=*/3, body, 799);
+    f.deliverChunk(/*index=*/3, body, FirmwareReceiverFixture::CHUNK_SIZE);
+    EXPECT_EQ(f.manager->receivedCount(), 0);
+    f.deliverChunk(/*index=*/3, body, 800);
+    EXPECT_EQ(f.manager->receivedCount(), 1);
 }
 
 TEST(FirmwareReceiverTest, offerVerificationIsRateLimited) {

@@ -62,11 +62,10 @@ public:
 
     /// Real behavior rather than a MOCK_METHOD: records every send so a
     /// pacing test can assert counts without an EXPECT_CALL per frame.
-    /// Honors refuseNextSend() first, standing in for a driver that refuses
-    /// a frame synchronously (e.g. a ps_malloc failure) and so never queues
-    /// it: no send-status report will ever arrive for a refused send.
+    /// Honors refuseNextSend()/refuseAllSends() first, standing in for a driver
+    /// that refuses a frame synchronously (e.g. a failed PSRAM allocation).
     int sendData(const uint8_t*, PktType, const uint8_t* data, const size_t length) override {
-        if (refuseNext) {
+        if (refuseNext || refuseAll) {
             refuseNext = false;
             return -1;
         }
@@ -98,6 +97,9 @@ public:
     /// the frame, then reverts to succeeding.
     void refuseNextSend() { refuseNext = true; }
 
+    /** Makes every sendData call fail until called again with false. */
+    void refuseAllSends(bool refuse) { refuseAll = refuse; }
+
     /// Makes every sendData call from here on report completion to `manager`
     /// before it returns — the radio's callback landing inside the send call
     /// rather than after it, which is what the real driver can do.
@@ -110,6 +112,7 @@ private:
     uint8_t broadcastAddress[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t selfMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xF0};
     bool refuseNext = false;
+    bool refuseAll = false;
     FirmwareUpdateManager* reportTarget = nullptr;
 };
 
@@ -420,11 +423,23 @@ TEST(FirmwareSeedTest, aRefusedSendIsRetriedNotWedged) {
     FirmwareSeedFixture f;
     f.manager->beginSeeding();      // the initial OFFER goes out and succeeds
     f.manager->onSendReport(true);  // frees the slot
-    f.comms.refuseNextSend();       // simulates a synchronous enqueue failure (e.g. ps_malloc)
+    f.comms.refuseNextSend();       // simulates a synchronous enqueue failure
     f.manager->sync();              // attempts the first chunk; refused, nothing queued
     EXPECT_EQ(f.comms.sentCount(), 1) << "a refused send must not count as sent";
     f.manager->sync();  // sendInFlight stayed false, so this retries
     EXPECT_EQ(f.comms.sentCount(), 2) << "the seed must retry a refused send, not wedge";
+}
+
+TEST(FirmwareSeedTest, aSeedWhoseRadioRefusesEverythingGivesUp) {
+    // Otherwise the operator's device shows UPDATING until power-cycled.
+    FirmwareSeedFixture f;
+    f.manager->beginSeeding();
+    f.manager->onSendReport(true);
+    f.comms.refuseAllSends(true);
+    f.runSeedFor(4000);
+    ASSERT_TRUE(f.manager->isSeeding()) << "gave up before the stall limit";
+    f.runSeedFor(2000);
+    EXPECT_FALSE(f.manager->isSeeding());
 }
 
 TEST(FirmwareSeedTest, aFailureReportFreesTheSendSlot) {

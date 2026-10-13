@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -43,10 +44,9 @@ public:
     void onOffer(const uint8_t* fromMac, const FirmwareOfferPayload& offer);
 
     /// Writes one chunk into the open slot at its declared index. Drops it
-    /// if no offer is open, or if its index or declared length is out of
-    /// range for that offer; an index that already landed is written again,
-    /// so honest bytes can replace a forgery, but counts no further
-    /// progress. Once every index has landed, hashes the assembled image,
+    /// if no offer is open, if its index is out of range, if its length is
+    /// not exactly what the offer's geometry gives that index, or if that
+    /// index already landed (flash writes can only clear bits). Once every index has landed, hashes the assembled image,
     /// re-verifies the offer it was accepted under, writes the trailer, and
     /// commits — or reports why it did not.
     void onChunk(const uint8_t* fromMac, const FirmwareChunkHeader& header, const uint8_t* data);
@@ -99,12 +99,15 @@ public:
     /// Reports what the radio did with the last frame this manager sent for
     /// kFirmwareUpdate. Clears the in-flight gate either way, and no frame is
     /// resent on the strength of a failure: a lost CHUNK is the repair loop's
-    /// job, a lost STATUS is re-answered at the seed's next POLL, and a lost
+    /// job, a lost STATUS is re-answered at the seed's next POLL when another
+    /// receiver's gaps keep the run going (if it was the only report with
+    /// gaps, the run ends and that receiver stalls out), and a lost
     /// COMPLETE is never recovered — it costs the seed one verdict in its
     /// log, and the restart sequenced behind it must not wait on it.
     void onSendReport(bool success);
 
-    /// True once beginSeeding has armed streaming.
+    /// True from beginSeeding until the run ends: through streaming, repair
+    /// and the verdict window.
     bool isSeeding() const;
 
     /** Receivers that reported committing this run's image. Reset at
@@ -118,11 +121,11 @@ public:
 
     /// Sends the next frame once the radio has cleared the last one: an
     /// OFFER when the one-second cadence has elapsed, otherwise the next
-    /// unstreamed chunk. The only place a frame is sent, and the only place
-    /// the post-commit restart fires from. Pumped from src/pdn/main.cpp's
-    /// loop(): receiving an offer is passive, and Device::loop() dispatches
-    /// onStateLoop to the active app alone, so anything pumped from a state
-    /// machine stops being serviced the moment another app takes over.
+    /// unstreamed chunk (beginSeeding sends the first OFFER itself). The only
+    /// place the post-commit restart fires from. Pumped from both mains'
+    /// loop() rather than from a state: a receiver has to make progress
+    /// whatever state the device is in, not only while FirmwareUpdate is
+    /// mounted.
     void sync();
 
     /// Routes a raw radio frame to onOffer/onChunk/onPoll/onStatus/onComplete,
@@ -136,6 +139,9 @@ private:
     // Ends streaming and repair, and keeps the run open for SEED_VERDICT_WINDOW_MS
     // so receivers still committing can report.
     void collectVerdicts();
+    // Raises the generation floor to the running image's own signer
+    // generation, once per boot, before the first offer is judged.
+    void applyRunningImageGeneration();
 
     // Stage of an inbound transfer. Linear, and the receive side is only ever
     // in one of these: an accepted offer moves IDLE -> RECEIVING, a full
@@ -154,7 +160,8 @@ private:
     // beginSeeding moves IDLE -> STREAMING, the last streamed chunk moves
     // STREAMING -> POLLING, a POLL whose window found gaps moves POLLING ->
     // REPAIRING, and a resend round ends back at POLLING. A round that finds
-    // nothing missing, or one whose gap set stops shrinking, ends at IDLE.
+    // nothing missing, or one whose gap set stops shrinking, moves to
+    // COLLECTING_VERDICTS, and that window's expiry ends at IDLE.
     enum class SeedPhase : uint8_t {
         IDLE = 0,
         STREAMING = 1,
@@ -208,9 +215,6 @@ private:
     void sendPoll();
     void sendNextRepairChunk();
     void resolveRepairRound();
-
-    bool bitmapBit(uint16_t index) const;
-    void setBitmapBit(uint16_t index);
 
     // The running image's bytes cannot change while it is executing, so its
     // hash is computed at most once per boot and reused from then on.
@@ -291,7 +295,12 @@ private:
     // image and collecting someone else's at the same time must not have one
     // role's beginSeeding corrupt the other's in-progress geometry.
     SeedPhase seedPhase = SeedPhase::IDLE;
-    bool sendInFlight = false;
+    // Cleared by onSendReport, which the ESP-NOW driver calls from the WiFi task.
+    std::atomic<bool> sendInFlight{false};
+    bool runningGenerationApplied = false;
+    // Restarted by every frame the radio accepts while seeding; expiry means the
+    // radio has refused everything for that long, and the run is abandoned.
+    SimpleTimer seedSendStallTimer;
     uint16_t seedChunkCount = 0;
     uint16_t seedNextChunkIndex = 0;
     size_t seedImageLength = 0;
