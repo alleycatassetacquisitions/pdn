@@ -188,29 +188,23 @@ static void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    // Constructed before the apps because the Idle app takes it, so the
-    // eligibility predicate has to tolerate idleApp still being null: an offer
-    // can arrive between here and loadAppConfig below.
-    if (firmwareStore != nullptr) {
-        firmwareUpdateManager = new FirmwareUpdateManager(
-            peerCommsDriver, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
-            []() {
-                // Only the Idle app resting on IdleState is a safe moment to
-                // take an image. getCurrentState() on a state machine that is
-                // not the active app answers with whatever it last ran, so the
-                // app check has to come first.
-                if (idleApp == nullptr || fdn->getActiveAppId().id != IDLE_APP_ID) {
-                    return false;
-                }
-                State* current = idleApp->getCurrentState();
-                if (current == nullptr || current->getStateId() != IdleStateId::IDLE) {
-                    return false;
-                }
-                RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-                return rdc->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::DISCONNECTED && rdc->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::DISCONNECTED;
-            },
-            fdn->getDeviceType());
-    }
+    // Constructed before the apps because the Idle app takes it. Offers are
+    // only judged from exec() in loop(), after loadAppConfig has run.
+    firmwareUpdateManager = new FirmwareUpdateManager(
+        peerCommsDriver, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
+        []() {
+            // Only the Idle app resting on IdleState is a safe moment to take an
+            // image. A state machine that is not the active app has no current
+            // state, so this also rules out every other app.
+            State* current = idleApp->getCurrentState();
+            if (current == nullptr || current->getStateId() != IdleStateId::IDLE) {
+                return false;
+            }
+            RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
+            return rdc->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::DISCONNECTED &&
+                   rdc->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::DISCONNECTED;
+        },
+        fdn->getDeviceType());
 
     // Apps
     idleApp = new Idle(
@@ -245,11 +239,10 @@ static void setup() {
     fdn->loadAppConfig(apps, StateId(SYMBOL_MATCH_APP_ID));
 }
 
-// How long the main loop must have free-run before a pending image confirms
-// itself. loop() has no delay()/vTaskDelay() in its chain, so a tick count
-// would not be a duration — it could elapse in a few milliseconds and confirm
-// a bad image before it had any chance to fail. Ten seconds outlives the boot
-// path, the radio bring-up and several state-machine transitions.
+// Uptime since boot before a pending image confirms itself: long enough to get
+// through setup, the radio bring-up and the first states. An image that crashes
+// first is rolled back on the reset; one that hangs first stays until a power
+// cycle, because the main task is not on the task watchdog.
 constexpr unsigned long ROLLBACK_CONFIRM_DELAY_MS = 10000;
 bool rollbackConfirmed = false;
 

@@ -41,11 +41,6 @@ public:
 
     void setActiveApp(StateId appId);
 
-    /// The app currently mounted. A state machine that is not the active app
-    /// still answers getCurrentState() with whatever it last ran, so anything
-    /// asking whether the device is idle has to check the app before the state.
-    StateId getActiveAppId() const { return currentAppId; }
-
     virtual void loop();
 
     virtual void setDeviceId(const std::string& deviceId) = 0;
