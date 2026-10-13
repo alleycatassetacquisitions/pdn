@@ -75,11 +75,8 @@ namespace QuickdrawRequests {
                 if (playerResponse.parseFromJson(response)) {
                     onSuccess(playerResponse);
                 } else {
-                    onError({
-                        WirelessError::INVALID_RESPONSE,
-                        "Failed to parse player response",
-                        false
-                    });
+                    onError({WirelessError::INVALID_RESPONSE,
+                             "Failed to parse player response"});
                 }
             },
             onError);

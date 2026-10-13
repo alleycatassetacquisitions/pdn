@@ -15,7 +15,6 @@ void NativeHttpClientDriver::processPendingRequests() {
                 WirelessErrorInfo error;
                 error.code = WirelessError::WIFI_NOT_CONNECTED;
                 error.message = "Mock server disabled";
-                error.willRetry = false;
                 request.onError(error);
             }
             continue;
@@ -28,7 +27,6 @@ void NativeHttpClientDriver::processPendingRequests() {
                 WirelessErrorInfo error;
                 error.code = WirelessError::WIFI_NOT_CONNECTED;
                 error.message = "Server offline (simulated)";
-                error.willRetry = true;
                 request.onError(error);
             }
             
@@ -73,7 +71,6 @@ void NativeHttpClientDriver::processPendingRequests() {
                 // Use SERVER_ERROR for 5xx, INVALID_RESPONSE for 4xx
                 error.code = (statusCode >= 500) ? WirelessError::SERVER_ERROR : WirelessError::INVALID_RESPONSE;
                 error.message = "HTTP " + std::to_string(statusCode);
-                error.willRetry = false;
                 request.onError(error);
             }
         }

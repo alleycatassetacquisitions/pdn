@@ -119,16 +119,13 @@ void FetchUserDataState::fetchUserData() {
             transitionToWelcomeMessageState = true;
         },
         [this](const WirelessErrorInfo& error) {
-            LOG_E(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
-                error.message.c_str(), static_cast<int>(error.code), error.willRetry);
-            if(!error.willRetry) {
-                isFetchingUserData = false;
-                player->setName("Unknown");
-                player->setAllegiance("None");
-                transitionToConfirmOfflineState = true;
-            }
-        }
-    );
+            LOG_E(TAG, "Failed to fetch player data: %s (code: %d)", error.message.c_str(),
+                  static_cast<int>(error.code));
+            isFetchingUserData = false;
+            player->setName("Unknown");
+            player->setAllegiance("None");
+            transitionToConfirmOfflineState = true;
+        });
 }
 
 void FetchUserDataState::showLoadingGlyphs(PDN* pdn) {

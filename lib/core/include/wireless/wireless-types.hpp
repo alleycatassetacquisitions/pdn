@@ -16,7 +16,6 @@ enum class WirelessError {
 struct WirelessErrorInfo {
     WirelessError code;
     std::string message;
-    bool willRetry;
 };
 
 /**
