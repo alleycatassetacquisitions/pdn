@@ -27,15 +27,19 @@ enum class PktType : uint8_t {
 
 struct DataPktHdr
 {
-    /// Total packet length including this header. Two bytes because a v2 frame
-    /// carries more than a byte can count.
+    /**
+     * Total packet length including this header. Two bytes because a v2 frame
+     * carries more than a byte can count.
+     */
     uint16_t pktLen;
     PktType packetType;
 } __attribute__((packed));
 
-/// One ESP-NOW v2 frame's payload, less this protocol's header. Stated here
-/// rather than derived from the IDF macro so the native suite can see it; the
-/// driver asserts the two agree.
+/**
+ * One ESP-NOW v2 frame's payload, less this protocol's header. Stated here
+ * rather than derived from the IDF macro so the native suite can see it; the
+ * driver asserts the two agree.
+ */
 constexpr size_t MAX_PKT_DATA_SIZE = 1470 - sizeof(DataPktHdr);
 
 struct ChainConfirmPayload
@@ -85,35 +89,27 @@ struct ShootoutAckPayload
     uint8_t     seqId;
 } __attribute__((packed));
 
-/// Firmware distribution frames. The seed broadcasts an OFFER every second and
-/// loops CHUNKs through the whole image a fixed number of times; receivers listen
-/// and never answer. Nothing here is signed: IDF verifies the assembled image's
-/// signature in esp_ota_end, against the keys that signed the image already
-/// running, so a forged offer can only waste a download.
-enum class FirmwareCmd : uint8_t {
-    OFFER = 1,
-    CHUNK = 2,
-};
-
-/// Bytes of image per CHUNK.
+/**
+ * Firmware distribution's one frame: a piece of the image the seed is running.
+ * The seed sends every chunk a fixed number of times and repeats chunk 0 once a
+ * second; receivers never answer. Chunk 0 starts with the image's app
+ * description, which is what a receiver judges before erasing anything. Nothing
+ * here is signed, and IDF checks the assembled image against the key that
+ * signed the running one, so forged frames cannot install an image. They can
+ * still spoil a download, or make a receiver erase its spare slot and wait for
+ * chunks that never come.
+ */
 constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
 
-/// Identifies an image: its esp_app_desc_t::app_elf_sha256.
+/** Length of FirmwareChunkHeader::imageId. */
 constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
 
-/// Announces the image the seed is streaming.
-struct FirmwareOfferPayload {
-    uint8_t command;
-    uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];
-    uint32_t imageLength;
-    uint16_t chunkCount;
-} __attribute__((packed));
-
-/// Header of a CHUNK; FIRMWARE_CHUNK_SIZE bytes of image follow, fewer for the last.
+/** Starts every firmware frame; FIRMWARE_CHUNK_SIZE bytes of image follow, fewer for the last chunk. */
 struct FirmwareChunkHeader {
-    uint8_t command;
-    /// First bytes of the image id, so a chunk from another run is not written.
-    uint8_t imageIdPrefix[4];
+    /** The image's esp_app_desc_t::app_elf_sha256. */
+    uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];
+    /** Length of the whole image, signature sector included. */
+    uint32_t imageLength;
     uint16_t index;
 } __attribute__((packed));
 

@@ -7,13 +7,24 @@
 #include "device/drivers/firmware-store-interface.hpp"
 
 /**
- * In-memory FirmwareStoreInterface. finishWrite stands in for IDF's checks
- * (hash, signature, newer build) with a single acceptImages switch.
+ * In-memory FirmwareStoreInterface. The judgements the ESP32 store reads from
+ * app descriptions and IDF's checks are two switches: wantImages for the
+ * pre-check, acceptImages for finishWrite. The image a device already runs is
+ * never wanted, as on hardware, where it is never newer than itself.
  */
 class FakeFirmwareStore : public FirmwareStoreInterface {
 public:
-    /** Opens a zero-filled slot of `length` bytes. */
+    /** wantImages, unless `head` starts the running image. */
+    bool wantsImage(const uint8_t* head, size_t length) const override {
+        const size_t compared = std::min(length, runningImage.size());
+        const bool running = compared > 0 && std::memcmp(head, runningImage.data(), compared) == 0;
+        return wantImages && !running;
+    }
+    /** Opens a zero-filled slot of `length` bytes; fails past slotSize. */
     bool beginWrite(size_t length) override {
+        if (length > slotSize) {
+            return false;
+        }
         beginWriteCalls++;
         slot.assign(length, 0);
         writeOpen = true;
@@ -28,21 +39,20 @@ public:
         writeCount++;
         return true;
     }
-    /** Closes the slot and returns acceptImages. */
+    /** Closes the slot; acceptImages decides whether it boots. */
     bool finishWrite() override {
         writeOpen = false;
         finished = true;
+        bootSet = acceptImages;
         return acceptImages;
     }
-    /** Closes the slot without accepting it. */
+    /** Closes the slot without keeping it. */
     void abortWrite() override {
         if (writeOpen) {
             abortCalls++;
         }
         writeOpen = false;
     }
-    /** Defaults to a full OTA partition. */
-    size_t getInactiveSlotSize() const override { return inactiveSlotSize; }
     /** Length of the bytes given to setRunningImage. */
     size_t getRunningImageLength() const override { return runningImage.size(); }
     /** Serves the bytes given to setRunningImage. */
@@ -56,11 +66,6 @@ public:
     }
     /** The id given to setRunningImage. */
     void getRunningImageId(uint8_t out[32]) const override { std::memcpy(out, runningId, 32); }
-    /** Records the call. */
-    bool setBootToWritten() override {
-        bootSet = true;
-        return true;
-    }
     /** Records the call instead of restarting. */
     void restart() override { restarted = true; }
 
@@ -71,8 +76,9 @@ public:
     }
 
     std::vector<uint8_t> slot;
+    bool wantImages = true;
     bool acceptImages = true;
-    size_t inactiveSlotSize = OTA_PARTITION_SIZE;
+    size_t slotSize = 0x3E0000;
     int beginWriteCalls = 0;
     int writeCount = 0;
     int abortCalls = 0;

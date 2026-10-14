@@ -20,7 +20,7 @@ PlayerRegistrationState::~PlayerRegistrationState() {
 
 void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting player registration");
-    // A failed fetch comes back here in WiFi mode, deaf to firmware offers.
+    // A failed fetch comes back here in WiFi mode, deaf to a seed's frames.
     pdn->getWirelessManager()->enablePeerCommsMode();
 
     pdn->getDisplay()->invalidateScreen()->

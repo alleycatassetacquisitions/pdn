@@ -101,7 +101,7 @@ public:
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
-    /// True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS.
+    /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
     /** Idle is a resting screen: a firmware update may restart the device here. */
     bool isInterruptible() const override { return true; }

@@ -18,7 +18,6 @@
 #include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
-#include <map>
 
 using namespace std;
 
@@ -152,27 +151,6 @@ public:
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, setPeerCommsState, (PeerCommsState), (override));
     MOCK_METHOD(PeerCommsState, getPeerCommsState, (), (override));
-
-    /// Real storage rather than MOCK_METHOD, so registration needs no gmock
-    /// expectations set up first.
-    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
-        sendStatusHandlers[packetType] = {callback, ctx};
-    }
-
-    /// Unregisters the send-status handler for a packet type, if any.
-    void clearSendStatusHandler(PktType packetType) override {
-        sendStatusHandlers.erase(packetType);
-    }
-
-    /// Whether a send-status handler is currently registered for this type.
-    /// Real state, not an expectation, so a test can assert that something
-    /// actually deregistered rather than that it called a method.
-    bool hasSendStatusHandler(PktType packetType) const {
-        return sendStatusHandlers.count(packetType) != 0;
-    }
-
-private:
-    std::map<PktType, std::pair<SendStatusCallback, void*>> sendStatusHandlers;
 };
 
 class MockStorage : public StorageInterface {

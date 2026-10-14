@@ -42,8 +42,10 @@ public:
     bool transitionToPlayerDetected();
     bool transitionToConnectionDetected();
     bool transitionToUploadPending();
-    /// True once the operator has held the secondary button for
-    /// FIRMWARE_UPDATE_HOLD_MS, which is the only way to start a seed run.
+    /**
+     * True once the operator has held the secondary button for
+     * FIRMWARE_UPDATE_HOLD_MS, which is the only way to start a seed run.
+     */
     bool transitionToFirmwareUpdate() const;
     /** Idle is a resting screen: a firmware update may restart the device here. */
     bool isInterruptible() const override { return true; }

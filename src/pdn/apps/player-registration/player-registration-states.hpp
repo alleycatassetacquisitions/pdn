@@ -30,10 +30,11 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToUserFetch();
+    /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
     /**
-     * Every PDN boots to this screen. Interruptible until someone presses a
-     * button here, so an update never restarts a device mid-way through a code.
+     * Every PDN boots to this screen. Interruptible until code entry starts here
+     * (either button clicked), so an update never restarts a device mid-code.
      */
     bool isInterruptible() const override { return !codeEntryStarted; }
 

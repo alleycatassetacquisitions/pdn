@@ -17,10 +17,10 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "esp32-driver-constants.hpp"
 
-// sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, cluster size 1
-// included, so a build without PSRAM support fails here rather than at every
-// send. A board whose PSRAM fails at boot still boots (SPIRAM_IGNORE_NOTFOUND),
-// and then every send fails its allocation.
+// sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, so a build
+// without PSRAM support fails here rather than at every send. A board whose PSRAM
+// fails at boot still boots (SPIRAM_IGNORE_NOTFOUND), and then every send fails
+// its allocation.
 #if !defined(CONFIG_SPIRAM)
 #error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
 #endif
@@ -158,20 +158,8 @@ public:
         }
 
         // The deinit took the IDF callback path with it, so no queued frame will
-        // ever report. Dispatch each one's failure while it is at the head, where
-        // its handler can be resolved from it, then drop it: a caller waiting on
-        // delivery of any of them would otherwise stay latched, and a stale head
-        // stops sendData from ever starting another transmission this boot.
-        while (true) {
-            xSemaphoreTake(sendMutex, portMAX_DELAY);
-            const bool empty = m_sendQueue.empty();
-            xSemaphoreGive(sendMutex);
-            if (empty) {
-                break;
-            }
-            DispatchSendStatus(false);
-            MoveToNextSendPkt();
-        }
+        // ever report; a stale head would stop sendData from ever starting
+        // another transmission this boot.
         clearSendQueue();
 
         peerCommsState = PeerCommsState::DISCONNECTED;
@@ -248,19 +236,12 @@ public:
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
-    /// Registers the handler a caller wants invoked once the radio reports
-    /// completion for a frame of this type, so it can pace further sends off
-    /// delivery instead of a fixed delay. Only one handler per type; a second
-    /// registration replaces the first.
-    void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) override {
-        m_sendStatusHandlers[(int)packetType].first = callback;
-        m_sendStatusHandlers[(int)packetType].second = ctx;
-    }
-
-    /// Unregisters the send-status handler for a packet type, e.g. when the
-    /// caller that registered it is tearing down and no longer wants callbacks.
-    void clearSendStatusHandler(PktType packetType) override {
-        m_sendStatusHandlers[(int)packetType].first = nullptr;
+    /** True once every queued frame, including the one on the air, has been reported on. */
+    bool isSendQueueEmpty() override {
+        xSemaphoreTake(sendMutex, portMAX_DELAY);
+        const bool empty = m_sendQueue.empty();
+        xSemaphoreGive(sendMutex);
+        return empty;
     }
 
     // Called by DriverManager at startup - we don't initialize ESP-NOW here
@@ -314,7 +295,6 @@ private:
     explicit EspNowDriver(const std::string& name)
         : PeerCommsDriverInterface(name)
         , m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
-        , m_sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
         , m_maxRetries(5)
         , m_curRetries(0)
         , recvMutex(xSemaphoreCreateMutex())
@@ -430,7 +410,6 @@ private:
         if(status == ESP_NOW_SEND_SUCCESS)
         {
             LOG_D("ENC", "Send SUCCESS");
-            manager->DispatchSendStatus(true);
             manager->MoveToNextSendPkt();
         }
         else
@@ -445,12 +424,10 @@ private:
             {
                 LOG_E("ENC", "Send FAILED - giving up after %d retries",
                       manager->m_maxRetries);
-                manager->DispatchSendStatus(false);
                 manager->MoveToNextSendPkt();
             }
         }
 
-        //TODO: Catch error and do reporting and push to next pkt
         manager->releaseTransmissionClaim();
         manager->SendFrontPkt();
     }
@@ -479,10 +456,6 @@ private:
                 if(m_curRetries >= m_maxRetries)
                 {
                     LOG_E("ENC", "ESPNOW Failed after max retries. Err: %i\n", err);
-                    // The send callback never runs for a frame esp_now_send would not
-                    // take, so this is the only place a caller waiting on delivery can
-                    // be told. Before MoveToNextSendPkt: it reads the front of the queue.
-                    DispatchSendStatus(false);
                     MoveToNextSendPkt();
                     releaseTransmissionClaim();
                     SendFrontPkt();
@@ -506,15 +479,13 @@ private:
         m_curRetries = 0;
     }
 
-    // Hand the claim back so the next caller can start a transmission
     void releaseTransmissionClaim() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         transmissionClaimed = false;
         xSemaphoreGive(sendMutex);
     }
 
-    // Drop every queued frame without reporting it and hand the transmission
-    // claim back. disconnect() reports and drops each frame before calling this.
+    // Drops every queued frame and hands the transmission claim back.
     void clearSendQueue() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         while (!m_sendQueue.empty()) {
@@ -575,33 +546,6 @@ private:
 
     //Storage for packet handler callbacks and their user args
     std::vector<std::pair<PacketCallback, void*>> m_pktHandlerCallbacks;
-
-    // Storage for send-status handler callbacks and their user args, indexed by PktType
-    std::vector<std::pair<SendStatusCallback, void*>> m_sendStatusHandlers;
-
-    // Reports the outcome of the in-flight (front-of-queue) send to whatever
-    // handler is registered for that frame's packetType. Called before the
-    // frame is popped/freed, since it needs the frame to read the type from.
-    void DispatchSendStatus(bool success) {
-        xSemaphoreTake(sendMutex, portMAX_DELAY);
-        if (m_sendQueue.empty()) {
-            xSemaphoreGive(sendMutex);
-            return;
-        }
-        DataSendBuffer buffer = m_sendQueue.front();
-        xSemaphoreGive(sendMutex);
-
-        const DataPktHdr* hdr = reinterpret_cast<const DataPktHdr*>(buffer.ptr);
-        if ((int)hdr->packetType >= (int)PktType::kNumPacketTypes) {
-            return;
-        }
-
-        SendStatusCallback callback = m_sendStatusHandlers[(int)hdr->packetType].first;
-        if (callback) {
-            void* ctx = m_sendStatusHandlers[(int)hdr->packetType].second;
-            callback(buffer.dstMac, buffer.ptr + sizeof(DataPktHdr), buffer.len - sizeof(DataPktHdr), success, ctx);
-        }
-    }
 
     void HandlePktCallback(const PktType packetType, const uint8_t* srcMacAddr, const uint8_t* pktData, const size_t pktLen) {
         if((int)packetType >= (int)PktType::kNumPacketTypes)

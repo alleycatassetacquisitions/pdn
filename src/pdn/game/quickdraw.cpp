@@ -23,22 +23,16 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
     this->shootoutManager_->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager_);
 
-    // An interruptible screen alone doesn't rule out a cable: a device can sit
-    // in Idle with a peer chained for the whole match, so both conditions are
-    // checked separately rather than folded into one state check.
-    // No store means no flash to distribute from or into — the headless
-    // simulator's case — so the whole feature stays unbuilt rather than
-    // holding a manager that would fault on the first offer it heard.
+    // No store (the headless simulator) means no flash to distribute from or into.
     if (firmwareStore != nullptr) {
         this->firmwareUpdateManager = new FirmwareUpdateManager(
             peerComms, firmwareStore,
             [this]() {
-                State* current = getCurrentState();
-                bool interruptible = current != nullptr && current->isInterruptible();
+                // Idle stays interruptible with a peer chained, so a cable is checked too.
                 bool cableConnected =
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
-                return interruptible && !cableConnected;
+                return isInterruptible() && !cableConnected;
             });
     }
 
@@ -640,9 +634,8 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
 
-    // Last in the map so the indices above it stay put when it is absent:
-    // with no firmware store there is no manager for this state to drive, and
-    // no transition from Idle is added.
+    // Appended last, so the other states' indices (which skipToState takes) are
+    // the same with or without a firmware store.
     if (firmwareUpdateManager != nullptr) {
         FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(FIRMWARE_UPDATE, firmwareUpdateManager);
         idle->addTransition(

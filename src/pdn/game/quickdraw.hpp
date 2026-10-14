@@ -23,10 +23,11 @@ constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:
-    /// Constructs and owns matchManager/chainDuelManager/shootoutManager_/firmwareUpdateManager
-    /// and wires their ESP-NOW packet handlers. firmwareStore backs firmwareUpdateManager's
-    /// flash slot; the caller owns and outlives it (main.cpp constructs it alongside the
-    /// other drivers).
+    /**
+     * Owns the match, chain-duel, shootout and firmware-update managers and wires
+     * their ESP-NOW handlers. Borrows firmwareStore, which must outlive it; null
+     * leaves firmware updates out (the headless simulator).
+     */
     Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore);
     ~Quickdraw();
 
@@ -44,9 +45,11 @@ public:
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onStateLoop(Device *PDN) override;
 
-    /// The firmware-update manager this Quickdraw owns, so main.cpp's loop()
-    /// can pump its sync() whatever app is active. Null when constructed
-    /// without a firmware store (the headless simulator).
+    /**
+     * The firmware-update manager this Quickdraw owns, so main.cpp's loop()
+     * can pump its sync() whatever state is mounted. Null when constructed
+     * without a firmware store (the headless simulator).
+     */
     FirmwareUpdateManager* getFirmwareUpdateManager();
 
 private:

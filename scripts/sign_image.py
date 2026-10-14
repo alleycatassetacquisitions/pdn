@@ -1,11 +1,10 @@
-"""PlatformIO post-build step: signs firmware.bin with espsecure, so IDF accepts it
-as an update on devices whose running image was signed with the same key.
+"""PlatformIO post-build step: signs firmware.bin with espsecure.
 
 FIRMWARE_SIGNING_KEY names the RSA-3072 key (espsecure generate-signing-key
---version 2 --scheme rsa3072). PDN and FDN builds use different keys: a device
-only trusts the keys that signed the image it runs, so neither can take the
-other's image. Without the variable the build stays unsigned, which is fine to
-flash over USB but cannot be distributed or receive updates.
+--version 2 --scheme rsa3072). A device takes an update only if it is signed with
+the key that signed the image it runs and built for the same project (pdn or fdn),
+so one key can sign both families. Without the variable the build stays unsigned:
+fine to flash over USB, but such a device can neither seed nor take updates.
 """
 import os
 import subprocess
@@ -27,4 +26,7 @@ def _sign(target, source, env):
     os.replace(signed, image)
 
 
+# Rebuilt every build: it carries the build time devices order images by, and the
+# relink it forces is what makes this signing step run on every build.
+env.AlwaysBuild(env.File("$BUILD_DIR/esp_app_format/esp_app_desc.c.o"))  # noqa: F821
 env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _sign)  # noqa: F821

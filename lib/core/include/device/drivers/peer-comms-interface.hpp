@@ -13,32 +13,17 @@ class PeerCommsInterface {
 public:
     using PacketCallback = std::function<void(const uint8_t* src, const uint8_t* data, const size_t length, void* ctx)>;
 
-    /// Reports what the radio did with a previously queued frame. `data`/`length`
-    /// are the payload as given to sendData (header stripped). A raw function
-    /// pointer, not std::function: a registrant hands over a static member
-    /// function or a captureless lambda and gets its instance back through
-    /// ctx, so the driver's handler table holds no allocation.
-    /// On ESP32 it runs on the WiFi task, not the main loop, and may also run
-    /// from inside sendData or disconnect: it must not send, and anything it
-    /// writes that the main loop reads has to be atomic.
-    using SendStatusCallback = void (*)(const uint8_t* dstMac, const uint8_t* data, size_t length, bool success, void* ctx);
-
     virtual ~PeerCommsInterface() = default;
     virtual int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) = 0;
     virtual void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) = 0;
     virtual void clearPacketHandler(PktType packetType) = 0;
 
-    /// Registers the handler invoked when the radio reports completion for a
-    /// frame of this type. One handler per type; registering again replaces it.
-    /// Default no-op so drivers that don't report send status keep compiling.
-    virtual void setSendStatusHandler(PktType packetType, SendStatusCallback callback, void* ctx) {
-        (void)packetType;
-        (void)callback;
-        (void)ctx;
-    }
-
-    /// Unregisters the send-status handler for a packet type, if any.
-    virtual void clearSendStatusHandler(PktType packetType) { (void)packetType; }
+    /**
+     * True when nothing is queued or on the air, so a sender pacing itself one
+     * frame at a time can queue the next. Transports that hand frames off
+     * synchronously are always empty.
+     */
+    virtual bool isSendQueueEmpty() { return true; }
 
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
     virtual uint8_t* getMacAddress() = 0;

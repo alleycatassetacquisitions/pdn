@@ -31,7 +31,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/peer-comms-interface.hpp"
 #include "apps/main-menu/main-menu.hpp"
 #include "apps/idle/idle.hpp"
-#include "apps/idle/idle-states.hpp"
 #include "apps/hacking/hacking.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 #include "apps/symbol-match/symbol-match.hpp"
@@ -187,8 +186,9 @@ static void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    // Constructed before the apps because the Idle app takes it. Offers are
-    // only judged from exec() in loop(), after loadAppConfig has run.
+    // Constructed before the apps because the Idle app takes it. The predicate
+    // reads idleApp, assigned below: frames are only handled from exec() in
+    // loop(), after setup has built the apps.
     firmwareUpdateManager = new FirmwareUpdateManager(
         peerCommsDriver, firmwareStore,
         []() {
@@ -242,9 +242,9 @@ void loop() {
     }
     firmwareStore->superviseRunningImage();
     // Here rather than inside a state machine: Device::loop() dispatches
-    // onStateLoop to the active app alone, and the FDN swaps apps, so a device
-    // receiving an image needs sync() to keep running and fire its restart
-    // whichever app is mounted.
+    // onStateLoop to the active app alone, and the FDN swaps apps, so sync()
+    // runs here to keep a seed run sending and drop a receive once the device
+    // stops being eligible, whichever app is mounted.
     firmwareUpdateManager->sync();
     fdn->loop();
 }

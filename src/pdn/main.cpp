@@ -213,9 +213,9 @@ void loop() {
         crashLogger->pollSerialCommand();
     }
     firmwareStore->superviseRunningImage();
-    // Here rather than inside a state: a device receiving an image needs
-    // sync() to keep running and fire its restart whatever Quickdraw state it
-    // is in, not only while FirmwareUpdate is mounted.
+    // Here rather than inside a state: sync() keeps a seed run sending and
+    // drops a receive once the device stops being eligible, whatever state is
+    // mounted.
     FirmwareUpdateManager* firmwareUpdateManager = game->getFirmwareUpdateManager();
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->sync();

@@ -3,8 +3,9 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # PDN_DEVICE arrives from board_build.cmake_extra_args in platformio.ini and is
 # the only per-environment channel into CMake. It names the project, which also
-# names esp_app_desc_t.project_name -- useful in a boot log, and better than
-# defaulting to whatever the checkout directory is called.
+# names esp_app_desc_t.project_name: a device takes a firmware update only from an
+# image with its own project name, so renaming one leaves every device running the
+# old name to be updated over USB.
 if(NOT DEFINED PDN_DEVICE)
     message(FATAL_ERROR
         "PDN_DEVICE is not set. Add -DPDN_DEVICE=pdn or -DPDN_DEVICE=fdn to "

@@ -31,9 +31,7 @@ void FirmwareUpdate::onStateMounted(Device* device) {
 }
 
 void FirmwareUpdate::onStateLoop(Device* device) {
-    // beginSeeding() failing (no readable running image) leaves isSeeding()
-    // false from the first tick, which reads the same as a run that already
-    // ended: straight back to the host screen.
+    // A refused beginSeeding() leaves isSeeding() false, so this returns at once.
     if (!firmwareUpdateManager->isSeeding()) {
         transitionToIdleState = true;
     }

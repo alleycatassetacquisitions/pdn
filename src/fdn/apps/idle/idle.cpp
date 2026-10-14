@@ -88,15 +88,10 @@ void Idle::populateStateMap() {
     stateMap.push_back(connectionDetectedState);    // [4] CONNECTION_DETECTED
     stateMap.push_back(uploadPendingState);         // [5] UPLOAD_PENDING
 
-    // No manager means no flash to distribute from or into, so the state is
-    // left out of the map entirely rather than mounted to fault on entry.
-    if (firmwareUpdateManager != nullptr) {
-        FirmwareUpdate* firmwareUpdate =
-            new FirmwareUpdate(IdleStateId::FIRMWARE_UPDATE, firmwareUpdateManager);
-        idleState->addTransition(new StateTransition(
-            std::bind(&IdleState::transitionToFirmwareUpdate, idleState), firmwareUpdate));
-        firmwareUpdate->addTransition(new StateTransition(
-            std::bind(&FirmwareUpdate::transitionToIdle, firmwareUpdate), idleState));
-        stateMap.push_back(firmwareUpdate);  // [6] FIRMWARE_UPDATE
-    }
+    FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(IdleStateId::FIRMWARE_UPDATE, firmwareUpdateManager);
+    idleState->addTransition(new StateTransition(
+        std::bind(&IdleState::transitionToFirmwareUpdate, idleState), firmwareUpdate));
+    firmwareUpdate->addTransition(new StateTransition(
+        std::bind(&FirmwareUpdate::transitionToIdle, firmwareUpdate), idleState));
+    stateMap.push_back(firmwareUpdate);  // [6] FIRMWARE_UPDATE
 }

@@ -102,8 +102,8 @@ def test_esp32_on_port(port_name):
 NVS_OFFSET = 0x9000
 NVS_SIZE = 0x5000  # 20 KB — matches default_8MB.csv
 # Writing IDF's initial otadata resets the boot selector to ota_0. A device that
-# has taken a wireless update is running ota_1, so without it a re-flash writes
-# ota_0 and the device keeps booting the old image.
+# has taken a wireless update may be running ota_1, so without it a re-flash
+# writes ota_0 and the device keeps booting the old image.
 OTADATA_OFFSET = "0xe000"
 
 

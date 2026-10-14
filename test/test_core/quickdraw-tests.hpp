@@ -1696,10 +1696,8 @@ public:
 // Create + destroy many Quickdraw instances; under ASAN (env:native_asan) a
 // leak in ~Quickdraw's ownership of matchManager / chainDuelManager would be
 // reported. Without ASAN this still catches crashes in the lifecycle path.
-// Half the rounds pass a firmware store, because a null one leaves
-// firmwareUpdateManager unbuilt: without them nothing here exercises the
-// manager's own construction and teardown, including the radio handlers its
-// destructor has to hand back.
+// Half the rounds pass a firmware store, so the firmware update manager is
+// built and torn down too, handing its radio handler back.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
         auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, nullptr);
@@ -1707,10 +1705,10 @@ inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     }
     FakeFirmwareStore firmwareStore;
     for (int i = 0; i < 5; i++) {
+        EXPECT_CALL(*suite->device.mockPeerComms, clearPacketHandler(PktType::kFirmwareUpdate)).Times(1);
         auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr, &firmwareStore);
-        EXPECT_TRUE(suite->device.mockPeerComms->hasSendStatusHandler(PktType::kFirmwareUpdate));
         delete qd;
-        EXPECT_FALSE(suite->device.mockPeerComms->hasSendStatusHandler(PktType::kFirmwareUpdate));
+        testing::Mock::VerifyAndClearExpectations(suite->device.mockPeerComms);
     }
 }
 

@@ -5,15 +5,16 @@
 class Device;
 class FirmwareUpdateManager;
 
-/// How long the secondary button is held, on a screen that hosts FirmwareUpdate,
-/// before the device starts seeding its own image.
+/**
+ * How long the secondary button is held, on a screen that hosts FirmwareUpdate,
+ * before the device starts seeding its own image.
+ */
 constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
 /**
- * The seed gesture: the secondary button held FIRMWARE_UPDATE_HOLD_MS. Counts
- * only a hold that began on the host screen, so a hold carried in (through
- * power-on, or back from a run that ended at once) does not fire again until
- * the button has been let go.
+ * The seed gesture: the secondary button held FIRMWARE_UPDATE_HOLD_MS. A hold
+ * that is already a long press when the host screen mounts (through power-on,
+ * or back from a run that ended at once) does not count until it is let go.
  */
 class FirmwareUpdateHold {
 public:
@@ -26,28 +27,30 @@ private:
     bool releasedSinceMount = false;
 };
 
-/// Draws a static "UPDATING" label and waits out the seed run. Inherits State
-/// rather than TypedState because it reads nothing beyond the accessors Device
-/// itself provides, which lets the PDN and FDN host the same object.
+/**
+ * Draws a static "UPDATING" label and waits out the seed run. Inherits State
+ * rather than TypedState because it reads nothing beyond the accessors Device
+ * itself provides, which lets the PDN and FDN host the same class.
+ */
 class FirmwareUpdate : public State {
 public:
-    /// Does not own firmwareUpdateManager: the owner constructs it once and the
-    /// platform loop pumps its sync(), since a device can be passively
-    /// receiving without ever mounting this state. stateId is the hosting state
-    /// machine's own id for this state.
+    /**
+     * stateId is the host state machine's id for this state. Borrows
+     * firmwareUpdateManager, whose sync() the platform loop pumps.
+     */
     FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdateManager);
 
-    /// Starts distributing this device's own running image.
+    /** Starts distributing this device's own running image. */
     void onStateMounted(Device* device) override;
-    /// Watches for the seed run to end, one way or another.
+    /** Watches for the seed run to end, one way or another. */
     void onStateLoop(Device* device) override;
-    /// Resets the transition flag; the seed run itself is owned by
-    /// firmwareUpdateManager, not this state, so there's nothing else to tear
-    /// down here.
+    /** Resets the transition flag; the seed run belongs to firmwareUpdateManager. */
     void onStateDismounted(Device* device) override;
 
-    /// True once the seed's run has ended (isSeeding() is false); the host
-    /// returns to the screen the run started from.
+    /**
+     * True once the seed's run has ended (isSeeding() is false); the host
+     * returns to the screen the run started from.
+     */
     bool transitionToIdle();
 
 private:

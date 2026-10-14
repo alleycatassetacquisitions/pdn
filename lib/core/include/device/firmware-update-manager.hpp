@@ -1,10 +1,10 @@
 #pragma once
 
-#include <atomic>
-#include <bitset>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <vector>
 
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
@@ -14,77 +14,61 @@
 /**
  * Moves a firmware image between devices over ESP-NOW broadcast. A seed
  * streams the image it is running, every chunk SEED_PASSES times, and listens
- * to nobody; a receiver writes each chunk the first time it hears it and, once
- * it has all of them, hands the image to the store, which accepts it only if
- * IDF finds it intact, signed by a key the running image was signed with, and
- * newer than the running image.
+ * to nobody. A receiver asks the store about an image from its first chunk,
+ * writes each chunk the first time it hears it, and once it has all of them
+ * hands the image to the store, which decides whether to boot it.
  */
 class FirmwareUpdateManager {
 public:
     /**
-     * isEligible is polled before taking an offer and on every sync() while
-     * receiving; a receive in progress is dropped the moment it reads false.
+     * isEligible is checked before an image is taken and on every sync() while
+     * one is being received; a receive is dropped once it reads false.
      */
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           std::function<bool()> isEligible);
+    /** Hands the radio handler back. */
     ~FirmwareUpdateManager();
 
-    /** Starts streaming this device's running image; false if there is none to stream. */
+    /** Starts streaming this device's running image; false if already seeding or it is unsigned. */
     bool beginSeeding();
     /** True until the seed's last pass has been sent. */
     bool isSeeding() const;
-    /** True while an image is being collected. */
-    bool isReceiving() const;
-    /** Call every loop pass, on every device: drives the seed and times out receives. */
+    /** Call every loop pass, on every device: paces a seed run and drops a receive that stalls or stops being eligible. */
     void sync();
 
-    /** Packet handler for PktType::kFirmwareUpdate. */
-    void onPacketReceived(const uint8_t* src, const uint8_t* data, size_t length);
-    /** Send-status handler for PktType::kFirmwareUpdate: frees the one send slot. */
-    void onSendReport(bool success);
-
 private:
-    static constexpr size_t MAX_CHUNKS = OTA_PARTITION_SIZE / FIRMWARE_CHUNK_SIZE + 1;
+    using ImageId = std::array<uint8_t, FIRMWARE_IMAGE_ID_LENGTH>;
 
-    static void dispatchPacket(const uint8_t* src, const uint8_t* data, size_t length, void* ctx);
-    static void dispatchSendStatus(const uint8_t* dstMac, const uint8_t* data, size_t length, bool success,
-                                   void* ctx);
-
-    void onOffer(const FirmwareOfferPayload& offer);
     void onChunk(const FirmwareChunkHeader& header, const uint8_t* data, size_t length);
+    bool startReceiving(const FirmwareChunkHeader& header, const uint8_t* data, size_t length);
+    void writeChunk(uint16_t index, const uint8_t* data, size_t length);
     void commit();
     void stopReceiving();
-    void sendOffer();
     bool sendChunk(uint16_t index);
-    bool sendFrame(const uint8_t* data, size_t length);
 
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
     std::function<bool()> isEligible;
 
     // Seed.
-    bool seeding = false;
-    uint8_t seedImageId[FIRMWARE_IMAGE_ID_LENGTH] = {};
+    ImageId seedImageId{};
     uint32_t seedImageLength = 0;
     uint16_t seedChunkCount = 0;
     uint16_t nextChunk = 0;
     uint8_t passesLeft = 0;
-    SimpleTimer offerTimer;
-    // Restarted by every frame the radio accepts; expired means the radio has
-    // refused everything for SEED_SEND_STALL_MS and the run is abandoned.
-    SimpleTimer sendStallTimer;
-    // Cleared by onSendReport, which the ESP-NOW driver calls from the WiFi task.
-    std::atomic<bool> sendInFlight{false};
+    uint32_t refusedSends = 0;
+    SimpleTimer beaconTimer;
 
     // Receiver.
     bool receiving = false;
-    uint8_t receiveImageId[FIRMWARE_IMAGE_ID_LENGTH] = {};
+    ImageId receiveImageId{};
     uint32_t receiveImageLength = 0;
     uint16_t receiveChunkCount = 0;
     uint16_t chunksWritten = 0;
-    std::bitset<MAX_CHUNKS> written;
+    std::vector<bool> written;
     SimpleTimer receiveStallTimer;
-    // The last image the store refused, so a seed still streaming it is not
-    // downloaded again.
-    uint8_t refusedImageId[FIRMWARE_IMAGE_ID_LENGTH] = {};
+    // The image the store last refused, ignored while refusedQuietTimer runs,
+    // so a seed still streaming it is not downloaded again.
+    ImageId refusedImageId{};
+    SimpleTimer refusedQuietTimer;
 };
