@@ -6,10 +6,14 @@
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
+#include <esp_image_format.h>
+
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/peer-comms-types.hpp"
-#include "device/drivers/storage-interface.hpp"
 #include "device/drivers/logger.hpp"
 
 // Rollback is the whole reason setBootToWritten() and the confirm in
@@ -22,27 +26,20 @@
 #error "firmware distribution requires CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE"
 #endif
 
-/// NVS namespace holding this device's generation floor. Registered on the
-/// shared Esp32S3PrefsDriver at construction (src/pdn/main.cpp,
-/// src/fdn/main.cpp), which throws on any namespace it was not given.
-inline constexpr const char FIRMWARE_STORE_NVS_NAMESPACE[] = "fw-store";
-
-/// FirmwareStoreInterface over the ESP32-S3's OTA partitions (esp_ota_*
-/// against ota_0/ota_1) and NVS (the generation floor). The only
-/// implementation of this interface with real ESP32 types in it; everything
-/// else in firmware distribution depends only on the interface, per that
-/// header's own contract, so it builds and runs in the native test suite too.
+/// FirmwareStoreInterface over the ESP32-S3's OTA partitions. IDF does the
+/// checking: esp_ota_end validates the image hash and, with signed-app
+/// verification on, its signature against the keys that signed the running
+/// image; the app description carries the image id and build time.
 class Esp32S3FirmwareStore : public FirmwareStoreInterface {
 public:
-    /// Resolves the running and inactive OTA partitions. `storage` is the
-    /// shared NVS driver the generation floor lives in; the caller owns it
-    /// and it must outlive this store. Construct it from the main task, as
-    /// early in setup() as the storage exists: if the running image arrived
-    /// over the air and is still unconfirmed, this puts the calling task on the
-    /// task watchdog, so a hang anywhere before the confirm resets the device
-    /// and the bootloader rolls the image back.
-    explicit Esp32S3FirmwareStore(StorageInterface* storage)
-        : storage(storage) {
+    /**
+     * Resolves the running and inactive OTA partitions. Construct it from the main task, as
+     * early in setup() as possible: if the running image arrived
+     * over the air and is still unconfirmed, this puts the calling task on the
+     * task watchdog, so a hang anywhere before the confirm resets the device
+     * and the bootloader rolls the image back.
+     */
+    Esp32S3FirmwareStore() {
         runningPartition = esp_ota_get_running_partition();
         esp_ota_img_states_t state;
         runningImagePending = runningPartition != nullptr &&
@@ -50,11 +47,7 @@ public:
                               state == ESP_OTA_IMG_PENDING_VERIFY;
         updatePartition = esp_ota_get_next_update_partition(nullptr);
         if (updatePartition != nullptr && updatePartition->size != OTA_PARTITION_SIZE) {
-            // The bitmap-ceiling static_assert in firmware-update-manager.cpp
-            // only catches a SEED_CHUNK_SIZE change; it cannot see a
-            // partitions.csv resize. This constructor is the one place that
-            // can read the real partition table, so it is the one place that
-            // can catch that drift.
+            // Only the real partition table can show a partitions.csv resize.
             LOG_E(TAG, "OTA partition is %u bytes, code assumes %zu", updatePartition->size, OTA_PARTITION_SIZE);
         }
         guardPendingImage();
@@ -67,11 +60,8 @@ public:
         }
     }
 
-    /// Erases the inactive OTA partition for `length` bytes plus headroom for
-    /// the trailer the commit path writes past it: esp_ota_write_with_offset
-    /// does not erase, and chunks arrive out of order, so everything a write
-    /// will ever touch has to be erased up front. Never
-    /// OTA_WITH_SEQUENTIAL_WRITES, which assumes sequential writes.
+    /// Erases the inactive OTA partition for `length` bytes up front:
+    /// esp_ota_write_with_offset does not erase, and chunks arrive out of order.
     bool beginWrite(size_t length) override {
         if (writeOpen) {
             esp_ota_abort(otaHandle);
@@ -81,7 +71,7 @@ public:
             LOG_E(TAG, "beginWrite: no inactive OTA partition available");
             return false;
         }
-        const esp_err_t rc = esp_ota_begin(updatePartition, length + sizeof(FirmwareTrailer), &otaHandle);
+        const esp_err_t rc = esp_ota_begin(updatePartition, length, &otaHandle);
         if (rc != ESP_OK) {
             LOG_E(TAG, "esp_ota_begin failed: %d", rc);
             return false;
@@ -90,10 +80,8 @@ public:
         return true;
     }
 
-    /// Writes via esp_ota_write_with_offset only — esp_ota_ops.h warns
-    /// against mixing that with the sequential esp_ota_write, and this store
-    /// never calls the latter. Used for both chunk data and, once collection
-    /// finishes, the trailer.
+    /// Writes via esp_ota_write_with_offset only: esp_ota_ops.h warns against
+    /// mixing it with the sequential esp_ota_write.
     bool writeAt(size_t offset, const uint8_t* data, size_t length) override {
         if (!writeOpen) {
             return false;
@@ -106,7 +94,8 @@ public:
         return true;
     }
 
-    /// Closes and validates the write opened by beginWrite (esp_ota_end).
+    /// esp_ota_end checks the hash and the signature; the build times decide
+    /// whether the image is newer than the one running.
     bool finishWrite() override {
         if (!writeOpen) {
             return false;
@@ -114,7 +103,18 @@ public:
         writeOpen = false;
         const esp_err_t rc = esp_ota_end(otaHandle);
         if (rc != ESP_OK) {
-            LOG_E(TAG, "esp_ota_end failed: %d", rc);
+            LOG_E(TAG, "esp_ota_end rejected the image: %s", esp_err_to_name(rc));
+            return false;
+        }
+        esp_app_desc_t written{};
+        if (esp_ota_get_partition_description(updatePartition, &written) != ESP_OK) {
+            LOG_E(TAG, "could not read the written image's description");
+            return false;
+        }
+        const esp_app_desc_t* running = esp_app_get_description();
+        if (buildTime(written) <= buildTime(*running)) {
+            LOG_W(TAG, "image built %s %s is not newer than the running %s %s", written.date, written.time,
+                  running->date, running->time);
             return false;
         }
         return true;
@@ -130,17 +130,12 @@ public:
         esp_ota_abort(otaHandle);
     }
 
-    /// Real size of the OTA partition esp_ota_get_next_update_partition
-    /// returned at construction, less the trailer's own room: beginWrite
-    /// erases `length + sizeof(FirmwareTrailer)`, so an offer this check
-    /// accepted at the raw partition size would still fail there.
+    /// Size of the OTA partition not running.
     size_t getInactiveSlotSize() const override {
-        return updatePartition != nullptr ? updatePartition->size - sizeof(FirmwareTrailer) : 0;
+        return updatePartition != nullptr ? updatePartition->size : 0;
     }
 
-    /// Derived once per boot by walking the running image's own header (see
-    /// computeRunningImageLength) and cached from then on: the image cannot
-    /// change while it is executing.
+    /// Cached once per boot: the image cannot change while it runs.
     size_t getRunningImageLength() const override {
         if (!runningImageLengthComputed) {
             cachedRunningImageLength = computeRunningImageLength();
@@ -157,24 +152,9 @@ public:
         return esp_partition_read(runningPartition, offset, out, length) == ESP_OK;
     }
 
-    /// Reads from the running partition at getRunningImageLength() — where a
-    /// signed build's post-build step appended the trailer.
-    bool readRunningTrailer(uint8_t* out, size_t length) const override {
-        if (runningPartition == nullptr) {
-            return false;
-        }
-        return esp_partition_read(runningPartition, getRunningImageLength(), out, length) == ESP_OK;
-    }
-
-    /// Reads back from the inactive OTA partition, regardless of whether its
-    /// write is still open — esp_ota_write_with_offset writes straight to
-    /// flash rather than buffering, so this is consistent as soon as
-    /// writeAt returns.
-    bool readWrittenSlot(size_t offset, uint8_t* out, size_t length) const override {
-        if (updatePartition == nullptr) {
-            return false;
-        }
-        return esp_partition_read(updatePartition, offset, out, length) == ESP_OK;
+    /** The ELF SHA-256 IDF embeds in every app description. */
+    void getRunningImageId(uint8_t out[32]) const override {
+        std::memcpy(out, esp_app_get_description()->app_elf_sha256, 32);
     }
 
     /// Points the boot selector at the inactive partition (esp_ota_set_boot_partition).
@@ -211,49 +191,35 @@ public:
     /// Restarts the device (esp_restart()); does not return.
     void restart() override { esp_restart(); }
 
-    /// Reads the generation floor from NVS; 0 (accept everything) if never set.
-    uint8_t getMinGeneration() const override {
-        return storage->readUChar(FIRMWARE_STORE_NVS_NAMESPACE, MIN_GENERATION_KEY, 0);
-    }
-
-    /// Persists the generation floor to NVS so it survives a reboot —
-    /// revocation only works if the floor a device refuses below is durable.
-    void setMinGeneration(uint8_t generation) override {
-        storage->writeUChar(FIRMWARE_STORE_NVS_NAMESPACE, MIN_GENERATION_KEY, generation);
-    }
-
 private:
-    // Walks the running image's own header as the second-stage bootloader
-    // does: nothing else records this device's own image length. A
-    // USB-flashed device has no OFFER and no NVS entry for it, and that is
-    // the only case that matters for a device's first-ever seed.
+    // The image as esptool built it, then the 4KB sector espsecure appends
+    // for the signature block once the image is padded to a 4KB boundary.
     size_t computeRunningImageLength() const {
         if (runningPartition == nullptr) {
             return 0;
         }
-        esp_image_header_t header{};
-        if (esp_partition_read(runningPartition, 0, &header, sizeof(header)) != ESP_OK ||
-            header.magic != ESP_IMAGE_HEADER_MAGIC) {
-            LOG_E(TAG, "computeRunningImageLength: could not read a valid image header");
+        const esp_partition_pos_t position = {runningPartition->address, runningPartition->size};
+        esp_image_metadata_t metadata{};
+        if (esp_image_get_metadata(&position, &metadata) != ESP_OK) {
+            LOG_E(TAG, "could not read the running image's metadata");
             return 0;
         }
+        constexpr size_t SECTOR = 4096;
+        return (metadata.image_len + SECTOR - 1) / SECTOR * SECTOR + SECTOR;
+    }
 
-        size_t offset = sizeof(esp_image_header_t);
-        for (uint8_t i = 0; i < header.segment_count; i++) {
-            esp_image_segment_header_t segment{};
-            if (esp_partition_read(runningPartition, offset, &segment, sizeof(segment)) != ESP_OK) {
-                LOG_E(TAG, "computeRunningImageLength: could not read segment header %u", i);
-                return 0;
-            }
-            offset += sizeof(esp_image_segment_header_t) + segment.data_len;
-        }
-
-        offset += 1;                           // the 1-byte checksum
-        offset = (offset + 15) & ~size_t{15};  // padded out to a 16-byte boundary
-        if (header.hash_appended) {
-            offset += 32;  // esptool's appended SHA-256 "simple hash"
-        }
-        return offset;
+    // Seconds since the epoch-free origin of __DATE__/__TIME__, enough to order
+    // two builds: "Oct 14 2026" and "12:34:56" as IDF records them.
+    static uint64_t buildTime(const esp_app_desc_t& desc) {
+        static const char MONTHS[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+        const char* month = std::strstr(MONTHS, std::string(desc.date, 3).c_str());
+        const uint64_t monthIndex = month != nullptr ? static_cast<uint64_t>(month - MONTHS) / 3 : 0;
+        const uint64_t day = std::strtoul(desc.date + 4, nullptr, 10);
+        const uint64_t year = std::strtoul(desc.date + 7, nullptr, 10);
+        const uint64_t hours = std::strtoul(desc.time, nullptr, 10);
+        const uint64_t minutes = std::strtoul(desc.time + 3, nullptr, 10);
+        const uint64_t seconds = std::strtoul(desc.time + 6, nullptr, 10);
+        return ((((year * 12 + monthIndex) * 31 + day) * 24 + hours) * 60 + minutes) * 60 + seconds;
     }
 
     // Uptime before a pending image confirms itself: long enough to get through
@@ -303,9 +269,6 @@ private:
     }
 
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
-    static constexpr const char* MIN_GENERATION_KEY = "minGen";
-
-    StorageInterface* storage = nullptr;
 
     const esp_partition_t* runningPartition = nullptr;
     const esp_partition_t* updatePartition = nullptr;

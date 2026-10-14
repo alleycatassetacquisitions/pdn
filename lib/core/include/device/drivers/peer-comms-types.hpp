@@ -85,144 +85,37 @@ struct ShootoutAckPayload
     uint8_t     seqId;
 } __attribute__((packed));
 
-/// Chosen so a whole status report fits one ESP-NOW v2 frame, not derived from
-/// any other bitmap: 384 bytes covers 3072 chunks.
-constexpr size_t FIRMWARE_BITMAP_BYTES = 384;
-
-/// Maximum chunks per firmware offer. A 0x3E0000 slot therefore needs a chunk
-/// size of at least 1323 bytes; firmware-update-manager.cpp static_asserts it.
-constexpr size_t FIRMWARE_MAX_CHUNKS = FIRMWARE_BITMAP_BYTES * 8;
-
-/// SHA-256 digest length.
-constexpr size_t FIRMWARE_SHA256_LENGTH = 32;
-
-/// P-256 R||S signature length (no DER, no ASN.1).
-constexpr size_t FIRMWARE_SIG_LENGTH = 64;
-
-/// Version and label string length.
-constexpr size_t FIRMWARE_LABEL_LENGTH = 16;
-
-/// Firmware distribution commands: offer, chunk, poll, status, complete.
+/// Firmware distribution frames. The seed broadcasts an OFFER every second and
+/// loops CHUNKs through the whole image a fixed number of times; receivers listen
+/// and never answer. Nothing here is signed: IDF verifies the assembled image's
+/// signature in esp_ota_end, against the keys that signed the image already
+/// running, so a forged offer can only waste a download.
 enum class FirmwareCmd : uint8_t {
-    OFFER = 0,
-    CHUNK = 1,
-    POLL = 2,
-    STATUS = 3,
-    COMPLETE = 4,
+    OFFER = 1,
+    CHUNK = 2,
 };
 
-/// Firmware distribution results: success, validation, flash errors.
-enum class FirmwareResult : uint8_t {
-    OK = 0,
-    BAD_HASH = 1,
-    BAD_SIGNATURE = 2,
-    BAD_CERT = 3,
-    STALE_CERT = 4,
-    FLASH_FAILED = 5,
-};
+/// Bytes of image per CHUNK.
+constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
 
-/// Delegation record: root signs this, signer signs images.
-struct SignerCert {
-    /// Key identifier, allows revocation by ID.
-    uint8_t keyId[4];
-    /// Generation counter for key rotation.
-    uint8_t generation;
-    /// P-256 public key (uncompressed, 64 bytes).
-    uint8_t publicKey[64];
-    /// Signer name or version label.
-    char label[FIRMWARE_LABEL_LENGTH];
-    /// Root signature over keyId|generation|publicKey|label.
-    uint8_t rootSignature[FIRMWARE_SIG_LENGTH];
-} __attribute__((packed));
+/// Identifies an image: its esp_app_desc_t::app_elf_sha256.
+constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
 
-/// Firmware offer: announces image, delegates signing, provides cert and sig.
+/// Announces the image the seed is streaming.
 struct FirmwareOfferPayload {
-    /// Command type: FirmwareCmd::OFFER.
     uint8_t command;
-    /// SHA-256 of complete image.
-    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-    /// Total image length in bytes.
+    uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];
     uint32_t imageLength;
-    /// Bytes per chunk (except possibly the last).
-    uint16_t chunkSize;
-    /// Number of chunks; at most FIRMWARE_MAX_CHUNKS.
     uint16_t chunkCount;
-    /// DeviceType (device-type.hpp) this image is built to run on. Falls inside the
-    /// signed span below, so a relay cannot retarget a correctly-signed image at a
-    /// device type its signer never intended.
-    uint8_t deviceType;
-    /// The signing time in UTC seconds unless the signer chose one. Inside the
-    /// signed span, so a recorded older image cannot be replayed to roll a device
-    /// back: one running a signed image refuses anything older than it.
-    uint32_t imageVersion;
-    /// Delegation cert and root signature.
-    SignerCert cert;
-    /// Signature over imageSha256|imageLength|chunkSize|chunkCount|deviceType|imageVersion.
-    uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
 } __attribute__((packed));
 
-/// Chunk header prepended to chunk data in a frame.
+/// Header of a CHUNK; FIRMWARE_CHUNK_SIZE bytes of image follow, fewer for the last.
 struct FirmwareChunkHeader {
-    /// Command type: FirmwareCmd::CHUNK.
     uint8_t command;
-    /// Chunk index; at most FIRMWARE_MAX_CHUNKS - 1.
+    /// First bytes of the image id, so a chunk from another run is not written.
+    uint8_t imageIdPrefix[4];
     uint16_t index;
-    /// Bytes in this chunk (chunkSize except possibly last).
-    uint16_t length;
 } __attribute__((packed));
 
-/// Poll: request status for an image.
-struct FirmwarePollPayload {
-    /// Command type: FirmwareCmd::POLL.
-    uint8_t command;
-    /// SHA-256 of image to poll.
-    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-} __attribute__((packed));
-
-/// Status: bitmap of received chunks.
-struct FirmwareStatusPayload {
-    /// Command type: FirmwareCmd::STATUS.
-    uint8_t command;
-    /// SHA-256 of image; matches poll.
-    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-    /// Count of chunks received so far.
-    uint16_t receivedCount;
-    /// Bitmap: bit N set means chunk N received (384 bytes = 3072 bits).
-    uint8_t bitmap[FIRMWARE_BITMAP_BYTES];
-} __attribute__((packed));
-
-/// Complete: reports final result after flashing.
-struct FirmwareCompletePayload {
-    /// Command type: FirmwareCmd::COMPLETE.
-    uint8_t command;
-    /// SHA-256 of image; confirms which update completed.
-    uint8_t imageSha256[FIRMWARE_SHA256_LENGTH];
-    /// FirmwareResult: OK or error code.
-    uint8_t result;
-} __attribute__((packed));
-
-/// Appended after the image's declared length by the signing script. The ESP image
-/// loader ignores bytes past that length, so a device carries its own credentials
-/// in the partition it runs from.
-struct FirmwareTrailer {
-    SignerCert cert;
-    uint8_t imageSignature[FIRMWARE_SIG_LENGTH];
-    uint32_t imageLength;
-    uint32_t imageVersion;
-    uint32_t magic;
-} __attribute__((packed));
-
-/// Identifies a well-formed trailer. "ODNP" little-endian.
-constexpr uint32_t FIRMWARE_TRAILER_MAGIC = 0x504E444F;
-
-/// Bytes the image signature covers: FirmwareOfferPayload from imageSha256 up to
-/// cert. sign_firmware.py reads this and checks the span it packs against it.
-constexpr size_t FIRMWARE_SIGNED_SPAN_LENGTH = 45;
-static_assert(offsetof(FirmwareOfferPayload, cert) - offsetof(FirmwareOfferPayload, imageSha256) ==
-                  FIRMWARE_SIGNED_SPAN_LENGTH,
-              "sign_firmware.py packs the signed span to this length");
-
-/// sign_firmware.py reads this and checks the trailer it appends against it.
-constexpr size_t FIRMWARE_TRAILER_LENGTH = 225;
-static_assert(sizeof(FirmwareTrailer) == FIRMWARE_TRAILER_LENGTH,
-              "sign_firmware.py appends a trailer of this length");
+static_assert(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE <= MAX_PKT_DATA_SIZE,
+              "a chunk must fit one ESP-NOW v2 frame");

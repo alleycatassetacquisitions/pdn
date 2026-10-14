@@ -31,9 +31,9 @@ void FirmwareUpdate::onStateMounted(Device* device) {
 }
 
 void FirmwareUpdate::onStateLoop(Device* device) {
-    // beginSeeding() failing (unsigned device, unreadable trailer) leaves
-    // isSeeding() false from the first tick, which reads the same as a run
-    // that already ended: straight back to the host screen.
+    // beginSeeding() failing (no readable running image) leaves isSeeding()
+    // false from the first tick, which reads the same as a run that already
+    // ended: straight back to the host screen.
     if (!firmwareUpdateManager->isSeeding()) {
         transitionToIdleState = true;
     }

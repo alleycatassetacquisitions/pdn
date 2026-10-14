@@ -19,7 +19,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/firmware-update-manager.hpp"
-#include "device/firmware-root-key.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -148,8 +147,8 @@ static void setup() {
     wifiConfig    = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE, FIRMWARE_STORE_NVS_NAMESPACE});
-    firmwareStore = new Esp32S3FirmwareStore(storageDriver);
+    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
+    firmwareStore = new Esp32S3FirmwareStore();
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -191,7 +190,7 @@ static void setup() {
     // Constructed before the apps because the Idle app takes it. Offers are
     // only judged from exec() in loop(), after loadAppConfig has run.
     firmwareUpdateManager = new FirmwareUpdateManager(
-        peerCommsDriver, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
+        peerCommsDriver, firmwareStore,
         []() {
             // Only the Idle app's resting screen is a safe moment to take an
             // image. A state machine that is not the active app has no current
@@ -202,8 +201,7 @@ static void setup() {
             RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
             return rdc->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::DISCONNECTED &&
                    rdc->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::DISCONNECTED;
-        },
-        fdn->getDeviceType());
+        });
 
     // Apps
     idleApp = new Idle(

@@ -20,7 +20,7 @@ endif()
 # requirements, and these sources reach past them: esp_core_dump_* for the crash
 # logger, nvs for the preferences driver, esp_wifi for ESP-NOW, esp_http_client
 # and esp_netif for uploads, driver for UART/LEDC/RMT, and app_update,
-# esp_app_format, esp_partition and mbedtls for firmware distribution. The
+# bootloader_support, esp_app_format and esp_partition for firmware distribution. The
 # three managed components are injected by the component manager, so they are
 # deliberately not listed here.
 idf_component_register(
@@ -28,6 +28,7 @@ idf_component_register(
     INCLUDE_DIRS "." "${PDN_DEVICE}"
     REQUIRES
         app_update
+        bootloader_support
         driver
         esp_app_format
         esp_event
@@ -37,6 +38,5 @@ idf_component_register(
         esp_timer
         esp_wifi
         espcoredump
-        mbedtls
         nvs_flash
 )

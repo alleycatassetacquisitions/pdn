@@ -25,12 +25,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install platformio
     
-    - name: Install mbedTLS
-      # firmware-verify.cpp signs and verifies with mbedcrypto, a system package
-      # rather than a lib_dep. The ESP32 builds use ESP-IDF's mbedtls
-      # component, so only the native envs need this.
-      run: sudo apt-get update && sudo apt-get install -y libmbedtls-dev
-
     - name: Create WiFi credentials file for CI
       run: |
         cp wifi_credentials.ini.example wifi_credentials.ini
@@ -113,12 +107,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install platformio
     
-    - name: Install mbedTLS
-      # firmware-verify.cpp signs and verifies with mbedcrypto, a system package
-      # rather than a lib_dep. The ESP32 builds use ESP-IDF's mbedtls
-      # component, so only the native envs need this.
-      run: sudo apt-get update && sudo apt-get install -y libmbedtls-dev
-
     - name: Create WiFi credentials file for CI
       run: |
         cp wifi_credentials.ini.example wifi_credentials.ini

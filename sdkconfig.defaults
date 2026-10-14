@@ -57,3 +57,11 @@ CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0
+
+# Updates must be signed by a key that also signed the running image; esp_ota_end
+# checks it. RSA-3072 is the only scheme the ESP32-S3 offers for this. Images are
+# signed after the build by scripts/sign_image.py, not by the IDF build.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n

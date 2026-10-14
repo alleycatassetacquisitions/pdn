@@ -2,7 +2,6 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
-#include "device/firmware-root-key.hpp"
 #include "device/firmware-update-manager.hpp"
 #include <array>
 #include <cstring>
@@ -32,7 +31,7 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
     // holding a manager that would fault on the first offer it heard.
     if (firmwareStore != nullptr) {
         this->firmwareUpdateManager = new FirmwareUpdateManager(
-            peerComms, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
+            peerComms, firmwareStore,
             [this]() {
                 State* current = getCurrentState();
                 bool interruptible = current != nullptr && current->isInterruptible();
@@ -40,8 +39,7 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
                 return interruptible && !cableConnected;
-            },
-            pdn->getDeviceType());
+            });
     }
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
