@@ -843,6 +843,10 @@ TEST_F(IdleStateTests, firmwareHoldStartsAnUpdate) {
     idleFirmwareHoldStartsAnUpdate(this);
 }
 
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
+    pairingCodeFirmwareHoldStartsAnUpdate(this);
+}
+
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
 }

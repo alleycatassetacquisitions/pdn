@@ -1,5 +1,6 @@
 #include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
+#include "device/firmware-update-state.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
 #include "game/quickdraw-requests.hpp"
@@ -74,6 +75,12 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
 }
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
+    // A bench of fresh devices sits here, so a seed run can start here too.
+    // longPressedMillis() reports a hold still in progress, so this fires before
+    // the release that would otherwise commit a digit.
+    if (pdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
+        transitionToFirmwareUpdateState = true;
+    }
     if(shouldRender) {
         if(currentDigitIndex == 0) {
             pdn->getDisplay()->invalidateScreen()->
@@ -122,9 +129,14 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
+    transitionToFirmwareUpdateState = false;
     pdn->getLightManager()->stopAnimation();
 }
 
 bool PlayerRegistrationState::transitionToUserFetch() {
     return transitionToUserFetchState;
+}
+
+bool PlayerRegistrationState::transitionToFirmwareUpdate() const {
+    return transitionToFirmwareUpdateState;
 }

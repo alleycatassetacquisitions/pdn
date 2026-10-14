@@ -1,4 +1,5 @@
 #include "apps/idle/idle-states.hpp"
+#include "device/firmware-update-state.hpp"
 #include "utils/display-utils.hpp"
 #include "device/drivers/logger.hpp"
 

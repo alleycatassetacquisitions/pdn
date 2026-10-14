@@ -59,7 +59,6 @@ private:
     bool transitionToFirmwareUpdateState = false;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-    static constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 };
 
 // ---------------------------------------------------------------------------

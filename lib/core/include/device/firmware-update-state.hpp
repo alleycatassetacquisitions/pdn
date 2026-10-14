@@ -5,6 +5,10 @@
 class Device;
 class FirmwareUpdateManager;
 
+/// How long the secondary button is held on a screen that offers it before the
+/// device starts seeding its own image.
+constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
+
 /// Draws a static "UPDATING" label and waits out the seed run. Inherits State
 /// rather than TypedState because it reads nothing beyond the accessors Device
 /// itself provides, which lets the PDN and FDN host the same object.

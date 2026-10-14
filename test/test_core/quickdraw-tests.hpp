@@ -11,6 +11,8 @@
 #include "id-generator.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
+#include "apps/player-registration/player-registration-states.hpp"
+#include "device/firmware-update-state.hpp"
 #include "apps/handshake/handshake.hpp"
 #include "apps/handshake/handshake-states.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
@@ -160,6 +162,25 @@ inline void idleFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(5000));
     suite->idleState->onStateLoop(&suite->device);
     EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
+}
+
+// A fresh device on its pairing-code screen starts a seed run on the same hold
+// as Idle; a shorter hold does not.
+inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1));
+    registration.onStateLoop(&suite->device);
+    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+    registration.onStateLoop(&suite->device);
+    EXPECT_TRUE(registration.transitionToFirmwareUpdate());
+
+    registration.onStateDismounted(&suite->device);
+    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
 }
 
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received

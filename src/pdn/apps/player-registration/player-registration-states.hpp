@@ -16,6 +16,7 @@ enum PlayerRegistrationStateId {
     CHOOSE_ROLE = 3,
     ALLEGIANCE_PICKER = 4,
     WELCOME_MESSAGE = 5,
+    REGISTRATION_FIRMWARE_UPDATE = 6,
 };
 
 class PlayerRegistrationState : public TypedState<PDN> {
@@ -27,9 +28,12 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToUserFetch();
+    /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
+    bool transitionToFirmwareUpdate() const;
 
 private:
     bool transitionToUserFetchState = false;
+    bool transitionToFirmwareUpdateState = false;
     bool shouldRender = false;
     Player* player;
     MatchManager* matchManager;

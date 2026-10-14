@@ -123,7 +123,6 @@ private:
     bool transitionToSymbolState = false;
 
     bool transitionToFirmwareUpdateState = false;
-    static constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
     // void serialEventCallbacks(const std::string& message);
 };

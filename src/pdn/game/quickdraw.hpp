@@ -67,6 +67,8 @@ private:
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    // Not owned: an entry in stateMap, kept for the firmware eligibility check.
+    PlayerRegistrationApp* playerRegistrationApp = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing

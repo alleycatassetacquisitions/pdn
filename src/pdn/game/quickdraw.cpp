@@ -35,7 +35,10 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
             peerComms, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
             [this]() {
                 State* current = getCurrentState();
-                bool idle = current != nullptr && current->getStateId() == IDLE;
+                // Idle, or a fresh device still on its pairing-code screen.
+                bool idle = current != nullptr &&
+                            (current->getStateId() == IDLE ||
+                             (current == playerRegistrationApp && playerRegistrationApp->isOnPairingCodeEntry()));
                 bool cableConnected =
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
@@ -320,7 +323,9 @@ FirmwareUpdateManager* Quickdraw::getFirmwareUpdateManager() {
 void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
-    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    PlayerRegistrationApp* playerRegistration =
+        new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager, firmwareUpdateManager);
+    playerRegistrationApp = playerRegistration;
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);

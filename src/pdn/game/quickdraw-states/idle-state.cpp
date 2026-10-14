@@ -1,4 +1,5 @@
 #include "device/drivers/serial-wrapper.hpp"
+#include "device/firmware-update-state.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
