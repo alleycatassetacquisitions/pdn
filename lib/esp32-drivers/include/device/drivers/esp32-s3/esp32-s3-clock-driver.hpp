@@ -1,7 +1,8 @@
 #pragma once
 
 #include "device/drivers/driver-interface.hpp"
-#include <Arduino.h>
+
+#include <esp_timer.h>
 
 class Esp32S3Clock : public PlatformClockDriverInterface {
 public:
@@ -20,6 +21,9 @@ public:
 
 
     unsigned long milliseconds() override {
-        return millis();
+        // esp_timer counts microseconds since boot in 64 bits. The division only
+        // converts units; narrowing to 32 bits is what makes this wrap where a
+        // 32-bit millisecond count does.
+        return static_cast<unsigned long>(esp_timer_get_time() / 1000);
     }
 };

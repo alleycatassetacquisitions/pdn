@@ -108,13 +108,13 @@ public:
         }
         
         LOG_I(WM_TAG, "Switching to ESP-NOW mode...");
-        
+
         // Step 1: Disconnect HTTP client first (releases WiFi AP connection but keeps radio on)
         if (httpClient->getHttpClientState() == HttpClientState::CONNECTED) {
             LOG_D(WM_TAG, "Disconnecting HTTP client...");
             httpClient->setHttpClientState(HttpClientState::DISCONNECTED);
         }
-        
+
         // Step 2: Connect ESP-NOW (will set WiFi to station mode on fixed channel)
         LOG_D(WM_TAG, "Connecting ESP-NOW...");
         peerComms->setPeerCommsState(PeerCommsState::CONNECTED);

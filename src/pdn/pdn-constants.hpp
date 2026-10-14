@@ -3,8 +3,11 @@
 #include <cstdint>
 
 // --- GPIO pin assignments ---
-constexpr uint8_t primaryButtonPin   = 15;
-constexpr uint8_t secondaryButtonPin = 16;
+// The primary is the small top button, the secondary the big bottom one. Nothing
+// else records which is which, and on the pairing screen it is the difference
+// between cycling a digit and committing it.
+constexpr uint8_t primaryButtonPin   = 15; // SMALL TOP BUTTON
+constexpr uint8_t secondaryButtonPin = 16; // BIG BOTTOM BUTTON
 constexpr uint8_t motorPin           = 17;
 constexpr uint8_t RXr                = 41;
 constexpr uint8_t RXt                = 40;

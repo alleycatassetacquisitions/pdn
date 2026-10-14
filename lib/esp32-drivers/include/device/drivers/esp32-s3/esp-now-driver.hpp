@@ -4,16 +4,27 @@
 #include <vector>
 #include <queue>
 #include <unordered_map>
-#include <Arduino.h>
-#include <WiFi.h>
+#include <esp_event.h>
+#include <esp_heap_caps.h>
+#include <esp_mac.h>
+#include <esp_netif.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include <esp_mac.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "device/drivers/logger.hpp"
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "esp32-driver-constants.hpp"
+
+// sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, cluster size 1
+// included, so a build without PSRAM support fails here rather than at every
+// send. A board whose PSRAM fails at boot still boots (SPIRAM_IGNORE_NOTFOUND),
+// and then every send fails its allocation.
+#if !defined(CONFIG_SPIRAM)
+#error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
+#endif
 
 #define DEBUG_PRINT_ESP_NOW 0
 
@@ -62,27 +73,71 @@ public:
     }
 
     void connect() override {
-        // Set WiFi to station mode
-        WiFi.mode(WIFI_STA);
-        
-        // Disconnect from any AP but keep WiFi radio ON (false = keep radio running)
-        // ESP-NOW requires the WiFi radio to be active!
-        WiFi.disconnect(false);
-        
-        // Small delay to let WiFi stabilize after mode change
-        delay(100);
+        // The STA netif must exist before esp_wifi_start(): esp_netif_start() runs
+        // only off WIFI_EVENT_STA_START, so a netif created after that event has
+        // been posted never starts, never gets an MTU, and DHCP refuses it.
+        // ESP-NOW needs no netif; the HTTP driver's WiFi excursion does. This
+        // runs first on every boot, but connect() re-runs on each return to
+        // ESP-NOW mode, so the steps are guarded rather than assumed-once.
+        wifi_mode_t currentMode;
+        if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
+            // Both are checked because esp_netif_create_default_wifi_sta below
+            // aborts through ESP_ERROR_CHECK rather than returning, so a failure
+            // here would panic on the boot path instead of leaving a dead radio.
+            // Already-created is the normal case when something else got here
+            // first, and is not an error.
+            const esp_err_t netifErr = esp_netif_init();
+            const esp_err_t loopErr = esp_event_loop_create_default();
+            if (netifErr != ESP_OK && netifErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_netif_init failed: %s", esp_err_to_name(netifErr));
+                return;
+            }
+            if (loopErr != ESP_OK && loopErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_event_loop_create_default failed: %s", esp_err_to_name(loopErr));
+                return;
+            }
+            wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+            esp_err_t initErr = esp_wifi_init(&config);
+            if (initErr != ESP_OK) {
+                LOG_E("ENC", "esp_wifi_init failed: %s", esp_err_to_name(initErr));
+                return;
+            }
+            // RAM rather than flash, so radio config is not rewritten to NVS on
+            // every change.
+            esp_wifi_set_storage(WIFI_STORAGE_RAM);
+        }
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        // Same ifkey guard the HTTP driver uses, so whichever arrives first
+        // creates it once. Creating it also installs IDF's default STA event
+        // handlers, which is what makes esp_netif_start() fire below.
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == nullptr) {
+            esp_netif_create_default_wifi_sta();
+        }
+        esp_wifi_start();
+
+        // Drops the AP association without stopping the radio, which ESP-NOW needs
+        // left running.
+        esp_wifi_disconnect();
+
+        // Settle between the mode change and the channel pin: esp_wifi_set_channel
+        // fails while a connect or scan is in flight.
+        static constexpr uint32_t WIFI_SETTLE_MS = 100;
+        vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
         
         // Set the channel using ESP-IDF API for reliability
         esp_err_t err = esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
         if (err != ESP_OK) {
             LOG_E("ENC", "Failed to set channel %d: %s", ESPNOW_CHANNEL, esp_err_to_name(err));
         }
-        
-        // Verify the channel was set correctly
+
         uint8_t primary_channel;
         wifi_second_chan_t secondary_channel;
         esp_wifi_get_channel(&primary_channel, &secondary_channel);
-        LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary_channel, ESPNOW_CHANNEL);
+        if (primary_channel != ESPNOW_CHANNEL) {
+            LOG_E("ENC", "Channel pin did not take: on %d, wanted %d", primary_channel, ESPNOW_CHANNEL);
+        } else {
+            LOG_I("ENC", "WiFi channel set to: %d", primary_channel);
+        }
 
         initializeEspNow();
         peerCommsState = PeerCommsState::CONNECTED;
@@ -137,7 +192,8 @@ public:
         for(int i = 0; i < numInCluster; ++i)
         {
             size_t thisBuffer = std::min(bytesLeft, MAX_PKT_DATA_SIZE);
-            sendBuffers[i] = (uint8_t*)ps_malloc(sizeof(DataPktHdr) + thisBuffer);
+            sendBuffers[i] = static_cast<uint8_t*>(
+                heap_caps_malloc(sizeof(DataPktHdr) + thisBuffer, MALLOC_CAP_SPIRAM));
             if(!sendBuffers[i])
             {
                 //free anything we already allocated
@@ -262,6 +318,9 @@ private:
         uint8_t* data;
         unsigned long mostRecentRecvPktTime;
         uint8_t expectedNextIdx;
+        // The count the allocation was sized for. Later packets in the cluster
+        // are checked against this, never against the count they declare.
+        uint8_t numPktsInCluster;
     };
 
     explicit EspNowDriver(const std::string& name) :
@@ -358,6 +417,17 @@ private:
 
         const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
+        // pktLen sizes the memcpy in copyPacketData and arrives off the air, so
+        // it is checked here rather than trusted: below the header it underflows
+        // the length to a huge size_t, above data_len it reads past the frame, and
+        // above ESP_NOW_MAX_DATA_LEN it overruns a cluster slot of
+        // MAX_PKT_DATA_SIZE, since an ESP-NOW v2 frame can be longer than that.
+        if (pktHdr->pktLen < sizeof(DataPktHdr) || pktHdr->pktLen > data_len ||
+            pktHdr->pktLen > ESP_NOW_MAX_DATA_LEN) {
+            LOG_E("ENC", "Declared pktLen %u invalid for a %i-byte frame\n", pktHdr->pktLen, data_len);
+            return;
+        }
+
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
@@ -394,8 +464,15 @@ private:
         }
 
         DataRecvBuffer newBuffer;
-        newBuffer.data = (uint8_t*)ps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
+        newBuffer.data = static_cast<uint8_t*>(
+            heap_caps_malloc(pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE, MALLOC_CAP_SPIRAM));
+        if (newBuffer.data == nullptr) {
+            LOG_E("ENC", "Failed to allocate %u bytes to reassemble a cluster\n",
+                  pktHdr->numPktsInCluster * MAX_PKT_DATA_SIZE);
+            return;  // no entry recorded, so the rest of the cluster is dropped
+        }
         newBuffer.expectedNextIdx = 1;
+        newBuffer.numPktsInCluster = pktHdr->numPktsInCluster;
         m_recvBuffers[macAddr64] = newBuffer;
     }
 
@@ -424,6 +501,14 @@ private:
 
     bool validatePacketSequence(const DataPktHdr* pktHdr, DataRecvBuffer& recvBuffer, 
                                 std::unordered_map<uint64_t, DataRecvBuffer>::iterator& existingBuffer) {
+        if (pktHdr->numPktsInCluster != recvBuffer.numPktsInCluster ||
+            pktHdr->idxInCluster >= recvBuffer.numPktsInCluster) {
+            LOG_E("ENC", "Pkt claims %u/%u against a buffer sized for %u\n",
+                  pktHdr->idxInCluster, pktHdr->numPktsInCluster, recvBuffer.numPktsInCluster);
+            free(recvBuffer.data);
+            m_recvBuffers.erase(existingBuffer);
+            return false;
+        }
         if(pktHdr->idxInCluster != recvBuffer.expectedNextIdx) {
             LOG_W("ENC", "Received pkt %u when expecting %u. Must have missed a packet in cluster.\n",
                   recvBuffer.expectedNextIdx, pktHdr->idxInCluster);
