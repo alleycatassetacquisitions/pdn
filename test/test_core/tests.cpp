@@ -847,6 +847,14 @@ TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
 }
 
+TEST_F(IdleStateTests, firmwareHoldCarriedInDoesNotFire) {
+    idleFirmwareHoldCarriedInDoesNotFire(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeIsInterruptibleUntilTouched) {
+    pairingCodeIsInterruptibleUntilTouched(this);
+}
+
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
 }

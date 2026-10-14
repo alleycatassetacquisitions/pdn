@@ -3,6 +3,19 @@
 #include "device/device.hpp"
 #include "device/firmware-update-manager.hpp"
 
+bool FirmwareUpdateHold::poll(Device* device) {
+    // longPressedMillis() is 0 whenever the button is not in a long press.
+    const unsigned long heldMs = device->getSecondaryButton()->longPressedMillis();
+    if (heldMs == 0) {
+        releasedSinceMount = true;
+    }
+    return releasedSinceMount && heldMs >= FIRMWARE_UPDATE_HOLD_MS;
+}
+
+void FirmwareUpdateHold::reset() {
+    releasedSinceMount = false;
+}
+
 FirmwareUpdate::FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdateManager)
     : State(stateId)
     , firmwareUpdateManager(firmwareUpdateManager) {}
@@ -20,7 +33,7 @@ void FirmwareUpdate::onStateMounted(Device* device) {
 void FirmwareUpdate::onStateLoop(Device* device) {
     // beginSeeding() failing (unsigned device, unreadable trailer) leaves
     // isSeeding() false from the first tick, which reads the same as a run
-    // that already ended: straight back to idle.
+    // that already ended: straight back to the host screen.
     if (!firmwareUpdateManager->isSeeding()) {
         transitionToIdleState = true;
     }

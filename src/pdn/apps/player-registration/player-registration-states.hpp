@@ -2,6 +2,7 @@
 
 #include "device/pdn.hpp"
 #include "state/state.hpp"
+#include "device/firmware-update-state.hpp"
 #include "game/player.hpp"
 #include "game/match-manager.hpp"
 #include "device/wireless-manager.hpp"
@@ -16,7 +17,8 @@ enum PlayerRegistrationStateId {
     CHOOSE_ROLE = 3,
     ALLEGIANCE_PICKER = 4,
     WELCOME_MESSAGE = 5,
-    REGISTRATION_FIRMWARE_UPDATE = 6,
+    // Past every QuickdrawStateId: the CLI names states from one table.
+    REGISTRATION_FIRMWARE_UPDATE = 31,
 };
 
 class PlayerRegistrationState : public TypedState<PDN> {
@@ -28,12 +30,18 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToUserFetch();
-    /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
+    /**
+     * Every PDN boots to this screen. Interruptible until someone presses a
+     * button here, so an update never restarts a device mid-way through a code.
+     */
+    bool isInterruptible() const override { return !codeEntryStarted; }
 
 private:
     bool transitionToUserFetchState = false;
     bool transitionToFirmwareUpdateState = false;
+    bool codeEntryStarted = false;
+    FirmwareUpdateHold firmwareUpdateHold;
     bool shouldRender = false;
     Player* player;
     MatchManager* matchManager;

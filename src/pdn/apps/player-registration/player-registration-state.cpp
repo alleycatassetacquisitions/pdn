@@ -1,6 +1,5 @@
 #include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
-#include "device/firmware-update-state.hpp"
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
 #include "game/quickdraw-requests.hpp"
@@ -21,6 +20,8 @@ PlayerRegistrationState::~PlayerRegistrationState() {
 
 void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting player registration");
+    // A failed fetch comes back here in WiFi mode, deaf to firmware offers.
+    pdn->getWirelessManager()->enablePeerCommsMode();
 
     pdn->getDisplay()->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
@@ -32,6 +33,7 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
+        playerRegistration->codeEntryStarted = true;
         playerRegistration->currentDigit++;
         if(playerRegistration->currentDigit > 9) {
             playerRegistration->currentDigit = 0;
@@ -42,6 +44,7 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     pdn->getSecondaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
+        playerRegistration->codeEntryStarted = true;
         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
 
         playerRegistration->currentDigitIndex++;
@@ -75,10 +78,8 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
 }
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
-    // A bench of fresh devices sits here, so a seed run can start here too.
-    // longPressedMillis() reports a hold still in progress, so this fires before
-    // the release that would otherwise commit a digit.
-    if (pdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
+    // Every PDN boots here, so a bench of them can be updated from this screen.
+    if (firmwareUpdateHold.poll(pdn)) {
         transitionToFirmwareUpdateState = true;
     }
     if(shouldRender) {
@@ -130,6 +131,8 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     currentDigit = 0;
     transitionToUserFetchState = false;
     transitionToFirmwareUpdateState = false;
+    codeEntryStarted = false;
+    firmwareUpdateHold.reset();
     pdn->getLightManager()->stopAnimation();
 }
 

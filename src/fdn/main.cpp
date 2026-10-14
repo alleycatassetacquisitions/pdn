@@ -193,11 +193,10 @@ static void setup() {
     firmwareUpdateManager = new FirmwareUpdateManager(
         peerCommsDriver, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
         []() {
-            // Only the Idle app resting on IdleState is a safe moment to take an
+            // Only the Idle app's resting screen is a safe moment to take an
             // image. A state machine that is not the active app has no current
             // state, so this also rules out every other app.
-            State* current = idleApp->getCurrentState();
-            if (current == nullptr || current->getStateId() != IdleStateId::IDLE) {
+            if (!idleApp->isInterruptible()) {
                 return false;
             }
             RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();

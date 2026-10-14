@@ -1,5 +1,4 @@
 #include "apps/idle/idle-states.hpp"
-#include "device/firmware-update-state.hpp"
 #include "utils/display-utils.hpp"
 #include "device/drivers/logger.hpp"
 
@@ -57,9 +56,7 @@ void IdleState::onStateLoop(FDN* fdn) {
     }
     wasConnected = nowConnected;
 
-    // The operator's firmware-update trigger, the same gesture as the PDN's:
-    // the secondary button held for FIRMWARE_UPDATE_HOLD_MS.
-    if (fdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
+    if (firmwareUpdateHold.poll(fdn)) {
         transitionToFirmwareUpdateState = true;
     }
 }
@@ -70,6 +67,7 @@ void IdleState::onStateDismounted(FDN* fdn) {
     uploadTimer.invalidate();
     connectionResolved = false;
     transitionToFirmwareUpdateState = false;
+    firmwareUpdateHold.reset();
 }
 
 bool IdleState::transitionToPlayerDetected() {

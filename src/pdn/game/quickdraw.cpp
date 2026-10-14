@@ -24,9 +24,9 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
     this->shootoutManager_->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager_);
 
-    // Idle alone doesn't rule out a cable: a device can sit in Idle with a
-    // peer chained for the whole match, so both conditions are checked
-    // separately rather than folded into one state check.
+    // An interruptible screen alone doesn't rule out a cable: a device can sit
+    // in Idle with a peer chained for the whole match, so both conditions are
+    // checked separately rather than folded into one state check.
     // No store means no flash to distribute from or into — the headless
     // simulator's case — so the whole feature stays unbuilt rather than
     // holding a manager that would fault on the first offer it heard.
@@ -35,14 +35,11 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
             peerComms, firmwareStore, FIRMWARE_ROOT_PUBLIC_KEY,
             [this]() {
                 State* current = getCurrentState();
-                // Idle, or a fresh device still on its pairing-code screen.
-                bool idle = current != nullptr &&
-                            (current->getStateId() == IDLE ||
-                             (current == playerRegistrationApp && playerRegistrationApp->isOnPairingCodeEntry()));
+                bool interruptible = current != nullptr && current->isInterruptible();
                 bool cableConnected =
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
-                return idle && !cableConnected;
+                return interruptible && !cableConnected;
             },
             pdn->getDeviceType());
     }
@@ -325,7 +322,6 @@ void Quickdraw::populateStateMap() {
     // Sub-state machines for player registration and handshake
     PlayerRegistrationApp* playerRegistration =
         new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager, firmwareUpdateManager);
-    playerRegistrationApp = playerRegistration;
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);

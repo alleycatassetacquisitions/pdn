@@ -26,8 +26,6 @@ public:
 
     // Exit conditions checked by parent state machine
     bool readyForGameplay();
-    /** True while the pairing-code entry screen is showing. */
-    bool isOnPairingCodeEntry();
 
 private:
     Player* player;

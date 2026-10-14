@@ -98,6 +98,11 @@ public:
         return currentState;
     }
 
+    /** Answers for the state this machine is running; false when none is mounted. */
+    bool isInterruptible() const override {
+        return currentState != nullptr && currentState->isInterruptible();
+    }
+
     void onStateMounted(Device *PDN) override {
         initialize(PDN);
     }

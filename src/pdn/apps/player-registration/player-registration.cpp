@@ -67,8 +67,8 @@ void PlayerRegistrationApp::populateStateMap() {
     stateMap.push_back(chooseRole);
     stateMap.push_back(welcomeMessageState);
 
-    // Inside this app rather than beside Idle: leaving and re-mounting the app
-    // would rebuild every state above.
+    // Hosted here, not in Quickdraw's map: re-mounting this app re-runs
+    // populateStateMap, which appends a duplicate set of states.
     if (firmwareUpdateManager != nullptr) {
         FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(REGISTRATION_FIRMWARE_UPDATE, firmwareUpdateManager);
         playerRegistration->addTransition(new StateTransition(
@@ -77,10 +77,6 @@ void PlayerRegistrationApp::populateStateMap() {
             new StateTransition([firmwareUpdate]() { return firmwareUpdate->transitionToIdle(); }, playerRegistration));
         stateMap.push_back(firmwareUpdate);
     }
-}
-
-bool PlayerRegistrationApp::isOnPairingCodeEntry() {
-    return currentState != nullptr && currentState->getStateId() == PlayerRegistrationStateId::PLAYER_REGISTRATION;
 }
 
 bool PlayerRegistrationApp::readyForGameplay() {

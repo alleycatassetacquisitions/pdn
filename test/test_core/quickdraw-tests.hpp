@@ -148,39 +148,82 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-// Test: holding the secondary button for the full hold time in Idle starts a
+// Test: a 5s hold of the secondary button that starts on Idle starts a
 // firmware update; anything shorter does not.
 inline void idleFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     suite->idleState->onStateMounted(&suite->device);
 
-    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(4999));
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
+        .WillOnce(Return(0))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+    suite->idleState->onStateLoop(&suite->device);
     suite->idleState->onStateLoop(&suite->device);
     EXPECT_FALSE(suite->idleState->transitionToFirmwareUpdate());
-
-    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(5000));
     suite->idleState->onStateLoop(&suite->device);
     EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
 }
 
-// A fresh device on its pairing-code screen starts a seed run on the same hold
-// as Idle; a shorter hold does not.
+// Test: a hold already past the threshold when Idle mounts (carried through
+// power-on, or back from a run that ended at once) does not fire until the
+// button has been let go.
+inline void idleFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    suite->idleState->onStateMounted(&suite->device);
+
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS + 2000))
+        .WillOnce(Return(0))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+    suite->idleState->onStateLoop(&suite->device);
+    EXPECT_FALSE(suite->idleState->transitionToFirmwareUpdate());
+    suite->idleState->onStateLoop(&suite->device);
+    suite->idleState->onStateLoop(&suite->device);
+    EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
+}
+
+// The pairing-code screen raises the firmware-update transition at Idle's hold
+// threshold, not before, and clears it on dismount.
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);
     registration.onStateMounted(&suite->device);
 
-    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1));
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
+        .WillOnce(Return(0))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+    registration.onStateLoop(&suite->device);
     registration.onStateLoop(&suite->device);
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
-
-    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis()).WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
     registration.onStateLoop(&suite->device);
     EXPECT_TRUE(registration.transitionToFirmwareUpdate());
 
     registration.onStateDismounted(&suite->device);
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+}
+
+// The pairing-code screen takes firmware updates only until someone starts
+// entering a code there.
+inline void pairingCodeIsInterruptibleUntilTouched(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    parameterizedCallbackFunction primaryClick = nullptr;
+    void* primaryContext = nullptr;
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, ButtonInteraction::CLICK))
+        .WillOnce(DoAll(SaveArg<0>(&primaryClick), SaveArg<1>(&primaryContext)));
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+    EXPECT_TRUE(registration.isInterruptible());
+
+    ASSERT_NE(primaryClick, nullptr);
+    primaryClick(primaryContext);
+    EXPECT_FALSE(registration.isInterruptible());
+
+    registration.onStateDismounted(&suite->device);
+    EXPECT_TRUE(registration.isInterruptible());
 }
 
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received

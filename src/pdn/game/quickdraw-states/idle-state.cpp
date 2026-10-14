@@ -1,5 +1,4 @@
 #include "device/drivers/serial-wrapper.hpp"
-#include "device/firmware-update-state.hpp"
 #include "device/remote-device-coordinator.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw.hpp"
@@ -101,10 +100,7 @@ void Idle::onStateLoop(PDN* pdn) {
         matchManager->clearCurrentMatch();
     }
 
-    // The operator's firmware-update trigger: the secondary button held for
-    // FIRMWARE_UPDATE_HOLD_MS. longPressedMillis() reports a hold still in
-    // progress and 0 once released.
-    if (pdn->getSecondaryButton()->longPressedMillis() >= FIRMWARE_UPDATE_HOLD_MS) {
+    if (firmwareUpdateHold.poll(pdn)) {
         transitionToFirmwareUpdateState = true;
     }
 }
@@ -118,6 +114,7 @@ void Idle::onStateDismounted(PDN* pdn) {
     pdn->getSecondaryButton()->removeButtonCallbacks();
     transitionToSymbolState = false;
     transitionToFirmwareUpdateState = false;
+    firmwareUpdateHold.reset();
 }
 
 bool Idle::transitionToDuelCountdown() {
