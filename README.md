@@ -84,11 +84,18 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    platformio run --target upload
    ```
 
-### Migration from pioarduino
+### IDE extensions
 
-This project builds on PlatformIO's own espressif32 platform with `framework = espidf`; neither pioarduino nor the Arduino framework is used. If you installed the pioarduino IDE extension, uninstall it, install the PlatformIO IDE extension, and restart your IDE.
+Builds always use **PlatformIO Core** and PlatformIO's official [espressif32](https://github.com/platformio/platform-espressif32) platform (see `platformio.ini`). You can build and flash from the terminal without any extension.
 
-pioarduino and the official platform install into the same package directories, so remove the old packages once:
+For in-editor integration, either extension (PlatformIO/pioarduino) is fine; pick based on your editor:
+
+- **Microsoft VS Code**: [PlatformIO IDE](https://platformio.org/install/ide?install=vscode).
+- **Other VS Code–compatible editors** (Cursor, VSCodium, etc.): PlatformIO IDE is unavailable there because it depends on Microsoft's C/C++ IntelliSense. Use the [pioarduino IDE](https://github.com/pioarduino/pioarduino-vscode-ide) extension instead—it still drives PlatformIO Core against this repo's `platformio.ini`.
+
+### Cleaning up after the pioarduino platform
+
+If you previously built with the pioarduino *platform* package, it and the official platform install into the same directories. Remove the old packages once:
 
 ```bash
 # Remove old platform packages
