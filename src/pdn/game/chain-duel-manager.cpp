@@ -8,9 +8,9 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     : player(player)
     , wirelessManager(wirelessManager)
     , rdc(rdc)
-    , resender(wirelessManager, Resender::BudgetPolicy::EVERY_ROUND)
-    // No abandon handler: a role announce that runs out of retries is repaired by
-    // the backstop in sync(), not by a callback.
+    , resender(wirelessManager)
+    // No abandon handler: a role announce that ran out its span is repaired by the
+    // backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr) {
     // The radio's delivery report is this channel's ack; there is no reply
     // packet. Latency is read here because the channel reports delivery but does
@@ -532,7 +532,7 @@ void ChainDuelManager::sync() {
     resender.sync();
 
     // Backstop for both announces. A settled chain raises no chain-state events,
-    // so one that spent its budget has no other way back — and losing either is
+    // so one that ran out its span has no other way back — and losing either is
     // terminal for the round: the opponent refuses the duel, the supporter never
     // learns its champion. Cheap once delivered; each side's stamp gates it.
     if (roleAnnounceBackstopTimer.expired()) {
