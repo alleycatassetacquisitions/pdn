@@ -7,7 +7,8 @@
 #define TAG "INPUT_IDLE_STATE"
 
 InputIdleState::InputIdleState(HandshakeWirelessManager* handshakeWirelessManager, SerialIdentifier jack)
-    : State(HandshakeStateId::INPUT_IDLE_STATE), jack(jack) {
+    : TypedState<Device>(HandshakeStateId::INPUT_IDLE_STATE)
+    , jack(jack) {
     this->handshakeWirelessManager = handshakeWirelessManager;
 }
 

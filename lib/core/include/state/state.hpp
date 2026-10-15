@@ -47,12 +47,10 @@ public:
  *
  * The process looks like this:
  *
- * onStateMounted: Invoked exactly one time the first time this state becomes
- * the "current" state in a state machine.
+ * onStateMounted: Invoked each time this state becomes the "current" state in
+ * a state machine.
  *  - this method should include "setup" code for a state like starting timers,
  *  attaching callbacks to hardware, etc.
- *  - when mounting a new state is also when we register valid Serial messages for
- *  sending and receiving.
  *
  * onStateLoop: Invoked 1 to N times.
  * - this method is where the bulk of the functionality of a state occurs in.
@@ -64,12 +62,11 @@ public:
  * the conditions for state transitions - ie invalidating timers and resetting hardware
  * peripherals on the PDN.
  *
- * State inherits StateLifecycle, which is the dispatch interface StateMachine uses.
- * The mount/loop/dismount bridge methods are private so state implementers only ever
- * see and override the onState* user API below.
+ * State holds the transition machinery and the state id. Its lifecycle bridge is
+ * pure and private: only TypedState<DeviceT> (defined below) supplies it, so every
+ * concrete state goes through TypedState, and only StateMachine calls it.
  *
- * Device-specific states should inherit TypedState<DeviceT> (defined below) which
- * delivers a typed DeviceT* to every onState* method, eliminating manual casting.
+ * Device-agnostic states use TypedState<Device>.
  */
 class State : public StateLifecycle {
 public:
@@ -110,12 +107,6 @@ public:
 
     virtual bool isTerminalState() { return false; }
 
-    // --- Device*-typed user API ---
-    // Override these in derived classes.
-    virtual void onStateMounted(Device* device) {}
-    virtual void onStateLoop(Device* device) {}
-    virtual void onStateDismounted(Device* device) {}
-
 protected:
     std::vector<StateTransition*> transitions;
 
@@ -126,17 +117,15 @@ private:
     };
     std::vector<AppTransitionEntry> appTransitions;
 
-    // StateLifecycle bridge — private so state subclasses cannot call or override
-    // these entry points. StateMachine dispatches through StateLifecycle* to reach them.
-    void mount(Device* device) override    { onStateMounted(device); }
-    void loop(Device* device) override     { onStateLoop(device); }
-    void dismount(Device* device) override { onStateDismounted(device); }
-
     StateId name;
+
+    void mount(Device* device) override = 0;
+    void loop(Device* device) override = 0;
+    void dismount(Device* device) override = 0;
 };
 
 /*
- * TypedState<DeviceT> is the preferred base for device-specific states.
+ * TypedState<DeviceT> is the base every concrete state inherits.
  *
  * It overrides the StateLifecycle bridge (mount/loop/dismount) as private final,
  * performs a single static_cast<DeviceT*> per lifecycle call, and forwards to
@@ -152,8 +141,8 @@ private:
  *       void onStateLoop(PDN* pdn) override    { ... }
  *   };
  *
- * Device-agnostic states (e.g. handshake states) should inherit State directly
- * and override onStateMounted(Device*) as before.
+ * Device-agnostic states (e.g. handshake states) use TypedState<Device>, whose
+ * cast is an identity conversion.
  */
 template<typename DeviceT>
 class TypedState : public State {

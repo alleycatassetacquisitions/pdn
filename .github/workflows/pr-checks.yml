@@ -18,7 +18,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'  # pioarduino requires Python 3.10-3.13
+        python-version: '3.11'
     
     - name: Install PlatformIO
       run: |
@@ -63,15 +63,12 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'  # pioarduino requires Python 3.10-3.13
+        python-version: '3.11'
     
-    # pioarduino's fork of PlatformIO core, matching the pinned platform. Upstream
-    # core installs its own tool-scons, which the platform deletes as the wrong
-    # version while the build is running from it.
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
-        pip install pioarduino==6.1.19
+        pip install platformio==6.2.0
     
     - name: Create WiFi credentials file for CI
       run: |
@@ -82,6 +79,14 @@ jobs:
     
     - name: Build ESP32-S3 Release
       run: pio run -e esp32-s3_pdn_release
+
+    # IDF compiles with -Werror. FDN sources build in no other env, and debug's
+    # -Og changes which warnings GCC reports, so either can fail on its own.
+    - name: Build FDN Release
+      run: pio run -e esp32-s3_fdn_release
+
+    - name: Build ESP32-S3 Debug
+      run: pio run -e esp32-s3_pdn_debug
   
   # Native CLI build verification (Unix only)
   build-cli:

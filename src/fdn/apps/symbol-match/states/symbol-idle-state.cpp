@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include "apps/symbol-match/symbol-match-states.hpp"
 #include "device/fdn-light-manager.hpp"
@@ -209,8 +210,10 @@ void SymbolIdle::renderSymbolScreen(FDN* fdn) {
 
     d->setGlyphMode(FontMode::TEXT_INVERTED_LARGE);
 
-    int timeLeft = symbolManager->getTimeLeftToRefresh();
-    int minutes  = timeLeft / 60000;
+    // Elapsed can pass the interval before the refresh fires, so floor at zero.
+    // The 99 cap bounds %02d for -Wformat-truncation; the interval is far shorter.
+    int timeLeft = std::max(0, symbolManager->getTimeLeftToRefresh());
+    int minutes = std::min(timeLeft / 60000, 99);
     int seconds  = (timeLeft % 60000) / 1000;
     char buf[6];
     snprintf(buf, sizeof(buf), "%02d:%02d", minutes, seconds);
