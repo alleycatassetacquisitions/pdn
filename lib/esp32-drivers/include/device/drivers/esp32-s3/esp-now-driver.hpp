@@ -294,11 +294,11 @@ private:
 
     explicit EspNowDriver(const std::string& name)
         : PeerCommsDriverInterface(name)
+        , recvMutex(xSemaphoreCreateMutex())
+        , sendMutex(xSemaphoreCreateMutex())
         , m_pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
         , m_maxRetries(5)
-        , m_curRetries(0)
-        , recvMutex(xSemaphoreCreateMutex())
-        , sendMutex(xSemaphoreCreateMutex()) {
+        , m_curRetries(0) {
 
         wifi_promiscuous_filter_t filter = {
             .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};

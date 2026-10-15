@@ -28,11 +28,11 @@ private:
 };
 
 /**
- * Draws a static "UPDATING" label and waits out the seed run. Inherits State
- * rather than TypedState because it reads nothing beyond the accessors Device
- * itself provides, which lets the PDN and FDN host the same class.
+ * Draws a static "UPDATING" label and waits out the seed run. Typed on Device
+ * itself because it reads nothing beyond the accessors Device provides, which
+ * lets the PDN and FDN host the same class.
  */
-class FirmwareUpdate : public State {
+class FirmwareUpdate : public TypedState<Device> {
 public:
     /**
      * stateId is the host state machine's id for this state. Borrows

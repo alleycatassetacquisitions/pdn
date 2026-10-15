@@ -17,7 +17,7 @@ void FirmwareUpdateHold::reset() {
 }
 
 FirmwareUpdate::FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdateManager)
-    : State(stateId)
+    : TypedState<Device>(stateId)
     , firmwareUpdateManager(firmwareUpdateManager) {}
 
 void FirmwareUpdate::onStateMounted(Device* device) {
