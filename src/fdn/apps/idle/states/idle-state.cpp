@@ -55,19 +55,14 @@ void IdleState::onStateLoop(FDN* fdn) {
         connectionResolved = true;
     }
     wasConnected = nowConnected;
-
-    if (firmwareUpdateHold.poll(fdn)) {
-        transitionToFirmwareUpdateState = true;
-    }
 }
 
 void IdleState::onStateDismounted(FDN* fdn) {
     LOG_I(TAG, "Dismounted");
+    (void)fdn;
     fdnConnectWirelessManager->clearCallbacks();
     uploadTimer.invalidate();
     connectionResolved = false;
-    transitionToFirmwareUpdateState = false;
-    firmwareUpdateHold.reset();
 }
 
 bool IdleState::transitionToPlayerDetected() {
@@ -80,8 +75,4 @@ bool IdleState::transitionToConnectionDetected() {
 
 bool IdleState::transitionToUploadPending() {
     return uploadTimer.expired() && !hackedPlayersManager->getPendingUploads().empty();
-}
-
-bool IdleState::transitionToFirmwareUpdate() const {
-    return transitionToFirmwareUpdateState;
 }

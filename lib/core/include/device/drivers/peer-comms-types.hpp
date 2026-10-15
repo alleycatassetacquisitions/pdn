@@ -89,22 +89,22 @@ struct ShootoutAckPayload
     uint8_t     seqId;
 } __attribute__((packed));
 
-/**
- * Firmware distribution's one frame: a piece of the image the seed is running.
- * The seed sends every chunk a fixed number of times and repeats chunk 0 once a
- * second; receivers never answer. Chunk 0 starts with the image's app
- * description, which is what a receiver judges before erasing anything. Nothing
- * here is signed, and IDF checks the assembled image against the key that
- * signed the running one, so forged frames cannot install an image. They can
- * still spoil a download, or make a receiver erase its spare slot and wait for
- * chunks that never come.
- */
+/** Bytes of image in every firmware frame but the last of an image. */
 constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
 
-/** Length of FirmwareChunkHeader::imageId. */
 constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
 
-/** Starts every firmware frame; FIRMWARE_CHUNK_SIZE bytes of image follow, fewer for the last chunk. */
+/**
+ * Firmware distribution's one frame: this header, then FIRMWARE_CHUNK_SIZE bytes
+ * of the image the seed is running (fewer for the last chunk). The seed sends
+ * every chunk a fixed number of times and repeats chunk 0 once a second;
+ * receivers never answer. Chunk 0 carries the image's app description, 32 bytes
+ * in, which a receiver judges before erasing anything. Nothing here is signed,
+ * and IDF checks the assembled image against the key that signed the running
+ * one, so forged frames cannot install an image. They can still spoil a
+ * download, or make a receiver erase its spare slot and wait for chunks that
+ * never come.
+ */
 struct FirmwareChunkHeader {
     /** The image's esp_app_desc_t::app_elf_sha256. */
     uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];

@@ -18,19 +18,18 @@
 #include "device/drivers/firmware-store-interface.hpp"
 #include "device/drivers/logger.hpp"
 
-// Without rollback, esp_ota_set_boot_partition() marks the new slot
-// ESP_OTA_IMG_UNDEFINED instead of NEW, the bootloader never promotes it to
-// PENDING_VERIFY, the confirm below always early-returns, and an image that
-// boots and then crashes or hangs is permanent. Nothing reads the flag at
-// runtime, so the divergence is otherwise silent.
+// Without rollback a new image never reaches PENDING_VERIFY, so the confirm
+// below never runs and an image that boots and then crashes or hangs stays
+// installed.
 #if !defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE)
 #error "firmware distribution requires CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE"
 #endif
 
-// Without it esp_ota_end checks only the image's hash, and any intact image with
-// a later build time is accepted from any radio in range.
+// Without signature checks on update, esp_ota_end verifies only the image's
+// hash, and any intact same-family image with a later build time installs from
+// any radio in range.
 #if !defined(CONFIG_SECURE_SIGNED_ON_UPDATE)
-#error "firmware distribution requires CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT"
+#error "firmware distribution requires CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT and CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT"
 #endif
 
 // The build time in each image's app description is what orders images; without
@@ -70,23 +69,21 @@ public:
         guardPendingImage();
     }
 
-    /** Judges the app description that starts every image's first segment. */
-    bool wantsImage(const uint8_t* head, size_t length) const override {
-        if (!runningImageSigned || length < APP_DESC_OFFSET + sizeof(esp_app_desc_t)) {
+    /**
+     * Judges the app description in `head`, then erases the inactive partition
+     * for `length` bytes up front: esp_ota_write_with_offset does not erase, and
+     * chunks arrive out of order.
+     */
+    bool beginWrite(const uint8_t* head, size_t headLength, size_t length) override {
+        abortWrite();
+        // esp_ota_begin reads a length of 0 as "erase the whole partition".
+        if (!runningImageSigned || updatePartition == nullptr || length == 0 || length > updatePartition->size ||
+            headLength < APP_DESC_OFFSET + sizeof(esp_app_desc_t)) {
             return false;
         }
         esp_app_desc_t candidate{};
         std::memcpy(&candidate, head + APP_DESC_OFFSET, sizeof(candidate));
-        return isWanted(candidate, false);
-    }
-
-    /**
-     * Erases the inactive partition for `length` bytes up front:
-     * esp_ota_write_with_offset does not erase, and chunks arrive out of order.
-     */
-    bool beginWrite(size_t length) override {
-        abortWrite();
-        if (!runningImageSigned || updatePartition == nullptr || length > updatePartition->size) {
+        if (!isWanted(candidate, false)) {
             return false;
         }
         const esp_err_t rc = esp_ota_begin(updatePartition, length, &otaHandle);
@@ -119,18 +116,17 @@ public:
                        isWanted(written, true) && esp_ota_set_boot_partition(updatePartition) == ESP_OK;
         }
         if (!accepted) {
-            // An intact image the rule refused would otherwise stay bootable,
-            // and the bootloader falls back to it if the selected slot fails.
-            esp_partition_erase_range(updatePartition, 0, SPI_FLASH_SEC_SIZE);
+            makeUnbootable();
         }
         return accepted;
     }
 
-    /** Closes any open write without keeping it. */
+    /** Releases the write and leaves what it wrote unbootable. */
     void abortWrite() override {
         if (otaHandle != 0) {
             esp_ota_abort(otaHandle);
             otaHandle = 0;
+            makeUnbootable();
         }
     }
 
@@ -188,6 +184,13 @@ public:
     void restart() override { esp_restart(); }
 
 private:
+    // An image left intact in the inactive slot, refused or abandoned, stays
+    // bootable: the bootloader checks no signature at boot, and falls back to any
+    // loadable slot if the selected one fails. A forger can leave one there by
+    // declaring an image longer than the intact one it sends and letting the
+    // receive stall.
+    void makeUnbootable() { esp_partition_erase_range(updatePartition, 0, SPI_FLASH_SEC_SIZE); }
+
     // Where the app description sits in an image, as esp_ota_get_partition_description reads it.
     static constexpr size_t APP_DESC_OFFSET = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
 
@@ -238,8 +241,9 @@ private:
     static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
 
     // Covers the rest of setup() and the slowest loop pass before the confirm,
-    // where a WiFi connect (5s) or an HTTP call (10s each) blocks. A server slow
-    // enough to outlast it resets a good image and rolls it back.
+    // where a blocking WiFi connect (up to 5s) or an HTTP request (10s per network
+    // operation, so longer in total) can stall a pass. A server slow enough to
+    // outlast it resets a good image and rolls it back.
     static constexpr uint32_t PENDING_IMAGE_WATCHDOG_MS = 30000;
 
     // Whether the boot-time watchdog configuration panics; restored on confirm.
@@ -283,7 +287,6 @@ private:
     // 0 while no write is open: IDF never hands out 0, and refuses calls on a
     // handle it has already closed.
     esp_ota_handle_t otaHandle = 0;
-    // Read once at construction.
     bool runningImageSigned = false;
     bool runningImagePending = false;
     bool guardingPendingImage = false;

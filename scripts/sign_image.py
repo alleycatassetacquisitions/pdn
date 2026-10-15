@@ -30,7 +30,6 @@ def _sign(target, source, env):
     os.replace(signed, image)
 
 
-# Rebuilt every build: it carries the build time devices order images by, and the
-# relink it forces is what makes this signing step run on every build.
-env.AlwaysBuild(env.File("$BUILD_DIR/esp_app_format/esp_app_desc.c.o"))  # noqa: F821
+# Rebuilt every build, so setting FIRMWARE_SIGNING_KEY on an up-to-date tree still signs.
+env.AlwaysBuild(env.File("$BUILD_DIR/${PROGNAME}.bin"))  # noqa: F821
 env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _sign)  # noqa: F821

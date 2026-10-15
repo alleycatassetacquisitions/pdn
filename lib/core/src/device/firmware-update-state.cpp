@@ -31,16 +31,16 @@ void FirmwareUpdate::onStateMounted(Device* device) {
 }
 
 void FirmwareUpdate::onStateLoop(Device* device) {
-    // A refused beginSeeding() leaves isSeeding() false, so this returns at once.
+    // An unsigned image makes beginSeeding() refuse, so the host gets its screen straight back.
     if (!firmwareUpdateManager->isSeeding()) {
-        transitionToIdleState = true;
+        transitionToHostState = true;
     }
 }
 
 void FirmwareUpdate::onStateDismounted(Device* device) {
-    transitionToIdleState = false;
+    transitionToHostState = false;
 }
 
-bool FirmwareUpdate::transitionToIdle() {
-    return transitionToIdleState;
+bool FirmwareUpdate::transitionToHost() const {
+    return transitionToHostState;
 }

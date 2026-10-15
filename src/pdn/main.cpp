@@ -18,7 +18,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
-#include "device/firmware-update-manager.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -213,13 +212,6 @@ void loop() {
         crashLogger->pollSerialCommand();
     }
     firmwareStore->superviseRunningImage();
-    // Here rather than inside a state: sync() keeps a seed run sending and
-    // drops a receive once the device stops being eligible, whatever state is
-    // mounted.
-    FirmwareUpdateManager* firmwareUpdateManager = game->getFirmwareUpdateManager();
-    if (firmwareUpdateManager != nullptr) {
-        firmwareUpdateManager->sync();
-    }
     pdn->loop();
 }
 

@@ -13,13 +13,15 @@ public:
     virtual ~FirmwareStoreInterface() = default;
 
     /**
-     * Whether an image starting with `head` is worth downloading: it describes
-     * itself as built for this device's family and newer than the running
-     * image. Unverified; finishWrite has the final say.
+     * Opens the inactive slot for an image of `length` bytes that starts with
+     * `head`, but first judges the app description in `head`: the image must
+     * describe itself as built for this device's family and newer than the
+     * running image (unverified; finishWrite has the final say). Nothing is
+     * erased for an image refused here. Also false if the slot cannot be opened:
+     * a length of 0 or larger than the slot, an unsigned running image, or a
+     * running image not yet confirmed.
      */
-    virtual bool wantsImage(const uint8_t* head, size_t length) const = 0;
-    /** Opens the inactive slot for an image of `length` bytes; false if it cannot hold it. */
-    virtual bool beginWrite(size_t length) = 0;
+    virtual bool beginWrite(const uint8_t* head, size_t headLength, size_t length) = 0;
     /** Writes into the slot opened by beginWrite, at any offset, in any order. */
     virtual bool writeAt(size_t offset, const uint8_t* data, size_t length) = 0;
     /**
@@ -28,10 +30,10 @@ public:
      * family, and newer. A refused image is left unbootable.
      */
     virtual bool finishWrite() = 0;
-    /** Discards the write opened by beginWrite; a no-op if none is open. */
+    /** Ends the write opened by beginWrite without making its image bootable; a no-op if none is open. */
     virtual void abortWrite() = 0;
 
-    /** Bytes of the running image as flashed, signature sector included; 0 if it is unsigned. */
+    /** Bytes of the running image as flashed, signature sector included; 0 if it is unsigned or unreadable. */
     virtual size_t getRunningImageLength() const = 0;
     /** Reads `length` bytes at `offset` from the running image. */
     virtual bool readRunningImage(size_t offset, uint8_t* out, size_t length) const = 0;

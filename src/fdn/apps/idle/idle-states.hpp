@@ -4,7 +4,6 @@
 #include <string>
 #include "state/fdn-connect-state.hpp"
 #include "state/state.hpp"
-#include "device/firmware-update-state.hpp"
 #include "device/fdn.hpp"
 #include "wireless/remote-player-manager.hpp"
 #include "wireless/fdn-connect-wireless-manager.hpp"
@@ -19,7 +18,6 @@ enum IdleStateId {
     UNAUTHORIZED_PDN = 3,
     CONNECTION_DETECTED = 4,
     UPLOAD_PENDING = 5,
-    FIRMWARE_UPDATE = 6,
 };
 
 // ---------------------------------------------------------------------------
@@ -42,13 +40,6 @@ public:
     bool transitionToPlayerDetected();
     bool transitionToConnectionDetected();
     bool transitionToUploadPending();
-    /**
-     * True once the operator has held the secondary button for
-     * FIRMWARE_UPDATE_HOLD_MS, which is the only way to start a seed run.
-     */
-    bool transitionToFirmwareUpdate() const;
-    /** Idle is a resting screen: a firmware update may restart the device here. */
-    bool isInterruptible() const override { return true; }
 
 private:
     RemotePlayerManager* remotePlayerManager;
@@ -60,9 +51,6 @@ private:
     SimpleTimer uploadTimer;
     bool connectionResolved = false;
     bool wasConnected       = false;
-
-    bool transitionToFirmwareUpdateState = false;
-    FirmwareUpdateHold firmwareUpdateHold;
 
     static constexpr int UPLOAD_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 };

@@ -23,12 +23,11 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
     this->shootoutManager_->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager_);
 
-    // No store (the headless simulator) means no flash to distribute from or into.
     if (firmwareStore != nullptr) {
         this->firmwareUpdateManager = new FirmwareUpdateManager(
             peerComms, firmwareStore,
             [this]() {
-                // Idle stays interruptible with a peer chained, so a cable is checked too.
+                // A cabled device is part of its neighbours' chain, whatever screen it shows.
                 bool cableConnected =
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
                     remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
@@ -145,6 +144,9 @@ void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* d
 
 void Quickdraw::onStateLoop(Device *PDN) {
     if (chainDuelManager) chainDuelManager->sync();
+    // Quickdraw is the PDN's only app, so this runs on every pass whatever
+    // screen is up, as a receive in progress needs.
+    if (firmwareUpdateManager) firmwareUpdateManager->sync();
 
     if (chainDuelManager) {
         bool loopNow = chainDuelManager->isLoop();
@@ -303,10 +305,6 @@ Quickdraw::~Quickdraw() {
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
-}
-
-FirmwareUpdateManager* Quickdraw::getFirmwareUpdateManager() {
-    return firmwareUpdateManager;
 }
 
 void Quickdraw::populateStateMap() {
@@ -644,7 +642,7 @@ void Quickdraw::populateStateMap() {
                 firmwareUpdate));
         firmwareUpdate->addTransition(
             new StateTransition(
-                [firmwareUpdate]() { return firmwareUpdate->transitionToIdle(); },
+                [firmwareUpdate]() { return firmwareUpdate->transitionToHost(); },
                 idle));
         stateMap.push_back(firmwareUpdate);
     }

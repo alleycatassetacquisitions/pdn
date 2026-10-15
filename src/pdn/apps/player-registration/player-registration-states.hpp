@@ -17,7 +17,7 @@ enum PlayerRegistrationStateId {
     CHOOSE_ROLE = 3,
     ALLEGIANCE_PICKER = 4,
     WELCOME_MESSAGE = 5,
-    // Past every QuickdrawStateId: the CLI names states from one table.
+    // Past every QuickdrawStateId, so no two PDN states share an id.
     REGISTRATION_FIRMWARE_UPDATE = 31,
 };
 
@@ -33,8 +33,8 @@ public:
     /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
     /**
-     * Every PDN boots to this screen. Interruptible until code entry starts here
-     * (either button clicked), so an update never restarts a device mid-code.
+     * Interruptible until code entry starts here (either button clicked), so an
+     * update never restarts a device mid-code.
      */
     bool isInterruptible() const override { return !codeEntryStarted; }
 

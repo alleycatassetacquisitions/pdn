@@ -6,15 +6,12 @@
 #include "device/remote-device-coordinator.hpp"
 #include "apps/hacking/hacked-players-manager.hpp"
 
-class FirmwareUpdateManager;
-
 class Idle : public StateMachine {
 public:
     Idle(RemotePlayerManager* remotePlayerManager,
          HackedPlayersManager* hackedPlayersManager,
          FDNConnectWirelessManager* fdnConnectWirelessManager,
-         RemoteDeviceCoordinator* remoteDeviceCoordinator,
-         FirmwareUpdateManager* firmwareUpdateManager);
+         RemoteDeviceCoordinator* remoteDeviceCoordinator);
     ~Idle();
 
     void populateStateMap() override;
@@ -24,5 +21,4 @@ private:
     HackedPlayersManager* hackedPlayersManager;
     FDNConnectWirelessManager* fdnConnectWirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
-    FirmwareUpdateManager* firmwareUpdateManager;
 };

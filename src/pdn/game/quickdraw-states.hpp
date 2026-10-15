@@ -103,8 +103,6 @@ public:
     bool transitionToSymbol();
     /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
-    /** Idle is a resting screen: a firmware update may restart the device here. */
-    bool isInterruptible() const override { return true; }
 
 private:
     Player *player;

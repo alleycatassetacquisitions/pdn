@@ -148,8 +148,8 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-// Test: a 5s hold of the secondary button that starts on Idle starts a
-// firmware update; anything shorter does not.
+// Test: a FIRMWARE_UPDATE_HOLD_MS hold of the secondary button that starts on
+// Idle starts a firmware update; anything shorter does not.
 inline void idleFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
@@ -185,8 +185,8 @@ inline void idleFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
 }
 
-// The pairing-code screen raises the firmware-update transition at Idle's hold
-// threshold, not before, and clears it on dismount.
+// The pairing-code screen raises the firmware-update transition at the same
+// hold threshold, not before, and clears it on dismount.
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);
@@ -224,6 +224,12 @@ inline void pairingCodeIsInterruptibleUntilTouched(IdleStateTests* suite) {
 
     registration.onStateDismounted(&suite->device);
     EXPECT_TRUE(registration.isInterruptible());
+}
+
+// Game Idle never takes a firmware update: a registered player's registration
+// and stats live only in RAM, and the restart would lose them.
+inline void idleIsNotInterruptible(IdleStateTests* suite) {
+    EXPECT_FALSE(suite->idleState->isInterruptible());
 }
 
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received

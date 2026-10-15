@@ -93,10 +93,11 @@ public:
         seed = new FirmwareUpdateManager(&seedRadio, &seedStore, []() { return false; });
         receiver = new FirmwareUpdateManager(&receiverRadio, &receiverStore, [this]() { return eligible; });
     }
-    /** Deletes both managers. */
+    /** Deletes both managers and unhooks the fake clock, which dies with the fixture. */
     ~FirmwareTransportFixture() {
         delete receiver;
         delete seed;
+        SimpleTimer::setPlatformClock(nullptr);
     }
 
     /**
@@ -193,8 +194,8 @@ TEST(FirmwareTransportTest, aReceiverThatJoinsMidRunStillCompletes) {
 }
 
 TEST(FirmwareTransportTest, waitingAPassForMissedChunksIsNotAStall) {
-    // On the rig a pass takes about 23s: a receiver missing a late chunk hears
-    // only chunks it already has until the seed comes round again.
+    // On the rig a pass of a 2.2MB image takes about 24s: a receiver missing a
+    // late chunk hears only chunks it already has until the seed comes round again.
     FirmwareTransportFixture f;
     ASSERT_TRUE(f.seed->beginSeeding());
     std::map<uint16_t, int> seen;

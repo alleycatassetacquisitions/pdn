@@ -75,7 +75,7 @@ void PlayerRegistrationApp::populateStateMap() {
         playerRegistration->addTransition(new StateTransition(
             [playerRegistration]() { return playerRegistration->transitionToFirmwareUpdate(); }, firmwareUpdate));
         firmwareUpdate->addTransition(
-            new StateTransition([firmwareUpdate]() { return firmwareUpdate->transitionToIdle(); }, playerRegistration));
+            new StateTransition([firmwareUpdate]() { return firmwareUpdate->transitionToHost(); }, playerRegistration));
         stateMap.push_back(firmwareUpdate);
     }
 }

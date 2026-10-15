@@ -8,21 +8,18 @@
 
 /**
  * In-memory FirmwareStoreInterface. The judgements the ESP32 store reads from
- * app descriptions and IDF's checks are two switches: wantImages for the
- * pre-check, acceptImages for finishWrite. The image a device already runs is
- * never wanted, as on hardware, where it is never newer than itself.
+ * app descriptions and IDF's checks are two switches: wantImages for the one
+ * beginWrite makes before opening the slot, acceptImages for finishWrite. The
+ * image a device already runs is never wanted, as on hardware, where it is
+ * never newer than itself.
  */
 class FakeFirmwareStore : public FirmwareStoreInterface {
 public:
-    /** wantImages, unless `head` starts the running image. */
-    bool wantsImage(const uint8_t* head, size_t length) const override {
-        const size_t compared = std::min(length, runningImage.size());
+    /** Opens a zero-filled slot of `length` bytes if wantImages and `head` does not start the running image. */
+    bool beginWrite(const uint8_t* head, size_t headLength, size_t length) override {
+        const size_t compared = std::min(headLength, runningImage.size());
         const bool running = compared > 0 && std::memcmp(head, runningImage.data(), compared) == 0;
-        return wantImages && !running;
-    }
-    /** Opens a zero-filled slot of `length` bytes; fails past slotSize. */
-    bool beginWrite(size_t length) override {
-        if (length > slotSize) {
+        if (!wantImages || running || length == 0 || length > slotSize) {
             return false;
         }
         beginWriteCalls++;
@@ -42,11 +39,10 @@ public:
     /** Closes the slot; acceptImages decides whether it boots. */
     bool finishWrite() override {
         writeOpen = false;
-        finished = true;
         bootSet = acceptImages;
         return acceptImages;
     }
-    /** Closes the slot without keeping it. */
+    /** Closes the slot without keeping it, counting the abort. */
     void abortWrite() override {
         if (writeOpen) {
             abortCalls++;
@@ -82,7 +78,6 @@ public:
     int beginWriteCalls = 0;
     int writeCount = 0;
     int abortCalls = 0;
-    bool finished = false;
     bool bootSet = false;
     bool restarted = false;
 

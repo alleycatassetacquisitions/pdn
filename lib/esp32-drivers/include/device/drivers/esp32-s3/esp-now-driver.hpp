@@ -385,8 +385,8 @@ private:
 
         const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
-        // pktLen drives the payload length passed downstream; a mismatch against
-        // the frame the radio actually delivered would under/overrun that copy.
+        // pktLen sizes the payload copy below; trust it only when it matches the
+        // frame the radio delivered.
         if (pktHdr->pktLen != data_len) {
             LOG_E("ENC", "Recieved pktLen (%u) does not match frame length (%i)\n", pktHdr->pktLen, data_len);
             return;
@@ -485,7 +485,6 @@ private:
         xSemaphoreGive(sendMutex);
     }
 
-    // Drops every queued frame and hands the transmission claim back.
     void clearSendQueue() {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         while (!m_sendQueue.empty()) {
@@ -531,13 +530,10 @@ private:
 
     SemaphoreHandle_t recvMutex;
     std::queue<DeferredPacket> recvQueue_;
-    // Payload bytes waiting in recvQueue_. Each packet's buffer is under
-    // SPIRAM_MALLOC_ALWAYSINTERNAL, so it comes from internal RAM: a device
-    // that boots beside a seed streaming firmware chunks queues them through
-    // setup's splash hold, before exec() first runs, until a later internal
-    // allocation fails. A packet over the budget is dropped instead, as the
-    // radio itself drops frames: whatever the protocol does about a lost
-    // frame, it does about this one.
+    // Payload bytes queued since the last exec(). Each buffer is under
+    // SPIRAM_MALLOC_ALWAYSINTERNAL, so it comes from internal RAM, and a seed's
+    // chunks arriving through setup's splash hold, before the first exec(), would
+    // exhaust it; a packet over the budget is dropped like one lost on the air.
     size_t recvQueueBytes = 0;
     uint32_t droppedRecvPackets = 0;
     static constexpr size_t RECV_QUEUE_MAX_BYTES = 16384;

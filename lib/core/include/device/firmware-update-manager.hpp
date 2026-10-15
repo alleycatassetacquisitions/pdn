@@ -29,7 +29,7 @@ public:
     /** Hands the radio handler back. */
     ~FirmwareUpdateManager();
 
-    /** Starts streaming this device's running image; false if already seeding or it is unsigned. */
+    /** Starts streaming this device's running image; false if already seeding, or if that image is unsigned or unreadable. */
     bool beginSeeding();
     /** True until the seed's last pass has been sent. */
     bool isSeeding() const;
@@ -56,7 +56,7 @@ private:
     uint16_t seedChunkCount = 0;
     uint16_t nextChunk = 0;
     uint8_t passesLeft = 0;
-    uint32_t refusedSends = 0;
+    uint32_t unsentChunks = 0;
     SimpleTimer beaconTimer;
 
     // Receiver.
@@ -67,7 +67,7 @@ private:
     uint16_t chunksWritten = 0;
     std::vector<bool> written;
     SimpleTimer receiveStallTimer;
-    // The image the store last refused, ignored while refusedQuietTimer runs,
+    // The image the store last refused, ignored until refusedQuietTimer expires,
     // so a seed still streaming it is not downloaded again.
     ImageId refusedImageId{};
     SimpleTimer refusedQuietTimer;

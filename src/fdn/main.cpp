@@ -17,8 +17,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1309-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
-#include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
-#include "device/firmware-update-manager.hpp"
 
 #include "fdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -50,8 +48,6 @@ constexpr unsigned long SPLASH_HOLD_MS = 2000;
 
 WifiConfig* wifiConfig = nullptr;
 CrashLogger* crashLogger = nullptr;
-Esp32S3FirmwareStore* firmwareStore = nullptr;
-FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 // ESP32-S3 Drivers
 Esp32S3Clock*    clockDriver              = nullptr;
 SSD1309U8G2Driver* displayDriver         = nullptr;
@@ -147,7 +143,6 @@ static void setup() {
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {FDN_PREF_NAMESPACE, CRASH_LOG_NAMESPACE});
-    firmwareStore = new Esp32S3FirmwareStore();
 
     DriverConfig fdnConfig = {
         {DISPLAY_DRIVER_NAME,              displayDriver},
@@ -186,28 +181,10 @@ static void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    // Constructed before the apps because the Idle app takes it. The predicate
-    // reads idleApp, assigned below: frames are only handled from exec() in
-    // loop(), after setup has built the apps.
-    firmwareUpdateManager = new FirmwareUpdateManager(
-        peerCommsDriver, firmwareStore,
-        []() {
-            // Only the Idle app's resting screen is a safe moment to take an
-            // image. A state machine that is not the active app has no current
-            // state, so this also rules out every other app.
-            if (!idleApp->isInterruptible()) {
-                return false;
-            }
-            RemoteDeviceCoordinator* rdc = fdn->getRemoteDeviceCoordinator();
-            return rdc->getPortStatus(SerialIdentifier::INPUT_JACK) == PortStatus::DISCONNECTED &&
-                   rdc->getPortStatus(SerialIdentifier::INPUT_JACK_SECONDARY) == PortStatus::DISCONNECTED;
-        });
-
     // Apps
     idleApp = new Idle(
         remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator(),
-        firmwareUpdateManager);
+        fdnConnectWirelessManager, fdn->getRemoteDeviceCoordinator());
 
     mainMenu = new MainMenu(fdn, remotePlayerManager);
 
@@ -240,12 +217,6 @@ void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
     }
-    firmwareStore->superviseRunningImage();
-    // Here rather than inside a state machine: Device::loop() dispatches
-    // onStateLoop to the active app alone, and the FDN swaps apps, so sync()
-    // runs here to keep a seed run sending and drop a receive once the device
-    // stops being eligible, whichever app is mounted.
-    firmwareUpdateManager->sync();
     fdn->loop();
 }
 

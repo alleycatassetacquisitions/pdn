@@ -27,17 +27,10 @@ private:
     bool releasedSinceMount = false;
 };
 
-/**
- * Draws a static "UPDATING" label and waits out the seed run. Typed on Device
- * itself because it reads nothing beyond the accessors Device provides, which
- * lets the PDN and FDN host the same class.
- */
+/** Draws a static "UPDATING" label and waits out the seed run. */
 class FirmwareUpdate : public TypedState<Device> {
 public:
-    /**
-     * stateId is the host state machine's id for this state. Borrows
-     * firmwareUpdateManager, whose sync() the platform loop pumps.
-     */
+    /** stateId is the host state machine's id for this state. Borrows firmwareUpdateManager; its owner pumps sync(). */
     FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdateManager);
 
     /** Starts distributing this device's own running image. */
@@ -47,13 +40,10 @@ public:
     /** Resets the transition flag; the seed run belongs to firmwareUpdateManager. */
     void onStateDismounted(Device* device) override;
 
-    /**
-     * True once the seed's run has ended (isSeeding() is false); the host
-     * returns to the screen the run started from.
-     */
-    bool transitionToIdle();
+    /** True once the seed's run has ended; the host returns to the screen the run started from. */
+    bool transitionToHost() const;
 
 private:
     FirmwareUpdateManager* firmwareUpdateManager;
-    bool transitionToIdleState = false;
+    bool transitionToHostState = false;
 };

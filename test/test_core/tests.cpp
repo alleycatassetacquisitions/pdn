@@ -849,6 +849,10 @@ TEST_F(IdleStateTests, pairingCodeIsInterruptibleUntilTouched) {
     pairingCodeIsInterruptibleUntilTouched(this);
 }
 
+TEST_F(IdleStateTests, idleIsNotInterruptible) {
+    idleIsNotInterruptible(this);
+}
+
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
 }

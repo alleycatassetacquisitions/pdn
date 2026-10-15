@@ -21,7 +21,9 @@ commitHash = readCommitHash()
 env.Append(CPPDEFINES=[("FIRMWARE_COMMIT_HASH", '\\"' + commitHash + '\\"')])
 
 # The image's build time (esp_app_desc_t date/time) is how a device tells a newer
-# image from an older one. GCC takes __DATE__/__TIME__ from SOURCE_DATE_EPOCH, in
-# UTC, so every build is stamped with the time it ran on any host's clock zone;
-# sign_image.py makes the file that carries the stamp recompile every build.
+# image from an older one. With SOURCE_DATE_EPOCH set, GCC stamps __DATE__ and
+# __TIME__ in UTC, so images built in different time zones still compare
+# correctly. SCons does not track ENV, so the file that carries the stamp is
+# rebuilt every build.
 env["ENV"]["SOURCE_DATE_EPOCH"] = str(int(time.time()))
+env.AlwaysBuild(env.File("$BUILD_DIR/esp_app_format/esp_app_desc.c.o"))
