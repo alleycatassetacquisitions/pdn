@@ -1,0 +1,16 @@
+dependencies:
+  idf: ">=5.4"
+  # LEDs are driven straight off esp_driver_rmt, so no component there.
+  espressif/button: "4.2.1"
+  # Pulled in by button; named here so its version is pinned rather than
+  # whatever button's "*" resolves to on the day of a clean build.
+  espressif/cmake_utilities: "1.1.1"
+  # Upstream u8g2 is already a valid ESP-IDF component: its CMakeLists calls
+  # idf_component_register on csrc/ when it sees the IDF build, and registers
+  # only csrc, so the Arduino C++ wrapper under cppsrc/ never comes along. It
+  # is not published in the registry, hence the git source. The ESP32 HAL it
+  # does not ship is ours, in u8g2-esp32-spi-hal.hpp.
+  u8g2:
+    git: https://github.com/olikraus/u8g2.git
+    # The 2.37.1 tag, by commit: a tag can be moved, a commit cannot.
+    version: "414efcdb7a908667ea461c9e3a3a31da14fc4ea5"

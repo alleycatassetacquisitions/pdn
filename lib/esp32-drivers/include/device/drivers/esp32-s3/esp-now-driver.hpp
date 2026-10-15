@@ -6,16 +6,28 @@
 #include <queue>
 #include <unordered_map>
 #include <limits>
-#include <Arduino.h>
-#include <WiFi.h>
+#include <esp_event.h>
+#include <esp_heap_caps.h>
+#include <esp_mac.h>
+#include <esp_netif.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
-#include <esp_mac.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_timer.h>
 #include "device/drivers/logger.hpp"
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/mac-functions.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "esp32-driver-constants.hpp"
+
+// sendData allocates every outbound packet with MALLOC_CAP_SPIRAM, so a build
+// without PSRAM support fails here rather than at every send. A board whose
+// PSRAM fails at boot still boots (SPIRAM_IGNORE_NOTFOUND), and then every send
+// fails its allocation.
+#if !defined(CONFIG_SPIRAM)
+#error "esp-now-driver allocates with MALLOC_CAP_SPIRAM; CONFIG_SPIRAM must be enabled"
+#endif
 
 #define DEBUG_PRINT_ESP_NOW 0
 
@@ -73,10 +85,10 @@ public:
         // re-issuing the disconnect each attempt to kill whatever STA attempt
         // is blocking the pin. Stops if an excursion takes the radio.
         if (channelPinPending && peerCommsState == PeerCommsState::CONNECTED) {
-            unsigned long now = millis();
+            unsigned long now = nowMs();
             if (now - lastChannelPinMs >= CHANNEL_PIN_RETRY_MS) {
                 lastChannelPinMs = now;
-                WiFi.disconnect(false);
+                esp_wifi_disconnect();
                 if (pinEspNowChannel()) {
                     channelPinPending = false;
                     LOG_W("ENC", "channel pin recovered: on %d", ESPNOW_CHANNEL);
@@ -105,38 +117,78 @@ public:
     }
 
     /**
-     * Brings the radio into ESP-NOW mode: STA, auto-reconnect off, PS_NONE,
-     * channel pinned (with exec() retry when a STA scan blocks the pin).
+     * Brings the radio into ESP-NOW mode: the station stack up, the association
+     * dropped, PS_NONE, channel pinned (with exec() retry when a STA scan
+     * blocks the pin).
      */
     void connect() override {
-        // ESP-NOW requires station mode.
-        WiFi.mode(WIFI_STA);
+        // The STA netif must exist before esp_wifi_start(): esp_netif_start() runs
+        // only off WIFI_EVENT_STA_START, so a netif created after that event has
+        // been posted never starts, never gets an MTU, and DHCP refuses it.
+        // ESP-NOW needs no netif; the HTTP driver's WiFi excursion does. This
+        // runs first on every boot, but connect() re-runs on each return to
+        // ESP-NOW mode, so the steps are guarded rather than assumed-once.
+        wifi_mode_t currentMode;
+        if (esp_wifi_get_mode(&currentMode) == ESP_ERR_WIFI_NOT_INIT) {
+            // Both are checked because esp_netif_create_default_wifi_sta below
+            // aborts through ESP_ERROR_CHECK rather than returning, so a failure
+            // here would panic on the boot path instead of leaving a dead radio.
+            // Already-created is the normal case when something else got here
+            // first, and is not an error.
+            const esp_err_t netifErr = esp_netif_init();
+            const esp_err_t loopErr = esp_event_loop_create_default();
+            if (netifErr != ESP_OK && netifErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_netif_init failed: %s", esp_err_to_name(netifErr));
+                return;
+            }
+            if (loopErr != ESP_OK && loopErr != ESP_ERR_INVALID_STATE) {
+                LOG_E("ENC", "esp_event_loop_create_default failed: %s", esp_err_to_name(loopErr));
+                return;
+            }
+            wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+            esp_err_t initErr = esp_wifi_init(&config);
+            if (initErr != ESP_OK) {
+                LOG_E("ENC", "esp_wifi_init failed: %s", esp_err_to_name(initErr));
+                return;
+            }
+            // RAM rather than flash, so radio config is not rewritten to NVS on
+            // every change.
+            esp_wifi_set_storage(WIFI_STORAGE_RAM);
+        }
+        esp_wifi_set_mode(WIFI_MODE_STA);
+        // Same ifkey guard the HTTP driver uses, so whichever arrives first
+        // creates it once. Creating it also installs IDF's default STA event
+        // handlers, which is what makes esp_netif_start() fire below.
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == nullptr) {
+            esp_netif_create_default_wifi_sta();
+        }
+        esp_wifi_start();
 
-        // Stop the STA auto-reconnect scan loop: its periodic all-channel scans
-        // pull the radio off ESPNOW_CHANNEL, so peers miss each other's unicast
-        // ACKs. It keeps scanning even after a failed connect unless stopped.
-        WiFi.setAutoReconnect(false);
-
-        // Drop any AP but keep the radio on (false); ESP-NOW needs it active.
-        WiFi.disconnect(false);
+        // Drops the AP association without stopping the radio, which ESP-NOW needs
+        // left running. Nothing re-dials behind us: IDF does not retry an
+        // association on its own, and the HTTP driver clears its own reconnect
+        // flag before handing the radio back.
+        esp_wifi_disconnect();
 
         // STA modem sleep defaults ON; with no AP the radio mostly sleeps and
         // peers can't return L2 ACKs, killing the link. PS_NONE keeps it on.
         esp_wifi_set_ps(WIFI_PS_NONE);
 
-        // Small delay to let WiFi stabilize after mode change
-        delay(100);
+        // Settle between the mode change and the channel pin: esp_wifi_set_channel
+        // fails while a connect or scan is in flight.
+        static constexpr uint32_t WIFI_SETTLE_MS = 100;
+        vTaskDelay(pdMS_TO_TICKS(WIFI_SETTLE_MS));
 
         channelPinPending = !pinEspNowChannel();
         if (channelPinPending) {
-            // A STA connect/scan can still be in flight here (the core can
-            // schedule one last reconnect that lands after our disconnect),
-            // and set_channel fails until it resolves. Without the retry,
+            // A STA connect/scan can still be in flight here (the HTTP driver's
+            // disconnect handler can re-dial once before it gives the radio
+            // back), and set_channel fails until it resolves. Without the retry,
             // ESP-NOW runs on whatever channel the scan stopped at until the
             // next mode switch.
             LOG_E("ENC", "channel pin to %d failed; retrying from exec()",
                   ESPNOW_CHANNEL);
-            lastChannelPinMs = millis();
+            lastChannelPinMs = nowMs();
         }
 
         if (initializeEspNow() != 0) {
@@ -212,7 +264,8 @@ public:
 
         // One frame carries the whole payload (ESP-NOW v2.0). Build header +
         // data in a single buffer and queue it.
-        uint8_t* buf = (uint8_t*)ps_malloc(sizeof(DataPktHdr) + length);
+        uint8_t* buf = static_cast<uint8_t*>(
+            heap_caps_malloc(sizeof(DataPktHdr) + length, MALLOC_CAP_SPIRAM));
         if (!buf) {
             LOG_E("ENC", "Failed to allocate %lu byte buffer for ESP-NOW send\n",
                   sizeof(DataPktHdr) + length);
@@ -684,6 +737,12 @@ private:
         LOG_I("ENC", "WiFi channel set to: %d (requested: %d)", primary,
               ESPNOW_CHANNEL);
         return primary == ESPNOW_CHANNEL;
+    }
+
+    // esp_timer counts microseconds since boot in 64 bits; narrowing is what
+    // makes this wrap where a 32-bit millisecond count does.
+    static unsigned long nowMs() {
+        return static_cast<unsigned long>(esp_timer_get_time() / 1000);
     }
 
     static constexpr unsigned long CHANNEL_PIN_RETRY_MS = 100;

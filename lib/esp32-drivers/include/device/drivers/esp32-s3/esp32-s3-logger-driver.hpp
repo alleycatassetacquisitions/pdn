@@ -10,7 +10,16 @@
  */
 class Esp32S3Logger : public LoggerDriverInterface {
 public:
+    /**
+     * Sets ESP-IDF's runtime log level to the build's CORE_DEBUG_LEVEL. Every
+     * line, LOG_x included, passes that runtime filter after the compile-time
+     * one, and its default of INFO would print IDF's own INFO lines in release
+     * and drop LOG_D/LOG_V in debug. Set here rather than in initialize() so it
+     * applies from construction, before the other drivers start.
+     */
     explicit Esp32S3Logger(const std::string& name) : LoggerDriverInterface(name) {
+        // CORE_DEBUG_LEVEL and esp_log_level_t both number NONE..VERBOSE as 0-5.
+        esp_log_level_set("*", static_cast<esp_log_level_t>(CORE_DEBUG_LEVEL));
     }
 
     ~Esp32S3Logger() override = default;
