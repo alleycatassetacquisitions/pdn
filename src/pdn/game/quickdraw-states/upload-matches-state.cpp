@@ -57,6 +57,11 @@ void UploadMatchesState::onStateMounted(PDN* pdn) {
     showLoadingGlyphs(pdn);
     uploadMatchesTimer.setTimer(UPLOAD_MATCHES_TIMEOUT);
     matchUploadRetryCount = 0;
+    // An answer can land after the last dismount, setting these on a state
+    // that has already left: a late success, or the error the HTTP driver
+    // gives every queued request when the radio switches back to ESP-NOW.
+    shouldRetryUpload = false;
+    transitionToSleepState = false;
 
     matchesJson = matchManager->toJson();
     LOG_I(TAG, "Match data prepared for upload: %d bytes", matchesJson.length());

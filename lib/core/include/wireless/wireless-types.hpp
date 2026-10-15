@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 
 enum class WirelessError {
     TIMEOUT,
@@ -15,7 +16,6 @@ enum class WirelessError {
 struct WirelessErrorInfo {
     WirelessError code;
     std::string message;
-    bool willRetry;
 };
 
 /**
@@ -39,6 +39,7 @@ using HttpErrorCallback = std::function<void(const WirelessErrorInfo& error)>;
 struct HttpRequest {
     std::string path;
     std::string method;
+    std::string contentType;
     std::string payload;
     HttpSuccessCallback onSuccess;
     HttpErrorCallback onError;
@@ -47,6 +48,19 @@ struct HttpRequest {
     int retryCount;
     std::string responseData;
 
-    HttpRequest(const std::string& path, const std::string& method, const std::string& payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
-        : path(path), method(method), payload(payload), onSuccess(onSuccess), onError(onError), inProgress(false), lastAttemptTime(0), retryCount(0), responseData("") {}
+    /**
+     * `contentType` is the Content-Type header the ESP32 driver sends on POST and
+     * PUT; GET ignores it.
+     */
+    HttpRequest(const std::string& path, const std::string& method, const std::string& contentType, const std::string& payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
+        : path(path)
+        , method(method)
+        , contentType(contentType)
+        , payload(payload)
+        , onSuccess(std::move(onSuccess))
+        , onError(std::move(onError))
+        , inProgress(false)
+        , lastAttemptTime(0)
+        , retryCount(0)
+        , responseData("") {}
 };
