@@ -378,10 +378,10 @@ private:
 
     explicit EspNowDriver(const std::string& name)
         : PeerCommsDriverInterface(name)
-        , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
-        , sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr))
         , recvMutex(xSemaphoreCreateMutex())
-        , sendMutex(xSemaphoreCreateMutex()) {
+        , sendMutex(xSemaphoreCreateMutex())
+        , pktHandlerCallbacks((int)PktType::kNumPacketTypes, std::pair<PacketCallback, void*>(nullptr, nullptr))
+        , sendStatusHandlers((int)PktType::kNumPacketTypes, std::pair<SendStatusCallback, void*>(nullptr, nullptr)) {
         // ESP-NOW initialization happens in connect() -> initializeEspNow()
         // after WiFi has been set up. RSSI is read directly from each receive
         // callback (esp_now_recv_info_t::rx_ctrl), so no promiscuous mode.

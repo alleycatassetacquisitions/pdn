@@ -54,11 +54,11 @@ struct HelloLinkContext {
     }
 };
 
-class HelloIdleState : public State {
+class HelloIdleState : public TypedState<Device> {
 public:
     /** Binds the shared per-jack context; the machine owns the state. */
     explicit HelloIdleState(HelloLinkContext* context)
-        : State(HELLO_LINK_IDLE)
+        : TypedState<Device>(HELLO_LINK_IDLE)
         , context(context) {}
 
     /**
@@ -95,10 +95,10 @@ private:
     bool transitionToConnectingState = false;
 };
 
-class HelloConnectingState : public State {
+class HelloConnectingState : public TypedState<Device> {
 public:
     explicit HelloConnectingState(HelloLinkContext* context)
-        : State(HELLO_LINK_CONNECTING), context(context) {}
+        : TypedState<Device>(HELLO_LINK_CONNECTING), context(context) {}
 
     void onStateMounted(Device*) override {
         connectingSinceMs = context->nowMs();
@@ -128,10 +128,10 @@ private:
     bool transitionToConnectedState = false;
 };
 
-class HelloConnectedState : public State {
+class HelloConnectedState : public TypedState<Device> {
 public:
     explicit HelloConnectedState(HelloLinkContext* context)
-        : State(HELLO_LINK_CONNECTED), context(context) {}
+        : TypedState<Device>(HELLO_LINK_CONNECTED), context(context) {}
 
     void onStateMounted(Device*) override {
         if (context->onJackChange) context->onJackChange(context->jack, true);

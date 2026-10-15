@@ -14,11 +14,11 @@ const StateId APP_TWO(200);
 const StateId APP_THREE(300);
 
 // Simple mock state for MockStateMachine
-class MockState : public State {
+class MockState : public TypedState<Device> {
 public:
     /** Identifiable by id so a test can tell which slot a mount landed on. */
     explicit MockState(int stateId = 999)
-        : State(stateId) {}
+        : TypedState<Device>(stateId) {}
     // Minimal implementation - just exists to satisfy StateMachine requirements
 };
 
@@ -45,11 +45,11 @@ public:
 // A state with two live edges: a hand-off declared above a local one. Both
 // conditions are flags the test raises, so the priority between the two kinds is
 // observable.
-class ForkingState : public State {
+class ForkingState : public TypedState<Device> {
 public:
     /** Both edges are inert until a test raises the matching flag. */
     explicit ForkingState(int stateId)
-        : State(stateId) {}
+        : TypedState<Device>(stateId) {}
 
     bool takeAppEdge = false;
     bool takeLocalEdge = false;
