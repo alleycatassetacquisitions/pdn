@@ -1419,8 +1419,12 @@ TEST_F(ConnectStateTests, disconnectCarriesNoContext) {
 TEST_F(RDCHelloTests, silentLinkDisconnects) {
     rdcHelloSilentLinkDisconnects(this);
 }
-TEST_F(RDCHelloTests, watchdogClampsClockRaceToZero) {
-    rdcHelloWatchdogClampsClockRaceToZero(this);
+TEST_F(RDCHelloTests, watchdogFiresAcrossClockRollover) {
+    rdcHelloWatchdogFiresAcrossClockRollover(this);
+}
+
+TEST_F(RDCHelloTests, contextEvictionOrdersByAgeAcrossRollover) {
+    rdcContextEvictionOrdersByAgeAcrossRollover(this);
 }
 
 TEST_F(RDCHelloTests, emitProducesFramesOnBothJacks) {

@@ -19,6 +19,10 @@ class NativeClockDriver : public PlatformClockDriverInterface {
     }
 
     unsigned long milliseconds() override {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        // steady_clock, not system_clock: PlatformClock promises monotonic, and a
+        // wall clock steps backwards on an NTP step or a manual date change. Every
+        // elapsed-time site in lib/core now reads such a step as a near-max gap,
+        // which on this driver would tear down live links in the sim (#242).
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 };

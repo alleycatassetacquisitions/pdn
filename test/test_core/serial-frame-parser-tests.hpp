@@ -9,6 +9,7 @@
 #include "wireless/crc16.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 class SerialFrameParserTests : public testing::Test {
@@ -258,20 +259,27 @@ TEST_F(SerialFrameParserTests, droppedPayloadByteCostsOnlyItsOwnFrame) {
     EXPECT_EQ(got.source[0], 0xA3);
 }
 
-TEST_F(SerialFrameParserTests, backwardClockKeepsPartialFrameAlive) {
-    // A feed observing now < lastByteMs (backwards clock step) must clamp the
-    // timeout gap to 0: unsigned subtraction would read as a huge stall and
-    // throw away a partial frame that is actually mid-flight.
+TEST_F(SerialFrameParserTests, midFrameTimeoutFiresAcrossClockRollover) {
     int frameCount = 0;
     parser.setHelloFrameHandler([&](const HelloPayload&) { ++frameCount; });
 
+    // One frame split across the clock's unsigned wrap, 60ms of silence between
+    // the halves. That exceeds PARSER_TIMEOUT_MS, so the first half must be
+    // dropped and the second must not finish it — whatever the two would have
+    // checksummed to together, which here is a valid frame. The old
+    // `now >= lastByteMs` guard read the gap as 0 and assembled them (#242).
     std::vector<uint8_t> frame = buildFrame(OP_HELLO, helloPayload());
+    fakeClock->setTime(std::numeric_limits<unsigned long>::max() - 10);
     parser.feed(frame.data(), 6);
     EXPECT_EQ(frameCount, 0);
 
-    // Clock steps backwards relative to the partial's stamp.
-    fakeClock->setTime(999);
+    fakeClock->advance(60);
     parser.feed(frame.data() + 6, frame.size() - 6);
+    EXPECT_EQ(frameCount, 0);
+
+    // Dropping the partial must leave the parser scanning, not wedged: the next
+    // whole frame still arrives.
+    feed(buildFrame(OP_HELLO, helloPayload(0xB7)));
     EXPECT_EQ(frameCount, 1);
 }
 

@@ -11,6 +11,7 @@
 #include "protocol-constants.hpp"
 
 #include <cstring>
+#include <limits>
 #include <vector>
 
 using ::testing::_;
@@ -111,6 +112,26 @@ public:
      */
     ReliableTransport* transport() { return rdc.transport; }
 
+    /**
+     * Buffers a context for a synthetic peer, reached via friendship. This is the
+     * path the RDC takes when a context arrives with no jack CONNECTING for its
+     * MAC. Not part of the production API.
+     */
+    void bufferContextForMac(uint8_t firstByte) {
+        const std::array<uint8_t, 6> mac{firstByte, 0x02, 0x03, 0x04, 0x05, 0x06};
+        const uint8_t profile[1] = {0};
+        rdc.bufferContext(mac.data(), DeviceType::PDN, /*chainRole=*/0,
+                          /*peerUserId=*/firstByte, profile, sizeof(profile));
+    }
+
+    /** True while a live buffered-context slot still holds that peer. Friendship-only. */
+    bool contextBufferHoldsMac(uint8_t firstByte) {
+        for (const RemoteDeviceCoordinator::BufferedContext& e : rdc.contextBuffer) {
+            if (e.valid && e.mac[0] == firstByte) return true;
+        }
+        return false;
+    }
+
     MockDevice device;
     FakePlatformClock* fakeClock = nullptr;
     NativeSerialDriver outJack{"hello-out"};
@@ -163,25 +184,59 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
 
-// A watchdog read observing now < lastHelloMs (backwards clock step) must
-// clamp the gap to 0, not underflow to ~ULONG_MAX and kill a live link (#173).
-inline void rdcHelloWatchdogClampsClockRaceToZero(RDCHelloTests* suite) {
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
-    suite->rdc.sync(&suite->device);
+// A peer that goes silent across the platform clock's wrap must still trip the
+// silent-link watchdog. Unsigned subtraction reads the true gap; the old
+// `now >= lastHelloMs` guard read 0 and held a dead link CONNECTED for the rest
+// of the wrap period (#242).
+inline void rdcHelloWatchdogFiresAcrossClockRollover(RDCHelloTests* suite) {
+    // Connect with the clock already ten ticks short of the wrap, so every stamp
+    // the link takes is pre-wrap. Reaching CONNECTED is what makes the result
+    // unambiguous: it has one outgoing edge, sinceHello(), so the teardown below
+    // cannot come from the CONNECTING context timeout instead.
+    suite->fakeClock->setTime(std::numeric_limits<unsigned long>::max() - 10);
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 
-    // now (999) behind the stamp (1000): the racing-stamp shape.
-    suite->fakeClock->setTime(999);
+    // Past the ten-tick margin so now reads below the stamp, and past the
+    // silent-link window so the true gap is a real silence.
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 11);
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
-    // The clamp must not have defanged the watchdog: a real silent gap still kills.
-    suite->fakeClock->setTime(1000 + RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
-    suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(suite->disconnectCount, 1);
+}
+
+// Eviction has to order the context buffer by age, not by raw stamp. Across the
+// platform clock's wrap a just-arrived context carries the smallest value, so an
+// absolute `arrivedAtMs <` comparison names the newest slot "oldest" and throws
+// away the freshest context while keeping the stalest (#242).
+inline void rdcContextEvictionOrdersByAgeAcrossRollover(RDCHelloTests* suite) {
+    // Fill all 8 slots inside the 100ms TTL, five arriving before the wrap and
+    // three after, so the genuinely oldest slot holds a near-max stamp. At the
+    // end peer 0xC1 is the oldest at 80ms, while peer 0xC6 is the first post-wrap
+    // arrival and so holds the smallest stamp — the slot an absolute comparison
+    // evicts in its place.
+    suite->fakeClock->setTime(std::numeric_limits<unsigned long>::max() - 40);
+    for (uint8_t peer = 0xC1; peer <= 0xC4; ++peer) {
+        suite->bufferContextForMac(peer);
+        suite->fakeClock->advance(10);
+    }
+    for (uint8_t peer = 0xC5; peer <= 0xC8; ++peer) {
+        suite->bufferContextForMac(peer);
+        suite->fakeClock->advance(10);
+    }
+    for (uint8_t peer = 0xC1; peer <= 0xC8; ++peer)
+        ASSERT_TRUE(suite->contextBufferHoldsMac(peer)) << "slot lost before the buffer was full";
+
+    // A ninth peer with every slot still unexpired: the oldest must be the one to go.
+    suite->bufferContextForMac(0xC9);
+
+    EXPECT_FALSE(suite->contextBufferHoldsMac(0xC1)) << "kept the stalest context";
+    EXPECT_TRUE(suite->contextBufferHoldsMac(0xC6)) << "evicted the freshest instead";
+    EXPECT_TRUE(suite->contextBufferHoldsMac(0xC9));
 }
 
 // (a) A HELLO from a new MAC drives that jack Idle -> Connecting.

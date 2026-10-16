@@ -477,7 +477,7 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
         // seqId, so dedup can't brake two CONNECTED sides answering each other —
         // unthrottled they'd volley at radio RTT until link death.
         const unsigned long now = nowMs();
-        if (link.lastContextResendMs != 0 && now >= link.lastContextResendMs &&
+        if (link.lastContextResendMs != 0 &&
             now - link.lastContextResendMs < CONTEXT_EXCHANGE_TIMEOUT_MS)
             return;
         if (!isContextSendPending(fromMac)) {
@@ -524,7 +524,9 @@ void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType p
         }
         const bool reusable = !e.valid || e.isExpiredAt(now);
         if (reusable && slot == nullptr) slot = &e;
-        if (e.arrivedAtMs < oldest->arrivedAtMs) oldest = &e;
+        // By age, not by stamp: across the clock's wrap the newest arrival holds
+        // the smallest value, so comparing stamps evicts the freshest slot (#242).
+        if (now - e.arrivedAtMs > now - oldest->arrivedAtMs) oldest = &e;
     }
     if (slot == nullptr) slot = oldest;  // full of fresh entries: evict the oldest
 

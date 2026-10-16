@@ -106,7 +106,9 @@ private:
 
     HelloFrameHandler helloFrameHandler;
 
-    // Wall-clock window after which a mid-frame parser resets to scan-for-sync.
+    // Silence between two arriving bytes after which a mid-frame parser resets to
+    // scan-for-sync. lastByteMs restamps on every byte, so this bounds the gap
+    // between bytes, not the age of the frame being assembled.
     static constexpr unsigned long PARSER_TIMEOUT_MS = 50;
 
     void resetParser();

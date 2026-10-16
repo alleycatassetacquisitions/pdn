@@ -377,7 +377,7 @@ private:
         unsigned long arrivedAtMs = 0;
         bool valid = false;
         bool isExpiredAt(unsigned long now) const {
-            return now >= arrivedAtMs && now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
+            return now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
         }
     };
     std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer;
