@@ -3,7 +3,8 @@
 #include <esp_log.h>
 #include <nvs_flash.h>
 
-// How long the splash screen stays up before the first app mounts.
+// Minimum time the splash screen stays up before the first app mounts, and the
+// head start a crash upload queued in setup() gets on the output jack's handshake.
 constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
@@ -197,7 +198,15 @@ static void setup() {
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
-    vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
+    // Runs the HTTP driver through the splash so a crash upload queued by
+    // transmitPending() can finish before loop() runs the output jack's handshake,
+    // whose first send switches the radio back to ESP-NOW and fails the upload.
+    SimpleTimer splashTimer;
+    splashTimer.setTimer(SPLASH_HOLD_MS);
+    while (!splashTimer.expired()) {
+        httpClientDriver->exec();
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {
