@@ -267,19 +267,19 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
         "application/protobuf",
         std::string(reinterpret_cast<const char*>(buf), len),
         [suite](const std::string&) {
-            suite->successCallbackCalled_ = true;
+            suite->successCallbackCalled = true;
         },
         [suite](const WirelessErrorInfo&) {
-            suite->errorCallbackCalled_ = true;
+            suite->errorCallbackCalled = true;
         }
     );
 
-    suite->driver_->setMockServerEnabled(true);
-    suite->driver_->queueRequest(request);
-    suite->driver_->exec();
+    suite->driver->setMockServerEnabled(true);
+    suite->driver->queueRequest(request);
+    suite->driver->exec();
 
-    ASSERT_TRUE(suite->successCallbackCalled_);
-    ASSERT_FALSE(suite->errorCallbackCalled_);
+    ASSERT_TRUE(suite->successCallbackCalled);
+    ASSERT_FALSE(suite->errorCallbackCalled);
 }
 
 void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {

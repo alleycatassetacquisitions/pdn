@@ -7,7 +7,7 @@
 #include <strings.h>
 #include <cstdlib>
 #include <cstdarg>
-#include <Arduino.h>
+#include <esp_timer.h>
 #include <esp_system.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
@@ -66,24 +66,6 @@ public:
         , useHttp(false)
         , serialCommandLength(0) {
         serialCommandBuffer[0] = '\0';
-        // A record counts as sent when the radio reports its frame, not when the
-        // frame is offered. A queued frame can still be discarded — a WiFi excursion
-        // drops the driver's queue — so marking records as they are queued would
-        // retire ones that never reached the air.
-        espNowDriver->setSendStatusHandler(
-            PktType::kCrashLog,
-            [](const uint8_t*, const uint8_t* data, const size_t length,
-               bool success, void* ctx) {
-                if (!success || ctx == nullptr || length != sizeof(CrashPacket)) return;
-                CrashPacket reported{};
-                memcpy(&reported, data, sizeof(reported));
-                CrashLogger* self = static_cast<CrashLogger*>(ctx);
-                // sentSeq is a high-water mark, so only ever move it forward.
-                if (reported.crashNumber > self->readSentSeq()) {
-                    self->writeSentSeq(reported.crashNumber);
-                }
-            },
-            this);
     }
 
     /**
@@ -110,7 +92,7 @@ public:
 
         CrashRecord rec{};
         rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp   = millis();
+        rec.timestamp   = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
         if (hadCoreDumpSummary) {
             rec.programCounter = summary.exc_pc;
@@ -134,7 +116,7 @@ public:
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
 
-    /** True while a recorded crash has not been reported yet. */
+    /** True while a captured record has not been marked sent. */
     bool hasPending() const {
         return readSentSeq() < readCrashSeq();
     }
@@ -142,8 +124,9 @@ public:
     /**
      * Offers every unreported record once per boot. Call each tick: nothing can
      * add a record after capture(), so the first pass with the radio up is the
-     * only one that has anything to do. A record the radio never reports stays
-     * pending and goes out on the next boot, which is the retry.
+     * only one that has anything to do. A record left unsent stays pending and
+     * goes out on the next boot, which is the retry. Over ESP-NOW a record counts
+     * as sent once queued, since the driver reports no per-frame outcome.
      */
     void transmitPending() {
         if (offeredThisBoot) return;
@@ -506,6 +489,7 @@ private:
             );
 
             if (result == 0) {
+                writeSentSeq(n);
                 LOG_I(CRASH_LOG_TAG, "Queued crash #%lu for broadcast", static_cast<unsigned long>(n));
             } else {
                 LOG_E(CRASH_LOG_TAG, "Failed to queue crash #%lu — will retry on next boot",

@@ -22,7 +22,7 @@ size_t encode(const CrashRecord& record, const uint8_t* mac,
     msg.has_crash_number = true;
     msg.crash_number     = record.crashNumber;
 
-    // timestamp is uptime_ms — millis() at the moment of reboot detection.
+    // timestamp maps to uptime_ms.
     msg.has_uptime_ms = true;
     msg.uptime_ms     = record.timestamp;
 

@@ -31,8 +31,7 @@ inline void getPlayer(
             } else {
                 onError({
                     WirelessError::INVALID_RESPONSE,
-                    "Failed to parse player response",
-                    false
+                    "Failed to parse player response"
                 });
             }
         },
