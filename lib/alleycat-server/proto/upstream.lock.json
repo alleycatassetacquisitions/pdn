@@ -1,0 +1,19 @@
+{
+  "lockfileVersion": 1,
+  "artifacts": [
+    {
+      "id": "alleycat.device_api",
+      "repository": {
+        "owner": "alleycatassetacquisitions",
+        "name": "alleycat-rs",
+        "commit": "09bffc6c20c80494ba58cd41d284a06af5d17cce"
+      },
+      "upstream": {
+        "path": "proto/device_api.proto"
+      },
+      "local": {
+        "path": "lib/alleycat-server/proto/device_api.proto"
+      }
+    }
+  ]
+}

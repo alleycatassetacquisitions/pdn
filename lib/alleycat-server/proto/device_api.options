@@ -1,0 +1,6 @@
+# Nanopb field options for WriteDeviceLogRequest.
+# Max lengths align with CrashRecord constants in lib/core/include/device/crash/crash-record.hpp.
+
+alleycat.device.WriteDeviceLogRequest.device_mac          max_size:18   # "aa:bb:cc:dd:ee:ff\0"
+alleycat.device.WriteDeviceLogRequest.software_version    max_size:16   # 8-char short commit hash + margin
+alleycat.device.WriteDeviceLogRequest.task_name           max_size:16   # TASK_NAME_LENGTH

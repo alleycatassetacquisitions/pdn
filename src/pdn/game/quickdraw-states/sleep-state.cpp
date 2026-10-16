@@ -4,7 +4,6 @@
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <string>
-#include "game/quickdraw-requests.hpp"
 #include "device/device.hpp"
 
 #define TAG "SleepState"

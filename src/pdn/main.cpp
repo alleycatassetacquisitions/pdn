@@ -185,7 +185,7 @@ static void setup() {
     // Register ESP-NOW packet handlers
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
     crashLogger->capture();
     crashLogger->transmitPending();
 

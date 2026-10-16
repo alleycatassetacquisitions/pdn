@@ -177,7 +177,7 @@ static void setup() {
 
     setupEspNow(peerCommsDriver);
 
-    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
     crashLogger->capture();
     crashLogger->transmitPending();
 
