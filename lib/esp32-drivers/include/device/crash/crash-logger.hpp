@@ -41,8 +41,7 @@ struct CrashPacket {
  * Captures and persists crash records across reboots, then transmits them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver. Call
  * takeCrashedBootUptime() first in setup() and pass it to capture() once storage is
- * initialized, then call transmitPending(), which offers each pending record once per
- * boot; call noteUptime() and poll serial in loop().
+ * initialized, then call transmitPending(). Call noteUptime() and poll serial in loop().
  */
 class CrashLogger {
 public:
@@ -133,12 +132,13 @@ public:
     }
 
     /**
-     * Offers every pending record once per boot; nothing can add one after
-     * capture(). Over HTTP the uploads switch the radio to WiFi and wait in the
-     * driver's queue until it connects; if the radio goes back to ESP-NOW first,
-     * they fail. A record left unsent stays pending and goes out on the next boot,
-     * which is the retry. Over ESP-NOW a record counts as sent once queued,
-     * since the driver reports no per-frame outcome.
+     * Offers pending records at most once per boot; nothing can add one after
+     * capture(). Over HTTP they go one at a time, oldest first, and stop at the
+     * first failure. The first switches the radio to WiFi, blocking the caller up
+     * to 5 s for an IP; a request queued before the first IP waits for one, and a
+     * switch back to ESP-NOW fails the one outstanding. Unsent records stay
+     * pending for the next boot. Over ESP-NOW a record counts as sent once
+     * queued, since the driver reports no per-frame outcome.
      */
     void transmitPending() {
         if (offeredThisBoot) return;
@@ -433,12 +433,17 @@ private:
 
     void transmitHttp() {
         if (!wirelessManager) return;
+        uploadFrom(readSentSeq() + 1);
+    }
 
+    // One upload at a time: sentSeq is a high-water mark, so marking a record
+    // retires every older one too, and none may be marked while an older one can
+    // still fail.
+    void uploadFrom(uint32_t first) {
         const uint32_t crashSeq = readCrashSeq();
-        const uint32_t sentSeq  = readSentSeq();
         uint8_t* mac = wirelessManager->getMacAddress();
 
-        for (uint32_t n = sentSeq + 1; n <= crashSeq; n++) {
+        for (uint32_t n = first; n <= crashSeq; n++) {
             CrashRecord rec{};
             if (!loadRecordByNumber(n, rec)) {
                 LOG_W(CRASH_LOG_TAG, "Crash #%lu not in ring buffer — skipping",
@@ -455,12 +460,14 @@ private:
                     LOG_I(CRASH_LOG_TAG, "Uploaded crash #%lu",
                           static_cast<unsigned long>(n));
                     writeSentSeq(n);
+                    uploadFrom(n + 1);
                 },
                 [n](const WirelessErrorInfo& err) {
                     LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
                           static_cast<unsigned long>(n), err.message.c_str());
                 }
             );
+            return;
         }
     }
 
