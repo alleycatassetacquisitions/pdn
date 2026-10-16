@@ -39,10 +39,10 @@ struct CrashPacket {
 } __attribute__((packed));
 
 /**
- * Captures and persists crash records across reboots, then transmits when wireless is up.
+ * Captures and persists crash records across reboots, then transmits them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized; poll serial and call transmitPending() in loop(), which waits
- * for the radio itself and offers each pending record once per boot.
+ * storage is initialized, then transmitPending(), which offers each pending record once
+ * per boot; poll serial in loop().
  */
 class CrashLogger {
 public:
@@ -122,24 +122,19 @@ public:
     }
 
     /**
-     * Offers every unreported record once per boot. Call each tick: nothing can
-     * add a record after capture(), so the first pass with the radio up is the
-     * only one that has anything to do. A record left unsent stays pending and
-     * goes out on the next boot, which is the retry. Over ESP-NOW a record counts
-     * as sent once queued, since the driver reports no per-frame outcome.
+     * Offers every pending record once per boot; nothing can add one after
+     * capture(). Over HTTP the uploads switch the radio to WiFi and wait in the
+     * driver's queue until it connects; if the radio goes back to ESP-NOW first,
+     * they fail. A record left unsent stays pending and goes out on the next boot,
+     * which is the retry. Over ESP-NOW a record counts as sent once queued,
+     * since the driver reports no per-frame outcome.
      */
     void transmitPending() {
         if (offeredThisBoot) return;
-        // A send offered while the radio is down is accepted by the driver's queue
-        // and then dropped with no report, so the one pass has to wait for the radio
-        // rather than be spent against it.
-        if (useHttp) {
-            if (wirelessManager == nullptr) return;
-            if (!wirelessManager->isWifiConnected()) {
-                wirelessManager->enableWifiMode();
-                return;
-            }
-        } else if (espNowDriver != nullptr &&
+        // A send offered while ESP-NOW is down is accepted by the driver's queue and
+        // then dropped with no report, so the one pass has to wait for ESP-NOW rather
+        // than be spent against it.
+        if (!useHttp && espNowDriver != nullptr &&
             espNowDriver->getPeerCommsState() != PeerCommsState::CONNECTED) {
             return;
         }
