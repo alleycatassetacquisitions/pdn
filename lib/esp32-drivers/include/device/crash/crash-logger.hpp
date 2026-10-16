@@ -15,6 +15,7 @@
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device/wireless-manager.hpp"
+#include "utils/simple-timer.hpp"
 #include "alleycat-server/crash-api.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
@@ -41,7 +42,8 @@ struct CrashPacket {
  * Captures and persists crash records across reboots, then transmits them.
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver. Call
  * takeCrashedBootUptime() first in setup() and pass it to capture() once storage is
- * initialized, then call transmitPending(). Call noteUptime() and poll serial in loop().
+ * initialized, then call transmitPending(). Call noteUptime() and poll serial in loop(),
+ * plus restoreEspNowAfterUploads() on a device that meets its condition.
  */
 class CrashLogger {
 public:
@@ -152,6 +154,22 @@ public:
         offeredThisBoot = true;
         if (!hasPending()) return;
         useHttp ? transmitHttp() : transmitEspNow();
+    }
+
+    /**
+     * Call every loop() pass on a device where nothing but the crash uploads
+     * queues HTTP requests while they run: switches the radio back to ESP-NOW once
+     * they end, or on the first call after UPLOAD_TIMEOUT_MS. The switch fails
+     * every queued HTTP request.
+     */
+    void restoreEspNowAfterUploads() {
+        if (!uploadTimer.isRunning()) return;
+        if (uploadsInProgress && !uploadTimer.expired()) return;
+        uploadTimer.invalidate();
+        if (uploadsInProgress) {
+            LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
+        }
+        wirelessManager->enablePeerCommsMode();
     }
 
     /** Dumps every stored record to the USB monitor, for a device on a bench. */
@@ -324,6 +342,13 @@ private:
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
     bool offeredThisBoot = false;
+    bool uploadsInProgress = false;
+    SimpleTimer uploadTimer;
+    // With no AP in range the HTTP driver neither sends nor fails a queued request,
+    // and a silent server holds one for two attempts of 15 s or more. Counted from
+    // transmitPending(), so the blocking connect and the rest of setup() spend part
+    // of it, and an HTTP call blocked for its 10 s timeout can delay the switch past it.
+    static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
 
     /**
      * Panics often reboot as ESP_RST_SW; capture when a core dump exists or the
@@ -433,6 +458,8 @@ private:
 
     void transmitHttp() {
         if (!wirelessManager) return;
+        uploadsInProgress = true;
+        uploadTimer.setTimer(UPLOAD_TIMEOUT_MS);
         uploadFrom(readSentSeq() + 1);
     }
 
@@ -462,13 +489,14 @@ private:
                     writeSentSeq(n);
                     uploadFrom(n + 1);
                 },
-                [n](const WirelessErrorInfo& err) {
+                [this, n](const WirelessErrorInfo& err) {
                     LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
                           static_cast<unsigned long>(n), err.message.c_str());
-                }
-            );
+                    uploadsInProgress = false;
+                });
             return;
         }
+        uploadsInProgress = false;
     }
 
     void transmitEspNow() {

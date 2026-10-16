@@ -166,7 +166,6 @@ static void setup() {
 
     // Managers — constructed after fdn->begin() so wireless is ready.
     remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
-    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     fdnConnectWirelessManager = new FDNConnectWirelessManager();
     fdnConnectWirelessManager->initialize(fdn->getWirelessManager());
@@ -181,6 +180,9 @@ static void setup() {
     crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
+    // After transmitPending(): a broadcast still in flight when an upload shuts
+    // ESP-NOW down never completes, and it blocks the send queue for the boot.
+    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
     idleApp = new Idle(
@@ -218,6 +220,11 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
+        // The FDN cannot leave WiFi on its own: its jacks are inputs, which learn their
+        // peer from an ESP-NOW packet that cannot arrive on WiFi, and its player
+        // broadcasts bypass WirelessManager and are dropped meanwhile. Nothing else on
+        // it queues HTTP requests at boot.
+        crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();
 }
