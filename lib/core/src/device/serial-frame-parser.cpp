@@ -4,7 +4,6 @@
 #include "wireless/crc16.hpp"
 
 #include <cstring>
-#include <limits>
 #include <utility>
 
 namespace {
@@ -36,12 +35,7 @@ std::vector<uint8_t> encodeFramed(const HelloPayload& hello) {
 
 unsigned long SerialFrameParser::nowMs() {
     PlatformClock* clk = SimpleTimer::getPlatformClock();
-    if (clk == nullptr) {
-        // A null clock must fail loud, not silently disable timeouts: max()
-        // forces the next gap computation to time out immediately.
-        return std::numeric_limits<unsigned long>::max();
-    }
-    return clk->milliseconds();
+    return clk != nullptr ? clk->milliseconds() : 0;
 }
 
 size_t SerialFrameParser::opcodePayloadLen(uint8_t opcode) {
@@ -63,13 +57,7 @@ void SerialFrameParser::resetParser() {
 
 void SerialFrameParser::checkTimeout() {
     if (parser.state == ParseState::SCAN_FOR_SYNC) return;
-    const unsigned long now = nowMs();
-    // Clamp a backwards clock (now < lastByteMs) to gap 0 so unsigned
-    // subtraction can't underflow to ~UINT_MAX and fire a spurious mid-frame
-    // resync. The null-clock case still times out: nowMs() returns max() there,
-    // which is never below lastByteMs, so it yields a large gap unclamped.
-    const unsigned long gap = now >= lastByteMs ? now - lastByteMs : 0;
-    if (gap > PARSER_TIMEOUT_MS) {
+    if (nowMs() - lastByteMs > PARSER_TIMEOUT_MS) {
         resetParser();
     }
 }
@@ -83,8 +71,7 @@ void SerialFrameParser::feed(const uint8_t* data, size_t len) {
         resetParser();
     }
     checkTimeout();
-    const unsigned long now = nowMs();
-    lastByteMs = now;
+    lastByteMs = nowMs();
     for (size_t i = 0; i < len; ++i) {
         consumeByte(data[i]);
     }
