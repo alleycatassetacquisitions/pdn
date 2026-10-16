@@ -109,6 +109,7 @@ void setupEspNow(
 }
 
 static void setup() {
+    const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
     // Before any driver, because two of them need it and neither can bring it
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.
@@ -186,7 +187,7 @@ static void setup() {
     setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, pdn->getWirelessManager());
-    crashLogger->capture();
+    crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
 
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
@@ -207,6 +208,7 @@ static void setup() {
 
 void loop() {
     if (crashLogger != nullptr) {
+        CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
     }
     pdn->loop();

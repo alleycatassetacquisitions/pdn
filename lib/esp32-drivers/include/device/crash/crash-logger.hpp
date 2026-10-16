@@ -7,7 +7,6 @@
 #include <strings.h>
 #include <cstdlib>
 #include <cstdarg>
-#include <esp_timer.h>
 #include <esp_system.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
@@ -40,9 +39,10 @@ struct CrashPacket {
 
 /**
  * Captures and persists crash records across reboots, then transmits them.
- * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
- * storage is initialized, then transmitPending(), which offers each pending record once
- * per boot; poll serial in loop().
+ * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver. Call
+ * takeCrashedBootUptime() first in setup() and pass it to capture() once storage is
+ * initialized, then call transmitPending(), which offers each pending record once per
+ * boot; call noteUptime() and poll serial in loop().
  */
 class CrashLogger {
 public:
@@ -69,10 +69,21 @@ public:
     }
 
     /**
+     * Call first in setup(), before anything that can crash: returns the uptime
+     * last noted since the previous call (0 if none) and clears it, so a crash
+     * later in this boot's setup is never reported with an earlier boot's uptime.
+     */
+    static uint32_t takeCrashedBootUptime();
+
+    /** Call every loop() pass: records the uptime a later crash in this boot reports. */
+    static void noteUptime();
+
+    /**
      * Records the last reset if it was not a clean one. Runs once; safe to
      * call before the radio exists, since it only touches storage.
+     * `crashedBootUptimeMs` comes from takeCrashedBootUptime().
      */
-    void capture() {
+    void capture(uint32_t crashedBootUptimeMs) {
         if (hasCaptured) return;
         hasCaptured = true;
 
@@ -92,7 +103,7 @@ public:
 
         CrashRecord rec{};
         rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp   = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+        rec.timestamp = crashedBootUptimeMs;
 
         if (hadCoreDumpSummary) {
             rec.programCounter = summary.exc_pc;
