@@ -31,7 +31,7 @@ inline void uploadCrash(
     const size_t len = CrashEncoder::encode(record, deviceMac, buf, sizeof(buf));
 
     if (len == 0) {
-        onError({WirelessError::INVALID_STATE, "protobuf encode failed", false});
+        onError({WirelessError::INVALID_STATE, "protobuf encode failed"});
         return;
     }
 
