@@ -13,7 +13,8 @@ constexpr uint8_t MAX_CRASH_ENTRIES  = 10;
  */
 struct CoreDumpDetails {
     uint32_t programCounter;
-    uint32_t exceptionCause;
+    /** Empty after a task watchdog reset, whose saved frame holds no exception cause. */
+    std::optional<uint32_t> exceptionCause;
     char taskName[TASK_NAME_LENGTH];
 };
 

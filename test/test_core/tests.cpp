@@ -793,6 +793,10 @@ TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZero) {
     encoderKeepsExceptionCauseZero(this);
 }
 
+TEST_F(CrashEncoderTestSuite, omitsMissingExceptionCause) {
+    encoderOmitsMissingExceptionCause(this);
+}
+
 TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
     encoderReturnZeroWhenBufferTooSmall(this);
 }

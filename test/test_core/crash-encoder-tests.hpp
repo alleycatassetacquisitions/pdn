@@ -95,3 +95,17 @@ inline void encoderKeepsExceptionCauseZero(CrashEncoderTestSuite* suite) {
     EXPECT_EQ(msg.exception_cause, 0u);
     EXPECT_TRUE(msg.has_task_name);
 }
+
+inline void encoderOmitsMissingExceptionCause(CrashEncoderTestSuite* suite) {
+    CrashRecord rec = makeFullRecord();
+    rec.coreDumpDetails->exceptionCause.reset();
+
+    size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
+    ASSERT_GT(len, 0u);
+
+    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
+
+    EXPECT_TRUE(msg.has_program_counter);
+    EXPECT_FALSE(msg.has_exception_cause);
+    EXPECT_TRUE(msg.has_task_name);
+}

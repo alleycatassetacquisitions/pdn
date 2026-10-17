@@ -102,7 +102,11 @@ public:
             summary.ex_info.exc_cause != CORE_DUMP_INVALID_CAUSE) {
             CoreDumpDetails& details = rec.coreDumpDetails.emplace();
             details.programCounter = summary.exc_pc;
-            details.exceptionCause = summary.ex_info.exc_cause;
+            // A task watchdog panic hands the core dump the running task's interrupt
+            // frame, and interrupt entry never stores an exception cause in it.
+            if (reason != ESP_RST_TASK_WDT) {
+                details.exceptionCause = summary.ex_info.exc_cause;
+            }
             strncpy(details.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
             details.taskName[TASK_NAME_LENGTH - 1] = '\0';
         }
@@ -387,7 +391,9 @@ private:
         if (rec.coreDumpDetails) {
             JsonObject details = doc["coreDumpDetails"].to<JsonObject>();
             details["programCounter"] = rec.coreDumpDetails->programCounter;
-            details["exceptionCause"] = rec.coreDumpDetails->exceptionCause;
+            if (rec.coreDumpDetails->exceptionCause.has_value()) {
+                details["exceptionCause"] = *rec.coreDumpDetails->exceptionCause;
+            }
             details["task"] = rec.coreDumpDetails->taskName;
         }
         doc["commitHash"]  = rec.commitHash;
@@ -407,7 +413,9 @@ private:
             JsonObject stored = doc["coreDumpDetails"];
             CoreDumpDetails& details = out.coreDumpDetails.emplace();
             details.programCounter = stored["programCounter"] | 0u;
-            details.exceptionCause = stored["exceptionCause"] | 0u;
+            if (stored["exceptionCause"].is<uint32_t>()) {
+                details.exceptionCause = stored["exceptionCause"].as<uint32_t>();
+            }
             const char* task = stored["task"] | "";
             strncpy(details.taskName, task, TASK_NAME_LENGTH - 1);
             details.taskName[TASK_NAME_LENGTH - 1] = '\0';
@@ -482,11 +490,11 @@ private:
             pkt.crashNumber    = rec.crashNumber;
             pkt.timestamp      = rec.timestamp;
             pkt.resetReason    = rec.resetReason;
-            // CrashPacket has no presence flag; an empty task name marks a record
-            // without details.
+            // CrashPacket has no presence flags: an empty task name marks a record
+            // without details, and CORE_DUMP_INVALID_CAUSE one with details but no cause.
             if (rec.coreDumpDetails) {
                 pkt.programCounter = rec.coreDumpDetails->programCounter;
-                pkt.exceptionCause = rec.coreDumpDetails->exceptionCause;
+                pkt.exceptionCause = rec.coreDumpDetails->exceptionCause.value_or(CORE_DUMP_INVALID_CAUSE);
                 memcpy(pkt.taskName, rec.coreDumpDetails->taskName, TASK_NAME_LENGTH);
             }
             memcpy(pkt.commitHash, rec.commitHash, COMMIT_HASH_LENGTH);
@@ -529,10 +537,14 @@ private:
         if (!details) {
             return "no core dump details";
         }
+        char cause[40] = "ec=-";
+        if (details->exceptionCause.has_value()) {
+            snprintf(cause, sizeof(cause), "ec=%-2u %s", static_cast<unsigned>(*details->exceptionCause),
+                     exceptionCauseName(*details->exceptionCause));
+        }
         char text[80];
-        snprintf(text, sizeof(text), "pc=0x%08X | ec=%-2u %-18s | task=%s",
-                 static_cast<unsigned>(details->programCounter), static_cast<unsigned>(details->exceptionCause),
-                 exceptionCauseName(details->exceptionCause), details->taskName);
+        snprintf(text, sizeof(text), "pc=0x%08X | %-24s | task=%s", static_cast<unsigned>(details->programCounter),
+                 cause, details->taskName);
         return text;
     }
 
