@@ -308,6 +308,22 @@ TEST(FirmwareTransportTest, losingEligibilityBetweenChunksDropsTheReceive) {
     EXPECT_EQ(f.receiverStore.abortCalls, 1);
 }
 
+TEST(FirmwareTransportTest, aSeedTakesNoImageWhileItSends) {
+    FirmwareTransportFixture f;
+    f.receiverStore.setRunningImage(std::vector<uint8_t>(64, 0x55), 0xB2);
+    ASSERT_TRUE(f.receiver->beginSeeding());
+    ASSERT_TRUE(f.seed->beginSeeding());
+    while (f.seedRadio.sent.size() < 3) {
+        f.clock.advance(100);
+        f.seed->sync();
+    }
+    for (const std::vector<uint8_t>& frame : f.seedRadio.sent) {
+        f.receiverRadio.deliver(frame);
+    }
+
+    EXPECT_EQ(f.receiverStore.beginWriteCalls, 0);
+}
+
 TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
     // The screen stops being interruptible, or a cable goes in, between the
     // receiver's sync() and the chunk that would complete the image.

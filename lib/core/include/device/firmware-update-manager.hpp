@@ -23,7 +23,7 @@ public:
     /**
      * isEligible is checked before an image is taken and on every sync() and
      * every chunk while one is being received; a receive is dropped once it
-     * reads false. It must read false while this device seeds.
+     * reads false.
      */
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           std::function<bool()> isEligible);
@@ -46,6 +46,7 @@ private:
     void commit();
     void stopReceiving();
     void sendChunk(uint16_t index);
+    bool mayReceive() const;
 
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
@@ -59,9 +60,9 @@ private:
     uint8_t passesLeft = 0;
     SimpleTimer beaconTimer;
 
-    // Receiver. One image at a time, followed until its chunks have been quiet
-    // for RECEIVE_STALL_MS. A refused image is followed too, so a seed still
-    // streaming it is not downloaded again.
+    // Receiver. One image at a time. A refused image is remembered until its
+    // chunks have been quiet for RECEIVE_STALL_MS, so a seed still streaming it
+    // is not downloaded again; another image's chunk 0 replaces it.
     enum class Receive : uint8_t {
         NONE,
         WRITING,

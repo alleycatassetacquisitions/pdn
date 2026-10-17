@@ -62,14 +62,14 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
         }
         // Checked here as well as in sync(): this chunk could be the last one, and
         // committing it restarts the device before sync() runs again.
-        if (!isEligible()) {
+        if (!mayReceive()) {
             stopReceiving();
             return;
         }
         writeChunk(header.index, data, length);
         return;
     }
-    if (receive != Receive::WRITING && header.index == 0 && isEligible() && startReceiving(header, data, length)) {
+    if (receive != Receive::WRITING && header.index == 0 && mayReceive() && startReceiving(header, data, length)) {
         writeChunk(0, data, length);
     }
 }
@@ -135,12 +135,17 @@ bool FirmwareUpdateManager::beginSeeding() {
     return true;
 }
 
+bool FirmwareUpdateManager::mayReceive() const {
+    // A seed streams its own image and never takes one.
+    return !isSeeding() && isEligible();
+}
+
 bool FirmwareUpdateManager::isSeeding() const {
     return passesLeft != 0;
 }
 
 void FirmwareUpdateManager::sync() {
-    if (receive == Receive::WRITING && (!isEligible() || quietTimer.expired())) {
+    if (receive == Receive::WRITING && (!mayReceive() || quietTimer.expired())) {
         LOG_W(TAG, "receive dropped with %u of %u chunks", chunksWritten, receiveChunkCount);
         stopReceiving();
     } else if (receive == Receive::REFUSED && quietTimer.expired()) {
