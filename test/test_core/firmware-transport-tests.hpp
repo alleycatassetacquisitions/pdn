@@ -226,7 +226,7 @@ TEST(FirmwareTransportTest, eachChunkIsWrittenOnce) {
 }
 
 TEST(FirmwareTransportTest, anImageTheStoreRefusesAtChunkZeroIsNotWritten) {
-    // Another family's image, an older build, or one too large for the slot.
+    // An older build, or one too large for the slot.
     FirmwareTransportFixture f;
     f.receiverStore.wantImages = false;
     ASSERT_TRUE(f.seed->beginSeeding());
@@ -413,9 +413,9 @@ TEST(FirmwareTransportTest, aRadioThatRefusesEverythingStillEndsTheRun) {
     EXPECT_FALSE(f.seed->isSeeding());
 }
 
-TEST(FirmwareTransportTest, anUnsignedDeviceDoesNotSeed) {
+TEST(FirmwareTransportTest, anUnreadableImageIsNotSeeded) {
     FirmwareTransportFixture f;
-    f.seedStore.setRunningImage({}, 0xA1);  // the store reports length 0 for an unsigned image
+    f.seedStore.setRunningImage({}, 0xA1);  // the store reports length 0 for an unreadable image
 
     EXPECT_FALSE(f.seed->beginSeeding());
     EXPECT_FALSE(f.seed->isSeeding());

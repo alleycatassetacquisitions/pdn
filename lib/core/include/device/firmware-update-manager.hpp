@@ -30,7 +30,7 @@ public:
     /** Hands the radio handler back. */
     ~FirmwareUpdateManager();
 
-    /** Starts streaming this device's running image; false if that image is unsigned or unreadable. */
+    /** Starts streaming this device's running image; false if that image is unreadable. */
     bool beginSeeding();
     /** True until the seed's last pass has been sent. */
     bool isSeeding() const;

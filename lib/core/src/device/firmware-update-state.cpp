@@ -20,7 +20,7 @@ void FirmwareUpdate::onStateMounted(Device* device) {
 }
 
 void FirmwareUpdate::onStateLoop(Device* device) {
-    // An unsigned image makes beginSeeding() refuse, so the host gets its screen straight back.
+    // An unreadable image makes beginSeeding() refuse, so the host gets its screen straight back.
     if (!firmwareUpdateManager->isSeeding()) {
         transitionToHostState = true;
     }

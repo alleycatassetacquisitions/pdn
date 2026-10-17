@@ -122,7 +122,7 @@ void FirmwareUpdateManager::stopReceiving() {
 bool FirmwareUpdateManager::beginSeeding() {
     seedImageLength = static_cast<uint32_t>(firmwareStore->getRunningImageLength());
     if (seedImageLength == 0) {
-        LOG_E(TAG, "the running image is unsigned or unreadable; nothing to seed");
+        LOG_E(TAG, "the running image is unreadable; nothing to seed");
         return false;
     }
     firmwareStore->getRunningImageId(seedImageId.data());
