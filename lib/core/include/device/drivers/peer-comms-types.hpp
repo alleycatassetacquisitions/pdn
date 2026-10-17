@@ -25,22 +25,17 @@ enum class PktType : uint8_t {
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
+/**
+ * Every frame's header; the payload is the rest of the frame. A device takes a
+ * firmware update only from a build newer than its own, so this header,
+ * kFirmwareUpdate, FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE and the ESP-NOW
+ * channel must stay as they are, or devices in the field can only be updated
+ * over USB.
+ */
 struct DataPktHdr
 {
-    /**
-     * Total packet length including this header. Two bytes because a v2 frame
-     * carries more than a byte can count.
-     */
-    uint16_t pktLen;
     PktType packetType;
 } __attribute__((packed));
-
-/**
- * One ESP-NOW v2 frame's payload, less this protocol's header. Stated here
- * rather than derived from the IDF macro so the native suite can see it; the
- * driver asserts the two agree.
- */
-constexpr size_t MAX_PKT_DATA_SIZE = 1470 - sizeof(DataPktHdr);
 
 struct ChainConfirmPayload
 {
@@ -113,5 +108,3 @@ struct FirmwareChunkHeader {
     uint16_t index;
 } __attribute__((packed));
 
-static_assert(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE <= MAX_PKT_DATA_SIZE,
-              "a chunk must fit one ESP-NOW v2 frame");

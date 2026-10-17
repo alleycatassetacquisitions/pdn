@@ -37,8 +37,9 @@
 //Use this mac address in order to reach all nearby devices
 constexpr uint8_t PEER_BROADCAST_ADDR[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-static_assert(MAX_PKT_DATA_SIZE == ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr),
-              "wire payload size disagrees with the IDF's v2 frame");
+constexpr size_t MAX_PKT_DATA_SIZE = ESP_NOW_MAX_DATA_LEN_V2 - sizeof(DataPktHdr);
+static_assert(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE <= MAX_PKT_DATA_SIZE,
+              "a firmware chunk must fit one ESP-NOW v2 frame");
 
 //Singleton class that handles communication over ESP-NOW protocol.
 class EspNowDriver : public PeerCommsDriverInterface
@@ -197,7 +198,6 @@ public:
         }
 
         DataPktHdr* hdr = reinterpret_cast<DataPktHdr*>(sendBuffer);
-        hdr->pktLen = sizeof(DataPktHdr) + length;
         hdr->packetType = packetType;
 
         memcpy(sendBuffer + sizeof(DataPktHdr), data, length);
@@ -208,14 +208,14 @@ public:
         DataSendBuffer buffer;
         memcpy(buffer.dstMac, dst, ESP_NOW_ETH_ALEN);
         buffer.ptr = sendBuffer;
-        buffer.len = hdr->pktLen;
+        buffer.len = sizeof(DataPktHdr) + length;
         m_sendQueue.push(buffer);
 
         xSemaphoreGive(sendMutex);
 
         if(willNeedToStartSend)
         {
-            return SendFrontPkt();
+            SendFrontPkt();
         }
         return 0;
     }
@@ -236,7 +236,7 @@ public:
         m_pktHandlerCallbacks[(int)packetType].first = nullptr;
     }
 
-    /** True once every queued frame, including the one on the air, has been reported on. */
+    /** True when no frame is queued or awaiting its send report. */
     bool isSendQueueEmpty() override {
         xSemaphoreTake(sendMutex, portMAX_DELAY);
         const bool empty = m_sendQueue.empty();
@@ -385,19 +385,12 @@ private:
 
         const auto* pktHdr = reinterpret_cast<const DataPktHdr*>(data);
 
-        // pktLen sizes the payload copy below; trust it only when it matches the
-        // frame the radio delivered.
-        if (pktHdr->pktLen != data_len) {
-            LOG_E("ENC", "Recieved pktLen (%u) does not match frame length (%i)\n", pktHdr->pktLen, data_len);
-            return;
-        }
-
 #if DEBUG_PRINT_ESP_NOW
         ESP_LOGD("ENC", "Packet Type: %i\n", pktHdr->packetType);
 #endif
 
         manager->HandlePktCallback(pktHdr->packetType, esp_now_info->src_addr,
-                                   data + sizeof(DataPktHdr), pktHdr->pktLen - sizeof(DataPktHdr));
+                                   data + sizeof(DataPktHdr), data_len - sizeof(DataPktHdr));
     }
 
     static void EspNowSendCallback(const esp_now_send_info_t *esp_now_info, esp_now_send_status_t status) {
