@@ -14,9 +14,7 @@
 class FakeFirmwareRadio : public PeerCommsInterface {
 public:
     /** Keeps the frame unless refuseSends is set. */
-    int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) override {
-        (void)dst;
-        (void)packetType;
+    int sendData(const uint8_t*, PktType, const uint8_t* data, const size_t length) override {
         if (refuseSends) {
             return -1;
         }
@@ -36,19 +34,13 @@ public:
     /** A fixed local MAC. */
     uint8_t* getMacAddress() override { return mac; }
     /** Unused by the transport. */
-    void removePeer(uint8_t* macAddr) override { (void)macAddr; }
+    void removePeer(uint8_t*) override {}
     /** Unused by the transport. */
-    int addEspNowPeer(const uint8_t* macAddr) override {
-        (void)macAddr;
-        return 0;
-    }
+    int addEspNowPeer(const uint8_t*) override { return 0; }
     /** Unused by the transport. */
-    int removeEspNowPeer(const uint8_t* macAddr) override {
-        (void)macAddr;
-        return 0;
-    }
+    int removeEspNowPeer(const uint8_t*) override { return 0; }
     /** Unused by the transport. */
-    void setPeerCommsState(PeerCommsState state) override { (void)state; }
+    void setPeerCommsState(PeerCommsState) override {}
     /** Always connected. */
     PeerCommsState getPeerCommsState() override { return PeerCommsState::CONNECTED; }
     /** Unused by the transport. */
@@ -100,11 +92,12 @@ public:
     }
 
     /**
-     * Runs the seed until it stops, passing each frame to the receiver unless
-     * `drop` says otherwise. Each frame takes 100ms of fake time, so this small
-     * image's pass spans about one beacon interval.
+     * Starts a seed run and runs it until it stops, passing each frame to the
+     * receiver unless `drop` says otherwise. Each frame takes 100ms of fake time,
+     * so this small image's pass spans about one beacon interval.
      */
     void runSeed(const std::function<bool(size_t frameNumber, const std::vector<uint8_t>& frame)>& drop = nullptr) {
+        ASSERT_TRUE(seed->beginSeeding());
         size_t delivered = 0;
         for (int tick = 0; tick < 10000 && seed->isSeeding(); tick++) {
             clock.advance(100);
@@ -119,6 +112,26 @@ public:
                     receiverRadio.deliver(seedRadio.sent[delivered]);
                 }
             }
+        }
+    }
+
+    /** Starts a seed run, lets it send `count` frames, and delivers them all to the receiver. */
+    void deliverFirstFrames(size_t count) {
+        ASSERT_TRUE(seed->beginSeeding());
+        while (seedRadio.sent.size() < count) {
+            clock.advance(100);
+            seed->sync();
+        }
+        for (const std::vector<uint8_t>& frame : seedRadio.sent) {
+            receiverRadio.deliver(frame);
+        }
+    }
+
+    /** Lets `seconds` pass with no frame heard, syncing the receiver each second. */
+    void hearNothingFor(int seconds) {
+        for (int i = 0; i < seconds; i++) {
+            clock.advance(1000);
+            receiver->sync();
         }
     }
 
@@ -140,12 +153,12 @@ public:
     bool eligible = true;
 };
 
-TEST(FirmwareTransportTest, aSeedSendsEveryChunkThreeTimesThenStops) {
+TEST(FirmwareTransportTest, aSeedSendsEveryChunkThreeTimesToAnIneligibleReceiver) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
-    f.eligible = false;
+    f.eligible = false;  // mid-match, cabled, or someone at the screen
     f.runSeed();
 
+    EXPECT_EQ(f.receiverStore.beginWriteCalls, 0) << "an ineligible device takes no image";
     EXPECT_FALSE(f.seed->isSeeding());
     std::map<uint16_t, int> sends;
     for (const auto& frame : f.seedRadio.sent) {
@@ -160,17 +173,20 @@ TEST(FirmwareTransportTest, aSeedSendsEveryChunkThreeTimesThenStops) {
 
 TEST(FirmwareTransportTest, aReceiverAssemblesTheImageAndRestartsIntoIt) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
     EXPECT_EQ(f.receiverStore.slot, f.image);
     EXPECT_TRUE(f.receiverStore.bootSet);
     EXPECT_TRUE(f.receiverStore.restarted);
+    // The store, not the transport, judges the image, from chunk 0 and the length.
+    const std::vector<uint8_t> chunkZero(f.image.begin(), f.image.begin() + FIRMWARE_CHUNK_SIZE);
+    EXPECT_EQ(f.receiverStore.lastHead, chunkZero);
+    EXPECT_EQ(f.receiverStore.lastLength, FirmwareTransportFixture::IMAGE_LENGTH);
+    EXPECT_FALSE(f.receiver->isSeeding()) << "only the hold gesture seeds; no frame can";
 }
 
 TEST(FirmwareTransportTest, chunksMissedInOnePassAreFilledFromTheNext) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     std::map<uint16_t, int> seen;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         const uint16_t index = FirmwareTransportFixture::chunkIndex(frame);
@@ -183,7 +199,6 @@ TEST(FirmwareTransportTest, chunksMissedInOnePassAreFilledFromTheNext) {
 
 TEST(FirmwareTransportTest, aReceiverThatJoinsMidRunStillCompletes) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed([&](size_t frameNumber, const std::vector<uint8_t>&) {
         return frameNumber < FirmwareTransportFixture::CHUNK_COUNT / 2;  // hears nothing at first
     });
@@ -196,7 +211,6 @@ TEST(FirmwareTransportTest, waitingAPassForMissedChunksIsNotAStall) {
     // On the rig a pass of a 2.2MB image takes about 24s: a receiver missing a
     // late chunk hears only chunks it already has until the seed comes round again.
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     std::map<uint16_t, int> seen;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         const uint16_t index = FirmwareTransportFixture::chunkIndex(frame);
@@ -215,7 +229,6 @@ TEST(FirmwareTransportTest, waitingAPassForMissedChunksIsNotAStall) {
 
 TEST(FirmwareTransportTest, eachChunkIsWrittenOnce) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         f.receiverRadio.deliver(frame);  // every frame heard twice
         return false;
@@ -229,27 +242,15 @@ TEST(FirmwareTransportTest, anImageTheStoreRefusesAtChunkZeroIsNotWritten) {
     // An older build, or one too large for the slot.
     FirmwareTransportFixture f;
     f.receiverStore.wantImages = false;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
     EXPECT_EQ(f.receiverStore.writeCount, 0);
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 
-TEST(FirmwareTransportTest, theStoreJudgesChunkZeroAndTheImageLength) {
-    FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
-    f.runSeed();
-
-    const std::vector<uint8_t> chunkZero(f.image.begin(), f.image.begin() + FIRMWARE_CHUNK_SIZE);
-    EXPECT_EQ(f.receiverStore.lastHead, chunkZero);
-    EXPECT_EQ(f.receiverStore.lastLength, FirmwareTransportFixture::IMAGE_LENGTH);
-}
-
 TEST(FirmwareTransportTest, aRefusedImageIsNotDownloadedAgainInTheSameRun) {
     FirmwareTransportFixture f;
     f.receiverStore.acceptImages = false;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
     EXPECT_EQ(f.receiverStore.beginWriteCalls, 1);
@@ -262,14 +263,9 @@ TEST(FirmwareTransportTest, aRefusedImageIsTriedAgainInALaterRun) {
     // genuine image out until reboot.
     FirmwareTransportFixture f;
     f.receiverStore.acceptImages = false;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
-    for (int i = 0; i < 10; i++) {
-        f.clock.advance(1000);
-        f.receiver->sync();
-    }
+    f.hearNothingFor(10);
     f.receiverStore.acceptImages = true;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
     EXPECT_EQ(f.receiverStore.beginWriteCalls, 2);
@@ -278,7 +274,6 @@ TEST(FirmwareTransportTest, aRefusedImageIsTriedAgainInALaterRun) {
 
 TEST(FirmwareTransportTest, losingEligibilityDropsTheReceive) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed([&](size_t frameNumber, const std::vector<uint8_t>&) {
         if (frameNumber == 4) {
             f.eligible = false;  // someone presses a button mid-transfer
@@ -292,14 +287,7 @@ TEST(FirmwareTransportTest, losingEligibilityDropsTheReceive) {
 
 TEST(FirmwareTransportTest, losingEligibilityBetweenChunksDropsTheReceive) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
-    while (f.seedRadio.sent.size() < 3) {
-        f.clock.advance(100);
-        f.seed->sync();
-    }
-    for (const std::vector<uint8_t>& frame : f.seedRadio.sent) {
-        f.receiverRadio.deliver(frame);
-    }
+    f.deliverFirstFrames(3);
     ASSERT_EQ(f.receiverStore.beginWriteCalls, 1);
 
     f.eligible = false;
@@ -312,14 +300,7 @@ TEST(FirmwareTransportTest, aSeedTakesNoImageWhileItSends) {
     FirmwareTransportFixture f;
     f.receiverStore.setRunningImage(std::vector<uint8_t>(64, 0x55), 0xB2);
     ASSERT_TRUE(f.receiver->beginSeeding());
-    ASSERT_TRUE(f.seed->beginSeeding());
-    while (f.seedRadio.sent.size() < 3) {
-        f.clock.advance(100);
-        f.seed->sync();
-    }
-    for (const std::vector<uint8_t>& frame : f.seedRadio.sent) {
-        f.receiverRadio.deliver(frame);
-    }
+    f.deliverFirstFrames(3);
 
     EXPECT_EQ(f.receiverStore.beginWriteCalls, 0);
 }
@@ -328,7 +309,6 @@ TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
     // The screen stops being interruptible, or a cable goes in, between the
     // receiver's sync() and the chunk that would complete the image.
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         if (FirmwareTransportFixture::chunkIndex(frame) == FirmwareTransportFixture::CHUNK_COUNT - 1) {
             f.eligible = false;
@@ -342,12 +322,8 @@ TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
 
 TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed([](size_t frameNumber, const std::vector<uint8_t>&) { return frameNumber > 3; });  // seed goes quiet
-    for (int i = 0; i < 20; i++) {
-        f.clock.advance(1000);
-        f.receiver->sync();
-    }
+    f.hearNothingFor(20);
 
     EXPECT_EQ(f.receiverStore.abortCalls, 1);
     EXPECT_FALSE(f.receiverStore.restarted);
@@ -355,7 +331,6 @@ TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
 
 TEST(FirmwareTransportTest, chunksOfAnotherImageAreIgnored) {
     FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         if (FirmwareTransportFixture::chunkIndex(frame) == 0) {
             return false;
@@ -368,27 +343,6 @@ TEST(FirmwareTransportTest, chunksOfAnotherImageAreIgnored) {
 
     EXPECT_EQ(f.receiverStore.writeCount, 1) << "only chunk 0 belongs to the image being received";
     EXPECT_FALSE(f.receiverStore.restarted);
-}
-
-TEST(FirmwareTransportTest, anIneligibleDeviceTakesNoImage) {
-    FirmwareTransportFixture f;
-    f.eligible = false;  // mid-match, cabled, or someone at the screen
-    ASSERT_TRUE(f.seed->beginSeeding());
-    f.runSeed();
-
-    EXPECT_EQ(f.receiverStore.beginWriteCalls, 0);
-}
-
-TEST(FirmwareTransportTest, noFrameStartsASeedRun) {
-    // Only the hold gesture seeds; nothing heard over the air can.
-    FirmwareTransportFixture f;
-    ASSERT_TRUE(f.seed->beginSeeding());
-    f.runSeed();
-    for (const auto& frame : f.seedRadio.sent) {
-        f.receiverRadio.deliver(frame);
-    }
-
-    EXPECT_FALSE(f.receiver->isSeeding());
 }
 
 TEST(FirmwareTransportTest, aBusyDriverHoldsTheSeedBack) {
@@ -407,7 +361,6 @@ TEST(FirmwareTransportTest, aBusyDriverHoldsTheSeedBack) {
 TEST(FirmwareTransportTest, aRadioThatRefusesEverythingStillEndsTheRun) {
     FirmwareTransportFixture f;
     f.seedRadio.refuseSends = true;
-    ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
     EXPECT_FALSE(f.seed->isSeeding());
