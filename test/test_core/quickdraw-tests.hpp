@@ -226,6 +226,34 @@ inline void pairingCodeIsInterruptibleUntilTouched(IdleStateTests* suite) {
     EXPECT_TRUE(registration.isInterruptible());
 }
 
+// A boot-time crash upload is still waiting on WiFi when the pairing-code
+// screen mounts; switching the radio there would fail it.
+inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    suite->device.wirelessManager->enableWifiMode();
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
+    registration.onStateDismounted(&suite->device);
+}
+
+inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
+    suite->device.wirelessManager->enableWifiMode();
+    FetchUserDataState fetch(suite->player, suite->device.wirelessManager, nullptr, suite->matchManager);
+    fetch.onStateDismounted(&suite->device);
+    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+}
+
+inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
+    suite->device.wirelessManager->enableWifiMode();
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store, []() { return false; });
+    FirmwareUpdate seedScreen(FIRMWARE_UPDATE, &manager);
+    seedScreen.onStateMounted(&suite->device);
+    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+    seedScreen.onStateDismounted(&suite->device);
+}
+
 // Game Idle never takes a firmware update: a registered player's registration
 // and stats live only in RAM, and the restart would lose them.
 inline void idleIsNotInterruptible(IdleStateTests* suite) {

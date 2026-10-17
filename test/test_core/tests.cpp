@@ -841,6 +841,18 @@ TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
 }
 
+TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
+    pairingCodeLeavesTheRadioAlone(this);
+}
+
+TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
+    fetchExitPutsTheRadioBackOnEspNow(this);
+}
+
+TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
+    aSeedRunTakesTheRadioForEspNow(this);
+}
+
 TEST_F(IdleStateTests, firmwareHoldCarriedInDoesNotFire) {
     idleFirmwareHoldCarriedInDoesNotFire(this);
 }
