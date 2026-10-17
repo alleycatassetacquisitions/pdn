@@ -3,9 +3,8 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 # PDN_DEVICE arrives from board_build.cmake_extra_args in platformio.ini and is
 # the only per-environment channel into CMake. It names the project, which also
-# names esp_app_desc_t.project_name: a device takes a firmware update only from an
-# image with its own project name, so renaming one leaves every device running the
-# old name to be updated over USB.
+# names esp_app_desc_t.project_name -- useful in a boot log, and better than
+# defaulting to whatever the checkout directory is called.
 if(NOT DEFINED PDN_DEVICE)
     message(FATAL_ERROR
         "PDN_DEVICE is not set. Add -DPDN_DEVICE=pdn or -DPDN_DEVICE=fdn to "
@@ -18,5 +17,10 @@ endif()
 # u8x8_t's layout, so u8g2's own sources and ours must agree or the offsets
 # diverge silently.
 idf_build_set_property(COMPILE_OPTIONS "-DU8X8_WITH_USER_PTR" APPEND)
+
+# Firmware distribution's settings apply to PDNs only.
+if(PDN_DEVICE STREQUAL "pdn")
+    set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;sdkconfig.defaults.pdn")
+endif()
 
 project(${PDN_DEVICE})

@@ -1,0 +1,20 @@
+# Layered over sdkconfig.defaults for PDN builds only (see CMakeLists.txt): only
+# PDNs distribute firmware.
+
+# A wireless update must prove itself before it becomes permanent: if it resets
+# before the firmware store confirms it (PENDING_IMAGE_CONFIRM_MS into loop()), the
+# bootloader goes back to the previous slot. The store refuses to compile without
+# this.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# An unconfirmed wireless update puts the main task on this watchdog, so it has
+# to outlast the slowest loop pass, where a blocking WiFi connect (up to 5s) or an
+# HTTP request (10s per network operation, so longer in total) can stall it. A
+# server slow enough to outlast it resets a good image and rolls it back.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# Updates must be signed (RSA-3072, the ESP32-S3's only scheme here) with the key
+# that signed the running image; esp_ota_end checks it. IDF then refuses to start
+# an unsigned image, so scripts/sign_image.py signs every PDN build.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n

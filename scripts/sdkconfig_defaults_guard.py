@@ -17,14 +17,21 @@ def invalidateStaleSdkconfig():
     # Keyed on a hash of defaults rather than its mtime: a defaults file restored
     # with its timestamp preserved (cp -p, tar extract) is older than the generated
     # file while differing in content, which an mtime check would wave through.
-    defaults = os.path.join(env["PROJECT_DIR"], "sdkconfig.defaults")
-    if not os.path.isfile(defaults):
+    # Every sdkconfig.defaults* file is hashed, since CMakeLists.txt layers
+    # per-device ones over the shared file.
+    project = env["PROJECT_DIR"]
+    defaults = sorted(f for f in os.listdir(project) if f.startswith("sdkconfig.defaults"))
+    if not defaults:
         return
-    generated = os.path.join(env["PROJECT_DIR"], "sdkconfig." + env["PIOENV"])
+    generated = os.path.join(project, "sdkconfig." + env["PIOENV"])
     stamp = os.path.join(env.subst("$BUILD_DIR"), "sdkconfig-defaults.sha1")
 
-    with open(defaults, "rb") as handle:
-        digest = hashlib.sha1(handle.read()).hexdigest()
+    hasher = hashlib.sha1()
+    for name in defaults:
+        hasher.update(name.encode())
+        with open(os.path.join(project, name), "rb") as handle:
+            hasher.update(handle.read())
+    digest = hasher.hexdigest()
     try:
         with open(stamp) as handle:
             if handle.read().strip() == digest:
