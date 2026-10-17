@@ -42,6 +42,11 @@ CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
 CONFIG_ESP_TASK_WDT_PANIC=y
+# An unconfirmed wireless update puts the main task on this watchdog, so it has
+# to outlast the slowest loop pass, where a blocking WiFi connect (up to 5s) or an
+# HTTP request (10s per network operation, so longer in total) can stall it. A
+# server slow enough to outlast it resets a good image and rolls it back.
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
 
 # About 50ms of button debounce (5 samples, 10ms apart), so one bouncy press
 # doesn't count twice. The button driver checks this value at compile time.

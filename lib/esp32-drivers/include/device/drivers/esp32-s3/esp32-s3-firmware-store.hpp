@@ -38,6 +38,12 @@
 #error "firmware distribution requires CONFIG_APP_COMPILE_TIME_DATE"
 #endif
 
+// A watchdog that only logs would leave a hung image running instead of rolling
+// it back.
+#if !defined(CONFIG_ESP_TASK_WDT_PANIC)
+#error "firmware distribution requires CONFIG_ESP_TASK_WDT_PANIC"
+#endif
+
 /**
  * FirmwareStoreInterface over the ESP32-S3's OTA partitions. IDF checks the
  * signature in esp_ota_end, against the key that signed the running image;
@@ -67,7 +73,10 @@ public:
         runningImagePending = runningPartition != nullptr &&
                               esp_ota_get_state_partition(runningPartition, &state) == ESP_OK &&
                               state == ESP_OTA_IMG_PENDING_VERIFY;
-        guardPendingImage();
+        guardingPendingImage = runningImagePending && esp_task_wdt_add(nullptr) == ESP_OK;
+        if (runningImagePending && !guardingPendingImage) {
+            LOG_E(TAG, "could not put the main task on the task watchdog");
+        }
     }
 
     /**
@@ -180,7 +189,6 @@ public:
         if (guardingPendingImage) {
             guardingPendingImage = false;
             esp_task_wdt_delete(nullptr);
-            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000, BOOT_WATCHDOG_PANICS);
         }
     }
 
@@ -244,46 +252,6 @@ private:
     // pass so that a slow setup() (sending crash records, the splash) cannot use
     // it up.
     static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
-
-    // Covers the rest of setup() and the slowest loop pass before the confirm,
-    // where a blocking WiFi connect (up to 5s) or an HTTP request (10s per network
-    // operation, so longer in total) can stall a pass. A server slow enough to
-    // outlast it resets a good image and rolls it back.
-    static constexpr uint32_t PENDING_IMAGE_WATCHDOG_MS = 30000;
-
-    // Whether the boot-time watchdog configuration panics; restored on confirm.
-#if CONFIG_ESP_TASK_WDT_PANIC
-    static constexpr bool BOOT_WATCHDOG_PANICS = true;
-#else
-    static constexpr bool BOOT_WATCHDOG_PANICS = false;
-#endif
-
-    void guardPendingImage() {
-        if (!runningImagePending) {
-            return;
-        }
-        // Always panics: a watchdog that only logs would leave a hung image
-        // running instead of rolling it back.
-        reconfigureTaskWatchdog(PENDING_IMAGE_WATCHDOG_MS, true);
-        guardingPendingImage = esp_task_wdt_add(nullptr) == ESP_OK;
-        if (!guardingPendingImage) {
-            LOG_E(TAG, "could not put the main task on the task watchdog");
-            reconfigureTaskWatchdog(CONFIG_ESP_TASK_WDT_TIMEOUT_S * 1000, BOOT_WATCHDOG_PANICS);
-        }
-    }
-
-    static void reconfigureTaskWatchdog(uint32_t timeoutMs, bool panic) {
-        esp_task_wdt_config_t config = {};
-        config.timeout_ms = timeoutMs;
-#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0
-        config.idle_core_mask |= 1 << 0;
-#endif
-#if CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1
-        config.idle_core_mask |= 1 << 1;
-#endif
-        config.trigger_panic = panic;
-        esp_task_wdt_reconfigure(&config);
-    }
 
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
 
