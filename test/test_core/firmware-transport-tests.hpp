@@ -80,7 +80,7 @@ public:
     static constexpr size_t IMAGE_LENGTH = 10 * FIRMWARE_CHUNK_SIZE + 123;  // last chunk short
     static constexpr uint16_t CHUNK_COUNT = 11;
 
-    /** A seed running a 14,123-byte image and an eligible receiver running another. */
+    /** A seed running a 14,123-byte image and an eligible receiver. */
     FirmwareTransportFixture() {
         clock.setTime(1000);
         SimpleTimer::setPlatformClock(&clock);
@@ -89,7 +89,6 @@ public:
             image[i] = static_cast<uint8_t>(i * 7 + 3);
         }
         seedStore.setRunningImage(image, 0xA1);
-        receiverStore.setRunningImage(std::vector<uint8_t>(64, 0x55), 0xB2);
         seed = new FirmwareUpdateManager(&seedRadio, &seedStore, []() { return false; });
         receiver = new FirmwareUpdateManager(&receiverRadio, &receiverStore, [this]() { return eligible; });
     }
@@ -289,6 +288,24 @@ TEST(FirmwareTransportTest, losingEligibilityDropsTheReceive) {
 
     EXPECT_EQ(f.receiverStore.abortCalls, 1);
     EXPECT_FALSE(f.receiverStore.restarted);
+}
+
+TEST(FirmwareTransportTest, losingEligibilityBetweenChunksDropsTheReceive) {
+    FirmwareTransportFixture f;
+    ASSERT_TRUE(f.seed->beginSeeding());
+    while (f.seedRadio.sent.size() < 3) {
+        f.clock.advance(100);
+        f.seed->sync();
+    }
+    for (const std::vector<uint8_t>& frame : f.seedRadio.sent) {
+        f.receiverRadio.deliver(frame);
+    }
+    ASSERT_EQ(f.receiverStore.beginWriteCalls, 1);
+
+    f.eligible = false;
+    f.receiver->sync();
+
+    EXPECT_EQ(f.receiverStore.abortCalls, 1);
 }
 
 TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
