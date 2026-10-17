@@ -129,6 +129,8 @@ static void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
+    // Next, so its watchdog covers the rest of setup() on an unconfirmed image.
+    firmwareStore = new Esp32S3FirmwareStore();
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
@@ -145,7 +147,6 @@ static void setup() {
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
-    firmwareStore = new Esp32S3FirmwareStore();
 
     // Create driver configuration
     DriverConfig pdnConfig = {

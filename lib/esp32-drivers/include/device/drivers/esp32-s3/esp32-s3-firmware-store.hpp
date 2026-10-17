@@ -75,7 +75,6 @@ public:
      * chunks arrive out of order.
      */
     bool beginWrite(const uint8_t* head, size_t headLength, size_t length) override {
-        abortWrite();
         // esp_ota_begin reads a length of 0 as "erase the whole partition".
         if (!runningImageSigned || updatePartition == nullptr || length == 0 || length > updatePartition->size ||
             headLength < APP_DESC_OFFSET + sizeof(esp_app_desc_t)) {
@@ -102,9 +101,6 @@ public:
 
     /** esp_ota_end checks the signature; the app description decides the rest. */
     bool finishWrite() override {
-        if (otaHandle == 0) {
-            return false;
-        }
         const esp_err_t rc = esp_ota_end(otaHandle);
         otaHandle = 0;
         esp_app_desc_t written{};
@@ -121,7 +117,7 @@ public:
         return accepted;
     }
 
-    /** Releases the write and leaves what it wrote unbootable. */
+    /** Releases the write and erases the first sector of what it wrote. */
     void abortWrite() override {
         if (otaHandle != 0) {
             esp_ota_abort(otaHandle);
@@ -157,13 +153,17 @@ public:
 
     /**
      * Call every loop() pass: feeds the watchdog while the image is pending,
-     * and confirms it once it has run PENDING_IMAGE_CONFIRM_MS since boot.
+     * and confirms it once loop() has run for PENDING_IMAGE_CONFIRM_MS.
      */
     void superviseRunningImage() {
         if (!runningImagePending) {
             return;
         }
-        if (static_cast<uint64_t>(esp_timer_get_time()) / 1000 < PENDING_IMAGE_CONFIRM_MS) {
+        const uint64_t nowMs = static_cast<uint64_t>(esp_timer_get_time()) / 1000;
+        if (firstLoopMs == 0) {
+            firstLoopMs = nowMs;
+        }
+        if (nowMs - firstLoopMs < PENDING_IMAGE_CONFIRM_MS) {
             if (guardingPendingImage) {
                 esp_task_wdt_reset();
             }
@@ -236,8 +236,9 @@ private:
         return strptime(text, "%b %d %Y %H:%M:%S", &out) != nullptr;
     }
 
-    // Uptime before a pending image confirms itself: long enough to get through
-    // setup, the radio bring-up and the first states.
+    // Time in loop() before a pending image confirms itself, counted from the first
+    // pass so that a slow setup() (a WiFi connect for a crash upload, the splash)
+    // cannot use it up.
     static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
 
     // Covers the rest of setup() and the slowest loop pass before the confirm,
@@ -287,6 +288,7 @@ private:
     // 0 while no write is open: IDF never hands out 0, and refuses calls on a
     // handle it has already closed.
     esp_ota_handle_t otaHandle = 0;
+    uint64_t firstLoopMs = 0;
     bool runningImageSigned = false;
     bool runningImagePending = false;
     bool guardingPendingImage = false;

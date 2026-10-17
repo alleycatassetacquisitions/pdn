@@ -17,7 +17,7 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
 # A wireless update must prove itself before it becomes permanent: if it resets
-# before the firmware store confirms it (PENDING_IMAGE_CONFIRM_MS of uptime), the
+# before the firmware store confirms it (PENDING_IMAGE_CONFIRM_MS into loop()), the
 # bootloader goes back to the previous slot. The store refuses to compile without
 # this.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

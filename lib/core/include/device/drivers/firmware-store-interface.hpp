@@ -27,7 +27,7 @@ public:
     /**
      * Closes the write and makes the image the next to boot, but only if it is
      * intact, signed with the key that signed the running image, built for this
-     * family, and newer. A refused image is left unbootable.
+     * family, and newer. A refused image has its first sector erased.
      */
     virtual bool finishWrite() = 0;
     /** Ends the write opened by beginWrite without making its image bootable; a no-op if none is open. */
