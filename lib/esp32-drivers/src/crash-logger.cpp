@@ -5,9 +5,8 @@
 
 namespace {
 
-// In RTC memory, which keeps its value across a restart, the one after a panic
-// included. The marker tells a value noteUptime() wrote from the random contents
-// a power-on leaves.
+// RTC memory survives a panic restart; the marker tells a written value from the
+// random contents a power-on leaves.
 struct CrashedBootUptime {
     uint32_t marker;
     uint32_t uptimeMs;

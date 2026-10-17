@@ -149,7 +149,7 @@ public:
                peerComms->getPeerCommsState() == PeerCommsState::CONNECTED;
     }
 
-    /** True while an HTTP request queued on this WiFi trip has not had its callback. */
+    /** True while a queued HTTP request has not had its callback. */
     bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
 
     /**

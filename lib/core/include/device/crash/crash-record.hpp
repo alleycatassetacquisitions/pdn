@@ -17,11 +17,7 @@ struct CrashRecord {
     /** Monotonic crash count for this device (1 = first crash ever recorded). */
     uint32_t crashNumber;
 
-    /**
-     * Milliseconds the crashed boot had run, as of its last loop() pass. 0 when
-     * unknown: a crash in setup() or a reset that lost RTC memory. A crash before
-     * setup() reports the uptime last noted by the latest boot that reached loop().
-     */
+    /** Milliseconds the crashed boot had run, as of its last loop() pass; 0 if unknown. */
     uint32_t timestamp;
 
     uint8_t  resetReason;

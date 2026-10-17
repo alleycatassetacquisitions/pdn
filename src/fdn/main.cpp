@@ -180,8 +180,7 @@ static void setup() {
     crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
-    // After transmitPending(): a broadcast still in flight when an upload shuts
-    // ESP-NOW down never completes, and it blocks the send queue for the boot.
+    // After transmitPending(): a broadcast in flight when ESP-NOW shuts down wedges its send queue.
     remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
@@ -220,8 +219,6 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        // Every FDN send through WirelessManager needs a peer learned over ESP-NOW,
-        // so only this brings the radio back from WiFi.
         crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();

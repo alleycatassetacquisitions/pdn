@@ -40,10 +40,9 @@ struct CrashPacket {
 
 /**
  * Captures and persists crash records across reboots, then transmits them.
- * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver. Call
- * takeCrashedBootUptime() first in setup() and pass it to capture() once storage is
- * initialized, then call transmitPending(). Call noteUptime() and poll serial in loop(),
- * plus restoreEspNowAfterUploads().
+ * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver; call capture() after
+ * storage is initialized, then transmitPending(), which offers each pending record once
+ * per boot; poll serial in loop().
  */
 class CrashLogger {
 public:
@@ -69,14 +68,10 @@ public:
         serialCommandBuffer[0] = '\0';
     }
 
-    /**
-     * Call first in setup(), before anything that can crash: returns the uptime
-     * last noted since the previous call (0 if none) and clears it, so a crash
-     * later in this boot's setup is never reported with an earlier boot's uptime.
-     */
+    /** Call first in setup(): returns the uptime the last boot noted, and clears it. */
     static uint32_t takeCrashedBootUptime();
 
-    /** Call every loop() pass: records the uptime a later crash in this boot reports. */
+    /** Call every loop() pass. */
     static void noteUptime();
 
     /**
@@ -134,13 +129,11 @@ public:
     }
 
     /**
-     * Offers pending records at most once per boot; nothing can add one after
-     * capture(). Over HTTP they go one at a time, oldest first, and stop at the
-     * first failure. The first switches the radio to WiFi, blocking the caller up
-     * to 5 s for an IP; a request queued before the first IP waits for one, and a
-     * switch back to ESP-NOW fails the one outstanding. Unsent records stay
-     * pending for the next boot. Over ESP-NOW a record counts as sent once
-     * queued, since the driver reports no per-frame outcome.
+     * Offers every pending record once per boot; nothing can add one after
+     * capture(). Over HTTP they go one at a time, oldest first, stopping at the
+     * first failure. A record left unsent stays pending and goes out on the next
+     * boot, which is the retry. Over ESP-NOW a record counts as sent once queued,
+     * since the driver reports no per-frame outcome.
      */
     void transmitPending() {
         if (offeredThisBoot) return;
@@ -157,10 +150,8 @@ public:
     }
 
     /**
-     * Call every loop() pass: switches the radio back to ESP-NOW once the uploads
-     * end, unless a request queued behind them (a PDN's registration lookup) still
-     * waits; whoever queued it owns the rest of the WiFi trip. After
-     * UPLOAD_TIMEOUT_MS it switches back regardless, failing every queued request.
+     * Call every loop() pass: returns the radio to ESP-NOW once the uploads end and
+     * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS.
      */
     void restoreEspNowAfterUploads() {
         if (!uploadTimer.isRunning() || (uploadsInProgress && !uploadTimer.expired())) {
@@ -347,8 +338,7 @@ private:
     bool offeredThisBoot = false;
     bool uploadsInProgress = false;
     SimpleTimer uploadTimer;
-    // With no AP in range the HTTP driver never fails a queued request. Counted
-    // from transmitPending(), so setup() and a blocked HTTP call spend part of it.
+    // With no AP in range, a queued HTTP request never fails.
     static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
 
     /**
@@ -464,9 +454,7 @@ private:
         uploadFrom(readSentSeq() + 1);
     }
 
-    // One upload at a time: sentSeq is a high-water mark, so marking a record
-    // retires every older one too, and none may be marked while an older one can
-    // still fail.
+    // One at a time, since sentSeq is a high-water mark.
     void uploadFrom(uint32_t first) {
         const uint32_t crashSeq = readCrashSeq();
         uint8_t* mac = wirelessManager->getMacAddress();
