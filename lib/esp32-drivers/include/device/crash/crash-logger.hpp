@@ -190,7 +190,11 @@ public:
      * Poll the USB Serial/JTAG port (same link as esp_log) for the CRASHLOG command.
      */
     void pollSerialCommand() {
-        ensureUsbSerialJtagDriver();
+        // A failed install (it allocates from internal RAM) leaves the driver's
+        // state null, and reading through it then faults.
+        if (!ensureUsbSerialJtagDriver()) {
+            return;
+        }
 
         uint8_t chunk[16];
         const int bytesRead = usb_serial_jtag_read_bytes(chunk, sizeof(chunk), 0);
@@ -253,16 +257,17 @@ private:
         }
     }
 
-    static void ensureUsbSerialJtagDriver() {
+    static bool ensureUsbSerialJtagDriver() {
         static bool driverReady = false;
         if (driverReady) {
-            return;
+            return true;
         }
         usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
         esp_err_t err = usb_serial_jtag_driver_install(&cfg);
         if (err == ESP_OK || err == ESP_ERR_INVALID_STATE) {
             driverReady = true;
         }
+        return driverReady;
     }
 
     static void usbMonitorWrite(const char* text) {
