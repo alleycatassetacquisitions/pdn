@@ -220,9 +220,8 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        // The FDN cannot leave WiFi on its own: its jacks are inputs, which learn their
-        // peer from an ESP-NOW packet that cannot arrive on WiFi, and its player
-        // broadcasts bypass WirelessManager and are dropped meanwhile.
+        // Every FDN send through WirelessManager needs a peer learned over ESP-NOW,
+        // so only this brings the radio back from WiFi.
         crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();

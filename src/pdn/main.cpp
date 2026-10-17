@@ -3,8 +3,7 @@
 #include <esp_log.h>
 #include <nvs_flash.h>
 
-// Minimum time the splash screen stays up before the first app mounts, and the
-// head start a crash upload queued in setup() gets on the output jack's handshake.
+// Minimum time the splash screen stays up before the first app mounts.
 constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
@@ -219,7 +218,8 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
-        // Nothing else returns an unplugged PDN's radio to ESP-NOW before game Idle.
+        // Unless the output jack is cabled, nothing else returns the radio to ESP-NOW
+        // before game Idle.
         crashLogger->restoreEspNowAfterUploads();
     }
     pdn->loop();

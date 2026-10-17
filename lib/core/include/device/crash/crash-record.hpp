@@ -20,7 +20,7 @@ struct CrashRecord {
     /**
      * Milliseconds the crashed boot had run, as of its last loop() pass. 0 when
      * unknown: a crash in setup() or a reset that lost RTC memory. A crash before
-     * setup() reports the uptime of the boot before it.
+     * setup() reports the uptime last noted by the latest boot that reached loop().
      */
     uint32_t timestamp;
 
