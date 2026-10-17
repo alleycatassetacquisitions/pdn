@@ -219,6 +219,8 @@ void loop() {
     if (crashLogger != nullptr) {
         CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
+        // Nothing else returns an unplugged PDN's radio to ESP-NOW before game Idle.
+        crashLogger->restoreEspNowAfterUploads();
     }
     pdn->loop();
 }

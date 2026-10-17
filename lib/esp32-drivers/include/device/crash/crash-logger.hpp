@@ -43,7 +43,7 @@ struct CrashPacket {
  * Register CRASH_LOG_NAMESPACE on the shared Esp32S3PrefsDriver. Call
  * takeCrashedBootUptime() first in setup() and pass it to capture() once storage is
  * initialized, then call transmitPending(). Call noteUptime() and poll serial in loop(),
- * plus restoreEspNowAfterUploads() on a device that meets its condition.
+ * plus restoreEspNowAfterUploads().
  */
 class CrashLogger {
 public:
@@ -157,10 +157,10 @@ public:
     }
 
     /**
-     * Call every loop() pass on a device where nothing but the crash uploads
-     * queues HTTP requests while they run: switches the radio back to ESP-NOW once
-     * they end, or on the first call after UPLOAD_TIMEOUT_MS. The switch fails
-     * every queued HTTP request.
+     * Call every loop() pass: switches the radio back to ESP-NOW once the uploads
+     * end, or on the first call after UPLOAD_TIMEOUT_MS. The switch fails every
+     * queued HTTP request, so a request queued behind the uploads, such as a PDN's
+     * registration lookup, fails too.
      */
     void restoreEspNowAfterUploads() {
         if (!uploadTimer.isRunning()) return;

@@ -222,8 +222,7 @@ void loop() {
         crashLogger->pollSerialCommand();
         // The FDN cannot leave WiFi on its own: its jacks are inputs, which learn their
         // peer from an ESP-NOW packet that cannot arrive on WiFi, and its player
-        // broadcasts bypass WirelessManager and are dropped meanwhile. Nothing else on
-        // it queues HTTP requests at boot.
+        // broadcasts bypass WirelessManager and are dropped meanwhile.
         crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();
