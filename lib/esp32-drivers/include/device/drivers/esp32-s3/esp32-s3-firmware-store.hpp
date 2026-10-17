@@ -7,7 +7,6 @@
 #include <esp_secure_boot.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
-#include <esp_timer.h>
 #include <spi_flash_mmap.h>
 
 #include <cstdio>
@@ -17,6 +16,7 @@
 
 #include "device/drivers/driver-interface.hpp"
 #include "device/drivers/logger.hpp"
+#include "utils/simple-timer.hpp"
 
 // Without rollback a new image never reaches PENDING_VERIFY, so the confirm
 // below never runs and an image that boots and then crashes or hangs stays
@@ -42,6 +42,12 @@
 // it back.
 #if !defined(CONFIG_ESP_TASK_WDT_PANIC)
 #error "firmware distribution requires CONFIG_ESP_TASK_WDT_PANIC"
+#endif
+
+// The watchdog must outlast the slowest loop pass before the confirm (see
+// sdkconfig.defaults), or it resets a good image and rolls it back.
+#if CONFIG_ESP_TASK_WDT_TIMEOUT_S < 30
+#error "firmware distribution requires CONFIG_ESP_TASK_WDT_TIMEOUT_S of at least 30"
 #endif
 
 /**
@@ -172,11 +178,10 @@ public:
         if (!runningImagePending) {
             return;
         }
-        const uint64_t nowMs = static_cast<uint64_t>(esp_timer_get_time()) / 1000;
-        if (firstLoopMs == 0) {
-            firstLoopMs = nowMs;
+        if (!confirmTimer.isRunning()) {
+            confirmTimer.setTimer(PENDING_IMAGE_CONFIRM_MS);
         }
-        if (nowMs - firstLoopMs < PENDING_IMAGE_CONFIRM_MS) {
+        if (!confirmTimer.expired()) {
             if (guardingPendingImage) {
                 esp_task_wdt_reset();
             }
@@ -249,9 +254,8 @@ private:
     }
 
     // Time in loop() before a pending image confirms itself, counted from the first
-    // pass so that a slow setup() (sending crash records, the splash) cannot use
-    // it up.
-    static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
+    // pass so the setup() splash cannot use it up.
+    static constexpr unsigned long PENDING_IMAGE_CONFIRM_MS = 10000;
 
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
 
@@ -260,7 +264,7 @@ private:
     // 0 while no write is open: IDF never hands out 0, and refuses calls on a
     // handle it has already closed.
     esp_ota_handle_t otaHandle = 0;
-    uint64_t firstLoopMs = 0;
+    SimpleTimer confirmTimer;
     bool runningImageSigned = false;
     bool runningImagePending = false;
     bool guardingPendingImage = false;
