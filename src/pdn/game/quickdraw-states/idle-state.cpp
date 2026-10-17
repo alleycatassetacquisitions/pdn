@@ -99,10 +99,6 @@ void Idle::onStateLoop(PDN* pdn) {
         matchInitialized = false;
         matchManager->clearCurrentMatch();
     }
-
-    if (firmwareUpdateHold.poll(pdn)) {
-        transitionToFirmwareUpdateState = true;
-    }
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
@@ -113,8 +109,6 @@ void Idle::onStateDismounted(PDN* pdn) {
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
     transitionToSymbolState = false;
-    transitionToFirmwareUpdateState = false;
-    firmwareUpdateHold.reset();
 }
 
 bool Idle::transitionToDuelCountdown() {
@@ -171,8 +165,4 @@ bool Idle::isAuxRequired() {
 
 bool Idle::transitionToSymbol() {
     return transitionToSymbolState;
-}
-
-bool Idle::transitionToFirmwareUpdate() const {
-    return transitionToFirmwareUpdateState;
 }

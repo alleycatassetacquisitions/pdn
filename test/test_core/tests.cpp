@@ -833,10 +833,6 @@ TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
 }
 
-TEST_F(IdleStateTests, firmwareHoldStartsAnUpdate) {
-    idleFirmwareHoldStartsAnUpdate(this);
-}
-
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
 }
@@ -853,8 +849,8 @@ TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
     aSeedRunTakesTheRadioForEspNow(this);
 }
 
-TEST_F(IdleStateTests, firmwareHoldCarriedInDoesNotFire) {
-    idleFirmwareHoldCarriedInDoesNotFire(this);
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
+    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
 }
 
 TEST_F(IdleStateTests, pairingCodeIsInterruptibleUntilTouched) {

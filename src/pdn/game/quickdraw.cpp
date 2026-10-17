@@ -615,19 +615,4 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(shAborted);
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
-
-    // Appended last, so the other states' indices (which skipToState takes) are
-    // the same with or without a firmware store.
-    if (firmwareUpdateManager != nullptr) {
-        FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(FIRMWARE_UPDATE, firmwareUpdateManager);
-        idle->addTransition(
-            new StateTransition(
-                [idle]() { return idle->transitionToFirmwareUpdate(); },
-                firmwareUpdate));
-        firmwareUpdate->addTransition(
-            new StateTransition(
-                [firmwareUpdate]() { return firmwareUpdate->transitionToHost(); },
-                idle));
-        stateMap.push_back(firmwareUpdate);
-    }
 }

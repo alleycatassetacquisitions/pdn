@@ -25,8 +25,8 @@ public:
     /**
      * Owns the match, chain-duel and shootout managers and registers the chain
      * and shootout packet handlers, and the symbol-match ones when given a
-     * symbolWirelessManager. Hosts the device's firmware update screens if it
-     * has a firmware update manager.
+     * symbolWirelessManager. Hands the device's firmware update manager, if it
+     * has one, to the pairing-code screen.
      */
     Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();

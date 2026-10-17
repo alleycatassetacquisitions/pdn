@@ -148,42 +148,6 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-// Test: a FIRMWARE_UPDATE_HOLD_MS hold of the secondary button that starts on
-// Idle starts a firmware update; anything shorter does not.
-inline void idleFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    suite->idleState->onStateMounted(&suite->device);
-
-    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
-        .WillOnce(Return(0))
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1))
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
-    suite->idleState->onStateLoop(&suite->device);
-    suite->idleState->onStateLoop(&suite->device);
-    EXPECT_FALSE(suite->idleState->transitionToFirmwareUpdate());
-    suite->idleState->onStateLoop(&suite->device);
-    EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
-}
-
-// Test: a hold already past the threshold when Idle mounts (back from a run that
-// ended at once) does not fire until the button has been let go.
-inline void idleFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
-    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    suite->idleState->onStateMounted(&suite->device);
-
-    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS + 2000))
-        .WillOnce(Return(0))
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
-    suite->idleState->onStateLoop(&suite->device);
-    EXPECT_FALSE(suite->idleState->transitionToFirmwareUpdate());
-    suite->idleState->onStateLoop(&suite->device);
-    suite->idleState->onStateLoop(&suite->device);
-    EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
-}
-
 // The pairing-code screen raises the firmware-update transition at the same
 // hold threshold, not before, and clears it on dismount.
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
@@ -203,6 +167,26 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
 
     registration.onStateDismounted(&suite->device);
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+}
+
+// A hold already past the threshold when the pairing-code screen mounts (through
+// power-on, or back from a run that ended at once) does not fire until the
+// button has been let go.
+inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS + 2000))
+        .WillOnce(Return(0))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+    registration.onStateLoop(&suite->device);
+    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+    registration.onStateLoop(&suite->device);
+    registration.onStateLoop(&suite->device);
+    EXPECT_TRUE(registration.transitionToFirmwareUpdate());
+    registration.onStateDismounted(&suite->device);
 }
 
 // The pairing-code screen takes firmware updates only until someone starts
@@ -247,7 +231,7 @@ inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
     suite->device.wirelessManager->enableWifiMode();
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store, []() { return false; });
-    FirmwareUpdate seedScreen(FIRMWARE_UPDATE, &manager);
+    FirmwareUpdate seedScreen(REGISTRATION_FIRMWARE_UPDATE, &manager);
     seedScreen.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
     seedScreen.onStateDismounted(&suite->device);
