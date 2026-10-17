@@ -4,7 +4,6 @@
 #include "device/firmware-update-manager.hpp"
 
 bool FirmwareUpdateHold::poll(Device* device) {
-    // longPressedMillis() is 0 whenever the button is not in a long press.
     const unsigned long heldMs = device->getSecondaryButton()->longPressedMillis();
     if (heldMs == 0) {
         releasedSinceMount = true;

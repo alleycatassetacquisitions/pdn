@@ -1,4 +1,4 @@
-# PlatformIO pre-build: embed git commit hash for firmware identification (crash logs, etc.).
+# PlatformIO pre-build: embed the git commit hash (crash logs) and stamp the build time in UTC (update ordering).
 
 Import("env")  # noqa: F821
 

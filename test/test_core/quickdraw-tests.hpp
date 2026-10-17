@@ -166,9 +166,8 @@ inline void idleFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_TRUE(suite->idleState->transitionToFirmwareUpdate());
 }
 
-// Test: a hold already past the threshold when Idle mounts (carried through
-// power-on, or back from a run that ended at once) does not fire until the
-// button has been let go.
+// Test: a hold already past the threshold when Idle mounts (back from a run that
+// ended at once) does not fire until the button has been let go.
 inline void idleFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
