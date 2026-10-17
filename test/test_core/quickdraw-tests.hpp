@@ -148,8 +148,6 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-// The pairing-code screen raises the firmware-update transition at
-// FIRMWARE_UPDATE_HOLD_MS, not before, and clears it on dismount.
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);
@@ -169,9 +167,7 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
 }
 
-// A hold already past the threshold when the pairing-code screen mounts (through
-// power-on, or back from a run that ended at once) does not fire until the
-// button has been let go.
+// A hold carried into the mount fires only after a release.
 inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);
@@ -189,8 +185,6 @@ inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     registration.onStateDismounted(&suite->device);
 }
 
-// The pairing-code screen takes firmware updates only until someone starts
-// entering a code there.
 inline void pairingCodeIsInterruptibleUntilTouched(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     parameterizedCallbackFunction primaryClick = nullptr;
@@ -209,8 +203,7 @@ inline void pairingCodeIsInterruptibleUntilTouched(IdleStateTests* suite) {
     EXPECT_TRUE(registration.isInterruptible());
 }
 
-// A boot-time crash upload is still waiting on WiFi when the pairing-code
-// screen mounts; switching the radio there would fail it.
+// The pairing screen leaves the radio to whoever switched it to WiFi.
 inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     suite->device.wirelessManager->enableWifiMode();
@@ -237,8 +230,7 @@ inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
     seedScreen.onStateDismounted(&suite->device);
 }
 
-// Game Idle never takes a firmware update: a registered player's registration
-// and stats live only in RAM, and the restart would lose them.
+// A restart would lose the registration and stats held only in RAM.
 inline void idleIsNotInterruptible(IdleStateTests* suite) {
     EXPECT_FALSE(suite->idleState->isInterruptible());
 }

@@ -20,7 +20,7 @@ enum PlayerRegistrationStateId {
     REGISTRATION_FIRMWARE_UPDATE = 31,
 };
 
-/** How long the secondary button is held on the pairing-code screen to seed this device's image. */
+/** Secondary-button hold on the pairing-code screen that starts a seed run. */
 constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
 class PlayerRegistrationState : public TypedState<PDN> {
@@ -34,18 +34,14 @@ public:
     bool transitionToUserFetch();
     /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
-    /**
-     * Interruptible until code entry starts here (either button clicked), so an
-     * update never restarts a device mid-code: a receive under way is dropped
-     * before any further chunk is written.
-     */
+    /** False once code entry starts, so an update never restarts a device mid-code. */
     bool isInterruptible() const override { return !codeEntryStarted; }
 
 private:
     bool transitionToUserFetchState = false;
     bool transitionToFirmwareUpdateState = false;
     bool codeEntryStarted = false;
-    // A hold already under way when the screen mounts counts only after a release.
+    // A hold already in long-press when the screen mounts counts only after a release.
     bool releasedSinceMount = false;
     bool shouldRender = false;
     Player* player;

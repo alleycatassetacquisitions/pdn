@@ -70,8 +70,7 @@ void FetchUserDataState::onStateLoop(PDN* pdn) {
 
 void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
-    // Ends the WiFi trip this state started; the requests it fails call back
-    // into the flags reset below, not into the next mount.
+    // Fails this state's pending requests now, so their callbacks hit the flags reset below.
     pdn->getWirelessManager()->enablePeerCommsMode();
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     isFetchingUserData = false;

@@ -22,13 +22,7 @@ constexpr int QUICKDRAW_APP_ID = 1;
 
 class Quickdraw : public StateMachine {
 public:
-    /**
-     * Owns the match, chain-duel and shootout managers and registers the chain
-     * and shootout packet handlers, and the symbol-match ones when given a
-     * symbolWirelessManager. Hands the device's firmware update manager, if it
-     * has one, to the player-registration app, which offers a seed run from the
-     * pairing-code screen.
-     */
+    /** Builds the game managers and registers their packet handlers. */
     Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
@@ -63,7 +57,6 @@ private:
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
-    // The device's; null on one that takes no firmware updates.
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry

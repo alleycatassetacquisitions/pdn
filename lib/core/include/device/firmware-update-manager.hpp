@@ -12,18 +12,14 @@
 #include "utils/simple-timer.hpp"
 
 /**
- * Moves a firmware image between devices over ESP-NOW broadcast. A seed
- * streams the image it is running, every chunk SEED_PASSES times, and listens
- * to nobody. A receiver asks the store about an image from its first chunk,
- * writes each chunk the first time it hears it, and once it has all of them
- * hands the image to the store, which decides whether to boot it.
+ * A seed broadcasts its running image SEED_PASSES times; a receiver writes each chunk once and
+ * hands the whole image to the store to judge.
  */
 class FirmwareUpdateManager {
 public:
     /**
-     * isEligible is checked before an image is taken and on every sync() and
-     * every chunk while one is being received; a receive is dropped once it
-     * reads false.
+     * isEligible is checked before taking an image, on every chunk and on every sync(); false
+     * drops the receive.
      */
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           std::function<bool()> isEligible);
@@ -32,9 +28,9 @@ public:
 
     /** Starts streaming this device's running image; false if that image is unreadable. */
     bool beginSeeding();
-    /** True until the seed's last pass has been sent. */
+    /** True from beginSeeding() until its last pass is queued. */
     bool isSeeding() const;
-    /** Call every loop pass, on every device: paces a seed run and drops a receive that stalls or stops being eligible. */
+    /** Call every loop pass on every device. */
     void sync();
 
 private:
@@ -52,7 +48,6 @@ private:
     FirmwareStoreInterface* firmwareStore;
     std::function<bool()> isEligible;
 
-    // Seed.
     ImageId seedImageId{};
     uint32_t seedImageLength = 0;
     uint16_t seedChunkCount = 0;
@@ -60,9 +55,8 @@ private:
     uint8_t passesLeft = 0;
     SimpleTimer beaconTimer;
 
-    // Receiver. One image at a time. A refused image is remembered until its
-    // chunks have been quiet for RECEIVE_STALL_MS, so a seed still streaming it
-    // is not downloaded again; another image's chunk 0 replaces it.
+    // A refused image stays REFUSED until its chunks go quiet for RECEIVE_STALL_MS,
+    // so a seed still streaming it is not downloaded again.
     enum class Receive : uint8_t {
         NONE,
         WRITING,

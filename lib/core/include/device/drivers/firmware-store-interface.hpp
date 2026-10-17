@@ -3,30 +3,22 @@
 #include <cstddef>
 #include <cstdint>
 
-/**
- * Everything firmware distribution needs from flash, with no ESP32 types in
- * the signature, so the transport runs in the native tests against a fake.
- */
+/** Flash access for firmware distribution, free of ESP32 types so native tests can fake it. */
 class FirmwareStoreInterface {
 public:
     /** Lets a derived store clean up through this base pointer. */
     virtual ~FirmwareStoreInterface() = default;
 
     /**
-     * Opens the inactive slot for an image of `length` bytes that starts with
-     * `head`, but first judges the app description in `head`: the image must
-     * describe itself as newer than the running image (unverified; finishWrite
-     * has the final say). Nothing is erased for an image refused here. Also false
-     * if the slot cannot be opened: a length of 0 or larger than the slot, or a
-     * running image not yet confirmed. Call only with no write open.
+     * Opens the inactive slot for `length` bytes if `head`'s app description is newer and the
+     * running image is confirmed; erases nothing when it refuses.
      */
     virtual bool beginWrite(const uint8_t* head, size_t headLength, size_t length) = 0;
     /** Writes into the slot opened by beginWrite, at any offset, in any order. */
     virtual bool writeAt(size_t offset, const uint8_t* data, size_t length) = 0;
     /**
-     * Closes the write and makes the image the next to boot, but only if it is
-     * intact, signed with the key that signed the running image, and newer. A
-     * refused image is left unbootable. Call only after beginWrite returned true.
+     * Makes the image next to boot if intact, signed with the running image's key, and newer;
+     * otherwise leaves it unbootable.
      */
     virtual bool finishWrite() = 0;
     /** Ends the write opened by beginWrite without making its image bootable; a no-op if none is open. */

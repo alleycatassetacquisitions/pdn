@@ -17,8 +17,7 @@ def invalidateStaleSdkconfig():
     # Keyed on a hash of defaults rather than its mtime: a defaults file restored
     # with its timestamp preserved (cp -p, tar extract) is older than the generated
     # file while differing in content, which an mtime check would wave through.
-    # Every sdkconfig.defaults* file is hashed, since CMakeLists.txt layers
-    # per-device ones over the shared file.
+    # CMakeLists.txt layers per-device defaults over the shared file, so hash them all.
     project = env["PROJECT_DIR"]
     defaults = sorted(f for f in os.listdir(project) if f.startswith("sdkconfig.defaults"))
     if not defaults:

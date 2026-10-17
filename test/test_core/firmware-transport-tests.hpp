@@ -91,11 +91,7 @@ public:
         SimpleTimer::setPlatformClock(nullptr);
     }
 
-    /**
-     * Starts a seed run and runs it until it stops, passing each frame to the
-     * receiver unless `drop` says otherwise. Each frame takes 100ms of fake time,
-     * so this small image's pass spans about one beacon interval.
-     */
+    /** Runs a seed run to its end, delivering every frame `drop` keeps; each tick is 100ms of fake time. */
     void runSeed(const std::function<bool(size_t frameNumber, const std::vector<uint8_t>& frame)>& drop = nullptr) {
         ASSERT_TRUE(seed->beginSeeding());
         size_t delivered = 0;
@@ -155,7 +151,7 @@ public:
 
 TEST(FirmwareTransportTest, aSeedSendsEveryChunkThreeTimesToAnIneligibleReceiver) {
     FirmwareTransportFixture f;
-    f.eligible = false;  // mid-match, cabled, or someone at the screen
+    f.eligible = false;
     f.runSeed();
 
     EXPECT_EQ(f.receiverStore.beginWriteCalls, 0) << "an ineligible device takes no image";
@@ -208,15 +204,13 @@ TEST(FirmwareTransportTest, aReceiverThatJoinsMidRunStillCompletes) {
 }
 
 TEST(FirmwareTransportTest, waitingAPassForMissedChunksIsNotAStall) {
-    // On the rig a pass of a 2.2MB image takes about 24s: a receiver missing a
-    // late chunk hears only chunks it already has until the seed comes round again.
+    // A receiver missing a late chunk hears only chunks it has until the seed comes round again.
     FirmwareTransportFixture f;
     std::map<uint16_t, int> seen;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         const uint16_t index = FirmwareTransportFixture::chunkIndex(frame);
         if (seen[index]++ > 0) {
-            // Chunks it already has, spaced so the ten before the missed one
-            // outlast the stall timeout but each arrives inside a beacon interval.
+            // 700ms apart: ten of them outlast RECEIVE_STALL_MS, each inside BEACON_INTERVAL_MS.
             f.clock.advance(600);
         }
         return index == FirmwareTransportFixture::CHUNK_COUNT - 1 && seen[index] == 1;
@@ -239,7 +233,6 @@ TEST(FirmwareTransportTest, eachChunkIsWrittenOnce) {
 }
 
 TEST(FirmwareTransportTest, anImageTheStoreRefusesAtChunkZeroIsNotWritten) {
-    // An older build, or one too large for the slot.
     FirmwareTransportFixture f;
     f.receiverStore.wantImages = false;
     f.runSeed();
@@ -259,8 +252,7 @@ TEST(FirmwareTransportTest, aRefusedImageIsNotDownloadedAgainInTheSameRun) {
 }
 
 TEST(FirmwareTransportTest, aRefusedImageIsTriedAgainInALaterRun) {
-    // One spoiled download, a forged chunk for instance, must not shut the
-    // genuine image out until reboot.
+    // One spoiled download, a forged chunk say, must not lock out the genuine image.
     FirmwareTransportFixture f;
     f.receiverStore.acceptImages = false;
     f.runSeed();
@@ -276,7 +268,7 @@ TEST(FirmwareTransportTest, losingEligibilityDropsTheReceive) {
     FirmwareTransportFixture f;
     f.runSeed([&](size_t frameNumber, const std::vector<uint8_t>&) {
         if (frameNumber == 4) {
-            f.eligible = false;  // someone presses a button mid-transfer
+            f.eligible = false;
         }
         return false;
     });
@@ -306,8 +298,7 @@ TEST(FirmwareTransportTest, aSeedTakesNoImageWhileItSends) {
 }
 
 TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
-    // The screen stops being interruptible, or a cable goes in, between the
-    // receiver's sync() and the chunk that would complete the image.
+    // Eligibility ends after the receiver's last sync() but before its final chunk.
     FirmwareTransportFixture f;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         if (FirmwareTransportFixture::chunkIndex(frame) == FirmwareTransportFixture::CHUNK_COUNT - 1) {
@@ -368,7 +359,7 @@ TEST(FirmwareTransportTest, aRadioThatRefusesEverythingStillEndsTheRun) {
 
 TEST(FirmwareTransportTest, anUnreadableImageIsNotSeeded) {
     FirmwareTransportFixture f;
-    f.seedStore.setRunningImage({}, 0xA1);  // the store reports length 0 for an unreadable image
+    f.seedStore.setRunningImage({}, 0xA1);
 
     EXPECT_FALSE(f.seed->beginSeeding());
     EXPECT_FALSE(f.seed->isSeeding());

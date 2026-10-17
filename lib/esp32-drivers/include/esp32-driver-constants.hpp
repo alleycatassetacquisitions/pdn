@@ -3,8 +3,7 @@
 #include <cstdint>
 #include <sdkconfig.h>
 
-// ESP-NOW Wi-Fi channel. Must match across all devices on the same network,
-// including older builds still in the field: firmware updates reach them on it.
+// ESP-NOW Wi-Fi channel. Must match across all devices on the same network.
 constexpr uint8_t ESPNOW_CHANNEL = 6;
 
 // The fleet runs at 240MHz with 80MHz PSRAM. kconfgen substitutes a default for

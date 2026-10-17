@@ -25,13 +25,8 @@ enum class PktType : uint8_t {
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
-/**
- * Every frame's header; the payload is the rest of the frame. A device takes a
- * firmware update only from a build newer than its own, so this header,
- * kFirmwareUpdate, FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE and the ESP-NOW
- * channel must stay as they are, or devices in the field can only be updated
- * over USB.
- */
+// Frozen: older builds must parse a newer build's firmware frames (this header, kFirmwareUpdate,
+// FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE, ESPNOW_CHANNEL) or they can only be updated over USB.
 struct DataPktHdr
 {
     PktType packetType;
@@ -84,21 +79,13 @@ struct ShootoutAckPayload
     uint8_t     seqId;
 } __attribute__((packed));
 
-/** Bytes of image in every firmware frame but the last of an image. */
 constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
 
 constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
 
 /**
- * Firmware distribution's one frame: this header, then FIRMWARE_CHUNK_SIZE bytes
- * of the image the seed is running (fewer for the last chunk). The seed sends
- * every chunk a fixed number of times and repeats chunk 0 once a second;
- * receivers never answer. Chunk 0 carries the image's app description, 32 bytes
- * in, which a receiver judges before erasing anything. Nothing here is signed,
- * and IDF checks the assembled image against the key that signed the running
- * one, so forged frames cannot install an image. They can still spoil a
- * download, or make a receiver erase its spare slot and wait for chunks that
- * never come.
+ * Unsigned: IDF checks the assembled image's signature, so a forged frame can spoil a download
+ * or wipe the spare slot but cannot install an image.
  */
 struct FirmwareChunkHeader {
     /** The image's esp_app_desc_t::app_elf_sha256. */

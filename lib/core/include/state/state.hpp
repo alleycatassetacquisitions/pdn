@@ -107,11 +107,7 @@ public:
 
     virtual bool isTerminalState() { return false; }
 
-    /**
-     * Whether this screen is a safe point to restart the device under the
-     * player, as taking a firmware update does; whoever asks checks the cables
-     * separately. A state machine answers for the state it is running.
-     */
+    /** Whether restarting the device on this screen, as a firmware update does, is safe for the player. */
     virtual bool isInterruptible() const { return false; }
 
 protected:

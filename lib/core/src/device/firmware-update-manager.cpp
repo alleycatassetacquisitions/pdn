@@ -9,16 +9,12 @@ namespace {
 
 constexpr const char* TAG = "FirmwareUpdate";
 
-// Every chunk goes out this many times. A receiver that misses chunks, or
-// starts mid-run, fills them in from a later pass if one is left.
+// A receiver fills chunks it missed, or started after, from a later pass.
 constexpr uint8_t SEED_PASSES = 3;
-// Chunk 0 carries the image's description, so repeating it lets a device that
-// becomes eligible mid-run start without waiting for the next pass.
+// Chunk 0 carries the app description, so a receiver joining mid-pass can start at once.
 constexpr unsigned long BEACON_INTERVAL_MS = 1000;
-// No chunk of the image for this long means its seed has stopped.
 constexpr unsigned long RECEIVE_STALL_MS = 5000;
 
-// The seed and the receiver both cut an image here.
 uint16_t chunkCount(uint32_t imageLength) {
     return static_cast<uint16_t>((imageLength + FIRMWARE_CHUNK_SIZE - 1) / FIRMWARE_CHUNK_SIZE);
 }
@@ -54,14 +50,12 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
     ImageId id;
     std::memcpy(id.data(), header.imageId, id.size());
     if (receive != Receive::NONE && id == receiveImageId && header.index < receiveChunkCount) {
-        // Any chunk of this image shows its seed is still sending, including one
-        // already written: a missed chunk comes round only once per pass.
+        // Already-written chunks still prove the seed is alive; a missed one returns only next pass.
         quietTimer.setTimer(RECEIVE_STALL_MS);
         if (receive == Receive::REFUSED) {
             return;
         }
-        // Checked here as well as in sync(): this chunk could be the last one, and
-        // committing it restarts the device before sync() runs again.
+        // Checked per chunk too: committing the last one restarts before sync() runs.
         if (!mayReceive()) {
             stopReceiving();
             return;
@@ -92,8 +86,7 @@ bool FirmwareUpdateManager::startReceiving(const FirmwareChunkHeader& header, co
 
 void FirmwareUpdateManager::writeChunk(uint16_t index, const uint8_t* data, size_t length) {
     const size_t offset = static_cast<size_t>(index) * FIRMWARE_CHUNK_SIZE;
-    // Flash bits only clear, so a chunk is written once: a second copy written
-    // over the first would corrupt it unless identical.
+    // Flash bits only clear: a later copy that differs (a forged one) would corrupt the first.
     if (written[index] || length != chunkLength(receiveImageLength, index) ||
         !firmwareStore->writeAt(offset, data, length)) {
         return;
@@ -136,7 +129,6 @@ bool FirmwareUpdateManager::beginSeeding() {
 }
 
 bool FirmwareUpdateManager::mayReceive() const {
-    // A seed streams its own image and never takes one.
     return !isSeeding() && isEligible();
 }
 
@@ -151,8 +143,6 @@ void FirmwareUpdateManager::sync() {
     } else if (receive == Receive::REFUSED && quietTimer.expired()) {
         receive = Receive::NONE;
     }
-    // One frame at a time: the driver's queue empties once the frame in the air
-    // has been sent or given up on.
     if (!isSeeding() || !peerComms->isSendQueueEmpty()) {
         return;
     }
@@ -161,8 +151,7 @@ void FirmwareUpdateManager::sync() {
         sendChunk(0);
         return;
     }
-    // A chunk that could not be read or that the radio refused counts as lost on
-    // the air.
+    // A chunk that could not be read or was refused counts as lost on the air.
     sendChunk(nextChunk);
     if (++nextChunk == seedChunkCount) {
         nextChunk = 0;

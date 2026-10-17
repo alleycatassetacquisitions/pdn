@@ -6,11 +6,7 @@
 
 #include "device/drivers/firmware-store-interface.hpp"
 
-/**
- * In-memory FirmwareStoreInterface. The judgements the ESP32 store reads from
- * app descriptions and IDF's checks are two switches: wantImages for the one
- * beginWrite makes before opening the slot, acceptImages for finishWrite.
- */
+/** In-memory store: wantImages stands in for beginWrite's judgement, acceptImages for finishWrite's. */
 class FakeFirmwareStore : public FirmwareStoreInterface {
 public:
     /** Records what it was asked to judge, then opens a zero-filled slot of `length` bytes if wantImages. */

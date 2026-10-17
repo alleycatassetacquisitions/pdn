@@ -17,52 +17,37 @@
 #include "device/drivers/logger.hpp"
 #include "utils/simple-timer.hpp"
 
-// Without rollback a new image never reaches PENDING_VERIFY, so the confirm
-// below never runs and an image that boots and then crashes or hangs stays
-// installed.
+// Without rollback an image that boots then crashes or hangs stays installed.
 #if !defined(CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE)
 #error "firmware distribution requires CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE"
 #endif
 
-// Without signature checks on update, esp_ota_end verifies only the image's
-// hash, and any intact image with a later build time installs from any radio in
-// range.
+// Without it esp_ota_end checks only the hash, so any intact newer image installs.
 #if !defined(CONFIG_SECURE_SIGNED_ON_UPDATE)
 #error "firmware distribution requires CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT and CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT"
 #endif
 
-// The build time in each image's app description is what orders images; without
-// it every image reads as not newer and no device takes an update.
+// The app description's build time orders images; without it nothing reads as newer.
 #if !defined(CONFIG_APP_COMPILE_TIME_DATE)
 #error "firmware distribution requires CONFIG_APP_COMPILE_TIME_DATE"
 #endif
 
-// A watchdog that only logs would leave a hung image running instead of rolling
-// it back.
+// A log-only watchdog leaves a hung image running instead of rolling it back.
 #if !defined(CONFIG_ESP_TASK_WDT_PANIC)
 #error "firmware distribution requires CONFIG_ESP_TASK_WDT_PANIC"
 #endif
 
-// The watchdog must outlast the slowest loop pass before the confirm (see
-// sdkconfig.defaults.pdn), or it resets a good image and rolls it back.
+// Must outlast the slowest loop pass before the confirm; see sdkconfig.defaults.pdn.
 #if CONFIG_ESP_TASK_WDT_TIMEOUT_S < 30
 #error "firmware distribution requires CONFIG_ESP_TASK_WDT_TIMEOUT_S of at least 30"
 #endif
 
-/**
- * FirmwareStoreInterface over the ESP32-S3's OTA partitions. IDF checks the
- * signature in esp_ota_end, against the key that signed the running image;
- * this store adds the rest of the rule from each image's app description: a
- * later build time.
- */
+/** OTA-partition store: IDF checks the signature in esp_ota_end; this adds the newer-build-time rule. */
 class Esp32S3FirmwareStore : public FirmwareStoreDriverInterface {
 public:
     /**
-     * Resolves the running and inactive OTA partitions. Construct it from the
-     * main task, as early in setup() as possible: if the running image arrived
-     * over the air and is still unconfirmed, this puts the calling task on the
-     * task watchdog, so a hang in that task between here and the confirm resets
-     * the device and the bootloader rolls the image back.
+     * Construct on the main task, early in setup(): an unconfirmed image puts that task on the
+     * task watchdog until the confirm, so a hang rolls the image back.
      */
     explicit Esp32S3FirmwareStore(const std::string& name)
         : FirmwareStoreDriverInterface(name) {
@@ -79,9 +64,8 @@ public:
     }
 
     /**
-     * Judges the app description in `head`, then erases the inactive partition
-     * for `length` bytes up front: esp_ota_write_with_offset does not erase, and
-     * chunks arrive out of order.
+     * Erases `length` bytes up front: esp_ota_write_with_offset never erases and chunks arrive
+     * out of order.
      */
     bool beginWrite(const uint8_t* head, size_t headLength, size_t length) override {
         // esp_ota_begin reads a length of 0 as "erase the whole partition".
@@ -160,10 +144,7 @@ public:
     /** Nothing to set up beyond the constructor. */
     int initialize() override { return 0; }
 
-    /**
-     * Runs every loop() pass: feeds the watchdog while the image is pending,
-     * and confirms it once loop() has run for PENDING_IMAGE_CONFIRM_MS.
-     */
+    /** Feeds the watchdog while the image is pending; confirms it after PENDING_IMAGE_CONFIRM_MS of loop(). */
     void exec() override {
         if (!runningImagePending) {
             return;
@@ -191,17 +172,12 @@ public:
     void restart() override { esp_restart(); }
 
 private:
-    // An image left intact in the inactive slot, refused or abandoned, stays
-    // bootable: the bootloader checks no signature at boot, and falls back to any
-    // loadable slot if the selected one fails. A forger can leave one there by
-    // declaring an image longer than the intact one it sends and letting the
-    // receive stall.
+    // The bootloader checks no signature and falls back to any loadable slot,
+    // so a refused or abandoned image must not stay intact.
     void makeUnbootable() { esp_partition_erase_range(updatePartition, 0, SPI_FLASH_SEC_SIZE); }
 
-    // Where the app description sits in an image, as esp_ota_get_partition_description reads it.
     static constexpr size_t APP_DESC_OFFSET = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
 
-    // Built later than the running image.
     static bool isNewer(const esp_app_desc_t& candidate, bool explain) {
         const esp_app_desc_t* running = esp_app_get_description();
         if (candidate.magic_word != ESP_APP_DESC_MAGIC_WORD) {
@@ -217,8 +193,7 @@ private:
         return true;
     }
 
-    // Builds are stamped in UTC (firmware_commit_hash.py sets SOURCE_DATE_EPOCH);
-    // an unparseable stamp counts as not newer.
+    // Stamps are UTC: firmware_commit_hash.py sets SOURCE_DATE_EPOCH.
     static bool builtAfter(const esp_app_desc_t& later, const esp_app_desc_t& earlier) {
         std::tm a{};
         std::tm b{};
@@ -237,16 +212,14 @@ private:
         return strptime(text, "%b %d %Y %H:%M:%S", &out) != nullptr;
     }
 
-    // Time in loop() before a pending image confirms itself, counted from the first
-    // pass so the setup() splash cannot use it up.
+    // Counted from the first loop() pass so the setup() splash cannot use it up.
     static constexpr unsigned long PENDING_IMAGE_CONFIRM_MS = 10000;
 
     static constexpr const char* TAG = "Esp32S3FirmwareStore";
 
     const esp_partition_t* runningPartition = nullptr;
     const esp_partition_t* updatePartition = nullptr;
-    // 0 while no write is open: IDF never hands out 0, and refuses calls on a
-    // handle it has already closed.
+    // 0 means no write is open; IDF handles start at 1.
     esp_ota_handle_t otaHandle = 0;
     SimpleTimer confirmTimer;
     bool runningImagePending = false;

@@ -158,9 +158,7 @@ public:
             return;
         }
 
-        // The deinit took the IDF callback path with it, so no queued frame will
-        // ever report; a stale head would stop sendData from ever starting
-        // another transmission this boot.
+        // Deinit drops pending send reports; a stale claimed head would block every later send.
         clearSendQueue();
 
         peerCommsState = PeerCommsState::DISCONNECTED;
@@ -523,10 +521,8 @@ private:
 
     SemaphoreHandle_t recvMutex;
     std::queue<DeferredPacket> recvQueue_;
-    // Payload bytes queued since the last exec(). Each buffer is under
-    // SPIRAM_MALLOC_ALWAYSINTERNAL, so it comes from internal RAM, and a seed's
-    // chunks arriving through setup's splash hold, before the first exec(), would
-    // exhaust it; a packet over the budget is dropped like one lost on the air.
+    // Queued buffers are under SPIRAM_MALLOC_ALWAYSINTERNAL, so internal RAM; a seed's
+    // chunks during setup's splash hold, before the first exec(), would exhaust it.
     size_t recvQueueBytes = 0;
     uint32_t droppedRecvPackets = 0;
     static constexpr size_t RECV_QUEUE_MAX_BYTES = 16384;
@@ -600,9 +596,8 @@ private:
     //Packet send queue
     std::queue<DataSendBuffer> m_sendQueue;
 
-    // Set while a frame has been handed to esp_now_send and its completion has not
-    // been reported yet. Guarded by sendMutex: the main loop and the WiFi task both
-    // reach SendFrontPkt, and without the claim both can transmit the same entry.
+    // Guarded by sendMutex: the main loop and the WiFi task both reach SendFrontPkt,
+    // and without the claim both can transmit the same entry.
     bool transmissionClaimed = false;
 
     //Storage for rssi, which is captured by wifi promiscuous callback

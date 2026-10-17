@@ -67,8 +67,7 @@ void PlayerRegistrationApp::populateStateMap() {
     stateMap.push_back(chooseRole);
     stateMap.push_back(welcomeMessageState);
 
-    // Hosted inside this app, not in Quickdraw's map: going out to Quickdraw and
-    // back would re-mount this app, and re-mounting re-runs populateStateMap,
+    // Hosted here, not in Quickdraw's map: re-mounting this app re-runs populateStateMap,
     // which appends a duplicate set of states.
     if (firmwareUpdateManager != nullptr) {
         FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(REGISTRATION_FIRMWARE_UPDATE, firmwareUpdateManager);

@@ -18,11 +18,7 @@ public:
     virtual void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) = 0;
     virtual void clearPacketHandler(PktType packetType) = 0;
 
-    /**
-     * True when nothing is queued or on the air, so a sender pacing itself one
-     * frame at a time can queue the next. Transports that hand frames off
-     * synchronously are always empty.
-     */
+    /** True when no frame is queued or awaiting its send report; synchronous transports are always empty. */
     virtual bool isSendQueueEmpty() { return true; }
 
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
