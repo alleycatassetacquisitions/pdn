@@ -158,16 +158,19 @@ public:
 
     /**
      * Call every loop() pass: switches the radio back to ESP-NOW once the uploads
-     * end, or on the first call after UPLOAD_TIMEOUT_MS. The switch fails every
-     * queued HTTP request, so a request queued behind the uploads, such as a PDN's
-     * registration lookup, fails too.
+     * end, unless a request queued behind them (a PDN's registration lookup) still
+     * waits; whoever queued it owns the rest of the WiFi trip. After
+     * UPLOAD_TIMEOUT_MS it switches back regardless, failing every queued request.
      */
     void restoreEspNowAfterUploads() {
-        if (!uploadTimer.isRunning()) return;
-        if (uploadsInProgress && !uploadTimer.expired()) return;
+        if (!uploadTimer.isRunning() || (uploadsInProgress && !uploadTimer.expired())) {
+            return;
+        }
         uploadTimer.invalidate();
         if (uploadsInProgress) {
             LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
+        } else if (wirelessManager->hasQueuedHttpRequests()) {
+            return;
         }
         wirelessManager->enablePeerCommsMode();
     }
@@ -344,10 +347,8 @@ private:
     bool offeredThisBoot = false;
     bool uploadsInProgress = false;
     SimpleTimer uploadTimer;
-    // With no AP in range the HTTP driver neither sends nor fails a queued request,
-    // and a silent server holds one for two attempts of 15 s or more. Counted from
-    // transmitPending(), so the blocking connect and the rest of setup() spend part
-    // of it, and an HTTP call blocked for its 10 s timeout can delay the switch past it.
+    // With no AP in range the HTTP driver never fails a queued request. Counted
+    // from transmitPending(), so setup() and a blocked HTTP call spend part of it.
     static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
 
     /**

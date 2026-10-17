@@ -23,4 +23,6 @@ public:
     virtual uint8_t* getMacAddress() = 0;
     virtual void setHttpClientState(HttpClientState state) = 0;
     virtual HttpClientState getHttpClientState() = 0;
+    /** True while a queued request has not had its callback. */
+    virtual bool hasQueuedRequests() = 0;
 };

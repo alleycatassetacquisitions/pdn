@@ -107,6 +107,8 @@ public:
     HttpClientState getHttpClientState() override {
         return HttpClientState::DISCONNECTED;
     }
+    bool hasQueuedRequests() override { return false; }
+
 private:
     uint8_t mac_[6] = {0};
 };

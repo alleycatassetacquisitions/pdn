@@ -86,6 +86,9 @@ public:
         }
     }
 
+    /** True until every queued request has had its callback. */
+    bool hasQueuedRequests() override { return !httpQueue.empty(); }
+
     void disconnect() override {
         cleanupHttpClient();
         // Every request still queued, whether in flight, waiting out a retry

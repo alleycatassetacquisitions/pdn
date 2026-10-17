@@ -135,6 +135,7 @@ public:
     MOCK_METHOD(uint8_t*, getMacAddress, (), (override));
     MOCK_METHOD(void, setHttpClientState, (HttpClientState), (override));
     MOCK_METHOD(HttpClientState, getHttpClientState, (), (override));
+    MOCK_METHOD(bool, hasQueuedRequests, (), (override));
 };
 
 class MockPeerComms : public PeerCommsInterface {

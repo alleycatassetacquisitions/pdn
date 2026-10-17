@@ -148,7 +148,10 @@ public:
         return currentMode == WirelessMode::ESPNOW && 
                peerComms->getPeerCommsState() == PeerCommsState::CONNECTED;
     }
-    
+
+    /** True while an HTTP request queued on this WiFi trip has not had its callback. */
+    bool hasQueuedHttpRequests() { return httpClient->hasQueuedRequests(); }
+
     /**
      * Queue an HTTP request. Automatically switches to WiFi mode if needed.
      * @param request The HTTP request to queue
