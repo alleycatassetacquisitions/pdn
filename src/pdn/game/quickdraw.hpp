@@ -15,7 +15,6 @@
 #include "wireless/symbol-wireless-manager.hpp"
 
 class FirmwareUpdateManager;
-class FirmwareStoreInterface;
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -24,13 +23,12 @@ constexpr int QUICKDRAW_APP_ID = 1;
 class Quickdraw : public StateMachine {
 public:
     /**
-     * Owns the match, chain-duel, shootout and firmware-update managers and
-     * registers the chain and shootout packet handlers, and the symbol-match
-     * ones when given a symbolWirelessManager. Borrows firmwareStore, which
-     * must outlive it; null leaves firmware updates out (the headless
-     * simulator).
+     * Owns the match, chain-duel and shootout managers and registers the chain
+     * and shootout packet handlers, and the symbol-match ones when given a
+     * symbolWirelessManager. Hosts the device's firmware update screens if it
+     * has a firmware update manager.
      */
-    Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore = nullptr);
+    Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -64,6 +62,7 @@ private:
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
+    // The device's; null on one that takes no firmware updates.
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry

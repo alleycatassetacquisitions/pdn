@@ -27,6 +27,8 @@ public:
     WirelessManager* getWirelessManager() override;
     SerialManager* getSerialManager() override;
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override;
+    /** Built when a firmware store driver is registered; runs on every loop pass. */
+    FirmwareUpdateManager* getFirmwareUpdateManager() override;
 
 protected:
     PDN(DriverConfig& driverConfig);
@@ -45,6 +47,7 @@ private:
     SerialManager* serialManager;
     WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 
     std::string deviceId;
 };

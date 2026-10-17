@@ -15,7 +15,7 @@
 #include <ctime>
 #include <tuple>
 
-#include "device/drivers/firmware-store-interface.hpp"
+#include "device/drivers/driver-interface.hpp"
 #include "device/drivers/logger.hpp"
 
 // Without rollback a new image never reaches PENDING_VERIFY, so the confirm
@@ -44,7 +44,7 @@
  * this store adds the rest of the rule from each image's app description:
  * same project (pdn or fdn) and a later build time.
  */
-class Esp32S3FirmwareStore : public FirmwareStoreInterface {
+class Esp32S3FirmwareStore : public FirmwareStoreDriverInterface {
 public:
     /**
      * Resolves the running and inactive OTA partitions. Construct it from the
@@ -53,7 +53,8 @@ public:
      * task watchdog, so a hang in that task between here and the confirm resets
      * the device and the bootloader rolls the image back.
      */
-    Esp32S3FirmwareStore() {
+    explicit Esp32S3FirmwareStore(const std::string& name)
+        : FirmwareStoreDriverInterface(name) {
         runningPartition = esp_ota_get_running_partition();
         updatePartition = esp_ota_get_next_update_partition(nullptr);
         esp_image_sig_public_key_digests_t keys{};
@@ -151,11 +152,14 @@ public:
         std::memcpy(out, esp_app_get_description()->app_elf_sha256, 32);
     }
 
+    /** Nothing to set up beyond the constructor. */
+    int initialize() override { return 0; }
+
     /**
-     * Call every loop() pass: feeds the watchdog while the image is pending,
+     * Runs every loop() pass: feeds the watchdog while the image is pending,
      * and confirms it once loop() has run for PENDING_IMAGE_CONFIRM_MS.
      */
-    void superviseRunningImage() {
+    void exec() override {
         if (!runningImagePending) {
             return;
         }

@@ -1,12 +1,15 @@
 #include "device/pdn.hpp"
 #include "device/driver-names.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/firmware-update-manager.hpp"
 
 PDN* PDN::createPDN(DriverConfig& driverConfig) {
     return new PDN(driverConfig);
 }
 
-PDN::~PDN() {}
+PDN::~PDN() {
+    delete firmwareUpdateManager;
+}
 
 PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     lightManager = new LightManager(
@@ -16,6 +19,16 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
         getPeripheral<HWSerialWrapper>(SERIAL_IN_DRIVER_NAME));
     wirelessManager = new WirelessManager(getPeerComms(), getHttpClient());
     remoteDeviceCoordinator = new RemoteDeviceCoordinator();
+    FirmwareStoreInterface* firmwareStore = getPeripheral<FirmwareStoreInterface>(FIRMWARE_STORE_DRIVER_NAME);
+    if (firmwareStore != nullptr) {
+        firmwareUpdateManager = new FirmwareUpdateManager(getPeerComms(), firmwareStore, [this]() {
+            // A cabled device is part of its neighbours' chain, whatever screen it shows.
+            bool cableConnected =
+                remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
+                remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
+            return isActiveAppInterruptible() && !cableConnected;
+        });
+    }
 }
 
 int PDN::begin() {
@@ -38,6 +51,9 @@ void PDN::loop() {
     if (remoteDeviceCoordinator) {
         remoteDeviceCoordinator->sync(this);
     }
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->sync();
+    }
 }
 
 LightManager* PDN::getLightManager() {
@@ -54,6 +70,10 @@ WirelessManager* PDN::getWirelessManager() {
 
 RemoteDeviceCoordinator* PDN::getRemoteDeviceCoordinator() {
     return remoteDeviceCoordinator;
+}
+
+FirmwareUpdateManager* PDN::getFirmwareUpdateManager() {
+    return firmwareUpdateManager;
 }
 
 void PDN::setDeviceId(const std::string& id) {

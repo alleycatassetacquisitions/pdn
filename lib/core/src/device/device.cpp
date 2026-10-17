@@ -34,3 +34,8 @@ void Device::loop() {
         app->second->onStateLoop(this);
     }
 }
+
+bool Device::isActiveAppInterruptible() {
+    auto app = appConfig.find(currentAppId);
+    return app != appConfig.end() && app->second->isInterruptible();
+}

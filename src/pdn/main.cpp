@@ -130,7 +130,7 @@ static void setup() {
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
     // Next, so its watchdog covers the rest of setup() on an unconfirmed image.
-    firmwareStore = new Esp32S3FirmwareStore();
+    firmwareStore = new Esp32S3FirmwareStore(FIRMWARE_STORE_DRIVER_NAME);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
@@ -162,6 +162,7 @@ static void setup() {
         {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
         {LOGGER_DRIVER_NAME, loggerDriver},
         {STORAGE_DRIVER_NAME, storageDriver},
+        {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
     // Create core game objects
@@ -192,7 +193,7 @@ static void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, firmwareStore);
+    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
 
     pdn->getDisplay()->
     invalidateScreen()->
@@ -212,7 +213,6 @@ void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
     }
-    firmwareStore->superviseRunningImage();
     pdn->loop();
 }
 

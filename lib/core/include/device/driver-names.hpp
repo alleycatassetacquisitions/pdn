@@ -16,3 +16,4 @@ inline const std::string PEER_COMMS_DRIVER_NAME           = "peer_comms";
 inline const std::string PLATFORM_CLOCK_DRIVER_NAME       = "platform_clock";
 inline const std::string LOGGER_DRIVER_NAME               = "logger";
 inline const std::string STORAGE_DRIVER_NAME              = "storage";
+inline const std::string FIRMWARE_STORE_DRIVER_NAME = "firmware_store";
