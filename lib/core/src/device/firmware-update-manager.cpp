@@ -53,8 +53,11 @@ FirmwareUpdateManager::~FirmwareUpdateManager() {
 void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uint8_t* data, size_t length) {
     ImageId id;
     std::memcpy(id.data(), header.imageId, id.size());
-    if (receiving) {
-        if (id != receiveImageId || header.index >= receiveChunkCount) {
+    if (receive != Receive::NONE && id == receiveImageId && header.index < receiveChunkCount) {
+        // Any chunk of this image shows its seed is still sending, including one
+        // already written: a missed chunk comes round only once per pass.
+        quietTimer.setTimer(RECEIVE_STALL_MS);
+        if (receive == Receive::REFUSED) {
             return;
         }
         // Checked here as well as in sync(): this chunk could be the last one, and
@@ -63,17 +66,10 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
             stopReceiving();
             return;
         }
-        // Any chunk of this image shows its seed is still sending, including one
-        // already written: a missed chunk comes round only once per pass.
-        receiveStallTimer.setTimer(RECEIVE_STALL_MS);
         writeChunk(header.index, data, length);
         return;
     }
-    if (refusedQuietTimer.isRunning() && !refusedQuietTimer.expired() && id == refusedImageId) {
-        refusedQuietTimer.setTimer(RECEIVE_STALL_MS);
-        return;
-    }
-    if (header.index == 0 && isEligible() && startReceiving(header, data, length)) {
+    if (receive != Receive::WRITING && header.index == 0 && isEligible() && startReceiving(header, data, length)) {
         writeChunk(0, data, length);
     }
 }
@@ -87,8 +83,8 @@ bool FirmwareUpdateManager::startReceiving(const FirmwareChunkHeader& header, co
     receiveChunkCount = chunkCount(receiveImageLength);
     chunksWritten = 0;
     written.assign(receiveChunkCount, false);
-    receiving = true;
-    receiveStallTimer.setTimer(RECEIVE_STALL_MS);
+    receive = Receive::WRITING;
+    quietTimer.setTimer(RECEIVE_STALL_MS);
     LOG_I(TAG, "receiving a %lu-byte image in %u chunks", static_cast<unsigned long>(receiveImageLength),
           receiveChunkCount);
     return true;
@@ -109,12 +105,9 @@ void FirmwareUpdateManager::writeChunk(uint16_t index, const uint8_t* data, size
 }
 
 void FirmwareUpdateManager::commit() {
-    receiving = false;
-    receiveStallTimer.invalidate();
     if (!firmwareStore->finishWrite()) {
         LOG_E(TAG, "image refused");
-        refusedImageId = receiveImageId;
-        refusedQuietTimer.setTimer(RECEIVE_STALL_MS);
+        receive = Receive::REFUSED;
         return;
     }
     LOG_I(TAG, "image accepted; restarting into it");
@@ -123,8 +116,7 @@ void FirmwareUpdateManager::commit() {
 
 void FirmwareUpdateManager::stopReceiving() {
     firmwareStore->abortWrite();
-    receiving = false;
-    receiveStallTimer.invalidate();
+    receive = Receive::NONE;
 }
 
 bool FirmwareUpdateManager::beginSeeding() {
@@ -148,9 +140,11 @@ bool FirmwareUpdateManager::isSeeding() const {
 }
 
 void FirmwareUpdateManager::sync() {
-    if (receiving && (!isEligible() || receiveStallTimer.expired())) {
+    if (receive == Receive::WRITING && (!isEligible() || quietTimer.expired())) {
         LOG_W(TAG, "receive dropped with %u of %u chunks", chunksWritten, receiveChunkCount);
         stopReceiving();
+    } else if (receive == Receive::REFUSED && quietTimer.expired()) {
+        receive = Receive::NONE;
     }
     // One frame at a time: the driver's queue empties once the frame in the air
     // has been sent or given up on.

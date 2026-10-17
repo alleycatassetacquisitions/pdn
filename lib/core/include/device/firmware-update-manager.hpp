@@ -59,16 +59,19 @@ private:
     uint8_t passesLeft = 0;
     SimpleTimer beaconTimer;
 
-    // Receiver.
-    bool receiving = false;
+    // Receiver. One image at a time, followed until its chunks have been quiet
+    // for RECEIVE_STALL_MS. A refused image is followed too, so a seed still
+    // streaming it is not downloaded again.
+    enum class Receive : uint8_t {
+        NONE,
+        WRITING,
+        REFUSED,
+    };
+    Receive receive = Receive::NONE;
     ImageId receiveImageId{};
     uint32_t receiveImageLength = 0;
     uint16_t receiveChunkCount = 0;
     uint16_t chunksWritten = 0;
     std::vector<bool> written;
-    SimpleTimer receiveStallTimer;
-    // The image the store last refused, ignored until refusedQuietTimer expires,
-    // so a seed still streaming it is not downloaded again.
-    ImageId refusedImageId{};
-    SimpleTimer refusedQuietTimer;
+    SimpleTimer quietTimer;
 };
