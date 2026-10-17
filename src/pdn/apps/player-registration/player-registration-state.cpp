@@ -19,6 +19,8 @@ PlayerRegistrationState::~PlayerRegistrationState() {
 
 void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting player registration");
+    // A failed fetch comes back here in WiFi mode, deaf to a seed's frames.
+    pdn->getWirelessManager()->enablePeerCommsMode();
 
     pdn->getDisplay()->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
@@ -30,6 +32,7 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
+        playerRegistration->codeEntryStarted = true;
         playerRegistration->currentDigit++;
         if(playerRegistration->currentDigit > 9) {
             playerRegistration->currentDigit = 0;
@@ -40,6 +43,7 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     pdn->getSecondaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
+        playerRegistration->codeEntryStarted = true;
         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
 
         playerRegistration->currentDigitIndex++;
@@ -73,6 +77,10 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
 }
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
+    // Every PDN boots here, so a bench of them can be updated from this screen.
+    if (firmwareUpdateHold.poll(pdn)) {
+        transitionToFirmwareUpdateState = true;
+    }
     if(shouldRender) {
         if(currentDigitIndex == 0) {
             pdn->getDisplay()->invalidateScreen()->
@@ -121,9 +129,16 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
+    transitionToFirmwareUpdateState = false;
+    codeEntryStarted = false;
+    firmwareUpdateHold.reset();
     pdn->getLightManager()->stopAnimation();
 }
 
 bool PlayerRegistrationState::transitionToUserFetch() {
     return transitionToUserFetchState;
+}
+
+bool PlayerRegistrationState::transitionToFirmwareUpdate() const {
+    return transitionToFirmwareUpdateState;
 }

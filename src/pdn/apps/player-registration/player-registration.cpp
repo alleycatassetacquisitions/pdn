@@ -1,7 +1,11 @@
 #include "apps/player-registration/player-registration.hpp"
+#include "device/firmware-update-state.hpp"
 
-PlayerRegistrationApp::PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager)
-    : StateMachine(PLAYER_REGISTRATION_APP_ID) {
+PlayerRegistrationApp::PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager,
+                                             RemoteDebugManager* remoteDebugManager,
+                                             FirmwareUpdateManager* firmwareUpdateManager)
+    : StateMachine(PLAYER_REGISTRATION_APP_ID)
+    , firmwareUpdateManager(firmwareUpdateManager) {
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->matchManager = matchManager;
@@ -62,6 +66,18 @@ void PlayerRegistrationApp::populateStateMap() {
     stateMap.push_back(confirmOffline);
     stateMap.push_back(chooseRole);
     stateMap.push_back(welcomeMessageState);
+
+    // Hosted inside this app, not in Quickdraw's map: going out to Quickdraw and
+    // back would re-mount this app, and re-mounting re-runs populateStateMap,
+    // which appends a duplicate set of states.
+    if (firmwareUpdateManager != nullptr) {
+        FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(REGISTRATION_FIRMWARE_UPDATE, firmwareUpdateManager);
+        playerRegistration->addTransition(new StateTransition(
+            [playerRegistration]() { return playerRegistration->transitionToFirmwareUpdate(); }, firmwareUpdate));
+        firmwareUpdate->addTransition(
+            new StateTransition([firmwareUpdate]() { return firmwareUpdate->transitionToHost(); }, playerRegistration));
+        stateMap.push_back(firmwareUpdate);
+    }
 }
 
 bool PlayerRegistrationApp::readyForGameplay() {

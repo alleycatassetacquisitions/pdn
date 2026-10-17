@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
-enum class PktType : uint8_t
-{
+enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
     kDebugPacket = 2,
@@ -21,17 +21,26 @@ enum class PktType : uint8_t
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
     kCrashLog = 15,
-    kNumPacketTypes //Not a real packet type, DO NOT USE
+    kFirmwareUpdate = 16,
+    kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
 struct DataPktHdr
 {
-    //Total packet length including header
-    uint8_t pktLen;
+    /**
+     * Total packet length including this header. Two bytes because a v2 frame
+     * carries more than a byte can count.
+     */
+    uint16_t pktLen;
     PktType packetType;
-    uint8_t numPktsInCluster;
-    uint8_t idxInCluster;
 } __attribute__((packed));
+
+/**
+ * One ESP-NOW v2 frame's payload, less this protocol's header. Stated here
+ * rather than derived from the IDF macro so the native suite can see it; the
+ * driver asserts the two agree.
+ */
+constexpr size_t MAX_PKT_DATA_SIZE = 1470 - sizeof(DataPktHdr);
 
 struct ChainConfirmPayload
 {
@@ -79,3 +88,30 @@ struct ShootoutAckPayload
     ShootoutCmd cmd;
     uint8_t     seqId;
 } __attribute__((packed));
+
+/** Bytes of image in every firmware frame but the last of an image. */
+constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
+
+constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
+
+/**
+ * Firmware distribution's one frame: this header, then FIRMWARE_CHUNK_SIZE bytes
+ * of the image the seed is running (fewer for the last chunk). The seed sends
+ * every chunk a fixed number of times and repeats chunk 0 once a second;
+ * receivers never answer. Chunk 0 carries the image's app description, 32 bytes
+ * in, which a receiver judges before erasing anything. Nothing here is signed,
+ * and IDF checks the assembled image against the key that signed the running
+ * one, so forged frames cannot install an image. They can still spoil a
+ * download, or make a receiver erase its spare slot and wait for chunks that
+ * never come.
+ */
+struct FirmwareChunkHeader {
+    /** The image's esp_app_desc_t::app_elf_sha256. */
+    uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];
+    /** Length of the whole image, signature sector included. */
+    uint32_t imageLength;
+    uint16_t index;
+} __attribute__((packed));
+
+static_assert(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE <= MAX_PKT_DATA_SIZE,
+              "a chunk must fit one ESP-NOW v2 frame");

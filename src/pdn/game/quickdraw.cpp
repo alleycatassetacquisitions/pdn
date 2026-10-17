@@ -2,24 +2,38 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/firmware-update-manager.hpp"
 #include <array>
 #include <cstring>
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore)
+    : StateMachine(QUICKDRAW_APP_ID)
+    , wirelessManager(pdn->getWirelessManager())
+    , storageManager(pdn->getStorage())
+    , peerComms(pdn->getPeerComms())
+    , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator()) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
-    this->storageManager = PDN->getStorage();
-    this->peerComms = PDN->getPeerComms();
-    this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
     this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
     this->shootoutManager_->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager_);
+
+    if (firmwareStore != nullptr) {
+        this->firmwareUpdateManager = new FirmwareUpdateManager(
+            peerComms, firmwareStore,
+            [this]() {
+                // A cabled device is part of its neighbours' chain, whatever screen it shows.
+                bool cableConnected =
+                    remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
+                    remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
+                return isInterruptible() && !cableConnected;
+            });
+    }
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
     matchManager->setBoostProvider([this]() -> unsigned long {
@@ -130,6 +144,9 @@ void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* d
 
 void Quickdraw::onStateLoop(Device *PDN) {
     if (chainDuelManager) chainDuelManager->sync();
+    // Quickdraw is the PDN's only app, so this runs on every pass whatever
+    // screen is up, as a receive in progress needs.
+    if (firmwareUpdateManager) firmwareUpdateManager->sync();
 
     if (chainDuelManager) {
         bool loopNow = chainDuelManager->isLoop();
@@ -283,6 +300,8 @@ Quickdraw::~Quickdraw() {
     chainDuelManager = nullptr;
     delete shootoutManager_;
     shootoutManager_ = nullptr;
+    delete firmwareUpdateManager;
+    firmwareUpdateManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
@@ -291,7 +310,8 @@ Quickdraw::~Quickdraw() {
 void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
-    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    PlayerRegistrationApp* playerRegistration =
+        new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager, firmwareUpdateManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
@@ -611,4 +631,19 @@ void Quickdraw::populateStateMap() {
     stateMap.push_back(shAborted);
     stateMap.push_back(symbol);
     stateMap.push_back(symbolMatched);
+
+    // Appended last, so the other states' indices (which skipToState takes) are
+    // the same with or without a firmware store.
+    if (firmwareUpdateManager != nullptr) {
+        FirmwareUpdate* firmwareUpdate = new FirmwareUpdate(FIRMWARE_UPDATE, firmwareUpdateManager);
+        idle->addTransition(
+            new StateTransition(
+                [idle]() { return idle->transitionToFirmwareUpdate(); },
+                firmwareUpdate));
+        firmwareUpdate->addTransition(
+            new StateTransition(
+                [firmwareUpdate]() { return firmwareUpdate->transitionToHost(); },
+                idle));
+        stateMap.push_back(firmwareUpdate);
+    }
 }

@@ -16,6 +16,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
@@ -49,7 +50,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
-
+Esp32S3FirmwareStore* firmwareStore = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
@@ -144,6 +145,7 @@ static void setup() {
     peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
     storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
+    firmwareStore = new Esp32S3FirmwareStore();
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -189,8 +191,8 @@ static void setup() {
     crashLogger->capture();
     crashLogger->transmitPending();
 
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    
+    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, firmwareStore);
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
@@ -209,6 +211,7 @@ void loop() {
     if (crashLogger != nullptr) {
         crashLogger->pollSerialCommand();
     }
+    firmwareStore->superviseRunningImage();
     pdn->loop();
 }
 

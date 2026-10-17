@@ -107,6 +107,13 @@ public:
 
     virtual bool isTerminalState() { return false; }
 
+    /**
+     * Whether this screen is a safe point to restart the device under the
+     * player, as taking a firmware update does; whoever asks checks the cables
+     * separately. A state machine answers for the state it is running.
+     */
+    virtual bool isInterruptible() const { return false; }
+
 protected:
     std::vector<StateTransition*> transitions;
 

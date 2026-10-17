@@ -3,6 +3,7 @@
 Import("env")  # noqa: F821
 
 import subprocess
+import time
 
 
 def readCommitHash():
@@ -18,3 +19,11 @@ def readCommitHash():
 
 commitHash = readCommitHash()
 env.Append(CPPDEFINES=[("FIRMWARE_COMMIT_HASH", '\\"' + commitHash + '\\"')])
+
+# The image's build time (esp_app_desc_t date/time) is how a device tells a newer
+# image from an older one. With SOURCE_DATE_EPOCH set, GCC stamps __DATE__ and
+# __TIME__ in UTC, so images built in different time zones still compare
+# correctly. SCons does not track ENV, so the file that carries the stamp is
+# rebuilt every build.
+env["ENV"]["SOURCE_DATE_EPOCH"] = str(int(time.time()))
+env.AlwaysBuild(env.File("$BUILD_DIR/esp_app_format/esp_app_desc.c.o"))

@@ -12,6 +12,7 @@
 #include "game/match-manager.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/firmware-update-state.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -46,6 +47,7 @@ enum QuickdrawStateId {
     // in parallel with shootout taking 22-27; they were renumbered here on merge.
     SYMBOL = 28,
     SYMBOL_MATCHED = 29,
+    FIRMWARE_UPDATE = 30,
 };
 
 class Sleep : public TypedState<PDN> {
@@ -99,6 +101,8 @@ public:
     bool transitionToSupporterReady();
     void renderStats(PDN* pdn);
     bool transitionToSymbol();
+    /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
+    bool transitionToFirmwareUpdate() const;
 
 private:
     Player *player;
@@ -117,6 +121,9 @@ private:
     const int MATCH_INITIALIZATION_TIMEOUT = 1000;
 
     bool transitionToSymbolState = false;
+
+    bool transitionToFirmwareUpdateState = false;
+    FirmwareUpdateHold firmwareUpdateHold;
 
     // void serialEventCallbacks(const std::string& message);
 };

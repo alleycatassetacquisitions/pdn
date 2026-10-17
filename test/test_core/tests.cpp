@@ -7,6 +7,8 @@
 #include "device-tests.hpp"
 
 // New test headers
+#include "peer-comms-types-tests.hpp"
+#include "firmware-transport-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
@@ -863,6 +865,26 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
+}
+
+TEST_F(IdleStateTests, firmwareHoldStartsAnUpdate) {
+    idleFirmwareHoldStartsAnUpdate(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
+    pairingCodeFirmwareHoldStartsAnUpdate(this);
+}
+
+TEST_F(IdleStateTests, firmwareHoldCarriedInDoesNotFire) {
+    idleFirmwareHoldCarriedInDoesNotFire(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeIsInterruptibleUntilTouched) {
+    pairingCodeIsInterruptibleUntilTouched(this);
+}
+
+TEST_F(IdleStateTests, idleIsNotInterruptible) {
+    idleIsNotInterruptible(this);
 }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {

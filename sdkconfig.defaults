@@ -16,6 +16,12 @@ CONFIG_SPIRAM_SPEED_80M=y
 # Use our partitions.csv instead of IDF's built-in table.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 
+# A wireless update must prove itself before it becomes permanent: if it resets
+# before the firmware store confirms it (PENDING_IMAGE_CONFIRM_MS of uptime), the
+# bootloader goes back to the previous slot. The store refuses to compile without
+# this.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # Our code throws and catches C++ exceptions; IDF turns them off by default.
 CONFIG_COMPILER_CXX_EXCEPTIONS=y
 
@@ -52,3 +58,9 @@ CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0
+
+# Updates must be signed (RSA-3072, the ESP32-S3's only scheme here) with the key
+# that signed the running image; esp_ota_end checks it. Images are signed after
+# the build by scripts/sign_image.py, not by the IDF build.
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=n
