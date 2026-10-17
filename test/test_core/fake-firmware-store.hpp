@@ -9,17 +9,15 @@
 /**
  * In-memory FirmwareStoreInterface. The judgements the ESP32 store reads from
  * app descriptions and IDF's checks are two switches: wantImages for the one
- * beginWrite makes before opening the slot, acceptImages for finishWrite. The
- * image a device already runs is never wanted, as on hardware, where it is
- * never newer than itself.
+ * beginWrite makes before opening the slot, acceptImages for finishWrite.
  */
 class FakeFirmwareStore : public FirmwareStoreInterface {
 public:
-    /** Opens a zero-filled slot of `length` bytes if wantImages and `head` does not start the running image. */
+    /** Records what it was asked to judge, then opens a zero-filled slot of `length` bytes if wantImages. */
     bool beginWrite(const uint8_t* head, size_t headLength, size_t length) override {
-        const size_t compared = std::min(headLength, runningImage.size());
-        const bool running = compared > 0 && std::memcmp(head, runningImage.data(), compared) == 0;
-        if (!wantImages || running || length == 0 || length > slotSize) {
+        lastHead.assign(head, head + headLength);
+        lastLength = length;
+        if (!wantImages || length == 0) {
             return false;
         }
         beginWriteCalls++;
@@ -27,13 +25,13 @@ public:
         writeOpen = true;
         return true;
     }
-    /** Copies into the open slot; fails past its end or with none open. */
+    /** Counts the call, then copies into the open slot; fails past its end or with none open. */
     bool writeAt(size_t offset, const uint8_t* data, size_t length) override {
+        writeCount++;
         if (!writeOpen || offset + length > slot.size()) {
             return false;
         }
         std::copy(data, data + length, slot.begin() + static_cast<std::ptrdiff_t>(offset));
-        writeCount++;
         return true;
     }
     /** Closes the slot; acceptImages decides whether it boots. */
@@ -74,7 +72,8 @@ public:
     std::vector<uint8_t> slot;
     bool wantImages = true;
     bool acceptImages = true;
-    size_t slotSize = 0x3E0000;
+    std::vector<uint8_t> lastHead;
+    size_t lastLength = 0;
     int beginWriteCalls = 0;
     int writeCount = 0;
     int abortCalls = 0;

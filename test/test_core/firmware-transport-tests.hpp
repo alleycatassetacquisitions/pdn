@@ -226,23 +226,25 @@ TEST(FirmwareTransportTest, eachChunkIsWrittenOnce) {
     EXPECT_EQ(f.receiverStore.slot, f.image);
 }
 
-TEST(FirmwareTransportTest, anImageTheStoreDoesNotWantIsNeverErasedFor) {
-    // Another family's image, an older build, or the image already running.
+TEST(FirmwareTransportTest, anImageTheStoreRefusesAtChunkZeroIsNotWritten) {
+    // Another family's image, an older build, or one too large for the slot.
     FirmwareTransportFixture f;
     f.receiverStore.wantImages = false;
     ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
-    EXPECT_EQ(f.receiverStore.beginWriteCalls, 0);
+    EXPECT_EQ(f.receiverStore.writeCount, 0);
+    EXPECT_FALSE(f.receiverStore.restarted);
 }
 
-TEST(FirmwareTransportTest, theImageAlreadyRunningIsNotDownloaded) {
+TEST(FirmwareTransportTest, theStoreJudgesChunkZeroAndTheImageLength) {
     FirmwareTransportFixture f;
-    f.receiverStore.setRunningImage(f.image, 0xA1);
     ASSERT_TRUE(f.seed->beginSeeding());
     f.runSeed();
 
-    EXPECT_EQ(f.receiverStore.beginWriteCalls, 0);
+    const std::vector<uint8_t> chunkZero(f.image.begin(), f.image.begin() + FIRMWARE_CHUNK_SIZE);
+    EXPECT_EQ(f.receiverStore.lastHead, chunkZero);
+    EXPECT_EQ(f.receiverStore.lastLength, FirmwareTransportFixture::IMAGE_LENGTH);
 }
 
 TEST(FirmwareTransportTest, aRefusedImageIsNotDownloadedAgainInTheSameRun) {
@@ -289,6 +291,22 @@ TEST(FirmwareTransportTest, losingEligibilityDropsTheReceive) {
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 
+TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
+    // The screen stops being interruptible, or a cable goes in, between the
+    // receiver's sync() and the chunk that would complete the image.
+    FirmwareTransportFixture f;
+    ASSERT_TRUE(f.seed->beginSeeding());
+    f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
+        if (FirmwareTransportFixture::chunkIndex(frame) == FirmwareTransportFixture::CHUNK_COUNT - 1) {
+            f.eligible = false;
+        }
+        return false;
+    });
+
+    EXPECT_FALSE(f.receiverStore.restarted);
+    EXPECT_EQ(f.receiverStore.abortCalls, 1);
+}
+
 TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
     FirmwareTransportFixture f;
     ASSERT_TRUE(f.seed->beginSeeding());
@@ -300,15 +318,6 @@ TEST(FirmwareTransportTest, aReceiveWithNoChunksForTooLongIsDropped) {
 
     EXPECT_EQ(f.receiverStore.abortCalls, 1);
     EXPECT_FALSE(f.receiverStore.restarted);
-}
-
-TEST(FirmwareTransportTest, anImageTooLargeForTheSlotIsNotTaken) {
-    FirmwareTransportFixture f;
-    f.receiverStore.slotSize = FirmwareTransportFixture::IMAGE_LENGTH - 1;
-    ASSERT_TRUE(f.seed->beginSeeding());
-    f.runSeed();
-
-    EXPECT_EQ(f.receiverStore.beginWriteCalls, 0);
 }
 
 TEST(FirmwareTransportTest, chunksOfAnotherImageAreIgnored) {

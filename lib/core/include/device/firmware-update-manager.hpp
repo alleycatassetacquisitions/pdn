@@ -29,7 +29,7 @@ public:
     /** Hands the radio handler back. */
     ~FirmwareUpdateManager();
 
-    /** Starts streaming this device's running image; false if already seeding, or if that image is unsigned or unreadable. */
+    /** Starts streaming this device's running image; false if that image is unsigned or unreadable. */
     bool beginSeeding();
     /** True until the seed's last pass has been sent. */
     bool isSeeding() const;
@@ -44,7 +44,7 @@ private:
     void writeChunk(uint16_t index, const uint8_t* data, size_t length);
     void commit();
     void stopReceiving();
-    bool sendChunk(uint16_t index);
+    void sendChunk(uint16_t index);
 
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
@@ -56,7 +56,6 @@ private:
     uint16_t seedChunkCount = 0;
     uint16_t nextChunk = 0;
     uint8_t passesLeft = 0;
-    uint32_t unsentChunks = 0;
     SimpleTimer beaconTimer;
 
     // Receiver.

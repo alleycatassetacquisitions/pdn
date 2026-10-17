@@ -15,11 +15,11 @@ constexpr uint8_t SEED_PASSES = 3;
 // Chunk 0 carries the image's description, so repeating it lets a device that
 // becomes eligible mid-run start without waiting for the next pass.
 constexpr unsigned long BEACON_INTERVAL_MS = 1000;
-// No chunk of the image for this long means its seed has stopped.
+// No chunk of the image for this long means its seed has stopped. A refused
+// image is ignored until its chunks have been quiet this long.
 constexpr unsigned long RECEIVE_STALL_MS = 5000;
 
-// An image is cut into FIRMWARE_CHUNK_SIZE pieces, the last one shorter; the
-// seed and the receiver both cut it here.
+// The seed and the receiver both cut an image here.
 uint16_t chunkCount(uint32_t imageLength) {
     return static_cast<uint16_t>((imageLength + FIRMWARE_CHUNK_SIZE - 1) / FIRMWARE_CHUNK_SIZE);
 }
@@ -58,6 +58,12 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
         if (id != receiveImageId || header.index >= receiveChunkCount) {
             return;
         }
+        // Checked here as well as in sync(): this chunk could be the last one, and
+        // committing it restarts the device before sync() runs again.
+        if (!isEligible()) {
+            stopReceiving();
+            return;
+        }
         // Any chunk of this image shows its seed is still sending, including one
         // already written: a missed chunk comes round only once per pass.
         receiveStallTimer.setTimer(RECEIVE_STALL_MS);
@@ -68,14 +74,12 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
         refusedQuietTimer.setTimer(RECEIVE_STALL_MS);
         return;
     }
-    if (header.index == 0 && !isSeeding() && isEligible() && startReceiving(header, data, length)) {
+    if (header.index == 0 && isEligible() && startReceiving(header, data, length)) {
         writeChunk(0, data, length);
     }
 }
 
 bool FirmwareUpdateManager::startReceiving(const FirmwareChunkHeader& header, const uint8_t* data, size_t length) {
-    // The store judges chunk 0's app description before it erases anything;
-    // finishWrite has the final say once the image is whole.
     if (!firmwareStore->beginWrite(data, length, header.imageLength)) {
         return false;
     }
@@ -125,9 +129,6 @@ void FirmwareUpdateManager::stopReceiving() {
 }
 
 bool FirmwareUpdateManager::beginSeeding() {
-    if (isSeeding()) {
-        return false;
-    }
     seedImageLength = static_cast<uint32_t>(firmwareStore->getRunningImageLength());
     if (seedImageLength == 0) {
         LOG_E(TAG, "the running image is unsigned or unreadable; nothing to seed");
@@ -136,7 +137,6 @@ bool FirmwareUpdateManager::beginSeeding() {
     firmwareStore->getRunningImageId(seedImageId.data());
     seedChunkCount = chunkCount(seedImageLength);
     nextChunk = 0;
-    unsentChunks = 0;
     passesLeft = SEED_PASSES;
     beaconTimer.setTimer(BEACON_INTERVAL_MS);
     LOG_I(TAG, "seeding a %lu-byte image in %u chunks, %u passes", static_cast<unsigned long>(seedImageLength),
@@ -163,21 +163,18 @@ void FirmwareUpdateManager::sync() {
         sendChunk(0);
         return;
     }
-    // A chunk that could not be read or that the radio refused is treated like
-    // one lost on the air.
-    if (!sendChunk(nextChunk)) {
-        unsentChunks++;
-    }
+    // A chunk that could not be read or that the radio refused counts as lost on
+    // the air.
+    sendChunk(nextChunk);
     if (++nextChunk == seedChunkCount) {
         nextChunk = 0;
         if (--passesLeft == 0) {
-            LOG_I(TAG, "run ended after %u passes; %lu chunks were not sent", SEED_PASSES,
-                  static_cast<unsigned long>(unsentChunks));
+            LOG_I(TAG, "run ended after %u passes", SEED_PASSES);
         }
     }
 }
 
-bool FirmwareUpdateManager::sendChunk(uint16_t index) {
+void FirmwareUpdateManager::sendChunk(uint16_t index) {
     uint8_t frame[sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE];
     FirmwareChunkHeader header{};
     std::memcpy(header.imageId, seedImageId.data(), seedImageId.size());
@@ -186,7 +183,8 @@ bool FirmwareUpdateManager::sendChunk(uint16_t index) {
     std::memcpy(frame, &header, sizeof(header));
     const size_t offset = static_cast<size_t>(index) * FIRMWARE_CHUNK_SIZE;
     const size_t length = chunkLength(seedImageLength, index);
-    return firmwareStore->readRunningImage(offset, frame + sizeof(header), length) &&
-           peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
-                               sizeof(header) + length) == 0;
+    if (firmwareStore->readRunningImage(offset, frame + sizeof(header), length)) {
+        peerComms->sendData(peerComms->getGlobalBroadcastAddress(), PktType::kFirmwareUpdate, frame,
+                            sizeof(header) + length);
+    }
 }
