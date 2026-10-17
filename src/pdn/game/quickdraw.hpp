@@ -29,7 +29,7 @@ public:
      * which must outlive it; null leaves firmware updates out (the headless
      * simulator).
      */
-    Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore);
+    Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore = nullptr);
     ~Quickdraw();
 
     void populateStateMap() override;
