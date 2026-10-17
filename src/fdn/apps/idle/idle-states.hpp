@@ -12,12 +12,12 @@
 #include "utils/simple-timer.hpp"
 
 enum IdleStateId {
-    IDLE = 0,
-    PLAYER_DETECTED = 1,
-    AUTHORIZED_PDN = 2,
-    UNAUTHORIZED_PDN = 3,
+    IDLE                = 0,
+    PLAYER_DETECTED     = 1,
+    AUTHORIZED_PDN      = 2,
+    UNAUTHORIZED_PDN    = 3,
     CONNECTION_DETECTED = 4,
-    UPLOAD_PENDING = 5,
+    UPLOAD_PENDING      = 5,
 };
 
 // ---------------------------------------------------------------------------
