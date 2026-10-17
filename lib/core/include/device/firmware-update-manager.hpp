@@ -21,8 +21,9 @@
 class FirmwareUpdateManager {
 public:
     /**
-     * isEligible is checked before an image is taken and on every sync() while
-     * one is being received; a receive is dropped once it reads false.
+     * isEligible is checked before an image is taken and on every sync() and
+     * every chunk while one is being received; a receive is dropped once it
+     * reads false. It must read false while this device seeds.
      */
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           std::function<bool()> isEligible);

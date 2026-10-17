@@ -33,8 +33,9 @@ public:
     /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
     /**
-     * Interruptible until code entry starts here (either button clicked); a
-     * receive under way is dropped at its next chunk.
+     * Interruptible until code entry starts here (either button clicked), so an
+     * update never restarts a device mid-code: a receive under way is dropped
+     * before any further chunk is written.
      */
     bool isInterruptible() const override { return !codeEntryStarted; }
 

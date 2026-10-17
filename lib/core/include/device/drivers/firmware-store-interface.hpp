@@ -19,7 +19,7 @@ public:
      * running image (unverified; finishWrite has the final say). Nothing is
      * erased for an image refused here. Also false if the slot cannot be opened:
      * a length of 0 or larger than the slot, an unsigned running image, or a
-     * running image not yet confirmed.
+     * running image not yet confirmed. Call only with no write open.
      */
     virtual bool beginWrite(const uint8_t* head, size_t headLength, size_t length) = 0;
     /** Writes into the slot opened by beginWrite, at any offset, in any order. */
@@ -27,7 +27,8 @@ public:
     /**
      * Closes the write and makes the image the next to boot, but only if it is
      * intact, signed with the key that signed the running image, built for this
-     * family, and newer. A refused image has its first sector erased.
+     * family, and newer. A refused image is left unbootable. Call only after
+     * beginWrite returned true.
      */
     virtual bool finishWrite() = 0;
     /** Ends the write opened by beginWrite without making its image bootable; a no-op if none is open. */

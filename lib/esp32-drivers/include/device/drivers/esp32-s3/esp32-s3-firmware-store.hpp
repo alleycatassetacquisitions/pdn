@@ -237,8 +237,8 @@ private:
     }
 
     // Time in loop() before a pending image confirms itself, counted from the first
-    // pass so that a slow setup() (a WiFi connect for a crash upload, the splash)
-    // cannot use it up.
+    // pass so that a slow setup() (sending crash records, the splash) cannot use
+    // it up.
     static constexpr uint64_t PENDING_IMAGE_CONFIRM_MS = 10000;
 
     // Covers the rest of setup() and the slowest loop pass before the confirm,

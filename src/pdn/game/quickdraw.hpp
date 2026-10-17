@@ -25,8 +25,9 @@ class Quickdraw : public StateMachine {
 public:
     /**
      * Owns the match, chain-duel, shootout and firmware-update managers and
-     * registers the chain, shootout and symbol-match packet handlers. Borrows firmwareStore,
-     * which must outlive it; null leaves firmware updates out (the headless
+     * registers the chain and shootout packet handlers, and the symbol-match
+     * ones when given a symbolWirelessManager. Borrows firmwareStore, which
+     * must outlive it; null leaves firmware updates out (the headless
      * simulator).
      */
     Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager, FirmwareStoreInterface* firmwareStore = nullptr);

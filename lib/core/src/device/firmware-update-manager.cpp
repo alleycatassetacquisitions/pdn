@@ -15,8 +15,7 @@ constexpr uint8_t SEED_PASSES = 3;
 // Chunk 0 carries the image's description, so repeating it lets a device that
 // becomes eligible mid-run start without waiting for the next pass.
 constexpr unsigned long BEACON_INTERVAL_MS = 1000;
-// No chunk of the image for this long means its seed has stopped. A refused
-// image is ignored until its chunks have been quiet this long.
+// No chunk of the image for this long means its seed has stopped.
 constexpr unsigned long RECEIVE_STALL_MS = 5000;
 
 // The seed and the receiver both cut an image here.
@@ -153,8 +152,8 @@ void FirmwareUpdateManager::sync() {
         LOG_W(TAG, "receive dropped with %u of %u chunks", chunksWritten, receiveChunkCount);
         stopReceiving();
     }
-    // One frame at a time: the driver's queue empties once the radio has
-    // reported on the frame in the air.
+    // One frame at a time: the driver's queue empties once the frame in the air
+    // has been sent or given up on.
     if (!isSeeding() || !peerComms->isSendQueueEmpty()) {
         return;
     }
