@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <optional>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -94,24 +95,24 @@ public:
         rec.resetReason = static_cast<uint8_t>(reason);
         rec.timestamp   = static_cast<uint32_t>(esp_timer_get_time() / 1000);
 
-        if (hadCoreDumpSummary) {
-            rec.programCounter = summary.exc_pc;
-            rec.exceptionCause = summary.ex_info.exc_cause;
-            strncpy(rec.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
-            rec.taskName[TASK_NAME_LENGTH - 1] = '\0';
-        } else {
-            rec.programCounter = 0;
-            rec.exceptionCause = 0;
-            strncpy(rec.taskName, "unknown", TASK_NAME_LENGTH - 1);
-            rec.taskName[TASK_NAME_LENGTH - 1] = '\0';
+        // A summary can hold placeholders: no task when the dump stopped before the
+        // note pointing at the crashed task or skipped that task's TCB, and a fake PC
+        // with an invalid cause when the crashed task's stack was unusable.
+        if (hadCoreDumpSummary && summary.exc_task[0] != '\0' &&
+            summary.ex_info.exc_cause != CORE_DUMP_INVALID_CAUSE) {
+            CoreDumpDetails& details = rec.coreDumpDetails.emplace();
+            details.programCounter = summary.exc_pc;
+            details.exceptionCause = summary.ex_info.exc_cause;
+            strncpy(details.taskName, summary.exc_task, TASK_NAME_LENGTH - 1);
+            details.taskName[TASK_NAME_LENGTH - 1] = '\0';
         }
 
         copyBuildCommitHash(rec.commitHash);
 
         persistRecord(rec);
-        LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u pc=0x%08X ec=%u task=%s commit=%s",
-              static_cast<unsigned long>(rec.crashNumber),
-              rec.resetReason, rec.programCounter, rec.exceptionCause, rec.taskName, rec.commitHash);
+        LOG_I(CRASH_LOG_TAG, "Captured crash #%lu: reason=%u %s commit=%s",
+              static_cast<unsigned long>(rec.crashNumber), rec.resetReason, describeCoreDump(rec.coreDumpDetails).c_str(),
+              rec.commitHash);
 
         eraseCoreDumpAfterCapture(hadCoreDumpSummary);
     }
@@ -172,19 +173,14 @@ public:
 
             const char* status = (n <= sentSeq) ? "sent   " : "pending";
 
-            usbMonitorPrintf(
-                "[#%lu][%s] reason=%-2u %-12s | ts=%ums | pc=0x%08X | ec=%-2u %-18s | task=%s | commit=%s\n",
-                static_cast<unsigned long>(rec.crashNumber),
-                status,
-                rec.resetReason,
-                resetReasonName(rec.resetReason),
-                rec.timestamp,
-                rec.programCounter,
-                rec.exceptionCause,
-                exceptionCauseName(rec.exceptionCause),
-                rec.taskName,
-                rec.commitHash[0] != '\0' ? rec.commitHash : "unknown"
-            );
+            usbMonitorPrintf("[#%lu][%s] reason=%-2u %-12s | ts=%ums | %s | commit=%s\n",
+                             static_cast<unsigned long>(rec.crashNumber),
+                             status,
+                             rec.resetReason,
+                             resetReasonName(rec.resetReason),
+                             rec.timestamp,
+                             describeCoreDump(rec.coreDumpDetails).c_str(),
+                             rec.commitHash[0] != '\0' ? rec.commitHash : "unknown");
         }
 
         usbMonitorWrite("=================\n\n");
@@ -310,6 +306,8 @@ private:
         trimSerialCommandBuffer(serialCommandBuffer, serialCommandLength);
     }
 
+    // IDF's COREDUMP_INVALID_CAUSE_VALUE, which espcoredump does not export.
+    static constexpr uint32_t CORE_DUMP_INVALID_CAUSE = 0xFFFF;
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
     bool offeredThisBoot = false;
@@ -381,9 +379,12 @@ private:
         doc["id"]              = rec.crashNumber;
         doc["timestamp"]       = rec.timestamp;
         doc["resetReason"]     = rec.resetReason;
-        doc["programCounter"]  = rec.programCounter;
-        doc["exceptionCause"]  = rec.exceptionCause;
-        doc["task"]        = rec.taskName;
+        if (rec.coreDumpDetails) {
+            JsonObject details = doc["coreDumpDetails"].to<JsonObject>();
+            details["programCounter"] = rec.coreDumpDetails->programCounter;
+            details["exceptionCause"] = rec.coreDumpDetails->exceptionCause;
+            details["task"] = rec.coreDumpDetails->taskName;
+        }
         doc["commitHash"]  = rec.commitHash;
         serializeJson(doc, buf, bufSize);
     }
@@ -396,11 +397,16 @@ private:
         out.crashNumber    = doc["id"] | 0u;
         out.timestamp      = doc["timestamp"] | doc["ts"] | 0u;
         out.resetReason    = doc["resetReason"] | doc["rr"] | static_cast<uint8_t>(0);
-        out.programCounter = doc["programCounter"] | doc["pc"] | 0u;
-        out.exceptionCause = doc["exceptionCause"] | doc["ec"] | 0u;
-        const char* task   = doc["task"] | "unknown";
-        strncpy(out.taskName, task, TASK_NAME_LENGTH - 1);
-        out.taskName[TASK_NAME_LENGTH - 1] = '\0';
+        out.coreDumpDetails.reset();
+        if (doc["coreDumpDetails"].is<JsonObject>()) {
+            JsonObject stored = doc["coreDumpDetails"];
+            CoreDumpDetails& details = out.coreDumpDetails.emplace();
+            details.programCounter = stored["programCounter"] | 0u;
+            details.exceptionCause = stored["exceptionCause"] | 0u;
+            const char* task = stored["task"] | "";
+            strncpy(details.taskName, task, TASK_NAME_LENGTH - 1);
+            details.taskName[TASK_NAME_LENGTH - 1] = '\0';
+        }
         const char* commitHash = doc["commitHash"] | "";
         strncpy(out.commitHash, commitHash, COMMIT_HASH_LENGTH - 1);
         out.commitHash[COMMIT_HASH_LENGTH - 1] = '\0';
@@ -471,9 +477,13 @@ private:
             pkt.crashNumber    = rec.crashNumber;
             pkt.timestamp      = rec.timestamp;
             pkt.resetReason    = rec.resetReason;
-            pkt.programCounter = rec.programCounter;
-            pkt.exceptionCause = rec.exceptionCause;
-            memcpy(pkt.taskName, rec.taskName, TASK_NAME_LENGTH);
+            // CrashPacket has no presence flag; an empty task name marks a record
+            // without details.
+            if (rec.coreDumpDetails) {
+                pkt.programCounter = rec.coreDumpDetails->programCounter;
+                pkt.exceptionCause = rec.coreDumpDetails->exceptionCause;
+                memcpy(pkt.taskName, rec.coreDumpDetails->taskName, TASK_NAME_LENGTH);
+            }
             memcpy(pkt.commitHash, rec.commitHash, COMMIT_HASH_LENGTH);
 
             const int result = espNowDriver->sendData(
@@ -509,6 +519,17 @@ private:
     size_t serialCommandLength;
 
     static const char* const CRASH_LOG_TAG;
+
+    static std::string describeCoreDump(const std::optional<CoreDumpDetails>& details) {
+        if (!details) {
+            return "no core dump details";
+        }
+        char text[80];
+        snprintf(text, sizeof(text), "pc=0x%08X | ec=%-2u %-18s | task=%s",
+                 static_cast<unsigned>(details->programCounter), static_cast<unsigned>(details->exceptionCause),
+                 exceptionCauseName(details->exceptionCause), details->taskName);
+        return text;
+    }
 
     static const char* resetReasonName(uint8_t reason) {
         switch (static_cast<esp_reset_reason_t>(reason)) {

@@ -789,6 +789,10 @@ TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) {
     encoderOmitsUnsetOptionalFields(this);
 }
 
+TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZero) {
+    encoderKeepsExceptionCauseZero(this);
+}
+
 TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
     encoderReturnZeroWhenBufferTooSmall(this);
 }

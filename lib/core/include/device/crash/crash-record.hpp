@@ -2,10 +2,20 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <optional>
 
 constexpr size_t  TASK_NAME_LENGTH   = 16;
 constexpr size_t  COMMIT_HASH_LENGTH = 9;
 constexpr uint8_t MAX_CRASH_ENTRIES  = 10;
+
+/**
+ * The crashed task, PC and exception cause from a core dump summary.
+ */
+struct CoreDumpDetails {
+    uint32_t programCounter;
+    uint32_t exceptionCause;
+    char taskName[TASK_NAME_LENGTH];
+};
 
 /**
  * Canonical in-memory representation of a captured crash event.
@@ -21,8 +31,7 @@ struct CrashRecord {
     uint32_t timestamp;
 
     uint8_t  resetReason;
-    uint32_t programCounter;
-    uint32_t exceptionCause;
-    char     taskName[TASK_NAME_LENGTH];
+    /** Empty unless capture read usable details from a core dump summary. */
+    std::optional<CoreDumpDetails> coreDumpDetails;
     char     commitHash[COMMIT_HASH_LENGTH];
 };
