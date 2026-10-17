@@ -77,7 +77,11 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
     // Every PDN boots here, so a bench of them can be updated from this screen.
-    if (firmwareUpdateHold.poll(pdn)) {
+    const unsigned long heldMs = pdn->getSecondaryButton()->longPressedMillis();
+    if (heldMs == 0) {
+        releasedSinceMount = true;
+    }
+    if (releasedSinceMount && heldMs >= FIRMWARE_UPDATE_HOLD_MS) {
         transitionToFirmwareUpdateState = true;
     }
     if(shouldRender) {
@@ -130,7 +134,7 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     transitionToUserFetchState = false;
     transitionToFirmwareUpdateState = false;
     codeEntryStarted = false;
-    firmwareUpdateHold.reset();
+    releasedSinceMount = false;
     pdn->getLightManager()->stopAnimation();
 }
 

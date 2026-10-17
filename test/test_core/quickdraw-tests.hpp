@@ -148,8 +148,8 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     suite->idleState->onStateDismounted(&suite->device);
 }
 
-// The pairing-code screen raises the firmware-update transition at the same
-// hold threshold, not before, and clears it on dismount.
+// The pairing-code screen raises the firmware-update transition at
+// FIRMWARE_UPDATE_HOLD_MS, not before, and clears it on dismount.
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);

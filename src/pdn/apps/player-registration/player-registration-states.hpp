@@ -2,7 +2,6 @@
 
 #include "device/pdn.hpp"
 #include "state/state.hpp"
-#include "device/firmware-update-state.hpp"
 #include "game/player.hpp"
 #include "game/match-manager.hpp"
 #include "device/wireless-manager.hpp"
@@ -20,6 +19,9 @@ enum PlayerRegistrationStateId {
     // Past every QuickdrawStateId.
     REGISTRATION_FIRMWARE_UPDATE = 31,
 };
+
+/** How long the secondary button is held on the pairing-code screen to seed this device's image. */
+constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
 class PlayerRegistrationState : public TypedState<PDN> {
 public:
@@ -43,7 +45,8 @@ private:
     bool transitionToUserFetchState = false;
     bool transitionToFirmwareUpdateState = false;
     bool codeEntryStarted = false;
-    FirmwareUpdateHold firmwareUpdateHold;
+    // A hold already under way when the screen mounts counts only after a release.
+    bool releasedSinceMount = false;
     bool shouldRender = false;
     Player* player;
     MatchManager* matchManager;

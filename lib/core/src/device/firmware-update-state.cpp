@@ -3,18 +3,6 @@
 #include "device/device.hpp"
 #include "device/firmware-update-manager.hpp"
 
-bool FirmwareUpdateHold::poll(Device* device) {
-    const unsigned long heldMs = device->getSecondaryButton()->longPressedMillis();
-    if (heldMs == 0) {
-        releasedSinceMount = true;
-    }
-    return releasedSinceMount && heldMs >= FIRMWARE_UPDATE_HOLD_MS;
-}
-
-void FirmwareUpdateHold::reset() {
-    releasedSinceMount = false;
-}
-
 FirmwareUpdate::FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdateManager)
     : TypedState<Device>(stateId)
     , firmwareUpdateManager(firmwareUpdateManager) {}

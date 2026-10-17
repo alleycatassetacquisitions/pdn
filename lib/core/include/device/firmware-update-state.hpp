@@ -5,28 +5,6 @@
 class Device;
 class FirmwareUpdateManager;
 
-/**
- * How long the secondary button is held, on a screen that hosts FirmwareUpdate,
- * before the device starts seeding its own image.
- */
-constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
-
-/**
- * The seed gesture: the secondary button held FIRMWARE_UPDATE_HOLD_MS. A hold
- * that is already a long press when the host screen mounts (through power-on,
- * or back from a run that ended at once) does not count until it is let go.
- */
-class FirmwareUpdateHold {
-public:
-    /** Call every pass of the host's onStateLoop; true once the gesture completes. */
-    bool poll(Device* device);
-    /** Call from the host's onStateDismounted. */
-    void reset();
-
-private:
-    bool releasedSinceMount = false;
-};
-
 /** Draws a static "UPDATING" label and waits out the seed run. */
 class FirmwareUpdate : public TypedState<Device> {
 public:
