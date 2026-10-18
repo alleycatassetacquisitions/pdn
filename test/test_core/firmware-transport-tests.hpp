@@ -82,8 +82,9 @@ public:
             image[i] = static_cast<uint8_t>(i * 7 + 3);
         }
         seedStore.setRunningImage(image, 0xA1);
-        seed = new FirmwareUpdateManager(&seedRadio, &seedStore, []() { return false; });
-        receiver = new FirmwareUpdateManager(&receiverRadio, &receiverStore, [this]() { return eligible; });
+        seed = new FirmwareUpdateManager(&seedRadio, &seedStore);
+        receiver = new FirmwareUpdateManager(&receiverRadio, &receiverStore);
+        receiver->setEligible(true);
     }
     /** Deletes both managers and unhooks the fake clock, which dies with the fixture. */
     ~FirmwareTransportFixture() {
@@ -147,12 +148,11 @@ public:
     FakeFirmwareStore receiverStore;
     FirmwareUpdateManager* seed = nullptr;
     FirmwareUpdateManager* receiver = nullptr;
-    bool eligible = true;
 };
 
 TEST(FirmwareTransportTest, aSeedSendsEveryChunkThreeTimesToAnIneligibleReceiver) {
     FirmwareTransportFixture f;
-    f.eligible = false;
+    f.receiver->setEligible(false);
     f.runSeed();
 
     EXPECT_EQ(f.receiverStore.beginWriteCalls, 0) << "an ineligible device takes no image";
@@ -281,7 +281,7 @@ TEST(FirmwareTransportTest, losingEligibilityDropsTheReceive) {
     FirmwareTransportFixture f;
     f.runSeed([&](size_t frameNumber, const std::vector<uint8_t>&) {
         if (frameNumber == 4) {
-            f.eligible = false;
+            f.receiver->setEligible(false);
         }
         return false;
     });
@@ -295,7 +295,7 @@ TEST(FirmwareTransportTest, losingEligibilityBetweenChunksDropsTheReceive) {
     f.deliverFirstFrames(3);
     ASSERT_EQ(f.receiverStore.beginWriteCalls, 1);
 
-    f.eligible = false;
+    f.receiver->setEligible(false);
     f.receiver->sync();
 
     EXPECT_EQ(f.receiverStore.abortCalls, 1);
@@ -315,7 +315,7 @@ TEST(FirmwareTransportTest, theLastChunkAfterEligibilityEndsDoesNotInstall) {
     FirmwareTransportFixture f;
     f.runSeed([&](size_t, const std::vector<uint8_t>& frame) {
         if (FirmwareTransportFixture::chunkIndex(frame) == FirmwareTransportFixture::CHUNK_COUNT - 1) {
-            f.eligible = false;
+            f.receiver->setEligible(false);
         }
         return false;
     });

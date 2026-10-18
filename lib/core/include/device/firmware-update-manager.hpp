@@ -3,7 +3,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 #include "device/drivers/firmware-store-interface.hpp"
@@ -14,12 +13,13 @@
 /** Seeds the running image by broadcast, and assembles a seed's image for the store to judge. */
 class FirmwareUpdateManager {
 public:
-    /** isEligible gates starting a receive and is rechecked on every sync() while writing; false drops it. */
-    FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
-                          std::function<bool()> isEligible);
+    /** Starts ineligible: nothing is received until setEligible(true). */
+    FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore);
     /** Hands the radio handler back. */
     ~FirmwareUpdateManager();
 
+    /** Whether a restart for an update is acceptable now; false drops a receive in progress. */
+    void setEligible(bool eligible);
     /** Starts streaming this device's running image; false if that image is unreadable. */
     bool beginSeeding();
     /** True from beginSeeding() until its last pass is queued. */
@@ -36,11 +36,10 @@ private:
     void commit();
     void stopReceiving();
     void sendChunk(uint16_t index);
-    bool mayReceive() const;
 
     PeerCommsInterface* peerComms;
     FirmwareStoreInterface* firmwareStore;
-    std::function<bool()> isEligible;
+    bool eligible = false;
 
     ImageId seedImageId{};
     uint32_t seedImageLength = 0;

@@ -83,9 +83,6 @@ protected:
         driverManager.initialize();
     }
 
-    /** Whether the active app's current screen may be interrupted; false until an app is loaded. */
-    bool isActiveAppInterruptible();
-
 private:
     DriverManager driverManager;
     AppConfig appConfig;

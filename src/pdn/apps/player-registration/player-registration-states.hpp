@@ -9,6 +9,8 @@
 #include "utils/simple-timer.hpp"
 #include "game/quickdraw-resources.hpp"
 
+class FirmwareUpdateManager;
+
 enum PlayerRegistrationStateId {
     PLAYER_REGISTRATION = 0,
     FETCH_USER_DATA = 1,
@@ -34,13 +36,11 @@ public:
     bool transitionToUserFetch();
     /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
     bool transitionToFirmwareUpdate() const;
-    /** False once code entry starts, so an update never restarts a device mid-code. */
-    bool isInterruptible() const override { return !codeEntryStarted; }
 
 private:
     bool transitionToUserFetchState = false;
     bool transitionToFirmwareUpdateState = false;
-    bool codeEntryStarted = false;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     SimpleTimer sinceMount;
     bool shouldRender = false;
     Player* player;

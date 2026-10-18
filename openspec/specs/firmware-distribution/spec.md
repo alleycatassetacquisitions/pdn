@@ -64,7 +64,7 @@ An image the store refuses, or a receive that is abandoned, SHALL leave the slot
 
 ### Requirement: Eligibility
 
-A device SHALL take an image only on a screen that declares itself interruptible, with no cable connected. On the PDN that is the pairing-code screen, until code entry starts. Game Idle is not: a registered player's registration and stats live only in RAM, and the restart would lose them.
+A PDN SHALL take an image only while its pairing-code screen is up; whoever is on that screen is not playing, so an update may cut short a code entry or a cabled registration. No other screen takes one: on game Idle a registered player's registration and stats live only in RAM, and the restart would lose them.
 
 #### Scenario: Registered player on game Idle
 - **WHEN** chunk 0 arrives at a PDN on game Idle
@@ -74,12 +74,8 @@ A device SHALL take an image only on a screen that declares itself interruptible
 - **WHEN** chunk 0 arrives at a device mid-match
 - **THEN** it does not start receiving
 
-#### Scenario: Device with a cable connected
-- **WHEN** chunk 0 arrives at a device with a serial jack connected
-- **THEN** it does not start receiving
-
-#### Scenario: Button pressed mid-transfer
-- **WHEN** a receiver's screen stops being interruptible during a receive
+#### Scenario: Leaving the pairing screen mid-transfer
+- **WHEN** the pairing-code screen gives way to another during a receive
 - **THEN** the receive is dropped and the device keeps its current image
 
 ### Requirement: Operator trigger

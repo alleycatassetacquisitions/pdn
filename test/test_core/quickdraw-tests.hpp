@@ -185,22 +185,31 @@ inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     registration.onStateDismounted(&suite->device);
 }
 
-inline void pairingCodeIsInterruptibleUntilTouched(IdleStateTests* suite) {
+// The pairing screen takes firmware updates for as long as it is up.
+inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
-    parameterizedCallbackFunction primaryClick = nullptr;
-    void* primaryContext = nullptr;
-    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, ButtonInteraction::CLICK))
-        .WillOnce(DoAll(SaveArg<0>(&primaryClick), SaveArg<1>(&primaryContext)));
+    PeerCommsInterface::PacketCallback onFrame;
+    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
+        .WillOnce(SaveArg<1>(&onFrame));
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    suite->device.firmwareUpdateManager = &manager;
+    std::vector<uint8_t> chunkZero(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE, 0);
+    FirmwareChunkHeader header{};
+    header.imageLength = 2 * FIRMWARE_CHUNK_SIZE;
+    std::memcpy(chunkZero.data(), &header, sizeof(header));
+
+    onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
+    EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
+
     PlayerRegistrationState registration(suite->player, suite->matchManager);
     registration.onStateMounted(&suite->device);
-    EXPECT_TRUE(registration.isInterruptible());
-
-    ASSERT_NE(primaryClick, nullptr);
-    primaryClick(primaryContext);
-    EXPECT_FALSE(registration.isInterruptible());
+    onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
+    EXPECT_EQ(store.beginWriteCalls, 1);
 
     registration.onStateDismounted(&suite->device);
-    EXPECT_TRUE(registration.isInterruptible());
+    EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
+    suite->device.firmwareUpdateManager = nullptr;
 }
 
 // The pairing screen leaves the radio to whoever switched it to WiFi.
@@ -223,16 +232,11 @@ inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
 inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
     suite->device.wirelessManager->enableWifiMode();
     FakeFirmwareStore store;
-    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store, []() { return false; });
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
     FirmwareUpdate seedScreen(REGISTRATION_FIRMWARE_UPDATE, &manager);
     seedScreen.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
     seedScreen.onStateDismounted(&suite->device);
-}
-
-// A restart would lose the registration and stats held only in RAM.
-inline void idleIsNotInterruptible(IdleStateTests* suite) {
-    EXPECT_FALSE(suite->idleState->isInterruptible());
 }
 
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received

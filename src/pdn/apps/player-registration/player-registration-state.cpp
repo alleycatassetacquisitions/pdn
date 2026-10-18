@@ -4,6 +4,7 @@
 #include "device/animation/transmit-breath-animation.hpp"
 #include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/firmware-update-manager.hpp"
 
 static const char* TAG = "PlayerRegistrationState";
 
@@ -21,6 +22,12 @@ PlayerRegistrationState::~PlayerRegistrationState() {
 void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     sinceMount.setTimer(0);
     LOG_I(TAG, "State mounted - Starting player registration");
+    // The only screen that takes firmware updates: whoever is here is not playing yet, so an
+    // update may cut short a code entry or a cabled registration.
+    firmwareUpdateManager = pdn->getFirmwareUpdateManager();
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->setEligible(true);
+    }
 
     pdn->getDisplay()->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
@@ -32,7 +39,6 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     pdn->getPrimaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
-        playerRegistration->codeEntryStarted = true;
         playerRegistration->currentDigit++;
         if(playerRegistration->currentDigit > 9) {
             playerRegistration->currentDigit = 0;
@@ -43,7 +49,6 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
     pdn->getSecondaryButton()->setButtonPress( 
     [](void *ctx) {
         PlayerRegistrationState* playerRegistration = (PlayerRegistrationState*)ctx;
-        playerRegistration->codeEntryStarted = true;
         playerRegistration->inputId[playerRegistration->currentDigitIndex] = playerRegistration->currentDigit;
 
         playerRegistration->currentDigitIndex++;
@@ -132,7 +137,9 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     currentDigit = 0;
     transitionToUserFetchState = false;
     transitionToFirmwareUpdateState = false;
-    codeEntryStarted = false;
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->setEligible(false);
+    }
     pdn->getLightManager()->stopAnimation();
 }
 

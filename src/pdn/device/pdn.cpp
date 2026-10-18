@@ -21,13 +21,7 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     remoteDeviceCoordinator = new RemoteDeviceCoordinator();
     FirmwareStoreInterface* firmwareStore = getPeripheral<FirmwareStoreInterface>(FIRMWARE_STORE_DRIVER_NAME);
     if (firmwareStore != nullptr) {
-        firmwareUpdateManager = new FirmwareUpdateManager(getPeerComms(), firmwareStore, [this]() {
-            // A cabled device is part of its neighbours' chain, whatever screen it shows.
-            bool cableConnected =
-                remoteDeviceCoordinator->getPortStatus(SerialIdentifier::OUTPUT_JACK) != PortStatus::DISCONNECTED ||
-                remoteDeviceCoordinator->getPortStatus(SerialIdentifier::INPUT_JACK) != PortStatus::DISCONNECTED;
-            return isActiveAppInterruptible() && !cableConnected;
-        });
+        firmwareUpdateManager = new FirmwareUpdateManager(getPeerComms(), firmwareStore);
     }
 }
 

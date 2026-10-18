@@ -107,9 +107,6 @@ public:
 
     virtual bool isTerminalState() { return false; }
 
-    /** Whether restarting the device on this screen, as a firmware update does, is safe for the player. */
-    virtual bool isInterruptible() const { return false; }
-
 protected:
     std::vector<StateTransition*> transitions;
 

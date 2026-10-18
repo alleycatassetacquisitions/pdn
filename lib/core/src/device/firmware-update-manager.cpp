@@ -25,11 +25,9 @@ size_t chunkLength(uint32_t imageLength, uint16_t index) {
 
 }  // namespace
 
-FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
-                                             std::function<bool()> isEligible)
+FirmwareUpdateManager::FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore)
     : peerComms(peerComms)
-    , firmwareStore(firmwareStore)
-    , isEligible(std::move(isEligible)) {
+    , firmwareStore(firmwareStore) {
     peerComms->setPacketHandler(
         PktType::kFirmwareUpdate,
         [this](const uint8_t*, const uint8_t* data, size_t length, void*) {
@@ -57,7 +55,9 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
         }
         return;
     }
-    if (receive != Receive::WRITING && header.index == 0 && mayReceive() && startReceiving(header, data, length)) {
+    // A seed streams its own image and never takes one.
+    if (receive != Receive::WRITING && header.index == 0 && eligible && !isSeeding() &&
+        startReceiving(header, data, length)) {
         writeChunk(0, data, length);
     }
 }
@@ -129,8 +129,11 @@ bool FirmwareUpdateManager::beginSeeding() {
     return true;
 }
 
-bool FirmwareUpdateManager::mayReceive() const {
-    return !isSeeding() && isEligible();
+void FirmwareUpdateManager::setEligible(bool eligible) {
+    this->eligible = eligible;
+    if (!eligible && receive == Receive::WRITING) {
+        stopReceiving();
+    }
 }
 
 bool FirmwareUpdateManager::isSeeding() const {
@@ -138,7 +141,7 @@ bool FirmwareUpdateManager::isSeeding() const {
 }
 
 void FirmwareUpdateManager::sync() {
-    if (receive == Receive::WRITING && (!mayReceive() || quietTimer.expired())) {
+    if (receive == Receive::WRITING && quietTimer.expired()) {
         LOG_W(TAG, "receive dropped with %u of %u chunks", chunksWritten, receiveChunkCount);
         stopReceiving();
     } else if (receive == Receive::WRITING && chunksWritten == receiveChunkCount) {
