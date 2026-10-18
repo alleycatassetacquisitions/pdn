@@ -41,8 +41,7 @@ private:
     bool transitionToUserFetchState = false;
     bool transitionToFirmwareUpdateState = false;
     bool codeEntryStarted = false;
-    // A hold already in long-press when the screen mounts counts only after a release.
-    bool releasedSinceMount = false;
+    SimpleTimer sinceMount;
     bool shouldRender = false;
     Player* player;
     MatchManager* matchManager;

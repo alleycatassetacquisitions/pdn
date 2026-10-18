@@ -19,6 +19,7 @@ PlayerRegistrationState::~PlayerRegistrationState() {
 }
 
 void PlayerRegistrationState::onStateMounted(PDN* pdn) {
+    sinceMount.setTimer(0);
     LOG_I(TAG, "State mounted - Starting player registration");
 
     pdn->getDisplay()->invalidateScreen()->
@@ -77,11 +78,9 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
     // Every PDN boots here, so a bench of them can be updated from this screen.
+    // A hold longer than the screen has been up began before it, so it does not count.
     const unsigned long heldMs = pdn->getSecondaryButton()->longPressedMillis();
-    if (heldMs == 0) {
-        releasedSinceMount = true;
-    }
-    if (releasedSinceMount && heldMs >= FIRMWARE_UPDATE_HOLD_MS) {
+    if (heldMs >= FIRMWARE_UPDATE_HOLD_MS && heldMs <= sinceMount.getElapsedTime()) {
         transitionToFirmwareUpdateState = true;
     }
     if(shouldRender) {
@@ -134,7 +133,6 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     transitionToUserFetchState = false;
     transitionToFirmwareUpdateState = false;
     codeEntryStarted = false;
-    releasedSinceMount = false;
     pdn->getLightManager()->stopAnimation();
 }
 

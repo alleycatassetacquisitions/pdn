@@ -152,12 +152,11 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);
     registration.onStateMounted(&suite->device);
+    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
-        .WillOnce(Return(0))
         .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1))
         .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
-    registration.onStateLoop(&suite->device);
     registration.onStateLoop(&suite->device);
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
     registration.onStateLoop(&suite->device);
@@ -167,19 +166,20 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
 }
 
-// A hold carried into the mount fires only after a release.
+// The button's pressed time counts from press-down, so a hold that began before the
+// mount, even one not yet a long press then, is longer than the screen has been up.
 inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerRegistrationState registration(suite->player, suite->matchManager);
     registration.onStateMounted(&suite->device);
+    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS + 2000))
-        .WillOnce(Return(0))
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS))   // pressed 500 ms before the mount
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));  // released, then held again
     registration.onStateLoop(&suite->device);
     EXPECT_FALSE(registration.transitionToFirmwareUpdate());
-    registration.onStateLoop(&suite->device);
+    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS + 2000);
     registration.onStateLoop(&suite->device);
     EXPECT_TRUE(registration.transitionToFirmwareUpdate());
     registration.onStateDismounted(&suite->device);
