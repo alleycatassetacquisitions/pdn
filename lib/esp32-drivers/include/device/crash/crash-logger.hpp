@@ -154,15 +154,16 @@ public:
      * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS.
      */
     void restoreEspNowAfterUploads() {
-        if (!uploadTimer.isRunning() || (uploadsInProgress && !uploadTimer.expired())) {
+        if (!uploadTimer.isRunning()) {
             return;
+        }
+        if (wirelessManager->hasQueuedHttpRequests()) {
+            if (!uploadTimer.expired()) {
+                return;
+            }
+            LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
         }
         uploadTimer.invalidate();
-        if (uploadsInProgress) {
-            LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
-        } else if (wirelessManager->hasQueuedHttpRequests()) {
-            return;
-        }
         wirelessManager->enablePeerCommsMode();
     }
 
@@ -336,7 +337,6 @@ private:
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
     bool offeredThisBoot = false;
-    bool uploadsInProgress = false;
     SimpleTimer uploadTimer;
     // With no AP in range, a queued HTTP request never fails.
     static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
@@ -449,7 +449,6 @@ private:
 
     void transmitHttp() {
         if (!wirelessManager) return;
-        uploadsInProgress = true;
         uploadTimer.setTimer(UPLOAD_TIMEOUT_MS);
         uploadFrom(readSentSeq() + 1);
     }
@@ -478,14 +477,12 @@ private:
                     writeSentSeq(n);
                     uploadFrom(n + 1);
                 },
-                [this, n](const WirelessErrorInfo& err) {
+                [n](const WirelessErrorInfo& err) {
                     LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
                           static_cast<unsigned long>(n), err.message.c_str());
-                    uploadsInProgress = false;
                 });
             return;
         }
-        uploadsInProgress = false;
     }
 
     void transmitEspNow() {
