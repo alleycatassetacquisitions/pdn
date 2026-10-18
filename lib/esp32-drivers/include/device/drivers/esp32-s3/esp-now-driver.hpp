@@ -59,7 +59,7 @@ public:
     void exec() override {
         std::queue<DeferredPacket> pending;
         xSemaphoreTake(recvMutex, portMAX_DELAY);
-        std::swap(pending, recvQueue_);
+        std::swap(pending, recvQueue);
         recvQueueBytes = 0;
         const uint32_t dropped = droppedRecvPackets;
         droppedRecvPackets = 0;
@@ -520,7 +520,7 @@ private:
     }
 
     SemaphoreHandle_t recvMutex;
-    std::queue<DeferredPacket> recvQueue_;
+    std::queue<DeferredPacket> recvQueue;
     // Queued buffers are under SPIRAM_MALLOC_ALWAYSINTERNAL, so internal RAM; a seed's
     // chunks during setup's splash hold, before the first exec(), would exhaust it.
     size_t recvQueueBytes = 0;
@@ -542,19 +542,14 @@ private:
         xSemaphoreTake(recvMutex, portMAX_DELAY);
         if (recvQueueBytes + pktLen > RECV_QUEUE_MAX_BYTES) {
             droppedRecvPackets++;
-            xSemaphoreGive(recvMutex);
-            return;
+        } else {
+            recvQueueBytes += pktLen;
+            DeferredPacket pkt;
+            pkt.type = packetType;
+            memcpy(pkt.srcMac, srcMacAddr, 6);
+            pkt.data.assign(pktData, pktData + pktLen);
+            recvQueue.push(std::move(pkt));
         }
-        recvQueueBytes += pktLen;
-        xSemaphoreGive(recvMutex);
-
-        DeferredPacket pkt;
-        pkt.type = packetType;
-        memcpy(pkt.srcMac, srcMacAddr, 6);
-        pkt.data.assign(pktData, pktData + pktLen);
-
-        xSemaphoreTake(recvMutex, portMAX_DELAY);
-        recvQueue_.push(std::move(pkt));
         xSemaphoreGive(recvMutex);
     }
 

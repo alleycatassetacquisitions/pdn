@@ -102,7 +102,7 @@ Every PDN starts on the pairing-code screen, so any PDN can seed after a restart
 
 ### Requirement: Frame
 
-Distribution SHALL use one frame type and fit it in one ESP-NOW v2 frame: the image identity, the image's length, a chunk index, and up to 1400 bytes of the image at `index × 1400`. Chunk 0 SHALL carry the image's app description, which sits 32 bytes into the image.
+Distribution SHALL use one frame type and fit it in one ESP-NOW v2 frame, and its layout, packet type and ESP-NOW channel SHALL never change, since only older builds receive it: the image identity, the image's length, a chunk index, and up to 1400 bytes of the image at `index × 1400`. Chunk 0 SHALL carry the image's app description, which sits 32 bytes into the image.
 
 #### Scenario: A full chunk fits one frame
 - **WHEN** a seed sends a chunk carrying 1400 bytes of image

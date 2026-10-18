@@ -8,7 +8,6 @@ FirmwareUpdate::FirmwareUpdate(int stateId, FirmwareUpdateManager* firmwareUpdat
     , firmwareUpdateManager(firmwareUpdateManager) {}
 
 void FirmwareUpdate::onStateMounted(Device* device) {
-    device->getLightManager()->stopAnimation();
     // A seed run sends on ESP-NOW directly, so it takes the radio from any HTTP trip.
     device->getWirelessManager()->enablePeerCommsMode();
     firmwareUpdateManager->beginSeeding();

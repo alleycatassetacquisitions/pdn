@@ -31,6 +31,7 @@ struct DataPktHdr
 {
     PktType packetType;
 } __attribute__((packed));
+static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with a one-byte header");
 
 struct ChainConfirmPayload
 {

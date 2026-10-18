@@ -75,7 +75,7 @@ public:
         }
         esp_app_desc_t candidate{};
         std::memcpy(&candidate, head + APP_DESC_OFFSET, sizeof(candidate));
-        if (!isNewer(candidate, false)) {
+        if (!isNewer(candidate)) {
             return false;
         }
         const esp_err_t rc = esp_ota_begin(updatePartition, length, &otaHandle);
@@ -102,7 +102,7 @@ public:
             LOG_E(TAG, "esp_ota_end refused the image: %s", esp_err_to_name(rc));
         } else {
             accepted = esp_ota_get_partition_description(updatePartition, &written) == ESP_OK &&
-                       isNewer(written, true) && esp_ota_set_boot_partition(updatePartition) == ESP_OK;
+                       isNewer(written) && esp_ota_set_boot_partition(updatePartition) == ESP_OK;
         }
         if (!accepted) {
             makeUnbootable();
@@ -178,19 +178,8 @@ private:
 
     static constexpr size_t APP_DESC_OFFSET = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
 
-    static bool isNewer(const esp_app_desc_t& candidate, bool explain) {
-        const esp_app_desc_t* running = esp_app_get_description();
-        if (candidate.magic_word != ESP_APP_DESC_MAGIC_WORD) {
-            return false;
-        }
-        if (!builtAfter(candidate, *running)) {
-            if (explain) {
-                LOG_W(TAG, "image built %.16s %.16s is not newer than the running %.16s %.16s", candidate.date,
-                      candidate.time, running->date, running->time);
-            }
-            return false;
-        }
-        return true;
+    static bool isNewer(const esp_app_desc_t& candidate) {
+        return candidate.magic_word == ESP_APP_DESC_MAGIC_WORD && builtAfter(candidate, *esp_app_get_description());
     }
 
     // Stamps are UTC: firmware_commit_hash.py sets SOURCE_DATE_EPOCH.
