@@ -52,15 +52,9 @@ void FirmwareUpdateManager::onChunk(const FirmwareChunkHeader& header, const uin
     if (receive != Receive::NONE && id == receiveImageId && header.index < receiveChunkCount) {
         // Already-written chunks still prove the seed is alive; a missed one returns only next pass.
         quietTimer.setTimer(RECEIVE_STALL_MS);
-        if (receive == Receive::REFUSED) {
-            return;
+        if (receive == Receive::WRITING) {
+            writeChunk(header.index, data, length);
         }
-        // Checked per chunk too: committing the last one restarts before sync() runs.
-        if (!mayReceive()) {
-            stopReceiving();
-            return;
-        }
-        writeChunk(header.index, data, length);
         return;
     }
     if (receive != Receive::WRITING && header.index == 0 && mayReceive() && startReceiving(header, data, length)) {
@@ -85,25 +79,32 @@ bool FirmwareUpdateManager::startReceiving(const FirmwareChunkHeader& header, co
 }
 
 void FirmwareUpdateManager::writeChunk(uint16_t index, const uint8_t* data, size_t length) {
-    const size_t offset = static_cast<size_t>(index) * FIRMWARE_CHUNK_SIZE;
     // Flash bits only clear: a later copy that differs (a forged one) would corrupt the first.
-    if (written[index] || length != chunkLength(receiveImageLength, index) ||
-        !firmwareStore->writeAt(offset, data, length)) {
+    if (written[index] || length != chunkLength(receiveImageLength, index)) {
+        return;
+    }
+    // Chunk 0 holds the image header, so it goes to flash last: a reset mid-receive leaves nothing bootable.
+    if (index == 0) {
+        chunkZero.assign(data, data + length);
+    } else if (!firmwareStore->writeAt(static_cast<size_t>(index) * FIRMWARE_CHUNK_SIZE, data, length)) {
         return;
     }
     written[index] = true;
-    if (++chunksWritten == receiveChunkCount) {
-        commit();
-    }
+    chunksWritten++;
 }
 
 void FirmwareUpdateManager::commit() {
+    if (!firmwareStore->writeAt(0, chunkZero.data(), chunkZero.size())) {
+        stopReceiving();
+        return;
+    }
     if (!firmwareStore->finishWrite()) {
         LOG_E(TAG, "image refused");
         receive = Receive::REFUSED;
         return;
     }
     LOG_I(TAG, "image accepted; restarting into it");
+    receive = Receive::NONE;
     firmwareStore->restart();
 }
 
@@ -140,6 +141,9 @@ void FirmwareUpdateManager::sync() {
     if (receive == Receive::WRITING && (!mayReceive() || quietTimer.expired())) {
         LOG_W(TAG, "receive dropped with %u of %u chunks", chunksWritten, receiveChunkCount);
         stopReceiving();
+    } else if (receive == Receive::WRITING && chunksWritten == receiveChunkCount) {
+        // Here rather than on the last chunk, so a button press in the same pass is seen first.
+        commit();
     } else if (receive == Receive::REFUSED && quietTimer.expired()) {
         receive = Receive::NONE;
     }

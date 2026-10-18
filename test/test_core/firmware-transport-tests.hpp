@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <vector>
@@ -232,6 +233,18 @@ TEST(FirmwareTransportTest, eachChunkIsWrittenOnce) {
     EXPECT_EQ(f.receiverStore.slot, f.image);
 }
 
+TEST(FirmwareTransportTest, theHeaderReachesFlashOnlyWithTheWholeImage) {
+    // A reset mid-receive must leave nothing bootable in the spare slot.
+    FirmwareTransportFixture f;
+    f.runSeed([](size_t, const std::vector<uint8_t>& frame) {
+        return FirmwareTransportFixture::chunkIndex(frame) == FirmwareTransportFixture::CHUNK_COUNT - 1;
+    });
+
+    EXPECT_GT(f.receiverStore.writeCount, 0);
+    EXPECT_TRUE(std::all_of(f.receiverStore.slot.begin(), f.receiverStore.slot.begin() + FIRMWARE_CHUNK_SIZE,
+                            [](uint8_t b) { return b == 0; }));
+}
+
 TEST(FirmwareTransportTest, anImageTheStoreRefusesAtChunkZeroIsNotWritten) {
     FirmwareTransportFixture f;
     f.receiverStore.wantImages = false;
@@ -332,7 +345,7 @@ TEST(FirmwareTransportTest, chunksOfAnotherImageAreIgnored) {
         return true;
     });
 
-    EXPECT_EQ(f.receiverStore.writeCount, 1) << "only chunk 0 belongs to the image being received";
+    EXPECT_EQ(f.receiverStore.writeCount, 0) << "only chunk 0 belongs to the image being received, and it waits for the rest";
     EXPECT_FALSE(f.receiverStore.restarted);
 }
 

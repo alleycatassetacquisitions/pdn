@@ -11,16 +11,10 @@
 #include "device/drivers/peer-comms-types.hpp"
 #include "utils/simple-timer.hpp"
 
-/**
- * A seed broadcasts its running image SEED_PASSES times; a receiver writes each chunk once and
- * hands the whole image to the store to judge.
- */
+/** Seeds the running image by broadcast, and assembles a seed's image for the store to judge. */
 class FirmwareUpdateManager {
 public:
-    /**
-     * isEligible is checked before taking an image, on every chunk and on every sync(); false
-     * drops the receive.
-     */
+    /** isEligible gates starting a receive and is rechecked on every sync() while writing; false drops it. */
     FirmwareUpdateManager(PeerCommsInterface* peerComms, FirmwareStoreInterface* firmwareStore,
                           std::function<bool()> isEligible);
     /** Hands the radio handler back. */
@@ -68,5 +62,6 @@ private:
     uint16_t receiveChunkCount = 0;
     uint16_t chunksWritten = 0;
     std::vector<bool> written;
+    std::vector<uint8_t> chunkZero;
     SimpleTimer quietTimer;
 };
