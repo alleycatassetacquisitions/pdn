@@ -21,4 +21,9 @@ class NativeClockDriver : public PlatformClockDriverInterface {
     unsigned long milliseconds() override {
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
+
+    /** Returns UTC milliseconds from std::chrono::system_clock. */
+    int64_t unixMilliseconds() override {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    }
 };
