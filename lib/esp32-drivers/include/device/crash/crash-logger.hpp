@@ -8,7 +8,6 @@
 #include <strings.h>
 #include <cstdlib>
 #include <cstdarg>
-#include <esp_timer.h>
 #include <esp_system.h>
 #include <esp_core_dump.h>
 #include <driver/usb_serial_jtag.h>
@@ -17,6 +16,7 @@
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/crash/crash-record.hpp"
 #include "device/wireless-manager.hpp"
+#include "utils/simple-timer.hpp"
 #include "alleycat-server/crash-api.hpp"
 
 #ifndef FIRMWARE_COMMIT_HASH
@@ -69,11 +69,18 @@ public:
         serialCommandBuffer[0] = '\0';
     }
 
+    /** Call first in setup(): returns the uptime the last boot noted, and clears it. */
+    static uint32_t takeCrashedBootUptime();
+
+    /** Call every loop() pass. */
+    static void noteUptime();
+
     /**
      * Records the last reset if it was not a clean one. Runs once; safe to
      * call before the radio exists, since it only touches storage.
+     * `crashedBootUptimeMs` comes from takeCrashedBootUptime().
      */
-    void capture() {
+    void capture(uint32_t crashedBootUptimeMs) {
         if (hasCaptured) return;
         hasCaptured = true;
 
@@ -93,7 +100,7 @@ public:
 
         CrashRecord rec{};
         rec.resetReason = static_cast<uint8_t>(reason);
-        rec.timestamp   = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+        rec.timestamp = crashedBootUptimeMs;
 
         // A summary can hold placeholders: no task when the dump stopped before the
         // note pointing at the crashed task or skipped that task's TCB, and a fake PC
@@ -128,10 +135,9 @@ public:
 
     /**
      * Offers every pending record once per boot; nothing can add one after
-     * capture(). Over HTTP the uploads switch the radio to WiFi and wait in the
-     * driver's queue until it connects; if the radio goes back to ESP-NOW first,
-     * they fail. A record left unsent stays pending and goes out on the next boot,
-     * which is the retry. Over ESP-NOW a record counts as sent once queued,
+     * capture(). Over HTTP they go one at a time, oldest first, stopping at the
+     * first failure. A record left unsent stays pending and goes out on the next
+     * boot, which is the retry. Over ESP-NOW a record counts as sent once queued,
      * since the driver reports no per-frame outcome.
      */
     void transmitPending() {
@@ -146,6 +152,24 @@ public:
         offeredThisBoot = true;
         if (!hasPending()) return;
         useHttp ? transmitHttp() : transmitEspNow();
+    }
+
+    /**
+     * Call every loop() pass: returns the radio to ESP-NOW once the uploads end and
+     * no other HTTP request is queued, or after UPLOAD_TIMEOUT_MS.
+     */
+    void restoreEspNowAfterUploads() {
+        if (!uploadTimer.isRunning()) {
+            return;
+        }
+        if (wirelessManager->hasQueuedHttpRequests()) {
+            if (!uploadTimer.expired()) {
+                return;
+            }
+            LOG_W(CRASH_LOG_TAG, "Crash uploads timed out");
+        }
+        uploadTimer.invalidate();
+        wirelessManager->enablePeerCommsMode();
     }
 
     /** Dumps every stored record to the USB monitor, for a device on a bench. */
@@ -320,6 +344,9 @@ private:
     static constexpr const char* SEQ_KEY     = "seq";
     static constexpr const char* SENT_SEQ_KEY = "sentSeq";
     bool offeredThisBoot = false;
+    SimpleTimer uploadTimer;
+    // With no AP in range, a queued HTTP request never fails.
+    static constexpr unsigned long UPLOAD_TIMEOUT_MS = 15000;
 
     /**
      * Panics often reboot as ESP_RST_SW; capture when a core dump exists or the
@@ -441,12 +468,16 @@ private:
 
     void transmitHttp() {
         if (!wirelessManager) return;
+        uploadTimer.setTimer(UPLOAD_TIMEOUT_MS);
+        uploadFrom(readSentSeq() + 1);
+    }
 
+    // One at a time, since sentSeq is a high-water mark.
+    void uploadFrom(uint32_t first) {
         const uint32_t crashSeq = readCrashSeq();
-        const uint32_t sentSeq  = readSentSeq();
         uint8_t* mac = wirelessManager->getMacAddress();
 
-        for (uint32_t n = sentSeq + 1; n <= crashSeq; n++) {
+        for (uint32_t n = first; n <= crashSeq; n++) {
             CrashRecord rec{};
             if (!loadRecordByNumber(n, rec)) {
                 LOG_W(CRASH_LOG_TAG, "Crash #%lu not in ring buffer — skipping",
@@ -463,12 +494,13 @@ private:
                     LOG_I(CRASH_LOG_TAG, "Uploaded crash #%lu",
                           static_cast<unsigned long>(n));
                     writeSentSeq(n);
+                    uploadFrom(n + 1);
                 },
                 [n](const WirelessErrorInfo& err) {
                     LOG_E(CRASH_LOG_TAG, "Failed to upload crash #%lu: %s — will retry on next boot",
                           static_cast<unsigned long>(n), err.message.c_str());
-                }
-            );
+                });
+            return;
         }
     }
 

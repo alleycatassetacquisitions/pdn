@@ -108,6 +108,7 @@ static void setupEspNow(PeerCommsInterface* peerComms) {
 }
 
 static void setup() {
+    const uint32_t crashedBootUptimeMs = CrashLogger::takeCrashedBootUptime();
     // Before any driver, because two of them need it and neither can bring it
     // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
     // and the preferences driver cannot open a namespace.
@@ -165,7 +166,6 @@ static void setup() {
 
     // Managers — constructed after fdn->begin() so wireless is ready.
     remotePlayerManager = new RemotePlayerManager(peerCommsDriver);
-    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     fdnConnectWirelessManager = new FDNConnectWirelessManager();
     fdnConnectWirelessManager->initialize(fdn->getWirelessManager());
@@ -178,8 +178,10 @@ static void setup() {
     setupEspNow(peerCommsDriver);
 
     crashLogger = new CrashLogger(storageDriver, fdn->getWirelessManager());
-    crashLogger->capture();
+    crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
+    // After transmitPending(): a broadcast in flight when ESP-NOW shuts down wedges its send queue.
+    remotePlayerManager->StartBroadcastingPlayerInfo(&fdnPlayer, PLAYER_BROADCAST_INTERVAL_MS);
 
     // Apps
     idleApp = new Idle(
@@ -215,7 +217,9 @@ static void setup() {
 
 void loop() {
     if (crashLogger != nullptr) {
+        CrashLogger::noteUptime();
         crashLogger->pollSerialCommand();
+        crashLogger->restoreEspNowAfterUploads();
     }
     fdn->loop();
 }

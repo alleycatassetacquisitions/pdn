@@ -28,7 +28,7 @@ struct CrashRecord {
     /** Monotonic crash count for this device (1 = first crash ever recorded). */
     uint32_t crashNumber;
 
-    /** Milliseconds since boot at the moment the crash is detected on reboot. */
+    /** Milliseconds the crashed boot had run, as of its last loop() pass; 0 if unknown. */
     uint32_t timestamp;
 
     uint8_t  resetReason;

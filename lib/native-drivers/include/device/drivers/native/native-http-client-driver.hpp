@@ -56,6 +56,9 @@ public:
         return connected && httpClientState == HttpClientState::CONNECTED;
     }
 
+    /** True until every queued request has had its callback. */
+    bool hasQueuedRequests() override { return !pendingRequests.empty(); }
+
     bool queueRequest(HttpRequest& request) override {
         // Queue the request for processing in exec()
         pendingRequests.push(request);
