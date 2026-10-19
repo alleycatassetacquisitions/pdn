@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 //PktType determines which callback will handle the packet on the receiving end
-enum class PktType : uint8_t
-{
+enum class PktType : uint8_t {
     kPlayerInfoBroadcast = 0,
     kQuickdrawCommand = 1,
     kDebugPacket = 2,
@@ -21,17 +21,17 @@ enum class PktType : uint8_t
     kSymbolMatchCommand = 13,
     kFdnConnect = 14,
     kCrashLog = 15,
-    kNumPacketTypes //Not a real packet type, DO NOT USE
+    kFirmwareUpdate = 16,
+    kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 
+// Frozen: older builds must parse a newer build's firmware frames (this header, kFirmwareUpdate,
+// FirmwareChunkHeader, FIRMWARE_CHUNK_SIZE, ESPNOW_CHANNEL) or they can only be updated over USB.
 struct DataPktHdr
 {
-    //Total packet length including header
-    uint8_t pktLen;
     PktType packetType;
-    uint8_t numPktsInCluster;
-    uint8_t idxInCluster;
 } __attribute__((packed));
+static_assert(sizeof(DataPktHdr) == 1, "older builds parse firmware frames with a one-byte header");
 
 struct ChainConfirmPayload
 {
@@ -79,3 +79,20 @@ struct ShootoutAckPayload
     ShootoutCmd cmd;
     uint8_t     seqId;
 } __attribute__((packed));
+
+constexpr uint16_t FIRMWARE_CHUNK_SIZE = 1400;
+
+constexpr size_t FIRMWARE_IMAGE_ID_LENGTH = 32;
+
+/**
+ * Unsigned: IDF checks the assembled image's signature, so a forged frame can spoil a download
+ * or wipe the spare slot but cannot install an image.
+ */
+struct FirmwareChunkHeader {
+    /** The image's esp_app_desc_t::app_elf_sha256. */
+    uint8_t imageId[FIRMWARE_IMAGE_ID_LENGTH];
+    /** Length of the whole image, signature sector included. */
+    uint32_t imageLength;
+    uint16_t index;
+} __attribute__((packed));
+

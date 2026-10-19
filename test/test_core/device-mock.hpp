@@ -337,6 +337,8 @@ public:
     WirelessManager* getWirelessManager() override { return wirelessManager; }
     SerialManager* getSerialManager() override { return serialManager; }
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override { return &fakeRemoteDeviceCoordinator; }
+    /** The manager a test sets, or null. */
+    FirmwareUpdateManager* getFirmwareUpdateManager() override { return firmwareUpdateManager; }
 
     std::string getHead() {
         return serialManager->getOutputHead();
@@ -358,4 +360,5 @@ public:
     FakeHWSerialWrapper outputJackSerial;
     FakeHWSerialWrapper inputJackSerial;
     FakeRemoteDeviceCoordinator fakeRemoteDeviceCoordinator;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
 };

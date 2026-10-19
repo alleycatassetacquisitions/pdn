@@ -11,10 +11,13 @@
 #include "id-generator.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
+#include "apps/player-registration/player-registration-states.hpp"
+#include "device/firmware-update-state.hpp"
 #include "apps/handshake/handshake.hpp"
 #include "apps/handshake/handshake-states.hpp"
 #include "wireless/handshake-wireless-manager.hpp"
 #include "utility-tests.hpp"
+#include "fake-firmware-store.hpp"
 #include "protocol-constants.hpp"
 
 using ::testing::_;
@@ -143,6 +146,97 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
 
     suite->idleState->onStateDismounted(&suite->device);
+}
+
+inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS + 1000);
+
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1))
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
+    registration.onStateLoop(&suite->device);
+    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+    registration.onStateLoop(&suite->device);
+    EXPECT_TRUE(registration.transitionToFirmwareUpdate());
+
+    registration.onStateDismounted(&suite->device);
+    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+}
+
+// The button's pressed time counts from press-down, so a hold that began before the
+// mount, even one not yet a long press then, is longer than the screen has been up.
+inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS - 500);
+
+    EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS))   // pressed 500 ms before the mount
+        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));  // released, then held again
+    registration.onStateLoop(&suite->device);
+    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS + 2000);
+    registration.onStateLoop(&suite->device);
+    EXPECT_TRUE(registration.transitionToFirmwareUpdate());
+    registration.onStateDismounted(&suite->device);
+}
+
+// The pairing screen takes firmware updates for as long as it is up.
+inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    PeerCommsInterface::PacketCallback onFrame;
+    EXPECT_CALL(*suite->device.mockPeerComms, setPacketHandler(PktType::kFirmwareUpdate, _, _))
+        .WillOnce(SaveArg<1>(&onFrame));
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    suite->device.firmwareUpdateManager = &manager;
+    std::vector<uint8_t> chunkZero(sizeof(FirmwareChunkHeader) + FIRMWARE_CHUNK_SIZE, 0);
+    FirmwareChunkHeader header{};
+    header.imageLength = 2 * FIRMWARE_CHUNK_SIZE;
+    std::memcpy(chunkZero.data(), &header, sizeof(header));
+
+    onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
+    EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
+
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+    onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
+    EXPECT_EQ(store.beginWriteCalls, 1);
+
+    registration.onStateDismounted(&suite->device);
+    EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
+    suite->device.firmwareUpdateManager = nullptr;
+}
+
+// The pairing screen leaves the radio to whoever switched it to WiFi.
+inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
+    ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
+    suite->device.wirelessManager->enableWifiMode();
+    PlayerRegistrationState registration(suite->player, suite->matchManager);
+    registration.onStateMounted(&suite->device);
+    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
+    registration.onStateDismounted(&suite->device);
+}
+
+inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
+    suite->device.wirelessManager->enableWifiMode();
+    FetchUserDataState fetch(suite->player, suite->device.wirelessManager, nullptr, suite->matchManager);
+    fetch.onStateDismounted(&suite->device);
+    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+}
+
+inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
+    suite->device.wirelessManager->enableWifiMode();
+    FakeFirmwareStore store;
+    FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
+    FirmwareUpdate seedScreen(REGISTRATION_FIRMWARE_UPDATE, &manager);
+    seedScreen.onStateMounted(&suite->device);
+    EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
+    seedScreen.onStateDismounted(&suite->device);
 }
 
 // Test: transitionToDuelCountdown stays false while match exists but ACK not yet received
@@ -1208,7 +1302,7 @@ inline void cleanupIdleClearsButtonCallbacks(StateCleanupTests* suite) {
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
-    
+
     idleState.onStateMounted(&suite->device);
     
     EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);

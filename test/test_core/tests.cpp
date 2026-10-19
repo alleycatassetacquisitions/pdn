@@ -7,6 +7,7 @@
 #include "device-tests.hpp"
 
 // New test headers
+#include "firmware-transport-tests.hpp"
 #include "player-tests.hpp"
 #include "match-tests.hpp"
 #include "utility-tests.hpp"
@@ -871,6 +872,30 @@ TEST_F(IdleStateTests, stateClearsOnDismount) {
 
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
+    pairingCodeFirmwareHoldStartsAnUpdate(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
+    pairingCodeLeavesTheRadioAlone(this);
+}
+
+TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
+    fetchExitPutsTheRadioBackOnEspNow(this);
+}
+
+TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
+    aSeedRunTakesTheRadioForEspNow(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
+    pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
+}
+
+TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
+    pairingCodeTakesUpdatesWhileUp(this);
 }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {

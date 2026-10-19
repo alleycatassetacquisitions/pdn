@@ -18,4 +18,8 @@ endif()
 # diverge silently.
 idf_build_set_property(COMPILE_OPTIONS "-DU8X8_WITH_USER_PTR" APPEND)
 
+if(PDN_DEVICE STREQUAL "pdn")
+    set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;sdkconfig.defaults.pdn")
+endif()
+
 project(${PDN_DEVICE})

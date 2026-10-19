@@ -8,11 +8,15 @@
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
 
+class FirmwareUpdateManager;
+
 constexpr int PLAYER_REGISTRATION_APP_ID = 0;
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
+    /** firmwareUpdateManager may be null; the pairing-code screen then offers no seed run. */
+    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager,
+                          RemoteDebugManager* remoteDebugManager, FirmwareUpdateManager* firmwareUpdateManager);
     ~PlayerRegistrationApp();
 
     void populateStateMap() override;
@@ -25,4 +29,5 @@ private:
     WirelessManager* wirelessManager;
     RemoteDebugManager* remoteDebugManager;
     MatchManager* matchManager;
+    FirmwareUpdateManager* firmwareUpdateManager;
 };

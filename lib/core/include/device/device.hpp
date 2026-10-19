@@ -20,6 +20,7 @@
 #include "driver-names.hpp"
 
 class StateMachine;
+class FirmwareUpdateManager;
 
 using AppConfig = std::map<StateId, StateMachine*>;
 
@@ -64,6 +65,8 @@ public:
     virtual WirelessManager*          getWirelessManager() = 0;
     virtual SerialManager*            getSerialManager() = 0;
     virtual RemoteDeviceCoordinator*  getRemoteDeviceCoordinator() = 0;
+    /** Null on a device that takes no firmware updates. */
+    virtual FirmwareUpdateManager* getFirmwareUpdateManager() { return nullptr; }
 
     // Generic driver accessor — useful for device-specific peripherals not
     // covered by the standard convenience wrappers (e.g. FDN tertiary button).

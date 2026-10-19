@@ -3,6 +3,7 @@
 #include "game/quickdraw-resources.hpp"
 #include "device/animation/transmit-breath-animation.hpp"
 #include "device/drivers/logger.hpp"
+#include "device/firmware-update-manager.hpp"
 
 static const char* TAG = "PlayerRegistrationState";
 
@@ -18,7 +19,14 @@ PlayerRegistrationState::~PlayerRegistrationState() {
 }
 
 void PlayerRegistrationState::onStateMounted(PDN* pdn) {
+    sinceMount.setTimer(0);
     LOG_I(TAG, "State mounted - Starting player registration");
+    // The only screen that takes firmware updates: whoever is here is not playing yet, so an
+    // update may cut short a code entry or a cabled registration.
+    firmwareUpdateManager = pdn->getFirmwareUpdateManager();
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->setEligible(true);
+    }
 
     pdn->getDisplay()->invalidateScreen()->
     setGlyphMode(FontMode::TEXT)->
@@ -73,6 +81,12 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
 }
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
+    // Every PDN boots here, so a bench of them can be updated from this screen.
+    // A hold longer than the screen has been up began before it, so it does not count.
+    const unsigned long heldMs = pdn->getSecondaryButton()->longPressedMillis();
+    if (heldMs >= FIRMWARE_UPDATE_HOLD_MS && heldMs <= sinceMount.getElapsedTime()) {
+        transitionToFirmwareUpdateState = true;
+    }
     if(shouldRender) {
         if(currentDigitIndex == 0) {
             pdn->getDisplay()->invalidateScreen()->
@@ -121,9 +135,17 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
+    transitionToFirmwareUpdateState = false;
+    if (firmwareUpdateManager != nullptr) {
+        firmwareUpdateManager->setEligible(false);
+    }
     pdn->getLightManager()->stopAnimation();
 }
 
 bool PlayerRegistrationState::transitionToUserFetch() {
     return transitionToUserFetchState;
+}
+
+bool PlayerRegistrationState::transitionToFirmwareUpdate() const {
+    return transitionToFirmwareUpdateState;
 }

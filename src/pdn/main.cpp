@@ -16,6 +16,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/drivers/esp32-s3/esp32-s3-firmware-store.hpp"
 #include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
@@ -49,7 +50,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 WifiConfig* wifiConfig = nullptr;
 
 CrashLogger* crashLogger = nullptr;
-
+Esp32S3FirmwareStore* firmwareStore = nullptr;
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
@@ -129,6 +130,8 @@ static void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
+    // Next, so its watchdog covers the rest of setup() on an unconfirmed image.
+    firmwareStore = new Esp32S3FirmwareStore(FIRMWARE_STORE_DRIVER_NAME);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
@@ -160,6 +163,7 @@ static void setup() {
         {PLATFORM_CLOCK_DRIVER_NAME, clockDriver},
         {LOGGER_DRIVER_NAME, loggerDriver},
         {STORAGE_DRIVER_NAME, storageDriver},
+        {FIRMWARE_STORE_DRIVER_NAME, firmwareStore},
     };
 
     // Create core game objects
@@ -191,7 +195,7 @@ static void setup() {
     crashLogger->transmitPending();
 
     game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-    
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

@@ -9,6 +9,8 @@
 #include "utils/simple-timer.hpp"
 #include "game/quickdraw-resources.hpp"
 
+class FirmwareUpdateManager;
+
 enum PlayerRegistrationStateId {
     PLAYER_REGISTRATION = 0,
     FETCH_USER_DATA = 1,
@@ -16,7 +18,12 @@ enum PlayerRegistrationStateId {
     CHOOSE_ROLE = 3,
     ALLEGIANCE_PICKER = 4,
     WELCOME_MESSAGE = 5,
+    // Past every QuickdrawStateId.
+    REGISTRATION_FIRMWARE_UPDATE = 31,
 };
+
+/** Secondary-button hold on the pairing-code screen that starts a seed run. */
+constexpr unsigned long FIRMWARE_UPDATE_HOLD_MS = 5000;
 
 class PlayerRegistrationState : public TypedState<PDN> {
 public:
@@ -27,9 +34,14 @@ public:
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;
     bool transitionToUserFetch();
+    /** True once the secondary button has been held FIRMWARE_UPDATE_HOLD_MS. */
+    bool transitionToFirmwareUpdate() const;
 
 private:
     bool transitionToUserFetchState = false;
+    bool transitionToFirmwareUpdateState = false;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    SimpleTimer sinceMount;
     bool shouldRender = false;
     Player* player;
     MatchManager* matchManager;

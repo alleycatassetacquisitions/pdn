@@ -72,6 +72,8 @@ void FetchUserDataState::onStateLoop(PDN* pdn) {
 
 void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
+    // Fails this state's pending requests now, so their callbacks hit the flags reset below.
+    pdn->getWirelessManager()->enablePeerCommsMode();
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     isFetchingUserData = false;
     isUploadingMatches = false;

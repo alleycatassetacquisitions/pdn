@@ -5,16 +5,18 @@
 #include <array>
 #include <cstring>
 
-Quickdraw::Quickdraw(Player* player, Device* PDN, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager): StateMachine(QUICKDRAW_APP_ID) {
+Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager)
+    : StateMachine(QUICKDRAW_APP_ID)
+    , wirelessManager(pdn->getWirelessManager())
+    , storageManager(pdn->getStorage())
+    , peerComms(pdn->getPeerComms())
+    , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
+    , firmwareUpdateManager(pdn->getFirmwareUpdateManager()) {
     this->player = player;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->wirelessManager = PDN->getWirelessManager();
     this->matchManager = new MatchManager();
-    this->storageManager = PDN->getStorage();
-    this->peerComms = PDN->getPeerComms();
-    this->remoteDeviceCoordinator = PDN->getRemoteDeviceCoordinator();
 
     this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
     this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
@@ -283,6 +285,7 @@ Quickdraw::~Quickdraw() {
     chainDuelManager = nullptr;
     delete shootoutManager_;
     shootoutManager_ = nullptr;
+    firmwareUpdateManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
     matches.clear();
@@ -291,7 +294,8 @@ Quickdraw::~Quickdraw() {
 void Quickdraw::populateStateMap() {
 
     // Sub-state machines for player registration and handshake
-    PlayerRegistrationApp* playerRegistration = new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager);
+    PlayerRegistrationApp* playerRegistration =
+        new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager, firmwareUpdateManager);
     // Quickdraw gameplay states
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);

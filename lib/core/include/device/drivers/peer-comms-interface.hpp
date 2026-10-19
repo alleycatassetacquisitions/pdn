@@ -17,6 +17,10 @@ public:
     virtual int sendData(const uint8_t* dst, PktType packetType, const uint8_t* data, const size_t length) = 0;
     virtual void setPacketHandler(PktType packetType, PacketCallback callback, void* ctx) = 0;
     virtual void clearPacketHandler(PktType packetType) = 0;
+
+    /** True when no frame is queued or awaiting its send report; transports without send reports answer true. */
+    virtual bool isSendQueueEmpty() { return true; }
+
     virtual const uint8_t* getGlobalBroadcastAddress() = 0;
     virtual uint8_t* getMacAddress() = 0;
     virtual void removePeer(uint8_t* macAddr) = 0;
