@@ -6,7 +6,27 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
+PB_BIND(alleycat_device_DevicePlayerResponse, alleycat_device_DevicePlayerResponse, AUTO)
+
+
+PB_BIND(alleycat_device_DevicePlayerAffiliation, alleycat_device_DevicePlayerAffiliation, AUTO)
+
+
 PB_BIND(alleycat_device_WriteDeviceLogRequest, alleycat_device_WriteDeviceLogRequest, AUTO)
+
+
+PB_BIND(alleycat_device_WriteQuickdrawMatchesRequest, alleycat_device_WriteQuickdrawMatchesRequest, AUTO)
+
+
+PB_BIND(alleycat_device_WriteQuickdrawMatchesResponse, alleycat_device_WriteQuickdrawMatchesResponse, AUTO)
+
+
+PB_BIND(alleycat_device_QuickdrawMatchRejection, alleycat_device_QuickdrawMatchRejection, AUTO)
+
+
+PB_BIND(alleycat_device_QuickdrawMatch, alleycat_device_QuickdrawMatch, 2)
+
+
 
 
 

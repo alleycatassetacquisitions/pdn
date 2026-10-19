@@ -9,26 +9,92 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
+/* Enum definitions */
+/* Reasons for rejecting an individual match. */
+typedef enum _alleycat_device_QuickdrawMatchErrorCode {
+    /* Unspecified/default value; never emitted by the server. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_UNSPECIFIED = 0,
+    /* A required UUID is missing/malformed, or a present optional UUID is malformed. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_UUID = 1,
+    /* A required draw time or occurrence timestamp is absent. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_MISSING_FIELD = 2,
+    /* A measurement or timestamp is outside its documented numeric range. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_OUT_OF_RANGE = 3,
+    /* Both participant UUIDs are equal. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_SAME_PLAYER = 4,
+    /* The winner UUID is neither participant. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_WINNER = 5,
+    /* A player/team ID is unknown or belongs to another event. */
+    alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE = 6
+} alleycat_device_QuickdrawMatchErrorCode;
+
 /* Struct definitions */
+/* Response for GET /device/players/by-pin/{pin}, application/protobuf.
+ No request body. The path PIN is exactly four ASCII digits, including leading
+ zeros, and is resolved in the active event. Invalid PIN format returns 400;
+ no active event or no matching player returns 404. Errors are plain text.
+ Email is deliberately absent from this device-only response. */
+typedef struct _alleycat_device_DevicePlayerResponse {
+    /* Player UUID. Stable for this registration. */
+    pb_callback_t id;
+    /* Event UUID. PINs are unique only within an event. */
+    pb_callback_t event_id;
+    /* Four-digit PIN; preserve leading zeros. */
+    pb_callback_t pdn_code;
+    /* Current player display name. */
+    pb_callback_t name;
+    /* Registration creation time in UTC milliseconds since 1970-01-01. */
+    int64_t created_at_unix_ms;
+    /* Current team UUID, absent when unassigned. Not a match-time snapshot. */
+    pb_callback_t team_id;
+    /* Current team name, absent when unassigned. */
+    pb_callback_t team_name;
+    /* True for active registrations. Inactive players remain discoverable with
+ false; clients should honor this status. It does not rewrite match scores
+ or prevent uploads of previously completed matches. */
+    bool active;
+    /* Current assignments in this event, ordered by category name then category UUID.
+ At most one affiliation per category. Unassigned categories are omitted;
+ an unassigned player has an empty list. Names reflect current renames.
+ These are membership details, not permissions or match-time scoring snapshots. */
+    pb_callback_t affiliations;
+} alleycat_device_DevicePlayerResponse;
+
+/* One current player assignment. Categories and affiliations belong to the
+ player's event. Use UUIDs for identity; names may change. */
+typedef struct _alleycat_device_DevicePlayerAffiliation {
+    /* Category UUID. */
+    pb_callback_t category_id;
+    /* Current category name, such as Allegiance or Faction. */
+    pb_callback_t category_name;
+    /* Affiliation UUID within this category. */
+    pb_callback_t affiliation_id;
+    /* Current affiliation name, such as Helix Industries. */
+    pb_callback_t affiliation_name;
+} alleycat_device_DevicePlayerAffiliation;
+
 /* Request body for POST /device-logs.
 
  The server generates:
  - id
  - received_at */
 typedef struct _alleycat_device_WriteDeviceLogRequest {
-    /* Colon-separated 48-bit address, such as "aa:bb:cc:dd:ee:ff". */
+    /* Required by the server. Colon-separated 48-bit address, such as "aa:bb:cc:dd:ee:ff". */
     bool has_device_mac;
     char device_mac[18];
-    /* Device-assigned crash report number. */
+    /* Required by the server. Device-assigned crash report number. Zero is valid.
+ Must fit a signed 64-bit integer (maximum 9223372036854775807). */
     bool has_crash_number;
     uint64_t crash_number;
-    /* Milliseconds since the device booted\ */
+    /* Required by the server. Milliseconds since the device booted. Zero is valid.
+ Must fit a signed 64-bit integer (maximum 9223372036854775807). */
     bool has_uptime_ms;
     uint64_t uptime_ms;
     /* Firmware/software build identifier. */
     bool has_software_version;
     char software_version[16];
-    /* Raw numeric reset-reason code reported by the device. */
+    /* Required by the server. Raw numeric reset-reason code reported by the device.
+ Must fit a signed 32-bit integer (maximum 2147483647). Zero is valid. */
     bool has_reset_reason;
     uint32_t reset_reason;
     /* Address of the instruction being executed when the exception occurred. */
@@ -42,16 +108,115 @@ typedef struct _alleycat_device_WriteDeviceLogRequest {
     char task_name[16];
 } alleycat_device_WriteDeviceLogRequest;
 
+/* POST /quickdraw-matches, application/protobuf.
+ Upload completed matches for the active event. 204 means all entries were
+ accepted; 200 returns WriteQuickdrawMatchesResponse with rejected entries.
+ See the HTTP API docs for request-wide errors and scoring behavior. */
+typedef struct _alleycat_device_WriteQuickdrawMatchesRequest {
+    /* Required batch of 1-100 completed matches. Maximum encoded request body: 256 KiB. */
+    pb_callback_t matches;
+} alleycat_device_WriteQuickdrawMatchesRequest;
+
+/* Response body for HTTP 200 from POST /quickdraw-matches, application/protobuf.
+ Retrying the same IDs is safe: the first accepted report is never overwritten. */
+typedef struct _alleycat_device_WriteQuickdrawMatchesResponse {
+    /* One rejection per failed entry, in request order; may include every entry.
+ Entries not listed were saved or already stored. */
+    pb_callback_t rejected;
+} alleycat_device_WriteQuickdrawMatchesResponse;
+
+/* First detected error for one match. Fixing it may reveal another error. */
+typedef struct _alleycat_device_QuickdrawMatchRejection {
+    /* Zero-based request position. Use this to identify the entry; IDs may repeat. */
+    uint32_t match_index;
+    /* Exact submitted ID, including an empty or malformed value when invalid. */
+    pb_callback_t match_id;
+    /* QuickdrawMatch field names. SAME_PLAYER includes both participant ID fields. */
+    pb_callback_t fields;
+    /* Stable machine-readable reason. Clients must handle unknown future codes. */
+    alleycat_device_QuickdrawMatchErrorCode code;
+} alleycat_device_QuickdrawMatchRejection;
+
+typedef struct _alleycat_device_QuickdrawMatch {
+    /* Required UUID strings. Both devices must use the same shared match ID. */
+    char id[37];
+    /* Required first participant's player UUID. */
+    char player_a_id[37];
+    /* Required second participant's player UUID; must differ from player_a_id. */
+    char player_b_id[37];
+    /* Match-time snapshots supplied by the devices, not current membership.
+ Omit for an unassigned player; a present value must be a valid team UUID. */
+    bool has_player_a_team_id;
+    char player_a_team_id[37];
+    /* Second participant's team UUID at match time. Omit for an unassigned player. */
+    bool has_player_b_team_id;
+    char player_b_team_id[37];
+    /* Required despite proto3 optional: zero is valid, absence is not.
+ Must fit a signed 64-bit integer (maximum 9223372036854775807). */
+    bool has_player_a_draw_time_ms;
+    uint64_t player_a_draw_time_ms;
+    /* Second participant's unsigned draw time in milliseconds. Required; zero is valid.
+ Must fit a signed 64-bit integer (maximum 9223372036854775807). */
+    bool has_player_b_draw_time_ms;
+    uint64_t player_b_draw_time_ms;
+    /* Required participant UUID. The server does not infer the winner from times. */
+    char winner_player_id[37];
+    /* Required UTC milliseconds since 1970-01-01; nonnegative, through year 9999.
+ Maximum 253402300799999.
+ The first accepted upload supplies the timestamp and all other fields. */
+    bool has_occurred_at_unix_ms;
+    int64_t occurred_at_unix_ms;
+} alleycat_device_QuickdrawMatch;
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/* Helper constants for enums */
+#define _alleycat_device_QuickdrawMatchErrorCode_MIN alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_UNSPECIFIED
+#define _alleycat_device_QuickdrawMatchErrorCode_MAX alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE
+#define _alleycat_device_QuickdrawMatchErrorCode_ARRAYSIZE ((alleycat_device_QuickdrawMatchErrorCode)(alleycat_device_QuickdrawMatchErrorCode_QUICKDRAW_MATCH_ERROR_CODE_INVALID_EVENT_REFERENCE+1))
+
+
+
+
+
+
+#define alleycat_device_QuickdrawMatchRejection_code_ENUMTYPE alleycat_device_QuickdrawMatchErrorCode
+
+
+
 /* Initializer values for message structs */
+#define alleycat_device_DevicePlayerResponse_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerAffiliation_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_default {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
+#define alleycat_device_WriteQuickdrawMatchesRequest_init_default {{{NULL}, NULL}}
+#define alleycat_device_WriteQuickdrawMatchesResponse_init_default {{{NULL}, NULL}}
+#define alleycat_device_QuickdrawMatchRejection_init_default {0, {{NULL}, NULL}, {{NULL}, NULL}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
+#define alleycat_device_QuickdrawMatch_init_default {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
+#define alleycat_device_DevicePlayerResponse_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerAffiliation_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_zero {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
+#define alleycat_device_WriteQuickdrawMatchesRequest_init_zero {{{NULL}, NULL}}
+#define alleycat_device_WriteQuickdrawMatchesResponse_init_zero {{{NULL}, NULL}}
+#define alleycat_device_QuickdrawMatchRejection_init_zero {0, {{NULL}, NULL}, {{NULL}, NULL}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
+#define alleycat_device_QuickdrawMatch_init_zero {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
+#define alleycat_device_DevicePlayerResponse_id_tag 1
+#define alleycat_device_DevicePlayerResponse_event_id_tag 2
+#define alleycat_device_DevicePlayerResponse_pdn_code_tag 3
+#define alleycat_device_DevicePlayerResponse_name_tag 4
+#define alleycat_device_DevicePlayerResponse_created_at_unix_ms_tag 5
+#define alleycat_device_DevicePlayerResponse_team_id_tag 6
+#define alleycat_device_DevicePlayerResponse_team_name_tag 7
+#define alleycat_device_DevicePlayerResponse_active_tag 8
+#define alleycat_device_DevicePlayerResponse_affiliations_tag 9
+#define alleycat_device_DevicePlayerAffiliation_category_id_tag 1
+#define alleycat_device_DevicePlayerAffiliation_category_name_tag 2
+#define alleycat_device_DevicePlayerAffiliation_affiliation_id_tag 3
+#define alleycat_device_DevicePlayerAffiliation_affiliation_name_tag 4
 #define alleycat_device_WriteDeviceLogRequest_device_mac_tag 1
 #define alleycat_device_WriteDeviceLogRequest_crash_number_tag 2
 #define alleycat_device_WriteDeviceLogRequest_uptime_ms_tag 3
@@ -60,8 +225,45 @@ extern "C" {
 #define alleycat_device_WriteDeviceLogRequest_program_counter_tag 6
 #define alleycat_device_WriteDeviceLogRequest_exception_cause_tag 7
 #define alleycat_device_WriteDeviceLogRequest_task_name_tag 8
+#define alleycat_device_WriteQuickdrawMatchesRequest_matches_tag 1
+#define alleycat_device_WriteQuickdrawMatchesResponse_rejected_tag 1
+#define alleycat_device_QuickdrawMatchRejection_match_index_tag 1
+#define alleycat_device_QuickdrawMatchRejection_match_id_tag 2
+#define alleycat_device_QuickdrawMatchRejection_fields_tag 3
+#define alleycat_device_QuickdrawMatchRejection_code_tag 4
+#define alleycat_device_QuickdrawMatch_id_tag    1
+#define alleycat_device_QuickdrawMatch_player_a_id_tag 2
+#define alleycat_device_QuickdrawMatch_player_b_id_tag 3
+#define alleycat_device_QuickdrawMatch_player_a_team_id_tag 4
+#define alleycat_device_QuickdrawMatch_player_b_team_id_tag 5
+#define alleycat_device_QuickdrawMatch_player_a_draw_time_ms_tag 6
+#define alleycat_device_QuickdrawMatch_player_b_draw_time_ms_tag 7
+#define alleycat_device_QuickdrawMatch_winner_player_id_tag 8
+#define alleycat_device_QuickdrawMatch_occurred_at_unix_ms_tag 9
 
 /* Struct field encoding specification for nanopb */
+#define alleycat_device_DevicePlayerResponse_FIELDLIST(X, a) \
+X(a, CALLBACK, SINGULAR, STRING,   id,                1) \
+X(a, CALLBACK, SINGULAR, STRING,   event_id,          2) \
+X(a, CALLBACK, SINGULAR, STRING,   pdn_code,          3) \
+X(a, CALLBACK, SINGULAR, STRING,   name,              4) \
+X(a, STATIC,   SINGULAR, INT64,    created_at_unix_ms,   5) \
+X(a, CALLBACK, OPTIONAL, STRING,   team_id,           6) \
+X(a, CALLBACK, OPTIONAL, STRING,   team_name,         7) \
+X(a, STATIC,   SINGULAR, BOOL,     active,            8) \
+X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9)
+#define alleycat_device_DevicePlayerResponse_CALLBACK pb_default_field_callback
+#define alleycat_device_DevicePlayerResponse_DEFAULT NULL
+#define alleycat_device_DevicePlayerResponse_affiliations_MSGTYPE alleycat_device_DevicePlayerAffiliation
+
+#define alleycat_device_DevicePlayerAffiliation_FIELDLIST(X, a) \
+X(a, CALLBACK, SINGULAR, STRING,   category_id,       1) \
+X(a, CALLBACK, SINGULAR, STRING,   category_name,     2) \
+X(a, CALLBACK, SINGULAR, STRING,   affiliation_id,    3) \
+X(a, CALLBACK, SINGULAR, STRING,   affiliation_name,   4)
+#define alleycat_device_DevicePlayerAffiliation_CALLBACK pb_default_field_callback
+#define alleycat_device_DevicePlayerAffiliation_DEFAULT NULL
+
 #define alleycat_device_WriteDeviceLogRequest_FIELDLIST(X, a) \
 X(a, STATIC,   OPTIONAL, STRING,   device_mac,        1) \
 X(a, STATIC,   OPTIONAL, UINT64,   crash_number,      2) \
@@ -74,13 +276,64 @@ X(a, STATIC,   OPTIONAL, STRING,   task_name,         8)
 #define alleycat_device_WriteDeviceLogRequest_CALLBACK NULL
 #define alleycat_device_WriteDeviceLogRequest_DEFAULT NULL
 
+#define alleycat_device_WriteQuickdrawMatchesRequest_FIELDLIST(X, a) \
+X(a, CALLBACK, REPEATED, MESSAGE,  matches,           1)
+#define alleycat_device_WriteQuickdrawMatchesRequest_CALLBACK pb_default_field_callback
+#define alleycat_device_WriteQuickdrawMatchesRequest_DEFAULT NULL
+#define alleycat_device_WriteQuickdrawMatchesRequest_matches_MSGTYPE alleycat_device_QuickdrawMatch
+
+#define alleycat_device_WriteQuickdrawMatchesResponse_FIELDLIST(X, a) \
+X(a, CALLBACK, REPEATED, MESSAGE,  rejected,          1)
+#define alleycat_device_WriteQuickdrawMatchesResponse_CALLBACK pb_default_field_callback
+#define alleycat_device_WriteQuickdrawMatchesResponse_DEFAULT NULL
+#define alleycat_device_WriteQuickdrawMatchesResponse_rejected_MSGTYPE alleycat_device_QuickdrawMatchRejection
+
+#define alleycat_device_QuickdrawMatchRejection_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   match_index,       1) \
+X(a, CALLBACK, SINGULAR, STRING,   match_id,          2) \
+X(a, CALLBACK, REPEATED, STRING,   fields,            3) \
+X(a, STATIC,   SINGULAR, UENUM,    code,              4)
+#define alleycat_device_QuickdrawMatchRejection_CALLBACK pb_default_field_callback
+#define alleycat_device_QuickdrawMatchRejection_DEFAULT NULL
+
+#define alleycat_device_QuickdrawMatch_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, STRING,   id,                1) \
+X(a, STATIC,   SINGULAR, STRING,   player_a_id,       2) \
+X(a, STATIC,   SINGULAR, STRING,   player_b_id,       3) \
+X(a, STATIC,   OPTIONAL, STRING,   player_a_team_id,   4) \
+X(a, STATIC,   OPTIONAL, STRING,   player_b_team_id,   5) \
+X(a, STATIC,   OPTIONAL, UINT64,   player_a_draw_time_ms,   6) \
+X(a, STATIC,   OPTIONAL, UINT64,   player_b_draw_time_ms,   7) \
+X(a, STATIC,   SINGULAR, STRING,   winner_player_id,   8) \
+X(a, STATIC,   OPTIONAL, INT64,    occurred_at_unix_ms,   9)
+#define alleycat_device_QuickdrawMatch_CALLBACK NULL
+#define alleycat_device_QuickdrawMatch_DEFAULT NULL
+
+extern const pb_msgdesc_t alleycat_device_DevicePlayerResponse_msg;
+extern const pb_msgdesc_t alleycat_device_DevicePlayerAffiliation_msg;
 extern const pb_msgdesc_t alleycat_device_WriteDeviceLogRequest_msg;
+extern const pb_msgdesc_t alleycat_device_WriteQuickdrawMatchesRequest_msg;
+extern const pb_msgdesc_t alleycat_device_WriteQuickdrawMatchesResponse_msg;
+extern const pb_msgdesc_t alleycat_device_QuickdrawMatchRejection_msg;
+extern const pb_msgdesc_t alleycat_device_QuickdrawMatch_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
+#define alleycat_device_DevicePlayerResponse_fields &alleycat_device_DevicePlayerResponse_msg
+#define alleycat_device_DevicePlayerAffiliation_fields &alleycat_device_DevicePlayerAffiliation_msg
 #define alleycat_device_WriteDeviceLogRequest_fields &alleycat_device_WriteDeviceLogRequest_msg
+#define alleycat_device_WriteQuickdrawMatchesRequest_fields &alleycat_device_WriteQuickdrawMatchesRequest_msg
+#define alleycat_device_WriteQuickdrawMatchesResponse_fields &alleycat_device_WriteQuickdrawMatchesResponse_msg
+#define alleycat_device_QuickdrawMatchRejection_fields &alleycat_device_QuickdrawMatchRejection_msg
+#define alleycat_device_QuickdrawMatch_fields &alleycat_device_QuickdrawMatch_msg
 
 /* Maximum encoded size of messages (where known) */
-#define ALLEYCAT_DEVICE_DEVICE_API_PB_H_MAX_SIZE alleycat_device_WriteDeviceLogRequest_size
+/* alleycat_device_DevicePlayerResponse_size depends on runtime parameters */
+/* alleycat_device_DevicePlayerAffiliation_size depends on runtime parameters */
+/* alleycat_device_WriteQuickdrawMatchesRequest_size depends on runtime parameters */
+/* alleycat_device_WriteQuickdrawMatchesResponse_size depends on runtime parameters */
+/* alleycat_device_QuickdrawMatchRejection_size depends on runtime parameters */
+#define ALLEYCAT_DEVICE_DEVICE_API_PB_H_MAX_SIZE alleycat_device_QuickdrawMatch_size
+#define alleycat_device_QuickdrawMatch_size      261
 #define alleycat_device_WriteDeviceLogRequest_size 92
 
 #ifdef __cplusplus

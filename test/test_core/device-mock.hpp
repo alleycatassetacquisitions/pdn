@@ -128,7 +128,7 @@ class MockHttpClient : public HttpClientInterface {
 public:
     MOCK_METHOD(void, setWifiConfig, (WifiConfig*), (override));
     MOCK_METHOD(bool, isConnected, (), (override));
-    MOCK_METHOD(bool, queueRequest, (HttpRequest&), (override));
+    MOCK_METHOD(bool, queueRequest, (HttpRequest&&), (override));
     MOCK_METHOD(void, disconnect, (), (override));
     MOCK_METHOD(void, updateConfig, (WifiConfig*), (override));
     MOCK_METHOD(void, retryConnection, (), (override));

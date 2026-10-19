@@ -6,7 +6,7 @@
 void NativeHttpClientDriver::processPendingRequests() {
     // Process all pending requests
     while (!pendingRequests.empty()) {
-        HttpRequest request = pendingRequests.front();
+        HttpRequest request = std::move(pendingRequests.front());
         pendingRequests.pop();
 
         if (!mockServerEnabled_) {

@@ -44,7 +44,7 @@ void UploadPendingHacksState::onStateMounted(FDN* fdn) {
                 completedCount++;
             });
 
-        fdn->getHttpClient()->queueRequest(req);
+        fdn->getHttpClient()->queueRequest(std::move(req));
     }
 
     fallbackTimer.setTimer(FALLBACK_TIMEOUT_MS);

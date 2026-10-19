@@ -52,11 +52,11 @@ struct HttpRequest {
      * `contentType` is the Content-Type header the ESP32 driver sends on POST and
      * PUT; GET ignores it.
      */
-    HttpRequest(const std::string& path, const std::string& method, const std::string& contentType, const std::string& payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
-        : path(path)
-        , method(method)
-        , contentType(contentType)
-        , payload(payload)
+    HttpRequest(std::string path, std::string method, std::string contentType, std::string payload, HttpSuccessCallback onSuccess, HttpErrorCallback onError)
+        : path(std::move(path))
+        , method(std::move(method))
+        , contentType(std::move(contentType))
+        , payload(std::move(payload))
         , onSuccess(std::move(onSuccess))
         , onError(std::move(onError))
         , inProgress(false)

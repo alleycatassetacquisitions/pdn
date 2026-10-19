@@ -2,11 +2,16 @@
 
 #include <functional>
 #include <string>
+#include "alleycat-server/device-player.hpp"
+#include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/player-response.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/wireless-types.hpp"
 
 namespace PlayerApi {
+
+constexpr const char GET_PLAYERS_ENDPOINT[] = "/api/players/";
+constexpr const char GET_DEVICE_PLAYERS_ENDPOINT[] = "/device/players/by-pin/";
 
 /**
  * GET /api/players/{id} — parses JSON @ref PlayerResponse on success.
@@ -15,12 +20,9 @@ inline void getPlayer(
     WirelessManager* wirelessManager,
     const std::string& playerId,
     const std::function<void(const PlayerResponse&)>& onSuccess,
-    const std::function<void(const WirelessErrorInfo&)>& onError
-) {
-    const std::string path = "/api/players/" + playerId;
-
+    const std::function<void(const WirelessErrorInfo&)>& onError) {
     HttpRequest request(
-        path,
+        GET_PLAYERS_ENDPOINT + playerId,
         "GET",
         "",
         "",
@@ -29,16 +31,41 @@ inline void getPlayer(
             if (playerResponse.parseFromJson(response)) {
                 onSuccess(playerResponse);
             } else {
-                onError({
-                    WirelessError::INVALID_RESPONSE,
-                    "Failed to parse player response"
-                });
+                onError({WirelessError::INVALID_RESPONSE,
+                         "Failed to parse player response"});
             }
         },
-        onError
-    );
+        onError);
 
-    wirelessManager->queueHttpRequest(request);
+    wirelessManager->queueHttpRequest(std::move(request));
 }
 
-} // namespace PlayerApi
+/**
+ * GET /device/players/by-pin/{pin} — decodes the protobuf @ref DevicePlayer on success.
+ * The server answers 400 for a malformed PIN and 404 when no player matches.
+ */
+inline void getDevicePlayerByPin(
+    WirelessManager* wirelessManager,
+    const std::string& pin,
+    const std::function<void(const DevicePlayer&)>& onSuccess,
+    const std::function<void(const WirelessErrorInfo&)>& onError) {
+    HttpRequest request(
+        GET_DEVICE_PLAYERS_ENDPOINT + pin,
+        "GET",
+        "",
+        "",
+        [onSuccess, onError](const std::string& response) {
+            DevicePlayer player;
+            if (DevicePlayerDecoder::decode(response, player)) {
+                onSuccess(player);
+            } else {
+                onError({WirelessError::INVALID_RESPONSE,
+                         "Failed to decode device player response"});
+            }
+        },
+        onError);
+
+    wirelessManager->queueHttpRequest(std::move(request));
+}
+
+}  // namespace PlayerApi
