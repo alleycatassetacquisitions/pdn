@@ -13,9 +13,10 @@ inline CrashRecord makeFullRecord() {
     rec.crashNumber    = 3;
     rec.timestamp      = 12500;
     rec.resetReason    = 7;
-    rec.programCounter = 0x400D1A2C;
-    rec.exceptionCause = 28;
-    strncpy(rec.taskName,   "loopTask",  TASK_NAME_LENGTH  - 1);
+    CoreDumpDetails& details = rec.coreDumpDetails.emplace();
+    details.programCounter = 0x400D1A2C;
+    details.exceptionCause = 28;
+    strncpy(details.taskName, "loopTask", TASK_NAME_LENGTH - 1);
     strncpy(rec.commitHash, "a1b2c3d4",  COMMIT_HASH_LENGTH - 1);
     return rec;
 }
@@ -59,9 +60,7 @@ inline void encoderRoundTripPopulatesAllFields(CrashEncoderTestSuite* suite) {
 
 inline void encoderOmitsUnsetOptionalFields(CrashEncoderTestSuite* suite) {
     CrashRecord rec = makeFullRecord();
-    rec.programCounter = 0;
-    rec.exceptionCause = 0;
-    rec.taskName[0] = '\0';
+    rec.coreDumpDetails.reset();
 
     size_t len = CrashEncoder::encode(rec, nullptr, suite->buf, sizeof(suite->buf));
     ASSERT_GT(len, 0u);
@@ -81,4 +80,32 @@ inline void encoderReturnZeroWhenBufferTooSmall(CrashEncoderTestSuite* suite) {
     size_t len = CrashEncoder::encode(rec, suite->mac, tinyBuf, sizeof(tinyBuf));
 
     EXPECT_EQ(len, 0u);
+}
+
+inline void encoderKeepsExceptionCauseZero(CrashEncoderTestSuite* suite) {
+    CrashRecord rec = makeFullRecord();
+    rec.coreDumpDetails->exceptionCause = 0;  // IllegalInstruction
+
+    size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
+    ASSERT_GT(len, 0u);
+
+    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
+
+    EXPECT_TRUE(msg.has_exception_cause);
+    EXPECT_EQ(msg.exception_cause, 0u);
+    EXPECT_TRUE(msg.has_task_name);
+}
+
+inline void encoderOmitsMissingExceptionCause(CrashEncoderTestSuite* suite) {
+    CrashRecord rec = makeFullRecord();
+    rec.coreDumpDetails->exceptionCause.reset();
+
+    size_t len = CrashEncoder::encode(rec, suite->mac, suite->buf, sizeof(suite->buf));
+    ASSERT_GT(len, 0u);
+
+    alleycat_device_WriteDeviceLogRequest msg = decodeBytes(suite->buf, len);
+
+    EXPECT_TRUE(msg.has_program_counter);
+    EXPECT_FALSE(msg.has_exception_cause);
+    EXPECT_TRUE(msg.has_task_name);
 }

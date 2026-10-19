@@ -37,15 +37,17 @@ size_t encode(const CrashRecord& record, const uint8_t* mac,
     msg.has_reset_reason = true;
     msg.reset_reason     = record.resetReason;
 
-    // Omit program_counter and exception_cause when the core dump wasn't available.
-    msg.has_program_counter = (record.programCounter != 0);
-    msg.program_counter     = record.programCounter;
+    if (record.coreDumpDetails) {
+        msg.has_program_counter = true;
+        msg.program_counter = record.coreDumpDetails->programCounter;
 
-    msg.has_exception_cause = (record.exceptionCause != 0);
-    msg.exception_cause     = record.exceptionCause;
+        // Cause 0 is a real cause: IllegalInstruction, which abort() raises.
+        if (record.coreDumpDetails->exceptionCause.has_value()) {
+            msg.has_exception_cause = true;
+            msg.exception_cause = *record.coreDumpDetails->exceptionCause;
+        }
 
-    if (record.taskName[0] != '\0') {
-        strncpy(msg.task_name, record.taskName, sizeof(msg.task_name) - 1);
+        strncpy(msg.task_name, record.coreDumpDetails->taskName, sizeof(msg.task_name) - 1);
         msg.task_name[sizeof(msg.task_name) - 1] = '\0';
         msg.has_task_name = true;
     }
