@@ -13,8 +13,11 @@
 #include <esp_mac.h>
 #include <esp_http_client.h>
 #include <queue>
+#include <strings.h>
+#include <sys/time.h>
 #include "device/drivers/driver-interface.hpp"
 #include "wireless/wireless-types.hpp"
+#include "utils/http-date.hpp"
 #include "utils/simple-timer.hpp"
 
 // Forward declaration for the event handler
@@ -559,11 +562,22 @@ private:
     unsigned long retryAt = 0;
 };
 
-// Event handler must be defined after the class. It only collects the
-// response body; outcomes are decided from perform()'s return in the driver.
 inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
     auto* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
-    if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
+    if (evt->event_id == HTTP_EVENT_ON_HEADER && evt->header_key != nullptr &&
+        strcasecmp(evt->header_key, "Date") == 0) {
+        const std::optional<int64_t> epochSec = parseHttpDate(evt->header_value);
+        if (epochSec.has_value()) {
+            struct timeval tv = {};
+            tv.tv_sec = static_cast<time_t>(*epochSec);
+            settimeofday(&tv, nullptr);
+            PlatformClock* clock = SimpleTimer::getPlatformClock();
+            LOG_I(HTTP_TAG, "Synced clock from HTTP Date: %lld (unixMs=%lld, uptimeMs=%lu)",
+                  static_cast<long long>(*epochSec),
+                  static_cast<long long>(clock ? clock->unixMilliseconds() : 0),
+                  clock ? clock->milliseconds() : 0UL);
+        }
+    } else if (evt->event_id == HTTP_EVENT_ON_DATA && client->currentRequest != nullptr) {
         client->handleHttpData(client->currentRequest, evt->data, evt->data_len);
     }
     return ESP_OK;

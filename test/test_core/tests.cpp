@@ -638,6 +638,22 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
     timerWithNullClockHandlesGracefully();
 }
 
+TEST_F(TimerTestSuite, unaffectedByWallClockJump) {
+    timerUnaffectedByWallClockJump(fakeClock);
+}
+
+TEST(HttpDate, parsesValidImfFixdate) {
+    httpDateParsesValidImfFixdate();
+}
+
+TEST(HttpDate, handlesLeapYearsCorrectly) {
+    httpDateHandlesLeapYearsCorrectly();
+}
+
+TEST(HttpDate, rejectsPre2025AndMalformedStrings) {
+    httpDateRejectsPre2025AndMalformedStrings();
+}
+
 // ============================================
 // MATCH MANAGER TESTS
 // ============================================
