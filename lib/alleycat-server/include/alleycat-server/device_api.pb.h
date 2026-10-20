@@ -36,19 +36,21 @@ typedef enum _alleycat_device_QuickdrawMatchErrorCode {
  Email is deliberately absent from this device-only response. */
 typedef struct _alleycat_device_DevicePlayerResponse {
     /* Player UUID. Stable for this registration. */
-    pb_callback_t id;
+    char id[37];
     /* Event UUID. PINs are unique only within an event. */
-    pb_callback_t event_id;
+    char event_id[37];
     /* Four-digit PIN; preserve leading zeros. */
-    pb_callback_t pdn_code;
+    char pdn_code[5];
     /* Current player display name. */
-    pb_callback_t name;
+    char name[37];
     /* Registration creation time in UTC milliseconds since 1970-01-01. */
     int64_t created_at_unix_ms;
     /* Current team UUID, absent when unassigned. Not a match-time snapshot. */
-    pb_callback_t team_id;
+    bool has_team_id;
+    char team_id[37];
     /* Current team name, absent when unassigned. */
-    pb_callback_t team_name;
+    bool has_team_name;
+    char team_name[37];
     /* True for active registrations. Inactive players remain discoverable with
  false; clients should honor this status. It does not rewrite match scores
  or prevent uploads of previously completed matches. */
@@ -64,13 +66,13 @@ typedef struct _alleycat_device_DevicePlayerResponse {
  player's event. Use UUIDs for identity; names may change. */
 typedef struct _alleycat_device_DevicePlayerAffiliation {
     /* Category UUID. */
-    pb_callback_t category_id;
+    char category_id[37];
     /* Current category name, such as Allegiance or Faction. */
-    pb_callback_t category_name;
+    char category_name[37];
     /* Affiliation UUID within this category. */
-    pb_callback_t affiliation_id;
+    char affiliation_id[37];
     /* Current affiliation name, such as Helix Industries. */
-    pb_callback_t affiliation_name;
+    char affiliation_name[37];
 } alleycat_device_DevicePlayerAffiliation;
 
 /* Request body for POST /device-logs.
@@ -130,9 +132,10 @@ typedef struct _alleycat_device_QuickdrawMatchRejection {
     /* Zero-based request position. Use this to identify the entry; IDs may repeat. */
     uint32_t match_index;
     /* Exact submitted ID, including an empty or malformed value when invalid. */
-    pb_callback_t match_id;
+    char match_id[37];
     /* QuickdrawMatch field names. SAME_PLAYER includes both participant ID fields. */
-    pb_callback_t fields;
+    pb_size_t fields_count;
+    char fields[2][24];
     /* Stable machine-readable reason. Clients must handle unknown future codes. */
     alleycat_device_QuickdrawMatchErrorCode code;
 } alleycat_device_QuickdrawMatchRejection;
@@ -188,19 +191,19 @@ extern "C" {
 
 
 /* Initializer values for message structs */
-#define alleycat_device_DevicePlayerResponse_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}}
-#define alleycat_device_DevicePlayerAffiliation_init_default {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerResponse_init_default {"", "", "", "", 0, false, "", false, "", 0, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerAffiliation_init_default {"", "", "", ""}
 #define alleycat_device_WriteDeviceLogRequest_init_default {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_default {{{NULL}, NULL}}
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_default {{{NULL}, NULL}}
-#define alleycat_device_QuickdrawMatchRejection_init_default {0, {{NULL}, NULL}, {{NULL}, NULL}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
+#define alleycat_device_QuickdrawMatchRejection_init_default {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_default {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
-#define alleycat_device_DevicePlayerResponse_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}, {{NULL}, NULL}, 0, {{NULL}, NULL}}
-#define alleycat_device_DevicePlayerAffiliation_init_zero {{{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerResponse_init_zero {"", "", "", "", 0, false, "", false, "", 0, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerAffiliation_init_zero {"", "", "", ""}
 #define alleycat_device_WriteDeviceLogRequest_init_zero {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_zero {{{NULL}, NULL}}
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_zero {{{NULL}, NULL}}
-#define alleycat_device_QuickdrawMatchRejection_init_zero {0, {{NULL}, NULL}, {{NULL}, NULL}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
+#define alleycat_device_QuickdrawMatchRejection_init_zero {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_zero {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
@@ -243,13 +246,13 @@ extern "C" {
 
 /* Struct field encoding specification for nanopb */
 #define alleycat_device_DevicePlayerResponse_FIELDLIST(X, a) \
-X(a, CALLBACK, SINGULAR, STRING,   id,                1) \
-X(a, CALLBACK, SINGULAR, STRING,   event_id,          2) \
-X(a, CALLBACK, SINGULAR, STRING,   pdn_code,          3) \
-X(a, CALLBACK, SINGULAR, STRING,   name,              4) \
+X(a, STATIC,   SINGULAR, STRING,   id,                1) \
+X(a, STATIC,   SINGULAR, STRING,   event_id,          2) \
+X(a, STATIC,   SINGULAR, STRING,   pdn_code,          3) \
+X(a, STATIC,   SINGULAR, STRING,   name,              4) \
 X(a, STATIC,   SINGULAR, INT64,    created_at_unix_ms,   5) \
-X(a, CALLBACK, OPTIONAL, STRING,   team_id,           6) \
-X(a, CALLBACK, OPTIONAL, STRING,   team_name,         7) \
+X(a, STATIC,   OPTIONAL, STRING,   team_id,           6) \
+X(a, STATIC,   OPTIONAL, STRING,   team_name,         7) \
 X(a, STATIC,   SINGULAR, BOOL,     active,            8) \
 X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9)
 #define alleycat_device_DevicePlayerResponse_CALLBACK pb_default_field_callback
@@ -257,11 +260,11 @@ X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9)
 #define alleycat_device_DevicePlayerResponse_affiliations_MSGTYPE alleycat_device_DevicePlayerAffiliation
 
 #define alleycat_device_DevicePlayerAffiliation_FIELDLIST(X, a) \
-X(a, CALLBACK, SINGULAR, STRING,   category_id,       1) \
-X(a, CALLBACK, SINGULAR, STRING,   category_name,     2) \
-X(a, CALLBACK, SINGULAR, STRING,   affiliation_id,    3) \
-X(a, CALLBACK, SINGULAR, STRING,   affiliation_name,   4)
-#define alleycat_device_DevicePlayerAffiliation_CALLBACK pb_default_field_callback
+X(a, STATIC,   SINGULAR, STRING,   category_id,       1) \
+X(a, STATIC,   SINGULAR, STRING,   category_name,     2) \
+X(a, STATIC,   SINGULAR, STRING,   affiliation_id,    3) \
+X(a, STATIC,   SINGULAR, STRING,   affiliation_name,   4)
+#define alleycat_device_DevicePlayerAffiliation_CALLBACK NULL
 #define alleycat_device_DevicePlayerAffiliation_DEFAULT NULL
 
 #define alleycat_device_WriteDeviceLogRequest_FIELDLIST(X, a) \
@@ -290,10 +293,10 @@ X(a, CALLBACK, REPEATED, MESSAGE,  rejected,          1)
 
 #define alleycat_device_QuickdrawMatchRejection_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   match_index,       1) \
-X(a, CALLBACK, SINGULAR, STRING,   match_id,          2) \
-X(a, CALLBACK, REPEATED, STRING,   fields,            3) \
+X(a, STATIC,   SINGULAR, STRING,   match_id,          2) \
+X(a, STATIC,   REPEATED, STRING,   fields,            3) \
 X(a, STATIC,   SINGULAR, UENUM,    code,              4)
-#define alleycat_device_QuickdrawMatchRejection_CALLBACK pb_default_field_callback
+#define alleycat_device_QuickdrawMatchRejection_CALLBACK NULL
 #define alleycat_device_QuickdrawMatchRejection_DEFAULT NULL
 
 #define alleycat_device_QuickdrawMatch_FIELDLIST(X, a) \
@@ -328,11 +331,11 @@ extern const pb_msgdesc_t alleycat_device_QuickdrawMatch_msg;
 
 /* Maximum encoded size of messages (where known) */
 /* alleycat_device_DevicePlayerResponse_size depends on runtime parameters */
-/* alleycat_device_DevicePlayerAffiliation_size depends on runtime parameters */
 /* alleycat_device_WriteQuickdrawMatchesRequest_size depends on runtime parameters */
 /* alleycat_device_WriteQuickdrawMatchesResponse_size depends on runtime parameters */
-/* alleycat_device_QuickdrawMatchRejection_size depends on runtime parameters */
 #define ALLEYCAT_DEVICE_DEVICE_API_PB_H_MAX_SIZE alleycat_device_QuickdrawMatch_size
+#define alleycat_device_DevicePlayerAffiliation_size 152
+#define alleycat_device_QuickdrawMatchRejection_size 96
 #define alleycat_device_QuickdrawMatch_size      261
 #define alleycat_device_WriteDeviceLogRequest_size 92
 

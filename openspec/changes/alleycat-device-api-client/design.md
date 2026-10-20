@@ -14,7 +14,7 @@ The HTTP layer has two constraints this design has to work within:
 - Native-testable encode/decode for the new player lookup and match upload messages.
 - Request builders for `GET /device/players/by-pin/{pin}` and `POST /quickdraw-matches` that follow the existing `CrashApi` pattern.
 - Library-owned input/output types, so later stages can reshape `Player` and `Match` without touching this library's contract.
-- Bounded stack use on ESP32-S3, with no fixed buffers sized for worst-case names or batch sizes.
+- No heap allocation while decoding, and bounded stack use on ESP32-S3.
 
 **Non-Goals:**
 - Migrating `FetchUserDataState` or `UploadMatchesState`, and removing the legacy JSON clients.
@@ -28,19 +28,25 @@ The HTTP layer has two constraints this design has to work within:
 
 ### Library-owned types instead of `Player` / `Match`
 The new API takes and returns types defined in `lib/alleycat-server`:
-- `DevicePlayer`: `id`, `eventId`, `pdnCode`, `name`, `createdAtUnixMs`, `active`, `teamId`/`teamName` with `hasTeam()`, and `std::vector<DevicePlayerAffiliation> affiliations`.
+- `DevicePlayer`: fixed `char[]` fields `id`, `eventId`, `pdnCode`, `name`, `teamId`/`teamName` (with `hasTeam()`), plus `createdAtUnixMs`, `active`, and `std::vector<DevicePlayerAffiliation> affiliations` (at most `DevicePlayerLimits::MAX_AFFILIATIONS`, currently 3).
 - `QuickdrawMatchRecord`: fixed `char[IdGenerator::UUID_BUFFER_SIZE]` fields for match, player A/B, winner, and team A/B (an empty string means no team), plus `uint64_t` draw times and `int64_t occurredAtUnixMs`.
-- `QuickdrawMatchRejection`: `matchIndex`, `matchId`, `fields`, `code`, `rawCode`.
-- `QuickdrawUploadResult`: `std::vector<QuickdrawMatchRejection> rejections` and `isFullyAccepted()`.
+- `QuickdrawMatchRejection`: `matchIndex`, fixed `matchId`, `fields[MAX_FIELDS]` with `fieldCount`, `code`, `rawCode`.
+- `QuickdrawUploadResult`: `rejectionCount` and `isFullyAccepted()`. Rejections themselves are delivered through a `RejectionSink`.
 
 *Why:* `Match` currently has no UUIDs, teams, winner, or timestamp, and stage 3 will change its storage format. Keeping the wire contract separate keeps this stage independent and testable now. Stage 4 adds a small `Match` → `QuickdrawMatchRecord` mapping.
 *Alternative:* encode directly from `Match`. Rejected: it would force the `Match` changes into this stage.
 
-### Strings decode through nanopb callbacks into `std::string`
-In `device_api.options`, every string in `DevicePlayerResponse`, `DevicePlayerAffiliation`, and `QuickdrawMatchRejection`, and every repeated field in those messages, is marked `type:FT_CALLBACK`. The decoder appends into `std::string` and `std::vector`.
+### Server strings and lists decode into static buffers
+The device API is versioned by device capability, and the server sends only ASCII names of at most 36 bytes. In `device_api.options`, every string in `DevicePlayerResponse`, `DevicePlayerAffiliation`, and `QuickdrawMatchRejection` has a static `max_size` (37 for UUIDs and names, 5 for the PIN). `affiliations` is `FT_CALLBACK` \(append into the vector, max 3 per device capability\) and rejection `fields` is `max_count:2 max_size:24` (`SAME_PLAYER` names two fields). Player header strings decode into static fields; affiliations decode one submessage at a time into the vector. `static_assert`s tie the library buffer sizes to the generated ones.
 
-*Why:* the server allows names up to 256 graphemes (up to ~1 KiB of UTF-8), and affiliation and rejection counts are not small fixed numbers. Static `max_size`/`max_count` buffers would cost several KiB of stack per decode, or would truncate and fail on long names.
-*Alternative:* static buffers with truncation. Rejected because nanopb fails the whole decode when a static field overflows.
+*Why:* no heap for player header strings; affiliations grow only as needed (typically 2–3 rows); retained size stays well under the old fixed six-slot layout.
+*Trade-off:* nanopb fails the whole decode when a static field overflows, so a longer name, a fourth affiliation, or a third rejection field makes the response undecodable. The server contract rules these out for this device capability.
+*Alternative:* `FT_CALLBACK` into `std::string`/`std::vector`. Rejected: heap churn for strings that are bounded in practice.
+
+### Rejections stream through a sink
+`WriteQuickdrawMatchesResponse.rejected` stays `FT_CALLBACK`. `decodeResponse(body, onRejection, result)` decodes one static `QuickdrawMatchRejection` at a time and hands it to `onRejection`. The body is decoded twice: a validation pass that only counts, then a delivery pass, so the sink never sees rejections from a response that later fails to decode.
+
+*Why:* up to 100 rejections would be ~10 KiB as a fixed array. Streaming mirrors how the request encoder pulls matches from a source.
 
 ### Request encoding streams matches from a caller-supplied source
 `QuickdrawMatch` string fields use static `max_size:37`, since we generate the values and they are bounded. `WriteQuickdrawMatchesRequest.matches` is `FT_CALLBACK`. The encoder takes a count and a lambda, `std::function<bool(size_t index, QuickdrawMatchRecord& record)>`, and encodes one record at a time into a `pb_ostream_t` whose callback appends to the `std::string` payload. The return value is `bool`; `false` means encoding failed or the source failed.
@@ -59,7 +65,7 @@ An empty success body means "all accepted": the server returns 204, and an empty
 
 ### API surface sits next to the legacy calls
 - `PlayerApi::getDevicePlayerByPin(wirelessManager, pin, onSuccess(const DevicePlayer&), onError)`
-- `MatchesApi::uploadQuickdrawMatches(wirelessManager, count, source, onSuccess(const QuickdrawUploadResult&), onError)`
+- `MatchesApi::uploadQuickdrawMatches(wirelessManager, count, source, onRejection(const QuickdrawMatchRejection&), onSuccess(const QuickdrawUploadResult&), onError)`
 
 The codec logic lives in `device-player-decoder.{hpp,cpp}` and `quickdraw-match-codec.{hpp,cpp}`, mirroring `crash-encoder`. The PIN is passed through unvalidated: it comes from rigid on-device input, and the server answers a malformed one with 400. Validation failures (batch out of range, encode failure) call `onError` with `INVALID_STATE` synchronously and queue nothing, which matches `CrashApi`'s encode-failure path.
 
@@ -68,7 +74,8 @@ The codec logic lives in `device-player-decoder.{hpp,cpp}` and `quickdraw-match-
 - [The vendored proto drifts from upstream again] → `upstream.lock.json` records the commit. The regeneration task diffs field numbers against upstream before committing.
 - [Changing `.options` for new messages alters generated code for `WriteDeviceLogRequest`] → leave its options unchanged and keep the existing crash-encoder tests as a regression guard.
 - [The 404 for an unknown PIN can't be told apart from other client errors] → accepted for this stage. Callers treat every lookup error the way they do today (offline path). A later stage can add a status code to `WirelessErrorInfo`.
-- [Heap churn from `std::string`/`std::vector` during decode] → only on one-off lookups and upload responses, not in game loops.
+- [A server value exceeds a static limit and the whole decode fails] → limits are part of the device-capability API version; a server change that needs larger limits ships with a new capability version and regenerated options.
+- [Stack use during player decode] → the generated message and the `DevicePlayer` copy are each under 1 KiB and live together on the HTTP callback task's stack.
 - [The source lambda returns inconsistent data across calls] → the encoder calls it exactly once per index, in order.
 
 ## Migration Plan

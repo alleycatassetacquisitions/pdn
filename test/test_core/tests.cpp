@@ -852,8 +852,20 @@ TEST(DevicePlayerDecoder, keepsInactivePlayer) {
     devicePlayerKeepsInactivePlayer();
 }
 
-TEST(DevicePlayerDecoder, decodesLongName) {
-    devicePlayerDecodesLongName();
+TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
+    devicePlayerDecodesMaximumLengthName();
+}
+
+TEST(DevicePlayerDecoder, rejectsOversizedName) {
+    devicePlayerRejectsOversizedName();
+}
+
+TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
+    devicePlayerDecodesMaximumAffiliations();
+}
+
+TEST(DevicePlayerDecoder, rejectsTooManyAffiliations) {
+    devicePlayerRejectsTooManyAffiliations();
 }
 
 TEST(DevicePlayerDecoder, rejectsGarbageBody) {
@@ -892,8 +904,16 @@ TEST(QuickdrawMatchCodec, decodesRejection) {
     matchCodecDecodesRejection();
 }
 
+TEST(QuickdrawMatchCodec, deliversRejectionsInOrder) {
+    matchCodecDeliversRejectionsInOrder();
+}
+
 TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
     matchCodecKeepsUnknownErrorCode();
+}
+
+TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
+    matchCodecRejectsTooManyFieldsWithoutDelivering();
 }
 
 TEST(QuickdrawMatchCodec, rejectsGarbageBody) {

@@ -1,10 +1,8 @@
 #include "alleycat-server/quickdraw-match-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
-#include "nanopb-string-callbacks.hpp"
 #include <pb_decode.h>
 #include <pb_encode.h>
 #include <cstdint>
-#include <utility>
 
 namespace {
 
@@ -80,25 +78,53 @@ QuickdrawMatchErrorCode toErrorCode(int32_t rawCode) {
     }
 }
 
+using RejectionMessage = alleycat_device_QuickdrawMatchRejection;
+
+static_assert(sizeof(QuickdrawMatchRejection::matchId) == sizeof(RejectionMessage::match_id),
+              "QuickdrawMatchRejection must match device_api.options");
+static_assert(sizeof(QuickdrawMatchRejection::fields) == sizeof(RejectionMessage::fields),
+              "QuickdrawMatchRejection must match device_api.options");
+
+/** One pass over the rejections; a null sink only validates and counts. */
+struct RejectionPass {
+    const QuickdrawMatchCodec::RejectionSink* onRejection;
+    size_t rejectionCount;
+};
+
 bool decodeRejection(pb_istream_t* stream, const pb_field_t* field, void** arg) {
     (void)field;
-    std::vector<QuickdrawMatchRejection>* rejections =
-        static_cast<std::vector<QuickdrawMatchRejection>*>(*arg);
+    RejectionPass* pass = static_cast<RejectionPass*>(*arg);
 
-    QuickdrawMatchRejection rejection;
-    alleycat_device_QuickdrawMatchRejection message = alleycat_device_QuickdrawMatchRejection_init_zero;
-    NanopbStringCallbacks::bindString(message.match_id, rejection.matchId);
-    message.fields.funcs.decode = &NanopbStringCallbacks::appendString;
-    message.fields.arg = &rejection.fields;
-
+    RejectionMessage message = alleycat_device_QuickdrawMatchRejection_init_zero;
     if (!pb_decode(stream, alleycat_device_QuickdrawMatchRejection_fields, &message)) {
         return false;
     }
+    pass->rejectionCount++;
+    if (pass->onRejection == nullptr) {
+        return true;
+    }
+
+    QuickdrawMatchRejection rejection;
     rejection.matchIndex = message.match_index;
+    IdGenerator::copyId(rejection.matchId, message.match_id);
+    rejection.fieldCount = message.fields_count;
+    for (size_t index = 0; index < rejection.fieldCount; index++) {
+        IdGenerator::copyId(rejection.fields[index], message.fields[index]);
+    }
     rejection.rawCode = static_cast<int32_t>(message.code);
     rejection.code = toErrorCode(rejection.rawCode);
-    rejections->push_back(std::move(rejection));
+    (*pass->onRejection)(rejection);
     return true;
+}
+
+bool decodeRejections(const std::string& body, RejectionPass& pass) {
+    alleycat_device_WriteQuickdrawMatchesResponse message = alleycat_device_WriteQuickdrawMatchesResponse_init_zero;
+    message.rejected.funcs.decode = &decodeRejection;
+    message.rejected.arg = &pass;
+
+    pb_istream_t stream = pb_istream_from_buffer(
+        reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
+    return pb_decode(&stream, alleycat_device_WriteQuickdrawMatchesResponse_fields, &message);
 }
 
 }  // namespace
@@ -120,19 +146,24 @@ bool encodeRequest(size_t matchCount, const MatchSource& source, std::string& pa
     return pb_encode(&stream, alleycat_device_WriteQuickdrawMatchesRequest_fields, &message);
 }
 
-bool decodeResponse(const std::string& body, QuickdrawUploadResult& result) {
+bool decodeResponse(const std::string& body, const RejectionSink& onRejection, QuickdrawUploadResult& result) {
     result = QuickdrawUploadResult();
     if (body.empty()) {
         return true;
     }
 
-    alleycat_device_WriteQuickdrawMatchesResponse message = alleycat_device_WriteQuickdrawMatchesResponse_init_zero;
-    message.rejected.funcs.decode = &decodeRejection;
-    message.rejected.arg = &result.rejections;
-
-    pb_istream_t stream = pb_istream_from_buffer(
-        reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
-    return pb_decode(&stream, alleycat_device_WriteQuickdrawMatchesResponse_fields, &message);
+    // Validate the whole body before delivering anything, so a truncated response
+    // never hands the caller a partial set of rejections.
+    RejectionPass validation = {nullptr, 0};
+    if (!decodeRejections(body, validation)) {
+        return false;
+    }
+    RejectionPass delivery = {&onRejection, 0};
+    if (!decodeRejections(body, delivery)) {
+        return false;
+    }
+    result.rejectionCount = delivery.rejectionCount;
+    return true;
 }
 
 }  // namespace QuickdrawMatchCodec

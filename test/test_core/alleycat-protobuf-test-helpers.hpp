@@ -13,33 +13,25 @@
 
 // Server-side encoding helpers for building protobuf response fixtures.
 
-inline bool encodeTestString(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
-    const std::string* value = static_cast<const std::string*>(*arg);
-    return pb_encode_tag_for_field(stream, field) &&
-           pb_encode_string(stream, reinterpret_cast<const pb_byte_t*>(value->data()), value->size());
-}
-
-inline bool encodeTestStrings(pb_ostream_t* stream, const pb_field_t* field, void* const* arg) {
-    const std::vector<std::string>* values = static_cast<const std::vector<std::string>*>(*arg);
-    for (const std::string& value : *values) {
-        void* const valueArg = const_cast<std::string*>(&value);
-        if (!encodeTestString(stream, field, &valueArg)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-inline void bindTestString(pb_callback_t& callback, const std::string& value) {
-    callback.funcs.encode = &encodeTestString;
-    callback.arg = const_cast<std::string*>(&value);
-}
-
 inline std::string encodeTestMessage(const pb_msgdesc_t* fields, const void* message) {
-    std::vector<pb_byte_t> buffer(4096);
+    std::vector<pb_byte_t> buffer(16384);
     pb_ostream_t stream = pb_ostream_from_buffer(buffer.data(), buffer.size());
     EXPECT_TRUE(pb_encode(&stream, fields, message)) << PB_GET_ERROR(&stream);
     return std::string(reinterpret_cast<const char*>(buffer.data()), stream.bytes_written);
+}
+
+/**
+ * Appends a length-delimited field to an encoded message. Lets fixtures carry
+ * values the static nanopb structs cannot hold, such as an oversized string or
+ * one repeated entry past max_count.
+ */
+inline void appendTestBytesField(std::string& payload, uint32_t tag, const std::string& value) {
+    std::vector<pb_byte_t> buffer(value.size() + 16);
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer.data(), buffer.size());
+    EXPECT_TRUE(pb_encode_tag(&stream, PB_WT_STRING, tag) &&
+                pb_encode_string(&stream, reinterpret_cast<const pb_byte_t*>(value.data()), value.size()))
+        << PB_GET_ERROR(&stream);
+    payload.append(reinterpret_cast<const char*>(buffer.data()), stream.bytes_written);
 }
 
 /** Captures every request queued through a real WirelessManager. */

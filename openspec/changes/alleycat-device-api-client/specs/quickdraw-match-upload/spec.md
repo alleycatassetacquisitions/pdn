@@ -36,25 +36,34 @@ When the server accepts every match, it responds 204 with an empty body. On a su
 #### Scenario: 204 No Content
 - **WHEN** the upload succeeds with an empty response body
 - **THEN** the success callback receives a result that reports full acceptance and has no rejections
+- **AND** the rejection callback is not invoked
 
 ### Requirement: Partial rejections are decoded per entry
-On a successful response with a non-empty body, the client SHALL decode it as `WriteQuickdrawMatchesResponse`. The result SHALL hold one rejection per entry, in response order, each with the match index, submitted match ID, field names, and error code. An error code the client does not recognize SHALL be reported as unknown, and the client SHALL keep its raw numeric value.
+On a successful response with a non-empty body, the client SHALL decode it as `WriteQuickdrawMatchesResponse`. The client SHALL deliver one rejection per entry to the rejection callback, in response order, each with the match index, submitted match ID, up to two field names, and error code, and then invoke the success callback with the rejection count. An error code the client does not recognize SHALL be reported as unknown, and the client SHALL keep its raw numeric value.
 
 #### Scenario: One rejected entry
-- **WHEN** the response rejects index 2 with code `INVALID_EVENT_REFERENCE` and field `player_b_id`
-- **THEN** the result does not report full acceptance
-- **AND** it has one rejection with match index 2, the submitted match ID, fields `["player_b_id"]`, and code `INVALID_EVENT_REFERENCE`
+- **WHEN** the response rejects index 2 with code `SAME_PLAYER` and fields `player_a_id` and `player_b_id`
+- **THEN** the result does not report full acceptance and has a rejection count of 1
+- **AND** the rejection callback receives match index 2, the submitted match ID, fields `["player_a_id", "player_b_id"]`, and code `SAME_PLAYER`
+
+#### Scenario: Full batch rejected
+- **WHEN** the response rejects all 100 entries
+- **THEN** the rejection callback receives 100 rejections in response order
 
 #### Scenario: Future error code
 - **WHEN** a rejection carries numeric code 42
 - **THEN** the rejection's code is reported as unknown and its raw code value is 42
 
 ### Requirement: Undecodable responses are reported as errors
-If a non-empty successful response body cannot be decoded as `WriteQuickdrawMatchesResponse`, the client SHALL invoke the error callback with `WirelessError::INVALID_RESPONSE` and SHALL NOT invoke the success callback, so the caller keeps every match in the batch.
+If a non-empty successful response body cannot be decoded as `WriteQuickdrawMatchesResponse`, the client SHALL invoke the error callback with `WirelessError::INVALID_RESPONSE` and SHALL NOT invoke the rejection or success callbacks, so the caller keeps every match in the batch.
 
 #### Scenario: Garbage body
 - **WHEN** the upload succeeds with a body that is not a valid `WriteQuickdrawMatchesResponse`
 - **THEN** the error callback receives `WirelessError::INVALID_RESPONSE`
+
+#### Scenario: Rejection exceeds a device limit
+- **WHEN** a rejection lists more than two fields
+- **THEN** the response is treated as undecodable and no rejection is delivered
 
 ### Requirement: Transport errors are forwarded unchanged
 If the HTTP layer reports an error, including a non-2xx status for a batch-wide rejection, the client SHALL pass the `WirelessErrorInfo` to the error callback without modification.

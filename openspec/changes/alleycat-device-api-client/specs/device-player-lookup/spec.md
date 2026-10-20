@@ -24,9 +24,13 @@ On a successful response, the client SHALL decode the body as `DevicePlayerRespo
 - **WHEN** the response has `active` set to false
 - **THEN** the success callback is still invoked, with a `DevicePlayer` whose active status is false
 
-#### Scenario: Name longer than a small fixed buffer
-- **WHEN** the response contains a 200-byte player name
-- **THEN** the decoded name equals the full 200 bytes
+#### Scenario: Maximum-length name
+- **WHEN** the response contains a 36-byte ASCII player name
+- **THEN** the decoded name equals the full 36 bytes
+
+#### Scenario: Maximum affiliations
+- **WHEN** the response contains three affiliations
+- **THEN** the `DevicePlayer` has three affiliations
 
 ### Requirement: Undecodable responses are reported as errors
 If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, the client SHALL invoke the error callback with `WirelessError::INVALID_RESPONSE` and SHALL NOT invoke the success callback.
@@ -34,6 +38,10 @@ If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, 
 #### Scenario: Garbage body
 - **WHEN** the response body is bytes that are not a valid `DevicePlayerResponse`
 - **THEN** the error callback receives `WirelessError::INVALID_RESPONSE`
+
+#### Scenario: Value exceeds a device limit
+- **WHEN** the response contains a string longer than 36 bytes or more than three affiliations
+- **THEN** the response is treated as undecodable
 
 ### Requirement: Transport errors are forwarded unchanged
 If the HTTP layer reports an error, including a non-2xx status such as 404 for an unknown PIN or 400 for a malformed one, the client SHALL pass the `WirelessErrorInfo` to the error callback without modification.
