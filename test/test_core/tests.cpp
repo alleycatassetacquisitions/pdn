@@ -25,6 +25,7 @@
 #include "crash-encoder-tests.hpp"
 #include "player-response-tests.hpp"
 #include "device-player-decoder-tests.hpp"
+#include "player-fetch-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
 
@@ -907,6 +908,34 @@ TEST(DevicePlayerDecoder, rejectsGarbageBody) {
 
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
+}
+
+// ============================================
+// PLAYER FETCH APP TESTS
+// ============================================
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
+    pinEntryRoutesNonDemoPinToFetch(this);
+}
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
+    pinEntryRoutesDemoPinToChooseTeam(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
+    fetchUserQueuesDevicePlayerLookup(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
+    fetchUserStoresDevicePlayerOnSuccess(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
+    fetchUserFailureReturnsToPinAfterPageTimeout(this);
+}
+
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
+    chooseTeamConfirmReachesDemoStub(this);
 }
 
 // ============================================
