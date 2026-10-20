@@ -1,6 +1,33 @@
-# Nanopb field options for WriteDeviceLogRequest.
+# Nanopb field options for alleycat.device messages.
 # Max lengths align with CrashRecord constants in lib/core/include/device/crash/crash-record.hpp.
 
 alleycat.device.WriteDeviceLogRequest.device_mac          max_size:18   # "aa:bb:cc:dd:ee:ff\0"
 alleycat.device.WriteDeviceLogRequest.software_version    max_size:16   # 8-char short commit hash + margin
 alleycat.device.WriteDeviceLogRequest.task_name           max_size:16   # TASK_NAME_LENGTH
+
+# Server-controlled strings and lists are unbounded (names up to 256 graphemes),
+# so they decode through callbacks into heap containers.
+alleycat.device.DevicePlayerResponse.id                   type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.event_id             type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.pdn_code             type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.name                 type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.team_id              type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.team_name            type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.affiliations         type:FT_CALLBACK
+alleycat.device.DevicePlayerAffiliation.category_id       type:FT_CALLBACK
+alleycat.device.DevicePlayerAffiliation.category_name     type:FT_CALLBACK
+alleycat.device.DevicePlayerAffiliation.affiliation_id    type:FT_CALLBACK
+alleycat.device.DevicePlayerAffiliation.affiliation_name  type:FT_CALLBACK
+
+alleycat.device.WriteQuickdrawMatchesResponse.rejected    type:FT_CALLBACK
+alleycat.device.QuickdrawMatchRejection.match_id          type:FT_CALLBACK
+alleycat.device.QuickdrawMatchRejection.fields            type:FT_CALLBACK
+
+# Matches are streamed one at a time so a 100-match batch never sits on the stack.
+alleycat.device.WriteQuickdrawMatchesRequest.matches      type:FT_CALLBACK
+alleycat.device.QuickdrawMatch.id                         max_size:37   # IdGenerator::UUID_BUFFER_SIZE
+alleycat.device.QuickdrawMatch.player_a_id                max_size:37
+alleycat.device.QuickdrawMatch.player_b_id                max_size:37
+alleycat.device.QuickdrawMatch.player_a_team_id           max_size:37
+alleycat.device.QuickdrawMatch.player_b_team_id           max_size:37
+alleycat.device.QuickdrawMatch.winner_player_id           max_size:37

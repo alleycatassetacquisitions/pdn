@@ -1,0 +1,43 @@
+## ADDED Requirements
+
+### Requirement: Lookup uses the protobuf device endpoint
+The client SHALL queue a `GET` request to `/device/players/by-pin/{pin}` with no request body. The PIN is not validated on the client; the server rejects malformed PINs.
+
+#### Scenario: Request shape
+- **WHEN** a lookup is requested for PIN `"0007"`
+- **THEN** the queued request has method `GET`, path `/device/players/by-pin/0007`, and an empty payload
+
+### Requirement: Successful response is decoded into a device player
+On a successful response, the client SHALL decode the body as `DevicePlayerResponse` and pass a `DevicePlayer` to the success callback. The `DevicePlayer` SHALL contain the player UUID, event UUID, PIN, name, registration time, active status, team (if present), and affiliations in server order.
+
+#### Scenario: Player with team and affiliations
+- **WHEN** the response contains a team and two affiliations
+- **THEN** the `DevicePlayer` reports that it has a team, with the team UUID and name
+- **AND** its affiliations list has two entries in response order, each with category UUID, category name, affiliation UUID, and affiliation name
+
+#### Scenario: Unassigned player
+- **WHEN** the response omits `team_id` and `team_name` and has no affiliations
+- **THEN** the `DevicePlayer` reports that it has no team
+- **AND** its affiliations list is empty
+
+#### Scenario: Inactive player
+- **WHEN** the response has `active` set to false
+- **THEN** the success callback is still invoked, with a `DevicePlayer` whose active status is false
+
+#### Scenario: Name longer than a small fixed buffer
+- **WHEN** the response contains a 200-byte player name
+- **THEN** the decoded name equals the full 200 bytes
+
+### Requirement: Undecodable responses are reported as errors
+If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, the client SHALL invoke the error callback with `WirelessError::INVALID_RESPONSE` and SHALL NOT invoke the success callback.
+
+#### Scenario: Garbage body
+- **WHEN** the response body is bytes that are not a valid `DevicePlayerResponse`
+- **THEN** the error callback receives `WirelessError::INVALID_RESPONSE`
+
+### Requirement: Transport errors are forwarded unchanged
+If the HTTP layer reports an error, including a non-2xx status such as 404 for an unknown PIN or 400 for a malformed one, the client SHALL pass the `WirelessErrorInfo` to the error callback without modification.
+
+#### Scenario: Unknown PIN
+- **WHEN** the HTTP layer reports an error for the lookup request
+- **THEN** the error callback receives the same `WirelessErrorInfo`

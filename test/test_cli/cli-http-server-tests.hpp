@@ -178,7 +178,7 @@ void httpClientProcessesRequests(NativeHttpClientDriverTestSuite* suite) {
         });
 
     suite->driver->setMockServerEnabled(true);
-    suite->driver->queueRequest(request);
+    suite->driver->queueRequest(std::move(request));
     suite->driver->exec();  // Process the queue
 
     // One of success or error should be called
@@ -194,7 +194,7 @@ void httpClientDisconnectFailsQueuedRequests(NativeHttpClientDriverTestSuite* su
             "/api/players/0010", "GET", "", "",
             [&successes](const std::string&) { successes++; },
             [&errors](const WirelessErrorInfo&) { errors++; });
-        suite->driver->queueRequest(request);
+        suite->driver->queueRequest(std::move(request));
     }
 
     suite->driver->disconnect();
@@ -223,7 +223,7 @@ void httpClientHandlesOfflineServer(NativeHttpClientDriverTestSuite* suite) {
         });
 
     suite->driver->setMockServerEnabled(true);
-    suite->driver->queueRequest(request);
+    suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
     // With mock server in online mode (default), requests succeed
@@ -242,7 +242,7 @@ void httpClientTracksHistory(NativeHttpClientDriverTestSuite* suite) {
         [](const WirelessErrorInfo&) {});
 
     suite->driver->setMockServerEnabled(true);
-    suite->driver->queueRequest(request);
+    suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
     const std::deque<HttpRequestHistoryEntry>& history = suite->driver->getRequestHistory();
@@ -275,7 +275,7 @@ void httpClientUploadsEncodedCrashLog(NativeHttpClientDriverTestSuite* suite) {
     );
 
     suite->driver->setMockServerEnabled(true);
-    suite->driver->queueRequest(request);
+    suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
     ASSERT_TRUE(suite->successCallbackCalled);
@@ -297,7 +297,7 @@ void httpClientDisabledMockServerFails(NativeHttpClientDriverTestSuite* suite) {
             suite->errorCallbackCalled = true;
         });
 
-    suite->driver->queueRequest(request);
+    suite->driver->queueRequest(std::move(request));
     suite->driver->exec();
 
     // Without mock server, the request should fail (no actual HTTP)

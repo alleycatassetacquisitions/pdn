@@ -24,11 +24,11 @@
 class Esp32S3HttpClient;
 static const char* const HTTP_TAG = "HttpClient";
 
-inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
+inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 /**
  * Handles WiFi connection and HTTP requests using ESP-IDF's esp_http_client.
- * 
+ *
  * This class manages:
  * - WiFi connection establishment and monitoring
  * - HTTP client initialization and cleanup
@@ -54,7 +54,7 @@ public:
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
-        
+
         return 0;
     }
 
@@ -63,7 +63,7 @@ public:
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
-        
+
         LOG_I(HTTP_TAG, "Connecting to: %s", wifiConfig->ssid.c_str());
         startWifiConnection();
         connectionAttemptTimer.setTimer(WIFI_CONNECTION_TIMEOUT_MS);
@@ -73,8 +73,9 @@ public:
         return wifiConnected && httpClientInitialized;
     }
 
-    bool queueRequest(HttpRequest& request) override {
-        httpQueue.push(request);
+    /** Takes ownership of @p request; a large payload is moved, not copied. */
+    bool queueRequest(HttpRequest&& request) override {
+        httpQueue.push(std::move(request));
         return true;
     }
 
@@ -104,7 +105,7 @@ public:
         }
         autoReconnect.store(false);
         esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
-        
+
         wifiConnected = false;
         httpClientInitialized = false;
         wifiGivenUp = false;
@@ -113,11 +114,11 @@ public:
     }
 
     void updateConfig(WifiConfig* config) override {
-        bool needsReconnect = wifiConnected && 
-            (config->ssid != wifiConfig->ssid || config->password != wifiConfig->password);
-        
+        bool needsReconnect = wifiConnected &&
+                              (config->ssid != wifiConfig->ssid || config->password != wifiConfig->password);
+
         wifiConfig = config;
-        
+
         if (needsReconnect) {
             disconnect();
             setWifiConfig(config);
@@ -139,10 +140,9 @@ public:
     }
 
     void setHttpClientState(HttpClientState state) override {
-        if(state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
+        if (state == HttpClientState::CONNECTED && httpClientState != HttpClientState::CONNECTED) {
             connect();
-        }
-        else if(state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
+        } else if (state == HttpClientState::DISCONNECTED && httpClientState != HttpClientState::DISCONNECTED) {
             disconnect();
         }
         httpClientState = state;
@@ -154,14 +154,14 @@ public:
 
     void connect() {
         LOG_I(HTTP_TAG, "Enabling HTTP mode...");
-        
+
         if (wifiConnected && isStationConnected()) {
             LOG_D(HTTP_TAG, "Already connected to WiFi");
         }
-        
+
         // Start WiFi connection
         startWifiConnection();
-        
+
         // Wait for connection with timeout
         int attempts = 0;
         const int maxAttempts = 50;  // 5 seconds max (50 * 100ms)
@@ -169,14 +169,14 @@ public:
             vTaskDelay(pdMS_TO_TICKS(CONNECT_POLL_MS));
             attempts++;
         }
-        
+
         if (isStationConnected()) {
             wifiConnected = true;
             wifiGivenUp = false;
             channel = stationChannel();
-            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d", 
+            LOG_I(HTTP_TAG, "WiFi connected, IP: %s, Channel: %d",
                   stationIpString().c_str(), channel);
-            
+
             if (!httpClientInitialized) {
                 httpClientInitialized = initializeHttpClient();
             }
@@ -186,14 +186,18 @@ public:
         }
     }
 
-    friend esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt);
+    friend esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt);
 
 private:
     /**
      * Station states this driver distinguishes. IDF only delivers these as
      * events, so the current state is tracked here for callers that poll.
      */
-    enum class StationStatus { DISCONNECTED, NO_SSID_AVAIL, CONNECT_FAILED, CONNECTION_LOST, CONNECTED };
+    enum class StationStatus { DISCONNECTED,
+                               NO_SSID_AVAIL,
+                               CONNECT_FAILED,
+                               CONNECTION_LOST,
+                               CONNECTED };
 
     // Written from the WiFi event task and read from exec() on the main loop.
     static inline std::atomic<StationStatus> stationStatus{StationStatus::DISCONNECTED};
@@ -315,7 +319,7 @@ private:
 
     void checkWifiConnection() {
         connectionAttemptTimer.updateTime();
-        
+
         // Check if we've connected
         if (isStationConnected()) {
             channel = stationChannel();
@@ -327,14 +331,14 @@ private:
             // Leave auto-reconnect ON so WiFi recovers from disconnections
             return;
         }
-        
+
         // Check if connection timeout expired
         if (connectionAttemptTimer.expired()) {
             logWifiStatusError();
             wifiGivenUp = true;
             LOG_W(HTTP_TAG, "WiFi connection timeout after %dms. Device will work offline with ESP-NOW only.", WIFI_CONNECTION_TIMEOUT_MS);
             autoReconnect.store(false);  // Stop the retry spam
-            esp_wifi_disconnect();  // Leave the AP but keep the radio on for ESP-NOW
+            esp_wifi_disconnect();       // Leave the AP but keep the radio on for ESP-NOW
 
             connectionAttemptTimer.invalidate();
         }
@@ -342,15 +346,15 @@ private:
 
     void logWifiStatusError() {
         const char* msg = "Unknown error";
-        
+
         switch (stationStatus.load()) {
-            case StationStatus::NO_SSID_AVAIL:  msg = "SSID not found";    break;
+            case StationStatus::NO_SSID_AVAIL: msg = "SSID not found"; break;
             case StationStatus::CONNECT_FAILED: msg = "Connection failed"; break;
-            case StationStatus::CONNECTION_LOST: msg = "Connection lost";  break;
-            case StationStatus::DISCONNECTED:   msg = "Disconnected";      break;
+            case StationStatus::CONNECTION_LOST: msg = "Connection lost"; break;
+            case StationStatus::DISCONNECTED: msg = "Disconnected"; break;
             default: break;
         }
-        
+
         LOG_E(HTTP_TAG, "WiFi failed: %s (%s)", msg, wifiConfig->ssid.c_str());
     }
 
@@ -365,13 +369,13 @@ private:
         // IDF, hostname included.
         config.crt_bundle_attach = esp_crt_bundle_attach;
         config.is_async = true;
-        
+
         httpClient = esp_http_client_init(&config);
-        
+
         if (!httpClient) {
             LOG_E(HTTP_TAG, "Failed to init HTTP client");
         }
-        
+
         return httpClient != nullptr;
     }
 
@@ -396,12 +400,12 @@ private:
 
     void initiateHttpRequest(HttpRequest& request) {
         std::string fullUrl = wifiConfig->baseUrl;
-        
-        if (fullUrl.find("http://") == std::string::npos && 
+
+        if (fullUrl.find("http://") == std::string::npos &&
             fullUrl.find("https://") == std::string::npos) {
             fullUrl = "http://" + fullUrl;
         }
-        
+
         if (!fullUrl.empty() && !request.path.empty()) {
             if (fullUrl.back() == '/' && request.path.front() == '/') {
                 fullUrl += request.path.substr(1);
@@ -411,7 +415,7 @@ private:
                 fullUrl += request.path;
             }
         }
-        
+
         if (!isStationConnected()) {
             completeFront(false, {WirelessError::WIFI_NOT_CONNECTED, "WiFi lost"});
             return;
@@ -428,7 +432,7 @@ private:
         currentRequest = &request;
 
         esp_http_client_set_url(httpClient, fullUrl.c_str());
-        
+
         if (request.method == "POST") {
             esp_http_client_set_method(httpClient, HTTP_METHOD_POST);
         } else if (request.method == "PUT") {
@@ -545,7 +549,7 @@ private:
     // Configuration
     WifiConfig* wifiConfig = nullptr;
     uint8_t macAddress_[6];
-    
+
     // WiFi connection state
     bool wifiConnected = false;
     bool httpClientInitialized = false;
@@ -562,7 +566,9 @@ private:
     unsigned long retryAt = 0;
 };
 
-inline esp_err_t esp32_http_event_handler(esp_http_client_event_t *evt) {
+// Defined after the class: syncs clock from the Date header, collects the
+// response body; outcomes are decided from perform()'s return in exec().
+inline esp_err_t esp32_http_event_handler(esp_http_client_event_t* evt) {
     auto* client = static_cast<Esp32S3HttpClient*>(evt->user_data);
     if (evt->event_id == HTTP_EVENT_ON_HEADER && evt->header_key != nullptr &&
         strcasecmp(evt->header_key, "Date") == 0) {

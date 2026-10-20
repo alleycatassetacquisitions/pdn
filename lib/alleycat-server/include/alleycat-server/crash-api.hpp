@@ -10,6 +10,8 @@
 
 namespace CrashApi {
 
+constexpr const char POST_DEVICE_LOGS_ENDPOINT[] = "/device-logs";
+
 /**
  * Encodes @p record as a WriteDeviceLogRequest protobuf and queues a
  * POST /device-logs request via @p wirelessManager.
@@ -25,8 +27,7 @@ inline void uploadCrash(
     const CrashRecord& record,
     const uint8_t* deviceMac,
     const std::function<void(const std::string&)>& onSuccess,
-    const std::function<void(const WirelessErrorInfo&)>& onError
-) {
+    const std::function<void(const WirelessErrorInfo&)>& onError) {
     uint8_t buf[CrashEncoder::MAX_ENCODED_SIZE];
     const size_t len = CrashEncoder::encode(record, deviceMac, buf, sizeof(buf));
 
@@ -36,15 +37,14 @@ inline void uploadCrash(
     }
 
     HttpRequest request(
-        "/device-logs",
+        POST_DEVICE_LOGS_ENDPOINT,
         "POST",
         "application/protobuf",
         std::string(reinterpret_cast<const char*>(buf), len),
         onSuccess,
-        onError
-    );
+        onError);
 
-    wirelessManager->queueHttpRequest(request);
+    wirelessManager->queueHttpRequest(std::move(request));
 }
 
-} // namespace CrashApi
+}  // namespace CrashApi

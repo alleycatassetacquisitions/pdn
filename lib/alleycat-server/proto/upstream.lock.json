@@ -6,7 +6,7 @@
       "repository": {
         "owner": "alleycatassetacquisitions",
         "name": "alleycat-rs",
-        "commit": "09bffc6c20c80494ba58cd41d284a06af5d17cce"
+        "commit": "448b885cc8f88a16f9815da9f4065f39e4f84244"
       },
       "upstream": {
         "path": "proto/device_api.proto"

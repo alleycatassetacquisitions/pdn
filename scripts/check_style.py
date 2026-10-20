@@ -2,9 +2,12 @@
 """Style gate on the staged diff, run by hooks/pre-commit.
 
 Needs clang-format, clang-tidy and a compile_commands.json at the repo root
-(`pio run -e native_cli -t compiledb`). Line rules and clang-format apply to
-the lines added in the staged diff; clang-tidy runs on the translation units
-behind the staged files, with its diagnostics restricted to those same lines.
+(`pio run -e native_cli -t compiledb`). On Windows, native_cli usually builds
+with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
+include paths (injected automatically — see clang_tidy_driver_extras). Line
+rules and clang-format apply to the lines added in the staged diff;
+clang-tidy runs on the translation units behind the staged files, with its
+diagnostics restricted to those same lines.
 A legacy violation elsewhere in a touched file does not block the commit
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
@@ -317,25 +320,117 @@ def check_format(path, content, added):
              " (e.g. `git clang-format --staged`, then re-add)")
 
 
-def load_compiledb(repo_root):
-    """Repo-relative TU paths from compile_commands.json, or None when absent.
-    A DB from another checkout would match no staged file and skip every TU
-    with a notice blaming the wrong cause, so it is rejected whole."""
+def read_compiledb(repo_root):
+    """compile_commands.json entries, or None when the file is absent."""
     db_path = os.path.join(repo_root, "compile_commands.json")
     if not os.path.exists(db_path):
         return None
     with open(db_path, encoding="utf-8") as f:
-        entries = json.load(f)
+        return json.load(f)
+
+
+def tu_path_in_repo(entry, repo_root):
+    """Repo-relative path for one compile_commands entry (forward slashes)."""
+    return os.path.relpath(os.path.join(entry["directory"], entry["file"]),
+                           repo_root).replace(os.sep, "/")
+
+
+def load_compiledb(repo_root):
+    """Repo-relative TU paths from compile_commands.json, or None when absent.
+    A DB from another checkout would match no staged file and skip every TU
+    with a notice blaming the wrong cause, so it is rejected whole."""
+    entries = read_compiledb(repo_root)
+    if entries is None:
+        return None
     paths = set()
     for e in entries:
-        # Forward slashes to match git's paths on Windows too.
-        rel = os.path.relpath(os.path.join(e["directory"], e["file"]), repo_root).replace(os.sep, "/")
+        rel = tu_path_in_repo(e, repo_root)
         if rel.startswith(".."):
             flag("compile_commands.json", 1,
                  f"generated in another checkout ({e['directory']}); {COMPILEDB_HINT}")
             return set()
         paths.add(rel)
     return paths
+
+
+MINGW_DRIVER = re.compile(r"^g(\+\+|cc)(-\d+)?\.exe$", re.I)
+_mingw_system_includes_cache = {}
+
+
+def compiler_from_compile_command(entry):
+    """First token of a compile command — the driver executable."""
+    if "arguments" in entry:
+        args = entry["arguments"]
+        return args[0] if args else None
+    command = entry.get("command", "").strip()
+    if not command:
+        return None
+    if command.startswith('"'):
+        end = command.find('"', 1)
+        return command[1:end] if end > 0 else None
+    return command.split(None, 1)[0]
+
+
+def is_mingw_gcc_driver(compiler_path):
+    if not compiler_path:
+        return False
+    return bool(MINGW_DRIVER.match(os.path.basename(compiler_path)))
+
+
+def mingw_system_include_paths(compiler_path):
+    """System #include <...> directories from a MinGW g++/gcc driver (-v)."""
+    key = os.path.normcase(os.path.normpath(compiler_path))
+    if key in _mingw_system_includes_cache:
+        return _mingw_system_includes_cache[key]
+    proc = subprocess.run(
+        [compiler_path, "-E", "-x", "c++", "-", "-v"],
+        input="", capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=120)
+    text = proc.stderr
+    start = text.find("#include <...> search starts here:")
+    end = text.find("End of search list.", start)
+    paths = []
+    if start >= 0 and end > start:
+        for line in text[start:end].splitlines()[1:]:
+            path = line.strip()
+            if path and os.path.isdir(path):
+                paths.append(path)
+    _mingw_system_includes_cache[key] = paths
+    return paths
+
+
+def compile_command_for_tu(entries, repo_root, tu_path):
+    """Compile command entry for a repo-relative translation unit path."""
+    want = tu_path.replace("\\", "/")
+    for entry in entries:
+        if tu_path_in_repo(entry, repo_root) == want:
+            return entry
+    return None
+
+
+def clang_tidy_driver_extras(repo_root, targets):
+    """Extra clang-tidy flags so LLVM clang can parse MinGW compile commands."""
+    if sys.platform != "win32" or not targets:
+        return []
+    entries = read_compiledb(repo_root)
+    if not entries:
+        return []
+    compilers = set()
+    for tu in targets:
+        entry = compile_command_for_tu(entries, repo_root, tu)
+        if not entry:
+            continue
+        driver = compiler_from_compile_command(entry)
+        if is_mingw_gcc_driver(driver):
+            compilers.add(os.path.normpath(driver))
+    if not compilers:
+        return []
+    extras = ["--extra-arg-before=--target=x86_64-w64-mingw32"]
+    for driver in sorted(compilers):
+        for inc in mingw_system_include_paths(driver):
+            inc = inc.replace("\\", "/")
+            extras.append(f"--extra-arg-before=-isystem{inc}")
+    return extras
 
 
 def includes_header(tu, header):
@@ -391,10 +486,13 @@ def run_scoped_tidy(files, added_by_path, repo_root):
                        + ", ".join(skipped))
     if not targets:
         return
-    proc = subprocess.run(
-        ["clang-tidy", "-p", repo_root, "--quiet",
-         f"--line-filter={json.dumps(line_filter)}", *targets],
-        capture_output=True, text=True)
+    tidy_cmd = [
+        "clang-tidy", "-p", repo_root, "--quiet",
+        f"--line-filter={json.dumps(line_filter)}",
+        *clang_tidy_driver_extras(repo_root, targets),
+        *targets,
+    ]
+    proc = subprocess.run(tidy_cmd, capture_output=True, text=True)
     output = proc.stdout.strip() or (proc.stderr.strip() if proc.returncode else "")
     if output:
         print(output)

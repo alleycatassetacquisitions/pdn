@@ -24,6 +24,8 @@
 #include "storage-tests.hpp"
 #include "crash-encoder-tests.hpp"
 #include "player-response-tests.hpp"
+#include "device-player-decoder-tests.hpp"
+#include "quickdraw-match-codec-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -832,6 +834,78 @@ TEST(PlayerResponse, rejectsErrorsArray) {
 
 TEST(PlayerResponse, rejectsMissingData) {
     playerResponseRejectsMissingData();
+}
+
+// ============================================
+// DEVICE PLAYER (PROTOBUF) TESTS
+// ============================================
+
+TEST(DevicePlayerDecoder, decodesTeamAndAffiliations) {
+    devicePlayerDecodesTeamAndAffiliations();
+}
+
+TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
+    devicePlayerDecodesUnassignedPlayer();
+}
+
+TEST(DevicePlayerDecoder, keepsInactivePlayer) {
+    devicePlayerKeepsInactivePlayer();
+}
+
+TEST(DevicePlayerDecoder, decodesLongName) {
+    devicePlayerDecodesLongName();
+}
+
+TEST(DevicePlayerDecoder, rejectsGarbageBody) {
+    devicePlayerRejectsGarbageBody();
+}
+
+TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
+    playerApiQueuesDevicePlayerLookup(this);
+}
+
+// ============================================
+// QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS
+// ============================================
+
+TEST(QuickdrawMatchCodec, roundTripsAllFields) {
+    matchCodecRoundTripsAllFields();
+}
+
+TEST(QuickdrawMatchCodec, keepsZeroDrawTimePresent) {
+    matchCodecKeepsZeroDrawTimePresent();
+}
+
+TEST(QuickdrawMatchCodec, omitsUnassignedTeams) {
+    matchCodecOmitsUnassignedTeams();
+}
+
+TEST(QuickdrawMatchCodec, failsWhenSourceFails) {
+    matchCodecFailsWhenSourceFails();
+}
+
+TEST(QuickdrawMatchCodec, treatsEmptyBodyAsFullyAccepted) {
+    matchCodecTreatsEmptyBodyAsFullyAccepted();
+}
+
+TEST(QuickdrawMatchCodec, decodesRejection) {
+    matchCodecDecodesRejection();
+}
+
+TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
+    matchCodecKeepsUnknownErrorCode();
+}
+
+TEST(QuickdrawMatchCodec, rejectsGarbageBody) {
+    matchCodecRejectsGarbageBody();
+}
+
+TEST_F(AlleycatApiTestSuite, matchesApiRejectsOutOfRangeCounts) {
+    matchesApiRejectsOutOfRangeCounts(this);
+}
+
+TEST_F(AlleycatApiTestSuite, matchesApiQueuesProtobufPost) {
+    matchesApiQueuesProtobufPost(this);
 }
 
 // ============================================
