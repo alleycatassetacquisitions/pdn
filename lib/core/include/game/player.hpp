@@ -32,6 +32,9 @@ public:
 
     Allegiance getAllegiance() const;
 
+    /** Maps server affiliation display name to artwork enum; defaults to ALLEYCAT. */
+    static Allegiance allegianceFromServerName(const std::string& allegianceStr);
+
     void setAllegiance(const std::string& allegianceStr);
 
     void setAllegiance(int allegiance);
@@ -58,17 +61,23 @@ public:
 
     void clearUserID();
 
-    unsigned long getLastReactionTime();
+    /** @return Milliseconds for the most recent duel reaction sample. */
+    unsigned long getLastReactionTime() const;
 
-    unsigned long getAverageReactionTime();
+    /** @return Mean reaction time across recorded matches, or 0 when none played. */
+    unsigned long getAverageReactionTime() const;
 
-    int getStreak();
+    /** @return Current consecutive win count. */
+    int getStreak() const;
 
-    int getMatchesPlayed();
+    /** @return Total matches recorded for this session profile. */
+    int getMatchesPlayed() const;
 
-    int getWins();
+    /** @return Win count for this session profile. */
+    int getWins() const;
 
-    int getLosses();
+    /** @return Loss count for this session profile. */
+    int getLosses() const;
 
     Symbol* getSymbol();
 
