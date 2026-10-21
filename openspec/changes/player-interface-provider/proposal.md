@@ -1,30 +1,30 @@
 ## Why
 
-PlayerFetch and `DevicePlayer` already hold the server registration model, but app code still reaches for ad hoc session types and legacy `Player` fields. We need a **core-owned read contract** (`PlayerInterface`) and **session ownership** (`PlayerProvider`) so registration UI, decode paths, and future gameplay migration share one vocabulary without coupling to JSON legacy or protobuf wire types.
+The server registration model (`DevicePlayer`) lived in `alleycat-server`, so app code that only needs the player profile had to depend on the HTTP/protobuf library, and PlayerFetch kept its own ad hoc session type. Moving the type into core and giving it one owner (`PlayerProvider`) lets registration UI, decode paths, and later gameplay migration share one concrete type.
 
 ## What Changes
 
-- Add `lib/core/include/game/player-types.hpp` (and matching `.cpp` if needed) with **`Team`**, **`Affiliation`**, and abstract **`PlayerInterface`** (player id, name, team, affiliations, active — no wire metadata).
-- Add **`PlayerProvider`** in core: holds an optional profile, exposes `const PlayerInterface&` (stored profile or a default object with `LOG_E` when absent), supports set/clear.
-- Make **`DevicePlayer`** in `lib/alleycat-server` **publicly implement `PlayerInterface`**, mapping team and affiliation fields without changing protobuf codegen or decoder wire mapping.
-- Follow-up wiring (not required to land the core contract): migrate `PlayerFetchSession` to implement `PlayerProvider`, simplify awaken to default allegiance art, and point states at `PlayerProvider*` where applicable.
+- Move `DevicePlayer` from `lib/alleycat-server` into `lib/core/include/game/player-types.hpp` and rename it **`PlayerV2`**, alongside **`Team`**, **`Affiliation`**, and **`PlayerLimits`**. Fields and fixed-size storage are unchanged except team: `teamId` / `teamName` become `Team team`.
+- `alleycat-server` includes `game/player-types.hpp`; `DevicePlayerDecoder` and `PlayerApi` produce `PlayerV2`. No `.proto` / nanopb regeneration.
+- Add concrete **`PlayerProvider`** in core: optional `PlayerV2`, `hasPlayer` / `getPlayer` / `setPlayer` / `clear`; `getPlayer()` returns an empty default with `LOG_E` when nothing is stored.
+- Remove `PlayerFetchSession`; `PlayerFetchApp` owns a `PlayerProvider` and states take `PlayerProvider*`. Awaken uses default Alleycat art.
 
-Out of scope for this change: unifying gameplay `Player` stats/RNG with `PlayerInterface`; Quickdraw / Idle wiring; removing legacy JSON registration; retaining event metadata in session storage.
+Out of scope: unifying gameplay `Player` with `PlayerV2`; Quickdraw / Idle wiring; removing legacy JSON registration.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `player-types`: Registration value types (`Team`, `Affiliation`) and `PlayerInterface` read API in core.
-- `player-provider`: Optional profile storage and access via `PlayerProvider`.
+- `player-types`: `PlayerV2`, `Team`, `Affiliation` in core.
+- `player-provider`: Optional `PlayerV2` storage and access via `PlayerProvider`.
 
 ### Modified Capabilities
 
-None (main-line `openspec/specs/` unchanged). PlayerFetch’s in-flight `player-device-profile` capability is superseded at implementation time by `PlayerProvider`, not by editing the archived player-fetch change.
+None (main-line `openspec/specs/` unchanged). PlayerFetch's in-flight `player-device-profile` capability is superseded at implementation time by `PlayerProvider`.
 
 ## Impact
 
-- `lib/core/include/game/` — new `player-types.hpp`, `player-provider.hpp`; possible small helper `.cpp` for provider default behavior.
-- `lib/core` tests — interface conformance for `DevicePlayer`, provider set/get/clear/default `getPlayer`.
-- `lib/alleycat-server/include/alleycat-server/device-player.hpp` — inheritance + override implementations; **no** `.proto` / nanopb regeneration.
-- Optional later: `src/pdn/apps/player-fetch/player-fetch-session.hpp`, awaken simplification, and states.
+- `lib/core/include/game/` — new `player-types.hpp`, `player-provider.hpp`; `lib/core/src/game/player-provider.cpp`.
+- `lib/alleycat-server` — `device-player.hpp` deleted; decoder and `PlayerApi` use `PlayerV2`; `device_api.options` sizes now mirror `PlayerLimits`.
+- `src/pdn/apps/player-fetch/` — session type removed; states use `PlayerProvider*`.
+- `test/test_core` — decoder tests renamed to `PlayerV2`; new provider tests.

@@ -16,11 +16,11 @@ PlayerFetchApp::~PlayerFetchApp() {
 
 void PlayerFetchApp::populateStateMap() {
     PinEntryState* pinEntry = new PinEntryState(player);
-    FetchUserState* fetchUser = new FetchUserState(player, wirelessManager, &session);
-    ChooseTeamState* chooseTeam = new ChooseTeamState(player, &session);
+    FetchUserState* fetchUser = new FetchUserState(player, wirelessManager, &playerProvider);
+    ChooseTeamState* chooseTeam = new ChooseTeamState(player, &playerProvider);
     DemoStubState* demoStub = new DemoStubState(player);
-    PlayerFetchWelcome* welcome = new PlayerFetchWelcome(player, &session);
-    PlayerFetchAwakenSequence* awaken = new PlayerFetchAwakenSequence(player, &session);
+    PlayerFetchWelcome* welcome = new PlayerFetchWelcome(player, &playerProvider);
+    PlayerFetchAwakenSequence* awaken = new PlayerFetchAwakenSequence(player);
 
     pinEntry->addTransition(
     new StateTransition([pinEntry]() { return pinEntry->transitionToFetchUser(); }, fetchUser));

@@ -13,6 +13,12 @@ enum class Allegiance {
     RESISTANCE = 3
 };
 
+/**
+ * Gameplay player: PIN, RNG seed, stats, and legacy allegiance/hunter fields.
+ *
+ * @deprecated for server registration reads; use `PlayerV2` via `PlayerProvider`
+ * (game/player-provider.hpp). Unification lands at the Quickdraw cutover.
+ */
 class Player {
 public:
     Player() = default;

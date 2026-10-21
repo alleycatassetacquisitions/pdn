@@ -2,8 +2,8 @@
 
 #include "state/state-machine.hpp"
 #include "apps/player-fetch/player-fetch-states.hpp"
-#include "apps/player-fetch/player-fetch-session.hpp"
 #include "game/player.hpp"
+#include "game/player-provider.hpp"
 #include "device/wireless-manager.hpp"
 
 class FirmwareUpdateManager;
@@ -25,15 +25,15 @@ public:
     /** True after the in-app awaken sequence completes. */
     bool readyForGameplay();
 
-    /** Mutable session profile for the current registration attempt. */
-    PlayerFetchSession& getSession() { return session; }
+    /** Mutable registration profile for the current attempt. */
+    PlayerProvider& getPlayerProvider() { return playerProvider; }
 
-    /** Read-only session profile for the current registration attempt. */
-    const PlayerFetchSession& getSession() const { return session; }
+    /** Read-only registration profile for the current attempt. */
+    const PlayerProvider& getPlayerProvider() const { return playerProvider; }
 
 private:
     Player* player = nullptr;
     WirelessManager* wirelessManager = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
-    PlayerFetchSession session;
+    PlayerProvider playerProvider;
 };

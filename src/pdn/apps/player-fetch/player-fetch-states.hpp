@@ -6,7 +6,7 @@
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "apps/player-fetch/player-fetch-session.hpp"
+#include "game/player-provider.hpp"
 
 class FirmwareUpdateManager;
 
@@ -63,11 +63,12 @@ private:
 class FetchUserState : public TypedState<PDN> {
 public:
     /** Protobuf device player lookup for the entered PIN. */
-    FetchUserState(Player* player, WirelessManager* wirelessManager, PlayerFetchSession* session);
+    FetchUserState(Player* player, WirelessManager* wirelessManager,
+                   PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~FetchUserState() override;
 
-    /** @return true when @ref DevicePlayer was stored and welcome should mount. */
+    /** @return true when the fetched profile was stored and welcome should mount. */
     bool transitionToWelcome() const;
     /** @return true when fetch failed and the asset-not-found page finished. */
     bool transitionToPinEntry() const;
@@ -86,7 +87,7 @@ private:
 
     Player* player = nullptr;
     WirelessManager* wirelessManager = nullptr;
-    PlayerFetchSession* session = nullptr;
+    PlayerProvider* playerProvider = nullptr;
     SimpleTimer fetchTimer;
     SimpleTimer failurePageTimer;
     bool transitionToWelcomeState = false;
@@ -98,7 +99,7 @@ private:
 class ChooseTeamState : public TypedState<PDN> {
 public:
     /** Demo Hunter/Bounty picker for @ref DEMO_PIN. */
-    ChooseTeamState(Player* player, PlayerFetchSession* session);
+    ChooseTeamState(Player* player, PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~ChooseTeamState() override;
 
@@ -115,7 +116,7 @@ private:
     void renderUi(PDN* pdn) const;
 
     Player* player = nullptr;
-    PlayerFetchSession* session = nullptr;
+    PlayerProvider* playerProvider = nullptr;
     bool transitionToDemoStubState = false;
     bool displayIsDirty = false;
     bool hunterSelected = true;
@@ -145,7 +146,7 @@ private:
 class PlayerFetchWelcome : public TypedState<PDN> {
 public:
     /** Short welcome screen before awaken. */
-    PlayerFetchWelcome(Player* player, PlayerFetchSession* session);
+    PlayerFetchWelcome(Player* player, PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~PlayerFetchWelcome() override;
 
@@ -160,7 +161,7 @@ public:
 
 private:
     Player* player = nullptr;
-    PlayerFetchSession* session = nullptr;
+    PlayerProvider* playerProvider = nullptr;
     SimpleTimer welcomeMessageTimer;
     bool transitionToAwakenState = false;
 };
@@ -168,7 +169,7 @@ private:
 class PlayerFetchAwakenSequence : public TypedState<PDN> {
 public:
     /** In-app awaken animation after welcome. */
-    explicit PlayerFetchAwakenSequence(Player* player, PlayerFetchSession* session);
+    explicit PlayerFetchAwakenSequence(Player* player);
     /** @copydoc TypedState::~TypedState */
     ~PlayerFetchAwakenSequence() override;
 
@@ -184,7 +185,6 @@ public:
 private:
     static constexpr int AWAKEN_THRESHOLD = 20;
     Player* player = nullptr;
-    PlayerFetchSession* session = nullptr;
     SimpleTimer activationSequenceTimer;
     int activateMotorCount = 0;
     bool activateMotor = false;
