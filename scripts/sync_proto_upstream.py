@@ -8,14 +8,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 
 def projectRoot() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def githubHeaders(accept: str | None = None) -> dict[str, str]:
+    headers = {"User-Agent": "pdn-sync-proto"}
+    if accept:
+        headers["Accept"] = accept
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 def rawUrl(owner: str, name: str, commit: str, upstreamPath: str) -> str:
@@ -32,9 +45,39 @@ def fetchText(url: str) -> str:
         return response.read().decode("utf-8")
 
 
+def resolveUpstreamCommit(
+    owner: str, name: str, ref: str, upstreamPath: str
+) -> str:
+    """Resolve the latest commit at or before `ref` that touched `upstreamPath`."""
+    if not ref or ref.startswith("-"):
+        raise ValueError(f"invalid upstream ref: {ref!r}")
+    path = urllib.parse.quote(upstreamPath.lstrip("/"))
+    sha = urllib.parse.quote(ref)
+    url = (
+        f"https://api.github.com/repos/{owner}/{name}/commits"
+        f"?path={path}&sha={sha}&per_page=1"
+    )
+    request = urllib.request.Request(
+        url, headers=githubHeaders("application/vnd.github+json")
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, list) or not payload:
+            raise KeyError(f"no commits found for {upstreamPath} at {ref}")
+        return payload[0]["sha"]
+
+
 def loadLock(lockPath: Path) -> dict:
     with lockPath.open(encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def saveLock(lockPath: Path, lock: dict) -> None:
+    lockPath.write_text(
+        json.dumps(lock, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def syncArtifact(root: Path, artifact: dict, checkOnly: bool) -> list[str]:
@@ -85,6 +128,19 @@ def main() -> int:
         action="store_true",
         help="Verify local files match the lock; do not write",
     )
+    parser.add_argument(
+        "--bump",
+        nargs="?",
+        const="HEAD",
+        default=None,
+        metavar="REF",
+        help="Update lockfile commit to upstream REF (default: HEAD) before syncing",
+    )
+    parser.add_argument(
+        "--generate",
+        action="store_true",
+        help="Run scripts/generate_proto.py after syncing",
+    )
     args = parser.parse_args()
 
     root = projectRoot()
@@ -99,13 +155,36 @@ def main() -> int:
         return 1
 
     allErrors: list[str] = []
+    lockChanged = False
     for artifact in lock.get("artifacts", []):
+        if args.bump and not args.check:
+            repo = artifact["repository"]
+            upstreamPath = artifact["upstream"]["path"]
+            try:
+                resolved = resolveUpstreamCommit(
+                    repo["owner"], repo["name"], args.bump, upstreamPath
+                )
+            except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
+                allErrors.append(f"{artifact['id']}: resolve {args.bump} failed: {exc}")
+                continue
+            if repo.get("commit") != resolved:
+                repo["commit"] = resolved
+                lockChanged = True
+                print(f"Bumped {artifact['id']} -> {resolved}")
         allErrors.extend(syncArtifact(root, artifact, args.check))
+
+    if lockChanged and not allErrors:
+        saveLock(lockPath, lock)
 
     if allErrors:
         for message in allErrors:
             print(message, file=sys.stderr)
         return 1
+
+    if args.generate and not args.check:
+        genScript = root / "scripts" / "generate_proto.py"
+        result = subprocess.run([sys.executable, str(genScript)])
+        return result.returncode
     return 0
 
 
