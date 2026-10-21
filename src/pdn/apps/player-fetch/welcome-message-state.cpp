@@ -1,20 +1,21 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device/device.hpp"
 
-PlayerFetchWelcome::PlayerFetchWelcome(Player* player, PlayerFetchSession* session)
+PlayerFetchWelcome::PlayerFetchWelcome(Player* player, PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::WELCOME)
     , player(player)
-    , session(session) {}
+    , playerProvider(playerProvider) {}
 
 PlayerFetchWelcome::~PlayerFetchWelcome() {
     player = nullptr;
-    session = nullptr;
+    playerProvider = nullptr;
 }
 
 void PlayerFetchWelcome::onStateMounted(PDN* pdn) {
-    const char* name = player->getName().c_str();
-    if (session->hasDevicePlayer() && session->getDevicePlayer().name[0] != '\0') {
-        name = session->getDevicePlayer().name;
+    const std::string fallbackName = player->getName();
+    const char* name = fallbackName.c_str();
+    if (playerProvider->hasPlayer() && playerProvider->getPlayer().name[0] != '\0') {
+        name = playerProvider->getPlayer().name;
     }
 
     pdn->getDisplay()

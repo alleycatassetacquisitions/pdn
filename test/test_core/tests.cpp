@@ -26,6 +26,7 @@
 #include "player-response-tests.hpp"
 #include "device-player-decoder-tests.hpp"
 #include "player-fetch-tests.hpp"
+#include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
 
@@ -909,6 +910,20 @@ TEST(DevicePlayerDecoder, rejectsGarbageBody) {
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
 }
+
+// ============================================
+// PLAYER PROVIDER TESTS
+// ============================================
+
+TEST(PlayerProvider, startsEmpty) { playerProviderStartsEmpty(); }
+
+TEST(PlayerProvider, returnsDefaultWhenEmpty) { playerProviderReturnsDefaultWhenEmpty(); }
+
+TEST(PlayerProvider, storesProfile) { playerProviderStoresProfile(); }
+
+TEST(PlayerProvider, overwriteReplacesProfile) { playerProviderOverwriteReplacesProfile(); }
+
+TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
 
 // ============================================
 // PLAYER FETCH APP TESTS

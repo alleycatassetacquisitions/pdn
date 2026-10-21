@@ -2,28 +2,13 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/player.hpp"
 #include "device/device.hpp"
-#include <cstring>
 
-static Allegiance allegianceForAwakenArt(const PlayerFetchSession* session, Allegiance fallback) {
-    if (session == nullptr || !session->hasDevicePlayer()) {
-        return fallback;
-    }
-    for (const DevicePlayerAffiliation& affiliation : session->getDevicePlayer().affiliations) {
-        if (strcmp(affiliation.categoryName, "Allegiance") == 0) {
-            return Player::allegianceFromServerName(affiliation.affiliationName);
-        }
-    }
-    return fallback;
-}
-
-PlayerFetchAwakenSequence::PlayerFetchAwakenSequence(Player* player, PlayerFetchSession* session)
+PlayerFetchAwakenSequence::PlayerFetchAwakenSequence(Player* player)
     : TypedState<PDN>(PlayerFetchStateId::AWAKEN)
-    , player(player)
-    , session(session) {}
+    , player(player) {}
 
 PlayerFetchAwakenSequence::~PlayerFetchAwakenSequence() {
     player = nullptr;
-    session = nullptr;
 }
 
 void PlayerFetchAwakenSequence::onStateMounted(PDN* pdn) {
@@ -31,11 +16,10 @@ void PlayerFetchAwakenSequence::onStateMounted(PDN* pdn) {
     activateMotor = true;
     pdn->getHaptics()->setIntensity(125);
 
-    Allegiance allegiance = allegianceForAwakenArt(session, player->getAllegiance());
     pdn->getDisplay()
     ->invalidateScreen()
-    ->drawImage(getImageForAllegiance(allegiance, ImageType::LOGO_LEFT))
-    ->drawImage(getImageForAllegiance(allegiance, ImageType::STAMP))
+    ->drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))
+    ->drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))
     ->render();
 }
 

@@ -2,14 +2,14 @@
 #include "device/device.hpp"
 #include "id-generator.hpp"
 
-ChooseTeamState::ChooseTeamState(Player* player, PlayerFetchSession* session)
+ChooseTeamState::ChooseTeamState(Player* player, PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::CHOOSE_TEAM)
     , player(player)
-    , session(session) {}
+    , playerProvider(playerProvider) {}
 
 ChooseTeamState::~ChooseTeamState() {
     player = nullptr;
-    session = nullptr;
+    playerProvider = nullptr;
 }
 
 void ChooseTeamState::onStateMounted(PDN* pdn) {
@@ -26,11 +26,11 @@ void ChooseTeamState::onStateMounted(PDN* pdn) {
     pdn->getSecondaryButton()->setButtonPress(
     [](void* ctx) {
         ChooseTeamState* chooseTeamState = static_cast<ChooseTeamState*>(ctx);
-        DevicePlayer demoProfile;
+        PlayerV2 demoProfile;
         IdGenerator::copyId(demoProfile.name, "Demo");
-        IdGenerator::copyId(demoProfile.teamName,
+        IdGenerator::copyId(demoProfile.team.name,
                             chooseTeamState->hunterSelected ? "Hunter" : "Bounty");
-        chooseTeamState->session->setDevicePlayer(demoProfile);
+        chooseTeamState->playerProvider->setPlayer(demoProfile);
         chooseTeamState->player->setName("Demo");
         chooseTeamState->transitionToDemoStubState = true;
     },

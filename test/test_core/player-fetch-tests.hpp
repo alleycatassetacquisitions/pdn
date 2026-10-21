@@ -119,8 +119,8 @@ inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
 
 inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
     suite->player->setUserID(const_cast<char*>("1234"));
-    PlayerFetchSession session;
-    FetchUserState fetch(suite->player, suite->device.wirelessManager, &session);
+    PlayerProvider playerProvider;
+    FetchUserState fetch(suite->player, suite->device.wirelessManager, &playerProvider);
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/1234");
@@ -131,18 +131,17 @@ inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
 
 inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
     suite->player->setUserID(const_cast<char*>("0007"));
-    PlayerFetchSession session;
-    FetchUserState fetch(suite->player, suite->device.wirelessManager, &session);
+    PlayerProvider playerProvider;
+    FetchUserState fetch(suite->player, suite->device.wirelessManager, &playerProvider);
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
-    alleycat_device_DevicePlayerResponse message = makeUnassignedPlayerMessage();
-    IdGenerator::copyId(message.name, "Ada");
-    suite->queuedRequests[0].onSuccess(encodeDevicePlayerResponse(message, {}));
+    suite->queuedRequests[0].onSuccess(
+        encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
 
     fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(session.hasDevicePlayer());
-    EXPECT_STREQ(session.getDevicePlayer().name, "Ada");
+    EXPECT_TRUE(playerProvider.hasPlayer());
+    EXPECT_STREQ(playerProvider.getPlayer().name, "Ada");
     EXPECT_TRUE(fetch.transitionToWelcome());
     suite->queuedRequests.clear();
     fetch.onStateDismounted(&suite->device);
@@ -150,8 +149,8 @@ inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
 
 inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* suite) {
     suite->player->setUserID(const_cast<char*>("9999"));
-    PlayerFetchSession session;
-    FetchUserState fetch(suite->player, suite->device.wirelessManager, &session);
+    PlayerProvider playerProvider;
+    FetchUserState fetch(suite->player, suite->device.wirelessManager, &playerProvider);
     fetch.onStateMounted(&suite->device);
     suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
 
@@ -166,8 +165,8 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
 }
 
 inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
-    PlayerFetchSession session;
-    ChooseTeamState chooseTeam(suite->player, &session);
+    PlayerProvider playerProvider;
+    ChooseTeamState chooseTeam(suite->player, &playerProvider);
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* secondaryCtx = nullptr;
     ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))

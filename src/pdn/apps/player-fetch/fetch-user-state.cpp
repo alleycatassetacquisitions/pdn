@@ -7,16 +7,16 @@
 static const char TAG[] = "FetchUserState";
 
 FetchUserState::FetchUserState(Player* player, WirelessManager* wirelessManager,
-                               PlayerFetchSession* session)
+                               PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::FETCH_USER)
     , player(player)
     , wirelessManager(wirelessManager)
-    , session(session) {}
+    , playerProvider(playerProvider) {}
 
 FetchUserState::~FetchUserState() {
     wirelessManager = nullptr;
     player = nullptr;
-    session = nullptr;
+    playerProvider = nullptr;
 }
 
 void FetchUserState::onStateMounted(PDN* pdn) {
@@ -69,9 +69,9 @@ void FetchUserState::fetchDevicePlayer() {
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
     PlayerApi::getDevicePlayerByPin(
     wirelessManager, player->getUserID(),
-    [this](const DevicePlayer& devicePlayer) {
-        LOG_I(TAG, "Fetched device player: %s", devicePlayer.name);
-        session->setDevicePlayer(devicePlayer);
+    [this](const PlayerV2& fetchedPlayer) {
+        LOG_I(TAG, "Fetched device player: %s", fetchedPlayer.name);
+        playerProvider->setPlayer(fetchedPlayer);
         fetchTimer.invalidate();
         transitionToWelcomeState = true;
     },

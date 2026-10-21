@@ -42,6 +42,8 @@ PinEntry --OTA hold--> FirmwareUpdate --> PinEntry
 
 Fetch success copies `DevicePlayer` into **session storage** owned by PlayerFetch (e.g. member on app or fetch state) and/or minimal fields on `Player` for welcome display (`name`). Full “`Player` canonical DevicePlayer” lands when gameplay unifies — spec capability `player-device-profile` applies to the **fetch session**, not global gameplay migration yet.
 
+> Superseded by `openspec/changes/player-interface-provider`: `DevicePlayer` moved to core as `PlayerV2`, `PlayerFetchApp` owns a `PlayerProvider` (replacing the session type), states hold `PlayerProvider*`, and Awaken uses default Alleycat art.
+
 ### Awaken
 
 Relocate/copy `AwakenSequence` under `player-fetch/` for Welcome → Awaken only. Quickdraw keeps its existing Awaken instance and registration app until cutover.
