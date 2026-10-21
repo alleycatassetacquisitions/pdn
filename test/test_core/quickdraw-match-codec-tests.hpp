@@ -8,13 +8,17 @@
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "alleycat-server/matches-api.hpp"
 #include "alleycat-server/quickdraw-match-codec.hpp"
+#include "id-generator.hpp"
+#include "uuid-bytes-tests.hpp"
 
 inline QuickdrawMatchRecord makeMatchRecord(size_t index) {
     QuickdrawMatchRecord record;
-    snprintf(record.matchId, sizeof(record.matchId), "00000000-0000-4000-8000-%012zu", index);
-    IdGenerator::copyId(record.playerAId, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    IdGenerator::copyId(record.playerBId, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-    IdGenerator::copyId(record.winnerPlayerId, record.playerAId);
+    char matchId[UUIDBytes::TEXT_BUFFER_SIZE];
+    snprintf(matchId, sizeof(matchId), "00000000-0000-4000-8000-%012zu", index);
+    record.matchId = makeTestUuid(matchId);
+    record.playerAId = makeTestUuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    record.playerBId = makeTestUuid("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    record.winnerPlayerId = record.playerAId;
     record.playerADrawTimeMs = 210;
     record.playerBDrawTimeMs = 340;
     record.occurredAtUnixMs = 1792359000000;
@@ -89,9 +93,9 @@ inline QuickdrawMatchCodec::RejectionSink collectRejections(std::vector<Quickdra
 
 inline void matchCodecRoundTripsAllFields() {
     std::vector<QuickdrawMatchRecord> records = {makeMatchRecord(0), makeMatchRecord(1)};
-    IdGenerator::copyId(records[1].playerATeamId, "11111111-1111-4111-8111-111111111111");
-    IdGenerator::copyId(records[1].playerBTeamId, "22222222-2222-4222-8222-222222222222");
-    IdGenerator::copyId(records[1].winnerPlayerId, records[1].playerBId);
+    records[1].playerATeamId = makeTestUuid("1111AAAA-1111-4111-8111-111111111111");
+    records[1].playerBTeamId = makeTestUuid("22222222-2222-4222-8222-222222222222");
+    records[1].winnerPlayerId = records[1].playerBId;
 
     std::string payload;
     ASSERT_TRUE(QuickdrawMatchCodec::encodeRequest(records.size(), makeMatchSource(records), payload));
@@ -99,21 +103,21 @@ inline void matchCodecRoundTripsAllFields() {
     std::vector<alleycat_device_QuickdrawMatch> matches = decodeTestRequest(payload);
     ASSERT_EQ(matches.size(), 2u);
     const alleycat_device_QuickdrawMatch& match = matches[1];
-    EXPECT_STREQ(match.id, records[1].matchId);
-    EXPECT_STREQ(match.player_a_id, records[1].playerAId);
-    EXPECT_STREQ(match.player_b_id, records[1].playerBId);
-    EXPECT_STREQ(match.winner_player_id, records[1].playerBId);
+    EXPECT_STREQ(match.id, "00000000-0000-4000-8000-000000000001");
+    EXPECT_STREQ(match.player_a_id, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    EXPECT_STREQ(match.player_b_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    EXPECT_STREQ(match.winner_player_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
     EXPECT_TRUE(match.has_player_a_team_id);
-    EXPECT_STREQ(match.player_a_team_id, records[1].playerATeamId);
+    EXPECT_STREQ(match.player_a_team_id, "1111aaaa-1111-4111-8111-111111111111") << "encoder writes lowercase";
     EXPECT_TRUE(match.has_player_b_team_id);
-    EXPECT_STREQ(match.player_b_team_id, records[1].playerBTeamId);
+    EXPECT_STREQ(match.player_b_team_id, "22222222-2222-4222-8222-222222222222");
     EXPECT_TRUE(match.has_player_a_draw_time_ms);
     EXPECT_EQ(match.player_a_draw_time_ms, 210u);
     EXPECT_TRUE(match.has_player_b_draw_time_ms);
     EXPECT_EQ(match.player_b_draw_time_ms, 340u);
     EXPECT_TRUE(match.has_occurred_at_unix_ms);
     EXPECT_EQ(match.occurred_at_unix_ms, 1792359000000);
-    EXPECT_STREQ(matches[0].id, records[0].matchId);
+    EXPECT_STREQ(matches[0].id, "00000000-0000-4000-8000-000000000000");
 }
 
 inline void matchCodecKeepsZeroDrawTimePresent() {
@@ -180,7 +184,7 @@ inline void matchCodecDecodesRejection() {
     ASSERT_EQ(rejections.size(), 1u);
     const QuickdrawMatchRejection& rejection = rejections[0];
     EXPECT_EQ(rejection.matchIndex, 2u);
-    EXPECT_STREQ(rejection.matchId, source.match_id);
+    EXPECT_EQ(rejection.matchId, makeTestUuid(source.match_id));
     ASSERT_EQ(rejection.fieldCount, 2u);
     EXPECT_STREQ(rejection.fields[0], "player_a_id");
     EXPECT_STREQ(rejection.fields[1], "player_b_id");
@@ -237,6 +241,18 @@ inline void matchCodecRejectsTooManyFieldsWithoutDelivering() {
     std::vector<QuickdrawMatchRejection> rejections;
     QuickdrawUploadResult result;
     EXPECT_FALSE(QuickdrawMatchCodec::decodeResponse(body, collectRejections(rejections), result));
+    EXPECT_TRUE(rejections.empty());
+}
+
+inline void matchCodecRejectsMalformedMatchIdWithoutDelivering() {
+    std::vector<alleycat_device_QuickdrawMatchRejection> sources = {
+        makeRejectionMessage(0, "00000000-0000-4000-8000-000000000000", 42),
+        makeRejectionMessage(1, "not-a-uuid", 42),
+    };
+
+    std::vector<QuickdrawMatchRejection> rejections;
+    QuickdrawUploadResult result;
+    EXPECT_FALSE(QuickdrawMatchCodec::decodeResponse(encodeUploadResponse(sources), collectRejections(rejections), result));
     EXPECT_TRUE(rejections.empty());
 }
 

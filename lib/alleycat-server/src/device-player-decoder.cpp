@@ -1,5 +1,6 @@
 #include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/device_api.pb.h"
+#include "id-generator.hpp"
 #include <pb_decode.h>
 
 namespace {
@@ -7,42 +8,47 @@ namespace {
 using ResponseMessage = alleycat_device_DevicePlayerResponse;
 using AffiliationMessage = alleycat_device_DevicePlayerAffiliation;
 
-static_assert(sizeof(DevicePlayer::id) == sizeof(ResponseMessage::id),
-              "DevicePlayer must match device_api.options");
+static_assert(sizeof(ResponseMessage::id) == UUIDBytes::TEXT_BUFFER_SIZE,
+              "UUID fields in device_api.options must hold UUIDBytes text");
+static_assert(sizeof(AffiliationMessage::category_id) == UUIDBytes::TEXT_BUFFER_SIZE,
+              "UUID fields in device_api.options must hold UUIDBytes text");
 static_assert(sizeof(DevicePlayer::pdnCode) == sizeof(ResponseMessage::pdn_code),
               "DevicePlayerLimits must match device_api.options");
 static_assert(sizeof(DevicePlayer::name) == sizeof(ResponseMessage::name),
               "DevicePlayerLimits must match device_api.options");
 static_assert(sizeof(DevicePlayer::teamName) == sizeof(ResponseMessage::team_name),
               "DevicePlayerLimits must match device_api.options");
-static_assert(sizeof(DevicePlayerAffiliation::categoryId) == sizeof(AffiliationMessage::category_id),
-              "DevicePlayerAffiliation must match device_api.options");
 static_assert(sizeof(DevicePlayerAffiliation::categoryName) == sizeof(AffiliationMessage::category_name),
               "DevicePlayerLimits must match device_api.options");
 static_assert(sizeof(DevicePlayerAffiliation::affiliationName) ==
                   sizeof(AffiliationMessage::affiliation_name),
               "DevicePlayerLimits must match device_api.options");
 
-void copyAffiliation(const AffiliationMessage& message, DevicePlayerAffiliation& affiliation) {
-    IdGenerator::copyId(affiliation.categoryId, message.category_id);
+bool copyAffiliation(const AffiliationMessage& message, DevicePlayerAffiliation& affiliation) {
+    if (!UUIDBytes::parse(message.category_id, affiliation.categoryId) ||
+        !UUIDBytes::parse(message.affiliation_id, affiliation.affiliationId)) {
+        return false;
+    }
     IdGenerator::copyId(affiliation.categoryName, message.category_name);
-    IdGenerator::copyId(affiliation.affiliationId, message.affiliation_id);
     IdGenerator::copyId(affiliation.affiliationName, message.affiliation_name);
+    return true;
 }
 
-void copyPlayerHeader(const ResponseMessage& message, DevicePlayer& player) {
-    IdGenerator::copyId(player.id, message.id);
-    IdGenerator::copyId(player.eventId, message.event_id);
+bool copyPlayerHeader(const ResponseMessage& message, DevicePlayer& player) {
+    if (!UUIDBytes::parse(message.id, player.id) || !UUIDBytes::parse(message.event_id, player.eventId)) {
+        return false;
+    }
+    if (message.has_team_id && !UUIDBytes::parse(message.team_id, player.teamId)) {
+        return false;
+    }
     IdGenerator::copyId(player.pdnCode, message.pdn_code);
     IdGenerator::copyId(player.name, message.name);
-    if (message.has_team_id) {
-        IdGenerator::copyId(player.teamId, message.team_id);
-    }
     if (message.has_team_name) {
         IdGenerator::copyId(player.teamName, message.team_name);
     }
     player.createdAtUnixMs = message.created_at_unix_ms;
     player.active = message.active;
+    return true;
 }
 
 bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg) {
@@ -58,7 +64,9 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
         return false;
     }
     DevicePlayerAffiliation affiliation;
-    copyAffiliation(message, affiliation);
+    if (!copyAffiliation(message, affiliation)) {
+        return false;
+    }
     affiliations->push_back(affiliation);
     return true;
 }
@@ -80,7 +88,9 @@ bool decode(const std::string& body, DevicePlayer& player) {
         return false;
     }
 
-    copyPlayerHeader(message, decoded);
+    if (!copyPlayerHeader(message, decoded)) {
+        return false;
+    }
     player = decoded;
     return true;
 }

@@ -1,5 +1,6 @@
 #include "alleycat-server/quickdraw-match-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
+#include "id-generator.hpp"
 #include <pb_decode.h>
 #include <pb_encode.h>
 #include <cstdint>
@@ -19,17 +20,17 @@ bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_t count
 
 alleycat_device_QuickdrawMatch toMessage(const QuickdrawMatchRecord& record) {
     alleycat_device_QuickdrawMatch message = alleycat_device_QuickdrawMatch_init_zero;
-    IdGenerator::copyId(message.id, record.matchId);
-    IdGenerator::copyId(message.player_a_id, record.playerAId);
-    IdGenerator::copyId(message.player_b_id, record.playerBId);
-    IdGenerator::copyId(message.winner_player_id, record.winnerPlayerId);
+    record.matchId.format(message.id);
+    record.playerAId.format(message.player_a_id);
+    record.playerBId.format(message.player_b_id);
+    record.winnerPlayerId.format(message.winner_player_id);
 
-    if (record.playerATeamId[0] != '\0') {
-        IdGenerator::copyId(message.player_a_team_id, record.playerATeamId);
+    if (!record.playerATeamId.isNil()) {
+        record.playerATeamId.format(message.player_a_team_id);
         message.has_player_a_team_id = true;
     }
-    if (record.playerBTeamId[0] != '\0') {
-        IdGenerator::copyId(message.player_b_team_id, record.playerBTeamId);
+    if (!record.playerBTeamId.isNil()) {
+        record.playerBTeamId.format(message.player_b_team_id);
         message.has_player_b_team_id = true;
     }
 
@@ -80,8 +81,10 @@ QuickdrawMatchErrorCode toErrorCode(int32_t rawCode) {
 
 using RejectionMessage = alleycat_device_QuickdrawMatchRejection;
 
-static_assert(sizeof(QuickdrawMatchRejection::matchId) == sizeof(RejectionMessage::match_id),
-              "QuickdrawMatchRejection must match device_api.options");
+static_assert(sizeof(RejectionMessage::match_id) == UUIDBytes::TEXT_BUFFER_SIZE,
+              "UUID fields in device_api.options must hold UUIDBytes text");
+static_assert(UUIDBytes::TEXT_BUFFER_SIZE == IdGenerator::UUID_BUFFER_SIZE,
+              "UUIDBytes text must match IdGenerator's UUID strings");
 static_assert(sizeof(QuickdrawMatchRejection::fields) == sizeof(RejectionMessage::fields),
               "QuickdrawMatchRejection must match device_api.options");
 
@@ -99,6 +102,12 @@ bool decodeRejection(pb_istream_t* stream, const pb_field_t* field, void** arg) 
     if (!pb_decode(stream, alleycat_device_QuickdrawMatchRejection_fields, &message)) {
         return false;
     }
+    // Parsed before the validation pass returns, so a malformed ID fails the whole
+    // body before anything reaches the sink.
+    UUIDBytes matchId;
+    if (!UUIDBytes::parse(message.match_id, matchId)) {
+        return false;
+    }
     pass->rejectionCount++;
     if (pass->onRejection == nullptr) {
         return true;
@@ -106,7 +115,7 @@ bool decodeRejection(pb_istream_t* stream, const pb_field_t* field, void** arg) 
 
     QuickdrawMatchRejection rejection;
     rejection.matchIndex = message.match_index;
-    IdGenerator::copyId(rejection.matchId, message.match_id);
+    rejection.matchId = matchId;
     rejection.fieldCount = message.fields_count;
     for (size_t index = 0; index < rejection.fieldCount; index++) {
         IdGenerator::copyId(rejection.fields[index], message.fields[index]);

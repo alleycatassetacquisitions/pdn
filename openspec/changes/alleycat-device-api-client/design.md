@@ -22,19 +22,29 @@ The HTTP layer has two constraints this design has to work within:
 - Producing `occurred_at_unix_ms`. The caller supplies the value, from `PlatformClock::unixMilliseconds()` added by the `http-date-clock-sync` branch.
 - Splitting stored matches into batches of 100. The caller does this.
 - Passing HTTP status codes through `WirelessErrorInfo`. This would change `lib/core` and both HTTP drivers.
-- Client-side UUID validation. The server reports invalid entries one by one.
+- Semantic UUID validation (version, variant, nil in a required field). The decoder checks shape only; the server reports invalid entries one by one.
+- Shootout match IDs, which are not UUID-shaped. Nothing outside this library adopts `UUIDBytes` in this stage.
 
 ## Decisions
 
 ### Library-owned types instead of `Player` / `Match`
 The new API takes and returns types defined in `lib/alleycat-server`:
-- `DevicePlayer`: fixed `char[]` fields `id`, `eventId`, `pdnCode`, `name`, `teamId`/`teamName` (with `hasTeam()`), plus `createdAtUnixMs`, `active`, and `std::vector<DevicePlayerAffiliation> affiliations` (at most `DevicePlayerLimits::MAX_AFFILIATIONS`, currently 3).
-- `QuickdrawMatchRecord`: fixed `char[IdGenerator::UUID_BUFFER_SIZE]` fields for match, player A/B, winner, and team A/B (an empty string means no team), plus `uint64_t` draw times and `int64_t occurredAtUnixMs`.
-- `QuickdrawMatchRejection`: `matchIndex`, fixed `matchId`, `fields[MAX_FIELDS]` with `fieldCount`, `code`, `rawCode`.
+- `DevicePlayer`: `UUIDBytes` `id`, `eventId`, `teamId` (nil when unassigned; `hasTeam()`), fixed `char[]` `pdnCode`, `name`, `teamName`, plus `createdAtUnixMs`, `active`, and `std::vector<DevicePlayerAffiliation> affiliations` (at most `DevicePlayerLimits::MAX_AFFILIATIONS`, currently 3). Each affiliation has `UUIDBytes` `categoryId`/`affiliationId` and fixed `char[]` names.
+- `QuickdrawMatchRecord`: `UUIDBytes` for match, player A/B, winner, and team A/B (nil means no team), plus `uint64_t` draw times and `int64_t occurredAtUnixMs`.
+- `QuickdrawMatchRejection`: `matchIndex`, `UUIDBytes matchId`, `fields[MAX_FIELDS]` with `fieldCount`, `code`, `rawCode`.
 - `QuickdrawUploadResult`: `rejectionCount` and `isFullyAccepted()`. Rejections themselves are delivered through a `RejectionSink`.
 
 *Why:* `Match` currently has no UUIDs, teams, winner, or timestamp, and stage 3 will change its storage format. Keeping the wire contract separate keeps this stage independent and testable now. Stage 4 adds a small `Match` → `QuickdrawMatchRecord` mapping.
 *Alternative:* encode directly from `Match`. Rejected: it would force the `Match` changes into this stage.
+
+### UUIDs are 16 bytes past the codec
+The proto carries UUIDs as 36-character strings. They exist as text only inside the short-lived nanopb message struct; library types hold `UUIDBytes` (`lib/core/include/utils/uuid-bytes.hpp`), a 16-byte value with `parse`, `format`, `isNil`, and `==`. The decoder parses each UUID field and fails the whole decode on malformed text. The encoder formats lowercase text into the message just before encoding it. `static_assert`s tie `UUIDBytes::TEXT_BUFFER_SIZE` to the generated `max_size:37` fields and to `IdGenerator::UUID_BUFFER_SIZE`.
+
+`parse` accepts 8-4-4-4-12 hex in either case and checks nothing else: no version, variant, or nil checks. It does not reuse `IdGenerator::uuidStringToBytes`, which maps non-hex characters to zero; that function and its callers are unchanged.
+
+*Why:* 21 bytes saved per stored UUID (up to 9 in a `DevicePlayer`), value comparison is a 16-byte `memcmp`, and a UUID can no longer be confused with the 4-character PIN or a name.
+*Trade-off:* one malformed UUID from the server makes the response undecodable, the same as an oversized string.
+*Alternative:* change the proto fields to `bytes`. Rejected: the server owns the contract.
 
 ### Server strings and lists decode into static buffers
 The device API is versioned by device capability, and the server sends only ASCII names of at most 36 bytes. In `device_api.options`, every string in `DevicePlayerResponse`, `DevicePlayerAffiliation`, and `QuickdrawMatchRejection` has a static `max_size` (37 for UUIDs and names, 5 for the PIN). `affiliations` is `FT_CALLBACK` \(append into the vector, max 3 per device capability\) and rejection `fields` is `max_count:2 max_size:24` (`SAME_PLAYER` names two fields). Player header strings decode into static fields; affiliations decode one submessage at a time into the vector. `static_assert`s tie the library buffer sizes to the generated ones.
@@ -74,6 +84,7 @@ The codec logic lives in `device-player-decoder.{hpp,cpp}` and `quickdraw-match-
 - [The vendored proto drifts from upstream again] → `upstream.lock.json` records the commit. The regeneration task diffs field numbers against upstream before committing.
 - [Changing `.options` for new messages alters generated code for `WriteDeviceLogRequest`] → leave its options unchanged and keep the existing crash-encoder tests as a regression guard.
 - [The 404 for an unknown PIN can't be told apart from other client errors] → accepted for this stage. Callers treat every lookup error the way they do today (offline path). A later stage can add a status code to `WirelessErrorInfo`.
+- [The server sends a UUID field that is not UUID-shaped] → the whole decode fails and the caller takes its error path. The server only issues UUIDs for these fields.
 - [A server value exceeds a static limit and the whole decode fails] → limits are part of the device-capability API version; a server change that needs larger limits ships with a new capability version and regenerated options.
 - [Stack use during player decode] → the generated message and the `DevicePlayer` copy are each under 1 KiB and live together on the HTTP callback task's stack.
 - [The source lambda returns inconsistent data across calls] → the encoder calls it exactly once per index, in order.

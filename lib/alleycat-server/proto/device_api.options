@@ -7,7 +7,7 @@ alleycat.device.WriteDeviceLogRequest.task_name           max_size:16   # TASK_N
 
 # Server-controlled strings are ASCII and at most 36 bytes; a longer value fails the decode.
 # String sizes must match DevicePlayerLimits in device-player.hpp.
-alleycat.device.DevicePlayerResponse.id                   max_size:37   # IdGenerator::UUID_BUFFER_SIZE
+alleycat.device.DevicePlayerResponse.id                   max_size:37   # UUIDBytes::TEXT_BUFFER_SIZE
 alleycat.device.DevicePlayerResponse.event_id             max_size:37
 alleycat.device.DevicePlayerResponse.pdn_code             max_size:5    # four digits
 alleycat.device.DevicePlayerResponse.name                 max_size:37
@@ -26,7 +26,7 @@ alleycat.device.QuickdrawMatchRejection.fields            max_count:2 max_size:2
 
 # Matches are streamed one at a time so a 100-match batch never sits on the stack.
 alleycat.device.WriteQuickdrawMatchesRequest.matches      type:FT_CALLBACK
-alleycat.device.QuickdrawMatch.id                         max_size:37   # IdGenerator::UUID_BUFFER_SIZE
+alleycat.device.QuickdrawMatch.id                         max_size:37   # UUIDBytes::TEXT_BUFFER_SIZE
 alleycat.device.QuickdrawMatch.player_a_id                max_size:37
 alleycat.device.QuickdrawMatch.player_b_id                max_size:37
 alleycat.device.QuickdrawMatch.player_a_team_id           max_size:37

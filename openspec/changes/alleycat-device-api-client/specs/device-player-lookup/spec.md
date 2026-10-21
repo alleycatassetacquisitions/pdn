@@ -8,7 +8,7 @@ The client SHALL queue a `GET` request to `/device/players/by-pin/{pin}` with no
 - **THEN** the queued request has method `GET`, path `/device/players/by-pin/0007`, and an empty payload
 
 ### Requirement: Successful response is decoded into a device player
-On a successful response, the client SHALL decode the body as `DevicePlayerResponse` and pass a `DevicePlayer` to the success callback. The `DevicePlayer` SHALL contain the player UUID, event UUID, PIN, name, registration time, active status, team (if present), and affiliations in server order.
+On a successful response, the client SHALL decode the body as `DevicePlayerResponse` and pass a `DevicePlayer` to the success callback. The `DevicePlayer` SHALL contain the player UUID, event UUID, PIN, name, registration time, active status, team (if present), and affiliations in server order. Every UUID SHALL be held as 16 bytes, and an absent team SHALL be held as the nil UUID.
 
 #### Scenario: Player with team and affiliations
 - **WHEN** the response contains a team and two affiliations
@@ -41,6 +41,10 @@ If a successful HTTP response body cannot be decoded as `DevicePlayerResponse`, 
 
 #### Scenario: Value exceeds a device limit
 - **WHEN** the response contains a string longer than 36 bytes or more than three affiliations
+- **THEN** the response is treated as undecodable
+
+#### Scenario: Malformed UUID
+- **WHEN** the player, event, team, category, or affiliation ID is not 8-4-4-4-12 hexadecimal text
 - **THEN** the response is treated as undecodable
 
 ### Requirement: Transport errors are forwarded unchanged

@@ -26,8 +26,16 @@
 - [x] 3.7 Add upload API tests: counts 0 and 101 rejected with no request queued; 1 queues `POST /quickdraw-matches` with content type `application/protobuf`
 - [x] 3.8 Register the new tests in `test/test_core/tests.cpp`
 
-## 4. Verification
+## 4. UUIDBytes
 
-- [x] 4.1 Run the full `native` test environment from WSL and confirm everything passes
-- [x] 4.2 Build `esp32-s3_pdn_release` and confirm the library compiles for the device target and existing callers are unaffected
-- [x] 4.3 Confirm no legacy JSON API, `Player`, `Match`, or game-state files were modified
+- [x] 4.1 Add `UUIDBytes` in `lib/core/include/utils/uuid-bytes.hpp` and `lib/core/src/utils/uuid-bytes.cpp`: 16-byte value with shape-only `parse` (either case, `false` leaves output unchanged), lowercase `format`, `isNil`, `==`/`!=`. No dependency on `IdGenerator`
+- [x] 4.2 Switch UUID fields in `DevicePlayer`, `DevicePlayerAffiliation`, `QuickdrawMatchRecord`, and `QuickdrawMatchRejection` to `UUIDBytes`; `hasTeam()` and the encoder's team check use `isNil()`
+- [x] 4.3 Decoders parse UUID fields and fail on malformed text; the rejection decoder parses during the validation pass so nothing is delivered. Encoder formats into the message fields. `static_assert`s tie `UUIDBytes::TEXT_BUFFER_SIZE` to the generated fields and `IdGenerator::UUID_BUFFER_SIZE`
+- [x] 4.4 Add `test/test_core/uuid-bytes-tests.hpp`: known value, either case, lowercase round trip, malformed text rejected with output unchanged, nil, equality. Update decoder and codec tests to real UUIDs; add malformed player/team/affiliation UUID and malformed rejection `match_id` cases
+- [x] 4.5 Confirm `IdGenerator`, `Match`, `QuickdrawPacket`, and game-state files are unchanged
+
+## 5. Verification
+
+- [x] 5.1 Run the full `native` test environment from WSL and confirm everything passes
+- [x] 5.2 Build `esp32-s3_pdn_release` and confirm the library compiles for the device target and existing callers are unaffected
+- [x] 5.3 Confirm no legacy JSON API, `Player`, `Match`, or game-state files were modified

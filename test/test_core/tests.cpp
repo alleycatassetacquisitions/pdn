@@ -26,6 +26,7 @@
 #include "player-response-tests.hpp"
 #include "device-player-decoder-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
+#include "uuid-bytes-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -588,6 +589,30 @@ TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
     uuidGeneratorProducesValidFormat();
 }
 
+TEST(UUIDBytes, parsesKnownValue) {
+    uuidBytesParsesKnownValue();
+}
+
+TEST(UUIDBytes, acceptsEitherCase) {
+    uuidBytesAcceptsEitherCase();
+}
+
+TEST(UUIDBytes, formatsLowercaseRoundTrip) {
+    uuidBytesFormatsLowercaseRoundTrip();
+}
+
+TEST(UUIDBytes, rejectsMalformedText) {
+    uuidBytesRejectsMalformedText();
+}
+
+TEST(UUIDBytes, reportsNil) {
+    uuidBytesReportsNil();
+}
+
+TEST(UUIDBytes, comparesByValue) {
+    uuidBytesComparesByValue();
+}
+
 // ============================================
 // MAC ADDRESS TESTS
 // ============================================
@@ -868,6 +893,10 @@ TEST(DevicePlayerDecoder, rejectsTooManyAffiliations) {
     devicePlayerRejectsTooManyAffiliations();
 }
 
+TEST(DevicePlayerDecoder, rejectsMalformedUuids) {
+    devicePlayerRejectsMalformedUuids();
+}
+
 TEST(DevicePlayerDecoder, rejectsGarbageBody) {
     devicePlayerRejectsGarbageBody();
 }
@@ -914,6 +943,10 @@ TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
 
 TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
     matchCodecRejectsTooManyFieldsWithoutDelivering();
+}
+
+TEST(QuickdrawMatchCodec, rejectsMalformedMatchIdWithoutDelivering) {
+    matchCodecRejectsMalformedMatchIdWithoutDelivering();
 }
 
 TEST(QuickdrawMatchCodec, rejectsGarbageBody) {

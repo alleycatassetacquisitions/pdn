@@ -1,6 +1,6 @@
 #pragma once
 
-#include "id-generator.hpp"
+#include "utils/uuid-bytes.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -17,9 +17,9 @@ constexpr size_t MAX_AFFILIATIONS = 3;
  * One current assignment from DevicePlayerResponse. Identify by UUID; names may change.
  */
 struct DevicePlayerAffiliation {
-    char categoryId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    UUIDBytes categoryId;
     char categoryName[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
-    char affiliationId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    UUIDBytes affiliationId;
     char affiliationName[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
 };
 
@@ -28,18 +28,18 @@ struct DevicePlayerAffiliation {
  * server's active event.
  */
 struct DevicePlayer {
-    char id[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char eventId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    UUIDBytes id;
+    UUIDBytes eventId;
     char pdnCode[DevicePlayerLimits::PDN_CODE_BUFFER_SIZE] = {};
     char name[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
     int64_t createdAtUnixMs = 0;
-    char teamId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    UUIDBytes teamId;
     char teamName[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
     bool active = false;
     std::vector<DevicePlayerAffiliation> affiliations;
 
     /** @return true when the player is currently assigned to a team. */
     bool hasTeam() const {
-        return teamId[0] != '\0';
+        return !teamId.isNil();
     }
 };

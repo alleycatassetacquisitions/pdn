@@ -8,6 +8,11 @@
 #include "alleycat-server/device-player.hpp"
 #include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/player-api.hpp"
+#include "id-generator.hpp"
+#include "uuid-bytes-tests.hpp"
+
+constexpr const char* TEST_CATEGORY_ID = "c0ffee00-0000-4000-8000-000000000001";
+constexpr const char* TEST_AFFILIATION_ID = "c0ffee00-0000-4000-8000-000000000002";
 
 inline alleycat_device_DevicePlayerResponse makeUnassignedPlayerMessage() {
     alleycat_device_DevicePlayerResponse message = alleycat_device_DevicePlayerResponse_init_zero;
@@ -35,9 +40,9 @@ inline bool encodeTestAffiliations(pb_ostream_t* stream, const pb_field_t* field
         static_cast<const std::vector<DevicePlayerAffiliation>*>(*arg);
     for (const DevicePlayerAffiliation& row : *affiliations) {
         alleycat_device_DevicePlayerAffiliation message = alleycat_device_DevicePlayerAffiliation_init_zero;
-        IdGenerator::copyId(message.category_id, row.categoryId);
+        row.categoryId.format(message.category_id);
         IdGenerator::copyId(message.category_name, row.categoryName);
-        IdGenerator::copyId(message.affiliation_id, row.affiliationId);
+        row.affiliationId.format(message.affiliation_id);
         IdGenerator::copyId(message.affiliation_name, row.affiliationName);
         if (!pb_encode_tag_for_field(stream, field) ||
             !pb_encode_submessage(stream, alleycat_device_DevicePlayerAffiliation_fields, &message)) {
@@ -63,32 +68,32 @@ inline void devicePlayerDecodesTeamAndAffiliations() {
     IdGenerator::copyId(header.team_name, "Night Shift");
     std::vector<DevicePlayerAffiliation> affiliations;
     affiliations.push_back({});
-    IdGenerator::copyId(affiliations[0].categoryId, "c1");
+    affiliations[0].categoryId = makeTestUuid("c1c1c1c1-0000-4000-8000-000000000001");
     IdGenerator::copyId(affiliations[0].categoryName, "Allegiance");
-    IdGenerator::copyId(affiliations[0].affiliationId, "a1");
+    affiliations[0].affiliationId = makeTestUuid("a1a1a1a1-0000-4000-8000-000000000001");
     IdGenerator::copyId(affiliations[0].affiliationName, "Helix Industries");
     affiliations.push_back({});
-    IdGenerator::copyId(affiliations[1].categoryId, "c2");
+    affiliations[1].categoryId = makeTestUuid("c2c2c2c2-0000-4000-8000-000000000002");
     IdGenerator::copyId(affiliations[1].categoryName, "Faction");
-    IdGenerator::copyId(affiliations[1].affiliationId, "a2");
+    affiliations[1].affiliationId = makeTestUuid("a2a2a2a2-0000-4000-8000-000000000002");
     IdGenerator::copyId(affiliations[1].affiliationName, "Runners");
 
     DevicePlayer player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(encodeDevicePlayerResponse(header, affiliations), player));
 
-    EXPECT_STREQ(player.id, header.id);
-    EXPECT_STREQ(player.eventId, header.event_id);
+    EXPECT_EQ(player.id, makeTestUuid(header.id));
+    EXPECT_EQ(player.eventId, makeTestUuid(header.event_id));
     EXPECT_STREQ(player.pdnCode, "0007");
     EXPECT_STREQ(player.name, "Alex");
     EXPECT_EQ(player.createdAtUnixMs, header.created_at_unix_ms);
     EXPECT_TRUE(player.active);
     EXPECT_TRUE(player.hasTeam());
-    EXPECT_STREQ(player.teamId, header.team_id);
+    EXPECT_EQ(player.teamId, makeTestUuid(header.team_id));
     EXPECT_STREQ(player.teamName, "Night Shift");
     ASSERT_EQ(player.affiliations.size(), 2u);
-    EXPECT_STREQ(player.affiliations[0].categoryId, "c1");
+    EXPECT_EQ(player.affiliations[0].categoryId, affiliations[0].categoryId);
     EXPECT_STREQ(player.affiliations[0].categoryName, "Allegiance");
-    EXPECT_STREQ(player.affiliations[0].affiliationId, "a1");
+    EXPECT_EQ(player.affiliations[0].affiliationId, affiliations[0].affiliationId);
     EXPECT_STREQ(player.affiliations[0].affiliationName, "Helix Industries");
     EXPECT_STREQ(player.affiliations[1].categoryName, "Faction");
     EXPECT_STREQ(player.affiliations[1].affiliationName, "Runners");
@@ -112,7 +117,7 @@ inline void devicePlayerKeepsInactivePlayer() {
     ASSERT_TRUE(DevicePlayerDecoder::decode(encodeDevicePlayerResponse(header, {}), player));
 
     EXPECT_FALSE(player.active);
-    EXPECT_STREQ(player.id, header.id);
+    EXPECT_EQ(player.id, makeTestUuid(header.id));
 }
 
 inline void devicePlayerDecodesMaximumLengthName() {
@@ -135,14 +140,19 @@ inline void devicePlayerRejectsOversizedName() {
     EXPECT_FALSE(DevicePlayerDecoder::decode(body, player));
 }
 
-inline void devicePlayerDecodesMaximumAffiliations() {
+inline std::vector<DevicePlayerAffiliation> makeMaximumAffiliations() {
     std::vector<DevicePlayerAffiliation> affiliations(DevicePlayerLimits::MAX_AFFILIATIONS);
     for (DevicePlayerAffiliation& row : affiliations) {
-        IdGenerator::copyId(row.categoryId, "c");
+        row.categoryId = makeTestUuid(TEST_CATEGORY_ID);
         IdGenerator::copyId(row.categoryName, "Category");
-        IdGenerator::copyId(row.affiliationId, "a");
+        row.affiliationId = makeTestUuid(TEST_AFFILIATION_ID);
         IdGenerator::copyId(row.affiliationName, "Affiliation");
     }
+    return affiliations;
+}
+
+inline void devicePlayerDecodesMaximumAffiliations() {
+    std::vector<DevicePlayerAffiliation> affiliations = makeMaximumAffiliations();
 
     DevicePlayer player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(
@@ -152,15 +162,9 @@ inline void devicePlayerDecodesMaximumAffiliations() {
 }
 
 inline void devicePlayerRejectsTooManyAffiliations() {
-    std::vector<DevicePlayerAffiliation> affiliations(DevicePlayerLimits::MAX_AFFILIATIONS);
-    for (DevicePlayerAffiliation& row : affiliations) {
-        IdGenerator::copyId(row.categoryId, "c");
-        IdGenerator::copyId(row.categoryName, "Category");
-        IdGenerator::copyId(row.affiliationId, "a");
-        IdGenerator::copyId(row.affiliationName, "Affiliation");
-    }
+    std::vector<DevicePlayerAffiliation> affiliations = makeMaximumAffiliations();
     const alleycat_device_DevicePlayerAffiliation extra =
-        makeAffiliationMessage("c", "Category", "a", "Affiliation");
+        makeAffiliationMessage(TEST_CATEGORY_ID, "Category", TEST_AFFILIATION_ID, "Affiliation");
     std::string body = encodeDevicePlayerResponse(makeUnassignedPlayerMessage(), affiliations);
     appendTestBytesField(body, alleycat_device_DevicePlayerResponse_affiliations_tag,
                          encodeTestMessage(alleycat_device_DevicePlayerAffiliation_fields, &extra));
@@ -169,6 +173,29 @@ inline void devicePlayerRejectsTooManyAffiliations() {
     player.affiliations.push_back({});
     EXPECT_FALSE(DevicePlayerDecoder::decode(body, player));
     EXPECT_EQ(player.affiliations.size(), 1u);
+}
+
+inline void devicePlayerRejectsMalformedUuids() {
+    const char* malformed = "not-a-uuid";
+
+    alleycat_device_DevicePlayerResponse badPlayerId = makeUnassignedPlayerMessage();
+    IdGenerator::copyId(badPlayerId.id, malformed);
+
+    alleycat_device_DevicePlayerResponse badTeamId = makeUnassignedPlayerMessage();
+    badTeamId.has_team_id = true;
+    IdGenerator::copyId(badTeamId.team_id, malformed);
+
+    const alleycat_device_DevicePlayerAffiliation badAffiliation =
+        makeAffiliationMessage(TEST_CATEGORY_ID, "Category", malformed, "Affiliation");
+    std::string badAffiliationBody = encodeDevicePlayerResponse(makeUnassignedPlayerMessage(), {});
+    appendTestBytesField(badAffiliationBody, alleycat_device_DevicePlayerResponse_affiliations_tag,
+                         encodeTestMessage(alleycat_device_DevicePlayerAffiliation_fields, &badAffiliation));
+
+    DevicePlayer player;
+    EXPECT_FALSE(DevicePlayerDecoder::decode(encodeDevicePlayerResponse(badPlayerId, {}), player));
+    EXPECT_FALSE(DevicePlayerDecoder::decode(encodeDevicePlayerResponse(badTeamId, {}), player));
+    EXPECT_FALSE(DevicePlayerDecoder::decode(badAffiliationBody, player));
+    EXPECT_TRUE(player.id.isNil()) << "a failed decode must leave the player untouched";
 }
 
 inline void devicePlayerRejectsGarbageBody() {

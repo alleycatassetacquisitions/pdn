@@ -16,19 +16,19 @@ The client SHALL queue a `POST` request to `/quickdraw-matches` with content typ
 - **THEN** the queued request has method `POST`, path `/quickdraw-matches`, content type `application/protobuf`, and a payload that decodes as `WriteQuickdrawMatchesRequest` with one match
 
 ### Requirement: Matches are encoded with every required field present
-For each match, the encoder SHALL write the match UUID, both player UUIDs, the winner UUID, both draw times, and the occurrence timestamp. Draw times and the occurrence timestamp SHALL be marked present even when zero. A team UUID SHALL be written only when the record provides one.
+For each match, the encoder SHALL write the match UUID, both player UUIDs, the winner UUID, both draw times, and the occurrence timestamp. Draw times and the occurrence timestamp SHALL be marked present even when zero. A team UUID SHALL be written only when it is not nil. Records hold UUIDs as 16 bytes; the encoder SHALL write them as lowercase 8-4-4-4-12 text.
 
 #### Scenario: Zero draw time
 - **WHEN** a match has `playerADrawTimeMs` of 0
 - **THEN** the decoded `QuickdrawMatch` has `player_a_draw_time_ms` present with value 0
 
 #### Scenario: Unassigned team
-- **WHEN** a match record has no team for player B
+- **WHEN** a match record has a nil team for player B
 - **THEN** the decoded `QuickdrawMatch` has `player_b_team_id` absent
 
 #### Scenario: Assigned teams
 - **WHEN** a match record has teams for both players
-- **THEN** the decoded `QuickdrawMatch` has both team UUIDs present and equal to the record's values
+- **THEN** the decoded `QuickdrawMatch` has both team UUIDs present and equal to the record's values as lowercase text
 
 ### Requirement: Fully accepted batches report no rejections
 When the server accepts every match, it responds 204 with an empty body. On a successful response with an empty body, or a body that decodes to zero rejections, the client SHALL invoke the success callback with a result that reports full acceptance and no rejections.
@@ -63,6 +63,10 @@ If a non-empty successful response body cannot be decoded as `WriteQuickdrawMatc
 
 #### Scenario: Rejection exceeds a device limit
 - **WHEN** a rejection lists more than two fields
+- **THEN** the response is treated as undecodable and no rejection is delivered
+
+#### Scenario: Malformed rejected match ID
+- **WHEN** any rejection's `match_id` is not 8-4-4-4-12 hexadecimal text
 - **THEN** the response is treated as undecodable and no rejection is delivered
 
 ### Requirement: Transport errors are forwarded unchanged

@@ -1,22 +1,22 @@
 #pragma once
 
-#include "id-generator.hpp"
+#include "utils/uuid-bytes.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
 
 /**
- * One completed match for POST /quickdraw-matches. All IDs are UUID strings; an
- * empty team ID means that player was unassigned at match time.
+ * One completed match for POST /quickdraw-matches. A nil team ID means that player
+ * was unassigned at match time.
  */
 struct QuickdrawMatchRecord {
-    char matchId[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char playerAId[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char playerBId[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char playerATeamId[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char playerBTeamId[IdGenerator::UUID_BUFFER_SIZE] = {};
-    char winnerPlayerId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    UUIDBytes matchId;
+    UUIDBytes playerAId;
+    UUIDBytes playerBId;
+    UUIDBytes playerATeamId;
+    UUIDBytes playerBTeamId;
+    UUIDBytes winnerPlayerId;
     uint64_t playerADrawTimeMs = 0;
     uint64_t playerBDrawTimeMs = 0;
     int64_t occurredAtUnixMs = 0;
@@ -42,7 +42,7 @@ struct QuickdrawMatchRejection {
     static constexpr size_t FIELD_NAME_BUFFER_SIZE = 24;
 
     uint32_t matchIndex = 0;
-    char matchId[IdGenerator::UUID_BUFFER_SIZE] = {};
+    UUIDBytes matchId;
     char fields[MAX_FIELDS][FIELD_NAME_BUFFER_SIZE] = {};
     size_t fieldCount = 0;
     QuickdrawMatchErrorCode code = QuickdrawMatchErrorCode::UNKNOWN;
