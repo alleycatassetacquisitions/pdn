@@ -1,7 +1,7 @@
 #include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/device_api.pb.h"
-#include "id-generator.hpp"
 #include <pb_decode.h>
+#include <cstring>
 
 namespace {
 
@@ -29,8 +29,8 @@ bool copyAffiliation(const AffiliationMessage& message, DevicePlayerAffiliation&
         !UUIDBytes::parse(message.affiliation_id, affiliation.affiliationId)) {
         return false;
     }
-    IdGenerator::copyId(affiliation.categoryName, message.category_name);
-    IdGenerator::copyId(affiliation.affiliationName, message.affiliation_name);
+    std::memcpy(affiliation.categoryName, message.category_name, sizeof(affiliation.categoryName));
+    std::memcpy(affiliation.affiliationName, message.affiliation_name, sizeof(affiliation.affiliationName));
     return true;
 }
 
@@ -41,10 +41,10 @@ bool copyPlayerHeader(const ResponseMessage& message, DevicePlayer& player) {
     if (message.has_team_id && !UUIDBytes::parse(message.team_id, player.teamId)) {
         return false;
     }
-    IdGenerator::copyId(player.pdnCode, message.pdn_code);
-    IdGenerator::copyId(player.name, message.name);
+    std::memcpy(player.pdnCode, message.pdn_code, sizeof(player.pdnCode));
+    std::memcpy(player.name, message.name, sizeof(player.name));
     if (message.has_team_name) {
-        IdGenerator::copyId(player.teamName, message.team_name);
+        std::memcpy(player.teamName, message.team_name, sizeof(player.teamName));
     }
     player.createdAtUnixMs = message.created_at_unix_ms;
     player.active = message.active;

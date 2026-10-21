@@ -4,6 +4,7 @@
 #include <pb_decode.h>
 #include <pb_encode.h>
 #include <cstdint>
+#include <cstring>
 
 namespace {
 
@@ -117,9 +118,7 @@ bool decodeRejection(pb_istream_t* stream, const pb_field_t* field, void** arg) 
     rejection.matchIndex = message.match_index;
     rejection.matchId = matchId;
     rejection.fieldCount = message.fields_count;
-    for (size_t index = 0; index < rejection.fieldCount; index++) {
-        IdGenerator::copyId(rejection.fields[index], message.fields[index]);
-    }
+    std::memcpy(rejection.fields, message.fields, sizeof(rejection.fields));
     rejection.rawCode = static_cast<int32_t>(message.code);
     rejection.code = toErrorCode(rejection.rawCode);
     (*pass->onRejection)(rejection);
