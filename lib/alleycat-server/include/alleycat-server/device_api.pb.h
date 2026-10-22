@@ -33,46 +33,46 @@ typedef enum _alleycat_device_QuickdrawMatchErrorCode {
  No request body. The path PIN is exactly four ASCII digits, including leading
  zeros, and is resolved in the active event. Invalid PIN format returns 400;
  no active event or no matching player returns 404. Errors are plain text.
- Email is deliberately absent from this device-only response. */
+ Includes inactive registrations, without exposing their status. Email, PIN,
+ event ID, creation time, and active status are not part of this response.
+ Current PDN display profile: control characters become ?, then display strings
+ are transliterated to ASCII. Unknown characters and any remaining non-printable
+ output become ?. The result is truncated to 255 bytes. Only printable ASCII
+ (0x20-0x7E) is sent; no null terminator is sent.
+ Stored names are unchanged. Display text may be empty or collide after conversion;
+ use UUIDs for identity. Firmware using C strings needs room for a terminator.
+ UUIDs are exactly 16 bytes in RFC 9562 network byte order: the byte pairs of
+ the canonical hexadecimal UUID, with hyphens removed (not little-endian GUIDs). */
 typedef struct _alleycat_device_DevicePlayerResponse {
     /* Player UUID. Stable for this registration. */
-    char id[37];
-    /* Event UUID. PINs are unique only within an event. */
-    char event_id[37];
-    /* Four-digit PIN; preserve leading zeros. */
-    char pdn_code[5];
-    /* Current player display name. */
-    char name[37];
-    /* Registration creation time in UTC milliseconds since 1970-01-01. */
-    int64_t created_at_unix_ms;
+    pb_byte_t id[16];
+    /* Current player display name, using the PDN display profile above. */
+    pb_callback_t name;
     /* Current team UUID, absent when unassigned. Not a match-time snapshot. */
     bool has_team_id;
-    char team_id[37];
-    /* Current team name, absent when unassigned. */
-    bool has_team_name;
-    char team_name[37];
-    /* True for active registrations. Inactive players remain discoverable with
- false; clients should honor this status. It does not rewrite match scores
- or prevent uploads of previously completed matches. */
-    bool active;
-    /* Current assignments in this event, ordered by category name then category UUID.
- At most one affiliation per category. Unassigned categories are omitted;
- an unassigned player has an empty list. Names reflect current renames.
+    pb_byte_t team_id[16];
+    /* Current team name using the PDN display profile; absent when unassigned. */
+    pb_callback_t team_name;
+    /* Current assignments in categories with send_to_devices=true, ordered by the
+ original category name then category UUID. At most one affiliation per category.
+ Unassigned and disabled categories are omitted. May be empty; there is no fixed
+ count limit. Names reflect current renames and use the PDN display profile.
  These are membership details, not permissions or match-time scoring snapshots. */
     pb_callback_t affiliations;
 } alleycat_device_DevicePlayerResponse;
 
 /* One current player assignment. Categories and affiliations belong to the
- player's event. Use UUIDs for identity; names may change. */
+ player's event. UUIDs use the 16-byte representation and names use the PDN
+ display profile described in DevicePlayerResponse. Use UUIDs for identity. */
 typedef struct _alleycat_device_DevicePlayerAffiliation {
     /* Category UUID. */
-    char category_id[37];
+    pb_byte_t category_id[16];
     /* Current category name, such as Allegiance or Faction. */
-    char category_name[37];
+    pb_callback_t category_name;
     /* Affiliation UUID within this category. */
-    char affiliation_id[37];
+    pb_byte_t affiliation_id[16];
     /* Current affiliation name, such as Helix Industries. */
-    char affiliation_name[37];
+    pb_callback_t affiliation_name;
 } alleycat_device_DevicePlayerAffiliation;
 
 /* Request body for POST /device-logs.
@@ -191,15 +191,15 @@ extern "C" {
 
 
 /* Initializer values for message structs */
-#define alleycat_device_DevicePlayerResponse_init_default {"", "", "", "", 0, false, "", false, "", 0, {{NULL}, NULL}}
-#define alleycat_device_DevicePlayerAffiliation_init_default {"", "", "", ""}
+#define alleycat_device_DevicePlayerResponse_init_default {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerAffiliation_init_default {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_default {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_default {{{NULL}, NULL}}
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_default {{{NULL}, NULL}}
 #define alleycat_device_QuickdrawMatchRejection_init_default {0, "", 0, {"", ""}, _alleycat_device_QuickdrawMatchErrorCode_MIN}
 #define alleycat_device_QuickdrawMatch_init_default {"", "", "", false, "", false, "", false, 0, false, 0, "", false, 0}
-#define alleycat_device_DevicePlayerResponse_init_zero {"", "", "", "", 0, false, "", false, "", 0, {{NULL}, NULL}}
-#define alleycat_device_DevicePlayerAffiliation_init_zero {"", "", "", ""}
+#define alleycat_device_DevicePlayerResponse_init_zero {{0}, {{NULL}, NULL}, false, {0}, {{NULL}, NULL}, {{NULL}, NULL}}
+#define alleycat_device_DevicePlayerAffiliation_init_zero {{0}, {{NULL}, NULL}, {0}, {{NULL}, NULL}}
 #define alleycat_device_WriteDeviceLogRequest_init_zero {false, "", false, 0, false, 0, false, "", false, 0, false, 0, false, 0, false, ""}
 #define alleycat_device_WriteQuickdrawMatchesRequest_init_zero {{{NULL}, NULL}}
 #define alleycat_device_WriteQuickdrawMatchesResponse_init_zero {{{NULL}, NULL}}
@@ -208,13 +208,9 @@ extern "C" {
 
 /* Field tags (for use in manual encoding/decoding) */
 #define alleycat_device_DevicePlayerResponse_id_tag 1
-#define alleycat_device_DevicePlayerResponse_event_id_tag 2
-#define alleycat_device_DevicePlayerResponse_pdn_code_tag 3
 #define alleycat_device_DevicePlayerResponse_name_tag 4
-#define alleycat_device_DevicePlayerResponse_created_at_unix_ms_tag 5
 #define alleycat_device_DevicePlayerResponse_team_id_tag 6
 #define alleycat_device_DevicePlayerResponse_team_name_tag 7
-#define alleycat_device_DevicePlayerResponse_active_tag 8
 #define alleycat_device_DevicePlayerResponse_affiliations_tag 9
 #define alleycat_device_DevicePlayerAffiliation_category_id_tag 1
 #define alleycat_device_DevicePlayerAffiliation_category_name_tag 2
@@ -246,25 +242,21 @@ extern "C" {
 
 /* Struct field encoding specification for nanopb */
 #define alleycat_device_DevicePlayerResponse_FIELDLIST(X, a) \
-X(a, STATIC,   SINGULAR, STRING,   id,                1) \
-X(a, STATIC,   SINGULAR, STRING,   event_id,          2) \
-X(a, STATIC,   SINGULAR, STRING,   pdn_code,          3) \
-X(a, STATIC,   SINGULAR, STRING,   name,              4) \
-X(a, STATIC,   SINGULAR, INT64,    created_at_unix_ms,   5) \
-X(a, STATIC,   OPTIONAL, STRING,   team_id,           6) \
-X(a, STATIC,   OPTIONAL, STRING,   team_name,         7) \
-X(a, STATIC,   SINGULAR, BOOL,     active,            8) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, id,                1) \
+X(a, CALLBACK, SINGULAR, STRING,   name,              4) \
+X(a, STATIC,   OPTIONAL, FIXED_LENGTH_BYTES, team_id,           6) \
+X(a, CALLBACK, OPTIONAL, STRING,   team_name,         7) \
 X(a, CALLBACK, REPEATED, MESSAGE,  affiliations,      9)
 #define alleycat_device_DevicePlayerResponse_CALLBACK pb_default_field_callback
 #define alleycat_device_DevicePlayerResponse_DEFAULT NULL
 #define alleycat_device_DevicePlayerResponse_affiliations_MSGTYPE alleycat_device_DevicePlayerAffiliation
 
 #define alleycat_device_DevicePlayerAffiliation_FIELDLIST(X, a) \
-X(a, STATIC,   SINGULAR, STRING,   category_id,       1) \
-X(a, STATIC,   SINGULAR, STRING,   category_name,     2) \
-X(a, STATIC,   SINGULAR, STRING,   affiliation_id,    3) \
-X(a, STATIC,   SINGULAR, STRING,   affiliation_name,   4)
-#define alleycat_device_DevicePlayerAffiliation_CALLBACK NULL
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, category_id,       1) \
+X(a, CALLBACK, SINGULAR, STRING,   category_name,     2) \
+X(a, STATIC,   SINGULAR, FIXED_LENGTH_BYTES, affiliation_id,    3) \
+X(a, CALLBACK, SINGULAR, STRING,   affiliation_name,   4)
+#define alleycat_device_DevicePlayerAffiliation_CALLBACK pb_default_field_callback
 #define alleycat_device_DevicePlayerAffiliation_DEFAULT NULL
 
 #define alleycat_device_WriteDeviceLogRequest_FIELDLIST(X, a) \
@@ -331,10 +323,10 @@ extern const pb_msgdesc_t alleycat_device_QuickdrawMatch_msg;
 
 /* Maximum encoded size of messages (where known) */
 /* alleycat_device_DevicePlayerResponse_size depends on runtime parameters */
+/* alleycat_device_DevicePlayerAffiliation_size depends on runtime parameters */
 /* alleycat_device_WriteQuickdrawMatchesRequest_size depends on runtime parameters */
 /* alleycat_device_WriteQuickdrawMatchesResponse_size depends on runtime parameters */
 #define ALLEYCAT_DEVICE_DEVICE_API_PB_H_MAX_SIZE alleycat_device_QuickdrawMatch_size
-#define alleycat_device_DevicePlayerAffiliation_size 152
 #define alleycat_device_QuickdrawMatchRejection_size 96
 #define alleycat_device_QuickdrawMatch_size      261
 #define alleycat_device_WriteDeviceLogRequest_size 92

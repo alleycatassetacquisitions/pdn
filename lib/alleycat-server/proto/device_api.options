@@ -5,19 +5,17 @@ alleycat.device.WriteDeviceLogRequest.device_mac          max_size:18   # "aa:bb
 alleycat.device.WriteDeviceLogRequest.software_version    max_size:16   # 8-char short commit hash + margin
 alleycat.device.WriteDeviceLogRequest.task_name           max_size:16   # TASK_NAME_LENGTH
 
-# Server-controlled strings are ASCII and at most 36 bytes; a longer value fails the decode.
-# String sizes must match DevicePlayerLimits in device-player.hpp.
-alleycat.device.DevicePlayerResponse.id                   max_size:37   # UUIDBytes::TEXT_BUFFER_SIZE
-alleycat.device.DevicePlayerResponse.event_id             max_size:37
-alleycat.device.DevicePlayerResponse.pdn_code             max_size:5    # four digits
-alleycat.device.DevicePlayerResponse.name                 max_size:37
-alleycat.device.DevicePlayerResponse.team_id              max_size:37
-alleycat.device.DevicePlayerResponse.team_name            max_size:37
+# UUIDs are 16 raw bytes; any other length fails the decode.
+# Display names run up to 255 bytes, so callbacks truncate them into DevicePlayer's buffers.
+alleycat.device.DevicePlayerResponse.id                   max_size:16 fixed_length:true   # UUIDBytes::SIZE
+alleycat.device.DevicePlayerResponse.name                 type:FT_CALLBACK
+alleycat.device.DevicePlayerResponse.team_id              max_size:16 fixed_length:true
+alleycat.device.DevicePlayerResponse.team_name            type:FT_CALLBACK
 alleycat.device.DevicePlayerResponse.affiliations         type:FT_CALLBACK
-alleycat.device.DevicePlayerAffiliation.category_id       max_size:37
-alleycat.device.DevicePlayerAffiliation.category_name     max_size:37
-alleycat.device.DevicePlayerAffiliation.affiliation_id    max_size:37
-alleycat.device.DevicePlayerAffiliation.affiliation_name  max_size:37
+alleycat.device.DevicePlayerAffiliation.category_id       max_size:16 fixed_length:true
+alleycat.device.DevicePlayerAffiliation.category_name     type:FT_CALLBACK
+alleycat.device.DevicePlayerAffiliation.affiliation_id    max_size:16 fixed_length:true
+alleycat.device.DevicePlayerAffiliation.affiliation_name  type:FT_CALLBACK
 
 # Rejections are streamed one at a time so a 100-rejection response never sits on the stack.
 alleycat.device.WriteQuickdrawMatchesResponse.rejected    type:FT_CALLBACK

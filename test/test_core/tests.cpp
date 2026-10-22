@@ -873,28 +873,32 @@ TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
     devicePlayerDecodesUnassignedPlayer();
 }
 
-TEST(DevicePlayerDecoder, keepsInactivePlayer) {
-    devicePlayerKeepsInactivePlayer();
-}
-
 TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
     devicePlayerDecodesMaximumLengthName();
 }
 
-TEST(DevicePlayerDecoder, rejectsOversizedName) {
-    devicePlayerRejectsOversizedName();
+TEST(DevicePlayerDecoder, truncatesLongDisplayNames) {
+    devicePlayerTruncatesLongDisplayNames();
+}
+
+TEST(DevicePlayerDecoder, decodesAbsentName) {
+    devicePlayerDecodesAbsentName();
 }
 
 TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
     devicePlayerDecodesMaximumAffiliations();
 }
 
-TEST(DevicePlayerDecoder, rejectsTooManyAffiliations) {
-    devicePlayerRejectsTooManyAffiliations();
+TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) {
+    devicePlayerDropsAffiliationsPastLimit();
 }
 
-TEST(DevicePlayerDecoder, rejectsMalformedUuids) {
-    devicePlayerRejectsMalformedUuids();
+TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) {
+    devicePlayerRejectsWrongLengthUuids();
+}
+
+TEST(DevicePlayerDecoder, rejectsMissingRequiredUuids) {
+    devicePlayerRejectsMissingRequiredUuids();
 }
 
 TEST(DevicePlayerDecoder, rejectsGarbageBody) {

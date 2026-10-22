@@ -29,7 +29,7 @@ The HTTP layer has two constraints this design has to work within:
 
 ### Library-owned types instead of `Player` / `Match`
 The new API takes and returns types defined in `lib/alleycat-server`:
-- `DevicePlayer`: `UUIDBytes` `id`, `eventId`, `teamId` (nil when unassigned; `hasTeam()`), fixed `char[]` `pdnCode`, `name`, `teamName`, plus `createdAtUnixMs`, `active`, and `std::vector<DevicePlayerAffiliation> affiliations` (at most `DevicePlayerLimits::MAX_AFFILIATIONS`, currently 3). Each affiliation has `UUIDBytes` `categoryId`/`affiliationId` and fixed `char[]` names.
+- `DevicePlayer`: `UUIDBytes` `id`, `teamId` (nil when unassigned; `hasTeam()`), fixed `char[]` `name`, `teamName`, and `std::vector<DevicePlayerAffiliation> affiliations` (at most `DevicePlayerLimits::MAX_AFFILIATIONS`, currently 3). Each affiliation has `UUIDBytes` `categoryId`/`affiliationId` and fixed `char[]` names.
 - `QuickdrawMatchRecord`: `UUIDBytes` for match, player A/B, winner, and team A/B (nil means no team), plus `uint64_t` draw times and `int64_t occurredAtUnixMs`.
 - `QuickdrawMatchRejection`: `matchIndex`, `UUIDBytes matchId`, `fields[MAX_FIELDS]` with `fieldCount`, `code`, `rawCode`.
 - `QuickdrawUploadResult`: `rejectionCount` and `isFullyAccepted()`. Rejections themselves are delivered through a `RejectionSink`.
@@ -38,19 +38,22 @@ The new API takes and returns types defined in `lib/alleycat-server`:
 *Alternative:* encode directly from `Match`. Rejected: it would force the `Match` changes into this stage.
 
 ### UUIDs are 16 bytes past the codec
-The proto carries UUIDs as 36-character strings. They exist as text only inside the short-lived nanopb message struct; library types hold `UUIDBytes` (`lib/core/include/utils/uuid-bytes.hpp`), a 16-byte value with `parse`, `format`, `isNil`, and `==`. The decoder parses each UUID field and fails the whole decode on malformed text. The encoder formats lowercase text into the message just before encoding it. `static_assert`s tie `UUIDBytes::TEXT_BUFFER_SIZE` to the generated `max_size:37` fields and to `IdGenerator::UUID_BUFFER_SIZE`.
+Library types hold `UUIDBytes` (`lib/core/include/utils/uuid-bytes.hpp`), a 16-byte value with `parse`, `format`, `isNil`, and `==`.
+
+`DevicePlayerResponse` and `DevicePlayerAffiliation` carry UUIDs as 16-byte `bytes` in network byte order. Their options are `max_size:16 fixed_length:true`, so nanopb fails the decode on any other length and the decoder copies the bytes straight into `UUIDBytes`. An absent player, category, or affiliation ID decodes as nil and fails the whole decode; an absent team ID means no team.
+
+The `QuickdrawMatch` and `QuickdrawMatchRejection` messages still carry UUIDs as 36-character strings. They exist as text only inside the short-lived nanopb message struct. The decoder parses each UUID field and fails the whole decode on malformed text. The encoder formats lowercase text into the message just before encoding it. `static_assert`s tie `UUIDBytes::TEXT_BUFFER_SIZE` to the generated `max_size:37` fields and to `IdGenerator::UUID_BUFFER_SIZE`.
 
 `parse` accepts 8-4-4-4-12 hex in either case and checks nothing else: no version, variant, or nil checks. It does not reuse `IdGenerator::uuidStringToBytes`, which maps non-hex characters to zero; that function and its callers are unchanged.
 
-*Why:* 21 bytes saved per stored UUID (up to 9 in a `DevicePlayer`), value comparison is a 16-byte `memcmp`, and a UUID can no longer be confused with the 4-character PIN or a name.
-*Trade-off:* one malformed UUID from the server makes the response undecodable, the same as an oversized string.
-*Alternative:* change the proto fields to `bytes`. Rejected: the server owns the contract.
+*Why:* 21 bytes saved per stored UUID, value comparison is a 16-byte `memcmp`, and a UUID can no longer be confused with a name.
+*Trade-off:* one malformed UUID from the server makes the response undecodable.
 
-### Server strings and lists decode into static buffers
-The device API is versioned by device capability, and the server sends only ASCII names of at most 36 bytes. In `device_api.options`, every string in `DevicePlayerResponse`, `DevicePlayerAffiliation`, and `QuickdrawMatchRejection` has a static `max_size` (37 for UUIDs and names, 5 for the PIN). `affiliations` is `FT_CALLBACK` \(append into the vector, max 3 per device capability\) and rejection `fields` is `max_count:2 max_size:24` (`SAME_PLAYER` names two fields). Player header strings decode into static fields; affiliations decode one submessage at a time into the vector. `static_assert`s tie the library buffer sizes to the generated ones.
+### Server strings and lists decode into bounded buffers
+The server sends display names as unterminated printable ASCII of up to 255 bytes, and sets no limit on the number of affiliations. In `device_api.options`, the player, team, category, and affiliation names are `FT_CALLBACK`. A single string callback reads at most 36 bytes into the `DevicePlayer` buffer, skips the rest, and terminates. `affiliations` is `FT_CALLBACK`: each submessage decodes into the vector until it holds `MAX_AFFILIATIONS`, and later submessages are skipped unread. Rejection `fields` is `max_count:2 max_size:24` (`SAME_PLAYER` names two fields).
 
-*Why:* no heap for player header strings; affiliations grow only as needed (typically 2–3 rows); retained size stays well under the old fixed six-slot layout.
-*Trade-off:* nanopb fails the whole decode when a static field overflows, so a longer name, a fourth affiliation, or a third rejection field makes the response undecodable. The server contract rules these out for this device capability.
+*Why:* no heap for player strings, and a 37-byte buffer is enough for the display, so names are truncated rather than reserving 256 bytes each. A long name or an extra affiliation no longer makes the whole response undecodable.
+*Trade-off:* truncated names may collide; identity is always by UUID. Skipped affiliations are not validated. A third rejection field still makes the rejection response undecodable.
 *Alternative:* `FT_CALLBACK` into `std::string`/`std::vector`. Rejected: heap churn for strings that are bounded in practice.
 
 ### Rejections stream through a sink
