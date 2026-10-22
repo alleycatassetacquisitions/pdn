@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <vector>
 
-/** Buffer limits for app registration profile types; align with DevicePlayerLimits in alleycat-server. */
+/** Buffer limits for PlayerV2; must match alleycat-server `device_api.options`. */
 namespace PlayerLimits {
 constexpr size_t NAME_BUFFER_SIZE = 37;
 constexpr size_t MAX_AFFILIATIONS = 3;
@@ -27,8 +27,8 @@ struct Affiliation {
 };
 
 /**
- * App-layer registration profile (core-owned). Populated from decoded @ref DevicePlayer at the
- * alleycat API boundary; excludes wire-only metadata dropped by the protobuf-types model.
+ * Server player registration, resolved in the server's active event. Decoded from
+ * GET /device/players/by-pin/{pin} by alleycat-server.
  */
 struct PlayerV2 {
     UUIDBytes id;

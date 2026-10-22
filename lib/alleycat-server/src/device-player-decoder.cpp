@@ -22,7 +22,7 @@ static_assert(sizeof(AffiliationMessage::affiliation_id) == UUIDBytes::SIZE,
 bool decodeDisplayName(pb_istream_t* stream, const pb_field_t* field, void** arg) {
     (void)field;
     char* name = static_cast<char*>(*arg);
-    const size_t keptLength = std::min(stream->bytes_left, DevicePlayerLimits::NAME_BUFFER_SIZE - 1);
+    const size_t keptLength = std::min(stream->bytes_left, PlayerLimits::NAME_BUFFER_SIZE - 1);
     if (!pb_read(stream, reinterpret_cast<pb_byte_t*>(name), keptLength)) {
         return false;
     }
@@ -32,13 +32,12 @@ bool decodeDisplayName(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg) {
     (void)field;
-    std::vector<DevicePlayerAffiliation>* affiliations =
-        static_cast<std::vector<DevicePlayerAffiliation>*>(*arg);
-    if (affiliations->size() >= DevicePlayerLimits::MAX_AFFILIATIONS) {
+    std::vector<Affiliation>* affiliations = static_cast<std::vector<Affiliation>*>(*arg);
+    if (affiliations->size() >= PlayerLimits::MAX_AFFILIATIONS) {
         return pb_read(stream, nullptr, stream->bytes_left);
     }
 
-    DevicePlayerAffiliation affiliation;
+    Affiliation affiliation;
     AffiliationMessage message = alleycat_device_DevicePlayerAffiliation_init_zero;
     message.category_name.funcs.decode = &decodeDisplayName;
     message.category_name.arg = affiliation.categoryName;
@@ -61,14 +60,14 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 namespace DevicePlayerDecoder {
 
-bool decode(const std::string& body, DevicePlayer& player) {
-    DevicePlayer decoded;
+bool decode(const std::string& body, PlayerV2& player) {
+    PlayerV2 decoded;
 
     ResponseMessage message = alleycat_device_DevicePlayerResponse_init_zero;
     message.name.funcs.decode = &decodeDisplayName;
     message.name.arg = decoded.name;
     message.team_name.funcs.decode = &decodeDisplayName;
-    message.team_name.arg = decoded.teamName;
+    message.team_name.arg = decoded.team.name;
     message.affiliations.funcs.decode = &decodeAffiliation;
     message.affiliations.arg = &decoded.affiliations;
 
@@ -83,7 +82,7 @@ bool decode(const std::string& body, DevicePlayer& player) {
         return false;
     }
     if (message.has_team_id) {
-        std::memcpy(decoded.teamId.bytes, message.team_id, UUIDBytes::SIZE);
+        std::memcpy(decoded.team.id.bytes, message.team_id, UUIDBytes::SIZE);
     }
     player = decoded;
     return true;
