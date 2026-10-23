@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <vector>
 
-/** Buffer limits for PlayerV2; must match alleycat-server `device_api.options`. */
+/** Buffer limits for PlayerV2; the decoder truncates server names to fit. */
 namespace PlayerLimits {
 constexpr size_t NAME_BUFFER_SIZE = 37;
 constexpr size_t MAX_AFFILIATIONS = 3;

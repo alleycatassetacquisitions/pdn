@@ -63,22 +63,17 @@ bool Player::isHunter() const { return hunter; }
 
 Allegiance Player::getAllegiance() const { return allegiance; }
 
-Allegiance Player::allegianceFromServerName(const std::string& allegianceStr) {
-    if (allegianceStr == "Endline") {
-        return Allegiance::ENDLINE;
-    }
-    if (allegianceStr == "Helix") {
-        return Allegiance::HELIX;
-    }
-    if (allegianceStr == "The Resistance") {
-        return Allegiance::RESISTANCE;
-    }
-    return Allegiance::ALLEYCAT;
-}
-
 void Player::setAllegiance(const std::string& allegianceStr) {
     this->allegianceStr = allegianceStr;
-    allegiance = allegianceFromServerName(allegianceStr);
+    if (allegianceStr == "None") {
+        allegiance = Allegiance::ALLEYCAT;
+    } else if (allegianceStr == "Endline") {
+        allegiance = Allegiance::ENDLINE;
+    } else if (allegianceStr == "Helix") {
+        allegiance = Allegiance::HELIX;
+    } else if (allegianceStr == "The Resistance") {
+        allegiance = Allegiance::RESISTANCE;
+    }
 }
 
 void Player::setAllegiance(int allegiance) {

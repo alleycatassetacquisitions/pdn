@@ -7,6 +7,7 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device-player-decoder-tests.hpp"
 #include "utility-tests.hpp"
+#include "game/player-provider.hpp"
 
 using ::testing::_;
 using ::testing::Invoke;
@@ -20,7 +21,6 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(0);
 
-        player = new Player();
         ON_CALL(*device.mockHttpClient, queueRequest(testing::_))
         .WillByDefault(Invoke([this](HttpRequest&& request) {
             queuedRequests.push_back(std::move(request));
@@ -39,13 +39,12 @@ public:
     /** Tears down heap fixtures and clears queued HTTP requests. */
     void TearDown() override {
         queuedRequests.clear();
-        delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
 
     FakePlatformClock* fakeClock = nullptr;
-    Player* player = nullptr;
+    PlayerProvider playerProvider;
     MockDevice device;
     std::vector<HttpRequest> queuedRequests;
 };
@@ -82,10 +81,10 @@ inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
         ctx = buttonCtx;
     }));
 
-    PinEntryState pinEntry(suite->player);
+    PinEntryState pinEntry(&suite->playerProvider);
     const int digits[4] = {0, 0, 0, 7};
     completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
-    EXPECT_EQ(suite->player->getUserID(), "0007");
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
     EXPECT_TRUE(pinEntry.transitionToFetchUser());
     EXPECT_FALSE(pinEntry.transitionToChooseTeam());
     pinEntry.onStateDismounted(&suite->device);
@@ -108,19 +107,18 @@ inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
         ctx = buttonCtx;
     }));
 
-    PinEntryState pinEntry(suite->player);
+    PinEntryState pinEntry(&suite->playerProvider);
     const int digits[4] = {0, 0, 0, 0};
     completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
-    EXPECT_EQ(suite->player->getUserID(), DEMO_PIN);
+    EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), DEMO_PIN);
     EXPECT_TRUE(pinEntry.transitionToChooseTeam());
     EXPECT_FALSE(pinEntry.transitionToFetchUser());
     pinEntry.onStateDismounted(&suite->device);
 }
 
 inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
-    suite->player->setUserID(const_cast<char*>("1234"));
-    PlayerProvider playerProvider;
-    FetchUserState fetch(suite->player, suite->device.wirelessManager, &playerProvider);
+    suite->playerProvider.setRegistrationPin("1234");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/1234");
@@ -130,9 +128,8 @@ inline void fetchUserQueuesDevicePlayerLookup(PlayerFetchTestSuite* suite) {
 }
 
 inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
-    suite->player->setUserID(const_cast<char*>("0007"));
-    PlayerProvider playerProvider;
-    FetchUserState fetch(suite->player, suite->device.wirelessManager, &playerProvider);
+    suite->playerProvider.setRegistrationPin("0007");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
@@ -140,17 +137,16 @@ inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
         encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
 
     fetch.onStateLoop(&suite->device);
-    EXPECT_TRUE(playerProvider.hasPlayer());
-    EXPECT_STREQ(playerProvider.getPlayer().name, "Ada");
+    EXPECT_TRUE(suite->playerProvider.hasPlayer());
+    EXPECT_STREQ(suite->playerProvider.getPlayer().name, "Ada");
     EXPECT_TRUE(fetch.transitionToWelcome());
     suite->queuedRequests.clear();
     fetch.onStateDismounted(&suite->device);
 }
 
 inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* suite) {
-    suite->player->setUserID(const_cast<char*>("9999"));
-    PlayerProvider playerProvider;
-    FetchUserState fetch(suite->player, suite->device.wirelessManager, &playerProvider);
+    suite->playerProvider.setRegistrationPin("9999");
+    FetchUserState fetch(suite->device.wirelessManager, &suite->playerProvider);
     fetch.onStateMounted(&suite->device);
     suite->queuedRequests[0].onError({WirelessError::INVALID_RESPONSE, "HTTP Error: 404"});
 
@@ -165,8 +161,7 @@ inline void fetchUserFailureReturnsToPinAfterPageTimeout(PlayerFetchTestSuite* s
 }
 
 inline void chooseTeamConfirmReachesDemoStub(PlayerFetchTestSuite* suite) {
-    PlayerProvider playerProvider;
-    ChooseTeamState chooseTeam(suite->player, &playerProvider);
+    ChooseTeamState chooseTeam(&suite->playerProvider);
     parameterizedCallbackFunction secondaryPress = nullptr;
     void* secondaryCtx = nullptr;
     ON_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _))

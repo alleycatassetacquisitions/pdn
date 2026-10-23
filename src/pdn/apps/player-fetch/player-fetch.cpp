@@ -1,26 +1,27 @@
 #include "apps/player-fetch/player-fetch.hpp"
 #include "device/firmware-update-state.hpp"
 
-PlayerFetchApp::PlayerFetchApp(Player* player, WirelessManager* wirelessManager,
-                               FirmwareUpdateManager* firmwareUpdateManager)
+PlayerFetchApp::PlayerFetchApp(WirelessManager* wirelessManager,
+                               FirmwareUpdateManager* firmwareUpdateManager,
+                               PlayerProvider* playerProvider)
     : StateMachine(PLAYER_FETCH_APP_ID)
-    , player(player)
     , wirelessManager(wirelessManager)
-    , firmwareUpdateManager(firmwareUpdateManager) {}
+    , firmwareUpdateManager(firmwareUpdateManager)
+    , playerProvider(playerProvider) {}
 
 PlayerFetchApp::~PlayerFetchApp() {
-    player = nullptr;
     wirelessManager = nullptr;
     firmwareUpdateManager = nullptr;
+    playerProvider = nullptr;
 }
 
 void PlayerFetchApp::populateStateMap() {
-    PinEntryState* pinEntry = new PinEntryState(player);
-    FetchUserState* fetchUser = new FetchUserState(player, wirelessManager, &playerProvider);
-    ChooseTeamState* chooseTeam = new ChooseTeamState(player, &playerProvider);
-    DemoStubState* demoStub = new DemoStubState(player);
-    PlayerFetchWelcome* welcome = new PlayerFetchWelcome(player, &playerProvider);
-    PlayerFetchAwakenSequence* awaken = new PlayerFetchAwakenSequence(player);
+    PinEntryState* pinEntry = new PinEntryState(playerProvider);
+    FetchUserState* fetchUser = new FetchUserState(wirelessManager, playerProvider);
+    ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider);
+    DemoStubState* demoStub = new DemoStubState();
+    PlayerFetchWelcome* welcome = new PlayerFetchWelcome(playerProvider);
+    PlayerFetchAwakenSequence* awaken = new PlayerFetchAwakenSequence();
 
     pinEntry->addTransition(
     new StateTransition([pinEntry]() { return pinEntry->transitionToFetchUser(); }, fetchUser));

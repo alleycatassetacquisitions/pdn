@@ -224,4 +224,7 @@ inline void playerApiQueuesDevicePlayerLookup(AlleycatApiTestSuite* suite) {
     EXPECT_EQ(suite->queuedRequests[0].method, "GET");
     EXPECT_EQ(suite->queuedRequests[0].path, "/device/players/by-pin/0007");
     EXPECT_TRUE(suite->queuedRequests[0].payload.empty());
+    ASSERT_EQ(suite->queuedRequests[0].requestHeaders.size(), 1u);
+    EXPECT_EQ(suite->queuedRequests[0].requestHeaders[0].first, "Accept");
+    EXPECT_EQ(suite->queuedRequests[0].requestHeaders[0].second, "application/protobuf");
 }

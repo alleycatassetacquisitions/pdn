@@ -6,21 +6,19 @@
 
 static const char TAG[] = "FetchUserState";
 
-FetchUserState::FetchUserState(Player* player, WirelessManager* wirelessManager,
-                               PlayerProvider* playerProvider)
+FetchUserState::FetchUserState(WirelessManager* wirelessManager, PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::FETCH_USER)
-    , player(player)
     , wirelessManager(wirelessManager)
     , playerProvider(playerProvider) {}
 
 FetchUserState::~FetchUserState() {
     wirelessManager = nullptr;
-    player = nullptr;
     playerProvider = nullptr;
 }
 
 void FetchUserState::onStateMounted(PDN* pdn) {
-    LOG_I(TAG, "State mounted - fetching device player for PIN %s", player->getUserID().c_str());
+    LOG_I(TAG, "State mounted - fetching device player for PIN %s",
+          playerProvider->getRegistrationPin());
     showingFailurePage = false;
     failurePagePending = false;
     transitionToWelcomeState = false;
@@ -68,7 +66,7 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
 void FetchUserState::fetchDevicePlayer() {
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
     PlayerApi::getDevicePlayerByPin(
-    wirelessManager, player->getUserID(),
+    wirelessManager, playerProvider->getRegistrationPin(),
     [this](const PlayerV2& fetchedPlayer) {
         LOG_I(TAG, "Fetched device player: %s", fetchedPlayer.name);
         playerProvider->setPlayer(fetchedPlayer);

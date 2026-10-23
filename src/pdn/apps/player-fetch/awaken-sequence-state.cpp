@@ -1,15 +1,11 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "game/player.hpp"
 #include "device/device.hpp"
 
-PlayerFetchAwakenSequence::PlayerFetchAwakenSequence(Player* player)
-    : TypedState<PDN>(PlayerFetchStateId::AWAKEN)
-    , player(player) {}
+PlayerFetchAwakenSequence::PlayerFetchAwakenSequence()
+    : TypedState<PDN>(PlayerFetchStateId::AWAKEN) {}
 
-PlayerFetchAwakenSequence::~PlayerFetchAwakenSequence() {
-    player = nullptr;
-}
+PlayerFetchAwakenSequence::~PlayerFetchAwakenSequence() {}
 
 void PlayerFetchAwakenSequence::onStateMounted(PDN* pdn) {
     activationSequenceTimer.setTimer(activationStepDuration);
@@ -35,6 +31,8 @@ void PlayerFetchAwakenSequence::onStateLoop(PDN* pdn) {
             activationSequenceTimer.setTimer(activationStepDuration);
             activateMotorCount++;
             activateMotor = !activateMotor;
+        } else {
+            pdn->getHaptics()->setIntensity(VIBRATION_OFF);
         }
     }
 }
