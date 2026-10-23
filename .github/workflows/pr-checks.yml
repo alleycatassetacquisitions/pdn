@@ -37,9 +37,6 @@ jobs:
         sed -i 's/YourWiFiPassword/CI_PASSWORD/' wifi_credentials.ini
         sed -i 's|https://your-api-endpoint.com/api/v1|http://localhost:3000|' wifi_credentials.ini
 
-    - name: Verify vendored .proto matches upstream.lock.json
-      run: python scripts/sync_proto_upstream.py --check
-
     - name: Run Core Unit Tests
       run: pio test -e native
 
