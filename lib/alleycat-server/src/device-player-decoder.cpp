@@ -1,4 +1,4 @@
-﻿#include "alleycat-server/device-player-decoder.hpp"
+#include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/device_api.pb.h"
 #include <pb_decode.h>
 #include <algorithm>

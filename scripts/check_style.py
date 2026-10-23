@@ -304,8 +304,6 @@ def check_format(path, content, added):
     ranges = ranges_of(added)
     if not ranges:
         return
-    if content.startswith("\ufeff"):
-        content = content.lstrip("\ufeff")
     proc = subprocess.run(
         ["clang-format", "--style=file", f"--assume-filename={path}",
          *[f"--lines={a}:{b}" for a, b in ranges]],

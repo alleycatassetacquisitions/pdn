@@ -9,13 +9,14 @@
 
 static const char TAG[] = "PinEntryState";
 
-PinEntryState::PinEntryState(Player* player)
+PinEntryState::PinEntryState(PlayerProvider* playerProvider)
     : TypedState<PDN>(PlayerFetchStateId::PIN_ENTRY)
-    , player(player) {}
+    , playerProvider(playerProvider) {}
 
-PinEntryState::~PinEntryState() { player = nullptr; }
+PinEntryState::~PinEntryState() { playerProvider = nullptr; }
 
 void PinEntryState::onStateMounted(PDN* pdn) {
+    playerProvider->clear();
     sinceMount.setTimer(0);
     firmwareUpdateManager = pdn->getFirmwareUpdateManager();
     if (firmwareUpdateManager != nullptr) {
@@ -53,8 +54,8 @@ void PinEntryState::onStateMounted(PDN* pdn) {
             snprintf(playerId, sizeof(playerId), "%d%d%d%d", pinEntry->inputId[0],
                      pinEntry->inputId[1], pinEntry->inputId[2], pinEntry->inputId[3]);
             LOG_I(TAG, "Pairing complete - PIN: %s", playerId);
-            pinEntry->player->setUserID(playerId);
-            pinEntry->player->applyRngSeedFromUserId();
+            pinEntry->playerProvider->setRegistrationPin(playerId);
+            pinEntry->playerProvider->applyRngSeedFromRegistrationPin();
             if (std::strcmp(playerId, DEMO_PIN) == 0) {
                 pinEntry->transitionToChooseTeamState = true;
             } else {

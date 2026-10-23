@@ -2,7 +2,6 @@
 
 #include "device/pdn.hpp"
 #include "state/state.hpp"
-#include "game/player.hpp"
 #include "device/wireless-manager.hpp"
 #include "utils/simple-timer.hpp"
 #include "game/quickdraw-resources.hpp"
@@ -29,7 +28,7 @@ constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 class PinEntryState : public TypedState<PDN> {
 public:
     /** Pairing-code entry for PlayerFetch. */
-    explicit PinEntryState(Player* player);
+    explicit PinEntryState(PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~PinEntryState() override;
 
@@ -53,7 +52,7 @@ private:
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     SimpleTimer sinceMount;
     bool shouldRender = false;
-    Player* player = nullptr;
+    PlayerProvider* playerProvider = nullptr;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
@@ -63,8 +62,7 @@ private:
 class FetchUserState : public TypedState<PDN> {
 public:
     /** Protobuf device player lookup for the entered PIN. */
-    FetchUserState(Player* player, WirelessManager* wirelessManager,
-                   PlayerProvider* playerProvider);
+    FetchUserState(WirelessManager* wirelessManager, PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~FetchUserState() override;
 
@@ -85,7 +83,6 @@ private:
     void showAssetNotFoundPage(PDN* pdn);
     void beginFailurePage(PDN* pdn);
 
-    Player* player = nullptr;
     WirelessManager* wirelessManager = nullptr;
     PlayerProvider* playerProvider = nullptr;
     SimpleTimer fetchTimer;
@@ -99,7 +96,7 @@ private:
 class ChooseTeamState : public TypedState<PDN> {
 public:
     /** Demo Hunter/Bounty picker for @ref DEMO_PIN. */
-    ChooseTeamState(Player* player, PlayerProvider* playerProvider);
+    explicit ChooseTeamState(PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~ChooseTeamState() override;
 
@@ -115,7 +112,6 @@ public:
 private:
     void renderUi(PDN* pdn) const;
 
-    Player* player = nullptr;
     PlayerProvider* playerProvider = nullptr;
     bool transitionToDemoStubState = false;
     bool displayIsDirty = false;
@@ -125,7 +121,7 @@ private:
 class DemoStubState : public TypedState<PDN> {
 public:
     /** Placeholder demo mode after choose-team. */
-    explicit DemoStubState(Player* player);
+    DemoStubState();
     /** @copydoc TypedState::~TypedState */
     ~DemoStubState() override;
 
@@ -139,14 +135,13 @@ public:
     bool transitionToPinEntry() const;
 
 private:
-    Player* player = nullptr;
     bool transitionToPinEntryState = false;
 };
 
 class PlayerFetchWelcome : public TypedState<PDN> {
 public:
     /** Short welcome screen before awaken. */
-    PlayerFetchWelcome(Player* player, PlayerProvider* playerProvider);
+    explicit PlayerFetchWelcome(PlayerProvider* playerProvider);
     /** @copydoc TypedState::~TypedState */
     ~PlayerFetchWelcome() override;
 
@@ -160,7 +155,6 @@ public:
     bool transitionToAwaken() const;
 
 private:
-    Player* player = nullptr;
     PlayerProvider* playerProvider = nullptr;
     SimpleTimer welcomeMessageTimer;
     bool transitionToAwakenState = false;
@@ -169,7 +163,7 @@ private:
 class PlayerFetchAwakenSequence : public TypedState<PDN> {
 public:
     /** In-app awaken animation after welcome. */
-    explicit PlayerFetchAwakenSequence(Player* player);
+    PlayerFetchAwakenSequence();
     /** @copydoc TypedState::~TypedState */
     ~PlayerFetchAwakenSequence() override;
 
@@ -184,7 +178,6 @@ public:
 
 private:
     static constexpr int AWAKEN_THRESHOLD = 20;
-    Player* player = nullptr;
     SimpleTimer activationSequenceTimer;
     int activateMotorCount = 0;
     bool activateMotor = false;

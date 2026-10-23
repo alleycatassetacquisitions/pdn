@@ -60,6 +60,8 @@ inline void getDevicePlayerByPin(WirelessManager* wirelessManager, const std::st
     },
     onError);
 
+    request.requestHeaders.push_back({"Accept", "application/protobuf"});
+
     wirelessManager->queueHttpRequest(std::move(request));
 }
 

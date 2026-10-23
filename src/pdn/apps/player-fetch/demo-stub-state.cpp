@@ -1,11 +1,10 @@
 #include "apps/player-fetch/player-fetch-states.hpp"
 #include "device/device.hpp"
 
-DemoStubState::DemoStubState(Player* player)
-    : TypedState<PDN>(PlayerFetchStateId::DEMO_STUB)
-    , player(player) {}
+DemoStubState::DemoStubState()
+    : TypedState<PDN>(PlayerFetchStateId::DEMO_STUB) {}
 
-DemoStubState::~DemoStubState() { player = nullptr; }
+DemoStubState::~DemoStubState() {}
 
 void DemoStubState::onStateMounted(PDN* pdn) {
     pdn->getDisplay()

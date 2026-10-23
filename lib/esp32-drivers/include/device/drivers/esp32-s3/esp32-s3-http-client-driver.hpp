@@ -386,19 +386,28 @@ private:
         }
     }
 
-    void processQueuedRequests() {
-        if (httpQueue.empty() || httpQueue.front().inProgress) {
-            return;
+    // Headers persist on the reused handle. Delete by name: delete_all would drop Host/User-Agent.
+    void deleteRequestHeaders(const HttpRequest& request) {
+        for (const std::pair<std::string, std::string>& header : request.requestHeaders) {
+            esp_http_client_delete_header(httpClient, header.first.c_str());
         }
-        const unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
-        // Signed difference, so the comparison survives the clock wrapping.
-        if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) {
-            return;
-        }
-        initiateHttpRequest(httpQueue.front());
     }
 
-    void initiateHttpRequest(HttpRequest& request) {
+    static void logHttpErrorBody(const std::string& body) {
+        constexpr size_t MAX_TEXT_LOG = 120;
+        if (body.empty()) {
+            LOG_W(HTTP_TAG, "HTTP error response body empty");
+            return;
+        }
+        if (body.size() <= MAX_TEXT_LOG) {
+            LOG_W(HTTP_TAG, "HTTP error response (%zu bytes): %s", body.size(), body.c_str());
+        } else {
+            LOG_W(HTTP_TAG, "HTTP error response (%zu bytes, first %zu): %.120s", body.size(),
+                  MAX_TEXT_LOG, body.c_str());
+        }
+    }
+
+    std::string buildRequestUrl(const HttpRequest& request) const {
         std::string fullUrl = wifiConfig->baseUrl;
 
         if (fullUrl.find("http://") == std::string::npos &&
@@ -415,6 +424,23 @@ private:
                 fullUrl += request.path;
             }
         }
+        return fullUrl;
+    }
+
+    void processQueuedRequests() {
+        if (httpQueue.empty() || httpQueue.front().inProgress) {
+            return;
+        }
+        const unsigned long now = SimpleTimer::getPlatformClock()->milliseconds();
+        // Signed difference, so the comparison survives the clock wrapping.
+        if (retryAt != 0 && static_cast<long>(now - retryAt) < 0) {
+            return;
+        }
+        initiateHttpRequest(httpQueue.front());
+    }
+
+    void initiateHttpRequest(HttpRequest& request) {
+        const std::string fullUrl = buildRequestUrl(request);
 
         if (!isStationConnected()) {
             completeFront(false, {WirelessError::WIFI_NOT_CONNECTED, "WiFi lost"});
@@ -439,6 +465,10 @@ private:
             esp_http_client_set_method(httpClient, HTTP_METHOD_PUT);
         } else {
             esp_http_client_set_method(httpClient, HTTP_METHOD_GET);
+        }
+
+        for (const std::pair<std::string, std::string>& header : request.requestHeaders) {
+            esp_http_client_set_header(httpClient, header.first.c_str(), header.second.c_str());
         }
 
         if (request.method == "POST" || request.method == "PUT") {
@@ -472,13 +502,16 @@ private:
             endAttempt({WirelessError::CONNECTION_FAILED, esp_err_to_name(err)});
             return;
         }
+        deleteRequestHeaders(request);
 
         const int statusCode = esp_http_client_get_status_code(httpClient);
         if (statusCode >= 200 && statusCode < 300) {
             completeFront(true, {});
             return;
         }
-        LOG_E(HTTP_TAG, "HTTP %d for: %s", statusCode, request.path.c_str());
+        LOG_E(HTTP_TAG, "HTTP %d for: %s (%s)", statusCode, request.path.c_str(),
+              buildRequestUrl(request).c_str());
+        logHttpErrorBody(request.responseData);
         char errorMsg[64] = {0};
         snprintf(errorMsg, sizeof(errorMsg), "HTTP Error: %d", statusCode);
         const WirelessError errorType =

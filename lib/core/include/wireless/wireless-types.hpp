@@ -3,6 +3,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 enum class WirelessError {
     TIMEOUT,
@@ -47,6 +48,7 @@ struct HttpRequest {
     unsigned long lastAttemptTime;
     int retryCount;
     std::string responseData;
+    std::vector<std::pair<std::string, std::string>> requestHeaders;
 
     /**
      * `contentType` is the Content-Type header the ESP32 driver sends on POST and

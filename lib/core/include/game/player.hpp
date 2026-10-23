@@ -38,9 +38,6 @@ public:
 
     Allegiance getAllegiance() const;
 
-    /** Maps server affiliation display name to artwork enum; defaults to ALLEYCAT. */
-    static Allegiance allegianceFromServerName(const std::string& allegianceStr);
-
     void setAllegiance(const std::string& allegianceStr);
 
     void setAllegiance(int allegiance);
