@@ -4,11 +4,6 @@
 
 namespace {
 constexpr const char* RELIABLE_CHANNEL_TAG = "ReliableChannel";
-// Caps the per-channel RX dedup cursor table. Receiving costs no peer-table slot,
-// so nothing bounds the set of senders and this table never otherwise shrinks.
-// Full, it drops the first cursor registered. A still-active sender dropped that
-// way re-seeds on its next packet, costing one re-dispatch that downstream domain
-// dedup absorbs.
 constexpr size_t MAX_RX_SENDERS = 32;
 }
 
@@ -49,11 +44,6 @@ ReliableChannelBase::~ReliableChannelBase() {
     // makes that safe is not the ordering here: the driver queues receives and
     // records a send verdict, acting on both from the main loop, which
     // is also where channels are destroyed, so no dispatch can land mid-teardown.
-    //
-    // Dropping the pending sends is this channel's job, not its owner's: a
-    // fan-out armed here must not keep retransmitting for an object that is
-    // gone, and nothing would ever report it delivered once the send-status
-    // handler below is cleared.
     if (resender != nullptr) resender->cancelAll(packetType);
     if (wirelessManager == nullptr) return;
     wirelessManager->clearEspNowPacketHandler(packetType);

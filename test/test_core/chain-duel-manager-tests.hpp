@@ -225,7 +225,6 @@ inline void cdmConfirmLifecycle(ChainDuelManagerTests* suite) {
     EXPECT_EQ(cdm.getBoostMs(), 15u);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
-    // The same supporter pressing twice counts once.
     cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
@@ -490,6 +489,8 @@ inline void cdmCountdownVoidsStandingConfirm(ChainDuelManagerTests* suite) {
     ASSERT_EQ(confirmsSent, 1);
 
     cdm.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    cdm.sync();
 
     uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, secondChampion, 2);
@@ -506,6 +507,14 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
     // fallback keeps that off the confirm counter below.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
+    int joinsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainJoin, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            joinsSent++;
+            return 1;
+        });
+
     int confirmsSent = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kChainConfirm, _, _))
@@ -514,19 +523,24 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
             return 1;
         });
 
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS - 10);
     uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
     ASSERT_TRUE(cdm.isSupporter());
     cdm.sendConfirm();
+    ASSERT_EQ(joinsSent, 1);
     ASSERT_EQ(confirmsSent, 1);
 
     // Cable out on both jacks: the heartbeat lapses and the direct peers go.
-    suite->fakeClock->advance(5000);
+    suite->fakeClock->advance(11);
     suite->rdc.sync(&suite->device);
     cdm.onChainStateChanged();
     ASSERT_FALSE(cdm.isSupporter());
 
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    cdm.sync();
     cdm.resendConfirm();
+    EXPECT_EQ(joinsSent, 1);
     EXPECT_EQ(confirmsSent, 1);
 }
 
@@ -587,7 +601,6 @@ inline void cdmChampionChangeWithoutPressSendsNoConfirm(ChainDuelManagerTests* s
     cdm.resendConfirm();
 }
 
-// onRoleAnnounceReceived updates peerRoleByPort and championMac.
 inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);

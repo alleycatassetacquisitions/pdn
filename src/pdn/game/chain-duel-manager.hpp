@@ -100,13 +100,7 @@ public:
      * join naming any champion but this device.
      */
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
-    /**
-     * Records a supporter's press. Ungated: a confirm is unicast straight to the
-     * champion from any depth, so its sender is usually a device this one shares
-     * no cable with. Membership is scored later, against the supporter-jack peer
-     * plus the join roster, so a press whose join has not landed yet is held
-     * rather than dropped.
-     */
+    /** Records a supporter press from originatorMac; chain membership is filtered when read. */
     void onConfirmReceived(const uint8_t* originatorMac);
     void onChainStateChanged();
 
@@ -150,7 +144,6 @@ public:
      */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
-    // Retry observability for this manager's two channels.
     struct RetryStats {
         uint32_t sends = 0;
         uint32_t retries = 0;
@@ -158,16 +151,7 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /**
-     * Cumulative retry counters for the role-announce and game-event channels.
-     * ackLatencyMsSum / ackCount is a mean delivery time, mixing two kinds of
-     * sample: the role announce measures to the radio's SEND_SUCCESS, the game
-     * event to a reply packet. Sends and retries are
-     * counted in frames, abandons in recipients, so the three do not divide into
-     * one another: on a fan-out one frame can be given up on by many members.
-     * Latency is measured here because the Resender does not stamp a send time;
-     * it holds the retry schedule, not a record of when a frame first went out.
-     */
+    /** Cumulative resender counts plus delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS) and kChainGameEvent (to Ack). */
     RetryStats getRetryStats() const {
         const Resender::Stats& carried = resender.getStats();
         return {carried.sends, carried.retries, carried.abandons,
@@ -184,10 +168,6 @@ private:
 
     SerialIdentifier opponentJack() const;
     SerialIdentifier supporterJack() const;
-
-    // The role/champion cascade. Wrapped by onChainStateChanged so every caller
-    // also gets the confirm bookkeeping that has to follow it.
-    void applyChainStateChange();
 
     // Tells the champion this device follows that it exists. The champion cannot
     // discover a supporter it shares no cable with any other way.
@@ -213,11 +193,6 @@ private:
 
     size_t lastSupporterChainCount = 0;
 
-    // Set the moment a press produces a confirm, so the champion-changed and
-    // chain-settled triggers know there is something worth re-sending. Written by
-    // the duel state that sends the confirm, and cleared when a COUNTDOWN arrives or
-    // when this device stops being a supporter; read only by resendConfirm. Every
-    // one of those is on the main loop, packet handlers included.
     std::atomic<bool> confirmSent{false};
 
     // Every press we have heard this round, member or not. Membership is applied
@@ -275,11 +250,6 @@ private:
 
     uint8_t nextGameEventSeqId = 1;
 
-    // Owned here rather than shared with the coordinator's, for two reasons the
-    // Resender only holds per-instance: its EVERY_ROUND budget, and the
-    // retry counters this manager reports. It also bounds the kChainGameEvent
-    // fan-out's lifetime, which no channel does — that traffic goes out through
-    // sendBroadcast, so the channel destructor's cancellation does not cover it.
     Resender resender;
 
     // In a 2-node ring both jacks face one peer, so the second announce can
@@ -287,9 +257,6 @@ private:
     // championMac, and addGroup transmits before superseding, so each still gets
     // its own delivery report.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
-
-    // Both unicast straight to the champion from any depth in the chain, so the
-    // sender is usually a device this one shares no cable with.
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
 

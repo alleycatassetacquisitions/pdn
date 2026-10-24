@@ -77,8 +77,7 @@ public:
         player->setUserID(playerId);
         player->setIsHunter(true);
 
-        wirelessManager = new QuickdrawRadioTap();
-        wirelessManager->attach(device.mockPeerComms);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
@@ -101,7 +100,6 @@ public:
         delete idleState;
         delete chainDuelManager;
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -110,7 +108,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -200,6 +197,22 @@ inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite
     EXPECT_TRUE(suite->idleState->transitionToDuelCountdown());
 }
 
+inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    suite->idleState->onStateMounted(&suite->device);
+
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->matchManager->initializeMatch(dummyMac);
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    ASSERT_FALSE(suite->matchManager->isMatchReady());
+
+    suite->idleState->onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+}
+
 // ============================================
 // Countdown State Tests
 // ============================================
@@ -215,8 +228,7 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new QuickdrawRadioTap();
-        wirelessManager->attach(device.mockPeerComms);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
@@ -237,7 +249,6 @@ public:
         delete countdownState;
         delete chainDuelManager;
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -250,7 +261,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -583,10 +593,7 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 350);
 }
 
-// kQuickdrawCommand carries several command families to one opponent. A later
-// command must not cancel the retries an earlier one is still owed, which is
-// what the superseding send mode would do.
-inline void duelLaterCommandKeepsEarlierRetrying(DuelStateTests* suite) {
+inline void duelLaterCommandSupersedesEarlierRetries(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
     auto countOf = [suite](int command) {
@@ -597,20 +604,18 @@ inline void duelLaterCommandKeepsEarlierRetrying(DuelStateTests* suite) {
         return n;
     };
 
-    // SetUp's initializeMatch already sent SEND_MATCH_ID to the opponent, and
-    // nothing reports it delivered, so it is still owed retries.
     ASSERT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
 
     suite->fakeClock->advance(200);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
     ASSERT_EQ(countOf(QDCommand::DRAW_RESULT), 1u);
 
-    // Past the resender's first backoff, the earlier command must go out again.
     for (int i = 0; i < 4; i++) {
         suite->fakeClock->advance(150);
         suite->matchManager->sync();
     }
-    EXPECT_GT(countOf(QDCommand::SEND_MATCH_ID), 1u);
+    EXPECT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
+    EXPECT_GT(countOf(QDCommand::DRAW_RESULT), 1u);
 }
 
 inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
@@ -618,7 +623,7 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    size_t sentBefore = suite->wirelessManager->sentCommands.size();
+    size_t sentBefore = suite->wirelessManager->sentFrames.size();
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
@@ -626,8 +631,8 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     suite->fakeClock->advance(200);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
 
-    ASSERT_GT(suite->wirelessManager->sentCommands.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentCommands.back().command, QDCommand::DRAW_RESULT);
+    ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, QDCommand::DRAW_RESULT);
 }
 
 // Test: DuelPushed waits for opponent result (grace period)
@@ -854,8 +859,7 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new QuickdrawRadioTap();
-        wirelessManager->attach(device.mockPeerComms);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
@@ -874,7 +878,6 @@ public:
     void TearDown() override {
         matchManager->clearCurrentMatch();
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -883,7 +886,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     GameContext ctx;
@@ -1105,9 +1107,6 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        wirelessManager = new QuickdrawRadioTap();
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        wirelessManager->attach(device.mockPeerComms);
         matchManager = new MatchManager(device.wirelessManager);
         matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
@@ -1133,7 +1132,6 @@ public:
         matchManager->clearCurrentMatch();
         delete chainDuelManager;
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -1142,7 +1140,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -1595,12 +1592,9 @@ public:
         player = new Player();
         char playerId[] = "life";
         player->setUserID(playerId);
-
-        qwm = new QuickdrawRadioTap();
     }
 
     void TearDown() override {
-        delete qwm;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -1609,7 +1603,6 @@ public:
     MockDevice device;
     FakePlatformClock* fakeClock;
     Player* player;
-    QuickdrawRadioTap* qwm;
     uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     PeerCommsInterface::PacketCallback chainGameEventHandler;
     void* chainGameEventCtx = nullptr;

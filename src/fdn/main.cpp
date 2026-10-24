@@ -167,7 +167,6 @@ static void setup() {
 
     symbolWirelessManager = new SymbolWirelessManager(fdn->getWirelessManager(),
                                                       fdn->getRemoteDeviceCoordinator());
-    // The retransmits behind the channel need a tick.
     fdn->setTickCallback([]() { symbolWirelessManager->sync(); });
 
     setupEspNow(peerCommsDriver);

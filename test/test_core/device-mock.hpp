@@ -3,8 +3,6 @@
 //
 #pragma once
 
-#include "game/match-manager.hpp"
-
 #include <gmock/gmock.h>
 #include "device/pdn.hpp"
 #include "device/device.hpp"
@@ -272,18 +270,9 @@ public:
     std::array<uint8_t, 6> headMac{};
 };
 
-// Captures kQuickdrawCommand frames as MatchManager hands them to the radio, and
-// replays one into another manager through the channel's own receive handler, so
-// both directions run the real wire format, dedup included.
 class QuickdrawRadioTap {
 public:
-    /**
-     * Taps a radio: captures outbound quickdraw frames and holds on to the
-     * receive handler the duel channel installs. Must run BEFORE the
-     * MatchManager is constructed, because that is when the channel claims the
-     * PktType, and after any broad sendData default, because gmock resolves to
-     * the last matching ON_CALL rather than the most specific.
-     */
+    /** Call after any wildcard sendData ON_CALL and before constructing MatchManager. */
     void attach(MockPeerComms* radio) {
         ON_CALL(*radio, setPacketHandler(PktType::kQuickdrawCommand, testing::_, testing::_))
             .WillByDefault(testing::Invoke(
@@ -293,22 +282,12 @@ public:
                 }));
         ON_CALL(*radio, sendData(testing::_, PktType::kQuickdrawCommand, testing::_, testing::_))
             .WillByDefault(testing::DoAll(
-                testing::Invoke([this](const uint8_t* dst, PktType, const uint8_t* data,
+                testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data,
                                        const size_t len) {
                     if (len != sizeof(QuickdrawPacket)) return;
                     QuickdrawPacket p{};
                     memcpy(&p, data, sizeof(p));
-                    // Kept whole so a replay carries the seqId the channel
-                    // stamped; rebuilding from the decode would send seqId 0,
-                    // which dedup treats as unsequenced and never suppresses.
                     sentFrames.push_back(p);
-                    // Copied out first: emplace_back forwards by reference and a
-                    // packed member has no address a reference may bind to.
-                    const int command = p.command;
-                    const long drawTime = p.playerDrawTime;
-                    const bool isHunter = p.isHunter;
-                    sentCommands.emplace_back(dst, command, p.matchId, p.playerId,
-                                              drawTime, isHunter);
                 }),
                 testing::Return(1)));
     }
@@ -318,51 +297,23 @@ public:
         return sentFrames.empty() ? nullptr : &sentFrames.back();
     }
 
-    /**
-     * Replays `frame` into THIS radio's manager as if it had arrived from
-     * `senderMac`. Called on the receiving side, because the handler a tap
-     * holds is the one its own manager's channel installed.
-     */
+    /** Delivers frame from senderMac into this tap's own receiveHandler. */
     void deliverFrameFrom(const uint8_t* senderMac, const QuickdrawPacket* frame) {
         if (frame == nullptr) return;
         deliverBytesTo(senderMac, reinterpret_cast<const uint8_t*>(frame),
                        sizeof(*frame));
     }
 
-    /**
-     * Observer for every command this tap decodes, so a test can inspect the
-     * wire round-trip without standing up a manager.
-     */
-    void setPacketReceivedCallback(std::function<void(const QuickdrawCommand&)> cb) {
-        packetReceivedCallback = std::move(cb);
-    }
-
-    /** Drops the decode observer. */
-    void clearCallbacks() { packetReceivedCallback = nullptr; }
-
     /** Feeds raw wire bytes into this radio's manager as the driver would. */
     void deliverBytesTo(const uint8_t* senderMac, const uint8_t* data, size_t len) {
-        // Observer only. Delivery goes through the channel below, so a short
-        // frame reaches its length check rather than being filtered out here.
-        if (packetReceivedCallback && len == sizeof(QuickdrawPacket)) {
-            QuickdrawPacket p{};
-            memcpy(&p, data, sizeof(p));
-            const int command = p.command;
-            const long drawTime = p.playerDrawTime;
-            const bool isHunter = p.isHunter;
-            packetReceivedCallback(QuickdrawCommand(senderMac, command, p.matchId,
-                                                    p.playerId, drawTime, isHunter));
-        }
         if (receiveHandler != nullptr) {
             receiveHandler(senderMac, data, len, receiveContext);
         }
     }
 
-    std::vector<QuickdrawCommand> sentCommands;
     std::vector<QuickdrawPacket> sentFrames;
 
 private:
-    std::function<void(const QuickdrawCommand&)> packetReceivedCallback;
     PeerCommsInterface::PacketCallback receiveHandler = nullptr;
     void* receiveContext = nullptr;
 };

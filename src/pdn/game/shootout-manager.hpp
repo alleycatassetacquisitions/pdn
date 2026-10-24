@@ -274,11 +274,9 @@ private:
     uint8_t lastBracketSeqId = 0;
     uint8_t nextShootoutSeqId = 1;
 
-    // Retransmits for every command family this manager sends. Owned here rather
-    // than shared with the coordinator's, for the EVERY_ROUND budget and the
-    // retry counters reported per manager, and because it is the only thing that
-    // bounds these sends' lifetime: this manager drives the Resender directly and
-    // holds no channel, so nothing cancels its fan-outs on destruction.
+    // Retransmits for every command family this manager sends. Owned here, not
+    // shared with the coordinator's: a fan-out armed by this manager must die
+    // with it rather than keep broadcasting for a tournament that is over.
     // All five families ride one PktType, so the abandon callback reads which
     // one gave up off the frame's own command byte.
     Resender resender;

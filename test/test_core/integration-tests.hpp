@@ -15,11 +15,6 @@ using ::testing::NiceMock;
 // Integration Test Fixture
 // ============================================
 
-/**
- * Two-device duel simulation. Each device has its own MatchManager and
- * QuickdrawRadioTap. performHandshake() drives the production
- * SEND_MATCH_ID → MATCH_ID_ACK exchange so tests never call createMatch().
- */
 class DuelIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {

@@ -12,10 +12,6 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // No abandon handler: a role announce that ran out its span is repaired by the
     // backstop in sync(), not by a callback.
     , roleAnnounceChannel(wirelessManager, &resender, PktType::kRoleAnnounce, nullptr)
-    // No abandon handler on either. A lost join is re-offered on the next
-    // chain-state change; a lost confirm is re-offered only when the chain role
-    // or the champion changes, so a confirm abandoned mid-round stays lost until
-    // then.
     , chainConfirmChannel(wirelessManager, &resender, PktType::kChainConfirm, nullptr)
     , chainJoinChannel(wirelessManager, &resender, PktType::kChainJoin, nullptr) {
     chainConfirmChannel.onReceive([this](const uint8_t*, const ChainConfirmPayload& p) {
@@ -126,18 +122,17 @@ bool ChainDuelManager::canInitiateMatch() const {
 
 std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() const {
     if (isLoop()) return {};
-    std::vector<std::array<uint8_t, 6>> peers;
     // A cable is the strongest evidence of membership there is, so the device on
     // our own supporter jack never has to announce itself to be counted.
     const uint8_t* directPeer = rdc->getPeerMac(supporterJack());
-    if (directPeer != nullptr) {
-        std::array<uint8_t, 6> mac;
-        memcpy(mac.data(), directPeer, 6);
-        peers.push_back(mac);
-    }
+    if (directPeer == nullptr) return {};
+    std::vector<std::array<uint8_t, 6>> peers;
+    std::array<uint8_t, 6> mac;
+    memcpy(mac.data(), directPeer, 6);
+    peers.push_back(mac);
     size_t joined = supporterRosterCount.load();
     for (size_t i = 0; i < joined; i++) {
-        if (directPeer != nullptr && memcmp(supporterRoster[i].data(), directPeer, 6) == 0) continue;
+        if (memcmp(supporterRoster[i].data(), directPeer, 6) == 0) continue;
         peers.push_back(supporterRoster[i]);
     }
     return peers;
@@ -248,6 +243,7 @@ void ChainDuelManager::resendConfirm() {
 void ChainDuelManager::onChainGameEventReceived(uint8_t eventType) {
     if (static_cast<ChainGameEventType>(eventType) != ChainGameEventType::COUNTDOWN) return;
     confirmSent = false;
+    resender.cancelAll(PktType::kChainConfirm);
 }
 
 void ChainDuelManager::onConfirmReceived(const uint8_t* originatorMac) {
@@ -284,15 +280,6 @@ void ChainDuelManager::announceToChampion() {
 }
 
 void ChainDuelManager::onChainStateChanged() {
-    applyChainStateChange();
-
-    // Leaving the supporter role voids the standing confirm. Without this, a
-    // device unplugged mid-round and patched into another chain would re-send a
-    // press it made to a champion it no longer follows.
-    if (!isSupporter()) confirmSent = false;
-}
-
-void ChainDuelManager::applyChainStateChange() {
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;
@@ -315,19 +302,9 @@ void ChainDuelManager::applyChainStateChange() {
         if (selfMac != nullptr) {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
-            if (!championMac.has_value() || *championMac != selfArr) {
-                championMac = selfArr;
-                broadcastRoleAndChampion();
-                sendRoleToOpponentJack();
-                return;
-            }
+            championMac = selfArr;
         }
-    }
-
-    // If we've become a supporter but still hold our own MAC as champion,
-    // invalidate it — the real champion's announce will repopulate via
-    // onRoleAnnounceReceived.
-    if (isSupporter() && championMac.has_value()) {
+    } else if (isSupporter() && championMac.has_value()) {
         const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr && memcmp(championMac->data(), selfMac, 6) == 0) {
             championMac.reset();
@@ -335,13 +312,17 @@ void ChainDuelManager::applyChainStateChange() {
     }
 
     broadcastRoleAndChampion();
-
     sendRoleToOpponentJack();
 
-    // Re-offered on every topology event, not only when the champion changes: the
-    // join is retried only to its own budget, and one abandoned past that costs
-    // this device's press for the whole round with nothing else to repair it.
-    announceToChampion();
+    if (isSupporter()) {
+        // Re-send on every topology event: join has no backstop once its retry span expires.
+        announceToChampion();
+    } else {
+        // Clear confirmSent so patching into another chain mid-round cannot forward a prior press.
+        confirmSent = false;
+        resender.cancelAll(PktType::kChainConfirm);
+        resender.cancelAll(PktType::kChainJoin);
+    }
 }
 
 void ChainDuelManager::setPeerRole(SerialIdentifier port, bool isHunter) {
@@ -420,6 +401,8 @@ void ChainDuelManager::onRoleAnnounceReceived(
     bool changed = !championMac.has_value() || *championMac != newMac;
     championMac = newMac;
     if (changed) {
+        resender.cancelAll(PktType::kChainConfirm);
+        resender.cancelAll(PktType::kChainJoin);
         broadcastRoleAndChampion();
         // A head transfer swaps the champion without touching this device's own
         // links, so nothing else here would tell the new champion that this
@@ -491,11 +474,6 @@ void ChainDuelManager::sendRoleToOpponentJack() {
     RoleAnnounceState content;
     memcpy(content.peer.data(), opponentPeer, 6);
     content.role = player->isHunter() ? 1 : 0;
-    // championMac rides along because both directions share one content key, and
-    // it is empty until this device follows someone. An opposite-role peer
-    // ignores it on the role check, but in a 2-node ring both jacks face the same
-    // peer, so a same-role peer can receive this on its opponent jack and read
-    // the empty champion — which is why the receiver refuses a zeroed one.
     if (championMac.has_value()) content.champion = *championMac;
     if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
 

@@ -45,11 +45,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.initialize();
     driver.connect();
 
-    // A real WirelessManager, so constructing MatchManager claims the duel
-    // channel and the channel installs the receive handler. Built with nullptr the
-    // channel installs nothing at all, so a null one here would exercise no
-    // receive path. Declared before mm so it outlives the channel that points at
-    // it.
+    // Declared before mm so wireless outlives mm's duelChannel destructor.
     WirelessManager wireless(&driver, nullptr);
     MatchManager mm(&wireless);
     using ::testing::_;
@@ -62,9 +58,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     mm.initialize(&player, &storage);
     mm.setRemoteDeviceCoordinator(&rdc);
     mm.clearCurrentMatch();
-
-    // No handler is armed here: the duel channel claimed kQuickdrawCommand when mm
-    // was constructed, and the driver invokes it from exec() on this thread.
 
     std::atomic<bool> running{true};
 
@@ -113,8 +106,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     mm.clearCurrentMatch();
     SimpleTimer::setPlatformClock(nullptr);
 
-    // Without this the test is a TSan vehicle that passes whether or not a frame
-    // ever arrived, so a receive path that installs nothing still passes it.
     EXPECT_TRUE(reachedTheManager)
         << "no SEND_MATCH_ID reached MatchManager through the duel channel";
     SUCCEED() << "No TSan races expected: MatchManager is only accessed from exec() on the main thread";

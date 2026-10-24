@@ -9,10 +9,6 @@
 #include "device-mock.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 
-// The symbol exchange runs over a ReliableChannel the manager claims in its
-// constructor. These pin the two halves that claim buys: frames leave as
-// kSymbolMatchCommand, and an inbound frame is dispatched to the callback for
-// the jack its sender sits on.
 class SymbolWirelessTests : public testing::Test {
 public:
     /** Stands up the manager on a mocked radio and captures its channel handler. */
@@ -34,8 +30,6 @@ public:
                     }
                     return 1;
                 }));
-        // The channel installs its receive handler as it is constructed; holding
-        // on to it is the only way to play the radio back at it.
         ON_CALL(peerComms, setPacketHandler(PktType::kSymbolMatchCommand,
                                             testing::_, testing::_))
             .WillByDefault(testing::Invoke(
@@ -87,7 +81,6 @@ TEST_F(SymbolWirelessTests, sendPacketReachesRadioAsSymbolFrame) {
     EXPECT_EQ(sent[0].command, SMCommand::SEND_SYMBOL);
     EXPECT_EQ(sent[0].symbolId, SymbolId::SYMBOL_B);
     EXPECT_EQ(memcmp(lastDestination, peer, 6), 0);
-    // Stamped, so the receiver can suppress a retransmit of this same frame.
     EXPECT_NE(sent[0].seqId, 0);
 }
 
@@ -153,10 +146,6 @@ TEST_F(SymbolWirelessTests, retransmitOfTheSameFrameDispatchesOnce) {
 }
 
 TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
-    // The three families are successive states of one screen, so this channel
-    // supersedes per target. Keeping them distinct instead would let an unacked
-    // SEND_SYMBOL keep retransmitting behind a SYMBOLS_REFRESHED and land after
-    // it, and the receiver's single dedup cursor would pass it through.
     const uint8_t peer[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, peer);
     manager->setMacPeer(peer);
@@ -165,7 +154,6 @@ TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
                         SerialIdentifier::OUTPUT_JACK);
     ASSERT_EQ(sent.size(), 1u);
 
-    // Nothing reports delivery, so the first frame is still owed retransmits.
     fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
     manager->sync();
     ASSERT_GE(sent.size(), 2u);
@@ -174,7 +162,7 @@ TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
                         SerialIdentifier::OUTPUT_JACK);
     const size_t afterRefresh = sent.size();
 
-    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 8);
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
     manager->sync();
 
     ASSERT_GT(sent.size(), afterRefresh) << "the refresh itself never retransmitted";
@@ -182,4 +170,51 @@ TEST_F(SymbolWirelessTests, aNewerCommandSupersedesAnOlderOnesRetries) {
         EXPECT_NE(sent[i].command, SMCommand::SEND_SYMBOL)
             << "a superseded SEND_SYMBOL retransmitted after SYMBOLS_REFRESHED";
     }
+}
+
+TEST_F(SymbolWirelessTests, clearingCallbacksCancelsPendingRetries) {
+    const uint8_t peer[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, peer);
+    manager->setMacPeer(peer);
+
+    manager->sendPacket(SMCommand::SEND_SYMBOL, SymbolId::SYMBOL_A,
+                        SerialIdentifier::OUTPUT_JACK);
+    ASSERT_EQ(sent.size(), 1u);
+
+    manager->clearCallback();
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    manager->sync();
+
+    EXPECT_EQ(sent.size(), 1u);
+}
+
+TEST_F(SymbolWirelessTests, inboundRefreshCancelsOnlyWhenCallbackRegisteredForThatJack) {
+    const uint8_t fdnPeer[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    const uint8_t otherJackPeer[6] = {0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC};
+    rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, fdnPeer);
+    rdc.setPeerMac(SerialIdentifier::INPUT_JACK, otherJackPeer);
+    manager->setMacPeer(fdnPeer);
+    manager->setPacketReceivedCallback([](const SymbolMatchCommand&) {},
+                                       SerialIdentifier::OUTPUT_JACK);
+
+    manager->sendPacket(SMCommand::SEND_SYMBOL, SymbolId::SYMBOL_A,
+                        SerialIdentifier::OUTPUT_JACK);
+    ASSERT_EQ(sent.size(), 1u);
+
+    SymbolMatchPacket refresh{};
+    refresh.seqId = 1;
+    refresh.command = SMCommand::SYMBOLS_REFRESHED;
+    refresh.symbolId = SymbolId::SYMBOL_A;
+    deliver(otherJackPeer, refresh);
+
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    manager->sync();
+    ASSERT_EQ(sent.size(), 2u);
+
+    refresh.seqId = 2;
+    deliver(fdnPeer, refresh);
+
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
+    manager->sync();
+    EXPECT_EQ(sent.size(), 2u);
 }

@@ -57,12 +57,7 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-    /**
-     * wirelessManager may be null, which also leaves the duel channel unclaimed,
-     * so no inbound frame is delivered either. Nothing is transmitted, but the send
-     * reports success so the retry bookkeeping still runs. Tests that never reach
-     * the radio pass nullptr rather than standing one up.
-     */
+    /** Claims the kQuickdrawCommand channel on wirelessManager (may be nullptr in tests). */
     explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
@@ -139,13 +134,6 @@ public:
      */
     size_t getStoredMatchCount();
 
-    /**
-     * Drops a match whose handshake never completed, and cancels the retries of
-     * the SEND_MATCH_ID that announced it. Use this where a match is given up on;
-     * clearCurrentMatch alone is for a match that ran to a result.
-     */
-    void abandonMatchHandshake();
-
     void clearCurrentMatch();
 
     /**
@@ -178,7 +166,7 @@ public:
     /** Binds the player and storage this manager records matches against. */
     void initialize(Player* player, StorageInterface* storage);
 
-    /** Drives the duel channel's retries. Called once per tick by GameSession. */
+    /** Drives the duel channel's retries. */
     void sync();
 
     parameterizedCallbackFunction getDuelButtonPush();
@@ -211,14 +199,10 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    // Duel frames carry the match's outcome, so they are retried rather than
-    // fired once and hoped for.
     Resender resender;
     ReliableChannel<QuickdrawPacket> duelChannel;
-    /// Unicasts one command to `mac`, retried until the radio acks it. Rounds
-    /// the radio refuses cost no budget, so a shut send path defers rather than
-    /// abandons.
-    void sendCommand(const uint8_t* mac, const QuickdrawCommand& command);
+    void sendCommand(const uint8_t* mac, int command, const char* matchId,
+                     long drawTime, bool isHunter);
     /**
      * Appends a match to storage
      * @param match Match to save
@@ -246,10 +230,6 @@ private:
     // SEND_MATCH_ID is intentionally exempt: it's the packet that
     // establishes the peering in the first place.
     bool isFromActiveMatchOpponent(const QuickdrawCommand& command) const;
-
-    void sendMatchAck();
-    void sendMatchId();
-    void sendMatchRoleMismatch(const QuickdrawCommand& incoming);
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.

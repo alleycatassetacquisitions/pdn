@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstring>
 #include <functional>
 #include <map>
 
@@ -18,53 +17,27 @@ struct SymbolMatchPacket {
     SymbolId symbolId;
 } __attribute__((packed));
 
-/** Wire values for SymbolMatchPacket::command. */
 namespace SMCommand {
 constexpr int SEND_SYMBOL = 0;
 constexpr int SYMBOL_MATCH_SUCCESS = 1;
 constexpr int SYMBOLS_REFRESHED = 2;
-}  // namespace SMCommand
+}
 
 struct SymbolMatchCommand {
-    uint8_t wifiMacAddr[6];
-    bool wifiMacAddrValid;
     int command;
     SymbolId symbolId;
-
-    /**
-     * Decoded form of one symbol frame; a null `macAddress` zeroes the address
-     * and clears wifiMacAddrValid.
-     */
-    SymbolMatchCommand(const uint8_t* macAddress, int command, SymbolId symbolId)
-        : wifiMacAddrValid(macAddress != nullptr)
-        , command(command)
-        , symbolId(symbolId) {
-        if (macAddress) {
-            memcpy(wifiMacAddr, macAddress, 6);
-        } else {
-            memset(wifiMacAddr, 0, 6);
-        }
-    }
 };
 
 class SymbolWirelessManager {
 public:
-    /**
-     * Claiming the channel is what makes the receive path live, so it happens
-     * here: there is no second wiring step a caller can forget.
-     */
+    /** Claims the kSymbolMatchCommand channel on wirelessManager. */
     SymbolWirelessManager(WirelessManager* wirelessManager,
                           RemoteDeviceCoordinator* remoteDeviceCoordinator);
 
-    /** Drives the channel's retransmits. Called every loop tick. */
+    /** Drives the channel's retransmits. */
     void sync();
 
-    /**
-     * Sends one command to the peer set by setMacPeer, retried until the radio
-     * reports it landed or the retry budget runs out, after which it is dropped
-     * silently. `serialPort` reaches the log only; the address decides where the
-     * frame goes.
-     */
+    /** Sends command to macPeer (serialPort is used for logging only). */
     void sendPacket(int command, SymbolId symbolId, SerialIdentifier serialPort);
 
     /** Sets the address every subsequent sendPacket goes to. */
@@ -73,15 +46,12 @@ public:
     /** Registers the callback for commands arriving on `port`. One slot per jack. */
     void setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port);
 
-    /** Drops every registered port callback. */
+    /** Drops every registered port callback and cancels pending sends. */
     void clearCallback();
 
 private:
-    // Resolves which jack the sender sits on and hands the command to that
-    // port's callback.
     void onSymbolPacket(const uint8_t* macAddress, const SymbolMatchPacket& packet);
 
-    WirelessManager* wirelessManager;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
     uint8_t macPeer[6];
     Resender resender;

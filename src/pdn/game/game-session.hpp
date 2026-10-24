@@ -39,10 +39,7 @@ public:
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();
 
-    /**
-     * Drives the chain-duel and shootout retry machines and the periodic retry
-     * stats line. Installed on the device's tick seam by the constructor.
-     */
+    /** Drives the session's retry machines and the periodic retry stats line. */
     void sync();
 
     /** The manager bundle every gameplay state is constructed from. */

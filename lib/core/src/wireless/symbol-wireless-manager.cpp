@@ -8,21 +8,11 @@ static const char* const SWM_TAG = "SWM";
 
 SymbolWirelessManager::SymbolWirelessManager(WirelessManager* wirelessManager,
                                              RemoteDeviceCoordinator* remoteDeviceCoordinator)
-    : wirelessManager(wirelessManager)
-    , remoteDeviceCoordinator(remoteDeviceCoordinator)
+    : remoteDeviceCoordinator(remoteDeviceCoordinator)
     , resender(wirelessManager)
-    // Superseding, though the three families share this PktType: they are
-    // successive states of one screen, not independent items. The receiver's dedup
-    // keeps one cursor per sender, so under KEEP_DISTINCT a retransmit reordered
-    // behind a newer family is re-dispatched — and these handlers are not
-    // idempotent that way round. A replayed SEND_SYMBOL re-arms matchReady, and a
-    // replayed SYMBOLS_REFRESHED drops the player back to the blinking symbol
-    // after a match already succeeded.
     , channel(wirelessManager, &resender, PktType::kSymbolMatchCommand, nullptr,
               Resender::SendMode::SUPERSEDE_PER_TARGET) {
     std::memset(macPeer, 0, sizeof(macPeer));
-    // No abandon callback: a symbol exchange that never lands is left to the
-    // cable check in SymbolState, which leaves the state when the FDN goes away.
     channel.onReceive([this](const uint8_t* fromMac, const SymbolMatchPacket& packet) {
         onSymbolPacket(fromMac, packet);
     });
@@ -52,13 +42,6 @@ void SymbolWirelessManager::sendPacket(int command, SymbolId symbolId, SerialIde
 }
 
 void SymbolWirelessManager::onSymbolPacket(const uint8_t* macAddress, const SymbolMatchPacket& packet) {
-    // The channel tolerates a null sender, so this does too rather than
-    // dereferencing one in MacToString.
-    if (macAddress == nullptr) {
-        LOG_E(SWM_TAG, "Symbol packet with no sender, dropping");
-        return;
-    }
-
     LOG_W(SWM_TAG,
           "RX symbol command %d from %s (symbolId=%d)",
           packet.command,
@@ -70,34 +53,22 @@ void SymbolWirelessManager::onSymbolPacket(const uint8_t* macAddress, const Symb
         return;
     }
 
-    SerialIdentifier resolvedPort = SerialIdentifier::OUTPUT_JACK;
-    bool portResolved = false;
-
-    // Every jack, not the subset a given device type happens to use: a jack the
-    // board does not have carries no peers. A 2-node ring points both jacks at
-    // the same peer, so the first match wins and the callback for that jack is
-    // the one that runs.
     for (SerialIdentifier port : RemoteDeviceCoordinator::HELLO_JACKS) {
         const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
         if (peerMac != nullptr && std::memcmp(peerMac, macAddress, 6) == 0) {
-            resolvedPort = port;
-            portResolved = true;
-            break;
+            auto callbackIt = packetReceivedCallbacks.find(port);
+            if (callbackIt != packetReceivedCallbacks.end() && callbackIt->second) {
+                if (packet.command == SMCommand::SYMBOLS_REFRESHED ||
+                    packet.command == SMCommand::SYMBOL_MATCH_SUCCESS) {
+                    channel.cancel(macAddress);
+                }
+                callbackIt->second(SymbolMatchCommand{packet.command, packet.symbolId});
+            }
+            return;
         }
     }
 
-    if (!portResolved) {
-        LOG_W(SWM_TAG, "No matching input port for symbol packet from %s", MacToString(macAddress));
-        return;
-    }
-
-    SymbolMatchCommand command(macAddress, packet.command, packet.symbolId);
-
-    std::map<SerialIdentifier, std::function<void(const SymbolMatchCommand&)>>::iterator callbackIt =
-        packetReceivedCallbacks.find(resolvedPort);
-    if (callbackIt != packetReceivedCallbacks.end() && callbackIt->second) {
-        callbackIt->second(command);
-    }
+    LOG_W(SWM_TAG, "No matching input port for symbol packet from %s", MacToString(macAddress));
 }
 
 void SymbolWirelessManager::setPacketReceivedCallback(const std::function<void(const SymbolMatchCommand&)>& callback, SerialIdentifier port) {
@@ -106,4 +77,5 @@ void SymbolWirelessManager::setPacketReceivedCallback(const std::function<void(c
 
 void SymbolWirelessManager::clearCallback() {
     packetReceivedCallbacks.clear();
+    resender.cancelAll(PktType::kSymbolMatchCommand);
 }

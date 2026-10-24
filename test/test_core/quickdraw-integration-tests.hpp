@@ -36,9 +36,7 @@ inline TestQuickdrawPacket createTestPacket(
     long playerDrawTime = 0,
     bool isHunter = true
 ) {
-    // Zero-initialized: seqId is a wire field this helper does not set, and an
-    // indeterminate one reaches the channel's dedup cursor. Zero is the
-    // fire-and-forget sentinel dedup skips, so every built packet dispatches.
+    // Zero-init sets seqId = 0 (the unsequenced sentinel that bypasses RX dedup).
     TestQuickdrawPacket packet{};
     strncpy(packet.matchId, matchId.c_str(), 36);
     packet.matchId[36] = '\0';
@@ -48,14 +46,6 @@ inline TestQuickdrawPacket createTestPacket(
     packet.playerDrawTime = playerDrawTime;
     packet.command = command;
     return packet;
-}
-
-// Creates a packet as if the specified player is sending their draw time.
-// Pass asHunter=true when the hunter is the sender, false when the bounty is.
-inline TestQuickdrawPacket createTestPacketFromMatch(const std::optional<Match>& match, int command, bool asHunter) {
-    long time = asHunter ? match->getHunterDrawTime() : match->getBountyDrawTime();
-    const char* pid = asHunter ? match->getHunterId() : match->getBountyId();
-    return createTestPacket(match->getMatchId(), pid, command, time, asHunter);
 }
 
 // ============================================
@@ -72,9 +62,6 @@ public:
     void SetUp() override {
         setupClock();
         setupPlayer();
-        // Broad mock defaults first: setupManagers installs the narrower radio
-        // tap, and gmock resolves to the last matching ON_CALL, not the most
-        // specific one.
         setupDefaultMockExpectations();
         setupManagers();
     }
@@ -159,11 +146,7 @@ private:
             matchManager->setRemoteDeviceCoordinator(&fakeRdc);
         }
 
-        // Hunter initiates the match through the production path. The tap
-        // captures the SEND_MATCH_ID unicast; no ack is routed back, since
-        // single-device tests do not need matchIsReady. This MAC has to match the
-        // one frames are delivered from, or listenForMatchEvents' sender gate
-        // rejects them.
+        // Must match processPacket's defaultMac so isFromActiveMatchOpponent accepts delivered frames.
         uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
         matchManager->initializeMatch(opponentMac);
         matchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
@@ -211,27 +194,21 @@ public:
         cleanupClock();
     }
 
-    virtual std::string getMatchId() const { return "two-device-match-id-123456"; }
-
     virtual void setupDefaultMockExpectations() {
         ON_CALL(hunterPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
         ON_CALL(bountyPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
     }
 
-    void hunterSendsToBounty(int command) {
-        TestQuickdrawPacket packet = createTestPacketFromMatch(
-            hunterMatchManager->getCurrentMatch(), command, true);
+    void hunterSendsToBounty() {
         uint8_t macAddr[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
-        bountyWirelessManager->deliverBytesTo(
-            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet));
+        bountyWirelessManager->deliverFrameFrom(
+            macAddr, hunterWirelessManager->lastFrame());
     }
 
-    void bountySendsToHunter(int command) {
-        TestQuickdrawPacket packet = createTestPacketFromMatch(
-            bountyMatchManager->getCurrentMatch(), command, false);
+    void bountySendsToHunter() {
         uint8_t macAddr[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-        hunterWirelessManager->deliverBytesTo(
-            macAddr, reinterpret_cast<uint8_t*>(&packet), sizeof(packet));
+        hunterWirelessManager->deliverFrameFrom(
+            macAddr, bountyWirelessManager->lastFrame());
     }
 
     // All members are public for access from standalone test functions
@@ -289,12 +266,6 @@ private:
     }
 
     void setupMatches() {
-        // Wire callbacks so the handshake packets are processed as they arrive.
-        hunterWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
-        bountyWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, bountyMatchManager, std::placeholders::_1));
-
         // Full production handshake:
         //   1. Hunter broadcasts SEND_MATCH_ID  → bounty receives, creates match, sends MATCH_ID_ACK
         //   2. Bounty broadcasts MATCH_ID_ACK   → hunter receives, sets matchIsReady
@@ -307,10 +278,6 @@ private:
         hunterMatchManager->initializeMatch(bountyMac);
         bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
         hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
-
-        // Clear handshake callbacks; each test sets its own for the draw phase.
-        hunterWirelessManager->clearCallbacks();
-        bountyWirelessManager->clearCallbacks();
 
         hunterMatchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
         bountyMatchManager->setDuelLocalStartTime(DEFAULT_START_TIME);
@@ -349,47 +316,7 @@ class PacketParsingTests : public SingleDeviceTestFixture {
 public:
 };
 
-inline void packetParsingDrawResultInvokesCallback(PacketParsingTests* suite) {
-    bool callbackInvoked = false;
-    static const char kPlaceholderMatchId[37] = "000000000000000000000000000000000000";
-    QuickdrawCommand receivedCommand(nullptr, QDCommand::INVALID_COMMAND, kPlaceholderMatchId, "0000", 0, false);
-    
-    suite->wirelessManager->setPacketReceivedCallback([&](const QuickdrawCommand& cmd) {
-        callbackInvoked = true;
-        receivedCommand = cmd;
-    });
-    
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 250);
-    suite->processPacket(packet);
-    
-    EXPECT_TRUE(callbackInvoked);
-    EXPECT_EQ(receivedCommand.command, QDCommand::DRAW_RESULT);
-    EXPECT_EQ(receivedCommand.playerDrawTime, 250L);
-}
-
-inline void packetParsingNeverPressedParsesCorrectly(PacketParsingTests* suite) {
-    static const char kPlaceholderMatchId[37] = "000000000000000000000000000000000000";
-    QuickdrawCommand receivedCommand(nullptr, QDCommand::INVALID_COMMAND, kPlaceholderMatchId, "0000", 0, false);
-    
-    suite->wirelessManager->setPacketReceivedCallback([&](const QuickdrawCommand& cmd) {
-        receivedCommand = cmd;
-    });
-    
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::NEVER_PRESSED, 0, 9999);
-    suite->processPacket(packet);
-    
-    EXPECT_EQ(receivedCommand.command, QDCommand::NEVER_PRESSED);
-    EXPECT_EQ(receivedCommand.playerDrawTime, 9999L);
-}
-
-// The duel channel suppresses a sender's retransmit of a frame it already
-// delivered. seqId 0 is the unsequenced sentinel and is deliberately exempt, so
-// the frame carries a real one.
 inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
-    int callbacks = 0;
-    suite->wirelessManager->setPacketReceivedCallback(
-        [&](const QuickdrawCommand&) { ++callbacks; });
-
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
     packet.seqId = 9;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -400,21 +327,13 @@ inline void packetParsingSuppressesRetransmit(PacketParsingTests* suite) {
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 180);
 
-    // Same frame again: the observer still sees the bytes arrive, but the
-    // channel must not hand it to the manager a second time.
     suite->matchManager->getCurrentMatch()->setBountyDrawTime(0);
     suite->wirelessManager->deliverBytesTo(
         macAddr, reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
-    EXPECT_EQ(callbacks, 2);
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 0);
 }
 
 inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
-    // A frame the manager would otherwise act on, handed over one byte short.
-    // The bytes behind the pointer are a whole valid packet, so the channel's
-    // length check is the only thing standing between it and the manager — a
-    // buffer that really is too small would be caught by that same check without
-    // ever exercising the decode, and would prove nothing.
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
     packet.seqId = 4;
     uint8_t macAddr[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
@@ -426,13 +345,9 @@ inline void packetParsingRejectsMalformedPacket(PacketParsingTests* suite) {
 }
 
 inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suite) {
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 350);
     suite->processPacket(packet);
-    
+
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 350);
 }
@@ -440,26 +355,18 @@ inline void listenForMatchResultsSetsOpponentTimeHunter(PacketParsingTests* suit
 inline void listenForMatchResultsSetsOpponentTimeBounty(PacketParsingTests* suite) {
     // Switch to bounty perspective
     suite->player->setIsHunter(false);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
+
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 200, 0);
     suite->processPacket(packet);
-    
+
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 200);
 }
 
 inline void listenForMatchResultsHandlesNeverPressed(PacketParsingTests* suite) {
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::NEVER_PRESSED, 0, 9999);
     suite->processPacket(packet);
-    
+
     EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 9999);
 }
@@ -488,19 +395,6 @@ public:
 
     MockDevice device;
 };
-
-inline void callbackChainPacketToStateFlag(CallbackChainTests* suite) {
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
-    TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 180);
-    
-    EXPECT_FALSE(suite->matchManager->getHasReceivedDrawResult());
-    suite->processPacket(packet);
-    EXPECT_TRUE(suite->matchManager->getHasReceivedDrawResult());
-    EXPECT_EQ(suite->matchManager->getCurrentMatch()->getBountyDrawTime(), 180);
-}
 
 inline void callbackChainButtonPressCalculatesTime(CallbackChainTests* suite) {
     suite->fakeClock->advance(275);
@@ -531,13 +425,13 @@ inline void callbackChainButtonMasherPenalty(CallbackChainTests* suite) {
 inline void callbackChainButtonPressBroadcasts(CallbackChainTests* suite) {
     suite->fakeClock->advance(150);
 
-    size_t sentBefore = suite->wirelessManager->sentCommands.size();
+    size_t sentBefore = suite->wirelessManager->sentFrames.size();
 
     auto buttonCallback = suite->matchManager->getDuelButtonPush();
     buttonCallback(suite->matchManager);
 
-    ASSERT_GT(suite->wirelessManager->sentCommands.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentCommands.back().command, QDCommand::DRAW_RESULT);
+    ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, QDCommand::DRAW_RESULT);
 }
 
 // ============================================
@@ -592,17 +486,13 @@ inline void stateFlowDutPressesFirstWins(StateFlowIntegrationTests* suite) {
 
     DuelPushed pushedState(suite->ctx);
     pushedState.onStateMounted(&suite->device);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
+
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 150, 300);
     suite->processPacket(packet);
-    
+
     pushedState.onStateLoop(&suite->device);
     EXPECT_TRUE(pushedState.transitionToDuelResult());
-    
+
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->matchManager->didWin());
 }
@@ -615,26 +505,22 @@ inline void stateFlowDutReceivesFirstLoses(StateFlowIntegrationTests* suite) {
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
+
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 100);
     suite->processPacket(packet);
-    
+
     duelState.onStateLoop(&suite->device);
     EXPECT_TRUE(duelState.transitionToDuelReceivedResult());
 
     DuelReceivedResult receivedState(suite->ctx);
     receivedState.onStateMounted(&suite->device);
-    
+
     suite->fakeClock->advance(350);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
+
     receivedState.onStateLoop(&suite->device);
     EXPECT_TRUE(receivedState.transitionToDuelResult());
-    
+
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_FALSE(suite->matchManager->didWin());
 }
@@ -646,19 +532,15 @@ inline void stateFlowDutNeverPressesLoses(StateFlowIntegrationTests* suite) {
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)
-    );
-    
+
     // Opponent pressed at 100ms
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 0, 100);
     suite->processPacket(packet);
-    
+
     // DUT never presses in time - simulate pressing very late (after pity time)
     suite->fakeClock->advance(9999);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
+
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_FALSE(suite->matchManager->didWin());
 }
@@ -670,19 +552,15 @@ inline void stateFlowOpponentNeverRespondsWins(StateFlowIntegrationTests* suite)
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
-    
+
     // DUT presses quickly
     suite->fakeClock->advance(150);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)  
-    );
-    
+
     // Opponent never pressed
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::NEVER_PRESSED, 150, 9999);
     suite->processPacket(packet);
-    
+
     EXPECT_TRUE(suite->matchManager->matchResultsAreIn());
     EXPECT_TRUE(suite->matchManager->didWin());
 }
@@ -694,14 +572,10 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
-    
+
     suite->fakeClock->advance(100);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)  
-    );
-    
+
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 100, 200);
     suite->processPacket(packet);
 
@@ -710,10 +584,10 @@ inline void stateFlowThroughDuelResultToWin(StateFlowIntegrationTests* suite) {
     // Allow display methods to be called (don't require specific calls)
     ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
         .WillByDefault(Return(suite->device.mockDisplay));
-    
+
     resultState.onStateMounted(&suite->device);
     resultState.onStateLoop(&suite->device);
-    
+
     EXPECT_TRUE(resultState.transitionToWin());
     EXPECT_FALSE(resultState.transitionToLose());
 }
@@ -725,14 +599,10 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
-    
+
     suite->fakeClock->advance(300);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
-    
-    suite->wirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->matchManager, std::placeholders::_1)  
-    );
-    
+
     TestQuickdrawPacket packet = suite->createPacket(QDCommand::DRAW_RESULT, 300, 150);
     suite->processPacket(packet);
 
@@ -741,10 +611,10 @@ inline void stateFlowThroughDuelResultToLose(StateFlowIntegrationTests* suite) {
     // Allow display methods to be called (don't require specific calls)
     ON_CALL(*suite->device.mockDisplay, drawText(_, _, _))
         .WillByDefault(Return(suite->device.mockDisplay));
-    
+
     resultState.onStateMounted(&suite->device);
     resultState.onStateLoop(&suite->device);
-    
+
     EXPECT_FALSE(resultState.transitionToWin());
     EXPECT_TRUE(resultState.transitionToLose());
 }
@@ -761,71 +631,47 @@ inline void stateFlowDuelToLose(StateFlowIntegrationTests* suite) {
 // Two-Device Simulation Tests
 // ============================================
 
-class TwoDeviceSimulationTests : public TwoDeviceTestFixture {
-public:
-    std::string getMatchId() const override { return "two-device-match-id-123456"; }
-};
+class TwoDeviceSimulationTests : public TwoDeviceTestFixture {};
 
 inline void twoDeviceHunterPressesFirstBothAgree(TwoDeviceSimulationTests* suite) {
-    suite->hunterWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->hunterMatchManager, std::placeholders::_1)
-    );
-    suite->bountyWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->bountyMatchManager, std::placeholders::_1)
-    );
-    
     suite->fakeClock->advance(150);
     suite->hunterMatchManager->getDuelButtonPush()(suite->hunterMatchManager);
-    
+
     suite->fakeClock->advance(130);
     suite->bountyMatchManager->getDuelButtonPush()(suite->bountyMatchManager);
-    
-    suite->hunterSendsToBounty(QDCommand::DRAW_RESULT);
-    suite->bountySendsToHunter(QDCommand::DRAW_RESULT);
-    
+
+    suite->hunterSendsToBounty();
+    suite->bountySendsToHunter();
+
     EXPECT_TRUE(suite->hunterMatchManager->didWin());
     EXPECT_FALSE(suite->bountyMatchManager->didWin());
 }
 
 inline void twoDeviceBountyPressesFirstBothAgree(TwoDeviceSimulationTests* suite) {
-    suite->hunterWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->hunterMatchManager, std::placeholders::_1)
-    );
-    suite->bountyWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->bountyMatchManager, std::placeholders::_1)
-    );
-    
     suite->fakeClock->advance(120);
     suite->bountyMatchManager->getDuelButtonPush()(suite->bountyMatchManager);
-    
+
     suite->fakeClock->advance(100);
     suite->hunterMatchManager->getDuelButtonPush()(suite->hunterMatchManager);
-    
-    suite->hunterSendsToBounty(QDCommand::DRAW_RESULT);
-    suite->bountySendsToHunter(QDCommand::DRAW_RESULT);
-    
+
+    suite->hunterSendsToBounty();
+    suite->bountySendsToHunter();
+
     EXPECT_FALSE(suite->hunterMatchManager->didWin());
     EXPECT_TRUE(suite->bountyMatchManager->didWin());
 }
 
 inline void twoDeviceCloseRaceCorrectWinner(TwoDeviceSimulationTests* suite) {
-    suite->hunterWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->hunterMatchManager, std::placeholders::_1)
-    );
-    suite->bountyWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, suite->bountyMatchManager, std::placeholders::_1)
-    );
-    
     // Very close race - hunter at 200ms, bounty at 201ms
     suite->fakeClock->advance(200);
     suite->hunterMatchManager->getDuelButtonPush()(suite->hunterMatchManager);
-    
+
     suite->fakeClock->advance(1);
     suite->bountyMatchManager->getDuelButtonPush()(suite->bountyMatchManager);
-    
-    suite->hunterSendsToBounty(QDCommand::DRAW_RESULT);
-    suite->bountySendsToHunter(QDCommand::DRAW_RESULT);
-    
+
+    suite->hunterSendsToBounty();
+    suite->bountySendsToHunter();
+
     // Hunter wins by 1ms
     EXPECT_TRUE(suite->hunterMatchManager->didWin());
     EXPECT_FALSE(suite->bountyMatchManager->didWin());

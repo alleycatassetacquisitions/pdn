@@ -6,10 +6,7 @@
 #include <cstring>
 
 const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
-    // kRoleAnnounce, kChainConfirm, kChainJoin, kQuickdrawCommand and
-    // kSymbolMatchCommand are all absent deliberately: a ReliableChannel claims
-    // each of those slots itself. Installing any of them here too would clobber
-    // the channel, since this loop runs after the managers are constructed.
+    // Channel-owned PktTypes are omitted; registering them here after manager construction would clobber their channels.
     static const std::array<PacketRoute, 4> ROUTES = {{
         {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
         {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
@@ -109,8 +106,6 @@ SupporterReady* GameSession::getMountedSupporterReady() {
 }
 
 void GameSession::sync() {
-    // The duel channel retries on its own timers, so it needs a tick even when
-    // no state is driving a match.
     if (matchManager) matchManager->sync();
 
     if (chainDuelManager) {
@@ -139,11 +134,9 @@ void GameSession::logRetryStats() {
     if (!statsLogTimer.expired()) return;
 
     // LOG_W (not LOG_I) because firmware builds with CORE_DEBUG_LEVEL=2, which
-    // strips info-level calls. Both fan-out managers are reported: a venue
-    // reading one line to judge radio health would otherwise be shown the chain
-    // duel's retries and told nothing about the tournament's. The duel channel's
-    // Resender counts retries, but MatchManager keeps it private with no getter, so
-    // they are not reported anywhere.
+    // strips info-level calls. Both managers are reported: a venue reading one
+    // line to judge radio health would otherwise be shown the chain duel's
+    // retries and told nothing about the tournament's.
     if (chainDuelManager != nullptr) {
         ChainDuelManager::RetryStats c = chainDuelManager->getRetryStats();
         unsigned long cMean = c.ackCount ? (c.ackLatencyMsSum / c.ackCount) : 0;

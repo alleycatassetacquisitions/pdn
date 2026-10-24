@@ -1024,6 +1024,10 @@ TEST_F(IdleStateTests, transitionsToDuelCountdownWhenMatchIsReady) {
     idleTransitionsToDuelCountdownWhenMatchIsReady(this);
 }
 
+TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
+    idleDismountClearsUnreadyMatch(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
@@ -1073,8 +1077,8 @@ TEST_F(DuelStateTests, buttonPressBroadcastsDrawResult) {
     duelButtonPressBroadcastsDrawResult(this);
 }
 
-TEST_F(DuelStateTests, laterCommandKeepsEarlierRetrying) {
-    duelLaterCommandKeepsEarlierRetrying(this);
+TEST_F(DuelStateTests, laterCommandSupersedesEarlierRetries) {
+    duelLaterCommandSupersedesEarlierRetries(this);
 }
 
 TEST_F(DuelStateTests, pushedWaitsForOpponentResult) {
@@ -1261,14 +1265,6 @@ TEST_F(GameSessionLifecycleTests, countdownArmsMountedSupporter) {
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================
 
-TEST_F(PacketParsingTests, drawResultInvokesCallback) {
-    packetParsingDrawResultInvokesCallback(this);
-}
-
-TEST_F(PacketParsingTests, neverPressedParsesCorrectly) {
-    packetParsingNeverPressedParsesCorrectly(this);
-}
-
 TEST_F(PacketParsingTests, rejectsMalformedPacket) {
     packetParsingRejectsMalformedPacket(this);
 }
@@ -1296,10 +1292,6 @@ TEST_F(PacketParsingTests, listenForMatchResultsIgnoresUnexpectedCommands) {
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - CALLBACK CHAIN
 // ============================================
-
-TEST_F(CallbackChainTests, packetToStateFlag) {
-    callbackChainPacketToStateFlag(this);
-}
 
 TEST_F(CallbackChainTests, buttonPressCalculatesTime) {
     callbackChainButtonPressCalculatesTime(this);

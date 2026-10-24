@@ -90,13 +90,15 @@ void Idle::onStateLoop(PDN* pdn) {
 
     if(matchInitializationTimer.expired()) {
         matchInitialized = false;
-        // The next tick re-keys with a fresh id, so the announcement of this one
-        // must stop retrying or it primes the opponent into a match that is gone.
-        matchManager->abandonMatchHandshake();
+        matchManager->clearCurrentMatch();
     }
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
+    ShootoutManager* shMgr = matchManager->getShootoutManager();
+    if (!matchManager->isMatchReady() || (shMgr && shMgr->shouldEnterProposal())) {
+        matchManager->clearCurrentMatch();
+    }
     statsIndex = 0;
     matchInitializationTimer.invalidate();
     matchInitialized = false;

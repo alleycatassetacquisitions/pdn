@@ -149,18 +149,12 @@ public:
 
 public:
     // Button callback in onStateMounted uses these via `this` capture.
-    // Atomic is belt-and-braces, not a race fix: the ESP-NOW packet handler is
-    // drained from exec(), and the button and state-loop callbacks run from the
-    // same Device::loop(), so every access is on the main loop.
     Player *player;
     std::atomic<bool> buttonArmed{false};
     std::atomic<bool> hasConfirmed{false};
     std::atomic<bool> displayIsDirty{true};
     std::atomic<bool> ledsAreDirty{true};
     std::atomic<int> lastResult{0};
-    // resultClearTimer is touched only by onStateLoop. The packet handler hands
-    // the result over through lastResult; onStateLoop detects the transition and
-    // owns the timer.
     SimpleTimer resultClearTimer;
     PDN* cachedPDN = nullptr;
 

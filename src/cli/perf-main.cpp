@@ -18,12 +18,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <vector>
 #include <cstdarg>
 #include <chrono>
 #include <functional>
 #include <string>
-#include <map>
 #include <random>
 
 #include "device/drivers/logger.hpp"
@@ -67,47 +65,20 @@ public:
 
 class StubPeerComms : public PeerCommsInterface {
 public:
-    int sendData(const uint8_t* dst, PktType type,
-                 const uint8_t* data, const size_t len) override {
-        // Recorded, not reported here: the real driver hands a verdict back from a
-        // later exec(), and reporting inline would re-enter the Resender while it
-        // is walking its own groups. pump() is this harness's exec().
-        Accepted frame;
-        memcpy(frame.dst, dst, 6);
-        frame.type = type;
-        frame.payload.assign(data, data + len);
-        accepted.push_back(std::move(frame));
-        return 1;
+    int sendData(const uint8_t*, PktType,
+                 const uint8_t*, const size_t) override { return 1; }
+    void setPacketHandler(PktType, PacketCallback cb, void* ctx) override {
+        handlerCb_ = cb;
+        handlerCtx_ = ctx;
     }
-    void setSendStatusHandler(PktType type, SendStatusCallback cb, void* ctx) override {
-        sendStatusHandlers[type] = {cb, ctx};
-    }
-    void clearSendStatusHandler(PktType type) override { sendStatusHandlers.erase(type); }
-    void setPacketHandler(PktType type, PacketCallback cb, void* ctx) override {
-        handlers[type] = {cb, ctx};
-    }
-    void clearPacketHandler(PktType type) override { handlers.erase(type); }
-
-    /// Reports every frame accepted since the last call as delivered. Without it
-    /// nothing ever clears a pending entry and the bench measures the Resender
-    /// growing a backlog rather than a duel.
-    void pump() {
-        std::vector<Accepted> batch;
-        batch.swap(accepted);
-        for (const Accepted& frame : batch) {
-            std::map<PktType, StatusHandler>::iterator it =
-                sendStatusHandlers.find(frame.type);
-            if (it == sendStatusHandlers.end() || it->second.cb == nullptr) continue;
-            it->second.cb(frame.dst, frame.payload.data(), frame.payload.size(),
-                          true, it->second.ctx);
-        }
+    void clearPacketHandler(PktType) override {
+        handlerCb_ = nullptr;
+        handlerCtx_ = nullptr;
     }
 
-    /// Hands bytes to whatever claimed this PktType, as the radio would.
-    void deliver(PktType type, const uint8_t* src, const uint8_t* data, size_t len) {
-        std::map<PktType, Handler>::iterator it = handlers.find(type);
-        if (it != handlers.end() && it->second.cb != nullptr) {
-            it->second.cb(src, data, len, it->second.ctx);
+    void deliver(PktType, const uint8_t* src, const uint8_t* data, size_t len) {
+        if (handlerCb_ != nullptr) {
+            handlerCb_(src, data, len, handlerCtx_);
         }
     }
     const uint8_t* getGlobalBroadcastAddress() override { return broadcast_; }
@@ -119,25 +90,8 @@ public:
     void connect() override {}
     void disconnect() override {}
 private:
-    struct Handler {
-        PacketCallback cb = nullptr;
-        void* ctx = nullptr;
-    };
-
-    struct StatusHandler {
-        SendStatusCallback cb = nullptr;
-        void* ctx = nullptr;
-    };
-
-    struct Accepted {
-        uint8_t dst[6] = {0};
-        PktType type = PktType::kQuickdrawCommand;
-        std::vector<uint8_t> payload;
-    };
-
-    std::map<PktType, Handler> handlers;
-    std::map<PktType, StatusHandler> sendStatusHandlers;
-    std::vector<Accepted> accepted;
+    PacketCallback handlerCb_ = nullptr;
+    void* handlerCtx_ = nullptr;
     uint8_t mac_[6] = {0};
     uint8_t broadcast_[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 };
@@ -210,8 +164,6 @@ struct DeviceCtx {
         player.setIsHunter(isHunter);
 
         wirelessMgr = new WirelessManager(&peerComms, &httpClient);
-        // Constructing the manager claims the duel channel, which is what makes
-        // the receive path live — there is no handler to arm separately.
         matchMgr = new MatchManager(wirelessMgr);
         matchMgr->initialize(&player, &storage);
     }
@@ -270,16 +222,11 @@ int main(int argc, char** argv) {
         // Hunter initiates the match via the production path.
         hunter.matchMgr->initializeMatch(const_cast<uint8_t*>(kBountyMac));
 
-        // SEND_MATCH_ID is gated on an RDC direct-peer check, and a coordinator
-        // is nothing this harness exercises, so the bounty enters at the call
-        // that branch makes once the gate passes.
+        // Bypass listenForMatchEvents(SEND_MATCH_ID), which requires a non-null RDC.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
         bounty.matchMgr->receiveMatch(matchId, "hunt", true,
                                       const_cast<uint8_t*>(kHunterMac));
 
-        // The ack the bounty owes the hunter. The first field is the sender:
-        // every inbound command after the handshake is matched against the
-        // receiver's opponent.
         QuickdrawCommand ackCmd(kBountyMac, QDCommand::MATCH_ID_ACK,
                                 matchId, "boun", 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
@@ -296,7 +243,6 @@ int main(int argc, char** argv) {
         clock.set(duelStart + bountyPress);
         bounty.matchMgr->getDuelButtonPush()(bounty.matchMgr);
 
-        // Exchange draw results as wire-format frames through each radio's handler.
         QuickdrawPacket hunterPkt = makeDrawResultPacket(
             hunter.matchMgr->getCurrentMatch(), true, "hunt");
         QuickdrawPacket bountyPkt = makeDrawResultPacket(
@@ -304,13 +250,6 @@ int main(int argc, char** argv) {
 
         deliver(bounty.peerComms, kHunterMac, hunterPkt);
         deliver(hunter.peerComms, kBountyMac, bountyPkt);
-
-        // Close out the transport the way the platform loop does, so a pending
-        // entry is cleared rather than carried into the next duel.
-        hunter.peerComms.pump();
-        bounty.peerComms.pump();
-        hunter.matchMgr->sync();
-        bounty.matchMgr->sync();
 
         // Sanity check: both sides must agree on the winner
         const bool hw = hunter.matchMgr->didWin();
