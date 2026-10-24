@@ -25,6 +25,7 @@
 #include "reliable-channel-tests.hpp"
 #include "reliable-transport-tests.hpp"
 #include "storage-tests.hpp"
+#include "symbol-wireless-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1266,6 +1267,10 @@ TEST_F(PacketParsingTests, neverPressedParsesCorrectly) {
 
 TEST_F(PacketParsingTests, rejectsMalformedPacket) {
     packetParsingRejectsMalformedPacket(this);
+}
+
+TEST_F(PacketParsingTests, suppressesRetransmit) {
+    packetParsingSuppressesRetransmit(this);
 }
 
 TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeHunter) {

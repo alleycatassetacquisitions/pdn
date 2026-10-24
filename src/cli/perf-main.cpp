@@ -22,6 +22,7 @@
 #include <chrono>
 #include <functional>
 #include <string>
+#include <map>
 #include <random>
 
 #include "device/drivers/logger.hpp"
@@ -35,7 +36,7 @@
 #include "game/player.hpp"
 #include "game/match-manager.hpp"
 #include "game/match.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 
 // ============================================================
 // Null logger — suppresses all LOG_* output in the hot path
@@ -67,8 +68,18 @@ class StubPeerComms : public PeerCommsInterface {
 public:
     int sendData(const uint8_t*, PktType,
                  const uint8_t*, const size_t) override { return 1; }
-    void setPacketHandler(PktType, PacketCallback, void*) override {}
-    void clearPacketHandler(PktType) override {}
+    void setPacketHandler(PktType type, PacketCallback cb, void* ctx) override {
+        handlers[type] = {cb, ctx};
+    }
+    void clearPacketHandler(PktType type) override { handlers.erase(type); }
+
+    /// Hands bytes to whatever claimed this PktType, as the radio would.
+    void deliver(PktType type, const uint8_t* src, const uint8_t* data, size_t len) {
+        std::map<PktType, Handler>::iterator it = handlers.find(type);
+        if (it != handlers.end() && it->second.cb != nullptr) {
+            it->second.cb(src, data, len, it->second.ctx);
+        }
+    }
     const uint8_t* getGlobalBroadcastAddress() override { return broadcast_; }
     uint8_t* getMacAddress() override { return mac_; }
     void setPeerCommsState(PeerCommsState) override {}
@@ -78,6 +89,12 @@ public:
     void connect() override {}
     void disconnect() override {}
 private:
+    struct Handler {
+        PacketCallback cb = nullptr;
+        void* ctx = nullptr;
+    };
+
+    std::map<PktType, Handler> handlers;
     uint8_t mac_[6] = {0};
     uint8_t broadcast_[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 };
@@ -124,13 +141,11 @@ static QuickdrawPacket makeDrawResultPacket(const std::optional<Match>& match,
     return p;
 }
 
-static void deliver(QuickdrawWirelessManager* target,
+static void deliver(StubPeerComms& target,
                     const uint8_t mac[6],
                     QuickdrawPacket& pkt) {
-    target->processQuickdrawCommand(
-        mac,
-        reinterpret_cast<const uint8_t*>(&pkt),
-        sizeof(pkt));
+    target.deliver(PktType::kQuickdrawCommand, mac,
+                   reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
 // ============================================================
@@ -141,35 +156,25 @@ struct DeviceCtx {
     StubPeerComms    peerComms;
     StubStorage      storage;
     StubHttpClient   httpClient;
-    WirelessManager* wirelessMgr   = nullptr;
-    QuickdrawWirelessManager* qdWireless = nullptr;
+    WirelessManager* wirelessMgr = nullptr;
     MatchManager*    matchMgr       = nullptr;
     Player           player;
 
-    void init(const char* userId, bool isHunter, const char* opponentMac) {
+    void init(const char* userId, bool isHunter) {
         char id[5];
         strncpy(id, userId, 4); id[4] = '\0';
         player.setUserID(id);
         player.setIsHunter(isHunter);
-        player.setOpponentMacAddress(opponentMac);
 
         wirelessMgr = new WirelessManager(&peerComms, &httpClient);
-        qdWireless  = new QuickdrawWirelessManager();
-        matchMgr    = new MatchManager();
-
-        qdWireless->initialize(&player, wirelessMgr, /*broadcastCooldown=*/0);
-        matchMgr->initialize(&player, &storage, qdWireless);
-    }
-
-    void armCallback() {
-        qdWireless->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents,
-                      matchMgr, std::placeholders::_1));
+        // Constructing the manager claims the duel channel, which is what makes
+        // the receive path live — there is no handler to arm separately.
+        matchMgr = new MatchManager(wirelessMgr);
+        matchMgr->initialize(&player, &storage);
     }
 
     void destroy() {
         delete matchMgr;
-        delete qdWireless;
         delete wirelessMgr;
     }
 };
@@ -197,15 +202,11 @@ int main(int argc, char** argv) {
     IdGenerator::initialize(42);
 
     DeviceCtx hunter, bounty;
-    hunter.init("hunt", true,  "BB:BB:BB:BB:BB:BB");
-    bounty.init("boun", false, "AA:AA:AA:AA:AA:AA");
+    hunter.init("hunt", true);
+    bounty.init("boun", false);
 
     const uint8_t kHunterMac[6] = {0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA};
     const uint8_t kBountyMac[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
-
-    // Wire each device's wireless manager to its own MatchManager callback
-    hunter.armCallback();
-    bounty.armCallback();
 
     long hunterWins = 0, bountyWins = 0, errors = 0;
 
@@ -226,15 +227,16 @@ int main(int argc, char** argv) {
         // Hunter initiates the match via the production path.
         hunter.matchMgr->initializeMatch(const_cast<uint8_t*>(kBountyMac));
 
-        // Deliver SEND_MATCH_ID to bounty via listenForMatchEvents directly
-        // (we're benchmarking match logic, not serialization overhead).
+        // SEND_MATCH_ID is gated on an RDC direct-peer check, and a coordinator
+        // is nothing this harness exercises, so the bounty enters at the call
+        // that branch makes once the gate passes.
         const char* matchId = hunter.matchMgr->getCurrentMatch()->getMatchId();
-        QuickdrawCommand sendMatchCmd(kBountyMac, QDCommand::SEND_MATCH_ID,
-                                      matchId, "hunt", 0, true);
-        bounty.matchMgr->listenForMatchEvents(sendMatchCmd);
+        bounty.matchMgr->receiveMatch(matchId, "hunt", true,
+                                      const_cast<uint8_t*>(kHunterMac));
 
-        // Deliver MATCH_ID_ACK back to hunter
-        QuickdrawCommand ackCmd(kHunterMac, QDCommand::MATCH_ID_ACK,
+        // The ack the bounty owes the hunter. The first field is the sender:
+        // every inbound command is matched against the receiver's opponent.
+        QuickdrawCommand ackCmd(kBountyMac, QDCommand::MATCH_ID_ACK,
                                 matchId, "boun", 0, false);
         hunter.matchMgr->listenForMatchEvents(ackCmd);
 
@@ -256,8 +258,8 @@ int main(int argc, char** argv) {
         QuickdrawPacket bountyPkt = makeDrawResultPacket(
             bounty.matchMgr->getCurrentMatch(), false, "boun");
 
-        deliver(bounty.qdWireless, kHunterMac, hunterPkt);
-        deliver(hunter.qdWireless, kBountyMac, bountyPkt);
+        deliver(bounty.peerComms, kHunterMac, hunterPkt);
+        deliver(hunter.peerComms, kBountyMac, bountyPkt);
 
         // Sanity check: both sides must agree on the winner
         const bool hw = hunter.matchMgr->didWin();

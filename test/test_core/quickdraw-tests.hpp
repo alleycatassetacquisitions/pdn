@@ -77,9 +77,10 @@ public:
         player->setUserID(playerId);
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        matchManager->initialize(player, &storage, wirelessManager);
+        wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -88,7 +89,6 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
         idleState = new Idle(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -215,10 +215,10 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -227,7 +227,6 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
         countdownState = new DuelCountdown(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -414,10 +413,11 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -428,13 +428,11 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {
@@ -827,10 +825,10 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -842,7 +840,6 @@ public:
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {
@@ -1079,10 +1076,11 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
         wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -1100,7 +1098,6 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {
@@ -1597,7 +1594,7 @@ public:
 // destructor failed to empty is called here with a freed `this`.
 inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        GameSession* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+        GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
         delete session;
         suite->device.loop();
     }
@@ -1626,7 +1623,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
             return 1;
         });
 
-    auto* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+    auto* session = new GameSession(suite->player, &suite->device, nullptr);
     ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
 
     chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
@@ -1664,7 +1661,7 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
-    GameSession* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
     ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
     chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
     ASSERT_TRUE(chainDuelManager->isSupporter());
