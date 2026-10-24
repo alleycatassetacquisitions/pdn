@@ -1,30 +1,25 @@
 ## Why
 
-The server registration model (`DevicePlayer`) lived in `alleycat-server`, so app code that only needs the player profile had to depend on the HTTP/protobuf library, and PlayerFetch kept its own ad hoc session type. Moving the type into core and giving it one owner (`PlayerProvider`) lets registration UI, decode paths, and later gameplay migration share one concrete type.
+The server registration model lived in `alleycat-server` as a separate struct from gameplay `Player`, which forced duplicate session state and blocked a clean fetch → Quickdraw handoff.
 
 ## What Changes
 
-- Move `DevicePlayer` from `lib/alleycat-server` into `lib/core/include/game/player-types.hpp` and rename it **`PlayerV2`**, alongside **`Team`**, **`Affiliation`**, and **`PlayerLimits`**. Fields and fixed-size storage are unchanged except team: `teamId` / `teamName` become `Team team`.
-- `alleycat-server` includes `game/player-types.hpp`; `DevicePlayerDecoder` and `PlayerApi` produce `PlayerV2`. No `.proto` / nanopb regeneration.
-- Add concrete **`PlayerProvider`** in core: optional `PlayerV2`, `hasPlayer` / `getPlayer` / `setPlayer` / `clear`; `getPlayer()` returns an empty default with `LOG_E` when nothing is stored.
-- Remove `PlayerFetchSession`; `PlayerFetchApp` owns a `PlayerProvider` and states take `PlayerProvider*`. Awaken uses default Alleycat art.
+- Registration fields (server id, name, team, affiliations) live on **`Player`** with dedicated accessors for PlayerFetch.
+- **`PlayerProvider`** owns the session **`Player`** and the registration PIN; `main` passes `getPlayer()` to Quickdraw and `PlayerProvider*` to PlayerFetch.
+- **`DevicePlayerDecoder`** and **`PlayerApi::getDevicePlayerByPin`** decode into `Player`; a private legacy shim keeps existing Quickdraw call sites working.
+- Remove standalone **`PlayerV2`**; keep **`Team`**, **`Affiliation`**, **`PlayerLimits`** in `player-types.hpp`.
 
-Out of scope: unifying gameplay `Player` with `PlayerV2`; Quickdraw / Idle wiring; removing legacy JSON registration.
+Out of scope: Quickdraw boot path switching to PlayerFetch; removing legacy JSON registration.
 
 ## Capabilities
 
-### New Capabilities
-
-- `player-types`: `PlayerV2`, `Team`, `Affiliation` in core.
-- `player-provider`: Optional `PlayerV2` storage and access via `PlayerProvider`.
-
-### Modified Capabilities
-
-None (main-line `openspec/specs/` unchanged). PlayerFetch's in-flight `player-device-profile` capability is superseded at implementation time by `PlayerProvider`.
+- `player-types`: shared value types + registration on `Player`.
+- `player-provider`: session owner for `Player` and PIN.
 
 ## Impact
 
-- `lib/core/include/game/` — new `player-types.hpp`, `player-provider.hpp`; `lib/core/src/game/player-provider.cpp`.
-- `lib/alleycat-server` — `device-player.hpp` deleted; decoder and `PlayerApi` use `PlayerV2`; `device_api.options` sizes now mirror `PlayerLimits`.
-- `src/pdn/apps/player-fetch/` — session type removed; states use `PlayerProvider*`.
-- `test/test_core` — decoder tests renamed to `PlayerV2`; new provider tests.
+- `lib/core` — `player.hpp` / `player.cpp`, `player-provider`, `player-types`.
+- `lib/alleycat-server` — decoder and player API target `Player`.
+- `src/pdn/apps/player-fetch` — registration via `getPlayer()` new fields.
+- `src/pdn/main.cpp` — `PlayerProvider` ownership.
+- `test/test_core` — provider, shim, decoder, fetch tests.

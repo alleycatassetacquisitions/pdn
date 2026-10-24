@@ -22,11 +22,10 @@ void ChooseTeamState::onStateMounted(PDN* pdn) {
     pdn->getSecondaryButton()->setButtonPress(
     [](void* ctx) {
         ChooseTeamState* chooseTeamState = static_cast<ChooseTeamState*>(ctx);
-        PlayerV2 demoProfile;
-        IdGenerator::copyId(demoProfile.name, "Demo");
-        IdGenerator::copyId(demoProfile.team.name,
-                            chooseTeamState->hunterSelected ? "Hunter" : "Bounty");
-        chooseTeamState->playerProvider->setPlayer(demoProfile);
+        Player* player = chooseTeamState->playerProvider->getPlayer();
+        Team team;
+        IdGenerator::copyId(team.name, chooseTeamState->hunterSelected ? "Hunter" : "Bounty");
+        player->applyRegistrationProfile(UUIDBytes(), "Demo", team, {});
         chooseTeamState->transitionToDemoStubState = true;
     },
     this, ButtonInteraction::CLICK);

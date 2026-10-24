@@ -1,9 +1,72 @@
 #include "game/player.hpp"
-#include <memory>
-#include <cstring>
-#include <cstdlib>
+
 #include <ArduinoJson.h>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+
+#include "device/drivers/logger.hpp"
 #include "wireless/mac-functions.hpp"
+
+static const char TAG[] = "Player";
+
+namespace {
+
+bool equalsIgnoreCase(const char* left, const char* right) {
+    if (left == nullptr || right == nullptr) {
+        return left == right;
+    }
+    while (*left != '\0' && *right != '\0') {
+        if (std::tolower(static_cast<unsigned char>(*left)) !=
+            std::tolower(static_cast<unsigned char>(*right))) {
+            return false;
+        }
+        left++;
+        right++;
+    }
+    return *left == *right;
+}
+
+bool containsIgnoreCase(const char* haystack, const char* needle) {
+    if (haystack == nullptr || needle == nullptr || needle[0] == '\0') {
+        return false;
+    }
+    for (const char* start = haystack; *start != '\0'; start++) {
+        const char* haystackCursor = start;
+        const char* needleCursor = needle;
+        while (*needleCursor != '\0' && std::tolower(static_cast<unsigned char>(*haystackCursor)) ==
+                                        std::tolower(static_cast<unsigned char>(*needleCursor))) {
+            haystackCursor++;
+            needleCursor++;
+        }
+        if (*needleCursor == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool teamNameIsHunter(const char* teamName) { return equalsIgnoreCase(teamName, "Hunter"); }
+
+bool teamNameIsBounty(const char* teamName) { return equalsIgnoreCase(teamName, "Bounty"); }
+
+Allegiance allegianceFromAffiliationName(const char* affiliationName) {
+    if (affiliationName == nullptr || affiliationName[0] == '\0') {
+        return Allegiance::ALLEYCAT;
+    }
+    if (containsIgnoreCase(affiliationName, "Endline")) {
+        return Allegiance::ENDLINE;
+    }
+    if (containsIgnoreCase(affiliationName, "Helix")) {
+        return Allegiance::HELIX;
+    }
+    if (containsIgnoreCase(affiliationName, "Resistance")) {
+        return Allegiance::RESISTANCE;
+    }
+    return Allegiance::ALLEYCAT;
+}
+
+}  // namespace
 
 Player::Player(const std::string& id, Allegiance allegiance, bool isHunter)
     : id(id)
@@ -163,4 +226,68 @@ void Player::incrementLosses() { losses++; }
 void Player::addReactionTime(unsigned long reactionTime) {
     lastReactionTime = reactionTime;
     totalReactionTime += reactionTime;
+}
+
+bool Player::hasRegistrationProfile() const { return registrationProfileStored; }
+
+const UUIDBytes& Player::getServerPlayerId() const { return serverPlayerId; }
+
+const char* Player::getServerPlayerName() const { return serverPlayerName; }
+
+const Team& Player::getRegistrationTeam() const { return registrationTeam; }
+
+const std::vector<Affiliation>& Player::getRegistrationAffiliations() const {
+    return registrationAffiliations;
+}
+
+bool Player::hasTeam() const { return !registrationTeam.id.isZero(); }
+
+void Player::applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
+                                      const Team& team,
+                                      const std::vector<Affiliation>& affiliations) {
+    serverPlayerId = serverId;
+    if (serverName != nullptr) {
+        std::strncpy(serverPlayerName, serverName, PlayerLimits::NAME_BUFFER_SIZE - 1);
+        serverPlayerName[PlayerLimits::NAME_BUFFER_SIZE - 1] = '\0';
+    } else {
+        serverPlayerName[0] = '\0';
+    }
+    registrationTeam = team;
+    registrationAffiliations = affiliations;
+    registrationProfileStored = true;
+    syncLegacyFieldsFromRegistration();
+}
+
+void Player::clearRegistrationProfile() {
+    serverPlayerId = UUIDBytes();
+    serverPlayerName[0] = '\0';
+    registrationTeam = Team();
+    registrationAffiliations.clear();
+    registrationProfileStored = false;
+}
+
+void Player::syncLegacyFieldsFromRegistration() {
+    name = serverPlayerName;
+
+    char uuidText[UUIDBytes::TEXT_BUFFER_SIZE] = {};
+    if (!serverPlayerId.isZero()) {
+        serverPlayerId.format(uuidText);
+        id = uuidText;
+        symbol.updateFromUserIdString(id);
+    }
+
+    if (teamNameIsHunter(registrationTeam.name)) {
+        hunter = true;
+    } else if (teamNameIsBounty(registrationTeam.name)) {
+        hunter = false;
+    } else if (hasTeam()) {
+        hunter = true;
+        LOG_W(TAG, "Unknown team name '%s'; defaulting to hunter", registrationTeam.name);
+    }
+
+    if (!registrationAffiliations.empty()) {
+        const Affiliation& primary = registrationAffiliations.front();
+        setAllegiance(allegianceFromAffiliationName(primary.affiliationName));
+        faction = primary.affiliationName;
+    }
 }

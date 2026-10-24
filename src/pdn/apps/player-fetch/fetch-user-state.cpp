@@ -65,11 +65,11 @@ void FetchUserState::onStateDismounted(PDN* pdn) {
 
 void FetchUserState::fetchDevicePlayer() {
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT_MS);
+    Player* player = playerProvider->getPlayer();
     PlayerApi::getDevicePlayerByPin(
-    wirelessManager, playerProvider->getRegistrationPin(),
-    [this](const PlayerV2& fetchedPlayer) {
-        LOG_I(TAG, "Fetched device player: %s", fetchedPlayer.name);
-        playerProvider->setPlayer(fetchedPlayer);
+    wirelessManager, playerProvider->getRegistrationPin(), player,
+    [this, player](Player&) {
+        LOG_I(TAG, "Fetched device player: %s", player->getServerPlayerName());
         fetchTimer.invalidate();
         transitionToWelcomeState = true;
     },

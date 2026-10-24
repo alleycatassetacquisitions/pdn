@@ -9,8 +9,9 @@ PlayerFetchWelcome::~PlayerFetchWelcome() { playerProvider = nullptr; }
 
 void PlayerFetchWelcome::onStateMounted(PDN* pdn) {
     const char* name = "";
-    if (playerProvider->hasPlayer() && playerProvider->getPlayer().name[0] != '\0') {
-        name = playerProvider->getPlayer().name;
+    Player* player = playerProvider->getPlayer();
+    if (playerProvider->hasPlayer() && player->getServerPlayerName()[0] != '\0') {
+        name = player->getServerPlayerName();
     }
 
     pdn->getDisplay()

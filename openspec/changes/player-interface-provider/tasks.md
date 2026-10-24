@@ -1,26 +1,26 @@
 ## 1. Core types
 
-- [x] 1.1 Add `lib/core/include/game/player-types.hpp` with `PlayerLimits`, `Team`, `Affiliation`, and `PlayerV2` (moved from alleycat-server `DevicePlayer`; `Team team` replaces `teamId` / `teamName`)
-- [x] 1.2 Add concrete `PlayerProvider` (`player-provider.hpp` / `.cpp`): hasPlayer, getPlayer with empty default + LOG_E, setPlayer, clear
+- [x] 1.1 `player-types.hpp`: `PlayerLimits`, `Team`, `Affiliation` (registration payload on `Player`)
+- [x] 1.2 `Player` registration fields, accessors, legacy shim, `applyRegistrationProfile` / `clearRegistrationProfile`
+- [x] 1.3 `PlayerProvider` owns session `Player`; PIN + clear; `getPlayer()` returns non-null pointer
 
 ## 2. alleycat-server
 
-- [x] 2.1 Delete `device-player.hpp`; decoder and `PlayerApi` use `PlayerV2`; `static_assert`s tie `PlayerLimits` to `device_api.options`
-- [ ] 2.2 Verify `DevicePlayerDecoder` and existing device-player tests still pass
+- [x] 2.1 `DevicePlayerDecoder` and `PlayerApi::getDevicePlayerByPin` decode into `Player`
+- [x] 2.2 `static_assert`s tie `PlayerLimits` to `device_api.options`
 
 ## 3. Tests
 
-- [x] 3.1 Rename decoder tests to `PlayerV2` / `Team` / `Affiliation`
-- [x] 3.2 Native tests: provider empty, default `getPlayer`, store, overwrite, clear
-- [ ] 3.3 Run `pio test -e native -f test_core`
+- [x] 3.1 Decoder and provider tests target `Player` registration accessors
+- [x] 3.2 Registration shim tests (allegiance, hunter team name, UUID user id)
+- [x] 3.3 PlayerFetch tests use `getServerPlayerName()`
 
 ## 4. PlayerFetch wiring
 
-- [x] 4.1 Remove `PlayerFetchSession`; `PlayerFetchApp` owns `PlayerProvider`; states take `PlayerProvider*`
-- [x] 4.2 Fetch callback uses `setPlayer`
-- [x] 4.3 Awaken uses default Alleycat art (remove affiliation scan)
+- [x] 4.1 States take `PlayerProvider*`; registration reads via `getPlayer()` new fields only
+- [x] 4.2 Fetch callback decodes into owned `Player`
+- [x] 4.3 `main` constructs `PlayerProvider`; Quickdraw uses `playerProvider->getPlayer()`
 
 ## 5. Documentation
 
-- [x] 5.1 Deprecation comment on gameplay `Player` in `game/player.hpp`
-- [x] 5.2 Cross-link from `openspec/changes/player-fetch/design.md` session section to this change
+- [x] 5.1 OpenSpec player-provider and player-types deltas updated for unified model

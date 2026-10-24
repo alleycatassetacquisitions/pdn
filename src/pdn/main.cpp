@@ -21,7 +21,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
-#include "game/player.hpp"
+#include "game/player-provider.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
@@ -68,6 +68,7 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
+PlayerProvider* playerProvider = nullptr;
 Player* player = nullptr;
 
 // Game instance
@@ -170,7 +171,8 @@ static void setup() {
     pdn = PDN::createPDN(pdnConfig);
     
     IdGenerator::initialize(clockDriver->milliseconds());
-    player = new Player();
+    playerProvider = new PlayerProvider();
+    player = playerProvider->getPlayer();
     player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     // Create wireless managers

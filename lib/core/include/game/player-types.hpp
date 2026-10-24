@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <vector>
 
-/** Buffer limits for PlayerV2; the decoder truncates server names to fit. */
+/** Buffer limits for server registration fields on `Player`; the decoder truncates names to fit. */
 namespace PlayerLimits {
 constexpr size_t NAME_BUFFER_SIZE = 37;
 constexpr size_t MAX_AFFILIATIONS = 3;
@@ -24,18 +24,4 @@ struct Affiliation {
     char categoryName[PlayerLimits::NAME_BUFFER_SIZE] = {};
     UUIDBytes affiliationId;
     char affiliationName[PlayerLimits::NAME_BUFFER_SIZE] = {};
-};
-
-/**
- * Server player registration, resolved in the server's active event. Decoded from
- * GET /device/players/by-pin/{pin} by alleycat-server.
- */
-struct PlayerV2 {
-    UUIDBytes id;
-    char name[PlayerLimits::NAME_BUFFER_SIZE] = {};
-    Team team;
-    std::vector<Affiliation> affiliations;
-
-    /** @return true when the player is currently assigned to a team. */
-    bool hasTeam() const { return !team.id.isNil(); }
 };

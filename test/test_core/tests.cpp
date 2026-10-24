@@ -917,13 +917,21 @@ TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
 
 TEST(PlayerProvider, startsEmpty) { playerProviderStartsEmpty(); }
 
-TEST(PlayerProvider, returnsDefaultWhenEmpty) { playerProviderReturnsDefaultWhenEmpty(); }
+TEST(PlayerProvider, returnsEmptyRegistrationFields) {
+    playerProviderReturnsEmptyRegistrationFields();
+}
 
 TEST(PlayerProvider, storesProfile) { playerProviderStoresProfile(); }
 
 TEST(PlayerProvider, overwriteReplacesProfile) { playerProviderOverwriteReplacesProfile(); }
 
 TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
+
+TEST(PlayerRegistrationShim, mapsHelixAffiliation) { playerLegacyShimMapsHelixAffiliation(); }
+
+TEST(PlayerRegistrationShim, mapsHunterTeamName) { playerLegacyShimMapsHunterTeamName(); }
+
+TEST(PlayerRegistrationShim, formatsServerIdAsUserId) { playerLegacyShimFormatsServerIdAsUserId(); }
 
 // ============================================
 // PLAYER FETCH APP TESTS

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/player-types.hpp"
+#include "game/player.hpp"
 #include <string>
 
 /**
@@ -11,10 +11,10 @@
 namespace DevicePlayerDecoder {
 
 /**
- * Decodes @p body into @p player, replacing its previous contents.
+ * Decodes @p body into @p player's registration fields, replacing previous registration data.
  *
  * @return false when @p body is not a valid DevicePlayerResponse.
  */
-bool decode(const std::string& body, PlayerV2& player);
+bool decode(const std::string& body, Player& player);
 
 }  // namespace DevicePlayerDecoder

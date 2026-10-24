@@ -1,10 +1,12 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <iostream>
-#include <cstdint>
+#include "game/player-types.hpp"
 #include "symbol.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 enum class Allegiance {
     ALLEYCAT = 0,
@@ -13,22 +15,19 @@ enum class Allegiance {
     RESISTANCE = 3
 };
 
-/**
- * Gameplay player: PIN, RNG seed, stats, and legacy allegiance/hunter fields.
- *
- * @deprecated for server registration reads; use `PlayerV2` via `PlayerProvider`
- * (game/player-provider.hpp). Unification lands at the Quickdraw cutover.
- */
+/** Gameplay session object: server registration fields, legacy allegiance/hunter, stats, and
+ * symbol. */
 class Player {
 public:
     Player() = default;
     ~Player() = default;
-    
+
     Player(const std::string& id, Allegiance allegiance, bool isHunter);
-    
+
     std::string toJson() const;
 
-    void fromJson(const std::string &json);
+    /** Deprecated method */
+    void fromJson(const std::string& json);
 
     bool isHunter() const;
 
@@ -54,7 +53,8 @@ public:
 
     void setFaction(const std::string& faction);
 
-    void setUserID(char *newId);
+    /** Soon to be deprecated */
+    void setUserID(char* newId);
 
     /// Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
     /// the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
@@ -96,7 +96,43 @@ public:
 
     void addReactionTime(unsigned long reactionTime);
 
+    /** @return true when a server registration profile is stored. */
+    bool hasRegistrationProfile() const;
+
+    /** @return Server player id from the active event registration. */
+    const UUIDBytes& getServerPlayerId() const;
+
+    /** @return Display name from registration (fixed buffer; empty when none). */
+    const char* getServerPlayerName() const;
+
+    /** @return Team assignment from registration. */
+    const Team& getRegistrationTeam() const;
+
+    /** @return Category affiliations from registration. */
+    const std::vector<Affiliation>& getRegistrationAffiliations() const;
+
+    /** @return true when registration includes a non-nil team id. */
+    bool hasTeam() const;
+
+    /**
+     * Replaces registration fields and syncs legacy gameplay fields. Used by the device player
+     * decoder and demo registration paths.
+     */
+    void applyRegistrationProfile(const UUIDBytes& serverId, const char* serverName,
+                                  const Team& team, const std::vector<Affiliation>& affiliations);
+
+    /** Clears registration fields only; does not reset duel stats or legacy fields. */
+    void clearRegistrationProfile();
+
 private:
+    void syncLegacyFieldsFromRegistration();
+
+    UUIDBytes serverPlayerId;
+    char serverPlayerName[PlayerLimits::NAME_BUFFER_SIZE] = {};
+    Team registrationTeam;
+    std::vector<Affiliation> registrationAffiliations;
+    bool registrationProfileStored = false;
+
     std::string id = "default";
     std::string name = "";
     std::string allegianceStr = "none";
@@ -117,6 +153,6 @@ private:
     Allegiance allegiance = Allegiance::RESISTANCE;
 
     Symbol symbol;
-    
+
     bool hunter = true;
 };

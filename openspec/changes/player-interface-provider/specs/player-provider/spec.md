@@ -1,44 +1,39 @@
 ## ADDED Requirements
 
-### Requirement: PlayerProvider optional profile
-Core SHALL define a concrete `PlayerProvider` that owns zero or one `PlayerV2` and exposes whether one is present.
+### Requirement: PlayerProvider owns session Player
+Core SHALL define a concrete `PlayerProvider` that owns exactly one gameplay `Player` for the device session. `PlayerProvider::getPlayer()` SHALL return a non-null `Player*` to that owned instance.
 
-#### Scenario: Empty provider
-- **WHEN** a provider has been constructed and no profile was set
+#### Scenario: Session player always exists
+- **WHEN** a provider has been constructed
+- **THEN** `getPlayer()` returns the same `Player` for the lifetime of the provider
+
+### Requirement: Optional registration profile on Player
+Whether a server registration profile is present SHALL be tracked on the owned `Player` via `hasRegistrationProfile()`. `PlayerProvider::hasPlayer()` SHALL return the same value as `getPlayer()->hasRegistrationProfile()`.
+
+#### Scenario: Empty session
+- **WHEN** a provider has been constructed and no registration profile was applied
 - **THEN** `hasPlayer()` returns false
 
-#### Scenario: Profile set
-- **WHEN** a profile is stored in the provider
+#### Scenario: Profile applied
+- **WHEN** a registration profile is stored on the owned `Player`
 - **THEN** `hasPlayer()` returns true
 
-### Requirement: Const access
-`PlayerProvider::getPlayer()` SHALL return `const PlayerV2&`. When a profile is present, it SHALL refer to the stored profile. When none is present, it SHALL return a stable empty `PlayerV2`, SHALL emit `LOG_E`, and SHALL NOT assert or crash.
-
-#### Scenario: Read stored profile
-- **WHEN** the provider holds a profile with name `Ada`
-- **THEN** `getPlayer().name` is `Ada`
-
-#### Scenario: No profile access
-- **WHEN** `hasPlayer()` is false and a caller invokes `getPlayer()`
-- **THEN** the provider returns an empty profile
-- **AND** logs an error with `LOG_E`
-- **AND** execution continues without assert or crash
-
-### Requirement: Set and clear profile
-`PlayerProvider` SHALL support replacing the stored profile and clearing it.
-
-#### Scenario: Overwrite profile
-- **WHEN** a provider already holds a profile and `setPlayer` is called with a different profile
-- **THEN** the previous profile is fully replaced with no merge of team or affiliations
+### Requirement: Clear registration session
+`PlayerProvider::clear()` SHALL drop the registration profile on the owned `Player` and clear the stored registration PIN.
 
 #### Scenario: Clear
-- **WHEN** `clear()` is called on a provider that had a profile
+- **WHEN** `clear()` is called after a profile was applied
 - **THEN** `hasPlayer()` returns false
+- **AND** the registration PIN is empty
 
 ### Requirement: PlayerFetch uses PlayerProvider
-`PlayerFetchApp` SHALL own a `PlayerProvider` and its states SHALL read and write the registration profile through `PlayerProvider*`.
+`PlayerFetchApp` SHALL receive `PlayerProvider*`. Its states SHALL use the provider for PIN and session clear, and SHALL read registration fields only through `playerProvider->getPlayer()` (server name, team, affiliations, server id). PlayerFetch SHALL NOT use legacy gameplay accessors (`getName()`, `getUserID()`, etc.) for registration UI.
 
 #### Scenario: Fetch success path
 - **WHEN** device player lookup succeeds
-- **THEN** fetch user stores the decoded `PlayerV2` via `setPlayer`
-- **AND** welcome reads the name via `getPlayer()`
+- **THEN** the decoded protobuf is applied to the owned `Player` registration fields
+- **AND** welcome reads the display name via `getPlayer()->getServerPlayerName()`
+
+#### Scenario: Main wiring
+- **WHEN** firmware constructs Quickdraw and PlayerFetch
+- **THEN** both receive the `Player*` from the same `PlayerProvider` instance created in `main`

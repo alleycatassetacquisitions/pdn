@@ -7,6 +7,7 @@
 #include "alleycat-protobuf-test-helpers.hpp"
 #include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/player-api.hpp"
+#include "game/player.hpp"
 #include "game/player-types.hpp"
 #include "uuid-bytes-tests.hpp"
 
@@ -75,41 +76,45 @@ inline void devicePlayerDecodesTeamAndAffiliations() {
                           uuidWireBytes("a2a2a2a2-0000-4000-8000-000000000002"),
                           "Runners");
 
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
 
-    EXPECT_EQ(player.id, makeTestUuid(TEST_PLAYER_ID));
-    EXPECT_STREQ(player.name, "Alex");
+    EXPECT_EQ(player.getServerPlayerId(), makeTestUuid(TEST_PLAYER_ID));
+    EXPECT_STREQ(player.getServerPlayerName(), "Alex");
     EXPECT_TRUE(player.hasTeam());
-    EXPECT_EQ(player.team.id, makeTestUuid(TEST_TEAM_ID));
-    EXPECT_STREQ(player.team.name, "Night Shift");
-    ASSERT_EQ(player.affiliations.size(), 2u);
-    EXPECT_EQ(player.affiliations[0].categoryId, makeTestUuid("c1c1c1c1-0000-4000-8000-000000000001"));
-    EXPECT_STREQ(player.affiliations[0].categoryName, "Allegiance");
-    EXPECT_EQ(player.affiliations[0].affiliationId, makeTestUuid("a1a1a1a1-0000-4000-8000-000000000001"));
-    EXPECT_STREQ(player.affiliations[0].affiliationName, "Helix Industries");
-    EXPECT_EQ(player.affiliations[1].categoryId, makeTestUuid("c2c2c2c2-0000-4000-8000-000000000002"));
-    EXPECT_STREQ(player.affiliations[1].categoryName, "Faction");
-    EXPECT_EQ(player.affiliations[1].affiliationId, makeTestUuid("a2a2a2a2-0000-4000-8000-000000000002"));
-    EXPECT_STREQ(player.affiliations[1].affiliationName, "Runners");
+    EXPECT_EQ(player.getRegistrationTeam().id, makeTestUuid(TEST_TEAM_ID));
+    EXPECT_STREQ(player.getRegistrationTeam().name, "Night Shift");
+    ASSERT_EQ(player.getRegistrationAffiliations().size(), 2u);
+    EXPECT_EQ(player.getRegistrationAffiliations()[0].categoryId,
+              makeTestUuid("c1c1c1c1-0000-4000-8000-000000000001"));
+    EXPECT_STREQ(player.getRegistrationAffiliations()[0].categoryName, "Allegiance");
+    EXPECT_EQ(player.getRegistrationAffiliations()[0].affiliationId,
+              makeTestUuid("a1a1a1a1-0000-4000-8000-000000000001"));
+    EXPECT_STREQ(player.getRegistrationAffiliations()[0].affiliationName, "Helix Industries");
+    EXPECT_EQ(player.getRegistrationAffiliations()[1].categoryId,
+              makeTestUuid("c2c2c2c2-0000-4000-8000-000000000002"));
+    EXPECT_STREQ(player.getRegistrationAffiliations()[1].categoryName, "Faction");
+    EXPECT_EQ(player.getRegistrationAffiliations()[1].affiliationId,
+              makeTestUuid("a2a2a2a2-0000-4000-8000-000000000002"));
+    EXPECT_STREQ(player.getRegistrationAffiliations()[1].affiliationName, "Runners");
 }
 
 inline void devicePlayerDecodesUnassignedPlayer() {
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
 
     EXPECT_FALSE(player.hasTeam());
-    EXPECT_STREQ(player.team.name, "");
-    EXPECT_TRUE(player.affiliations.empty());
+    EXPECT_STREQ(player.getRegistrationTeam().name, "");
+    EXPECT_TRUE(player.getRegistrationAffiliations().empty());
 }
 
 inline void devicePlayerDecodesMaximumLengthName() {
     const std::string name(TEST_DISPLAY_NAME_LENGTH, 'x');
 
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), name), player));
 
-    EXPECT_EQ(std::string(player.name), name);
+    EXPECT_EQ(std::string(player.getServerPlayerName()), name);
 }
 
 inline void devicePlayerTruncatesLongDisplayNames() {
@@ -123,23 +128,24 @@ inline void devicePlayerTruncatesLongDisplayNames() {
                           uuidWireBytes(TEST_AFFILIATION_ID),
                           longName);
 
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
 
-    EXPECT_EQ(std::string(player.name), displayName);
-    EXPECT_EQ(std::string(player.team.name), displayName);
-    ASSERT_EQ(player.affiliations.size(), 1u);
-    EXPECT_EQ(std::string(player.affiliations[0].categoryName), displayName);
-    EXPECT_EQ(std::string(player.affiliations[0].affiliationName), displayName);
-    EXPECT_EQ(player.affiliations[0].affiliationId, makeTestUuid(TEST_AFFILIATION_ID))
-        << "fields after a truncated name must still decode";
+    EXPECT_EQ(std::string(player.getServerPlayerName()), displayName);
+    EXPECT_EQ(std::string(player.getRegistrationTeam().name), displayName);
+    ASSERT_EQ(player.getRegistrationAffiliations().size(), 1u);
+    EXPECT_EQ(std::string(player.getRegistrationAffiliations()[0].categoryName), displayName);
+    EXPECT_EQ(std::string(player.getRegistrationAffiliations()[0].affiliationName), displayName);
+    EXPECT_EQ(player.getRegistrationAffiliations()[0].affiliationId,
+              makeTestUuid(TEST_AFFILIATION_ID))
+    << "fields after a truncated name must still decode";
 }
 
 inline void devicePlayerDecodesAbsentName() {
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), ""), player));
 
-    EXPECT_STREQ(player.name, "");
+    EXPECT_STREQ(player.getServerPlayerName(), "");
 }
 
 inline void devicePlayerDecodesMaximumAffiliations() {
@@ -148,10 +154,10 @@ inline void devicePlayerDecodesMaximumAffiliations() {
         appendTestAffiliationNamed(body, "Affiliation");
     }
 
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
 
-    EXPECT_EQ(player.affiliations.size(), PlayerLimits::MAX_AFFILIATIONS);
+    EXPECT_EQ(player.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
 }
 
 inline void devicePlayerDropsAffiliationsPastLimit() {
@@ -163,14 +169,14 @@ inline void devicePlayerDropsAffiliationsPastLimit() {
     appendTestAffiliationNamed(body, "Fifth");
     appendTestTeam(body, uuidWireBytes(TEST_TEAM_ID), "Night Shift");
 
-    PlayerV2 player;
+    Player player;
     ASSERT_TRUE(DevicePlayerDecoder::decode(body, player));
 
-    ASSERT_EQ(player.affiliations.size(), PlayerLimits::MAX_AFFILIATIONS);
-    EXPECT_STREQ(player.affiliations[0].affiliationName, "First");
-    EXPECT_STREQ(player.affiliations[1].affiliationName, "Second");
-    EXPECT_STREQ(player.affiliations[2].affiliationName, "Third");
-    EXPECT_STREQ(player.team.name, "Night Shift")
+    ASSERT_EQ(player.getRegistrationAffiliations().size(), PlayerLimits::MAX_AFFILIATIONS);
+    EXPECT_STREQ(player.getRegistrationAffiliations()[0].affiliationName, "First");
+    EXPECT_STREQ(player.getRegistrationAffiliations()[1].affiliationName, "Second");
+    EXPECT_STREQ(player.getRegistrationAffiliations()[2].affiliationName, "Third");
+    EXPECT_STREQ(player.getRegistrationTeam().name, "Night Shift")
     << "fields after skipped affiliations must still decode";
 }
 
@@ -185,13 +191,17 @@ inline void devicePlayerRejectsWrongLengthUuids() {
     std::string badAffiliationId = encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex");
     appendTestAffiliation(badAffiliationId, uuidWireBytes(TEST_CATEGORY_ID), "Category", textId, "Affiliation");
 
-    PlayerV2 player;
-    player.affiliations.push_back({});
+    Player player;
+    ASSERT_TRUE(
+    DevicePlayerDecoder::decode(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Alex"), player));
+    const UUIDBytes idBefore = player.getServerPlayerId();
+    const size_t affiliationCountBefore = player.getRegistrationAffiliations().size();
     EXPECT_FALSE(DevicePlayerDecoder::decode(encodeTestPlayer(shortId, "Alex"), player));
     EXPECT_FALSE(DevicePlayerDecoder::decode(badTeamId, player));
     EXPECT_FALSE(DevicePlayerDecoder::decode(badAffiliationId, player));
-    EXPECT_TRUE(player.id.isNil()) << "a failed decode must leave the player untouched";
-    EXPECT_EQ(player.affiliations.size(), 1u);
+    EXPECT_EQ(player.getServerPlayerId(), idBefore)
+    << "a failed decode must leave the player untouched";
+    EXPECT_EQ(player.getRegistrationAffiliations().size(), affiliationCountBefore);
 }
 
 inline void devicePlayerRejectsMissingRequiredUuids() {
@@ -206,19 +216,20 @@ inline void devicePlayerRejectsMissingRequiredUuids() {
     appendTestBytesField(affiliation, alleycat_device_DevicePlayerAffiliation_affiliation_name_tag, "Affiliation");
     appendTestBytesField(missingCategoryId, alleycat_device_DevicePlayerResponse_affiliations_tag, affiliation);
 
-    PlayerV2 player;
+    Player player;
     EXPECT_FALSE(DevicePlayerDecoder::decode(missingPlayerId, player));
     EXPECT_FALSE(DevicePlayerDecoder::decode(missingCategoryId, player));
 }
 
 inline void devicePlayerRejectsGarbageBody() {
-    PlayerV2 player;
+    Player player;
     EXPECT_FALSE(DevicePlayerDecoder::decode("not a protobuf", player));
 }
 
 inline void playerApiQueuesDevicePlayerLookup(AlleycatApiTestSuite* suite) {
+    Player player;
     PlayerApi::getDevicePlayerByPin(
-    suite->wirelessManager, "0007", [](const PlayerV2&) {}, [](const WirelessErrorInfo&) {});
+    suite->wirelessManager, "0007", &player, [](Player&) {}, [](const WirelessErrorInfo&) {});
 
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
     EXPECT_EQ(suite->queuedRequests[0].method, "GET");

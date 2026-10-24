@@ -138,7 +138,7 @@ inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
 
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->playerProvider.hasPlayer());
-    EXPECT_STREQ(suite->playerProvider.getPlayer().name, "Ada");
+    EXPECT_STREQ(suite->playerProvider.getPlayer()->getServerPlayerName(), "Ada");
     EXPECT_TRUE(fetch.transitionToWelcome());
     suite->queuedRequests.clear();
     fetch.onStateDismounted(&suite->device);

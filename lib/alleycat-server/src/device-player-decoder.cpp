@@ -49,7 +49,7 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
     std::memcpy(affiliation.categoryId.bytes, message.category_id, UUIDBytes::SIZE);
     std::memcpy(affiliation.affiliationId.bytes, message.affiliation_id, UUIDBytes::SIZE);
-    if (affiliation.categoryId.isNil() || affiliation.affiliationId.isNil()) {
+    if (affiliation.categoryId.isZero() || affiliation.affiliationId.isZero()) {
         return false;
     }
     affiliations->push_back(affiliation);
@@ -60,16 +60,19 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 namespace DevicePlayerDecoder {
 
-bool decode(const std::string& body, PlayerV2& player) {
-    PlayerV2 decoded;
+bool decode(const std::string& body, Player& player) {
+    UUIDBytes serverId;
+    char serverName[PlayerLimits::NAME_BUFFER_SIZE] = {};
+    Team team;
+    std::vector<Affiliation> affiliations;
 
     ResponseMessage message = alleycat_device_DevicePlayerResponse_init_zero;
     message.name.funcs.decode = &decodeDisplayName;
-    message.name.arg = decoded.name;
+    message.name.arg = serverName;
     message.team_name.funcs.decode = &decodeDisplayName;
-    message.team_name.arg = decoded.team.name;
+    message.team_name.arg = team.name;
     message.affiliations.funcs.decode = &decodeAffiliation;
-    message.affiliations.arg = &decoded.affiliations;
+    message.affiliations.arg = &affiliations;
 
     pb_istream_t stream = pb_istream_from_buffer(
         reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
@@ -77,14 +80,14 @@ bool decode(const std::string& body, PlayerV2& player) {
         return false;
     }
 
-    std::memcpy(decoded.id.bytes, message.id, UUIDBytes::SIZE);
-    if (decoded.id.isNil()) {
+    std::memcpy(serverId.bytes, message.id, UUIDBytes::SIZE);
+    if (serverId.isZero()) {
         return false;
     }
     if (message.has_team_id) {
-        std::memcpy(decoded.team.id.bytes, message.team_id, UUIDBytes::SIZE);
+        std::memcpy(team.id.bytes, message.team_id, UUIDBytes::SIZE);
     }
-    player = decoded;
+    player.applyRegistrationProfile(serverId, serverName, team, affiliations);
     return true;
 }
 
