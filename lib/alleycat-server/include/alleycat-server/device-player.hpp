@@ -1,17 +1,23 @@
 #pragma once
 
-#include <cstdint>
-#include <string>
+#include "utils/uuid-bytes.hpp"
+#include <cstddef>
 #include <vector>
+
+/** Device-side limits for DevicePlayer; longer names are truncated and extra affiliations dropped. */
+namespace DevicePlayerLimits {
+constexpr size_t NAME_BUFFER_SIZE = 37;
+constexpr size_t MAX_AFFILIATIONS = 3;
+}  // namespace DevicePlayerLimits
 
 /**
  * One current assignment from DevicePlayerResponse. Identify by UUID; names may change.
  */
 struct DevicePlayerAffiliation {
-    std::string categoryId;
-    std::string categoryName;
-    std::string affiliationId;
-    std::string affiliationName;
+    UUIDBytes categoryId;
+    char categoryName[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
+    UUIDBytes affiliationId;
+    char affiliationName[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
 };
 
 /**
@@ -19,18 +25,14 @@ struct DevicePlayerAffiliation {
  * server's active event.
  */
 struct DevicePlayer {
-    std::string id;
-    std::string eventId;
-    std::string pdnCode;
-    std::string name;
-    int64_t createdAtUnixMs = 0;
-    std::string teamId;
-    std::string teamName;
-    bool active = false;
+    UUIDBytes id;
+    char name[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
+    UUIDBytes teamId;
+    char teamName[DevicePlayerLimits::NAME_BUFFER_SIZE] = {};
     std::vector<DevicePlayerAffiliation> affiliations;
 
     /** @return true when the player is currently assigned to a team. */
     bool hasTeam() const {
-        return !teamId.empty();
+        return !teamId.isNil();
     }
 };
