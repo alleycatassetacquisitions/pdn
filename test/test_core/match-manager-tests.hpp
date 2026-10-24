@@ -18,11 +18,11 @@ public:
         SimpleTimer::setPlatformClock(fakeClock);
         fakeClock->setTime(1000);
 
-        matchManager = new MatchManager();
+        matchManager = new MatchManager(device.wirelessManager);
         player = new Player();
         char playerId[] = "test";
         player->setUserID(playerId);
-        matchManager->initialize(player, &mockStorage, &fakeWirelessManager);
+        matchManager->initialize(player, &mockStorage);
         using ::testing::_;
         ON_CALL(mockStorage, write(_, _, _))
             .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
@@ -67,8 +67,8 @@ public:
 
     MatchManager* matchManager;
     Player* player;
+    MockDevice device;
     MockStorage mockStorage;
-    FakeQuickdrawWirelessManager fakeWirelessManager;
     FakeRemoteDeviceCoordinator fakeRdc;
     FakePlatformClock* fakeClock;
 };
@@ -517,4 +517,71 @@ inline void matchManagerRoleMismatchClearsInitiatorMatch(MatchManager* mm, Playe
 
     EXPECT_FALSE(mm->getCurrentMatch().has_value());
     EXPECT_FALSE(mm->isMatchReady());
+}
+
+TEST_F(MatchManagerTestSuite, abandoningAHandshakeCancelsItsPendingRetries) {
+    using ::testing::_;
+    std::vector<int> sentCommands;
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
+        .WillByDefault(::testing::Invoke(
+            [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+                if (len == sizeof(QuickdrawPacket)) {
+                    QuickdrawPacket packet{};
+                    memcpy(&packet, data, sizeof(packet));
+                    sentCommands.push_back(packet.command);
+                }
+                return 1;
+            }));
+
+    uint8_t opponent[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    matchManager->initializeMatch(opponent);
+    ASSERT_FALSE(sentCommands.empty()) << "initializeMatch sent no SEND_MATCH_ID";
+
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    matchManager->sync();
+    const size_t beforeClear = sentCommands.size();
+    ASSERT_GT(beforeClear, 1u) << "the handshake never retransmitted";
+
+    matchManager->clearCurrentMatch();
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS * 2 + 1);
+    matchManager->sync();
+
+    EXPECT_EQ(sentCommands.size(), beforeClear)
+        << "an abandoned handshake kept retransmitting its SEND_MATCH_ID";
+}
+
+TEST_F(MatchManagerTestSuite, clearingAFinishedMatchKeepsItsResultRetrying) {
+    using ::testing::_;
+    std::vector<int> sentCommands;
+    ON_CALL(*device.mockPeerComms, sendData(_, PktType::kQuickdrawCommand, _, _))
+        .WillByDefault(::testing::Invoke(
+            [&sentCommands](const uint8_t*, PktType, const uint8_t* data, const size_t len) {
+                if (len == sizeof(QuickdrawPacket)) {
+                    QuickdrawPacket packet{};
+                    memcpy(&packet, data, sizeof(packet));
+                    sentCommands.push_back(packet.command);
+                }
+                return 1;
+            }));
+
+    uint8_t opponent[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    matchManager->initializeMatch(opponent);
+    ASSERT_FALSE(sentCommands.empty());
+
+    matchManager->setDuelLocalStartTime(fakeClock->milliseconds());
+    fakeClock->advance(150);
+    matchManager->getDuelButtonPush()(matchManager);
+    const size_t afterResult = sentCommands.size();
+    ASSERT_GT(afterResult, 0u) << "the button push sent nothing";
+
+    matchManager->clearCurrentMatch();
+    fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    matchManager->sync();
+
+    bool resultRetried = false;
+    for (size_t i = afterResult; i < sentCommands.size(); ++i) {
+        if (sentCommands[i] == QDCommand::DRAW_RESULT) resultRetried = true;
+    }
+    EXPECT_TRUE(resultRetried)
+        << "clearing a finished match stripped the retransmits of its DRAW_RESULT";
 }

@@ -4,7 +4,6 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/match-manager.hpp"
 #include "game/shootout-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/device.hpp"
 #include "device/remote-device-coordinator.hpp"
@@ -36,15 +35,11 @@ public:
      */
     GameSession(Player* player,
                 Device* pdn,
-                QuickdrawWirelessManager* quickdrawWirelessManager,
                 SymbolWirelessManager* symbolWirelessManager);
     /** Drops the callbacks that capture `this`, then frees the managers it owns. */
     ~GameSession();
 
-    /**
-     * Drives the chain-duel and shootout retry machines and the periodic retry
-     * stats line. Installed on the device's tick seam by the constructor.
-     */
+    /** Drives the session's retry machines and the periodic retry stats line. */
     void sync();
 
     /** The manager bundle every gameplay state is constructed from. */
@@ -60,9 +55,6 @@ private:
 
     void onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    /** Champion-side enrolment of a supporter this device shares no cable with. */
-    void onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void logRetryStats();
@@ -76,7 +68,7 @@ private:
         PktType type;
         PeerCommsInterface::PacketCallback handler;
     };
-    static const std::array<PacketRoute, 6>& packetRoutes();
+    static const std::array<PacketRoute, 4>& packetRoutes();
 
     /**
      * Wraps a member handler in the C-style callback the radio takes. The member
@@ -93,7 +85,6 @@ private:
     Device* pdn = nullptr;
     WirelessManager* wirelessManager = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     MatchManager* matchManager = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;

@@ -95,6 +95,10 @@ void Idle::onStateLoop(PDN* pdn) {
 }
 
 void Idle::onStateDismounted(PDN* pdn) {
+    ShootoutManager* shMgr = matchManager->getShootoutManager();
+    if (!matchManager->isMatchReady() || (shMgr && shMgr->shouldEnterProposal())) {
+        matchManager->clearCurrentMatch();
+    }
     statsIndex = 0;
     matchInitializationTimer.invalidate();
     matchInitialized = false;

@@ -221,14 +221,11 @@ inline void cdmConfirmLifecycle(ChainDuelManagerTests* suite) {
 
     EXPECT_EQ(cdm.getBoostMs(), 0u);
 
-    // New signature: (fromMac, originatorMac, seqId).
-    // For 2-device case, fromMac == originatorMac (direct delivery, no forwarder).
-    cdm.onConfirmReceived(suite->supporterMac, suite->supporterMac, 1);
+    cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getBoostMs(), 15u);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
-    // Same originator, different seqId → still same MAC, still deduped at champion.
-    cdm.onConfirmReceived(suite->supporterMac, suite->supporterMac, 2);
+    cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
     cdm.clearSupporterConfirms();
@@ -243,7 +240,7 @@ inline void cdmOnChainStateChangedClearsOnDrain(ChainDuelManagerTests* suite) {
     suite->applyHunterChampionRoles(cdm);
     ASSERT_TRUE(cdm.isChampion());
 
-    cdm.onConfirmReceived(suite->supporterMac, suite->supporterMac, 1);
+    cdm.onConfirmReceived(suite->supporterMac);
     ASSERT_EQ(cdm.getBoostMs(), 15u);
 
     // First call: chain has peers (lastSupporterChainCount goes from 0 to N)
@@ -269,7 +266,7 @@ inline void cdmConfirmFromUnknownOriginatorRejected(ChainDuelManagerTests* suite
     ASSERT_TRUE(cdm.isChampion());
 
     uint8_t stranger[6] = {0xBA, 0xAD, 0xF0, 0x0D, 0x00, 0x00};
-    cdm.onConfirmReceived(suite->supporterMac, stranger, 1);
+    cdm.onConfirmReceived(stranger);
     EXPECT_EQ(cdm.getBoostMs(), 0u);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 }
@@ -371,7 +368,7 @@ inline void cdmConfirmBufferedUntilOriginatorJoinsChain(ChainDuelManagerTests* s
     ASSERT_TRUE(cdm.isChampion());
 
     uint8_t multiHopMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onConfirmReceived(suite->supporterMac, multiHopMac, 1);
+    cdm.onConfirmReceived(multiHopMac);
     ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 
     // The join lands: multiHopMac sits somewhere behind the direct supporter-jack
@@ -399,13 +396,13 @@ inline void cdmStrangerConfirmsCannotSilenceRealSupporter(ChainDuelManagerTests*
     for (int i = 0; i < 36; i++) {
         uint8_t stranger[6] = {0xEE, 0xEE, 0xEE, 0xEE,
                                static_cast<uint8_t>(i), static_cast<uint8_t>(i)};
-        cdm.onConfirmReceived(suite->supporterMac, stranger, 1);
+        cdm.onConfirmReceived(stranger);
     }
     ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 
     // A genuine multi-hop supporter presses afterwards and joins the roster.
     uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onConfirmReceived(suite->supporterMac, realMac, 1);
+    cdm.onConfirmReceived(realMac);
     cdm.onChainJoinReceived(realMac, suite->localMac);
     cdm.onChainStateChanged();
 
@@ -426,7 +423,7 @@ inline void cdmChainJoinForAnotherChampionIsIgnored(ChainDuelManagerTests* suite
     uint8_t otherChampion[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
     uint8_t foreignSupporter[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
     cdm.onChainJoinReceived(foreignSupporter, otherChampion);
-    cdm.onConfirmReceived(foreignSupporter, foreignSupporter, 1);
+    cdm.onConfirmReceived(foreignSupporter);
 
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
     EXPECT_EQ(cdm.getBoostMs(), 0u);
@@ -492,6 +489,8 @@ inline void cdmCountdownVoidsStandingConfirm(ChainDuelManagerTests* suite) {
     ASSERT_EQ(confirmsSent, 1);
 
     cdm.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    cdm.sync();
 
     uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, secondChampion, 2);
@@ -508,6 +507,14 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
     // fallback keeps that off the confirm counter below.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
+    int joinsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainJoin, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            joinsSent++;
+            return 1;
+        });
+
     int confirmsSent = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kChainConfirm, _, _))
@@ -516,19 +523,24 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
             return 1;
         });
 
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS - 10);
     uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
     ASSERT_TRUE(cdm.isSupporter());
     cdm.sendConfirm();
+    ASSERT_EQ(joinsSent, 1);
     ASSERT_EQ(confirmsSent, 1);
 
     // Cable out on both jacks: the heartbeat lapses and the direct peers go.
-    suite->fakeClock->advance(5000);
+    suite->fakeClock->advance(11);
     suite->rdc.sync(&suite->device);
     cdm.onChainStateChanged();
     ASSERT_FALSE(cdm.isSupporter());
 
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    cdm.sync();
     cdm.resendConfirm();
+    EXPECT_EQ(joinsSent, 1);
     EXPECT_EQ(confirmsSent, 1);
 }
 
@@ -589,8 +601,6 @@ inline void cdmChampionChangeWithoutPressSendsNoConfirm(ChainDuelManagerTests* s
     cdm.resendConfirm();
 }
 
-// onRoleAnnounceReceived updates peerRoleByPort and championMac, and acks the
-// sender.
 inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1275,7 +1285,7 @@ inline void chainDuelThreeDeviceConfirm(ChainDuelManagerTests* suite) {
 
     uint8_t distantMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
     a.onChainJoinReceived(distantMac, suite->localMac);
-    a.onConfirmReceived(distantMac, distantMac, confirmPayload.seqId);
+    a.onConfirmReceived(distantMac);
     EXPECT_EQ(a.getBoostMs(), 15u);
 }
 

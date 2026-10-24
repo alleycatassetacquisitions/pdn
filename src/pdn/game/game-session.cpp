@@ -5,15 +5,11 @@
 #include <array>
 #include <cstring>
 
-const std::array<GameSession::PacketRoute, 6>& GameSession::packetRoutes() {
-    // kRoleAnnounce is absent deliberately: ChainDuelManager's ReliableChannel
-    // claims that slot itself. Installing it here too would clobber the channel,
-    // since this loop runs after the managers are constructed.
-    static const std::array<PacketRoute, 6> ROUTES = {{
+const std::array<GameSession::PacketRoute, 4>& GameSession::packetRoutes() {
+    // Channel-owned PktTypes are omitted; registering them here after manager construction would clobber their channels.
+    static const std::array<PacketRoute, 4> ROUTES = {{
         {PktType::kChainGameEvent, dispatchTo<&GameSession::onChainGameEventPacket>},
         {PktType::kChainGameEventAck, dispatchTo<&GameSession::onChainGameEventAckPacket>},
-        {PktType::kChainConfirm, dispatchTo<&GameSession::onChainConfirmPacket>},
-        {PktType::kChainJoin, dispatchTo<&GameSession::onChainJoinPacket>},
         {PktType::kShootoutCommand, dispatchTo<&GameSession::onShootoutCommandPacket>},
         {PktType::kShootoutCommandAck, dispatchTo<&GameSession::onShootoutCommandAckPacket>},
     }};
@@ -24,28 +20,23 @@ const std::array<GameSession::PacketRoute, 6>& GameSession::packetRoutes() {
 // both managers read the two device-owned managers pulled off the PDN above them.
 GameSession::GameSession(Player* player,
                          Device* pdn,
-                         QuickdrawWirelessManager* quickdrawWirelessManager,
                          SymbolWirelessManager* symbolWirelessManager)
     : player(player)
     , pdn(pdn)
     , wirelessManager(pdn->getWirelessManager())
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
-    , quickdrawWirelessManager(quickdrawWirelessManager)
     , symbolWirelessManager(symbolWirelessManager)
-    , matchManager(new MatchManager())
+    , matchManager(new MatchManager(wirelessManager))
     , chainDuelManager(new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator))
     , shootoutManager(new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator)) {
     this->shootoutManager->setMatchManager(matchManager);
     matchManager->setShootoutManager(shootoutManager);
 
-    matchManager->initialize(player, pdn->getStorage(), quickdrawWirelessManager);
+    matchManager->initialize(player, pdn->getStorage());
     matchManager->setBoostProvider([this]() -> unsigned long {
         return chainDuelManager ? chainDuelManager->getBoostMs() : 0;
     });
     matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
-
-    quickdrawWirelessManager->setPacketReceivedCallback(
-        [this](const QuickdrawCommand& command) { matchManager->listenForMatchEvents(command); });
 
     for (const PacketRoute& route : packetRoutes()) {
         wirelessManager->setEspNowPacketHandler(route.type, route.handler, this);
@@ -82,10 +73,6 @@ GameSession::~GameSession() {
     for (const PacketRoute& route : packetRoutes()) {
         wirelessManager->clearEspNowPacketHandler(route.type);
     }
-    if (quickdrawWirelessManager) {
-        quickdrawWirelessManager->clearCallbacks();
-    }
-    quickdrawWirelessManager = nullptr;
     symbolWirelessManager = nullptr;
     // Managers before matchManager: shootoutManager holds a raw MatchManager*
     // and dereferences it when priming a bracket match.
@@ -104,7 +91,6 @@ GameContext GameSession::getContext() {
     context.remoteDeviceCoordinator = remoteDeviceCoordinator;
     context.chainDuelManager = chainDuelManager;
     context.shootoutManager = shootoutManager;
-    context.quickdrawWirelessManager = quickdrawWirelessManager;
     context.symbolWirelessManager = symbolWirelessManager;
     context.wirelessManager = wirelessManager;
     return context;
@@ -120,6 +106,8 @@ SupporterReady* GameSession::getMountedSupporterReady() {
 }
 
 void GameSession::sync() {
+    if (matchManager) matchManager->sync();
+
     if (chainDuelManager) {
         chainDuelManager->sync();
 
@@ -133,6 +121,7 @@ void GameSession::sync() {
     // retries keep running while the device is in the duel app for a bracket
     // match.
     if (shootoutManager) shootoutManager->sync();
+    if (symbolWirelessManager) symbolWirelessManager->sync();
 
     logRetryStats();
 }
@@ -197,24 +186,6 @@ void GameSession::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_
     if (dataLen != sizeof(ChainGameEventAckPayload) || !chainDuelManager) return;
     const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
     chainDuelManager->onChainGameEventAckReceived(fromMac, payload->seqId);
-}
-
-void GameSession::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainConfirmPayload)) return;
-    if (!chainDuelManager) return;
-    // Deliberately ungated on the sender: a confirm is unicast straight to the
-    // champion from any depth, so the sender is usually a device we share no
-    // cable with and no adjacency test can recognise it. Membership is decided
-    // against the join roster when the count is read, and a press whose join has
-    // not landed yet is held rather than dropped.
-    const ChainConfirmPayload* payload = reinterpret_cast<const ChainConfirmPayload*>(data);
-    chainDuelManager->onConfirmReceived(fromMac, payload->originatorMac, payload->seqId);
-}
-
-void GameSession::onChainJoinPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (dataLen != sizeof(ChainJoinPayload) || !chainDuelManager) return;
-    const ChainJoinPayload* payload = reinterpret_cast<const ChainJoinPayload*>(data);
-    chainDuelManager->onChainJoinReceived(fromMac, payload->championMac);
 }
 
 namespace {

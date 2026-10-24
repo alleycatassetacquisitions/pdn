@@ -459,3 +459,37 @@ TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
     transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 2);
 }
+
+TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    Resender resender(&wm);
+
+    int frames = 0;
+    ON_CALL(comms, getPeerCommsState())
+        .WillByDefault(::testing::Return(PeerCommsState::CONNECTED));
+    ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([&frames](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            frames++;
+            return 1;
+        });
+
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x09};
+    {
+        ReliableChannel<TransportTestPayload> channel(
+            &wm, &resender, PktType::kShootoutCommand, nullptr);
+        TransportTestPayload p{};
+        channel.sendReliable(peer, p);
+        ASSERT_EQ(frames, 1);
+        ASSERT_EQ(resender.pendingCount(PktType::kShootoutCommand), 1u);
+    }
+
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
+    clock.advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    resender.sync();
+    EXPECT_EQ(frames, 1) << "a destroyed channel kept retransmitting";
+
+    SimpleTimer::setPlatformClock(nullptr);
+}
