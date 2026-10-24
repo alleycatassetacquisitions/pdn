@@ -307,7 +307,8 @@ def check_format(path, content, added):
     proc = subprocess.run(
         ["clang-format", "--style=file", f"--assume-filename={path}",
          *[f"--lines={a}:{b}" for a, b in ranges]],
-        input=content, capture_output=True, text=True)
+        input=content, capture_output=True, text=True,
+        encoding="utf-8", errors="replace")
     if proc.returncode != 0:
         flag(path, ranges[0][0], f"clang-format failed: {proc.stderr.strip()}")
         return

@@ -25,7 +25,10 @@
 #include "crash-encoder-tests.hpp"
 #include "player-response-tests.hpp"
 #include "device-player-decoder-tests.hpp"
+#include "player-fetch-tests.hpp"
+#include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
+#include "uuid-bytes-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -588,6 +591,30 @@ TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
     uuidGeneratorProducesValidFormat();
 }
 
+TEST(UUIDBytes, parsesKnownValue) {
+    uuidBytesParsesKnownValue();
+}
+
+TEST(UUIDBytes, acceptsEitherCase) {
+    uuidBytesAcceptsEitherCase();
+}
+
+TEST(UUIDBytes, formatsLowercaseRoundTrip) {
+    uuidBytesFormatsLowercaseRoundTrip();
+}
+
+TEST(UUIDBytes, rejectsMalformedText) {
+    uuidBytesRejectsMalformedText();
+}
+
+TEST(UUIDBytes, reportsNil) {
+    uuidBytesReportsNil();
+}
+
+TEST(UUIDBytes, comparesByValue) {
+    uuidBytesComparesByValue();
+}
+
 // ============================================
 // MAC ADDRESS TESTS
 // ============================================
@@ -848,12 +875,32 @@ TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
     devicePlayerDecodesUnassignedPlayer();
 }
 
-TEST(DevicePlayerDecoder, keepsInactivePlayer) {
-    devicePlayerKeepsInactivePlayer();
+TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
+    devicePlayerDecodesMaximumLengthName();
 }
 
-TEST(DevicePlayerDecoder, decodesLongName) {
-    devicePlayerDecodesLongName();
+TEST(DevicePlayerDecoder, truncatesLongDisplayNames) {
+    devicePlayerTruncatesLongDisplayNames();
+}
+
+TEST(DevicePlayerDecoder, decodesAbsentName) {
+    devicePlayerDecodesAbsentName();
+}
+
+TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
+    devicePlayerDecodesMaximumAffiliations();
+}
+
+TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) {
+    devicePlayerDropsAffiliationsPastLimit();
+}
+
+TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) {
+    devicePlayerRejectsWrongLengthUuids();
+}
+
+TEST(DevicePlayerDecoder, rejectsMissingRequiredUuids) {
+    devicePlayerRejectsMissingRequiredUuids();
 }
 
 TEST(DevicePlayerDecoder, rejectsGarbageBody) {
@@ -862,6 +909,48 @@ TEST(DevicePlayerDecoder, rejectsGarbageBody) {
 
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
+}
+
+// ============================================
+// PLAYER PROVIDER TESTS
+// ============================================
+
+TEST(PlayerProvider, startsEmpty) { playerProviderStartsEmpty(); }
+
+TEST(PlayerProvider, returnsDefaultWhenEmpty) { playerProviderReturnsDefaultWhenEmpty(); }
+
+TEST(PlayerProvider, storesProfile) { playerProviderStoresProfile(); }
+
+TEST(PlayerProvider, overwriteReplacesProfile) { playerProviderOverwriteReplacesProfile(); }
+
+TEST(PlayerProvider, clearDropsProfile) { playerProviderClearDropsProfile(); }
+
+// ============================================
+// PLAYER FETCH APP TESTS
+// ============================================
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
+    pinEntryRoutesNonDemoPinToFetch(this);
+}
+
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
+    pinEntryRoutesDemoPinToChooseTeam(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
+    fetchUserQueuesDevicePlayerLookup(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserStoresDevicePlayerOnSuccess) {
+    fetchUserStoresDevicePlayerOnSuccess(this);
+}
+
+TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
+    fetchUserFailureReturnsToPinAfterPageTimeout(this);
+}
+
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
+    chooseTeamConfirmReachesDemoStub(this);
 }
 
 // ============================================
@@ -892,8 +981,20 @@ TEST(QuickdrawMatchCodec, decodesRejection) {
     matchCodecDecodesRejection();
 }
 
+TEST(QuickdrawMatchCodec, deliversRejectionsInOrder) {
+    matchCodecDeliversRejectionsInOrder();
+}
+
 TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
     matchCodecKeepsUnknownErrorCode();
+}
+
+TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
+    matchCodecRejectsTooManyFieldsWithoutDelivering();
+}
+
+TEST(QuickdrawMatchCodec, rejectsMalformedMatchIdWithoutDelivering) {
+    matchCodecRejectsMalformedMatchIdWithoutDelivering();
 }
 
 TEST(QuickdrawMatchCodec, rejectsGarbageBody) {

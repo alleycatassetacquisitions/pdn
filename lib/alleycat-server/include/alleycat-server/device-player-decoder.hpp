@@ -1,6 +1,6 @@
 #pragma once
 
-#include "alleycat-server/device-player.hpp"
+#include "game/player-types.hpp"
 #include <string>
 
 /**
@@ -15,6 +15,6 @@ namespace DevicePlayerDecoder {
  *
  * @return false when @p body is not a valid DevicePlayerResponse.
  */
-bool decode(const std::string& body, DevicePlayer& player);
+bool decode(const std::string& body, PlayerV2& player);
 
 }  // namespace DevicePlayerDecoder

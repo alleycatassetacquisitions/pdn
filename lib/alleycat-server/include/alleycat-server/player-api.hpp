@@ -2,10 +2,11 @@
 
 #include <functional>
 #include <string>
-#include "alleycat-server/device-player.hpp"
+
 #include "alleycat-server/device-player-decoder.hpp"
 #include "alleycat-server/player-response.hpp"
 #include "device/wireless-manager.hpp"
+#include "game/player-types.hpp"
 #include "wireless/wireless-types.hpp"
 
 namespace PlayerApi {
@@ -41,29 +42,25 @@ inline void getPlayer(
 }
 
 /**
- * GET /device/players/by-pin/{pin} — decodes the protobuf @ref DevicePlayer on success.
+ * GET /device/players/by-pin/{pin} — decodes protobuf into @ref PlayerV2 on success.
  * The server answers 400 for a malformed PIN and 404 when no player matches.
  */
-inline void getDevicePlayerByPin(
-    WirelessManager* wirelessManager,
-    const std::string& pin,
-    const std::function<void(const DevicePlayer&)>& onSuccess,
-    const std::function<void(const WirelessErrorInfo&)>& onError) {
+inline void getDevicePlayerByPin(WirelessManager* wirelessManager, const std::string& pin,
+                                 const std::function<void(const PlayerV2&)>& onSuccess,
+                                 const std::function<void(const WirelessErrorInfo&)>& onError) {
     HttpRequest request(
-        GET_DEVICE_PLAYERS_ENDPOINT + pin,
-        "GET",
-        "",
-        "",
-        [onSuccess, onError](const std::string& response) {
-            DevicePlayer player;
-            if (DevicePlayerDecoder::decode(response, player)) {
-                onSuccess(player);
-            } else {
-                onError({WirelessError::INVALID_RESPONSE,
-                         "Failed to decode device player response"});
-            }
-        },
-        onError);
+    GET_DEVICE_PLAYERS_ENDPOINT + pin, "GET", "", "",
+    [onSuccess, onError](const std::string& response) {
+        PlayerV2 player;
+        if (DevicePlayerDecoder::decode(response, player)) {
+            onSuccess(player);
+        } else {
+            onError({WirelessError::INVALID_RESPONSE, "Failed to decode device player response"});
+        }
+    },
+    onError);
+
+    request.requestHeaders.push_back({"Accept", "application/protobuf"});
 
     wirelessManager->queueHttpRequest(std::move(request));
 }

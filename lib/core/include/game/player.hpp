@@ -13,6 +13,12 @@ enum class Allegiance {
     RESISTANCE = 3
 };
 
+/**
+ * Gameplay player: PIN, RNG seed, stats, and legacy allegiance/hunter fields.
+ *
+ * @deprecated for server registration reads; use `PlayerV2` via `PlayerProvider`
+ * (game/player-provider.hpp). Unification lands at the Quickdraw cutover.
+ */
 class Player {
 public:
     Player() = default;
@@ -58,17 +64,23 @@ public:
 
     void clearUserID();
 
-    unsigned long getLastReactionTime();
+    /** @return Milliseconds for the most recent duel reaction sample. */
+    unsigned long getLastReactionTime() const;
 
-    unsigned long getAverageReactionTime();
+    /** @return Mean reaction time across recorded matches, or 0 when none played. */
+    unsigned long getAverageReactionTime() const;
 
-    int getStreak();
+    /** @return Current consecutive win count. */
+    int getStreak() const;
 
-    int getMatchesPlayed();
+    /** @return Total matches recorded for this session profile. */
+    int getMatchesPlayed() const;
 
-    int getWins();
+    /** @return Win count for this session profile. */
+    int getWins() const;
 
-    int getLosses();
+    /** @return Loss count for this session profile. */
+    int getLosses() const;
 
     Symbol* getSymbol();
 

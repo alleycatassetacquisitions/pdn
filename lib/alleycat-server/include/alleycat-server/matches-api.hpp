@@ -33,8 +33,9 @@ inline void updateMatches(
 
 /**
  * POST /quickdraw-matches — uploads @p matchCount matches pulled from @p source as
- * protobuf. @p onSuccess receives the per-match rejections; an error leaves the
- * outcome unknown, and retrying the same match IDs is safe.
+ * protobuf. @p onRejection receives each rejected match, then @p onSuccess receives
+ * the totals; an error leaves the outcome unknown, and retrying the same match IDs
+ * is safe.
  *
  * @param matchCount  1 to QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH; otherwise
  *                    @p onError fires with INVALID_STATE and nothing is queued.
@@ -43,6 +44,7 @@ inline void uploadQuickdrawMatches(
     WirelessManager* wirelessManager,
     size_t matchCount,
     const QuickdrawMatchCodec::MatchSource& source,
+    const QuickdrawMatchCodec::RejectionSink& onRejection,
     const std::function<void(const QuickdrawUploadResult&)>& onSuccess,
     const std::function<void(const WirelessErrorInfo&)>& onError) {
     if (matchCount == 0 || matchCount > QuickdrawMatchCodec::MAX_MATCHES_PER_BATCH) {
@@ -61,9 +63,9 @@ inline void uploadQuickdrawMatches(
         "POST",
         "application/protobuf",
         std::move(payload),
-        [onSuccess, onError](const std::string& response) {
+        [onRejection, onSuccess, onError](const std::string& response) {
             QuickdrawUploadResult result;
-            if (QuickdrawMatchCodec::decodeResponse(response, result)) {
+            if (QuickdrawMatchCodec::decodeResponse(response, onRejection, result)) {
                 onSuccess(result);
             } else {
                 onError({WirelessError::INVALID_RESPONSE,
