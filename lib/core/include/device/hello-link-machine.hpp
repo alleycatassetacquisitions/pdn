@@ -44,14 +44,8 @@ struct HelloLinkContext {
     unsigned long lastHelloMs = 0;
     std::array<uint8_t, 6> peerMac{};  // source MAC last heard; the owner's per-jack peer identity
 
-    // Silent-link gap with a defensive underflow clamp: HELLO processing is
-    // main-loop-only today, but any backwards step between stamp and read (a
-    // clock swap in tests, a future task split) would wrap now - lastHelloMs
-    // to ~ULONG_MAX and kill a live link.
-    unsigned long sinceHello() const {
-        const unsigned long now = nowMs();
-        return now >= lastHelloMs ? now - lastHelloMs : 0;
-    }
+    /** Milliseconds elapsed since the last HELLO on this jack. */
+    unsigned long sinceHello() const { return nowMs() - lastHelloMs; }
 };
 
 class HelloIdleState : public TypedState<Device> {
@@ -115,11 +109,8 @@ public:
     // No HELLO within the silent-link window, or a context exchange that never
     // completes, drops the link back to Idle.
     bool transitionToIdle() {
-        const unsigned long now = context->nowMs();
-        const unsigned long connecting =
-            now >= connectingSinceMs ? now - connectingSinceMs : 0;
         return context->sinceHello() > context->silentLinkMs ||
-               connecting > context->contextTimeoutMs;
+               context->nowMs() - connectingSinceMs > context->contextTimeoutMs;
     }
 
 private:

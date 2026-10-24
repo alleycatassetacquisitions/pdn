@@ -335,9 +335,7 @@ private:
         // The only profile field lifted onto the port surface; the profile itself
         // stays opaque and reaches the game layer as raw bytes.
         uint16_t peerUserId = PEER_USER_ID_NONE;
-        // Last recovery resend to this jack's peer (0 = never); throttles the
-        // CONNECTED-state resend so two CONNECTED sides can't volley at radio RTT.
-        unsigned long lastContextResendMs = 0;
+        SimpleTimer contextResendThrottleTimer;
     };
     std::array<JackHelloLink, NUM_PORTS> helloByPort;
     bool externalConnectivityTask = false;
@@ -377,7 +375,7 @@ private:
         unsigned long arrivedAtMs = 0;
         bool valid = false;
         bool isExpiredAt(unsigned long now) const {
-            return now >= arrivedAtMs && now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
+            return now - arrivedAtMs > CONTEXT_BUFFER_TTL_MS;
         }
     };
     std::array<BufferedContext, CONTEXT_BUFFER_SLOTS> contextBuffer;
