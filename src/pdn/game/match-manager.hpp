@@ -17,7 +17,10 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/mac-functions.hpp"
+#include "wireless/quickdraw-packet.hpp"
+#include "wireless/reliable-channel.hpp"
+#include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
@@ -54,8 +57,8 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-
-    MatchManager();
+    /** Claims the kQuickdrawCommand channel on wirelessManager (may be nullptr in tests). */
+    explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
 
@@ -160,7 +163,11 @@ public:
 
     void listenForMatchEvents(const QuickdrawCommand& command);
 
-    void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
+    /** Binds the player and storage this manager records matches against. */
+    void initialize(Player* player, StorageInterface* storage);
+
+    /** Drives the duel channel's retries. */
+    void sync();
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -192,7 +199,10 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
+    Resender resender;
+    ReliableChannel<QuickdrawPacket> duelChannel;
+    void sendCommand(const uint8_t* mac, int command, const char* matchId,
+                     long drawTime, bool isHunter);
     /**
      * Appends a match to storage
      * @param match Match to save
@@ -220,10 +230,6 @@ private:
     // SEND_MATCH_ID is intentionally exempt: it's the packet that
     // establishes the peering in the first place.
     bool isFromActiveMatchOpponent(const QuickdrawCommand& command) const;
-
-    void sendMatchAck();
-    void sendMatchId();
-    void sendMatchRoleMismatch(const QuickdrawCommand& incoming);
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.

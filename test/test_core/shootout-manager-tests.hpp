@@ -1677,9 +1677,8 @@ inline void shootoutLeavesStandingRoleAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    FakeQuickdrawWirelessManager quickdrawWirelessManager;
-    MatchManager matchManager;
-    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    MatchManager matchManager(nullptr);
+    matchManager.initialize(&suite->player, &storage);
     suite->followRingHead(opMac);
     suite->shootout->setMatchManager(&matchManager);
 
@@ -1726,9 +1725,8 @@ inline void anAbortRetiresTheBoutTheTournamentPrimed(ShootoutManagerTests* suite
         .WillByDefault(testing::Return(1));
 
     MockStorage storage;
-    FakeQuickdrawWirelessManager quickdrawWirelessManager;
-    MatchManager matchManager;
-    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    MatchManager matchManager(nullptr);
+    matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
     suite->joinRelayedRing(coord.data());
@@ -1760,9 +1758,8 @@ inline void aTournamentResetLeavesACableBoutAlone(ShootoutManagerTests* suite) {
         .WillByDefault(testing::Return(selfMac));
 
     MockStorage storage;
-    FakeQuickdrawWirelessManager quickdrawWirelessManager;
-    MatchManager matchManager;
-    matchManager.initialize(&suite->player, &storage, &quickdrawWirelessManager);
+    MatchManager matchManager(nullptr);
+    matchManager.initialize(&suite->player, &storage);
     suite->shootout->setMatchManager(&matchManager);
 
     matchManager.receiveMatch("b5f1c0de-0000-4000-8000-00000000cafe", "opponent",

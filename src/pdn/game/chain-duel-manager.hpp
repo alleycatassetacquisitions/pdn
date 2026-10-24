@@ -100,10 +100,8 @@ public:
      * join naming any champion but this device.
      */
     void onChainJoinReceived(const uint8_t* supporterMac, const uint8_t* joinChampionMac);
-    void onConfirmReceived(
-        const uint8_t* fromMac,
-        const uint8_t* originatorMac,
-        uint8_t seqId);
+    /** Records a supporter press from originatorMac; chain membership is filtered when read. */
+    void onConfirmReceived(const uint8_t* originatorMac);
     void onChainStateChanged();
 
     // Records a peer's role learned from an incoming kRoleAnnounce packet.
@@ -146,7 +144,6 @@ public:
      */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
-    // Retry observability for this manager's two channels.
     struct RetryStats {
         uint32_t sends = 0;
         uint32_t retries = 0;
@@ -154,16 +151,7 @@ public:
         uint32_t ackLatencyMsSum = 0;
         uint32_t ackCount = 0;
     };
-    /**
-     * Cumulative retry counters for the role-announce and game-event channels.
-     * ackLatencyMsSum / ackCount is a mean delivery time, mixing two kinds of
-     * sample: the role announce measures to the radio's SEND_SUCCESS, the game
-     * event to a reply packet. Sends and retries are
-     * counted in frames, abandons in recipients, so the three do not divide into
-     * one another: on a fan-out one frame can be given up on by many members.
-     * Latency is measured here because the Resender does not stamp a send time;
-     * it holds the retry schedule, not a record of when a frame first went out.
-     */
+    /** Cumulative resender counts plus delivery latency sampled on kRoleAnnounce (to SEND_SUCCESS) and kChainGameEvent (to Ack). */
     RetryStats getRetryStats() const {
         const Resender::Stats& carried = resender.getStats();
         return {carried.sends, carried.retries, carried.abandons,
@@ -180,15 +168,6 @@ private:
 
     SerialIdentifier opponentJack() const;
     SerialIdentifier supporterJack() const;
-
-    // The role/champion cascade. Wrapped by onChainStateChanged so every caller
-    // also gets the confirm bookkeeping that has to follow it.
-    void applyChainStateChange();
-
-    // The only place championMac is assigned, so the paths that clear it cannot
-    // drift from the paths that set it. nullptr means this device follows no
-    // champion of its own.
-    void setChampion(const std::array<uint8_t, 6>* mac);
 
     // Tells the champion this device follows that it exists. The champion cannot
     // discover a supporter it shares no cable with any other way.
@@ -214,11 +193,6 @@ private:
 
     size_t lastSupporterChainCount = 0;
 
-    uint8_t nextConfirmSeqId = 1;  // skip 0 as sentinel
-
-    // Set the moment a press produces a confirm, so the champion-changed and
-    // chain-settled triggers know there is something worth re-sending. Atomic:
-    // written from the radio task (COUNTDOWN arrival), read from the main loop.
     std::atomic<bool> confirmSent{false};
 
     // Every press we have heard this round, member or not. Membership is applied
@@ -276,9 +250,6 @@ private:
 
     uint8_t nextGameEventSeqId = 1;
 
-    // Owned here, not shared with the coordinator's: a fan-out armed by this
-    // manager must not outlive it and keep broadcasting for an object that is
-    // gone. Both announces ride the channel below it.
     Resender resender;
 
     // In a 2-node ring both jacks face one peer, so the second announce can
@@ -286,6 +257,8 @@ private:
     // championMac, and addGroup transmits before superseding, so each still gets
     // its own delivery report.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
+    ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
+    ReliableChannel<ChainJoinPayload> chainJoinChannel;
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 

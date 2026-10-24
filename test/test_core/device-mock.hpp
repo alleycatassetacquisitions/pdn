@@ -14,7 +14,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
@@ -270,37 +270,52 @@ public:
     std::array<uint8_t, 6> headMac{};
 };
 
-// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
-// Call deliverLastTo() to route the most-recently-captured packet to another manager's
-// processQuickdrawCommand(), exercising the real serialization/deserialization path.
-class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
+class QuickdrawRadioTap {
 public:
-    FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
-
-    int broadcastPacket(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
-        sentCommands.push_back(command);
-        return 0;
+    /** Call after any wildcard sendData ON_CALL and before constructing MatchManager. */
+    void attach(MockPeerComms* radio) {
+        ON_CALL(*radio, setPacketHandler(PktType::kQuickdrawCommand, testing::_, testing::_))
+            .WillByDefault(testing::Invoke(
+                [this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
+                    receiveHandler = callback;
+                    receiveContext = ctx;
+                }));
+        ON_CALL(*radio, sendData(testing::_, PktType::kQuickdrawCommand, testing::_, testing::_))
+            .WillByDefault(testing::DoAll(
+                testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data,
+                                       const size_t len) {
+                    if (len != sizeof(QuickdrawPacket)) return;
+                    QuickdrawPacket p{};
+                    memcpy(&p, data, sizeof(p));
+                    sentFrames.push_back(p);
+                }),
+                testing::Return(1)));
     }
 
-    void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
-        if (sentCommands.empty()) return;
-        const QuickdrawCommand& cmd = sentCommands.back();
-
-        // Serialize into the same wire format used by the real broadcastPacket.
-        QuickdrawPacket pkt = {};
-        memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
-        memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
-        pkt.isHunter       = cmd.isHunter;
-        pkt.playerDrawTime = cmd.playerDrawTime;
-        pkt.command        = cmd.command;
-
-        recipient->processQuickdrawCommand(
-            senderMac,
-            reinterpret_cast<const uint8_t*>(&pkt),
-            sizeof(pkt));
+    /** The exact frame this radio last sent, for the peer's tap to replay. */
+    const QuickdrawPacket* lastFrame() const {
+        return sentFrames.empty() ? nullptr : &sentFrames.back();
     }
 
-    std::vector<QuickdrawCommand> sentCommands;
+    /** Delivers frame from senderMac into this tap's own receiveHandler. */
+    void deliverFrameFrom(const uint8_t* senderMac, const QuickdrawPacket* frame) {
+        if (frame == nullptr) return;
+        deliverBytesTo(senderMac, reinterpret_cast<const uint8_t*>(frame),
+                       sizeof(*frame));
+    }
+
+    /** Feeds raw wire bytes into this radio's manager as the driver would. */
+    void deliverBytesTo(const uint8_t* senderMac, const uint8_t* data, size_t len) {
+        if (receiveHandler != nullptr) {
+            receiveHandler(senderMac, data, len, receiveContext);
+        }
+    }
+
+    std::vector<QuickdrawPacket> sentFrames;
+
+private:
+    PeerCommsInterface::PacketCallback receiveHandler = nullptr;
+    void* receiveContext = nullptr;
 };
 
 // Fake light strip for LightManager

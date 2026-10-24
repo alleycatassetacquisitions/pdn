@@ -7,7 +7,7 @@
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "game/match-manager.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "utils/simple-timer.hpp"
 #include "device-mock.hpp"
 #include "utility-tests.hpp"
@@ -37,7 +37,6 @@ inline void matchManagerConcurrentDriverVsReader() {
     char playerId[] = "test";
     player.setUserID(playerId);
     player.setIsHunter(false);
-    FakeQuickdrawWirelessManager wireless;
     FakeRemoteDeviceCoordinator rdc;
     const uint8_t peerMac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
     rdc.setPeerMac(SerialIdentifier::INPUT_JACK, peerMac);
@@ -46,7 +45,9 @@ inline void matchManagerConcurrentDriverVsReader() {
     driver.initialize();
     driver.connect();
 
-    MatchManager mm;
+    // Declared before mm so wireless outlives mm's duelChannel destructor.
+    WirelessManager wireless(&driver, nullptr);
+    MatchManager mm(&wireless);
     using ::testing::_;
     ON_CALL(storage, write(_, _, _))
         .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
@@ -54,25 +55,9 @@ inline void matchManagerConcurrentDriverVsReader() {
         });
     ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(::testing::Return(1));
     ON_CALL(storage, readUChar(_, _, _)).WillByDefault(::testing::Return(0));
-    mm.initialize(&player, &storage, &wireless);
+    mm.initialize(&player, &storage);
     mm.setRemoteDeviceCoordinator(&rdc);
     mm.clearCurrentMatch();
-
-    // Handler is invoked by exec() on the main thread — never by the WiFi thread.
-    driver.setPacketHandler(
-        PktType::kQuickdrawCommand,
-        [](const uint8_t* src, const uint8_t* data, size_t len, void* ctx) {
-            if (len < sizeof(QuickdrawPacket)) return;
-            auto* matchMgr = static_cast<MatchManager*>(ctx);
-            const auto* pkt = reinterpret_cast<const QuickdrawPacket*>(data);
-            QuickdrawCommand cmd(src,
-                                 static_cast<QDCommand>(pkt->command),
-                                 pkt->matchId, pkt->playerId,
-                                 pkt->playerDrawTime, pkt->isHunter);
-            matchMgr->listenForMatchEvents(cmd);
-        },
-        &mm
-    );
 
     std::atomic<bool> running{true};
 
@@ -86,7 +71,7 @@ inline void matchManagerConcurrentDriverVsReader() {
             QuickdrawPacket pkt = {};
             strncpy(pkt.matchId,  matchId, sizeof(pkt.matchId) - 1);
             strncpy(pkt.playerId, "hunt",  sizeof(pkt.playerId) - 1);
-            pkt.command        = static_cast<int>(QDCommand::SEND_MATCH_ID);
+            pkt.command = QDCommand::SEND_MATCH_ID;
             pkt.isHunter       = true;
             pkt.playerDrawTime = 0;
 
@@ -101,12 +86,14 @@ inline void matchManagerConcurrentDriverVsReader() {
     // on this thread), then reads MatchManager state — all on one thread.
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
     volatile int sideEffect = 0;
+    bool reachedTheManager = false;
     while (std::chrono::steady_clock::now() < deadline) {
         driver.exec();
         sideEffect += static_cast<int>(mm.isMatchReady());
         sideEffect += static_cast<int>(mm.getHasReceivedDrawResult());
         sideEffect += static_cast<int>(mm.getHasPressedButton());
         if (mm.getCurrentMatch().has_value()) {
+            reachedTheManager = true;
             sideEffect += static_cast<int>(mm.getCurrentMatch()->getHunterDrawTime());
             sideEffect += static_cast<int>(mm.getCurrentMatch()->getBountyDrawTime());
         }
@@ -119,5 +106,7 @@ inline void matchManagerConcurrentDriverVsReader() {
     mm.clearCurrentMatch();
     SimpleTimer::setPlatformClock(nullptr);
 
+    EXPECT_TRUE(reachedTheManager)
+        << "no SEND_MATCH_ID reached MatchManager through the duel channel";
     SUCCEED() << "No TSan races expected: MatchManager is only accessed from exec() on the main thread";
 }

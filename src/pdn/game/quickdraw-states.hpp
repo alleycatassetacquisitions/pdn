@@ -6,7 +6,6 @@
 #include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
@@ -34,7 +33,6 @@ struct GameContext {
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
 };
@@ -151,18 +149,12 @@ public:
 
 public:
     // Button callback in onStateMounted uses these via `this` capture.
-    // Atomic because the ESP-NOW packet callback (WiFi task on hardware) and
-    // the button press / state-loop callbacks (main task) read and write them
-    // concurrently.
     Player *player;
     std::atomic<bool> buttonArmed{false};
     std::atomic<bool> hasConfirmed{false};
     std::atomic<bool> displayIsDirty{true};
     std::atomic<bool> ledsAreDirty{true};
     std::atomic<int> lastResult{0};
-    // resultClearTimer is touched only by onStateLoop (main task). The
-    // packet handler (WiFi task) communicates via the atomic lastResult;
-    // onStateLoop detects transitions and manages the timer here.
     SimpleTimer resultClearTimer;
     PDN* cachedPDN = nullptr;
 
@@ -348,7 +340,6 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
     ShootoutManager* shootoutManager;
     bool wonBattle = false;
     bool captured = false;

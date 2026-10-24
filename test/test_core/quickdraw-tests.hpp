@@ -77,9 +77,9 @@ public:
         player->setUserID(playerId);
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
-        wirelessManager = new FakeQuickdrawWirelessManager();
-        matchManager->initialize(player, &storage, wirelessManager);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -88,7 +88,6 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
         idleState = new Idle(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -101,7 +100,6 @@ public:
         delete idleState;
         delete chainDuelManager;
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -110,7 +108,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -200,6 +197,22 @@ inline void idleTransitionsToDuelCountdownWhenMatchIsReady(IdleStateTests* suite
     EXPECT_TRUE(suite->idleState->transitionToDuelCountdown());
 }
 
+inline void idleDismountClearsUnreadyMatch(IdleStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
+    EXPECT_CALL(*suite->device.mockPrimaryButton, removeButtonCallbacks()).Times(1);
+    EXPECT_CALL(*suite->device.mockSecondaryButton, removeButtonCallbacks()).Times(1);
+    suite->idleState->onStateMounted(&suite->device);
+
+    uint8_t dummyMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->matchManager->initializeMatch(dummyMac);
+    ASSERT_TRUE(suite->matchManager->getCurrentMatch().has_value());
+    ASSERT_FALSE(suite->matchManager->isMatchReady());
+
+    suite->idleState->onStateDismounted(&suite->device);
+    EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value());
+}
+
 // ============================================
 // Countdown State Tests
 // ============================================
@@ -215,10 +228,9 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
-        wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -227,7 +239,6 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
         countdownState = new DuelCountdown(ctx);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -238,7 +249,6 @@ public:
         delete countdownState;
         delete chainDuelManager;
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -251,7 +261,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -414,10 +423,11 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
-        wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        wirelessManager = new QuickdrawRadioTap();
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        wirelessManager->attach(device.mockPeerComms);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -428,13 +438,11 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
 
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {
@@ -450,7 +458,7 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
+    QuickdrawRadioTap* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -585,13 +593,37 @@ inline void duelButtonPressAppliesMasherPenalty(DuelStateTests* suite) {
     EXPECT_EQ(suite->matchManager->getCurrentMatch()->getHunterDrawTime(), 350);
 }
 
-// Test: Button press broadcasts DRAW_RESULT
+inline void duelLaterCommandSupersedesEarlierRetries(DuelStateTests* suite) {
+    EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
+
+    auto countOf = [suite](int command) {
+        size_t n = 0;
+        for (const QuickdrawPacket& p : suite->wirelessManager->sentFrames) {
+            if (p.command == command) n++;
+        }
+        return n;
+    };
+
+    ASSERT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
+
+    suite->fakeClock->advance(200);
+    suite->matchManager->getDuelButtonPush()(suite->matchManager);
+    ASSERT_EQ(countOf(QDCommand::DRAW_RESULT), 1u);
+
+    for (int i = 0; i < 4; i++) {
+        suite->fakeClock->advance(150);
+        suite->matchManager->sync();
+    }
+    EXPECT_EQ(countOf(QDCommand::SEND_MATCH_ID), 1u);
+    EXPECT_GT(countOf(QDCommand::DRAW_RESULT), 1u);
+}
+
 inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     EXPECT_CALL(*suite->device.mockPrimaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockSecondaryButton, setButtonPress(_, _, _)).Times(1);
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
 
-    size_t sentBefore = suite->wirelessManager->sentCommands.size();
+    size_t sentBefore = suite->wirelessManager->sentFrames.size();
 
     Duel duelState(suite->ctx);
     duelState.onStateMounted(&suite->device);
@@ -599,8 +631,8 @@ inline void duelButtonPressBroadcastsDrawResult(DuelStateTests* suite) {
     suite->fakeClock->advance(200);
     suite->matchManager->getDuelButtonPush()(suite->matchManager);
 
-    ASSERT_GT(suite->wirelessManager->sentCommands.size(), sentBefore);
-    EXPECT_EQ(suite->wirelessManager->sentCommands.back().command, QDCommand::DRAW_RESULT);
+    ASSERT_GT(suite->wirelessManager->sentFrames.size(), sentBefore);
+    EXPECT_EQ(suite->wirelessManager->sentFrames.back().command, QDCommand::DRAW_RESULT);
 }
 
 // Test: DuelPushed waits for opponent result (grace period)
@@ -827,10 +859,9 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
-        wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
@@ -842,13 +873,11 @@ public:
         ctx.player = player;
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -857,7 +886,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     GameContext ctx;
@@ -1079,10 +1107,8 @@ public:
         { char pid[] = "1234"; player->setUserID(pid); }
         player->setIsHunter(true);
 
-        matchManager = new MatchManager();
-        wirelessManager = new FakeQuickdrawWirelessManager();
-        wirelessManager->initialize(player, device.wirelessManager, 100);
-        matchManager->initialize(player, &storage, wirelessManager);
+        matchManager = new MatchManager(device.wirelessManager);
+        matchManager->initialize(player, &storage);
         wireFixtureRdcForMatchManager(device, matchManager);
 
         chainDuelManager = new ChainDuelManager(player, device.wirelessManager, &device.fakeRemoteDeviceCoordinator);
@@ -1100,14 +1126,12 @@ public:
         ctx.matchManager = matchManager;
         ctx.remoteDeviceCoordinator = &device.fakeRemoteDeviceCoordinator;
         ctx.chainDuelManager = chainDuelManager;
-        ctx.quickdrawWirelessManager = wirelessManager;
     }
 
     void TearDown() override {
         matchManager->clearCurrentMatch();
         delete chainDuelManager;
         delete matchManager;
-        delete wirelessManager;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -1116,7 +1140,6 @@ public:
     MockDevice device;
     MockPeerComms peerComms;
     MockStorage storage;
-    FakeQuickdrawWirelessManager* wirelessManager;
     Player* player;
     MatchManager* matchManager;
     ChainDuelManager* chainDuelManager;
@@ -1569,12 +1592,9 @@ public:
         player = new Player();
         char playerId[] = "life";
         player->setUserID(playerId);
-
-        qwm = new FakeQuickdrawWirelessManager();
     }
 
     void TearDown() override {
-        delete qwm;
         delete player;
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
@@ -1583,7 +1603,6 @@ public:
     MockDevice device;
     FakePlatformClock* fakeClock;
     Player* player;
-    FakeQuickdrawWirelessManager* qwm;
     uint8_t mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     PeerCommsInterface::PacketCallback chainGameEventHandler;
     void* chainGameEventCtx = nullptr;
@@ -1597,7 +1616,7 @@ public:
 // destructor failed to empty is called here with a freed `this`.
 inline void gameSessionCtorDtorDoesNotLeak(GameSessionLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        GameSession* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+        GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
         delete session;
         suite->device.loop();
     }
@@ -1626,7 +1645,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
             return 1;
         });
 
-    auto* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+    auto* session = new GameSession(suite->player, &suite->device, nullptr);
     ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
 
     chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
@@ -1664,7 +1683,7 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
-    GameSession* session = new GameSession(suite->player, &suite->device, suite->qwm, nullptr);
+    GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
     ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
     chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
     ASSERT_TRUE(chainDuelManager->isSupporter());
