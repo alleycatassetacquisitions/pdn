@@ -6,42 +6,46 @@ package alleycat.device;
 // No request body. The path PIN is exactly four ASCII digits, including leading
 // zeros, and is resolved in the active event. Invalid PIN format returns 400;
 // no active event or no matching player returns 404. Errors are plain text.
-// Email is deliberately absent from this device-only response.
+// Includes inactive registrations, without exposing their status. Email, PIN,
+// event ID, creation time, and active status are not part of this response.
+// Current PDN display profile: control characters become ?, then display strings
+// are transliterated to ASCII. Unknown characters and any remaining non-printable
+// output become ?. The result is truncated to 255 bytes. Only printable ASCII
+// (0x20-0x7E) is sent; no null terminator is sent.
+// Stored names are unchanged. Display text may be empty or collide after conversion;
+// use UUIDs for identity. Firmware using C strings needs room for a terminator.
+// UUIDs are exactly 16 bytes in RFC 9562 network byte order: the byte pairs of
+// the canonical hexadecimal UUID, with hyphens removed (not little-endian GUIDs).
 message DevicePlayerResponse {
+  reserved 2, 3, 5, 8;
+  reserved "event_id", "pdn_code", "created_at_unix_ms", "active";
+
   // Player UUID. Stable for this registration.
-  string id = 1;
-  // Event UUID. PINs are unique only within an event.
-  string event_id = 2;
-  // Four-digit PIN; preserve leading zeros.
-  string pdn_code = 3;
-  // Current player display name.
+  bytes id = 1;
+  // Current player display name, using the PDN display profile above.
   string name = 4;
-  // Registration creation time in UTC milliseconds since 1970-01-01.
-  int64 created_at_unix_ms = 5;
   // Current team UUID, absent when unassigned. Not a match-time snapshot.
-  optional string team_id = 6;
-  // Current team name, absent when unassigned.
+  optional bytes team_id = 6;
+  // Current team name using the PDN display profile; absent when unassigned.
   optional string team_name = 7;
-  // True for active registrations. Inactive players remain discoverable with
-  // false; clients should honor this status. It does not rewrite match scores
-  // or prevent uploads of previously completed matches.
-  bool active = 8;
-  // Current assignments in this event, ordered by category name then category UUID.
-  // At most one affiliation per category. Unassigned categories are omitted;
-  // an unassigned player has an empty list. Names reflect current renames.
+  // Current assignments in categories with send_to_devices=true, ordered by the
+  // original category name then category UUID. At most one affiliation per category.
+  // Unassigned and disabled categories are omitted. May be empty; there is no fixed
+  // count limit. Names reflect current renames and use the PDN display profile.
   // These are membership details, not permissions or match-time scoring snapshots.
   repeated DevicePlayerAffiliation affiliations = 9;
 }
 
 // One current player assignment. Categories and affiliations belong to the
-// player's event. Use UUIDs for identity; names may change.
+// player's event. UUIDs use the 16-byte representation and names use the PDN
+// display profile described in DevicePlayerResponse. Use UUIDs for identity.
 message DevicePlayerAffiliation {
   // Category UUID.
-  string category_id = 1;
+  bytes category_id = 1;
   // Current category name, such as Allegiance or Faction.
   string category_name = 2;
   // Affiliation UUID within this category.
-  string affiliation_id = 3;
+  bytes affiliation_id = 3;
   // Current affiliation name, such as Helix Industries.
   string affiliation_name = 4;
 }

@@ -26,6 +26,7 @@
 #include "player-response-tests.hpp"
 #include "device-player-decoder-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
+#include "uuid-bytes-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -588,6 +589,30 @@ TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
     uuidGeneratorProducesValidFormat();
 }
 
+TEST(UUIDBytes, parsesKnownValue) {
+    uuidBytesParsesKnownValue();
+}
+
+TEST(UUIDBytes, acceptsEitherCase) {
+    uuidBytesAcceptsEitherCase();
+}
+
+TEST(UUIDBytes, formatsLowercaseRoundTrip) {
+    uuidBytesFormatsLowercaseRoundTrip();
+}
+
+TEST(UUIDBytes, rejectsMalformedText) {
+    uuidBytesRejectsMalformedText();
+}
+
+TEST(UUIDBytes, reportsNil) {
+    uuidBytesReportsNil();
+}
+
+TEST(UUIDBytes, comparesByValue) {
+    uuidBytesComparesByValue();
+}
+
 // ============================================
 // MAC ADDRESS TESTS
 // ============================================
@@ -848,12 +873,32 @@ TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
     devicePlayerDecodesUnassignedPlayer();
 }
 
-TEST(DevicePlayerDecoder, keepsInactivePlayer) {
-    devicePlayerKeepsInactivePlayer();
+TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
+    devicePlayerDecodesMaximumLengthName();
 }
 
-TEST(DevicePlayerDecoder, decodesLongName) {
-    devicePlayerDecodesLongName();
+TEST(DevicePlayerDecoder, truncatesLongDisplayNames) {
+    devicePlayerTruncatesLongDisplayNames();
+}
+
+TEST(DevicePlayerDecoder, decodesAbsentName) {
+    devicePlayerDecodesAbsentName();
+}
+
+TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
+    devicePlayerDecodesMaximumAffiliations();
+}
+
+TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) {
+    devicePlayerDropsAffiliationsPastLimit();
+}
+
+TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) {
+    devicePlayerRejectsWrongLengthUuids();
+}
+
+TEST(DevicePlayerDecoder, rejectsMissingRequiredUuids) {
+    devicePlayerRejectsMissingRequiredUuids();
 }
 
 TEST(DevicePlayerDecoder, rejectsGarbageBody) {
@@ -892,8 +937,20 @@ TEST(QuickdrawMatchCodec, decodesRejection) {
     matchCodecDecodesRejection();
 }
 
+TEST(QuickdrawMatchCodec, deliversRejectionsInOrder) {
+    matchCodecDeliversRejectionsInOrder();
+}
+
 TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
     matchCodecKeepsUnknownErrorCode();
+}
+
+TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
+    matchCodecRejectsTooManyFieldsWithoutDelivering();
+}
+
+TEST(QuickdrawMatchCodec, rejectsMalformedMatchIdWithoutDelivering) {
+    matchCodecRejectsMalformedMatchIdWithoutDelivering();
 }
 
 TEST(QuickdrawMatchCodec, rejectsGarbageBody) {
