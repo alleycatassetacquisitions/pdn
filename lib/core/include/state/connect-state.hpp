@@ -14,7 +14,8 @@ public:
         remoteDeviceCoordinator = nullptr;
     }
 
-    const DeviceType getPeerDeviceType(SerialIdentifier port) const {
+    /** Returns the peer's reported device type on the given jack. */
+    DeviceType getPeerDeviceType(SerialIdentifier port) const {
         return remoteDeviceCoordinator->getPeerDeviceType(port);
     }
 
