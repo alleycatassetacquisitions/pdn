@@ -57,17 +57,7 @@ public:
     // Test-only: override the loop-member set. Pass an empty vector to clear.
     void setLoopMembersForTest(const std::vector<std::array<uint8_t, 6>>& members);
 
-    /**
-     * RDC ring-closed observer. The head that detected closure IS the
-     * coordinator — there is no election — so this claims the role, snapshots
-     * the ring roster and announces it to the other members.
-     */
     void onRingClosed();
-    /**
-     * Inbound RING_CLOSED: adopt `fromMac` as coordinator and `members` as the
-     * ring roster. A non-coordinator has no other proposal trigger, though it
-     * must also still be on the ring when the gate is polled.
-     */
     void onRingClosedReceived(const uint8_t* fromMac,
                               const std::vector<std::array<uint8_t, 6>>& members);
     /**
@@ -115,10 +105,6 @@ public:
      */
     std::pair<std::array<uint8_t, 6>, std::array<uint8_t, 6>> getCurrentMatchPair() const;
 
-    /**
-     * Adopts a bracket announced by the coordinator and acks it. A bracket from
-     * a lower-MAC coordinator also demotes this device.
-     */
     void onBracketReceived(const uint8_t* fromMac,
                            const std::vector<std::array<uint8_t, 6>>& offeredBracket,
                            uint8_t seqId);
@@ -224,9 +210,6 @@ private:
     Phase phase = Phase::IDLE;
 
     void primeMatchManagerForMatch();
-    // resetToIdle() clears the ring anchor on top of this; startProposal() does
-    // not, because the ring closure that drove the mount established it moments
-    // earlier.
     void resetTournamentState();
 
     uint8_t nextSeqId();
@@ -234,13 +217,6 @@ private:
                             const uint8_t* mac);
     /** True when `mac` is the coordinator this device is following. */
     bool isFromCoordinator(const uint8_t* mac) const;
-    /**
-     * True in the two phases a tournament ends in. Every handler that would
-     * advance a tournament refuses them, so a late frame cannot reopen one; the
-     * two terminal screens end them deliberately, via resetToIdle on dismount.
-     * ENDED is the phase that needs the refusals: unlike an abort it leaves the
-     * coordinator anchor and the bracket standing.
-     */
     bool isTerminalPhase() const {
         return phase == Phase::ENDED || phase == Phase::ABORTED;
     }
@@ -274,12 +250,8 @@ private:
     std::vector<NameEntry> names;
     void recordName(const uint8_t* mac, const char* name);
 
-    /**
-     * True while this device both claims the ring and still heads it. Only
-     * meaningful while the anchor is a ring claim, which is why both callers
-     * are IDLE-gated.
-     */
-    bool headsThisRing() const;
+    bool headsRing() const;
+    const uint8_t* ringHead() const;
     std::vector<std::array<uint8_t, 6>> buildLoopMemberSet() const;
     void sendLocalConfirm();
     bool allMembersConfirmed() const;
@@ -318,8 +290,7 @@ private:
         ShootoutCmd cmd, uint8_t seqId,
         const std::vector<std::array<uint8_t, 6>>& macs) const;
 
-    // Anchored at ring closure: self on the head that detected it, the sender on
-    // every other member. All-zero means no ring has closed yet.
+    // Author of the current bracket; all-zero while no bracket is held.
     std::array<uint8_t, 6> coordinatorMac{};
 
     std::array<uint8_t, 6> opponentMac{};
@@ -349,10 +320,6 @@ private:
     // to be reset wherever a match turns over, which differs by role.
     int matchResultResentIndex = -1;
     uint8_t lastMatchResultSeqId = 0;
-    // Per-command last-observed seqId for ESP-NOW link-layer dedup.
-    uint8_t lastObservedBracketSeqId = 0;
-    uint8_t lastObservedMatchStartSeqId = 0;
-    uint8_t lastObservedTournamentEndSeqId = 0;
     void sendMatchResultToPeers(const uint8_t* winner, const uint8_t* loser,
                                 uint8_t matchIndex);
     /**
