@@ -5,7 +5,10 @@
 #include <array>
 #include <cstring>
 
-Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager)
+Quickdraw::Quickdraw(Player* player, PlayerProvider* playerProvider, Device* pdn,
+                     QuickdrawWirelessManager* quickdrawWirelessManager,
+                     RemoteDebugManager* remoteDebugManager,
+                     SymbolWirelessManager* symbolWirelessManager)
     : StateMachine(QUICKDRAW_APP_ID)
     , wirelessManager(pdn->getWirelessManager())
     , storageManager(pdn->getStorage())
@@ -13,6 +16,7 @@ Quickdraw::Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quic
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
     , firmwareUpdateManager(pdn->getFirmwareUpdateManager()) {
     this->player = player;
+    this->playerProvider = playerProvider;
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
@@ -293,10 +297,8 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
-    // Sub-state machines for player registration and handshake
-    PlayerRegistrationApp* playerRegistration =
-        new PlayerRegistrationApp(player, wirelessManager, matchManager, remoteDebugManager, firmwareUpdateManager);
-    // Quickdraw gameplay states
+    PlayerFetchApp* playerFetch =
+    new PlayerFetchApp(wirelessManager, firmwareUpdateManager, playerProvider);
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
 
@@ -326,17 +328,11 @@ void Quickdraw::populateStateMap() {
     SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
     SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
 
-    // --- Transitions from PlayerRegistration app ---
-    playerRegistration->addTransition(
-        new StateTransition(
-            std::bind(&PlayerRegistrationApp::readyForGameplay, playerRegistration),
-            awakenSequence));
+    playerFetch->addTransition(
+    new StateTransition(std::bind(&PlayerFetchApp::readyForGameplay, playerFetch), awakenSequence));
 
-    // --- Quickdraw gameplay transitions ---
     awakenSequence->addTransition(
-        new StateTransition(
-            std::bind(&AwakenSequence::transitionToIdle, awakenSequence),
-            idle));
+    new StateTransition(std::bind(&AwakenSequence::transitionToIdle, awakenSequence), idle));
 
     // Auto-trigger Shootout when the chain closes into a loop. Priority over
     // DuelCountdown/SupporterReady: in a closed ring, adjacent H-B pairs
@@ -494,9 +490,7 @@ void Quickdraw::populateStateMap() {
             sleep));
 
     sleep->addTransition(
-        new StateTransition(
-            std::bind(&Sleep::transitionToAwakenSequence, sleep),
-            awakenSequence));
+    new StateTransition(std::bind(&Sleep::transitionToAwakenSequence, sleep), awakenSequence));
 
     // --- Shootout transitions ---
     shProposal->addTransition(
@@ -594,7 +588,7 @@ void Quickdraw::populateStateMap() {
             idle));
 
     // State map - order matters: first entry is the initial state
-    stateMap.push_back(playerRegistration);
+    stateMap.push_back(playerFetch);
     stateMap.push_back(awakenSequence);
     stateMap.push_back(idle);
     stateMap.push_back(supporterReady);

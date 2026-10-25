@@ -6,7 +6,8 @@
 #include "state/state-machine.hpp"
 #include "game/quickdraw-states.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "apps/player-registration/player-registration.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
+#include "game/player-provider.hpp"
 #include "device/drivers/http-client-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "wireless/remote-debug-manager.hpp"
@@ -23,7 +24,9 @@ constexpr int QUICKDRAW_APP_ID = 1;
 class Quickdraw : public StateMachine {
 public:
     /** Builds the game managers and registers their packet handlers. */
-    Quickdraw(Player* player, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager, RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
+    Quickdraw(Player* player, PlayerProvider* playerProvider, Device* pdn,
+              QuickdrawWirelessManager* quickdrawWirelessManager,
+              RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
     void populateStateMap() override;
@@ -46,7 +49,8 @@ private:
     std::vector<Match> matches;
     int numMatches = 0;
     MatchManager* matchManager;
-    Player *player;
+    Player* player;
+    PlayerProvider* playerProvider = nullptr;
     WirelessManager* wirelessManager;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;

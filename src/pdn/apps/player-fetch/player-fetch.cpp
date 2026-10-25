@@ -21,7 +21,6 @@ void PlayerFetchApp::populateStateMap() {
     ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider);
     DemoStubState* demoStub = new DemoStubState();
     PlayerFetchWelcome* welcome = new PlayerFetchWelcome(playerProvider);
-    PlayerFetchAwakenSequence* awaken = new PlayerFetchAwakenSequence();
 
     pinEntry->addTransition(
     new StateTransition([pinEntry]() { return pinEntry->transitionToFetchUser(); }, fetchUser));
@@ -39,15 +38,11 @@ void PlayerFetchApp::populateStateMap() {
     demoStub->addTransition(
     new StateTransition([demoStub]() { return demoStub->transitionToPinEntry(); }, pinEntry));
 
-    welcome->addTransition(
-    new StateTransition([welcome]() { return welcome->transitionToAwaken(); }, awaken));
-
     stateMap.push_back(pinEntry);
     stateMap.push_back(fetchUser);
     stateMap.push_back(chooseTeam);
     stateMap.push_back(demoStub);
     stateMap.push_back(welcome);
-    stateMap.push_back(awaken);
 
     if (firmwareUpdateManager != nullptr) {
         FirmwareUpdate* firmwareUpdate =
@@ -61,9 +56,9 @@ void PlayerFetchApp::populateStateMap() {
 }
 
 bool PlayerFetchApp::readyForGameplay() {
-    if (currentState->getStateId() != PlayerFetchStateId::AWAKEN) {
+    if (currentState->getStateId() != PlayerFetchStateId::WELCOME) {
         return false;
     }
-    PlayerFetchAwakenSequence* awaken = static_cast<PlayerFetchAwakenSequence*>(currentState);
-    return awaken->transitionToComplete();
+    PlayerFetchWelcome* welcome = static_cast<PlayerFetchWelcome*>(currentState);
+    return welcome->transitionToAwaken();
 }

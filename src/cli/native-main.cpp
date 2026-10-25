@@ -29,7 +29,7 @@
 
 // Core
 #include "device/pdn.hpp"
-#include "game/player.hpp"
+#include "game/player-provider.hpp"
 #include "game/quickdraw.hpp"
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
@@ -59,6 +59,7 @@ struct DeviceInstance {
     
     // Game objects
     PDN* pdn;
+    PlayerProvider* playerProvider;
     Player* player;
     Quickdraw* game;
     QuickdrawWirelessManager* wirelessManager;
@@ -102,7 +103,8 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     
     // Create PDN and game
     instance.pdn = PDN::createPDN(pdnConfig);
-    instance.player = new Player();
+    instance.playerProvider = new PlayerProvider();
+    instance.player = instance.playerProvider->getPlayer();
     instance.player->setUserID(IdGenerator::getInstance().generateId());
     instance.pdn->begin();
     
@@ -116,7 +118,9 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
         instance.pdn->getRemoteDeviceCoordinator());
     
     // Create game
-    instance.game = new Quickdraw(instance.player, instance.pdn, instance.wirelessManager, nullptr, instance.symbolWirelessManager);
+    instance.game =
+    new Quickdraw(instance.player, instance.playerProvider, instance.pdn, instance.wirelessManager,
+                  nullptr, instance.symbolWirelessManager);
 
     // Register state machines with the device and launch Quickdraw
     AppConfig apps = {

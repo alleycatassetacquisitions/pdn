@@ -221,7 +221,7 @@ inline const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
     return state;
 }();
 
-// Test/debug player IDs used by player-registration to bypass network auth.
+// Test/debug player IDs retained for legacy tooling references.
 inline const std::string TEST_BOUNTY_ID     = "9999";
 inline const std::string TEST_HUNTER_ID     = "8888";
 inline const std::string BROADCAST_WIFI     = "1111";

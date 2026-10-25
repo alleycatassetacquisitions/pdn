@@ -15,7 +15,6 @@ constexpr int FETCH_USER = 1;
 constexpr int CHOOSE_TEAM = 2;
 constexpr int DEMO_STUB = 3;
 constexpr int WELCOME = 4;
-constexpr int AWAKEN = 5;
 constexpr int FIRMWARE_UPDATE = 31;
 }  // namespace PlayerFetchStateId
 
@@ -151,35 +150,11 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when the welcome timer expired and awaken should mount. */
+    /** @return true when welcome finished and Quickdraw should run AwakenSequence. */
     bool transitionToAwaken() const;
 
 private:
     PlayerProvider* playerProvider = nullptr;
     SimpleTimer welcomeMessageTimer;
     bool transitionToAwakenState = false;
-};
-
-class PlayerFetchAwakenSequence : public TypedState<PDN> {
-public:
-    /** In-app awaken animation after welcome. */
-    PlayerFetchAwakenSequence();
-    /** @copydoc TypedState::~TypedState */
-    ~PlayerFetchAwakenSequence() override;
-
-    /** @copydoc TypedState::onStateMounted */
-    void onStateMounted(PDN* pdn) override;
-    /** @copydoc TypedState::onStateLoop */
-    void onStateLoop(PDN* pdn) override;
-    /** @copydoc TypedState::onStateDismounted */
-    void onStateDismounted(PDN* pdn) override;
-    /** @return true when the haptic awaken sequence finished. */
-    bool transitionToComplete() const;
-
-private:
-    static constexpr int AWAKEN_THRESHOLD = 20;
-    SimpleTimer activationSequenceTimer;
-    int activateMotorCount = 0;
-    bool activateMotor = false;
-    const int activationStepDuration = 100;
 };

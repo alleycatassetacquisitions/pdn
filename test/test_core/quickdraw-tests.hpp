@@ -11,7 +11,8 @@
 #include "id-generator.hpp"
 #include "game/quickdraw.hpp"
 #include "game/quickdraw-states.hpp"
-#include "apps/player-registration/player-registration-states.hpp"
+#include "apps/player-fetch/player-fetch-states.hpp"
+#include "game/player-provider.hpp"
 #include "device/firmware-update-state.hpp"
 #include "apps/handshake/handshake.hpp"
 #include "apps/handshake/handshake-states.hpp"
@@ -150,39 +151,41 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
-    PlayerRegistrationState registration(suite->player, suite->matchManager);
-    registration.onStateMounted(&suite->device);
-    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS + 1000);
+    PlayerProvider playerProvider;
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
+    suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS - 1))
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));
-    registration.onStateLoop(&suite->device);
-    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
-    registration.onStateLoop(&suite->device);
-    EXPECT_TRUE(registration.transitionToFirmwareUpdate());
+    .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS - 1))
+    .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
 
-    registration.onStateDismounted(&suite->device);
-    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
+    pinEntry.onStateDismounted(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
 }
 
 // The button's pressed time counts from press-down, so a hold that began before the
 // mount, even one not yet a long press then, is longer than the screen has been up.
 inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
-    PlayerRegistrationState registration(suite->player, suite->matchManager);
-    registration.onStateMounted(&suite->device);
-    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS - 500);
+    PlayerProvider playerProvider;
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
+    suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
     EXPECT_CALL(*suite->device.mockSecondaryButton, longPressedMillis())
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS))   // pressed 500 ms before the mount
-        .WillOnce(Return(FIRMWARE_UPDATE_HOLD_MS));  // released, then held again
-    registration.onStateLoop(&suite->device);
-    EXPECT_FALSE(registration.transitionToFirmwareUpdate());
-    suite->fakeClock->advance(FIRMWARE_UPDATE_HOLD_MS + 2000);
-    registration.onStateLoop(&suite->device);
-    EXPECT_TRUE(registration.transitionToFirmwareUpdate());
-    registration.onStateDismounted(&suite->device);
+    .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS))
+    .WillOnce(Return(PLAYER_FETCH_FIRMWARE_HOLD_MS));
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_FALSE(pinEntry.transitionToFirmwareUpdate());
+    suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 2000);
+    pinEntry.onStateLoop(&suite->device);
+    EXPECT_TRUE(pinEntry.transitionToFirmwareUpdate());
+    pinEntry.onStateDismounted(&suite->device);
 }
 
 // The pairing screen takes firmware updates for as long as it is up.
@@ -202,12 +205,13 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
-    PlayerRegistrationState registration(suite->player, suite->matchManager);
-    registration.onStateMounted(&suite->device);
+    PlayerProvider playerProvider;
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
 
-    registration.onStateDismounted(&suite->device);
+    pinEntry.onStateDismounted(&suite->device);
     EXPECT_EQ(store.abortCalls, 1) << "leaving the screen drops the receive";
     suite->device.firmwareUpdateManager = nullptr;
 }
@@ -216,15 +220,17 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
 inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     suite->device.wirelessManager->enableWifiMode();
-    PlayerRegistrationState registration(suite->player, suite->matchManager);
-    registration.onStateMounted(&suite->device);
+    PlayerProvider playerProvider;
+    PinEntryState pinEntry(&playerProvider);
+    pinEntry.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
-    registration.onStateDismounted(&suite->device);
+    pinEntry.onStateDismounted(&suite->device);
 }
 
 inline void fetchExitPutsTheRadioBackOnEspNow(IdleStateTests* suite) {
     suite->device.wirelessManager->enableWifiMode();
-    FetchUserDataState fetch(suite->player, suite->device.wirelessManager, nullptr, suite->matchManager);
+    PlayerProvider playerProvider;
+    FetchUserState fetch(suite->device.wirelessManager, &playerProvider);
     fetch.onStateDismounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
 }
@@ -233,7 +239,7 @@ inline void aSeedRunTakesTheRadioForEspNow(IdleStateTests* suite) {
     suite->device.wirelessManager->enableWifiMode();
     FakeFirmwareStore store;
     FirmwareUpdateManager manager(suite->device.mockPeerComms, &store);
-    FirmwareUpdate seedScreen(REGISTRATION_FIRMWARE_UPDATE, &manager);
+    FirmwareUpdate seedScreen(PlayerFetchStateId::FIRMWARE_UPDATE, &manager);
     seedScreen.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::ESPNOW);
     seedScreen.onStateDismounted(&suite->device);
@@ -1711,7 +1717,9 @@ public:
 // reported. Without ASAN this still catches crashes in the lifecycle path.
 inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
-        auto* qd = new Quickdraw(suite->player, &suite->device, suite->qwm, nullptr, nullptr);
+        PlayerProvider playerProvider;
+        auto* qd =
+        new Quickdraw(suite->player, &playerProvider, &suite->device, suite->qwm, nullptr, nullptr);
         delete qd;
     }
 }

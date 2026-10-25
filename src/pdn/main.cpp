@@ -196,7 +196,8 @@ static void setup() {
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
 
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
+    game = new Quickdraw(player, playerProvider, pdn, quickdrawWirelessManager, remoteDebugManager,
+                         symbolWirelessManager);
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

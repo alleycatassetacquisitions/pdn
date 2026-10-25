@@ -7,7 +7,7 @@
 
 class FirmwareUpdateManager;
 
-constexpr int PLAYER_FETCH_APP_ID = 100;
+constexpr int PLAYER_FETCH_APP_ID = 0;
 
 /** Standalone registration app using the protobuf device player API. */
 class PlayerFetchApp : public StateMachine {

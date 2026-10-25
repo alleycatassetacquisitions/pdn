@@ -69,6 +69,4 @@ void Sleep::onStateDismounted(PDN* pdn) {
     dormantTimer.invalidate();
 }
 
-bool Sleep::transitionToAwakenSequence() {
-    return transitionToAwakenSequenceState;
-}
+bool Sleep::transitionToAwakenSequence() { return transitionToAwakenSequenceState; }

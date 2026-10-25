@@ -9,6 +9,9 @@
 #include <cstdio>
 #include <regex>
 
+#include "alleycat-server/device-player-response-encode.hpp"
+#include "utils/uuid-bytes.hpp"
+
 namespace cli {
 
 /**
@@ -32,6 +35,7 @@ struct MockPlayerConfig {
     bool isHunter;
     int allegiance;  // 0 = NONE, 1 = RESISTANCE, 2 = HUNTERS_GUILD
     std::string faction;
+    UUIDBytes wirePlayerId;
 };
 
 /**
@@ -84,6 +88,8 @@ public:
         // Route the request
         if (method == "GET" && path.find("/api/players/") == 0) {
             statusCode = handleGetPlayer(path, responseBody);
+        } else if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
+            statusCode = handleGetDevicePlayerByPin(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
         } else if (method == "POST" && path == "/device-logs") {
@@ -92,7 +98,7 @@ public:
             statusCode = 404;
             responseBody = R"({"errors":["Not found"]})";
         }
-        
+
         // Track in history
         HttpHistoryEntry entry;
         entry.method = method;
@@ -168,7 +174,31 @@ private:
         }
         return "";
     }
-    
+
+    int handleGetDevicePlayerByPin(const std::string& path, std::string& responseBody) {
+        const std::string prefix = "/device/players/by-pin/";
+        if (path.find(prefix) != 0) {
+            responseBody = R"({"errors":["Invalid path"]})";
+            return 400;
+        }
+        const std::string pin = path.substr(prefix.length());
+        auto it = playerConfigs_.find(pin);
+        if (it == playerConfigs_.end()) {
+            responseBody = R"({"errors":["Player not found"]})";
+            return 404;
+        }
+        if (it->second.wirePlayerId.isZero()) {
+            responseBody = R"({"errors":["Player not configured"]})";
+            return 500;
+        }
+        if (!DevicePlayerResponseEncode::encodeMinimal(it->second.wirePlayerId,
+                                                       it->second.name.c_str(), responseBody)) {
+            responseBody = R"({"errors":["Encode failed"]})";
+            return 500;
+        }
+        return 200;
+    }
+
     /**
      * Handle GET /api/players/{id}
      */
