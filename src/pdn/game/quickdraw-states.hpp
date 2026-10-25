@@ -77,10 +77,6 @@ private:
     bool transitionToAwakenSequenceState = false;
     SimpleTimer dormantTimer;
     Player* player;
-    bool breatheUp = true;
-    int ledBrightness = 0;
-    float pwm_val = 0.0;
-    static constexpr int smoothingPoints = 255;
     static constexpr unsigned long SLEEP_DURATION = 60000UL;
 };
 

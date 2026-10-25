@@ -78,35 +78,6 @@ inline const LEDColor bountyColors[16] = {
     LEDColor(255, 165, 0), LEDColor(255, 0, 0),   LEDColor(255, 0, 0),   LEDColor(255, 0, 0),
 };
 
-inline const LEDColor hunterColors[16] = {
-    LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 0, 139),
-    LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 0, 139),
-    LEDColor(0, 0, 139), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0),
-    LEDColor(0, 0, 139), LEDColor(0, 100, 0), LEDColor(0, 100, 0), LEDColor(0, 100, 0),
-};
-
-inline const LEDColor debugColors[16] = {
-    LEDColor(0, 100, 0),   LEDColor(0, 0, 139),   LEDColor(0, 100, 0),   LEDColor(0, 0, 139),
-    LEDColor(255, 0, 0),   LEDColor(255, 255, 0), LEDColor(255, 0, 0),   LEDColor(255, 255, 0),
-    LEDColor(0, 100, 0),   LEDColor(0, 0, 139),   LEDColor(0, 100, 0),   LEDColor(0, 0, 139),
-    LEDColor(255, 0, 0),   LEDColor(255, 255, 0), LEDColor(255, 0, 0),   LEDColor(255, 255, 0),
-};
-
-// Idle animation colors for bounty and hunter
-inline const LEDColor bountyIdleColors[4] = {
-    LEDColor(255,2,1),    // Color 1
-    LEDColor(255,51,0),   // Color 3
-    LEDColor(237,75,0),   // Color 2 (7% dimmer)
-    LEDColor(222,97,7)    // Color 4 (13% dimmer)
-};
-
-inline const LEDColor hunterIdleColors[4] = {
-    LEDColor(0,255,0),    // Green
-    LEDColor(0,237,75),   // Blue-green
-    LEDColor(0,200,100),  // Teal
-    LEDColor(0,180,180)   // Cyan
-};
-
 // LED color constants converted from CRGB to LEDColor
 inline const LEDColor bountyIdleLEDColors[8] = {
     LEDColor(255, 2, 1),     // Color 1
