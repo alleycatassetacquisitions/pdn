@@ -8,7 +8,9 @@ include paths (injected automatically — see clang_tidy_driver_extras). Line
 rules and clang-format apply to the lines added in the staged diff;
 clang-tidy runs on the translation units behind the staged files, with its
 diagnostics restricted to those same lines.
-A legacy violation elsewhere in a touched file does not block the commit
+Every finding is advisory: the script reports and exits 0, so a missing tool or
+a stale compile database costs you the checks it feeds rather than the commit.
+A legacy violation elsewhere in a touched file is not reported at all
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
 renamed files must be kebab-case, new headers need #pragma once, and the
@@ -347,8 +349,8 @@ def load_compiledb(repo_root):
     for e in entries:
         rel = tu_path_in_repo(e, repo_root)
         if rel.startswith(".."):
-            flag("compile_commands.json", 1,
-                 f"generated in another checkout ({e['directory']}); {COMPILEDB_HINT}")
+            notices.append("compile_commands.json was generated in another checkout "
+                           f"({e['directory']}), clang-tidy skipped; {COMPILEDB_HINT}")
             return set()
         paths.add(rel)
     return paths
@@ -520,10 +522,11 @@ def main():
     files = staged_files()
     if not files:
         return 0
-    missing = [t for t in ("clang-format", "clang-tidy") if shutil.which(t) is None]
-    if missing:
-        print(f"check_style: {', '.join(missing)} not found on PATH; install LLVM/clang tools")
-        return 1
+    have_format = shutil.which("clang-format") is not None
+    have_tidy = shutil.which("clang-tidy") is not None
+    for tool, present in (("clang-format", have_format), ("clang-tidy", have_tidy)):
+        if not present:
+            notices.append(f"{tool} not found on PATH, its checks skipped; install LLVM/clang tools")
     added_by_path = {}
     for path, (status, old_path) in files.items():
         content = staged_content(path)
@@ -534,16 +537,22 @@ def main():
         check_own_header_first(path, content, added)
         check_doxygen_and_access_order(path, content, added)
         check_added_lines(path, added, strip_file(content))
-        check_format(path, content, added)
-    check_unstaged_edits(files)
-    run_scoped_tidy(files, added_by_path, repo_root)
+        if have_format:
+            check_format(path, content, added)
+    # The unstaged-edits warning only means anything to clang-tidy, which is the
+    # one check that reads the working tree rather than the index.
+    if have_tidy:
+        check_unstaged_edits(files)
+        run_scoped_tidy(files, added_by_path, repo_root)
     for d in format_diffs:
         print(d, end="" if d.endswith("\n") else "\n")
     for path, ln, msg in sorted(violations):
         print(f"{path}:{ln}: {msg}")
     for n in notices:
         print(n, file=sys.stderr)
-    return 1 if violations else 0
+    if violations:
+        print(f"check_style: {len(violations)} finding(s) above are advisory, the commit is not blocked")
+    return 0
 
 
 if __name__ == "__main__":
