@@ -403,16 +403,16 @@ void ChainDuelManager::onRoleAnnounceReceived(
     // parents — their championMac is irrelevant.
     if (!fromOpponentJack) return;
     if (role != (player->isHunter() ? 1u : 0u)) return;
-    const uint8_t* selfMac = wirelessManager->getMacAddress();
-    if (championMac.has_value() && selfMac != nullptr &&
-        memcmp(championMac->data(), selfMac, 6) == 0) {
-        championMac.reset();
-    }
+    if (!isSupporter()) return;
+
     // Wire input: the field is always present, so a sender with no champion sends
     // it zeroed, and a two-bounty ring does exactly that: both clear their champion,
     // then each announces to the other's opponent jack with a matching role. Caching
     // the zero would cascade it onward as this device's champion.
     if (MacToUInt64(announcedChampionMac) == 0) {
+        championMac.reset();
+        resender.cancelAll(PktType::kChainConfirm);
+        resender.cancelAll(PktType::kChainJoin);
         broadcastRoleAndChampion();
         return;
     }
@@ -421,7 +421,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     memcpy(newMac.data(), announcedChampionMac, 6);
     bool changed = !championMac.has_value() || *championMac != newMac;
     championMac = newMac;
-    if (changed && isSupporter()) {
+    if (changed) {
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
         broadcastRoleAndChampion();
@@ -451,8 +451,6 @@ void ChainDuelManager::broadcastRoleAndChampion() {
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
     const uint8_t* champ = getChampionMac();
     if (supporterPeer == nullptr || champ == nullptr) {
-        // Forget who was told when the link dies or this device holds no
-        // champion, so a returning cable or reopened ring is announced to.
         if (supporterAnnounce.has_value()) {
             roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
             supporterAnnounce.reset();

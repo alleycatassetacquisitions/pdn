@@ -665,13 +665,15 @@ inline void cdmRingClosureClearsTheChampion(ChainDuelManagerTests* suite) {
     EXPECT_EQ(ringSends, 0);
     EXPECT_EQ(supporterAnnounces, announcesBeforeRingRx);
 
-    cdm.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
+    deliverFrame(suite->outJack, chainHelloFrame(suite->opponentMac, nullptr));
     deliverFrame(suite->inJack, chainHelloFrame(suite->supporterMac, championMac, 0));
     suite->rdc.sync(&suite->device);
     cdm.sync();
+    EXPECT_EQ(cdm.getChampionMac(), nullptr);
 
+    cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 9);
     ASSERT_NE(cdm.getChampionMac(), nullptr);
-    EXPECT_EQ(memcmp(cdm.getChampionMac(), suite->localMac, 6), 0);
+    EXPECT_EQ(memcmp(cdm.getChampionMac(), championMac, 6), 0);
     EXPECT_GT(supporterAnnounces, announcesBeforeRingRx);
 }
 
@@ -680,11 +682,15 @@ inline void cdmRingClosureClearsTheChampion(ChainDuelManagerTests* suite) {
 inline void cdmRoleAnnounceWithNoChampionIsRefused(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    uint8_t championMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
     uint8_t zeroMac[6] = {0, 0, 0, 0, 0, 0};
 
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kRoleAnnounce, _, _))
         .WillRepeatedly(Return(1));
+
+    cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 6);
+    ASSERT_NE(cdm.getChampionMac(), nullptr);
 
     cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, zeroMac, 7);
 
