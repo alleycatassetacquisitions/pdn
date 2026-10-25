@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Style gate on the staged diff, run by hooks/pre-commit.
 
-Needs clang-format, clang-tidy and a compile_commands.json at the repo root
-(`pio run -e native_cli -t compiledb`). On Windows, native_cli usually builds
+Uses clang-format, clang-tidy and a compile_commands.json at the repo root
+(`pio run -e native_cli -t compiledb`) when they are there. On Windows, native_cli usually builds
 with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
 include paths (injected automatically — see clang_tidy_driver_extras). Line
 rules and clang-format apply to the lines added in the staged diff;
 clang-tidy runs on the translation units behind the staged files, with its
 diagnostics restricted to those same lines.
 Every finding is advisory: the script reports and exits 0, so a missing tool or
-a stale compile database costs you the checks it feeds rather than the commit.
+a compile database from another checkout costs you the checks it feeds rather
+than the commit.
 A legacy violation elsewhere in a touched file is not reported at all
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
@@ -353,6 +354,8 @@ def load_compiledb(repo_root):
                            f"({e['directory']}), clang-tidy skipped; {COMPILEDB_HINT}")
             return set()
         paths.add(rel)
+    if not paths:
+        notices.append(f"compile_commands.json lists no units, clang-tidy skipped; {COMPILEDB_HINT}")
     return paths
 
 
@@ -489,6 +492,7 @@ def run_scoped_tidy(files, added_by_path, repo_root):
                        + ", ".join(skipped))
     if not targets:
         return
+    check_unstaged_edits(files)
     tidy_cmd = [
         "clang-tidy", "-p", repo_root, "--quiet",
         f"--line-filter={json.dumps(line_filter)}",
@@ -513,7 +517,7 @@ def check_unstaged_edits(files):
             flag(path, 1, "has unstaged changes; stage or stash them so clang-tidy sees the staged content")
 
 
-def main():
+def run_checks():
     repo_root = git("rev-parse", "--show-toplevel").strip()
     os.chdir(repo_root)
     # During a merge the index vs HEAD shows the whole incoming side as added.
@@ -539,10 +543,7 @@ def main():
         check_added_lines(path, added, strip_file(content))
         if have_format:
             check_format(path, content, added)
-    # The unstaged-edits warning only means anything to clang-tidy, which is the
-    # one check that reads the working tree rather than the index.
     if have_tidy:
-        check_unstaged_edits(files)
         run_scoped_tidy(files, added_by_path, repo_root)
     for d in format_diffs:
         print(d, end="" if d.endswith("\n") else "\n")
@@ -553,6 +554,14 @@ def main():
     if violations:
         print(f"check_style: {len(violations)} finding(s) above are advisory, the commit is not blocked")
     return 0
+
+
+def main():
+    try:
+        return run_checks()
+    except Exception as exc:
+        print(f"check_style: checks incomplete, {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 0
 
 
 if __name__ == "__main__":
