@@ -281,11 +281,13 @@ inline void rdcHelloEveryJackInitiatesContext(RDCHelloTests* suite) {
 
 // A PdnConnectionContext carrying the given chainRole + userId, serialized to its
 // wire bytes for deliverIncoming.
-inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, uint8_t seqId) {
+inline std::vector<uint8_t> pdnContextBytes(uint8_t chainRole, uint16_t userId, uint8_t seqId,
+                                            uint8_t gameRole = 0) {
     PdnConnectionContext ctx{};
     ctx.seqId = seqId;
     ctx.chainRole = chainRole;
     ctx.player.userId = userId;
+    ctx.player.gameRole = gameRole;
     std::vector<uint8_t> bytes(sizeof(ctx));
     memcpy(bytes.data(), &ctx, sizeof(ctx));
     return bytes;
@@ -790,8 +792,8 @@ inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
-    std::vector<uint8_t> first = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
-    std::vector<uint8_t> second = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/4);
+    std::vector<uint8_t> first = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3, /*gameRole=*/0);
+    std::vector<uint8_t> second = pdnContextBytes(/*chainRole=*/2, /*userId=*/99, /*seqId=*/4, /*gameRole=*/1);
     suite->transport()->deliverIncoming(
         PktType::kPdnConnectionContext, peer, first.data(), first.size());
     suite->transport()->deliverIncoming(
@@ -802,6 +804,15 @@ inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
     EXPECT_EQ(callbacks, 1);
+    EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 2);
+    EXPECT_EQ(suite->rdc.getPeerUserId(SerialIdentifier::OUTPUT_JACK), 99);
+    size_t profileLen = 0;
+    const uint8_t* raw = suite->rdc.getPeerProfile(SerialIdentifier::OUTPUT_JACK, profileLen);
+    ASSERT_NE(raw, nullptr);
+    ASSERT_EQ(profileLen, sizeof(PlayerProfile));
+    PlayerProfile recorded{};
+    memcpy(&recorded, raw, sizeof(recorded));
+    EXPECT_EQ(recorded.gameRole, 1);
 }
 
 // (f) With a byte callback set the driver exec() routes RX bytes to it and does
@@ -2710,6 +2721,74 @@ inline void rdcResendContextSendsOncePerPeer(RDCHelloTests* suite) {
     suite->rdc.resendContext();
 
     EXPECT_EQ(contextSends.size(), beforeResend + 1);
+}
+
+inline void rdcConnectedJackUpdatesPeerContextOnResend(RDCHelloTests* suite) {
+    const uint8_t peer[6] = {0xB1, 0x02, 0x03, 0x04, 0x05, 0x06};
+
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+
+    int outCallbacks = 0;
+    int inCallbacks = 0;
+    suite->rdc.setOnContextReceived(
+        [&](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+            if (jack == SerialIdentifier::OUTPUT_JACK) outCallbacks++;
+            if (jack == SerialIdentifier::INPUT_JACK) inCallbacks++;
+        });
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xB1));
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xB1));
+    suite->rdc.sync(&suite->device);
+    std::vector<uint8_t> initial =
+        pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3, /*gameRole=*/0);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, initial.data(), initial.size());
+    suite->rdc.sync(&suite->device);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    ASSERT_EQ(outCallbacks, 1);
+    ASSERT_EQ(inCallbacks, 1);
+
+    // Peer pushes an updated context on already-CONNECTED jacks (including inside the
+    // resend-throttle window on a second update). Both jacks must record the new facts.
+    std::vector<uint8_t> update1 =
+        pdnContextBytes(/*chainRole=*/2, /*userId=*/4242, /*seqId=*/4, /*gameRole=*/1);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, update1.data(), update1.size());
+
+    for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+        EXPECT_EQ(suite->rdc.getPeerChainRole(jack), 2);
+        EXPECT_EQ(suite->rdc.getPeerUserId(jack), 4242);
+        size_t len = 0;
+        const uint8_t* raw = suite->rdc.getPeerProfile(jack, len);
+        ASSERT_NE(raw, nullptr);
+        ASSERT_EQ(len, sizeof(PlayerProfile));
+        PlayerProfile profile{};
+        memcpy(&profile, raw, sizeof(profile));
+        EXPECT_EQ(profile.gameRole, 1);
+    }
+    EXPECT_EQ(outCallbacks, 2);
+    EXPECT_EQ(inCallbacks, 2);
+
+    std::vector<uint8_t> update2 =
+        pdnContextBytes(/*chainRole=*/3, /*userId=*/5555, /*seqId=*/5, /*gameRole=*/0);
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, peer, update2.data(), update2.size());
+
+    for (SerialIdentifier jack : {SerialIdentifier::OUTPUT_JACK, SerialIdentifier::INPUT_JACK}) {
+        EXPECT_EQ(suite->rdc.getPeerChainRole(jack), 3);
+        EXPECT_EQ(suite->rdc.getPeerUserId(jack), 5555);
+        size_t len = 0;
+        const uint8_t* raw = suite->rdc.getPeerProfile(jack, len);
+        ASSERT_NE(raw, nullptr);
+        PlayerProfile profile{};
+        memcpy(&profile, raw, sizeof(profile));
+        EXPECT_EQ(profile.gameRole, 0);
+    }
+    EXPECT_EQ(outCallbacks, 3);
+    EXPECT_EQ(inCallbacks, 3);
 }
 
 // The cap sits at the event envelope, not at a v1 frame: a chain filled to the cap

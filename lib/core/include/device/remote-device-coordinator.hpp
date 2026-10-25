@@ -376,9 +376,12 @@ private:
     // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
-    // Completes every jack currently CONNECTING to `fromMac` (live receive path).
+    // Completes every jack currently CONNECTING to `fromMac` and updates any
+    // already-CONNECTED jack facing `fromMac`.
     void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
+    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+                           uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
     // so the context callback fires exactly once per jack.
     void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,

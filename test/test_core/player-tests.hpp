@@ -221,4 +221,19 @@ inline void playerProfileCarriesRoleAndIdentity(Player* player) {
 
     player->setIsHunter(false);
     EXPECT_EQ(player->toProfile().gameRole, 0);
+
+    PlayerProfile defaultConstructed{};
+    EXPECT_EQ(defaultConstructed.userId, 0xFFFF);
+
+    char sentinelId[] = "65535";
+    player->setUserID(sentinelId);
+    EXPECT_EQ(player->toProfile().userId, 0xFFFF);
+
+    char overflowId[] = "65536";
+    player->setUserID(overflowId);
+    EXPECT_EQ(player->toProfile().userId, 0xFFFF);
+
+    char negativeId[] = "-1";
+    player->setUserID(negativeId);
+    EXPECT_EQ(player->toProfile().userId, 0xFFFF);
 }

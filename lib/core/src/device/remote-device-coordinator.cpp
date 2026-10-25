@@ -397,9 +397,11 @@ void RemoteDeviceCoordinator::resendContext() {
     std::array<std::array<uint8_t, 6>, NUM_PORTS> alreadySent{};
     size_t sentCount = 0;
     for (SerialIdentifier port : HELLO_JACKS) {
-        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
-        const uint8_t* mac = machine->peer().data();
+        JackHelloLink& link = helloByPort[portIndex(port)];
+        if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
+            continue;
+        link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
+        const uint8_t* mac = link.machine->peer().data();
         // A 2-node ring faces the same peer on more than one jack and one copy
         // covers them all. Every MAC covered so far is checked, not just the last
         // one: the jacks sharing a peer need not be adjacent in HELLO_JACKS.
@@ -436,50 +438,49 @@ void RemoteDeviceCoordinator::onContextReceived(const uint8_t* fromMac, DeviceTy
 void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, DeviceType peerType,
                                                   uint8_t chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
-    // Live receive path: a 2-node ring points both our jacks at the same peer with
-    // both already CONNECTING, so one context completes both.
     bool appliedToConnectingJack = false;
-    for (SerialIdentifier port : HELLO_JACKS) {
-        HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTING) continue;
-        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
-        completeJackContext(port, peerType, chainRole, peerUserId, profile, len);
-        appliedToConnectingJack = true;
-    }
-    if (appliedToConnectingJack) return;
-
-    // A context from a MAC a CONNECTED jack already tracks means the peer is still
-    // cycling CONNECTING — our earlier context was lost app-side (SEND_SUCCESS is
-    // MAC-ack only) or the peer rebooted and its first resend was deduped. Resend
-    // ours so its cycle completes. No ping-pong: only the CONNECTING side retries,
-    // and it stops once this lands.
+    JackHelloLink* firstConnectedLink = nullptr;
     for (SerialIdentifier port : HELLO_JACKS) {
         JackHelloLink& link = helloByPort[portIndex(port)];
-        if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
-            continue;
+        if (link.machine == nullptr) continue;
         if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
-        // Throttle to one resend per exchange window: every send stamps a fresh
-        // seqId, so dedup can't brake two CONNECTED sides answering each other —
-        // unthrottled they'd volley at radio RTT until link death.
-        if (link.contextResendThrottleTimer.isRunning() &&
-            !link.contextResendThrottleTimer.expired())
-            return;
-        if (!isContextSendPending(fromMac)) {
-            sendSelfContext(fromMac);
-            link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
+        const int state = link.machine->currentStateId();
+        if (state == HELLO_LINK_CONNECTING) {
+            completeJackContext(port, peerType, chainRole, peerUserId, profile, len);
+            appliedToConnectingJack = true;
+        } else if (state == HELLO_LINK_CONNECTED) {
+            recordJackContext(port, peerType, chainRole, peerUserId, profile, len);
+            if (firstConnectedLink == nullptr) firstConnectedLink = &link;
         }
-        return;
+    }
+    if (firstConnectedLink == nullptr) return;
+
+    // A context from a MAC a CONNECTED jack already tracks means the peer Either
+    // restarted its link (cycling CONNECTING) or pushed a role update via
+    // resendContext(). Resend ours once per exchange window so a restarting peer's
+    // cycle completes without two CONNECTED sides volleying at radio RTT.
+    if (!appliedToConnectingJack &&
+        (!firstConnectedLink->contextResendThrottleTimer.isRunning() ||
+         firstConnectedLink->contextResendThrottleTimer.expired()) &&
+        !isContextSendPending(fromMac)) {
+        sendSelfContext(fromMac);
+        firstConnectedLink->contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
+    }
+
+    ContextReceivedCallback handler = contextReceivedCallback;
+    if (!handler) return;
+    for (SerialIdentifier port : HELLO_JACKS) {
+        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
+        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
+        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
+        handler(port, peerType, profile, len);
     }
 }
 
-void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
-                                                  uint8_t chainRole, uint16_t peerUserId,
-                                                  const uint8_t* profile, size_t len) {
-    // A second fresh-seqId context can land before the Connecting -> Connected
-    // commit while the jack still reports CONNECTING; the game callback must
-    // fire exactly once per connect.
+void RemoteDeviceCoordinator::recordJackContext(SerialIdentifier jack, DeviceType peerType,
+                                                uint8_t chainRole, uint16_t peerUserId,
+                                                const uint8_t* profile, size_t len) {
     JackHelloLink& link = helloByPort[portIndex(jack)];
-    if (link.machine != nullptr && link.machine->didMarkContextComplete()) return;
     // The kind comes from the channel that decoded this context, not the HELLO
     // deviceType byte: the two are independently spoofable, and a consumer reading
     // peerDeviceType to decide how to cast the profile bytes needs the kind that
@@ -491,6 +492,17 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
     link.peerProfileLen = std::min(len, link.peerProfile.size());
     memcpy(link.peerProfile.data(), profile, link.peerProfileLen);
     link.peerUserId = peerUserId;
+}
+
+void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceType peerType,
+                                                  uint8_t chainRole, uint16_t peerUserId,
+                                                  const uint8_t* profile, size_t len) {
+    recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
+    // A second fresh-seqId context can land before the Connecting -> Connected
+    // commit while the jack still reports CONNECTING; the game callback must
+    // fire exactly once per connect.
+    JackHelloLink& link = helloByPort[portIndex(jack)];
+    if (link.machine != nullptr && link.machine->didMarkContextComplete()) return;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);
     onContextExchangeComplete(jack);
 }

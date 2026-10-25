@@ -1486,6 +1486,9 @@ TEST_F(RDCHelloTests, resendContextSupersedesUnackedSend) {
 TEST_F(RDCHelloTests, resendContextSendsOncePerPeer) {
     rdcResendContextSendsOncePerPeer(this);
 }
+TEST_F(RDCHelloTests, connectedJackUpdatesPeerContextOnResend) {
+    rdcConnectedJackUpdatesPeerContextOnResend(this);
+}
 TEST_F(RDCHelloTests, contextCarriesOwnChainRole) {
     rdcContextCarriesOwnChainRole(this);
 }
