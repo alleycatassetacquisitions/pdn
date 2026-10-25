@@ -42,7 +42,11 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // The ring latch moves with both cables still seated — applyUpstreamHead sets
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
     // to be re-sent from the role edge; no jack edge would carry it.
-    rdc->setOnChainRoleChange([this](ChainRole) { resendConfirm(); });
+    rdc->setOnChainRoleChange([this](ChainRole) {
+        if (isLoop() != wasInLoop) onChainStateChanged();
+        resendConfirm();
+    });
+    wasInLoop = isLoop();
     // Armed here because SimpleTimer::expired() is false while unarmed, so an
     // unarmed backstop never fires at all.
     roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
@@ -139,7 +143,8 @@ std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() c
 }
 
 bool ChainDuelManager::isEventFromOwnChampion(const uint8_t* eventChampionMac) const {
-    return championMac.has_value() && memcmp(championMac->data(), eventChampionMac, 6) == 0;
+    const uint8_t* own = getChampionMac();
+    return own != nullptr && memcmp(own, eventChampionMac, 6) == 0;
 }
 
 void ChainDuelManager::sendGameEventToSupporters(ChainGameEventType eventType) {
@@ -225,14 +230,15 @@ void ChainDuelManager::sendConfirm() {
     // cascade names, and that is what resendConfirm is for.
     confirmSent = true;
 
-    if (!championMac.has_value()) return;
+    const uint8_t* champ = getChampionMac();
+    if (champ == nullptr) return;
 
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) return;
 
     ChainConfirmPayload payload{};
     memcpy(payload.originatorMac, selfMac, 6);
-    chainConfirmChannel.sendReliable(championMac->data(), payload);
+    chainConfirmChannel.sendReliable(champ, payload);
 }
 
 void ChainDuelManager::resendConfirm() {
@@ -268,18 +274,21 @@ void ChainDuelManager::onChainJoinReceived(const uint8_t* supporterMac,
 }
 
 void ChainDuelManager::announceToChampion() {
-    if (!championMac.has_value()) return;
+    const uint8_t* champ = getChampionMac();
+    if (champ == nullptr) return;
     const uint8_t* selfMac = wirelessManager->getMacAddress();
     if (selfMac == nullptr) return;
     // A champion is its own chain's root, not a member of it.
-    if (memcmp(championMac->data(), selfMac, 6) == 0) return;
+    if (memcmp(champ, selfMac, 6) == 0) return;
 
     ChainJoinPayload payload{};
-    memcpy(payload.championMac, championMac->data(), 6);
-    chainJoinChannel.sendReliable(championMac->data(), payload);
+    memcpy(payload.championMac, champ, 6);
+    chainJoinChannel.sendReliable(champ, payload);
 }
 
 void ChainDuelManager::onChainStateChanged() {
+    wasInLoop = isLoop();
+
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
     size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;
@@ -304,11 +313,14 @@ void ChainDuelManager::onChainStateChanged() {
             memcpy(selfArr.data(), selfMac, 6);
             championMac = selfArr;
         }
-    } else if (isSupporter() && championMac.has_value()) {
+    } else if (isSupporter()) {
         const uint8_t* selfMac = wirelessManager->getMacAddress();
-        if (selfMac != nullptr && memcmp(championMac->data(), selfMac, 6) == 0) {
+        if (championMac.has_value() && selfMac != nullptr &&
+            memcmp(championMac->data(), selfMac, 6) == 0) {
             championMac.reset();
         }
+    } else {
+        championMac.reset();
     }
 
     broadcastRoleAndChampion();
@@ -350,6 +362,7 @@ size_t ChainDuelManager::getConfirmedSupporterCount() const {
 }
 
 const uint8_t* ChainDuelManager::getChampionMac() const {
+    if (isLoop()) return nullptr;
     return championMac.has_value() ? championMac->data() : nullptr;
 }
 
@@ -390,11 +403,19 @@ void ChainDuelManager::onRoleAnnounceReceived(
     // parents — their championMac is irrelevant.
     if (!fromOpponentJack) return;
     if (role != (player->isHunter() ? 1u : 0u)) return;
+    if (!isSupporter()) return;
+
     // Wire input: the field is always present, so a sender with no champion sends
     // it zeroed, and a two-bounty ring does exactly that: both clear their champion,
     // then each announces to the other's opponent jack with a matching role. Caching
     // the zero would cascade it onward as this device's champion.
-    if (MacToUInt64(announcedChampionMac) == 0) return;
+    if (MacToUInt64(announcedChampionMac) == 0) {
+        championMac.reset();
+        resender.cancelAll(PktType::kChainConfirm);
+        resender.cancelAll(PktType::kChainJoin);
+        broadcastRoleAndChampion();
+        return;
+    }
 
     std::array<uint8_t, 6> newMac;
     memcpy(newMac.data(), announcedChampionMac, 6);
@@ -428,20 +449,19 @@ void ChainDuelManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac
 
 void ChainDuelManager::broadcastRoleAndChampion() {
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
-    if (supporterPeer == nullptr) {
-        // Forget who was told before the champion check, not after: a link that
-        // dies while this device holds no champion would otherwise keep a stamp
-        // naming the departed peer, and a cable returning on that MAC would
-        // match it and never be announced to.
-        supporterAnnounce.reset();
+    const uint8_t* champ = getChampionMac();
+    if (supporterPeer == nullptr || champ == nullptr) {
+        if (supporterAnnounce.has_value()) {
+            roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
+            supporterAnnounce.reset();
+        }
         return;
     }
-    if (!championMac.has_value()) return;
 
     RoleAnnounceState content;
     memcpy(content.peer.data(), supporterPeer, 6);
     content.role = player->isHunter() ? 1 : 0;
-    content.champion = *championMac;
+    memcpy(content.champion.data(), champ, 6);
     if (supporterAnnounce.has_value() && supporterAnnounce->told(content)) return;
 
     // Half-open gate, same reasoning as canInitiateMatch. A jack at Connecting has
@@ -474,7 +494,9 @@ void ChainDuelManager::sendRoleToOpponentJack() {
     RoleAnnounceState content;
     memcpy(content.peer.data(), opponentPeer, 6);
     content.role = player->isHunter() ? 1 : 0;
-    if (championMac.has_value()) content.champion = *championMac;
+    if (const uint8_t* champ = getChampionMac()) {
+        memcpy(content.champion.data(), champ, 6);
+    }
     if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
 
     // Same half-open gate as the supporter side: a jack at Connecting has a peer
@@ -492,6 +514,12 @@ void ChainDuelManager::sendRoleToOpponentJack() {
 }
 
 void ChainDuelManager::sync() {
+    // Non-latching members learn of a ring from HELLO with both jacks already
+    // connected, so neither the jack nor the role callback fires.
+    if (isLoop() != wasInLoop) {
+        onChainStateChanged();
+    }
+
     // The role announce clears on SEND_SUCCESS; the WIN/LOSS fan-out clears one
     // supporter at a time, since a broadcast carries no per-member evidence.
     resender.sync();

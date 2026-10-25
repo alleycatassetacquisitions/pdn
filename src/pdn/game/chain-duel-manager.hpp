@@ -192,6 +192,7 @@ private:
     static bool containsMac(const MacSlots& slots, size_t count, const uint8_t* mac);
 
     size_t lastSupporterChainCount = 0;
+    bool wasInLoop = false;
 
     std::atomic<bool> confirmSent{false};
 

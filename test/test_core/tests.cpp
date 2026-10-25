@@ -1738,6 +1738,9 @@ TEST_F(ChainDuelManagerTests, championChangeWithoutPressSendsNoConfirm) {
     cdmChampionChangeWithoutPressSendsNoConfirm(this);
 }
 
+TEST_F(ChainDuelManagerTests, ringClosureClearsTheChampion) {
+    cdmRingClosureClearsTheChampion(this);
+}
 TEST_F(ChainDuelManagerTests, roleAnnounceWithNoChampionIsRefused) {
     cdmRoleAnnounceWithNoChampionIsRefused(this);
 }
