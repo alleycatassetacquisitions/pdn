@@ -70,7 +70,6 @@ void Lose::onStateLoop(PDN* pdn) {
 void Lose::onStateDismounted(PDN* pdn) {
     loseTimer.invalidate();
     reset = false;
-    pdn->getLightManager()->stopAnimation();
 }
 
 bool Lose::resetGame() {

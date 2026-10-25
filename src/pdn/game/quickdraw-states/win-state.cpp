@@ -78,7 +78,6 @@ void Win::onStateDismounted(PDN* pdn) {
     winTimer.invalidate();
     reset = false;
     pdn->getHaptics()->setIntensity(VIBRATION_OFF);
-    pdn->getLightManager()->stopAnimation();
 }
 
 bool Win::resetGame() {
