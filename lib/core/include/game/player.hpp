@@ -17,7 +17,7 @@ enum class Allegiance {
 
 class Player {
 public:
-    /// Fires after the hunter/bounty role flips.
+    /** Fires after the hunter/bounty role flips. */
     using RoleChangedCallback = std::function<void()>;
 
     Player() = default;
@@ -35,14 +35,18 @@ public:
 
     void toggleHunter();
 
-    /// Registers the role-flip observer (one slot). Fires only on an actual
-    /// flip, never on a set that reasserts the current role.
+    /**
+     * Registers the role-flip observer (one slot). Fires only on an actual
+     * flip, never on a set that reasserts the current role.
+     */
     void setOnRoleChanged(RoleChangedCallback callback);
 
-    /// This player as the packed profile peers receive in the connection
-    /// context. userId is 0xFFFF while the player id is not wholly numeric
-    /// (registration has not completed); faction and name truncate to the
-    /// fixed wire widths.
+    /**
+     * This player as the packed profile peers receive in the connection
+     * context. userId is 0xFFFF while the player id is not wholly numeric
+     * (registration has not completed); faction and name truncate to the
+     * fixed wire widths.
+     */
     PlayerProfile toProfile() const;
 
     Allegiance getAllegiance() const;
@@ -65,8 +69,10 @@ public:
 
     void setUserID(char *newId);
 
-    /// Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
-    /// the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
+    /**
+     * Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
+     * the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
+     */
     void applyRngSeedFromUserId();
 
     std::string getUserID() const;

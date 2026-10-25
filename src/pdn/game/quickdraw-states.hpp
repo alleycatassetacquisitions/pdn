@@ -6,7 +6,6 @@
 #include "utils/debounced-condition.hpp"
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
@@ -22,17 +21,18 @@
 #include "game/chain-duel-manager.hpp"
 #include "game/shootout-manager.hpp"
 
-/// Bundle of the shared game-wide managers a state may need. Built by the
-/// GameSession that owns them and handed to every state so a new manager is a
-/// one-line addition here rather than a constructor change across every state.
-/// All pointers are non-owning; states read only the fields they use.
+/**
+ * Bundle of the shared game-wide managers a state may need. Built by the
+ * GameSession that owns them and handed to every state so a new manager is a
+ * one-line addition here rather than a constructor change across every state.
+ * All pointers are non-owning; states read only the fields they use.
+ */
 struct GameContext {
     Player* player = nullptr;
     MatchManager* matchManager = nullptr;
     RemoteDeviceCoordinator* remoteDeviceCoordinator = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
 };
@@ -149,18 +149,12 @@ public:
 
 public:
     // Button callback in onStateMounted uses these via `this` capture.
-    // Atomic because the ESP-NOW packet callback (WiFi task on hardware) and
-    // the button press / state-loop callbacks (main task) read and write them
-    // concurrently.
     Player *player;
     std::atomic<bool> buttonArmed{false};
     std::atomic<bool> hasConfirmed{false};
     std::atomic<bool> displayIsDirty{true};
     std::atomic<bool> ledsAreDirty{true};
     std::atomic<int> lastResult{0};
-    // resultClearTimer is touched only by onStateLoop (main task). The
-    // packet handler (WiFi task) communicates via the atomic lastResult;
-    // onStateLoop detects transitions and manages the timer here.
     SimpleTimer resultClearTimer;
     PDN* cachedPDN = nullptr;
 
@@ -175,11 +169,13 @@ private:
     bool isAuxRequired() override;
 };
 
-/// A duel state returns to Idle on a persistent disconnect, but never while a
-/// tournament is live — the shootout's own ring-break/ABORT teardown owns that
-/// path. The debounce ages on wall clock even when unsampled, so a run started
-/// before the tournament went live would fire the instant the shootout ends;
-/// reset it while active so a fresh full window is always required afterward.
+/**
+ * A duel state returns to Idle on a persistent disconnect, but never while a
+ * tournament is live — the shootout's own ring-break/ABORT teardown owns that
+ * path. The debounce ages on wall clock even when unsampled, so a run started
+ * before the tournament went live would fire the instant the shootout ends;
+ * reset it while active so a fresh full window is always required afterward.
+ */
 inline bool duelReturnsToIdle(ConnectState<PDN>& duel, ShootoutManager* shootout) {
     if (shootout && shootout->active()) {
         duel.resetDisconnectDebounce();
@@ -344,7 +340,6 @@ public:
 private:
     Player* player;
     MatchManager* matchManager;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
     ShootoutManager* shootoutManager;
     bool wonBattle = false;
     bool captured = false;
@@ -529,7 +524,7 @@ private:
     SymbolWirelessManager* symbolWirelessManager;
     PDN* mountedPdn = nullptr;
     uint8_t* fdnMac = nullptr;
-    /// PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN).
+    /** PDN jack cabled to the FDN (OUTPUT = primary side toward FDN, INPUT = aux side toward FDN). */
     SerialIdentifier pdnJackToFdn = SerialIdentifier::OUTPUT_JACK;
     SymbolId fdnSymbol;
 

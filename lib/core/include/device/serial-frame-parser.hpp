@@ -63,15 +63,19 @@ using HelloFrameHandler = std::function<void(const HelloPayload&)>;
 // feeding ever moves onto a UART event task.
 class SerialFrameParser {
 public:
-    /// Consumes one burst of raw serial bytes; fires the frame handler for
-    /// every CRC-valid frame completed within it.
+    /**
+     * Consumes one burst of raw serial bytes; fires the frame handler for
+     * every CRC-valid frame completed within it.
+     */
     void feed(const uint8_t* data, size_t len);
 
-    /// Request a parser reset from another thread. The actual clear happens at
-    /// the start of the next feed(), keeping parser state single-owner.
+    /**
+     * Request a parser reset from another thread. The actual clear happens at
+     * the start of the next feed(), keeping parser state single-owner.
+     */
     void requestReset() { resetRequested.store(true); }
 
-    /// Registers the consumer for CRC-valid HELLO frames, decoded to HelloPayload.
+    /** Registers the consumer for CRC-valid HELLO frames, decoded to HelloPayload. */
     void setHelloFrameHandler(HelloFrameHandler cb) { helloFrameHandler = std::move(cb); }
 
 private:

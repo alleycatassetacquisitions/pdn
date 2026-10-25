@@ -17,12 +17,16 @@
 #include "device/remote-device-coordinator.hpp"
 #include "game/match.hpp"
 #include "game/player.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/mac-functions.hpp"
+#include "wireless/quickdraw-packet.hpp"
+#include "wireless/reliable-channel.hpp"
+#include "wireless/resender.hpp"
 #include "device/drivers/storage-interface.hpp"
 
 class ShootoutManager;
 
 // Preferences namespace and keys
+inline constexpr const char MATCHES_PREFS_NAMESPACE[] = "matches";
 
 struct LastMatchDisplay {
     unsigned long myTimeMs = 0;       // boosted draw time, as used for winner calc
@@ -53,8 +57,8 @@ struct ActiveDuelState {
 
 class MatchManager {
 public:
-
-    MatchManager();
+    /** Claims the kQuickdrawCommand channel on wirelessManager (may be nullptr in tests). */
+    explicit MatchManager(WirelessManager* wirelessManager);
     ~MatchManager();
     
 
@@ -70,10 +74,12 @@ public:
      */
     void receiveMatch(const char* matchId, const char* opponentId, bool isHunter, uint8_t* opponentMac);
 
-    /// Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
-    /// duelists call this independently on MATCH_START with the same derived
-    /// match ID and opposite `localIsHunter`, so each writes exactly one of the
-    /// match's two draw-time slots.
+    /**
+     * Shootout mode: primes a match without the SEND_MATCH_ID handshake. Both
+     * duelists call this independently on MATCH_START with the same derived
+     * match ID and opposite `localIsHunter`, so each writes exactly one of the
+     * match's two draw-time slots.
+     */
     void initializeShootoutMatch(const char* matchId, uint8_t* opponentMac, bool localIsHunter);
 
     bool isMatchReady();
@@ -91,9 +97,11 @@ public:
 
     bool didWin();
 
-    /// The draw slot this device fills for the active bout. primeMatch is the
-    /// only writer and sets it alongside the match; the whole-struct reset clears
-    /// both, so there is no slot without a bout behind it.
+    /**
+     * The draw slot this device fills for the active bout. primeMatch is the
+     * only writer and sets it alongside the match; the whole-struct reset clears
+     * both, so there is no slot without a bout behind it.
+     */
     bool isLocalHunter() const { return activeDuelState.localIsHunter; }
 
     unsigned long getDuelLocalStartTime();
@@ -128,14 +136,18 @@ public:
 
     void clearCurrentMatch();
 
-    /// Clears the active bout only when a shootout primed it, leaving a bout the
-    /// cable handshake owns untouched.
+    /**
+     * Clears the active bout only when a shootout primed it, leaving a bout the
+     * cable handshake owns untouched.
+     */
     void clearShootoutMatch();
 
     void setBoostProvider(std::function<unsigned long()> provider);
 
-    /// Result-screen snapshot that outlives the match: draw times from
-    /// finalizeMatch, boost from the button press that earned it.
+    /**
+     * Result-screen snapshot that outlives the match: draw times from
+     * finalizeMatch, boost from the button press that earned it.
+     */
     const LastMatchDisplay& getLastMatchDisplay() const { return lastMatchDisplay; }
 
     // Required for SEND_MATCH_ID to be accepted: sender MAC must match one
@@ -151,7 +163,11 @@ public:
 
     void listenForMatchEvents(const QuickdrawCommand& command);
 
-    void initialize(Player* player, StorageInterface* storage, QuickdrawWirelessManager* quickdrawWirelessManager);
+    /** Binds the player and storage this manager records matches against. */
+    void initialize(Player* player, StorageInterface* storage);
+
+    /** Drives the duel channel's retries. */
+    void sync();
 
     parameterizedCallbackFunction getDuelButtonPush();
 
@@ -167,7 +183,7 @@ public:
 
 
 private:
-    /// True when the active bout carries a shootout-derived match id.
+    /** True when the active bout carries a shootout-derived match id. */
     bool currentMatchIsShootout() const;
 
     Player* player;
@@ -183,7 +199,10 @@ private:
     parameterizedCallbackFunction buttonMasher;
 
     StorageInterface* storage;
-    QuickdrawWirelessManager* quickdrawWirelessManager;
+    Resender resender;
+    ReliableChannel<QuickdrawPacket> duelChannel;
+    void sendCommand(const uint8_t* mac, int command, const char* matchId,
+                     long drawTime, bool isHunter);
     /**
      * Appends a match to storage
      * @param match Match to save
@@ -211,10 +230,6 @@ private:
     // SEND_MATCH_ID is intentionally exempt: it's the packet that
     // establishes the peering in the first place.
     bool isFromActiveMatchOpponent(const QuickdrawCommand& command) const;
-
-    void sendMatchAck();
-    void sendMatchId();
-    void sendMatchRoleMismatch(const QuickdrawCommand& incoming);
 
     // Emplace match with given id/opponent/draw slot. Common path for both the
     // cable-handshake init and the Shootout MATCH_START init.

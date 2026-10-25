@@ -15,11 +15,6 @@ using ::testing::NiceMock;
 // Integration Test Fixture
 // ============================================
 
-/**
- * Two-device duel simulation. Each device has its own MatchManager and
- * FakeQuickdrawWirelessManager. performHandshake() drives the production
- * SEND_MATCH_ID → MATCH_ID_ACK exchange so tests never call createMatch().
- */
 class DuelIntegrationTestSuite : public testing::Test {
 public:
     void SetUp() override {
@@ -37,21 +32,17 @@ public:
         bounty->setUserID(bountyId);
         bounty->setIsHunter(false);
 
-        hunterWirelessManager = new FakeQuickdrawWirelessManager();
-        hunterWirelessManager->initialize(hunter, nullptr, 0);
-        hunterMatchManager = new MatchManager();
-        hunterMatchManager->initialize(hunter, &hunterStorage, hunterWirelessManager);
+        hunterWirelessManager = new QuickdrawRadioTap();
+        hunterWirelessManager->attach(hunterDevice.mockPeerComms);
+        hunterMatchManager = new MatchManager(hunterDevice.wirelessManager);
+        hunterMatchManager->initialize(hunter, &hunterStorage);
         hunterMatchManager->setRemoteDeviceCoordinator(&hunterFakeRdc);
-        hunterWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, hunterMatchManager, std::placeholders::_1));
 
-        bountyWirelessManager = new FakeQuickdrawWirelessManager();
-        bountyWirelessManager->initialize(bounty, nullptr, 0);
-        bountyMatchManager = new MatchManager();
-        bountyMatchManager->initialize(bounty, &bountyStorage, bountyWirelessManager);
+        bountyWirelessManager = new QuickdrawRadioTap();
+        bountyWirelessManager->attach(bountyDevice.mockPeerComms);
+        bountyMatchManager = new MatchManager(bountyDevice.wirelessManager);
+        bountyMatchManager->initialize(bounty, &bountyStorage);
         bountyMatchManager->setRemoteDeviceCoordinator(&bountyFakeRdc);
-        bountyWirelessManager->setPacketReceivedCallback(
-            std::bind(&MatchManager::listenForMatchEvents, bountyMatchManager, std::placeholders::_1));
     }
 
     void TearDown() override {
@@ -75,8 +66,8 @@ public:
         hunterFakeRdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, bountyMac);
         bountyFakeRdc.setPeerMac(SerialIdentifier::INPUT_JACK, hunterMac);
         hunterMatchManager->initializeMatch(bountyMac);
-        hunterWirelessManager->deliverLastTo(bountyWirelessManager, hunterMac);
-        bountyWirelessManager->deliverLastTo(hunterWirelessManager, bountyMac);
+        bountyWirelessManager->deliverFrameFrom(hunterMac, hunterWirelessManager->lastFrame());
+        hunterWirelessManager->deliverFrameFrom(bountyMac, bountyWirelessManager->lastFrame());
     }
 
     FakePlatformClock* fakeClock = nullptr;
@@ -84,8 +75,10 @@ public:
     Player* bounty = nullptr;
     MatchManager* hunterMatchManager = nullptr;
     MatchManager* bountyMatchManager = nullptr;
-    FakeQuickdrawWirelessManager* hunterWirelessManager = nullptr;
-    FakeQuickdrawWirelessManager* bountyWirelessManager = nullptr;
+    MockDevice hunterDevice;
+    MockDevice bountyDevice;
+    QuickdrawRadioTap* hunterWirelessManager = nullptr;
+    QuickdrawRadioTap* bountyWirelessManager = nullptr;
     NiceMock<MockStorage> hunterStorage;
     NiceMock<MockStorage> bountyStorage;
     FakeRemoteDeviceCoordinator hunterFakeRdc;

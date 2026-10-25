@@ -34,7 +34,8 @@ protected:
     unsigned long remotePlayerTTL;
     unsigned long broadcastInterval;
     unsigned long lastBroadcastTime;
-    int lastRssi = 0;
+    // Same sentinel as the driver's: 0 would read as the strongest signal.
+    int lastRssi = PeerCommsInterface::RSSI_UNKNOWN;
     bool packetReceived = false;
 
 };

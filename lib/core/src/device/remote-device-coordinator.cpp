@@ -182,21 +182,6 @@ PortStatus RemoteDeviceCoordinator::getPortStatus(SerialIdentifier port) {
     return mapHelloLinkToStatus(port);
 }
 
-PortState RemoteDeviceCoordinator::getPortState(SerialIdentifier port) {
-    std::vector<std::array<uint8_t, 6>> peerAddresses;
-
-    // Composed from getPeerMac so a jack cannot report one direct peer here and
-    // a different one there.
-    const uint8_t* directPeer = getPeerMac(port);
-    if (directPeer != nullptr) {
-        std::array<uint8_t, 6> mac;
-        memcpy(mac.data(), directPeer, 6);
-        peerAddresses.push_back(mac);
-    }
-
-    return PortState{ port, getPortStatus(port), peerAddresses };
-}
-
 void RemoteDeviceCoordinator::setChainChangeCallback(std::function<void()> callback) {
     chainChangeCallback = std::move(callback);
 }
@@ -476,13 +461,12 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
         // Throttle to one resend per exchange window: every send stamps a fresh
         // seqId, so dedup can't brake two CONNECTED sides answering each other —
         // unthrottled they'd volley at radio RTT until link death.
-        const unsigned long now = nowMs();
-        if (link.lastContextResendMs != 0 && now >= link.lastContextResendMs &&
-            now - link.lastContextResendMs < CONTEXT_EXCHANGE_TIMEOUT_MS)
+        if (link.contextResendThrottleTimer.isRunning() &&
+            !link.contextResendThrottleTimer.expired())
             return;
         if (!isContextSendPending(fromMac)) {
             sendSelfContext(fromMac);
-            link.lastContextResendMs = now;
+            link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
         }
         return;
     }
@@ -524,7 +508,8 @@ void RemoteDeviceCoordinator::bufferContext(const uint8_t* fromMac, DeviceType p
         }
         const bool reusable = !e.valid || e.isExpiredAt(now);
         if (reusable && slot == nullptr) slot = &e;
-        if (e.arrivedAtMs < oldest->arrivedAtMs) oldest = &e;
+        // Raw stamps invert across clock wraparound; compare elapsed age.
+        if (now - e.arrivedAtMs > now - oldest->arrivedAtMs) oldest = &e;
     }
     if (slot == nullptr) slot = oldest;  // full of fresh entries: evict the oldest
 
@@ -565,7 +550,7 @@ void RemoteDeviceCoordinator::releaseHelloPeer(SerialIdentifier jack, const uint
     // Defence in depth: the zeroed length already hides the bytes from
     // getPeerProfile, but a departed peer's identity should not sit in RAM.
     helloByPort[portIndex(jack)].peerProfile.fill(0);
-    helloByPort[portIndex(jack)].lastContextResendMs = 0;
+    helloByPort[portIndex(jack)].contextResendThrottleTimer.invalidate();
     // Context exchange is per-jack, so retries survive only while some jack still
     // faces this peer (a 2-node ring puts it on both). Once none does they are dead
     // traffic once no jack faces the peer. This jack already reads as empty here —

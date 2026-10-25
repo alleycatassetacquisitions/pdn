@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <vector>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "wireless/reliable-channel.hpp"
@@ -18,6 +19,42 @@ struct TransportTestPayload {
     uint8_t seqId;
     uint8_t data[14];
 } __attribute__((packed));
+
+TEST(ReliableTransportTest, seqIdReachesTheBytesHandedToTheRadio) {
+    // Every other test here feeds back an echo it stamped itself, which passes
+    // whether or not the id reached the wire. This one reads the bytes the radio
+    // was given: a stamp at the wrong offset is a silent wire bug, because both
+    // the receiver's dedup and the sender's ack recover identity from that byte.
+    using ::testing::_;
+    using ::testing::DoAll;
+    using ::testing::Invoke;
+    using ::testing::Return;
+
+    ::testing::NiceMock<MockPeerComms> mockComms;
+    WirelessManager wm(&mockComms, nullptr);
+    ReliableTransport transport(&wm);
+    ReliableChannel<TransportTestPayload>* ch = transport.channel<TransportTestPayload>(
+        PktType::kChainGameEvent, [](uint8_t, const uint8_t*) {});
+    ASSERT_NE(ch, nullptr);
+
+    std::vector<uint8_t> onTheWire;
+    EXPECT_CALL(mockComms, sendData(_, PktType::kChainGameEvent, _, _))
+        .WillOnce(DoAll(Invoke([&onTheWire](const uint8_t*, PktType,
+                                           const uint8_t* data, const size_t len) {
+                            onTheWire.assign(data, data + len);
+                        }),
+                        Return(1)));
+
+    uint8_t target[6] = {1, 2, 3, 4, 5, 6};
+    TransportTestPayload payload{};
+    const uint8_t seq = ch->sendReliable(target, payload);
+
+    ASSERT_NE(seq, 0);
+    ASSERT_EQ(onTheWire.size(), sizeof(TransportTestPayload));
+    EXPECT_EQ(onTheWire[offsetof(TransportTestPayload, seqId)], seq)
+        << "the seqId the channel returned is not in the bytes the radio was given";
+    EXPECT_EQ(payload.seqId, seq) << "the id did not reach the caller's struct";
+}
 
 TEST(ReliableTransportTest, reclaimSamePayloadReturnsSameChannel) {
     // A re-claim of a PktType with the same payload type (e.g. a re-created
@@ -173,7 +210,7 @@ TEST(ReliableTransportTest, sendResultSeqIdZeroDoesNotAck) {
     EXPECT_TRUE(ch->isPending(target));
 }
 
-TEST(ReliableTransportTest, abandonAfterMaxRetries) {
+TEST(ReliableTransportTest, abandonWhenSpanRunsOut) {
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport transport(&wm);
@@ -214,11 +251,12 @@ TEST(ReliableTransportTest, abandonAfterMaxRetries) {
     ASSERT_FALSE(ch->isPending(target));
 }
 
-TEST(ReliableTransportTest, failedSendDoesNotConsumeRetry) {
-    // A send that never reaches the radio (sendData < 0: transient PSRAM
-    // pressure, or ESP-NOW not ready mid mode-switch) must not spend a retry.
-    // The packet stays pending and keeps retrying rather than being abandoned
-    // against a budget it never actually used.
+TEST(ReliableTransportTest, aSendTheRadioNeverTookIsAbandonedOnTime) {
+    // sendData < 0 is the local path refusing the frame, and two of its causes are
+    // permanent for that frame (a payload over the packet size, a radio held in the
+    // wrong mode) rather than transient. The entry is bounded by elapsed time, so
+    // the caller is told once and the channel stops holding the target pending —
+    // callers gate on isPending and would otherwise wait out the session.
     ::testing::NiceMock<MockPeerComms> mockComms;
     WirelessManager wm(&mockComms, nullptr);
     ReliableTransport transport(&wm);
@@ -232,33 +270,29 @@ TEST(ReliableTransportTest, failedSendDoesNotConsumeRetry) {
     using ::testing::Return;
     EXPECT_CALL(mockComms, sendData(_, _, _, _)).WillRepeatedly(Return(-1));
 
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+
     uint8_t target[6] = {1, 2, 3, 4, 5, 6};
     TransportTestPayload p{};
     ch->sendReliable(target, p);
 
-    FakePlatformClock clock;
-    SimpleTimer::setPlatformClock(&clock);
-    // Far more cycles than maxRetries: with the bug this abandons; fixed, it
-    // keeps retrying because nothing ever transmitted.
-    for (int i = 0; i < 20; ++i) {
-        clock.advance(1000);
+    // Still inside the span: the frame keeps being offered to the path.
+    for (unsigned long elapsed = 0; elapsed < Resender::RETRANSMIT_SPAN_MS - 100;
+         elapsed += 20) {
+        clock.advance(20);
         transport.sync();
     }
     EXPECT_EQ(abandonCount, 0);
     EXPECT_TRUE(ch->isPending(target));
 
-    // Once sends actually reach the radio (still unacked), normal abandonment
-    // resumes, proving the no-abandon above is the send-failure path, not a
-    // dead retry loop.
-    ::testing::Mock::VerifyAndClearExpectations(&mockComms);
-    EXPECT_CALL(mockComms, sendData(_, _, _, _)).WillRepeatedly(Return(0));
-    for (int i = 0; i < 20; ++i) {
-        clock.advance(1000);
+    for (int i = 0; i < 10; ++i) {
+        clock.advance(20);
         transport.sync();
     }
-    SimpleTimer::setPlatformClock(nullptr);
     EXPECT_EQ(abandonCount, 1);
     EXPECT_FALSE(ch->isPending(target));
+    SimpleTimer::setPlatformClock(nullptr);
 }
 
 TEST(ReliableTransportTest, ackRoutesByPktType) {
@@ -424,4 +458,38 @@ TEST(ReliableTransportTest, unsequencedDeliveryNeverDeduped) {
     transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     transport.deliverIncoming(PktType::kChainGameEvent, from, bytes, sizeof(p));
     EXPECT_EQ(deliveries, 2);
+}
+
+TEST(ReliableTransportTest, destroyingAChannelStopsItsPendingSends) {
+    ::testing::NiceMock<MockPeerComms> comms;
+    WirelessManager wm{&comms, nullptr};
+    FakePlatformClock clock;
+    SimpleTimer::setPlatformClock(&clock);
+    Resender resender(&wm);
+
+    int frames = 0;
+    ON_CALL(comms, getPeerCommsState())
+        .WillByDefault(::testing::Return(PeerCommsState::CONNECTED));
+    ON_CALL(comms, sendData(::testing::_, ::testing::_, ::testing::_, ::testing::_))
+        .WillByDefault([&frames](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            frames++;
+            return 1;
+        });
+
+    const uint8_t peer[6] = {0x02, 0, 0, 0, 0, 0x09};
+    {
+        ReliableChannel<TransportTestPayload> channel(
+            &wm, &resender, PktType::kShootoutCommand, nullptr);
+        TransportTestPayload p{};
+        channel.sendReliable(peer, p);
+        ASSERT_EQ(frames, 1);
+        ASSERT_EQ(resender.pendingCount(PktType::kShootoutCommand), 1u);
+    }
+
+    EXPECT_EQ(resender.pendingCount(PktType::kShootoutCommand), 0u);
+    clock.advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    resender.sync();
+    EXPECT_EQ(frames, 1) << "a destroyed channel kept retransmitting";
+
+    SimpleTimer::setPlatformClock(nullptr);
 }

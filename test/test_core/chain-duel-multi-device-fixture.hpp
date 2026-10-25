@@ -163,10 +163,12 @@ public:
         settleLinks();
     }
 
-    /// One HELLO cycle across every plugged cable: emit on both jacks of every
-    /// node, move the bytes each cable carries, drain them through the real
-    /// exec() pump, then let each RDC and the radio queue catch up. Unpumped
-    /// jack output is dropped — an unplugged jack transmits into open air.
+    /**
+     * One HELLO cycle across every plugged cable: emit on both jacks of every
+     * node, move the bytes each cable carries, drain them through the real
+     * exec() pump, then let each RDC and the radio queue catch up. Unpumped
+     * jack output is dropped — an unplugged jack transmits into open air.
+     */
     void pumpHelloCycle() {
         for (auto& n : nodes)
             n->rdc->emitHello();
@@ -185,8 +187,10 @@ public:
         deliverAllPackets();
     }
 
-    /// Enough HELLO cycles for a fresh cable to reach CONNECTED and for the head
-    /// MAC (and any ring closure it implies) to propagate the length of the chain.
+    /**
+     * Enough HELLO cycles for a fresh cable to reach CONNECTED and for the head
+     * MAC (and any ring closure it implies) to propagate the length of the chain.
+     */
     void settleLinks() {
         for (size_t round = 0; round < nodes.size() + 8; ++round) {
             pumpHelloCycle();
@@ -194,18 +198,22 @@ public:
         }
     }
 
-    /// Ring closure the way production delivers it: the head's RDC callback, the
-    /// roster broadcast, then each member's Idle -> ShootoutProposal mount.
-    ///
-    /// Index of the node that latched the ring, set by claimRing().
+    /**
+     * Ring closure the way production delivers it: the head's RDC callback, the
+     * roster broadcast, then each member's Idle -> ShootoutProposal mount.
+     *
+     * Index of the node that latched the ring, set by claimRing().
+     */
     size_t ringHeadIndex = 0;
 
-    /// Claims on whichever node latched, which `closeRing()` makes the last-indexed
-    /// one. Production fires onRingClosed() only from that RDC callback, so a
-    /// self-claim on any other node is a state no device can reach. The roster is
-    /// injected because `dispatch()` has no kConnectionAnnounce case, so the
-    /// announces the RDC really sends fall through to `default:` and no roster
-    /// ever reaches a head here.
+    /**
+     * Claims on whichever node latched, which `closeRing()` makes the last-indexed
+     * one. Production fires onRingClosed() only from that RDC callback, so a
+     * self-claim on any other node is a state no device can reach. The roster is
+     * injected because `dispatch()` has no kConnectionAnnounce case, so the
+     * announces the RDC really sends fall through to `default:` and no roster
+     * ever reaches a head here.
+     */
     void claimRing() {
         size_t headIndex = nodes.size();
         for (size_t i = 0; i < nodes.size(); ++i) {
@@ -254,9 +262,11 @@ public:
         seedRingRoster();
     }
 
-    /// Hands every node the ring's member list. Ring detection is local and
-    /// real here; the member list is not — it lives on the head only, and no
-    /// coordinator broadcast (#169) hands it to followers yet.
+    /**
+     * Hands every node the ring's member list. Ring detection is local and
+     * real here; the member list is not — it lives on the head only, and no
+     * coordinator broadcast (#169) hands it to followers yet.
+     */
     void seedRingRoster() {
         std::vector<std::array<uint8_t, 6>> members;
         for (auto& n : nodes) {
@@ -351,7 +361,7 @@ protected:
 
         // Report delivery back to the sender: on channels with no reply packet
         // that report IS the delivery signal, and a fixture that routed the frame
-        // without it would make every send look undelivered and burn its budget.
+        // without it would make every send look undelivered and run out its span.
         //
         // Friendlier than the real radio, deliberately. This sits after the
         // no-handler return, so delivery is reported only when the receiver had a
@@ -433,25 +443,6 @@ protected:
     // production receive path untested by every chain and tournament case here.
     void wireChainEventHandlers(MultiDeviceNode& n) {
         ChainDuelManager* cdm = n.cdm.get();
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainConfirm,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainConfirmPayload)) return;
-                const ChainConfirmPayload* p = reinterpret_cast<const ChainConfirmPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onConfirmReceived(
-                    fromMac, p->originatorMac, p->seqId);
-            },
-            cdm);
-
-        n.device->wirelessManager->setEspNowPacketHandler(
-            PktType::kChainJoin,
-            [](const uint8_t* fromMac, const uint8_t* data, const size_t dataLen, void* ctx) {
-                if (dataLen != sizeof(ChainJoinPayload)) return;
-                const ChainJoinPayload* p = reinterpret_cast<const ChainJoinPayload*>(data);
-                static_cast<ChainDuelManager*>(ctx)->onChainJoinReceived(fromMac, p->championMac);
-            },
-            cdm);
 
         // GameSession fans this one to two consumers; only the manager half has a
         // counterpart here, since the fixture stands up no states. Dropping it
@@ -753,7 +744,6 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::PROPOSAL)
             << "node " << i << " missed the ring-closed broadcast";
     }
-    EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
     // Each device confirms. After four confirms propagate, every device
     // should reach BRACKET_REVEAL; the coordinator generates+broadcasts
@@ -771,6 +761,7 @@ inline void shootoutFourDeviceConsensusAndMatchStart(ChainDuelMultiDeviceFixture
                   ShootoutManager::Phase::BRACKET_REVEAL)
             << "node " << i << " phase";
     }
+    EXPECT_TRUE(suite->node(suite->ringHeadIndex).shootout->isCoordinator());
 
     // Advance past the bracket-reveal window and let the coordinator fire
     // the first MATCH_START.

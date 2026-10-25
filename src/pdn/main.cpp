@@ -1,19 +1,22 @@
-#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_log.h>
+#include <nvs_flash.h>
 
-#include <WiFi.h>
-#include <FastLED.h>
-#include <Preferences.h>
+// How long the splash screen stays up before the first app mounts.
+constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
 #include "device/drivers/esp32-s3/esp32-s3-logger-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-clock-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-1-button-driver.hpp"
-#include "device/drivers/esp32-s3/ws2812b-fastled-driver.hpp"
+#include "device/drivers/esp32-s3/ws2812b-led-strip-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-haptics-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-serial-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-http-client-driver.hpp"
 #include "device/drivers/esp32-s3/esp-now-driver.hpp"
 #include "device/drivers/esp32-s3/ssd1306-u8g2-driver.hpp"
 #include "device/drivers/esp32-s3/esp32-s3-prefs-driver.hpp"
+#include "device/crash/crash-logger.hpp"
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
@@ -27,7 +30,6 @@
 #include "wireless/remote-player-manager.hpp"
 #include "game/match-manager.hpp"
 #include "wireless/wireless-types.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
@@ -47,18 +49,20 @@
 
 WifiConfig* wifiConfig = nullptr;
 
+CrashLogger* crashLogger = nullptr;
+
 
 // ESP32-s3 Drivers (declare as pointers, construct in setup())
 Esp32S3Clock* clockDriver = nullptr;
 SSD1306U8G2Driver* displayDriver = nullptr;
 Esp32S31ButtonDriver* primaryButtonDriver = nullptr;
 Esp32S31ButtonDriver* secondaryButtonDriver = nullptr;
-WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>* lightDriver = nullptr;
+WS2812BLedStripDriver* lightDriver = nullptr;
 Esp32S3HapticsDriver* hapticsDriver = nullptr;
 Esp32s3SerialOut* serialOutDriver = nullptr;
 Esp32s3SerialIn* serialInDriver = nullptr;
 Esp32S3HttpClient* httpClientDriver = nullptr;
-EspNowManager* peerCommsDriver = nullptr;
+EspNowDriver* peerCommsDriver = nullptr;
 Esp32S3Logger* loggerDriver = nullptr;
 Esp32S3PrefsDriver* storageDriver = nullptr;
 
@@ -75,44 +79,32 @@ ShootoutApp* shootoutApp = nullptr;
 SymbolApp* symbolApp = nullptr;
 
 // Remote player management
-QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
 SymbolWirelessManager* symbolWirelessManager = nullptr;
 RemoteDebugManager* remoteDebugManager = nullptr;
 
-void setupEspNow(
-    QuickdrawWirelessManager* quickdrawWirelessManager,
-    RemoteDebugManager* remoteDebugManager,
-    SymbolWirelessManager* symbolWirelessManager,
-    PeerCommsInterface* peerCommsDriver) {
+void setupEspNow(RemoteDebugManager* remoteDebugManager,
+                 PeerCommsInterface* peerCommsDriver) {
     // Register packet handlers
-    peerCommsDriver->setPacketHandler(
-        PktType::kQuickdrawCommand,
-        [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-            ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-        },
-        quickdrawWirelessManager
-    );
-    
     peerCommsDriver->setPacketHandler(
         PktType::kDebugPacket,
         [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
             ((RemoteDebugManager*)userArg)->ProcessDebugPacket(srcAddr, data, len);
         },
-        remoteDebugManager
-    );
-
-    peerCommsDriver->setPacketHandler(
-        PktType::kSymbolMatchCommand,
-        [](const uint8_t* srcAddr, const uint8_t* data, const size_t len, void* userArg) {
-            ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(srcAddr, data, len);
-        },
-        symbolWirelessManager
-    );
+        remoteDebugManager);
 }
 
-void setup() {
-    Serial.begin(115200);
-    while (!Serial) delay(100);
+static void setup() {
+    // Before any driver, because two of them need it and neither can bring it
+    // up for the other: esp_wifi_init() fails with ESP_ERR_NVS_NOT_INITIALIZED
+    // and the preferences driver cannot open a namespace.
+    esp_err_t nvsStatus = nvs_flash_init();
+    if (nvsStatus == ESP_ERR_NVS_NO_FREE_PAGES || nvsStatus == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvsStatus = nvs_flash_init();
+    }
+    if (nvsStatus != ESP_OK) {
+        ESP_LOGE("PDN", "nvs_flash_init failed: %s", esp_err_to_name(nvsStatus));
+    }
 
     // Construct drivers FIRST (before anything that might use logging or timers)
     loggerDriver = new Esp32S3Logger(LOGGER_DRIVER_NAME);
@@ -121,22 +113,22 @@ void setup() {
     // Initialize platform abstractions immediately after constructing them
     g_logger = loggerDriver;
     SimpleTimer::setPlatformClock(clockDriver);
-    esp_log_level_set("*", ESP_LOG_VERBOSE);
 
     // Now construct remaining drivers (safe to use logging and timers now)
     displayDriver = new SSD1306U8G2Driver(DISPLAY_DRIVER_NAME, displayCS, displayDC, displayRST);
     primaryButtonDriver = new Esp32S31ButtonDriver(PRIMARY_BUTTON_DRIVER_NAME, primaryButtonPin);
     secondaryButtonDriver = new Esp32S31ButtonDriver(SECONDARY_BUTTON_DRIVER_NAME, secondaryButtonPin);
-    lightDriver = new WS2812BFastLEDDriver<displayLightsPin, gripLightsPin>(LIGHT_DRIVER_NAME, numDisplayLights, numGripLights);
+    lightDriver = new WS2812BLedStripDriver(LIGHT_DRIVER_NAME, displayLightsPin, gripLightsPin,
+                                           numDisplayLights, numGripLights);
     hapticsDriver = new Esp32S3HapticsDriver(HAPTICS_DRIVER_NAME, motorPin);
     serialOutDriver = new Esp32s3SerialOut(SERIAL_OUT_DRIVER_NAME, TXt, TXr);
     serialInDriver = new Esp32s3SerialIn(SERIAL_IN_DRIVER_NAME, RXt, RXr);
     
     // WiFi credentials are compile-time constants from build flags
     wifiConfig = new WifiConfig(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
-    peerCommsDriver = EspNowManager::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
+    peerCommsDriver = EspNowDriver::CreateEspNowManager(PEER_COMMS_DRIVER_NAME);
     httpClientDriver = new Esp32S3HttpClient(HTTP_CLIENT_DRIVER_NAME, wifiConfig);
-    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, PREF_NAMESPACE);
+    storageDriver = new Esp32S3PrefsDriver(STORAGE_DRIVER_NAME, {MATCHES_PREFS_NAMESPACE, CRASH_LOG_NAMESPACE});
 
     // Create driver configuration
     DriverConfig pdnConfig = {
@@ -162,23 +154,22 @@ void setup() {
     player->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     // Create wireless managers
-    LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
-    quickdrawWirelessManager = new QuickdrawWirelessManager();
     LOG_I("SETUP", "Creating SymbolWirelessManager...");
-    symbolWirelessManager = new SymbolWirelessManager();
+    symbolWirelessManager = new SymbolWirelessManager(pdn->getWirelessManager(),
+                                                      pdn->getRemoteDeviceCoordinator());
     LOG_I("SETUP", "Creating RemoteDebugManager...");
     remoteDebugManager = new RemoteDebugManager(peerCommsDriver);
     
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
-    symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
-    
     // Register ESP-NOW packet handlers
-    setupEspNow(quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager, peerCommsDriver);
+    setupEspNow(remoteDebugManager, peerCommsDriver);
 
-    gameSession = new GameSession(player, pdn, quickdrawWirelessManager, symbolWirelessManager);
+    crashLogger = new CrashLogger(storageDriver, peerCommsDriver);
+    crashLogger->capture();
+
+    gameSession = new GameSession(player, pdn, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
     playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameContext.matchManager, remoteDebugManager);
@@ -187,12 +178,13 @@ void setup() {
     shootoutApp = new ShootoutApp(gameContext);
     symbolApp = new SymbolApp(gameContext);
 
+
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::STAMP))->
         render();
-    delay(3000);
+    vTaskDelay(pdMS_TO_TICKS(SPLASH_HOLD_MS));
 
     // Register the swappable state machines and boot into registration
     AppConfig apps = {
@@ -206,5 +198,17 @@ void setup() {
 }
 
 void loop() {
+    if (crashLogger != nullptr) crashLogger->pollSerialCommand();
     pdn->loop();
+    // After the device loop, so the one offer per boot runs with exec() having
+    // pumped the radio at least once: the channel pin is retried from there, and a
+    // frame sent before it lands goes out where nobody is listening.
+    if (crashLogger != nullptr) crashLogger->transmitPending();
+}
+
+extern "C" void app_main() {
+    setup();
+    for (;;) {
+        loop();
+    }
 }

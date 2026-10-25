@@ -29,7 +29,8 @@ void Lose::onStateMounted(PDN* pdn) {
         if (d.hasData) {
             pdn->getDisplay()->drawImage(Image(image_stats_card, 60, 64, 0, 0));
             char myLine[16];
-            char boostLine[16];
+            // "Boost: " plus any 32-bit %lu, so the size does not depend on the divisor.
+            char boostLine[18];
             char oppLine[16];
             snprintf(myLine, sizeof(myLine), "You:%4lu", d.myTimeMs);
             snprintf(oppLine, sizeof(oppLine), "Opp:%4lu", d.opponentTimeMs);

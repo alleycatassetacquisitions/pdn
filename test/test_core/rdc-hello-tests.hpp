@@ -11,6 +11,7 @@
 #include "protocol-constants.hpp"
 
 #include <cstring>
+#include <limits>
 #include <vector>
 
 using ::testing::_;
@@ -52,8 +53,10 @@ inline void deliverFrame(NativeSerialDriver& jack, const std::vector<uint8_t>& f
 
 class RDCHelloTests : public testing::Test {
 public:
-    /// Fake clock, mocked radio, native jacks swapped in, RDC in HELLO mode with
-    /// the emit task externalized so the test drives it single-threaded.
+    /**
+     * Fake clock, mocked radio, native jacks swapped in, RDC in HELLO mode with
+     * the emit task externalized so the test drives it single-threaded.
+     */
     void SetUp() override {
         fakeClock = new FakePlatformClock();
         SimpleTimer::setPlatformClock(fakeClock);
@@ -78,13 +81,13 @@ public:
         });
     }
 
-    /// Restores the real platform clock.
+    /** Restores the real platform clock. */
     void TearDown() override {
         SimpleTimer::setPlatformClock(nullptr);
         delete fakeClock;
     }
 
-    /// A HELLO frame whose source MAC starts with firstByte (rest fixed).
+    /** A HELLO frame whose source MAC starts with firstByte (rest fixed). */
     std::vector<uint8_t> helloFrame(uint8_t firstByte) {
         HelloPayload hello{};
         hello.source[0] = firstByte;
@@ -97,14 +100,16 @@ public:
         return encodeFramed(hello);
     }
 
-    /// Pushes a frame into a jack's RX and drains it via the real exec() pump.
+    /** Pushes a frame into a jack's RX and drains it via the real exec() pump. */
     void deliverHello(NativeSerialDriver& jack, const std::vector<uint8_t>& frame) {
         deliverFrame(jack, frame);
     }
 
-    /// The RDC's owned transport, reached via friendship so a test can inject
-    /// SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
-    /// radio. Not part of the production API.
+    /**
+     * The RDC's owned transport, reached via friendship so a test can inject
+     * SEND_SUCCESS (onSendResult) and inbound contexts (deliverIncoming) without a
+     * radio. Not part of the production API.
+     */
     ReliableTransport* transport() { return rdc.transport; }
 
     MockDevice device;
@@ -159,25 +164,20 @@ inline void rdcHelloRejectsSelfAndZeroSource(RDCHelloTests* suite) {
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 }
 
-// A watchdog read observing now < lastHelloMs (backwards clock step) must
-// clamp the gap to 0, not underflow to ~ULONG_MAX and kill a live link (#173).
-inline void rdcHelloWatchdogClampsClockRaceToZero(RDCHelloTests* suite) {
-    suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
-    suite->rdc.sync(&suite->device);
+inline void rdcHelloWatchdogFiresAcrossClockRollover(RDCHelloTests* suite) {
+    // Drive to CONNECTED so only sinceHello() (not contextTimeoutMs) can transition to IDLE.
+    suite->fakeClock->setTime(std::numeric_limits<unsigned long>::max() - 10);
+    connectJack(suite, suite->outJack, SerialIdentifier::OUTPUT_JACK, suite->helloFrame(0xA1));
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 
-    // now (999) behind the stamp (1000): the racing-stamp shape.
-    suite->fakeClock->setTime(999);
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 11);
     suite->rdc.sync(&suite->device);
-    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
-              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
-    // The clamp must not have defanged the watchdog: a real silent gap still kills.
-    suite->fakeClock->setTime(1000 + RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS + 1);
-    suite->rdc.sync(&suite->device);
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::IDLE);
+    EXPECT_EQ(suite->rdc.getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_EQ(suite->disconnectCount, 1);
 }
 
 // (a) A HELLO from a new MAC drives that jack Idle -> Connecting.
@@ -447,6 +447,37 @@ inline void rdcContextBeforeConnectingIsBufferedAndApplied(RDCHelloTests* suite)
     suite->rdc.sync(&suite->device);  // commit Connecting->Connected
 
     EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+}
+
+inline void rdcContextEvictionOrdersByAgeAcrossRollover(RDCHelloTests* suite) {
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
+    std::vector<uint8_t> ctx = pdnContextBytes(/*chainRole=*/1, /*userId=*/7, /*seqId=*/3);
+
+    // 0xC1..0xC5 stamp pre-wrap and 0xC6..0xC8 post-wrap, giving 0xC6 the smallest raw stamp.
+    suite->fakeClock->setTime(std::numeric_limits<unsigned long>::max() - 40);
+    for (uint8_t firstByte = 0xC1; firstByte <= 0xC8; ++firstByte) {
+        const uint8_t peer[6] = {firstByte, 0x02, 0x03, 0x04, 0x05, 0x06};
+        suite->transport()->deliverIncoming(
+            PktType::kPdnConnectionContext, peer, ctx.data(), ctx.size());
+        suite->fakeClock->advance(10);
+    }
+
+    const uint8_t ninth[6] = {0xC9, 0x02, 0x03, 0x04, 0x05, 0x06};
+    suite->transport()->deliverIncoming(
+        PktType::kPdnConnectionContext, ninth, ctx.data(), ctx.size());
+
+    suite->deliverHello(suite->outJack, suite->helloFrame(0xC1));
+    suite->deliverHello(suite->inJack, suite->helloFrame(0xC6));
+    suite->deliverHello(suite->secondaryJack, suite->helloFrame(0xC9));
+    suite->rdc.sync(&suite->device);
+    suite->rdc.sync(&suite->device);
+
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK),
+              RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
+    EXPECT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::INPUT_JACK_SECONDARY),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTED);
 }
 
@@ -1126,7 +1157,7 @@ inline void rdcChainRingYieldsToHigherHeadAfterEvidenceTimeout(RDCHelloTests* su
 
 // One node bundling an RDC, its device and jacks, for the two-live-RDC ring test.
 struct ChainRingNode {
-    /// Wires the node's RDC to its own jacks under the given MAC.
+    /** Wires the node's RDC to its own jacks under the given MAC. */
     explicit ChainRingNode(const uint8_t m[6]) {
         memcpy(mac, m, 6);
         wireRadioDefaults(device, mac);
@@ -1354,7 +1385,12 @@ inline void rdcRingMembershipReachesEveryMember() {
     ASSERT_TRUE(a.rdc.isInRing()) << "A gave up its latch before its evidence expired";
 
     // A's own MAC stops coming back, so its evidence times out and the claim
-    // leaves the wire.
+    // leaves the wire. The window does not start at the cable pull: C keeps
+    // relaying A as head until its own silent-link detector fires, so this has to
+    // outlast both that and the evidence timeout — 30 rounds between them. The
+    // rest is slack, not arithmetic: a hop also costs the receiving device's
+    // exec()-to-parse gap, which nothing caps, so the count is spelled out rather
+    // than derived from the two constants.
     run(40);
     EXPECT_FALSE(a.rdc.isInRing()) << "the latch outlived the loop";
     a.out.clearOutput();

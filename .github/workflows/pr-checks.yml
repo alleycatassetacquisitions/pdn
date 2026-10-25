@@ -18,7 +18,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'  # pioarduino requires Python 3.10-3.13
+        python-version: '3.11'
     
     - name: Install PlatformIO
       run: |
@@ -38,6 +38,19 @@ jobs:
     - name: Run CLI Unit Tests
       run: pio test -e native_cli_test
 
+    # Plain native runs matchManagerConcurrentDriverVsReader too, but only tsan
+    # checks it for races. These run the built binary directly rather than under
+    # `pio test` — see the notes above each sanitizer env in platformio.ini.
+    - name: Run Core Unit Tests under AddressSanitizer
+      run: |
+        pio test -e native_asan --without-testing
+        ./.pio/build/native_asan/program
+
+    - name: Run Core Unit Tests under ThreadSanitizer
+      run: |
+        pio test -e native_tsan --without-testing
+        ./.pio/build/native_tsan/program
+
   # ESP32 build verification
   build-esp32:
     runs-on: ubuntu-latest
@@ -50,12 +63,12 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'  # pioarduino requires Python 3.10-3.13
+        python-version: '3.11'
     
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
-        pip install platformio
+        pip install platformio==6.2.0
     
     - name: Create WiFi credentials file for CI
       run: |
@@ -66,6 +79,14 @@ jobs:
     
     - name: Build ESP32-S3 Release
       run: pio run -e esp32-s3_pdn_release
+
+    # IDF compiles with -Werror. FDN sources build in no other env, and debug's
+    # -Og changes which warnings GCC reports, so either can fail on its own.
+    - name: Build FDN Release
+      run: pio run -e esp32-s3_fdn_release
+
+    - name: Build ESP32-S3 Debug
+      run: pio run -e esp32-s3_pdn_debug
   
   # Native CLI build verification (Unix only)
   build-cli:

@@ -14,7 +14,7 @@
 #include "device/drivers/peer-comms-interface.hpp"
 #include "device/drivers/storage-interface.hpp"
 #include "device/light-manager.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
+#include "wireless/quickdraw-packet.hpp"
 #include "game/chain-duel-manager.hpp"
 #include <queue>
 #include <vector>
@@ -80,7 +80,7 @@ class FakeHWSerialWrapper : public HWSerialWrapper {
         stringCallback = callback;
     }
 
-    /// Routes RX bytes to the byte callback; see HWSerialWrapper.
+    /** Routes RX bytes to the byte callback; see HWSerialWrapper. */
     void setByteCallback(const SerialByteCallback& callback) override {
         byteCallback = callback;
     }
@@ -163,17 +163,25 @@ public:
 
 class MockStorage : public StorageInterface {
 public:
-    MOCK_METHOD(size_t, write, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(std::string, read, (const std::string&, const std::string&), (override));
-    MOCK_METHOD(bool, remove, (const std::string&), (override));
-    MOCK_METHOD(bool, clear, (), (override));
+    MOCK_METHOD(size_t, write, (const std::string&, const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::string, read, (const std::string&, const std::string&, const std::string&), (override));
+    MOCK_METHOD(bool, remove, (const std::string&, const std::string&), (override));
+    MOCK_METHOD(bool, clear, (const std::string&), (override));
     MOCK_METHOD(void, end, (), (override));
-    MOCK_METHOD(uint8_t, readUChar, (const std::string&, uint8_t), (override));
-    MOCK_METHOD(size_t, writeUChar, (const std::string&, uint8_t), (override));
+    MOCK_METHOD(uint8_t, readUChar, (const std::string&, const std::string&, uint8_t), (override));
+    MOCK_METHOD(size_t, writeUChar, (const std::string&, const std::string&, uint8_t), (override));
 };
 
 class FakeRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
+    /** On a ring whenever a head is set. Off one by default, as the base reports. */
+    bool isInRing() const override { return ringHeadMac != std::array<uint8_t, 6>{}; }
+    /** The head a test put this device under; nullptr off a ring. */
+    const uint8_t* getHeadMac() const override {
+        return ringHeadMac == std::array<uint8_t, 6>{} ? nullptr : ringHeadMac.data();
+    }
+    std::array<uint8_t, 6> ringHeadMac{};
+
     void setPortStatus(SerialIdentifier id, PortStatus status) {
         if (id == SerialIdentifier::OUTPUT_JACK) outputStatus = status;
         else if (id == SerialIdentifier::INPUT_JACK) inputStatus = status;
@@ -240,52 +248,74 @@ private:
 // HELLO stack. Only the chain surface ShootoutManager reads is overridden.
 class FakeRingRemoteDeviceCoordinator : public RemoteDeviceCoordinator {
 public:
-    /// The role this stand-in reports; RING by default.
+    /** The role this stand-in reports; RING by default. */
     ChainRole getChainRole() const override { return chainRole; }
-    /// The roster this stand-in serves, as a real head's RDC would.
+    /** The roster this stand-in serves, as a real head's RDC would. */
     std::vector<std::array<uint8_t, 6>> getChainMembers() const override { return chainMembers; }
-    /// Membership is broader than the RING role: a device relaying another head's
-    /// closure sits on a live loop with no latch of its own.
+    /**
+     * Membership is broader than the RING role: a device relaying another head's
+     * closure sits on a live loop with no latch of its own.
+     */
     bool isInRing() const override {
-        return chainRole == ChainRole::RING || relayedMember;
+        return chainRole == ChainRole::RING || headMac != std::array<uint8_t, 6>{};
+    }
+
+    /** Stubbed upstream head MAC, or nullptr when unset. */
+    const uint8_t* getHeadMac() const override {
+        return headMac == std::array<uint8_t, 6>{} ? nullptr : headMac.data();
     }
 
     ChainRole chainRole = ChainRole::RING;
-    bool relayedMember = false;
     std::vector<std::array<uint8_t, 6>> chainMembers;
+    std::array<uint8_t, 6> headMac{};
 };
 
-// Fake QuickdrawWirelessManager that captures outbound packets instead of transmitting them.
-// Call deliverLastTo() to route the most-recently-captured packet to another manager's
-// processQuickdrawCommand(), exercising the real serialization/deserialization path.
-class FakeQuickdrawWirelessManager : public QuickdrawWirelessManager {
+class QuickdrawRadioTap {
 public:
-    FakeQuickdrawWirelessManager() : QuickdrawWirelessManager() {}
-
-    int broadcastPacket(const uint8_t* /*macAddress*/, QuickdrawCommand& command) override {
-        sentCommands.push_back(command);
-        return 0;
+    /** Call after any wildcard sendData ON_CALL and before constructing MatchManager. */
+    void attach(MockPeerComms* radio) {
+        ON_CALL(*radio, setPacketHandler(PktType::kQuickdrawCommand, testing::_, testing::_))
+            .WillByDefault(testing::Invoke(
+                [this](PktType, PeerCommsInterface::PacketCallback callback, void* ctx) {
+                    receiveHandler = callback;
+                    receiveContext = ctx;
+                }));
+        ON_CALL(*radio, sendData(testing::_, PktType::kQuickdrawCommand, testing::_, testing::_))
+            .WillByDefault(testing::DoAll(
+                testing::Invoke([this](const uint8_t*, PktType, const uint8_t* data,
+                                       const size_t len) {
+                    if (len != sizeof(QuickdrawPacket)) return;
+                    QuickdrawPacket p{};
+                    memcpy(&p, data, sizeof(p));
+                    sentFrames.push_back(p);
+                }),
+                testing::Return(1)));
     }
 
-    void deliverLastTo(QuickdrawWirelessManager* recipient, const uint8_t* senderMac) {
-        if (sentCommands.empty()) return;
-        const QuickdrawCommand& cmd = sentCommands.back();
-
-        // Serialize into the same wire format used by the real broadcastPacket.
-        QuickdrawPacket pkt = {};
-        memcpy(pkt.matchId,  cmd.matchId,  sizeof(pkt.matchId));
-        memcpy(pkt.playerId, cmd.playerId, sizeof(pkt.playerId));
-        pkt.isHunter       = cmd.isHunter;
-        pkt.playerDrawTime = cmd.playerDrawTime;
-        pkt.command        = cmd.command;
-
-        recipient->processQuickdrawCommand(
-            senderMac,
-            reinterpret_cast<const uint8_t*>(&pkt),
-            sizeof(pkt));
+    /** The exact frame this radio last sent, for the peer's tap to replay. */
+    const QuickdrawPacket* lastFrame() const {
+        return sentFrames.empty() ? nullptr : &sentFrames.back();
     }
 
-    std::vector<QuickdrawCommand> sentCommands;
+    /** Delivers frame from senderMac into this tap's own receiveHandler. */
+    void deliverFrameFrom(const uint8_t* senderMac, const QuickdrawPacket* frame) {
+        if (frame == nullptr) return;
+        deliverBytesTo(senderMac, reinterpret_cast<const uint8_t*>(frame),
+                       sizeof(*frame));
+    }
+
+    /** Feeds raw wire bytes into this radio's manager as the driver would. */
+    void deliverBytesTo(const uint8_t* senderMac, const uint8_t* data, size_t len) {
+        if (receiveHandler != nullptr) {
+            receiveHandler(senderMac, data, len, receiveContext);
+        }
+    }
+
+    std::vector<QuickdrawPacket> sentFrames;
+
+private:
+    PeerCommsInterface::PacketCallback receiveHandler = nullptr;
+    void* receiveContext = nullptr;
 };
 
 // Fake light strip for LightManager

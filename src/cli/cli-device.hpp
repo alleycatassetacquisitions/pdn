@@ -17,13 +17,13 @@
 #include "device/drivers/native/native-http-client-driver.hpp"
 #include "device/drivers/native/native-peer-comms-driver.hpp"
 #include "device/drivers/native/native-prefs-driver.hpp"
+#include "game/match-manager.hpp"
 
 // Core game components
 #include "device/pdn.hpp"
 #include "game/player.hpp"
 #include "game/game-session.hpp"
 #include "game/quickdraw-apps.hpp"
-#include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "apps/player-registration/player-registration.hpp"
@@ -103,7 +103,6 @@ struct DeviceInstance {
     DuelApp* duelApp = nullptr;
     ShootoutApp* shootoutApp = nullptr;
     SymbolApp* symbolApp = nullptr;
-    QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
 
     // State history (circular buffer, most recent at back)
@@ -171,7 +170,7 @@ public:
         instance.httpClientDriver->setMockServerEnabled(true);  // Enable mock HTTP server
         instance.httpClientDriver->setConnected(true);  // Simulate WiFi connection
         instance.peerCommsDriver = new NativePeerCommsDriver(PEER_COMMS_DRIVER_NAME + suffix);
-        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix);
+        instance.storageDriver = new NativePrefsDriver(STORAGE_DRIVER_NAME + suffix, {MATCHES_PREFS_NAMESPACE});
         
         // Configure mock HTTP server with this device's player data
         MockPlayerConfig playerConfig;
@@ -209,38 +208,15 @@ public:
         instance.player->setUserID(idPtr);
         instance.player->setIsHunter(isHunter);
         instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
-        
-        // Create QuickdrawWirelessManager (required by game states even when mocking)
-        instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
-        instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
-        
-        // Register ESP-NOW packet handlers (similar to setupEspNow in main.cpp)
-        // This is required for devices to actually receive and process ESP-NOW packets
-        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
-            PktType::kQuickdrawCommand,
-            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-                ((QuickdrawWirelessManager*)userArg)->processQuickdrawCommand(src, data, len);
-            },
-            instance.quickdrawWirelessManager
-        );
 
-        instance.symbolWirelessManager = new SymbolWirelessManager();
-        instance.symbolWirelessManager->initialize(
+        instance.symbolWirelessManager = new SymbolWirelessManager(
             instance.pdn->getWirelessManager(),
             instance.pdn->getRemoteDeviceCoordinator());
-        instance.pdn->getWirelessManager()->setEspNowPacketHandler(
-            PktType::kSymbolMatchCommand,
-            [](const uint8_t* src, const uint8_t* data, const size_t len, void* userArg) {
-                ((SymbolWirelessManager*)userArg)->processSymbolMatchCommand(src, data, len);
-            },
-            instance.symbolWirelessManager
-        );
 
         // Create the shared managers and the apps that read them
         instance.gameSession = new GameSession(
             instance.player,
             instance.pdn,
-            instance.quickdrawWirelessManager,
             instance.symbolWirelessManager);
 
         GameContext gameContext = instance.gameSession->getContext();
@@ -290,7 +266,6 @@ public:
         delete device.shootoutApp;
         delete device.symbolApp;
         delete device.gameSession;
-        delete device.quickdrawWirelessManager;
         delete device.symbolWirelessManager;
         delete device.player;
         delete device.pdn;

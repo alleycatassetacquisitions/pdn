@@ -27,10 +27,12 @@ public:
         : condition(std::move(condition)), nextState(nextState) {
     }
 
-    /// An edge that leaves the state machine entirely: the device dismounts the
-    /// running app and mounts `targetAppId`, entering it at the state named by
-    /// `entryStateId`. An unset id means the app's boot state, which is what an
-    /// app transition that names no entry point gets.
+    /**
+     * An edge that leaves the state machine entirely: the device dismounts the
+     * running app and mounts `targetAppId`, entering it at the state named by
+     * `entryStateId`. An unset id means the app's boot state, which is what an
+     * app transition that names no entry point gets.
+     */
     StateTransition(std::function<bool()> condition, StateId targetAppId, StateId entryStateId)
         : condition(std::move(condition))
         , targetAppId(targetAppId)
@@ -47,23 +49,27 @@ public:
         return nextState;
     };
 
-    /// The app this edge hands off to; id < 0 when the edge stays inside the
-    /// machine, in which case getNextState() carries the target instead.
+    /**
+     * The app this edge hands off to; id < 0 when the edge stays inside the
+     * machine, in which case getNextState() carries the target instead.
+     */
     StateId getTargetAppId() const {
         return targetAppId;
     };
 
-    /// The state in the target app the hand-off lands on, or an unset id for its
-    /// boot state. Meaningless on an intra-machine edge.
+    /**
+     * The state in the target app the hand-off lands on, or an unset id for its
+     * boot state. Meaningless on an intra-machine edge.
+     */
     StateId getEntryStateId() const {
         return entryStateId;
     };
 
     std::function<bool()> condition; // Function pointer that returns true based on the global state
     State* nextState = nullptr;      // Pointer to the next state, null on an app transition
-    /// Negative when this edge stays inside the machine.
+    /** Negative when this edge stays inside the machine. */
     StateId targetAppId = StateId(-1);
-    /// Negative to enter the target app at whichever state it registered first.
+    /** Negative to enter the target app at whichever state it registered first. */
     StateId entryStateId = StateId(-1);
 };
 
@@ -73,12 +79,10 @@ public:
  *
  * The process looks like this:
  *
- * onStateMounted: Invoked exactly one time the first time this state becomes
- * the "current" state in a state machine.
+ * onStateMounted: Invoked each time this state becomes the "current" state in
+ * a state machine.
  *  - this method should include "setup" code for a state like starting timers,
  *  attaching callbacks to hardware, etc.
- *  - when mounting a new state is also when we register valid Serial messages for
- *  sending and receiving.
  *
  * onStateLoop: Invoked 1 to N times.
  * - this method is where the bulk of the functionality of a state occurs in.
@@ -90,12 +94,11 @@ public:
  * the conditions for state transitions - ie invalidating timers and resetting hardware
  * peripherals on the PDN.
  *
- * State inherits StateLifecycle, which is the dispatch interface StateMachine uses.
- * The mount/loop/dismount bridge methods are private so state implementers only ever
- * see and override the onState* user API below.
+ * State holds the transition machinery and the state id. Its lifecycle bridge is
+ * pure and private: only TypedState<DeviceT> (defined below) supplies it, so every
+ * concrete state goes through TypedState, and only StateMachine calls it.
  *
- * Device-specific states should inherit TypedState<DeviceT> (defined below) which
- * delivers a typed DeviceT* to every onState* method, eliminating manual casting.
+ * Device-agnostic states use TypedState<Device>.
  */
 class State : public StateLifecycle {
 public:
@@ -112,24 +115,26 @@ public:
         transitions.push_back(transition);
     }
 
-    /// Declares an edge to a sibling state in the same machine.
+    /** Declares an edge to a sibling state in the same machine. */
     void addTransition(std::function<bool()> condition, State* nextState) {
         transitions.push_back(new StateTransition(std::move(condition), nextState));
     }
 
-    /// Declares an edge out of this state's app, entering the target at the state
-    /// named by `entryStateId`. Omit it to enter at the target's boot state.
-    ///
-    /// App and intra-machine edges share one priority list, so an app transition
-    /// declared before a sibling outranks it: the alternative — checking every
-    /// intra edge first — would silently demote every hand-off below the local
-    /// edges of the state it leaves.
+    /**
+     * Declares an edge out of this state's app, entering the target at the state
+     * named by `entryStateId`. Omit it to enter at the target's boot state.
+     *
+     * App and intra-machine edges share one priority list, so an app transition
+     * declared before a sibling outranks it: the alternative — checking every
+     * intra edge first — would silently demote every hand-off below the local
+     * edges of the state it leaves.
+     */
     void addAppTransition(std::function<bool()> condition, StateId targetAppId,
                           StateId entryStateId = StateId(-1)) {
         transitions.push_back(new StateTransition(std::move(condition), targetAppId, entryStateId));
     }
 
-    /// The first transition whose condition holds, or null when none do.
+    /** The first transition whose condition holds, or null when none do. */
     StateTransition* checkTransitions() {
         for (StateTransition* transition : transitions) {
             if (transition->isConditionMet()) {
@@ -139,37 +144,37 @@ public:
         return nullptr;
     }
 
-    /// The transition list in priority order — checkTransitions takes the first
-    /// whose condition holds, so position is behaviour. Reading it does not
-    /// evaluate the conditions, which is what lets a graph be inspected before
-    /// its managers exist.
+    /**
+     * The transition list in priority order — checkTransitions takes the first
+     * whose condition holds, so position is behaviour. Reading it does not
+     * evaluate the conditions, which is what lets a graph be inspected before
+     * its managers exist.
+     */
     const std::vector<StateTransition*>& getTransitions() const { return transitions; }
 
     int getStateId() const { return name.id; }
 
     virtual bool isTerminalState() { return false; }
 
-    // --- Device*-typed user API ---
-    // Override these in derived classes.
-    virtual void onStateMounted(Device* device) {}
-    virtual void onStateLoop(Device* device) {}
-    virtual void onStateDismounted(Device* device) {}
-
 protected:
     std::vector<StateTransition*> transitions;
 
 private:
-    // StateLifecycle bridge — private so state subclasses cannot call or override
-    // these entry points. StateMachine dispatches through StateLifecycle* to reach them.
-    void mount(Device* device) override    { onStateMounted(device); }
-    void loop(Device* device) override     { onStateLoop(device); }
-    void dismount(Device* device) override { onStateDismounted(device); }
+    struct AppTransitionEntry {
+        std::function<bool()> condition;
+        StateId targetAppId;
+    };
+    std::vector<AppTransitionEntry> appTransitions;
 
     StateId name;
+
+    void mount(Device* device) override = 0;
+    void loop(Device* device) override = 0;
+    void dismount(Device* device) override = 0;
 };
 
 /*
- * TypedState<DeviceT> is the preferred base for device-specific states.
+ * TypedState<DeviceT> is the base every concrete state inherits.
  *
  * It overrides the StateLifecycle bridge (mount/loop/dismount) as private final,
  * performs a single static_cast<DeviceT*> per lifecycle call, and forwards to
@@ -190,8 +195,8 @@ private:
  *       void onStateLoop(PDN* pdn) override    { ... }
  *   };
  *
- * Device-agnostic states should inherit State directly and override
- * onStateMounted(Device*).
+ * Device-agnostic states use TypedState<Device>, whose cast is an identity
+ * conversion.
  */
 template<typename DeviceT>
 class TypedState : public State {

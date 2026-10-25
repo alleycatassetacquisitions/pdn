@@ -24,6 +24,8 @@
 #include "serial-frame-parser-tests.hpp"
 #include "reliable-channel-tests.hpp"
 #include "reliable-transport-tests.hpp"
+#include "storage-tests.hpp"
+#include "symbol-wireless-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -693,6 +695,22 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
 // MATCH TESTS
 // ============================================
 
+TEST_F(MatchTestSuite, defaultConstructionIsEmpty) {
+    matchDefaultConstructionIsEmpty();
+}
+
+TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
+    matchShootoutIdConversionStaysInBounds();
+}
+
+TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) {
+    matchDeserializeClearsPlayerIdTail();
+}
+
+TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
+    matchShorterIdOverwriteClearsTheTail();
+}
+
 TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
     matchJsonRoundTripPreservesAllFields();
 }
@@ -725,25 +743,25 @@ TEST_F(MatchTestSuite, withLargeDrawTimes) {
     matchWithLargeDrawTimes();
 }
 
-// // ============================================
-// // UUID TESTS
-// // ============================================
+// ============================================
+// UUID TESTS
+// ============================================
 
-// TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
-//     uuidStringToBytesProducesCorrectOutput();
-// }
+TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
+    uuidStringToBytesProducesCorrectOutput();
+}
 
-// TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-//     uuidBytesToStringProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
+    uuidBytesToStringProducesValidFormat();
+}
 
-// TEST_F(UUIDTestSuite, roundTripPreservesData) {
-//     uuidRoundTripPreservesData();
-// }
+TEST_F(UUIDTestSuite, roundTripPreservesData) {
+    uuidRoundTripPreservesData();
+}
 
-// TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-//     uuidGeneratorProducesValidFormat();
-// }
+TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
+    uuidGeneratorProducesValidFormat();
+}
 
 // ============================================
 // MAC ADDRESS TESTS
@@ -800,6 +818,10 @@ TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
 // ============================================
 // MATCH MANAGER TESTS
 // ============================================
+
+TEST_F(MatchManagerTestSuite, initializeStoresGeneratedMatchId) {
+    matchManagerInitializeStoresGeneratedMatchId(this);
+}
 
 TEST_F(MatchManagerTestSuite, setBoostStoresValue) {
     matchManagerSetBoostStoresValue(matchManager, player);
@@ -919,6 +941,26 @@ TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
 }
 
 // ============================================
+// STORAGE / NVS NAMESPACE TESTS
+// ============================================
+
+TEST(StorageDriver, unknownNamespaceThrowsOnWrite) {
+    storageUnknownNamespaceThrowsOnWrite();
+}
+
+TEST(StorageDriver, registeredNamespaceRoundTripsString) {
+    storageRegisteredNamespaceRoundTripsString();
+}
+
+TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
+    storageUnknownNamespaceThrowsOnRead();
+}
+
+TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
+    storageUCharRoundTripInRegisteredNamespace();
+}
+
+// ============================================
 // MATCH MANAGER CONCURRENCY TESTS (TSan)
 // ============================================
 
@@ -982,6 +1024,10 @@ TEST_F(IdleStateTests, transitionsToDuelCountdownWhenMatchIsReady) {
     idleTransitionsToDuelCountdownWhenMatchIsReady(this);
 }
 
+TEST_F(IdleStateTests, dismountClearsUnreadyMatch) {
+    idleDismountClearsUnreadyMatch(this);
+}
+
 // ============================================
 // QUICKDRAW STATE TESTS - COUNTDOWN
 // ============================================
@@ -1029,6 +1075,10 @@ TEST_F(DuelStateTests, buttonPressAppliesMasherPenalty) {
 
 TEST_F(DuelStateTests, buttonPressBroadcastsDrawResult) {
     duelButtonPressBroadcastsDrawResult(this);
+}
+
+TEST_F(DuelStateTests, laterCommandSupersedesEarlierRetries) {
+    duelLaterCommandSupersedesEarlierRetries(this);
 }
 
 TEST_F(DuelStateTests, pushedWaitsForOpponentResult) {
@@ -1215,16 +1265,12 @@ TEST_F(GameSessionLifecycleTests, countdownArmsMountedSupporter) {
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
 // ============================================
 
-TEST_F(PacketParsingTests, drawResultInvokesCallback) {
-    packetParsingDrawResultInvokesCallback(this);
-}
-
-TEST_F(PacketParsingTests, neverPressedParsesCorrectly) {
-    packetParsingNeverPressedParsesCorrectly(this);
-}
-
 TEST_F(PacketParsingTests, rejectsMalformedPacket) {
     packetParsingRejectsMalformedPacket(this);
+}
+
+TEST_F(PacketParsingTests, suppressesRetransmit) {
+    packetParsingSuppressesRetransmit(this);
 }
 
 TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeHunter) {
@@ -1246,10 +1292,6 @@ TEST_F(PacketParsingTests, listenForMatchResultsIgnoresUnexpectedCommands) {
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - CALLBACK CHAIN
 // ============================================
-
-TEST_F(CallbackChainTests, packetToStateFlag) {
-    callbackChainPacketToStateFlag(this);
-}
 
 TEST_F(CallbackChainTests, buttonPressCalculatesTime) {
     callbackChainButtonPressCalculatesTime(this);
@@ -1378,8 +1420,12 @@ TEST_F(ConnectStateTests, disconnectCarriesNoContext) {
 TEST_F(RDCHelloTests, silentLinkDisconnects) {
     rdcHelloSilentLinkDisconnects(this);
 }
-TEST_F(RDCHelloTests, watchdogClampsClockRaceToZero) {
-    rdcHelloWatchdogClampsClockRaceToZero(this);
+TEST_F(RDCHelloTests, watchdogFiresAcrossClockRollover) {
+    rdcHelloWatchdogFiresAcrossClockRollover(this);
+}
+
+TEST_F(RDCHelloTests, contextEvictionOrdersByAgeAcrossRollover) {
+    rdcContextEvictionOrdersByAgeAcrossRollover(this);
 }
 
 TEST_F(RDCHelloTests, emitProducesFramesOnBothJacks) {
@@ -1755,8 +1801,8 @@ TEST_F(ChainDuelManagerTests, retryStatsRecordsLifecycle) {
     cdmRetryStatsRecordsLifecycle(this);
 }
 
-TEST_F(ChainDuelManagerTests, retransmitAbandonsAfterMax) {
-    cdmRetransmitAbandonsAfterMax(this);
+TEST_F(ChainDuelManagerTests, retransmitAbandonsWhenSpanRunsOut) {
+    cdmRetransmitAbandonsWhenSpanRunsOut(this);
 }
 
 TEST_F(ChainDuelManagerTests, onChainStateBecomesChampionSetsSelfMac) {
@@ -1807,8 +1853,8 @@ TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) {
     cdmGameEventAckClearsPending(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) {
-    cdmGameEventAbandonsAfterMax(this);
+TEST_F(ChainDuelManagerTests, gameEventAbandonsWhenSpanRunsOut) {
+    cdmGameEventAbandonsWhenSpanRunsOut(this);
 }
 
 // ============================================
@@ -1848,20 +1894,24 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceTwoTournamentsBackToBack) 
 // SHOOTOUT MANAGER TESTS
 // ============================================
 
-TEST_F(ShootoutManagerTests, coordinatorIsTheRingClosureClaimant) { coordinatorIsTheRingClosureClaimant(this); }
-TEST_F(ShootoutManagerTests, ringClosedClaimAnnouncesRosterToMembers) { ringClosedClaimAnnouncesRosterToMembers(this); }
-TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorClaimsRing) { ringClosureFromCoordinatorClaimsRing(this); }
+TEST_F(ShootoutManagerTests, coordinatorIsTheRingHeadThatDrew) { coordinatorIsTheRingHeadThatDrew(this); }
+TEST_F(ShootoutManagerTests, ringClosedAnnouncesRosterToMembers) { ringClosedAnnouncesRosterToMembers(this); }
+TEST_F(ShootoutManagerTests, ringClosureFromCoordinatorAnnouncesRing) { ringClosureFromCoordinatorAnnouncesRing(this); }
 TEST_F(ShootoutManagerTests, ringClosedBroadcastPromotesOnlyItsOwnMembers) { ringClosedBroadcastPromotesOnlyItsOwnMembers(this); }
 TEST_F(ShootoutManagerTests, openRingRefusesProposalDespiteLatchedRoster) { openRingRefusesProposalDespiteLatchedRoster(this); }
 TEST_F(ShootoutManagerTests, ringHeadLoopMembersComeFromRdcRoster) { ringHeadLoopMembersComeFromRdcRoster(this); }
-TEST_F(ShootoutManagerTests, mergedRingCoordinatorStandsDownToLowerMac) { mergedRingCoordinatorStandsDownToLowerMac(this); }
 TEST_F(ShootoutManagerTests, foreignRingBracketLeavesLiveTournamentIntact) { foreignRingBracketLeavesLiveTournamentIntact(this); }
+TEST_F(ShootoutManagerTests, onlyTheRingHeadDrawsTheBracket) { onlyTheRingHeadDrawsTheBracket(this); }
+TEST_F(ShootoutManagerTests, memberJoinsOnlyItsRingHeadsBracket) { memberJoinsOnlyItsRingHeadsBracket(this); }
+TEST_F(ShootoutManagerTests, headKeepsWaitingOnAMemberPrunedFromTheRoster) { headKeepsWaitingOnAMemberPrunedFromTheRoster(this); }
+TEST_F(ShootoutManagerTests, deviceThatComesToHeadTheRingDrawsTheBracket) { deviceThatComesToHeadTheRingDrawsTheBracket(this); }
+TEST_F(ShootoutManagerTests, deviceWaitingOnABracketStillCountsConfirms) { deviceWaitingOnABracketStillCountsConfirms(this); }
+TEST_F(ShootoutManagerTests, memberKeepsConfirmingUntilItHoldsABracket) { memberKeepsConfirmingUntilItHoldsABracket(this); }
+TEST_F(ShootoutManagerTests, memberTakesItsHeadsRosterDuringTheProposal) { memberTakesItsHeadsRosterDuringTheProposal(this); }
+TEST_F(ShootoutManagerTests, followerReacksItsCoordinatorsBracketRetransmit) { followerReacksItsCoordinatorsBracketRetransmit(this); }
 TEST_F(ShootoutManagerTests, abortedRingReclaimsWhileStillCabled) { abortedRingReclaimsWhileStillCabled(this); }
 TEST_F(ShootoutManagerTests, anAbortRetiresTheBoutTheTournamentPrimed) { anAbortRetiresTheBoutTheTournamentPrimed(this); }
 TEST_F(ShootoutManagerTests, aTournamentResetLeavesACableBoutAlone) { aTournamentResetLeavesACableBoutAlone(this); }
-TEST_F(ShootoutManagerTests, deposedHeadDoesNotProposeOnItsDeadClaim) { deposedHeadDoesNotProposeOnItsDeadClaim(this); }
-TEST_F(ShootoutManagerTests, staleCoordinatorClaimYieldsToANewRing) { staleCoordinatorClaimYieldsToANewRing(this); }
-TEST_F(ShootoutManagerTests, mergedRingClaimantsSettleOnLowerMac) { mergedRingClaimantsSettleOnLowerMac(this); }
 TEST_F(ShootoutManagerTests, ringClosedReannouncesWhileMembersUnconfirmed) { ringClosedReannouncesWhileMembersUnconfirmed(this); }
 TEST_F(ShootoutManagerTests, laggingRosterDoesNotRunSoloTournament) { laggingRosterDoesNotRunSoloTournament(this); }
 TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
@@ -1871,7 +1921,7 @@ TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { con
 TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
 TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
 TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
-TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
+TEST_F(ShootoutManagerTests, matchStartWaitsOutTheBracketRevealWindow) { matchStartWaitsOutTheBracketRevealWindow(this); }
 TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
 TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
 TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }

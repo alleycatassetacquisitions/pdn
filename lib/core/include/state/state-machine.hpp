@@ -17,9 +17,8 @@
  * StateMachine initialized -> populates the state map, sets the current state and invokes
  * the first state's onStateMounted method.
  *
- * stateMachine.loop() must be invoked within the arduino loop function, which means
- * the statemachine loop will be invoked on every tick of the microcontroller.
- * (this hooks into the device loop())
+ * The device's loop() drives the active app's onStateLoop on every pass of the
+ * main loop.
  *
  *
  * From there, the current state's onStateLoop function is invoked.
@@ -37,11 +36,15 @@
  * Lifecycle dispatch goes through StateLifecycle* so that the bridge methods
  * (mount/loop/dismount) remain private to state implementers while still being
  * reachable via virtual dispatch from StateMachine.
-*/
+ */
 
-class StateMachine : public State {
+class StateMachine : public TypedState<Device> {
 public:
-    explicit StateMachine(int stateId) : State(stateId) {}
+    /**
+     * @param stateId This app's id, the same value as its AppConfig key.
+     */
+    explicit StateMachine(int stateId)
+        : TypedState<Device>(stateId) {}
 
     ~StateMachine() override {
         for (auto state: stateMap) {
@@ -62,18 +65,22 @@ public:
         launched = true;
     }
 
-    /// The state the next mount enters at, or unset for the boot state. Both paths
-    /// on Device write it before mounting — setActiveApp from the app transition
-    /// that named one, loadAppConfig with unset — so neither inherits an earlier
-    /// mount's value. A StateMachine driven outside an AppConfig never writes it at
-    /// all (HelloLinkMachine calls initialize() directly), and rides the unset
-    /// default, so that default is load-bearing and not redundant.
+    /**
+     * The state the next mount enters at, or unset for the boot state. Both paths
+     * on Device write it before mounting — setActiveApp from the app transition
+     * that named one, loadAppConfig with unset — so neither inherits an earlier
+     * mount's value. A StateMachine driven outside an AppConfig never writes it at
+     * all (HelloLinkMachine calls initialize() directly), and rides the unset
+     * default, so that default is load-bearing and not redundant.
+     */
     void setEntryState(StateId stateId) {
         entryStateId = stateId;
     }
 
-    /// The states in registration order. Index 0 is the boot state; app
-    /// transitions name their target by state id, not by position here.
+    /**
+     * The states in registration order. Index 0 is the boot state; app
+     * transitions name their target by state id, not by position here.
+     */
     const std::vector<State*>& getStateMap() const {
         return stateMap;
     }
@@ -102,8 +109,10 @@ public:
         pendingTransition = currentState->checkTransitions();
     };
 
-    /// Moves to the sibling state the pending edge names. Only valid when one is
-    /// held and it is an intra-machine edge; a hand-off leaves via setActiveApp.
+    /**
+     * Moves to the sibling state the pending edge names. Only valid when one is
+     * held and it is an intra-machine edge; a hand-off leaves via setActiveApp.
+     */
     void commitState(Device* device) {
         State* nextState = pendingTransition->getNextState();
         asLifecycle(currentState)->dismount(device);
@@ -158,8 +167,10 @@ protected:
 
     State *currentState = nullptr;
 
-    /// The winning edge from the last checkStateTransitions, or null when none
-    /// held. Its own fields say where it goes, so nothing else needs recording.
+    /**
+     * The winning edge from the last checkStateTransitions, or null when none
+     * held. Its own fields say where it goes, so nothing else needs recording.
+     */
     StateTransition* pendingTransition = nullptr;
 
 private:

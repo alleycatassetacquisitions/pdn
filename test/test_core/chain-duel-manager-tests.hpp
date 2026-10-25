@@ -52,8 +52,10 @@ public:
         delete fakeClock;
     }
 
-    /// Feeds a peer's PdnConnectionContext in through the handler the reliable
-    /// transport registered with the radio driver — the production receive path.
+    /**
+     * Feeds a peer's PdnConnectionContext in through the handler the reliable
+     * transport registered with the radio driver — the production receive path.
+     */
     void deliverPdnContext(const uint8_t* peerMac) {
         if (contextHandler == nullptr) return;
         std::vector<uint8_t> bytes = pdnContextBytes(/*chainRole=*/0, /*userId=*/4242,
@@ -61,8 +63,10 @@ public:
         contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }
 
-    /// Brings `jack` from Idle to Connected against `peerMac`, optionally
-    /// carrying an advertised chain head.
+    /**
+     * Brings `jack` from Idle to Connected against `peerMac`, optionally
+     * carrying an advertised chain head.
+     */
     void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
                        const uint8_t* advertisedHead = nullptr) {
         deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
@@ -71,17 +75,19 @@ public:
         rdc.sync(&device);
     }
 
-    /// Only the peer's first HELLO: the jack holds its MAC but the exchange has
-    /// not completed, so it stays CONNECTING.
+    /**
+     * Only the peer's first HELLO: the jack holds its MAC but the exchange has
+     * not completed, so it stays CONNECTING.
+     */
     void beginConnectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac) {
         deliverFrame(jack, chainHelloFrame(peerMac, nullptr));
         rdc.sync(&device);
     }
 
-    /// Brings the supporter-side jack up against supporterMac.
+    /** Brings the supporter-side jack up against supporterMac. */
     void connectInputPort() { connectJackTo(inJack, supporterMac); }
 
-    /// Brings the opponent-side jack up against opponentMac.
+    /** Brings the opponent-side jack up against opponentMac. */
     void connectOutputPort() { connectJackTo(outJack, opponentMac); }
 
     // Set up the physical hunter-champion topology (direct peers only — no
@@ -95,8 +101,10 @@ public:
         connectInputPort();
     }
 
-    /// Closes a ring around this device: it heads a chain out of OUTPUT and its
-    /// own MAC comes back on INPUT, which is the only local evidence of closure.
+    /**
+     * Closes a ring around this device: it heads a chain out of OUTPUT and its
+     * own MAC comes back on INPUT, which is the only local evidence of closure.
+     */
     void closeRingAroundSelf() {
         connectOutputPort();
         connectJackTo(inJack, supporterMac, localMac);
@@ -116,8 +124,10 @@ public:
     FakePlatformClock* fakeClock;
     Player player;
 
-    /// Replays a radio send result for a role announce, the way the driver
-    /// would after the frame goes out. success=false is SEND_FAIL.
+    /**
+     * Replays a radio send result for a role announce, the way the driver
+     * would after the frame goes out. success=false is SEND_FAIL.
+     */
     void deliverRoleAnnounceSendResult(const uint8_t* toMac, uint8_t seqId, bool success) {
         if (roleAnnounceSendStatus == nullptr) return;
         RoleAnnouncePayload echoed{};
@@ -135,6 +145,18 @@ public:
     uint8_t opponentMac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
     uint8_t supporterMac[6] = {0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11};
 };
+
+/**
+ * Runs the main loop for `ms`, one sync() every 20ms — fine enough that no 100ms
+ * backoff window is skipped, not a claim about the device's loop period.
+ */
+inline void runLoopFor(ChainDuelManagerTests* suite, ChainDuelManager& cdm,
+                       unsigned long ms) {
+    for (unsigned long elapsed = 0; elapsed < ms; elapsed += 20) {
+        suite->fakeClock->advance(20);
+        cdm.sync();
+    }
+}
 
 // Role derivation: champion topology produces correct is* / canInitiate / peers results.
 // Without peers everything returns false/empty; with a full champion setup everything flips.
@@ -199,14 +221,11 @@ inline void cdmConfirmLifecycle(ChainDuelManagerTests* suite) {
 
     EXPECT_EQ(cdm.getBoostMs(), 0u);
 
-    // New signature: (fromMac, originatorMac, seqId).
-    // For 2-device case, fromMac == originatorMac (direct delivery, no forwarder).
-    cdm.onConfirmReceived(suite->supporterMac, suite->supporterMac, 1);
+    cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getBoostMs(), 15u);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
-    // Same originator, different seqId → still same MAC, still deduped at champion.
-    cdm.onConfirmReceived(suite->supporterMac, suite->supporterMac, 2);
+    cdm.onConfirmReceived(suite->supporterMac);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 1u);
 
     cdm.clearSupporterConfirms();
@@ -221,7 +240,7 @@ inline void cdmOnChainStateChangedClearsOnDrain(ChainDuelManagerTests* suite) {
     suite->applyHunterChampionRoles(cdm);
     ASSERT_TRUE(cdm.isChampion());
 
-    cdm.onConfirmReceived(suite->supporterMac, suite->supporterMac, 1);
+    cdm.onConfirmReceived(suite->supporterMac);
     ASSERT_EQ(cdm.getBoostMs(), 15u);
 
     // First call: chain has peers (lastSupporterChainCount goes from 0 to N)
@@ -247,7 +266,7 @@ inline void cdmConfirmFromUnknownOriginatorRejected(ChainDuelManagerTests* suite
     ASSERT_TRUE(cdm.isChampion());
 
     uint8_t stranger[6] = {0xBA, 0xAD, 0xF0, 0x0D, 0x00, 0x00};
-    cdm.onConfirmReceived(suite->supporterMac, stranger, 1);
+    cdm.onConfirmReceived(stranger);
     EXPECT_EQ(cdm.getBoostMs(), 0u);
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 }
@@ -349,7 +368,7 @@ inline void cdmConfirmBufferedUntilOriginatorJoinsChain(ChainDuelManagerTests* s
     ASSERT_TRUE(cdm.isChampion());
 
     uint8_t multiHopMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onConfirmReceived(suite->supporterMac, multiHopMac, 1);
+    cdm.onConfirmReceived(multiHopMac);
     ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 
     // The join lands: multiHopMac sits somewhere behind the direct supporter-jack
@@ -377,13 +396,13 @@ inline void cdmStrangerConfirmsCannotSilenceRealSupporter(ChainDuelManagerTests*
     for (int i = 0; i < 36; i++) {
         uint8_t stranger[6] = {0xEE, 0xEE, 0xEE, 0xEE,
                                static_cast<uint8_t>(i), static_cast<uint8_t>(i)};
-        cdm.onConfirmReceived(suite->supporterMac, stranger, 1);
+        cdm.onConfirmReceived(stranger);
     }
     ASSERT_EQ(cdm.getConfirmedSupporterCount(), 0u);
 
     // A genuine multi-hop supporter presses afterwards and joins the roster.
     uint8_t realMac[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
-    cdm.onConfirmReceived(suite->supporterMac, realMac, 1);
+    cdm.onConfirmReceived(realMac);
     cdm.onChainJoinReceived(realMac, suite->localMac);
     cdm.onChainStateChanged();
 
@@ -404,7 +423,7 @@ inline void cdmChainJoinForAnotherChampionIsIgnored(ChainDuelManagerTests* suite
     uint8_t otherChampion[6] = {0x99, 0x99, 0x99, 0x99, 0x99, 0x99};
     uint8_t foreignSupporter[6] = {0x22, 0x33, 0x44, 0x55, 0x66, 0x77};
     cdm.onChainJoinReceived(foreignSupporter, otherChampion);
-    cdm.onConfirmReceived(foreignSupporter, foreignSupporter, 1);
+    cdm.onConfirmReceived(foreignSupporter);
 
     EXPECT_EQ(cdm.getConfirmedSupporterCount(), 0u);
     EXPECT_EQ(cdm.getBoostMs(), 0u);
@@ -470,6 +489,8 @@ inline void cdmCountdownVoidsStandingConfirm(ChainDuelManagerTests* suite) {
     ASSERT_EQ(confirmsSent, 1);
 
     cdm.onChainGameEventReceived(static_cast<uint8_t>(ChainGameEventType::COUNTDOWN));
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    cdm.sync();
 
     uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, secondChampion, 2);
@@ -486,6 +507,14 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
     // fallback keeps that off the confirm counter below.
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
+    int joinsSent = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainJoin, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            joinsSent++;
+            return 1;
+        });
+
     int confirmsSent = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
                 sendData(_, PktType::kChainConfirm, _, _))
@@ -494,19 +523,24 @@ inline void cdmSupporterRoleLossVoidsStandingConfirm(ChainDuelManagerTests* suit
             return 1;
         });
 
+    suite->fakeClock->advance(RemoteDeviceCoordinator::HELLO_SILENT_LINK_MS - 10);
     uint8_t champion[6] = {0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion, 1);
     ASSERT_TRUE(cdm.isSupporter());
     cdm.sendConfirm();
+    ASSERT_EQ(joinsSent, 1);
     ASSERT_EQ(confirmsSent, 1);
 
     // Cable out on both jacks: the heartbeat lapses and the direct peers go.
-    suite->fakeClock->advance(5000);
+    suite->fakeClock->advance(11);
     suite->rdc.sync(&suite->device);
     cdm.onChainStateChanged();
     ASSERT_FALSE(cdm.isSupporter());
 
+    suite->fakeClock->advance(Resender::INITIAL_TIMEOUT_MS + 1);
+    cdm.sync();
     cdm.resendConfirm();
+    EXPECT_EQ(joinsSent, 1);
     EXPECT_EQ(confirmsSent, 1);
 }
 
@@ -567,8 +601,6 @@ inline void cdmChampionChangeWithoutPressSendsNoConfirm(ChainDuelManagerTests* s
     cdm.resendConfirm();
 }
 
-// onRoleAnnounceReceived updates peerRoleByPort and championMac, and acks the
-// sender.
 inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -583,28 +615,64 @@ inline void cdmRoleAnnounceUpdatesChampionMac(ChainDuelManagerTests* suite) {
     EXPECT_EQ(memcmp(cdm.getChampionMac(), championMac, 6), 0);
 }
 
-// A ring has no champion. Neither role branch runs inside a ring, so a device
-// that had one goes on naming it, and announcing to it, until this clears it.
 inline void cdmRingClosureClearsTheChampion(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     uint8_t championMac[6] = {0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F};
 
+    uint8_t initialSeqId = 0;
+    int supporterAnnounces = 0;
     EXPECT_CALL(*suite->device.mockPeerComms,
-                sendData(_, PktType::kRoleAnnounce, _, _))
-        .WillRepeatedly(Return(1));
+                sendData(_, PktType::kRoleAnnounce, _, sizeof(RoleAnnouncePayload)))
+        .WillRepeatedly([&](const uint8_t* mac, PktType, const uint8_t* data, const size_t) {
+            if (memcmp(mac, suite->supporterMac, 6) == 0) {
+                RoleAnnouncePayload p;
+                memcpy(&p, data, sizeof(p));
+                initialSeqId = p.seqId;
+                supporterAnnounces++;
+            }
+            return 1;
+        });
 
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
+    suite->applyHunterChampionRoles(cdm);
+    cdm.onChainStateChanged();
+    ASSERT_NE(initialSeqId, 0u);
+    suite->deliverRoleAnnounceSendResult(suite->supporterMac, initialSeqId, /*success=*/true);
+
     cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 7);
     ASSERT_NE(cdm.getChampionMac(), nullptr);
+    cdm.sendConfirm();
 
-    // Drive the production tick rather than the handler: a ring arrives with
-    // both cables seated, so there is no event to hang this on and the manager's
-    // own sync is what has to notice.
-    suite->closeRingAroundSelf();
+    deliverFrame(suite->inJack,
+                 chainHelloFrame(suite->supporterMac, championMac, HELLO_FLAG_RING_CLOSED));
     suite->rdc.sync(&suite->device);
     cdm.sync();
 
     EXPECT_EQ(cdm.getChampionMac(), nullptr) << "a ring still names a champion";
+
+    int ringSends = 0;
+    EXPECT_CALL(*suite->device.mockPeerComms,
+                sendData(_, PktType::kChainConfirm, _, _))
+        .WillRepeatedly([&](const uint8_t*, PktType, const uint8_t*, const size_t) {
+            ringSends++;
+            return 1;
+        });
+    const int announcesBeforeRingRx = supporterAnnounces;
+    cdm.onRoleAnnounceReceived(suite->opponentMac, /*role=hunter*/ 1, championMac, 8);
+    suite->fakeClock->advance(Resender::backoffMs(0) + 1);
+    cdm.sync();
+    EXPECT_EQ(cdm.getChampionMac(), nullptr);
+    EXPECT_EQ(ringSends, 0);
+    EXPECT_EQ(supporterAnnounces, announcesBeforeRingRx);
+
+    cdm.setPeerRole(SerialIdentifier::OUTPUT_JACK, false);
+    deliverFrame(suite->inJack, chainHelloFrame(suite->supporterMac, championMac, 0));
+    suite->rdc.sync(&suite->device);
+    cdm.sync();
+
+    ASSERT_NE(cdm.getChampionMac(), nullptr);
+    EXPECT_EQ(memcmp(cdm.getChampionMac(), suite->localMac, 6), 0);
+    EXPECT_GT(supporterAnnounces, announcesBeforeRingRx);
 }
 
 // An announce from a device that has no champion of its own leaves the field
@@ -705,14 +773,14 @@ inline void cdmNewTerminalEventSupersedesThePrevious(ChainDuelManagerTests* suit
             return 1;
         });
 
-    // Two terminal events inside one retry budget, neither acked.
+    // Two terminal events inside one frame's span, neither acked.
     cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
     cdm.sendGameEventToSupporters(ChainGameEventType::LOSS);
     const int afterSends = eventFrames;
     ASSERT_EQ(afterSends, 2);
 
     // One round must put ONE frame on the air: only the newer event is live.
-    suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
+    suite->fakeClock->advance(Resender::backoffMs(0) + 1);
     cdm.sync();
     EXPECT_EQ(eventFrames, afterSends + 1)
         << "the superseded event is still retransmitting alongside the current one";
@@ -874,12 +942,9 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerT
     suite->connectInputPort();
     ASSERT_GT(announcesToSupporter, 0) << "no supporter announce to begin with";
 
-    // The radio never confirms delivery, so the announce burns its whole budget
-    // and is given up on. The supporter is still on the jack, still untold.
-    for (int i = 0; i < Resender::MAX_RETRIES + 1; ++i) {
-        suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
-        cdm.sync();
-    }
+    // The radio never confirms delivery, so the announce runs out of span and is
+    // given up on. The supporter is still on the jack, still untold.
+    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS + 100);
     const int afterAbandon = announcesToSupporter;
 
     // A full backstop interval later it is offered again.
@@ -890,7 +955,7 @@ inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerT
            "contributes no boost for the rest of the round";
 }
 
-// An opponent announce that exhausts its retry budget has to be offered again.
+// An opponent announce that ran out its span has to be offered again.
 // Nothing else would: a settled chain raises no chain-state events, so the
 // cascade never runs, and the opponent would never learn this device's role —
 // its canInitiateMatch refuses that cable a duel for the rest of the round,
@@ -911,12 +976,9 @@ inline void cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(ChainDuelManagerTe
     suite->connectInputPort();
     ASSERT_GT(announcesToOpponent, 0) << "no opponent announce to begin with";
 
-    // The radio never confirms delivery, so the announce burns its whole budget
-    // and is given up on. This is the case the stamp must not record as told.
-    for (int i = 0; i < Resender::MAX_RETRIES + 1; ++i) {
-        suite->fakeClock->advance(Resender::backoffMs(Resender::MAX_RETRIES) + 1);
-        cdm.sync();
-    }
+    // The radio never confirms delivery, so the announce runs out of span and is
+    // given up on. This is the case the stamp must not record as told.
+    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS + 100);
     const int afterAbandon = announcesToOpponent;
 
     // A full backstop interval later, the undelivered announce is re-offered.
@@ -1044,8 +1106,8 @@ inline void cdmAckFromWrongMacIgnored(ChainDuelManagerTests* suite) {
     EXPECT_EQ(retransmits, 1);
 }
 
-// Retransmit abandons after Resender::MAX_RETRIES with no ack.
-inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
+// Retransmit abandons once the span runs out with no ack.
+inline void cdmRetransmitAbandonsWhenSpanRunsOut(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->applyHunterChampionRoles(cdm);
@@ -1068,10 +1130,12 @@ inline void cdmRetransmitAbandonsAfterMax(ChainDuelManagerTests* suite) {
     ASSERT_EQ(supporterSends, 1);
 
     // Advance clock + sync 3 times → 3 retransmits (supporter only, pending path).
-    // Exponential backoff: waits are 100, 200, 400ms. Advance past the biggest
-    // per iter to guarantee each retry fires.
+    // Gaps of 100, 200, 400ms, so one jump past the biggest fires each round. 450
+    // rather than 500: three 500ms jumps put the last retransmit on the same
+    // millisecond the span ends, leaving the case to turn on expired() being strict.
+    // At 450 the third round has 150ms of room ahead of the deadline.
     for (int i = 0; i < 3; i++) {
-        suite->fakeClock->advance(500);
+        suite->fakeClock->advance(450);
         cdm.sync();
     }
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
@@ -1119,7 +1183,7 @@ inline void cdmRetryStatsRecordsLifecycle(ChainDuelManagerTests* suite) {
     cdm.onRoleAnnounceReceived(suite->opponentMac, 1, champion2, 2);
     // Tick at the cadence the platform loop actually uses. Sampling only once
     // per backstop interval would let the re-offer land in the same call as the
-    // retry round and supersede the entry before its budget ever completes —
+    // retry round and supersede the entry before its span ever runs out —
     // an artefact of the test's clock, not of the schedule.
     for (int i = 0; i < 19; i++) {
         suite->fakeClock->advance(100);
@@ -1281,7 +1345,7 @@ inline void chainDuelThreeDeviceConfirm(ChainDuelManagerTests* suite) {
 
     uint8_t distantMac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01};
     a.onChainJoinReceived(distantMac, suite->localMac);
-    a.onConfirmReceived(distantMac, distantMac, confirmPayload.seqId);
+    a.onConfirmReceived(distantMac);
     EXPECT_EQ(a.getBoostMs(), 15u);
 }
 
@@ -1527,8 +1591,8 @@ inline void cdmGameEventAckClearsPending(ChainDuelManagerTests* suite) {
     cdm.sync();
 }
 
-// After Resender::MAX_RETRIES with no ACK, pending is abandoned — no further sends.
-inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
+// Once a frame's retransmit span runs out with no ACK it is abandoned — no further sends.
+inline void cdmGameEventAbandonsWhenSpanRunsOut(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
     suite->applyHunterChampionRoles(cdm);
@@ -1544,12 +1608,10 @@ inline void cdmGameEventAbandonsAfterMax(ChainDuelManagerTests* suite) {
     cdm.sendGameEventToSupporters(ChainGameEventType::WIN);
     ASSERT_EQ(supporterSends, 1);
 
-    // Resender::MAX_RETRIES = 3. Advance past each exponential backoff window (100, 200,
-    // 400, 800ms). Use 1000ms to cover the largest.
-    for (int i = 0; i < 3; i++) {
-        suite->fakeClock->advance(1000);
-        cdm.sync();
-    }
+    // The retransmits land 100, 300 and 700ms in (gaps of 100, 200, 400); the next
+    // would fall past the
+    // frame's span, so that is where it stops.
+    runLoopFor(suite, cdm, Resender::RETRANSMIT_SPAN_MS - 100);
     EXPECT_EQ(supporterSends, 4);  // 1 initial + 3 retransmits
 
     // After abandon, further sync must not retransmit.

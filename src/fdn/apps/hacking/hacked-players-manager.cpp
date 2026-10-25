@@ -1,4 +1,5 @@
 #include "apps/hacking/hacked-players-manager.hpp"
+#include "fdn-constants.hpp"
 #include <algorithm>
 
 HackedPlayersManager::HackedPlayersManager(StorageInterface* storage)
@@ -9,17 +10,17 @@ HackedPlayersManager::~HackedPlayersManager() {
 }
 
 void HackedPlayersManager::playerHackSuccessful(const std::string& playerId) {
-    storage->writeUChar(playerId, HACK_STATUS_LOCAL);
+    storage->writeUChar(FDN_PREF_NAMESPACE, playerId, HACK_STATUS_LOCAL);
     addToPending(playerId);
 }
 
 void HackedPlayersManager::playerHackUploaded(const std::string& playerId) {
-    storage->writeUChar(playerId, HACK_STATUS_UPLOADED);
+    storage->writeUChar(FDN_PREF_NAMESPACE, playerId, HACK_STATUS_UPLOADED);
     removeFromPending(playerId);
 }
 
 bool HackedPlayersManager::hasPlayerHacked(const std::string& playerId) const {
-    return storage->readUChar(playerId, HACK_STATUS_NONE) >= HACK_STATUS_LOCAL;
+    return storage->readUChar(FDN_PREF_NAMESPACE, playerId, HACK_STATUS_NONE) >= HACK_STATUS_LOCAL;
 }
 
 std::vector<std::string> HackedPlayersManager::getPendingUploads() const {
