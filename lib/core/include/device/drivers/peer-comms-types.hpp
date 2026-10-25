@@ -96,7 +96,6 @@ struct ChainJoinPayload {
 
 struct RoleAnnouncePayload
 {
-    uint8_t role;               // 1 = hunter, 0 = target/bounty
     uint8_t championMac[6];
     uint8_t seqId;
 } __attribute__((packed));

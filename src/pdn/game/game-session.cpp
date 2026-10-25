@@ -51,6 +51,7 @@ GameSession::GameSession(Player* player,
     // context exchange only runs on connect, so the flip has to push itself.
     this->player->setOnRoleChanged([this]() {
         remoteDeviceCoordinator->resendContext();
+        chainDuelManager->onChainStateChanged();
     });
 
     // Installed here rather than by the caller so the slot holding `this` is

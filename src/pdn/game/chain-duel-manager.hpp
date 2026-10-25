@@ -104,39 +104,26 @@ public:
     void onConfirmReceived(const uint8_t* originatorMac);
     void onChainStateChanged();
 
-    // Records a peer's role learned from an incoming kRoleAnnounce packet.
-    void setPeerRole(SerialIdentifier port, bool isHunter);
-
     unsigned long getBoostMs() const;
     size_t getConfirmedSupporterCount() const;
     void clearSupporterConfirms();
 
     const uint8_t* getChampionMac() const;
-    void onRoleAnnounceReceived(
-        const uint8_t* fromMac,
-        uint8_t role,
-        const uint8_t* championMac,
-        uint8_t seqId);
+    /** Updates the cached champion from an opponent-jack role announce. */
+    void onRoleAnnounceReceived(const uint8_t* fromMac, const uint8_t* championMac);
 
     /**
-     * Announces this device's role and champion to the supporter-jack peer.
+     * Announces this device's champion to the supporter-jack peer.
      * Silent when the link is not proven yet.
      */
     void broadcastRoleAndChampion();
-    /**
-     * Announces this device's role to the opponent-jack peer, unless that peer
-     * has already been told or is still being told. With no peer it forgets
-     * whoever was last told, so a cable returning on the same MAC is announced
-     * to again.
-     */
-    void sendRoleToOpponentJack();
 
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
     /**
-     * How often an undelivered role announce is re-offered, in either
-     * direction. A settled chain raises no events, so nothing else would.
+     * How often an undelivered supporter announce is re-offered. A settled
+     * chain raises no events, so nothing else would.
      *
      * Longer than the retry span on purpose: a tick landing inside that window
      * supersedes the live entry and restarts its span, so the announce would
@@ -173,8 +160,8 @@ private:
     // discover a supporter it shares no cable with any other way.
     void announceToChampion();
 
-    // Returns the cached role of the direct peer on `port`, or nullopt if no
-    // role announcement has been received from the current direct peer.
+    // Reads the direct peer's role from the profile the RDC recorded on `port`,
+    // or nullopt if no PDN profile is present.
     std::optional<bool> peerIsHunter(SerialIdentifier port) const;
 
     // Ceiling shared by the roll call and the supporter roster: the longest
@@ -219,53 +206,40 @@ private:
     std::atomic<size_t> supporterRosterCount{0};
     size_t supporterRosterWrite = 0;
 
-    // Per-port direct peer role; cleared when the direct peer disconnects.
-    std::array<std::optional<bool>, 2> peerRoleByPort;
-
     std::optional<std::array<uint8_t, 6>> championMac;
 
-    // What a jack's peer has been told, and whether the radio confirmed it.
+    // What the supporter-jack peer has been told, and whether the radio confirmed it.
     // Keyed on the CONTENT, not just the peer: a champion change leaves the
     // cable untouched, so a stamp holding only the MAC suppresses exactly the
     // announce that has to go out. `delivered` is the radio's send report, not
     // proof the peer's app took the frame — that is what the half-open gate in
-    // each send function is for. What it proves is the negative: an announce
+    // broadcastRoleAndChampion is for. What it proves is the negative: an announce
     // that ran out its span was never MAC-acked, whether it was refused before it
     // left or went out and came back SEND_FAIL. Either way it did not land, and
     // re-offering it is the only repair there is.
     struct RoleAnnounceState {
         std::array<uint8_t, 6> peer{};
-        uint8_t role = 0;
         std::array<uint8_t, 6> champion{};
         uint8_t seqId = 0;
         bool delivered = false;
 
         /** True when this records a delivered announce of exactly `content`. */
         bool told(const RoleAnnounceState& content) const {
-            return delivered && peer == content.peer && role == content.role &&
-                   champion == content.champion;
+            return delivered && peer == content.peer && champion == content.champion;
         }
     };
     std::optional<RoleAnnounceState> supporterAnnounce;
-    std::optional<RoleAnnounceState> opponentAnnounce;
 
     uint8_t nextGameEventSeqId = 1;
 
     Resender resender;
 
-    // In a 2-node ring both jacks face one peer, so the second announce can
-    // supersede the first. Harmless: when both fire they carry the same role and
-    // championMac, and addGroup transmits before superseding, so each still gets
-    // its own delivery report.
     ReliableChannel<RoleAnnouncePayload> roleAnnounceChannel;
     ReliableChannel<ChainConfirmPayload> chainConfirmChannel;
     ReliableChannel<ChainJoinPayload> chainJoinChannel;
 
     void recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac);
 
-    // Time from a frame going out to the radio reporting it delivered. Not a
-    // round trip — this channel has no reply packet — and approximate when both
-    // announces are in flight, since they share the one timer.
     SimpleTimer roleAnnounceSentTimer;
     SimpleTimer gameEventSentTimer;
     SimpleTimer roleAnnounceBackstopTimer;

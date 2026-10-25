@@ -204,6 +204,15 @@ public:
         return DeviceType::UNKNOWN;
     }
 
+    /** Seeds a PDN peer profile on `id` carrying `gameRole`. */
+    void setPeerRole(SerialIdentifier id, bool isHunter) {
+        setPeerDeviceType(id, DeviceType::PDN);
+        PlayerProfile profile{};
+        profile.gameRole = isHunter ? 1 : 0;
+        recordJackContext(id, DeviceType::PDN, /*chainRole=*/0, profile.userId,
+                          reinterpret_cast<const uint8_t*>(&profile), sizeof(profile));
+    }
+
     // Stubbable direct peer MACs — tests that exercise peer-MAC gating set
     // these; getPeerMac returns a pointer into the stored array or nullptr.
     void setPeerMac(SerialIdentifier id, const uint8_t* mac) {

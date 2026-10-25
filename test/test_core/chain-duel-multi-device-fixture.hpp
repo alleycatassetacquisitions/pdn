@@ -53,6 +53,8 @@ struct MultiDeviceNode {
     // Per-device captured handlers (one slot per PktType the fixture routes).
     PeerCommsInterface::PacketCallback contextHandler = nullptr;
     void* contextCtx = nullptr;
+    PeerCommsInterface::SendStatusCallback contextSendStatus = nullptr;
+    void* contextSendStatusCtx = nullptr;
     PeerCommsInterface::PacketCallback roleAnnounceHandler = nullptr;
     void* roleAnnounceCtx = nullptr;
     PeerCommsInterface::SendStatusCallback roleAnnounceSendStatus = nullptr;
@@ -129,6 +131,14 @@ public:
             node->shootout = std::make_unique<ShootoutManager>(node->player.get(),
                                                                node->device->wirelessManager,
                                                                node->rdc.get());
+            Player* p = node->player.get();
+            RemoteDeviceCoordinator* r = node->rdc.get();
+            ChainDuelManager* c = node->cdm.get();
+            r->setSelfProfileProvider([p]() -> PlayerProfile { return p->toProfile(); });
+            p->setOnRoleChanged([r, c]() {
+                r->resendContext();
+                c->onChainStateChanged();
+            });
             wireChainEventHandlers(*node);
             wireShootoutHandlers(*node);
 
@@ -245,6 +255,33 @@ public:
 
     void syncAll() {
         pumpHelloCycle();
+        for (auto& n : nodes) {
+            n->cdm->sync();
+            n->shootout->sync();
+        }
+    }
+
+    // Pumps one HELLO cycle while dropping the lower->upper conductor on cable
+    // (upperIdx, lowerIdx), so upperIdx's OUTPUT_JACK hears silence while
+    // lowerIdx's INPUT_JACK keeps receiving upperIdx's HELLOs and stays CONNECTED.
+    void pumpHelloCycleDroppingLowerToUpper(size_t upperIdx, size_t lowerIdx) {
+        for (auto& n : nodes)
+            n->rdc->emitHello();
+        for (const auto& cable : cables) {
+            MultiDeviceNode& upper = *nodes[cable.first];
+            MultiDeviceNode& lower = *nodes[cable.second];
+            pumpCable(upper.out, lower.in);
+            if (cable.first != upperIdx || cable.second != lowerIdx) {
+                pumpCable(lower.in, upper.out);
+            }
+        }
+        for (auto& n : nodes) {
+            n->out.clearOutput();
+            n->in.clearOutput();
+        }
+        for (auto& n : nodes)
+            n->rdc->sync(n->device.get());
+        deliverAllPackets();
         for (auto& n : nodes) {
             n->cdm->sync();
             n->shootout->sync();
@@ -370,6 +407,10 @@ protected:
         // worries about, the radio acking while the peer is deaf, therefore
         // cannot be reproduced here; it needs a test that drives onSendResult by
         // hand.
+        if (p.type == PktType::kPdnConnectionContext && source.contextSendStatus) {
+            source.contextSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
+                                     /*success=*/true, source.contextSendStatusCtx);
+        }
         if (p.type == PktType::kRoleAnnounce && source.roleAnnounceSendStatus) {
             source.roleAnnounceSendStatus(p.toMac.data(), p.data.data(), p.data.size(),
                                           /*success=*/true, source.roleAnnounceSendStatusCtx);
@@ -402,6 +443,11 @@ protected:
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
                 n.contextHandler = cb;
                 n.contextCtx = ctx;
+            });
+        ON_CALL(*pc, setSendStatusHandler(testing::Eq(PktType::kPdnConnectionContext), _, _))
+            .WillByDefault([&n](PktType, PeerCommsInterface::SendStatusCallback cb, void* ctx) {
+                n.contextSendStatus = cb;
+                n.contextSendStatusCtx = ctx;
             });
         ON_CALL(*pc, setPacketHandler(testing::Eq(PktType::kRoleAnnounce), _, _))
             .WillByDefault([&n](PktType, PeerCommsInterface::PacketCallback cb, void* ctx) {
@@ -1026,4 +1072,110 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
         EXPECT_EQ(suite->node(i).shootout->getPhase(), ShootoutManager::Phase::ENDED)
             << "tourn 2 node " << i;
     }
+}
+
+// Scenario A (#239): a 120ms one-sided HELLO dropout on the d0.in -> d1.out
+// conductor drops d1's OUTPUT_JACK to IDLE while d0's INPUT_JACK stays CONNECTED.
+// d1 promotes itself to champion and cascades that to d2; when the conductor
+// heals, d1's reconnect context arriving on d0's still-CONNECTED INPUT_JACK must
+// clear d0's announce stamp and re-cascade d0 as champion across the whole chain.
+inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDeviceFixture* suite) {
+    suite->spawnDevices(3);
+    suite->setAllHunters();
+    suite->connectLinearHunterChain();
+    suite->deliverAllPackets();
+    suite->syncAll();
+    suite->deliverAllPackets();
+
+    MultiDeviceNode& d0 = suite->node(0);
+    MultiDeviceNode& d1 = suite->node(1);
+    MultiDeviceNode& d2 = suite->node(2);
+
+    for (int pass = 0; pass < 2; ++pass) {
+        d0.cdm->onChainStateChanged();
+        d1.cdm->onChainStateChanged();
+        d2.cdm->onChainStateChanged();
+        suite->deliverAllPackets();
+    }
+
+    ASSERT_TRUE(d0.cdm->isChampion());
+    ASSERT_TRUE(d1.cdm->isSupporter());
+    ASSERT_TRUE(d2.cdm->isSupporter());
+    ASSERT_NE(d1.cdm->getChampionMac(), nullptr);
+    ASSERT_EQ(memcmp(d1.cdm->getChampionMac(), d0.mac, 6), 0);
+    ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
+    ASSERT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
+
+    // Suppress HELLO from d0.in -> d1.out for 120ms (> HELLO_SILENT_LINK_MS = 100ms)
+    // while d1.out -> d0.in stays live.
+    for (int tick = 0; tick < 6; ++tick) {
+        suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        suite->pumpHelloCycleDroppingLowerToUpper(/*upperIdx=*/1, /*lowerIdx=*/0);
+    }
+
+    ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    ASSERT_TRUE(d1.cdm->isChampion());
+
+    // Conductor heals: normal two-way HELLO resumes.
+    suite->settleLinks();
+    suite->syncAll();
+    suite->deliverAllPackets();
+
+    EXPECT_TRUE(d0.cdm->isChampion());
+    EXPECT_TRUE(d1.cdm->isSupporter());
+    EXPECT_TRUE(d2.cdm->isSupporter());
+    ASSERT_NE(d1.cdm->getChampionMac(), nullptr);
+    EXPECT_EQ(memcmp(d1.cdm->getChampionMac(), d0.mac, 6), 0);
+    ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
+    EXPECT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
+
+    d1.cdm->sendConfirm();
+    d2.cdm->sendConfirm();
+    suite->deliverAllPackets();
+    EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
+    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+}
+
+// Consequence B + Scenario B (#239/#249): flipping a connected peer's role via
+// setIsHunter() pushes a fresh context that updates the duel gate live, and a
+// subsequent one-sided HELLO dropout on the hunter's OUTPUT_JACK recovers
+// canInitiateMatch() once the link reconnects.
+inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
+    ChainDuelMultiDeviceFixture* suite) {
+    suite->spawnDevices(2);
+    suite->setAllHunters();
+    suite->connectLinearHunterChain();
+    suite->deliverAllPackets();
+    suite->syncAll();
+    suite->deliverAllPackets();
+
+    MultiDeviceNode& d0 = suite->node(0);
+    MultiDeviceNode& d1 = suite->node(1);
+
+    // Both hunters: d1's OUTPUT_JACK (opponentJack) faces same-role d0, so no duel.
+    EXPECT_FALSE(d1.cdm->canInitiateMatch());
+
+    // d0 flips to bounty on the already-CONNECTED cable.
+    d0.player->setIsHunter(false);
+    suite->deliverAllPackets();
+    EXPECT_TRUE(d1.cdm->canInitiateMatch());
+
+    // Advance past the resend throttle window before the one-sided 120ms HELLO
+    // dropout on d0.in -> d1.out: d1's OUTPUT_JACK drops to IDLE while d0's
+    // INPUT_JACK stays CONNECTED.
+    suite->advanceClock(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    for (int tick = 0; tick < 6; ++tick) {
+        suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        suite->pumpHelloCycleDroppingLowerToUpper(/*upperIdx=*/1, /*lowerIdx=*/0);
+    }
+    ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
+    EXPECT_FALSE(d1.cdm->canInitiateMatch());
+
+    // Conductor heals: d1 reconnects and canInitiateMatch() recovers without replugging.
+    suite->settleLinks();
+    suite->syncAll();
+    suite->deliverAllPackets();
+    EXPECT_TRUE(d1.cdm->canInitiateMatch());
 }

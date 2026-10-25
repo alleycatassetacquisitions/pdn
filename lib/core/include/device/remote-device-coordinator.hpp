@@ -291,6 +291,10 @@ public:
      */
     void setChainChangeCallback(std::function<void()> callback);
 
+protected:
+    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+                           uint16_t peerUserId, const uint8_t* profile, size_t len);
+
 private:
     static constexpr size_t NUM_PORTS = 3;
 
@@ -380,8 +384,6 @@ private:
     // already-CONNECTED jack facing `fromMac`.
     void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
-    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
-                           uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
     // so the context callback fires exactly once per jack.
     void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,

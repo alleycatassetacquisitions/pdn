@@ -28,7 +28,7 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // duplicate suppression are the channel's rather than a second copy of them
     // in whoever routes the packet.
     roleAnnounceChannel.onReceive([this](const uint8_t* fromMac, const RoleAnnouncePayload& p) {
-        onRoleAnnounceReceived(fromMac, p.role, p.championMac, p.seqId);
+        onRoleAnnounceReceived(fromMac, p.championMac);
     });
     roleAnnounceChannel.setOnDelivered([this](uint8_t seqId, const uint8_t* mac) {
         ackLatencyMsSum += roleAnnounceSentTimer.getElapsedTime();
@@ -39,6 +39,17 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // wires it is an owner every other caller has to imitate, and one that forgets
     // gets a manager that compiles, runs, and silently never reacts.
     rdc->setChainChangeCallback([this]() { onChainStateChanged(); });
+    // A context landing on a CONNECTED jack updates the peer's profile (live role
+    // flip) or means the peer restarted its link after a one-sided HELLO dropout
+    // and lost its championMac.
+    rdc->setOnContextReceived([this](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+        if (this->rdc->getPortStatus(jack) != PortStatus::CONNECTED) return;
+        if (jack == supporterJack() && supporterAnnounce.has_value()) {
+            roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
+            supporterAnnounce.reset();
+        }
+        onChainStateChanged();
+    });
     // The ring latch moves with both cables still seated — applyUpstreamHead sets
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
     // to be re-sent from the role edge; no jack edge would carry it.
@@ -54,6 +65,7 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
 
 ChainDuelManager::~ChainDuelManager() {
     rdc->setChainChangeCallback(nullptr);
+    rdc->setOnContextReceived(nullptr);
     rdc->setOnChainRoleChange(nullptr);
 }
 
@@ -66,7 +78,13 @@ SerialIdentifier ChainDuelManager::supporterJack() const {
 }
 
 std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const {
-    return peerRoleByPort[port == SerialIdentifier::INPUT_JACK ? 0 : 1];
+    if (rdc->getPeerDeviceType(port) != DeviceType::PDN) return std::nullopt;
+    size_t len = 0;
+    const uint8_t* raw = rdc->getPeerProfile(port, len);
+    if (raw == nullptr || len < sizeof(PlayerProfile)) return std::nullopt;
+    PlayerProfile profile{};
+    memcpy(&profile, raw, sizeof(profile));
+    return profile.gameRole != 0;
 }
 
 bool ChainDuelManager::containsMac(const MacSlots& slots, size_t count, const uint8_t* mac) {
@@ -299,13 +317,6 @@ void ChainDuelManager::onChainStateChanged() {
     }
     lastSupporterChainCount = count;
 
-    // Drop cached peer roles for any port that no longer has a direct peer.
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-        if (rdc->getPeerMac(port) == nullptr) {
-            peerRoleByPort[port == SerialIdentifier::INPUT_JACK ? 0 : 1].reset();
-        }
-    }
-
     if (isChampion()) {
         const uint8_t* selfMac = wirelessManager->getMacAddress();
         if (selfMac != nullptr) {
@@ -324,7 +335,6 @@ void ChainDuelManager::onChainStateChanged() {
     }
 
     broadcastRoleAndChampion();
-    sendRoleToOpponentJack();
 
     if (isSupporter()) {
         // Re-send on every topology event: join has no backstop once its retry span expires.
@@ -335,10 +345,6 @@ void ChainDuelManager::onChainStateChanged() {
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
     }
-}
-
-void ChainDuelManager::setPeerRole(SerialIdentifier port, bool isHunter) {
-    peerRoleByPort[port == SerialIdentifier::INPUT_JACK ? 0 : 1] = isHunter;
 }
 
 unsigned long ChainDuelManager::getBoostMs() const {
@@ -373,36 +379,9 @@ void ChainDuelManager::clearSupporterConfirms() {
 
 void ChainDuelManager::onRoleAnnounceReceived(
     const uint8_t* fromMac,
-    uint8_t role,
-    const uint8_t* announcedChampionMac,
-    uint8_t seqId) {
-    // Update peer role based on which jack fromMac is on.
-    // Also remember whether this announce came from our opponent-jack (parent)
-    // direction — only opponent-jack announces authoritatively update our
-    // championMac cache.
-    bool fromOpponentJack = false;
-    bool fromKnownDirectPeer = false;
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::OUTPUT_JACK}) {
-        const uint8_t* directMac = rdc->getPeerMac(port);
-        if (directMac != nullptr && memcmp(directMac, fromMac, 6) == 0) {
-            setPeerRole(port, role == 1);
-            fromKnownDirectPeer = true;
-            if (port == opponentJack()) {
-                fromOpponentJack = true;
-            }
-            break;
-        }
-    }
-
-    // Only act on announces from known direct peers. A stranger in radio
-    // range must not be able to move this device's champion.
-    if (!fromKnownDirectPeer) return;
-
-    // Only same-role opponent-jack announces authoritatively update
-    // championMac. Opposite-role senders are dueling opponents, not chain
-    // parents — their championMac is irrelevant.
-    if (!fromOpponentJack) return;
-    if (role != (player->isHunter() ? 1u : 0u)) return;
+    const uint8_t* announcedChampionMac) {
+    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
+    if (opponentPeer == nullptr || memcmp(opponentPeer, fromMac, 6) != 0) return;
     if (!isSupporter()) return;
 
     // Wire input: the field is always present, so a sender with no champion sends
@@ -434,17 +413,12 @@ void ChainDuelManager::onRoleAnnounceReceived(
 }
 
 void ChainDuelManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac) {
-    if (mac == nullptr) return;
-    // Commit the record this delivery answers, matched on seqId so a stale
-    // report cannot mark newer content as told. In a 2-node ring both jacks
-    // face one peer and both frames go out; each carries its own seqId, so a
-    // report commits only the record it answers.
-    for (std::optional<RoleAnnounceState>* slot : {&supporterAnnounce, &opponentAnnounce}) {
-        if (!slot->has_value()) continue;
-        RoleAnnounceState& state = **slot;
-        if (state.seqId != seqId || memcmp(state.peer.data(), mac, 6) != 0) continue;
-        state.delivered = true;
+    if (mac == nullptr || !supporterAnnounce.has_value()) return;
+    if (supporterAnnounce->seqId != seqId ||
+        memcmp(supporterAnnounce->peer.data(), mac, 6) != 0) {
+        return;
     }
+    supporterAnnounce->delivered = true;
 }
 
 void ChainDuelManager::broadcastRoleAndChampion() {
@@ -458,9 +432,14 @@ void ChainDuelManager::broadcastRoleAndChampion() {
         return;
     }
 
+    if (supporterAnnounce.has_value() &&
+        memcmp(supporterAnnounce->peer.data(), supporterPeer, 6) != 0) {
+        roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
+        supporterAnnounce.reset();
+    }
+
     RoleAnnounceState content;
     memcpy(content.peer.data(), supporterPeer, 6);
-    content.role = player->isHunter() ? 1 : 0;
     memcpy(content.champion.data(), champ, 6);
     if (supporterAnnounce.has_value() && supporterAnnounce->told(content)) return;
 
@@ -473,44 +452,11 @@ void ChainDuelManager::broadcastRoleAndChampion() {
     if (rdc->getPortStatus(supporterJack()) != PortStatus::CONNECTED) return;
 
     RoleAnnouncePayload payload{};
-    payload.role = content.role;
     memcpy(payload.championMac, content.champion.data(), 6);
 
     roleAnnounceSentTimer.setTimer(0);
     content.seqId = roleAnnounceChannel.sendReliable(supporterPeer, payload);
     supporterAnnounce = content;
-}
-
-// The only thing that tells the opponent what role we hold; their
-// canInitiateMatch refuses a duel until they know it. Their announce to us
-// populates our view of them, not theirs of us, so nothing else repairs a lost
-// one — hence the retry, off the radio's delivery report.
-void ChainDuelManager::sendRoleToOpponentJack() {
-    const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
-    if (opponentPeer == nullptr) {
-        opponentAnnounce.reset();
-        return;
-    }
-    RoleAnnounceState content;
-    memcpy(content.peer.data(), opponentPeer, 6);
-    content.role = player->isHunter() ? 1 : 0;
-    if (const uint8_t* champ = getChampionMac()) {
-        memcpy(content.champion.data(), champ, 6);
-    }
-    if (opponentAnnounce.has_value() && opponentAnnounce->told(content)) return;
-
-    // Same half-open gate as the supporter side: a jack at Connecting has a peer
-    // MAC off one inbound frame, and the peer drops announces from a MAC it has
-    // not yet recorded.
-    if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return;
-
-    RoleAnnouncePayload payload{};
-    payload.role = content.role;
-    memcpy(payload.championMac, content.champion.data(), 6);
-
-    roleAnnounceSentTimer.setTimer(0);
-    content.seqId = roleAnnounceChannel.sendReliable(opponentPeer, payload);
-    opponentAnnounce = content;
 }
 
 void ChainDuelManager::sync() {
@@ -524,13 +470,12 @@ void ChainDuelManager::sync() {
     // supporter at a time, since a broadcast carries no per-member evidence.
     resender.sync();
 
-    // Backstop for both announces. A settled chain raises no chain-state events,
-    // so one that ran out its span has no other way back — and losing either is
-    // terminal for the round: the opponent refuses the duel, the supporter never
-    // learns its champion. Cheap once delivered; each side's stamp gates it.
+    // Backstop for the supporter announce. A settled chain raises no chain-state
+    // events, so one that ran out its span has no other way back — and losing it
+    // leaves the supporter without a champion. Cheap once delivered; the stamp
+    // gates it.
     if (roleAnnounceBackstopTimer.expired()) {
         roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
         broadcastRoleAndChampion();
-        sendRoleToOpponentJack();
     }
 }
