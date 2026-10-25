@@ -3,7 +3,6 @@
 #include "device/pdn.hpp"
 #include "state/state.hpp"
 #include "game/player.hpp"
-#include "game/match-manager.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
 #include "utils/simple-timer.hpp"
@@ -20,7 +19,8 @@ enum PlayerRegistrationStateId {
 
 class PlayerRegistrationState : public TypedState<PDN> {
 public:
-    PlayerRegistrationState(Player* player, MatchManager* matchManager);
+    /** Digit-entry screen for the player id. */
+    explicit PlayerRegistrationState(Player* player);
     ~PlayerRegistrationState();
 
     void onStateMounted(PDN* pdn) override;
@@ -32,7 +32,6 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
-    MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
@@ -41,14 +40,14 @@ private:
 
 class FetchUserDataState : public TypedState<PDN> {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager);
+    /** Resolves the entered player id via test/debug shortcuts or HTTP lookup. */
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
     bool transitionToWelcomeMessage();
     bool transitionToPlayerRegistration();
     void fetchUserData();
-    void uploadMatches();
     void showLoadingGlyphs(PDN* pdn);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
@@ -56,18 +55,14 @@ public:
     
 private:
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     WirelessManager* wirelessManager;
-    bool isFetchingUserData = false;
-    bool isUploadingMatches = false;
 
     Player* player;
     SimpleTimer fetchTimer;
     const int USER_DATA_FETCH_TIMEOUT = 10000;
-    const int MATCHES_UPLOAD_TIMEOUT = 10000;
 };
 
 class ConfirmOfflineState : public TypedState<PDN> {

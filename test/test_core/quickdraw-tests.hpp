@@ -866,7 +866,10 @@ public:
 
         ON_CALL(*device.mockDisplay, invalidateScreen()).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, drawImage(_)).WillByDefault(Return(device.mockDisplay));
-        ON_CALL(storage, write(_, _, _)).WillByDefault(Return(100));
+        ON_CALL(storage, write(_, _, _))
+            .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+                return value.size();
+            });
         ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, readUChar(_, _, _)).WillByDefault(Return(0));
 
@@ -1032,10 +1035,12 @@ inline void resultPlayerStatsUpdatedOnLoss(DuelResultTests* suite) {
 // Test: Match finalized on result
 inline void resultMatchFinalizedOnResult(DuelResultTests* suite) {
     suite->player->setIsHunter(true);
-    
+
     EXPECT_CALL(suite->storage, write(_, _, _))
         .Times(testing::AtLeast(1))
-        .WillRepeatedly(Return(100));
+        .WillRepeatedly([](const std::string&, const std::string&, const std::string& value) {
+            return value.size();
+        });
     EXPECT_CALL(suite->storage, writeUChar(_, _, _))
         .Times(testing::AtLeast(1))
         .WillRepeatedly(Return(1));
@@ -1118,7 +1123,10 @@ public:
         ON_CALL(*device.mockDisplay, drawText(_, _, _)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockDisplay, setGlyphMode(_)).WillByDefault(Return(device.mockDisplay));
         ON_CALL(*device.mockPeerComms, sendData(_, _, _, _)).WillByDefault(Return(1));
-        ON_CALL(storage, write(_, _, _)).WillByDefault(Return(100));
+        ON_CALL(storage, write(_, _, _))
+            .WillByDefault([](const std::string&, const std::string&, const std::string& value) {
+                return value.size();
+            });
         ON_CALL(storage, writeUChar(_, _, _)).WillByDefault(Return(1));
         ON_CALL(storage, readUChar(_, _, _)).WillByDefault(Return(0));
 
@@ -1202,10 +1210,12 @@ inline void duelAppDismountEndsTheBout(StateCleanupTests* suite) {
         .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     app.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->device.getLightManager()->isAnimating());
 
     EXPECT_CALL(*suite->device.mockHaptics, off()).Times(testing::AtLeast(1));
     app.onStateDismounted(&suite->device);
 
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
         << "a match left ready bounces the device into a phantom duel from Idle";
 }
@@ -1230,6 +1240,7 @@ inline void aDuelStateDismountLeavesTheBoutToTheApp(StateCleanupTests* suite) {
     ASSERT_TRUE(duelState.transitionToDuelPushed());
 
     duelState.onStateDismounted(&suite->device);
+    EXPECT_TRUE(suite->device.getLightManager()->isAnimating());
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
         << "the bout's own match was torn down on the way into DuelPushed";
 }

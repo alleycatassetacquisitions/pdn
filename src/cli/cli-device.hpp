@@ -40,35 +40,32 @@ namespace cli {
  */
 inline const char* getStateName(int stateId) {
     switch (stateId) {
-        case 0:  return "PlayerRegistration";
-        case 1:  return "FetchUserData";
-        case 2:  return "ConfirmOffline";
-        case 3:  return "ChooseRole";
-        case 4:  return "AllegiancePicker";
-        case 5:  return "WelcomeMessage";
-        case 6:  return "Sleep";
-        case 7:  return "AwakenSequence";
-        case 8:  return "Idle";
-        case 9:  return "HandshakeInitiate";
-        case 10: return "BountySendCC";
-        case 11: return "HunterSendId";
-        case 12: return "ConnectionSuccessful";
-        case 13: return "DuelCountdown";
-        case 14: return "Duel";
-        case 15: return "DuelPushed";
-        case 16: return "DuelReceivedResult";
-        case 17: return "DuelResult";
-        case 18: return "Win";
-        case 19: return "Lose";
-        case 20: return "UploadMatches";
-        case 21: return "PosseReady";
-        case 22: return "ShootoutProposal";
-        case 23: return "ShootoutBracketReveal";
-        case 24: return "ShootoutSpectator";
-        case 25: return "ShootoutEliminated";
-        case 26: return "ShootoutFinalStandings";
-        case 27: return "ShootoutAborted";
-        default: return "Unknown";
+        case PLAYER_REGISTRATION:      return "PlayerRegistration";
+        case FETCH_USER_DATA:          return "FetchUserData";
+        case CONFIRM_OFFLINE:          return "ConfirmOffline";
+        case CHOOSE_ROLE:              return "ChooseRole";
+        case ALLEGIANCE_PICKER:        return "AllegiancePicker";
+        case WELCOME_MESSAGE:          return "WelcomeMessage";
+        case SLEEP:                    return "Sleep";
+        case AWAKEN_SEQUENCE:          return "AwakenSequence";
+        case IDLE:                     return "Idle";
+        case DUEL_COUNTDOWN:           return "DuelCountdown";
+        case DUEL:                     return "Duel";
+        case DUEL_PUSHED:              return "DuelPushed";
+        case DUEL_RECEIVED_RESULT:     return "DuelReceivedResult";
+        case DUEL_RESULT:              return "DuelResult";
+        case WIN:                      return "Win";
+        case LOSE:                     return "Lose";
+        case SUPPORTER_READY:          return "PosseReady";
+        case SHOOTOUT_PROPOSAL:        return "ShootoutProposal";
+        case SHOOTOUT_BRACKET_REVEAL:  return "ShootoutBracketReveal";
+        case SHOOTOUT_SPECTATOR:       return "ShootoutSpectator";
+        case SHOOTOUT_ELIMINATED:      return "ShootoutEliminated";
+        case SHOOTOUT_FINAL_STANDINGS: return "ShootoutFinalStandings";
+        case SHOOTOUT_ABORTED:         return "ShootoutAborted";
+        case SYMBOL:                   return "Symbol";
+        case SYMBOL_MATCHED:           return "SymbolMatched";
+        default:                       return "Unknown";
     }
 }
 
@@ -221,8 +218,7 @@ public:
 
         GameContext gameContext = instance.gameSession->getContext();
         instance.playerRegistrationApp = new PlayerRegistrationApp(
-            instance.player, instance.pdn->getWirelessManager(),
-            gameContext.matchManager, nullptr);
+            instance.player, instance.pdn->getWirelessManager(), nullptr);
         instance.hubApp = new HubApp(gameContext);
         instance.duelApp = new DuelApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);

@@ -31,11 +31,6 @@ namespace quickdraw_state_graph_expectations {
 // Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
 // dropped — that app is now mounted by the device rather than nested as a state.
 // The hub, duel, shootout and symbol maps concatenate to this.
-//
-// One deliberate divergence from the pre-split order: Sleep sat between
-// UploadMatches and the shootout states, and now sits in the hub with the other
-// three between-match states. Every edge is unchanged; only the flat position
-// moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     AWAKEN_SEQUENCE,
     IDLE,
@@ -48,7 +43,6 @@ inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     DUEL_RESULT,
     WIN,
     LOSE,
-    UPLOAD_MATCHES,
     SHOOTOUT_PROPOSAL,
     SHOOTOUT_BRACKET_REVEAL,
     SHOOTOUT_SPECTATOR,
@@ -59,10 +53,6 @@ inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     SYMBOL_MATCHED,
 };
 
-// Per-state transition targets, in the order they were added. 47 edges — the
-// pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
-// the app object onto the state that triggered it (see
-// registrationHandsOffFromWelcomeMessage below).
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
     {AWAKEN_SEQUENCE, {IDLE}},
     {IDLE,
@@ -76,9 +66,8 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
     {DUEL_RECEIVED_RESULT, {SHOOTOUT_ABORTED, IDLE, DUEL_RESULT}},
     {DUEL_RESULT,
      {SHOOTOUT_ABORTED, WIN, LOSE, SHOOTOUT_SPECTATOR, SHOOTOUT_ELIMINATED}},
-    {WIN, {UPLOAD_MATCHES}},
-    {LOSE, {UPLOAD_MATCHES}},
-    {UPLOAD_MATCHES, {SLEEP}},
+    {WIN, {SLEEP}},
+    {LOSE, {SLEEP}},
     {SLEEP, {AWAKEN_SEQUENCE}},
     {SHOOTOUT_PROPOSAL, {SHOOTOUT_BRACKET_REVEAL, SHOOTOUT_ABORTED}},
     {SHOOTOUT_BRACKET_REVEAL, {DUEL_COUNTDOWN, SHOOTOUT_SPECTATOR, SHOOTOUT_ABORTED}},
@@ -95,8 +84,6 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // state's list) -> (target app, entry state). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
-//
-// All 24 were intra-app edges pre-split, when the whole game was one machine.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
     {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
     {{IDLE, 1}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
@@ -115,7 +102,8 @@ inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>>
     {{DUEL_RESULT, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_ABORTED}},
     {{DUEL_RESULT, 3}, {SHOOTOUT_APP_ID, SHOOTOUT_SPECTATOR}},
     {{DUEL_RESULT, 4}, {SHOOTOUT_APP_ID, SHOOTOUT_ELIMINATED}},
-    {{UPLOAD_MATCHES, 0}, {HUB_APP_ID, SLEEP}},
+    {{WIN, 0}, {HUB_APP_ID, SLEEP}},
+    {{LOSE, 0}, {HUB_APP_ID, SLEEP}},
     {{SHOOTOUT_BRACKET_REVEAL, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
     {{SHOOTOUT_SPECTATOR, 0}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
     {{SHOOTOUT_FINAL_STANDINGS, 0}, {HUB_APP_ID, SLEEP}},
@@ -138,7 +126,7 @@ struct QuickdrawAppsForTest {
     /** Constructs and populates the five apps without mounting any of them. */
     QuickdrawAppsForTest() {
         GameContext context;
-        playerRegistration = new PlayerRegistrationApp(nullptr, nullptr, nullptr, nullptr);
+        playerRegistration = new PlayerRegistrationApp(nullptr, nullptr, nullptr);
         hub = new HubApp(context);
         duel = new DuelApp(context);
         shootout = new ShootoutApp(context);
@@ -253,7 +241,7 @@ inline void quickdrawAppEdgesMatchPreSplitGraph() {
         }
         totalEdges += expected.second.size();
     }
-    EXPECT_EQ(totalEdges, 47u);
+    EXPECT_EQ(totalEdges, 46u);
 }
 
 // Which of those edges became hand-offs, and the app plus entry state each names.

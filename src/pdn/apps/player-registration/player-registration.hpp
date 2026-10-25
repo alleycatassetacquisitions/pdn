@@ -7,11 +7,11 @@
 #include "device/device.hpp"
 #include "device/wireless-manager.hpp"
 #include "wireless/remote-debug-manager.hpp"
-#include "game/match-manager.hpp"
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
+    /** Boot-time player registration state machine; hands off to HubApp when done. */
+    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 
     void populateStateMap() override;
@@ -20,5 +20,4 @@ private:
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
 };

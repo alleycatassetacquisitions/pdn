@@ -117,11 +117,8 @@ public:
      */
     std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
 
-    /**
-     * Converts all stored matches to a JSON array string
-     * @return JSON string containing all stored matches
-     */
-    std::string toJson();
+    /** Returns the retained match at `index` (0 = oldest, caller-owned), or nullptr. */
+    Match* readMatchFromStorage(uint8_t index);
 
     /**
      * Clears all matches from storage
@@ -214,13 +211,6 @@ private:
      * Updates the stored match count
      */
     void updateStoredMatchCount(uint8_t count);
-
-    /**
-     * Reads a match from storage at the specified index
-     * @param index Index of the match to read
-     * @return New Match object if successful, nullptr if invalid
-     */
-    Match* readMatchFromStorage(uint8_t index);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake duel commands

@@ -86,26 +86,4 @@ namespace QuickdrawRequests {
         
         wirelessManager->queueHttpRequest(request);
     }
-
-    /**
-     * Upload match results to the server.
-     * Automatically switches to WiFi mode if needed.
-     */
-    inline void updateMatches(
-        WirelessManager* wirelessManager,
-        const std::string& matchesJson,
-        const std::function<void(const std::string&)>& onSuccess,
-        const std::function<void(const WirelessErrorInfo&)>& onError
-    ) {
-        HttpRequest request(
-            "/api/matches",
-            "PUT",
-            matchesJson,
-            onSuccess,
-            onError
-        );
-        
-        wirelessManager->queueHttpRequest(request);
-    }
-
 }

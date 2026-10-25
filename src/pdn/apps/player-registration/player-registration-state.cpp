@@ -1,16 +1,14 @@
 #include "apps/player-registration/player-registration-states.hpp"
 #include "device/device.hpp"
 #include "game/quickdraw-resources.hpp"
-#include "device/animation/transmit-breath-animation.hpp"
-#include "game/quickdraw-requests.hpp"
 #include "device/drivers/logger.hpp"
 
 static const char* TAG = "PlayerRegistrationState";
 
-PlayerRegistrationState::PlayerRegistrationState(Player* player, MatchManager* matchManager) : TypedState<PDN>(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
+PlayerRegistrationState::PlayerRegistrationState(Player* player)
+    : TypedState<PDN>(PlayerRegistrationStateId::PLAYER_REGISTRATION) {
     LOG_I(TAG, "Initializing PlayerRegistrationState");
     this->player = player;
-    this->matchManager = matchManager;
 }
 
 PlayerRegistrationState::~PlayerRegistrationState() {
@@ -60,17 +58,6 @@ void PlayerRegistrationState::onStateMounted(PDN* pdn) {
             playerRegistration->shouldRender = true;
         }
     }, this, ButtonInteraction::CLICK);
-
-    LOG_I(TAG, "Stored match count: %d", matchManager->getStoredMatchCount());
-    if(matchManager->getStoredMatchCount() > 0) {
-        LOG_I(TAG, "Starting transmit breath animation");
-        AnimationConfig config;
-        config.loop = true;
-        config.speed = 25;
-        config.initialState = LEDState();
-        config.initialState.transmitLight = LEDState::SingleLEDState(LEDColor(bountyColors[0].red, bountyColors[0].green, bountyColors[0].blue), 255);
-        pdn->getLightManager()->startAnimation(new TransmitBreathAnimation(), config);
-    }
 }
 
 void PlayerRegistrationState::onStateLoop(PDN* pdn) {
@@ -122,7 +109,6 @@ void PlayerRegistrationState::onStateDismounted(PDN* pdn) {
     currentDigitIndex = 0;
     currentDigit = 0;
     transitionToUserFetchState = false;
-    pdn->getLightManager()->stopAnimation();
 }
 
 bool PlayerRegistrationState::transitionToUserFetch() {

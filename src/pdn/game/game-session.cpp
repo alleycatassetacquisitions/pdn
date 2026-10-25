@@ -92,7 +92,6 @@ GameContext GameSession::getContext() {
     context.chainDuelManager = chainDuelManager;
     context.shootoutManager = shootoutManager;
     context.symbolWirelessManager = symbolWirelessManager;
-    context.wirelessManager = wirelessManager;
     return context;
 }
 
