@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Style gate on the staged diff, run by hooks/pre-commit.
+"""Style checks on the staged diff, run by hooks/pre-commit.
 
 Uses clang-format, clang-tidy and a compile_commands.json at the repo root
-(`pio run -e native_cli -t compiledb`) when they are there. On Windows, native_cli usually builds
-with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
+(`pio run -e native_cli -t compiledb`) when they are there. On Windows,
+native_cli usually builds with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
 include paths (injected automatically — see clang_tidy_driver_extras). Line
 rules and clang-format apply to the lines added in the staged diff;
 clang-tidy runs on the translation units behind the staged files, with its
 diagnostics restricted to those same lines.
-Every finding is advisory: the script reports and exits 0, so a missing tool or
-a compile database from another checkout costs you the checks it feeds rather
-than the commit.
+Findings are advisory by default: the script reports and exits 0, so a missing
+tool or a compile database from another checkout costs you the checks it feeds
+rather than the commit. `--strict`, or CHECK_STYLE_STRICT in the environment,
+exits 1 on a finding instead — for CI, where the toolchain is installed
+deliberately and a finding is worth failing on.
 A legacy violation elsewhere in a touched file is not reported at all
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
@@ -472,8 +474,8 @@ def tidy_targets(files, db):
 
 def run_scoped_tidy(files, added_by_path, repo_root):
     """--line-filter drops check findings outside the staged added lines;
-    compiler errors are not filtered, so a TU that fails to parse fails the
-    commit."""
+    compiler errors are not filtered, so a TU that fails to parse is reported
+    whole."""
     db = load_compiledb(repo_root)
     if db is None:
         notices.append(f"compile_commands.json missing, clang-tidy skipped; {COMPILEDB_HINT}")
@@ -517,15 +519,15 @@ def check_unstaged_edits(files):
             flag(path, 1, "has unstaged changes; stage or stash them so clang-tidy sees the staged content")
 
 
-def run_checks():
+def run_checks(strict):
     repo_root = git("rev-parse", "--show-toplevel").strip()
     os.chdir(repo_root)
     # During a merge the index vs HEAD shows the whole incoming side as added.
     if os.path.exists(git("rev-parse", "--git-path", "MERGE_HEAD").strip()):
-        return 0
+        return
     files = staged_files()
     if not files:
-        return 0
+        return
     have_format = shutil.which("clang-format") is not None
     have_tidy = shutil.which("clang-tidy") is not None
     for tool, present in (("clang-format", have_format), ("clang-tidy", have_tidy)):
@@ -550,18 +552,21 @@ def run_checks():
     for path, ln, msg in sorted(violations):
         print(f"{path}:{ln}: {msg}")
     for n in notices:
-        print(n, file=sys.stderr)
-    if violations:
-        print(f"check_style: {len(violations)} finding(s) above are advisory, the commit is not blocked")
-    return 0
+        print(n)
+    if violations and not strict:
+        print("check_style: findings above are advisory, the commit is not blocked")
 
 
 def main():
+    strict = bool(os.environ.get("CHECK_STYLE_STRICT")) or "--strict" in sys.argv[1:]
     try:
-        return run_checks()
+        run_checks(strict)
     except Exception as exc:
-        print(f"check_style: checks incomplete, {type(exc).__name__}: {exc}", file=sys.stderr)
+        # A fault in the tooling says nothing about the staged code, so it never
+        # ends the commit — not even under --strict.
+        print(f"check_style: checks incomplete, {type(exc).__name__}: {exc}")
         return 0
+    return 1 if (strict and violations) else 0
 
 
 if __name__ == "__main__":
