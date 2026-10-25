@@ -24,7 +24,7 @@ FetchUserDataState::~FetchUserDataState() {
 
 void FetchUserDataState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting user data fetch");
-    showLoadingGlyphs(pdn);
+    renderLoadingScreen(pdn->getDisplay());
 
     LOG_I(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
 
@@ -33,17 +33,14 @@ void FetchUserDataState::onStateMounted(PDN* pdn) {
         player->setName("KO-NA-MI");
         player->setFaction("Bounty");
         transitionToWelcomeMessageState = true;
-        fetchTimer.invalidate();
     } else if(player->getUserID() == TEST_HUNTER_ID) {
         player->setIsHunter(true);
         player->setName("Nesting Bot");
         player->setFaction("Hunter");
         transitionToWelcomeMessageState = true;
-        fetchTimer.invalidate();
     } else if(player->getUserID() == BROADCAST_WIFI) { 
         remoteDebugManager->BroadcastDebugPacket();
         transitionToPlayerRegistrationState = true;
-        fetchTimer.invalidate();
     } else {
         fetchUserData();
     }
@@ -57,13 +54,16 @@ void FetchUserDataState::onStateLoop(PDN* pdn) {
         transitionToConfirmOfflineState = true;
     } else if(fetchTimer.isRunning()) {
         if(SimpleTimer::getPlatformClock()->milliseconds() % 50 == 0) {
-            showLoadingGlyphs(pdn);
+            renderLoadingScreen(pdn->getDisplay());
         }
     }
 }   
 
 void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
+    if (wirelessManager) {
+        wirelessManager->enablePeerCommsMode();
+    }
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
@@ -99,10 +99,6 @@ void FetchUserDataState::fetchUserData() {
         }
     );
 }
-
-void FetchUserDataState::showLoadingGlyphs(PDN* pdn) {
-    renderLoadingScreen(pdn->getDisplay());
-}  
 
 bool FetchUserDataState::transitionToWelcomeMessage() {
     return transitionToWelcomeMessageState;

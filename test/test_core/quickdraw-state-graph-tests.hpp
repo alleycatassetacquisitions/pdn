@@ -192,10 +192,8 @@ struct QuickdrawAppsForTest {
     }
 };
 
-// The concatenated app maps are the declared registration order, which is the
-// pre-split order with Sleep moved into the hub. Each app's stateMap[0] is what a
-// mount with no named entry state enters at, which is the one position a reorder
-// can still change the behaviour of.
+// Each app's stateMap[0] is what a mount with no named entry state enters at,
+// which is the one position a reorder can still change the behaviour of.
 inline void quickdrawAppsRegisterStatesInDeclaredOrder() {
     QuickdrawAppsForTest apps;
 

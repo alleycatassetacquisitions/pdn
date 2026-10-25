@@ -28,10 +28,6 @@ Idle::~Idle() {
 }
 
 void Idle::onStateMounted(PDN* pdn) {
-
-    // Switch to ESP-NOW mode for peer-to-peer communication
-    pdn->getWirelessManager()->enablePeerCommsMode();
-
     AnimationConfig config;
 
     AnimationBase* animation;

@@ -40,7 +40,7 @@ private:
 
 class FetchUserDataState : public TypedState<PDN> {
 public:
-    /** Resolves the entered player id via test/debug shortcuts or HTTP lookup. */
+    /** Fetches player profile over HTTP, or intercepts reserved test/debug IDs. */
     FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 
@@ -48,7 +48,6 @@ public:
     bool transitionToWelcomeMessage();
     bool transitionToPlayerRegistration();
     void fetchUserData();
-    void showLoadingGlyphs(PDN* pdn);
     void onStateMounted(PDN* pdn) override;
     void onStateLoop(PDN* pdn) override;
     void onStateDismounted(PDN* pdn) override;

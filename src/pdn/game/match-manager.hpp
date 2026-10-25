@@ -1,11 +1,3 @@
-/*
-    This class is responsible for managing the matches.
-    It will be responsible for creating, updating and deleting matches.
-    In addition to creating and updating matches, this class is responsible for
-    saving and loading matches from EEPROM. In addition to saving/loading from
-    EEPROM, this class will be responsible for serializing and deserializing
-    matches to and from a JSON array.
-*/
 #pragma once
 
 #include <array>
@@ -121,11 +113,6 @@ public:
     Match* readMatchFromStorage(uint8_t index);
 
     /**
-     * Clears all matches from storage
-     */
-    void clearStorage();
-
-    /**
      * Gets the number of stored matches
      * @return Number of matches
      */
@@ -206,11 +193,6 @@ private:
      * @return true if save was successful
      */
     bool appendMatchToStorage(const Match* match);
-
-    /**
-     * Updates the stored match count
-     */
-    void updateStoredMatchCount(uint8_t count);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake duel commands
