@@ -20,3 +20,11 @@ FixNamespaceComments: false
 SpacesBeforeTrailingComments: 2
 # The styleguide groups includes by subsystem and Arduino order is load-bearing; SortIncludes cannot express either.
 SortIncludes: Never
+
+---
+Language: Json
+# Our JSON files are hand-maintained; clang-format only needs to accept the
+# language so git-clang-format (whose default extensions include json) stops
+# erroring on a staged .json. .clang-format-ignore cannot do this: the content
+# arrives on stdin under -assume-filename, where the ignore file is not read.
+DisableFormat: true
