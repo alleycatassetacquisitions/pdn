@@ -166,8 +166,6 @@ void DuelApp::populateStateMap() {
         [duelResult]() { return duelResult->transitionToShootoutEliminated(); },
         StateId(SHOOTOUT_APP_ID), StateId(SHOOTOUT_ELIMINATED));
 
-    // Straight to sleep: the match upload that used to sit between these and
-    // SLEEP took the radio into WiFi at the end of every duel.
     win->addAppTransition(
         [win]() { return win->resetGame(); },
         StateId(HUB_APP_ID), StateId(SLEEP));

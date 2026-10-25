@@ -8,7 +8,12 @@
 
 static constexpr const char* PREF_COUNT_KEY = "count";
 static constexpr const char* PREF_MATCH_KEY  = "match_";
-static constexpr uint8_t     MAX_MATCHES      = 255;
+// Deliberately far below the 255 an index byte allows. The `nvs` partition is
+// 20KB and shared with the crash log, and a stored match is ~150 bytes, so
+// without this the partition fills first and BOTH subsystems start failing
+// writes silently. Capping here keeps the loss to matches alone. The exact
+// ceiling wants measuring on hardware; this is the conservative side of it.
+static constexpr uint8_t MAX_MATCHES = 32;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
 
@@ -203,7 +208,7 @@ bool MatchManager::finalizeMatch() {
 
     std::string match_id = activeDuelState.match->getMatchId();
 
-    // Shootout matches are local-ephemeral: no save, no upload.
+    // Shootout matches are local-ephemeral: never written to storage.
     if (currentMatchIsShootout()) {
         clearCurrentMatch();
         return true;
@@ -256,6 +261,24 @@ bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
     }
     activeDuelState.match->setBountyDrawTime(bounty_time_ms);
     return true;
+}
+
+Match* MatchManager::readMatchFromStorage(uint8_t index) {
+    if (index >= getStoredMatchCount()) {
+        return nullptr;
+    }
+
+    char key[16];
+    snprintf(key, sizeof(key), "%s%d", PREF_MATCH_KEY, index);
+
+    std::string matchJson = storage->read(MATCHES_PREFS_NAMESPACE, key, "");
+    if (matchJson.empty()) {
+        return nullptr;
+    }
+
+    Match* match = new Match();
+    match->fromJson(matchJson);
+    return match;
 }
 
 void MatchManager::clearStorage() {
@@ -470,8 +493,8 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 
     activeDuelState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
     setNeverPressed();
-    // Mirror what gets uploaded: every duel contributes a draw time to the server,
-    // so on-device "average reaction" should include pity times too.
+    // A pity time is still a duel outcome, so it belongs in the on-device
+    // "average reaction" like any other.
     player->addReactionTime(pityTime);
 
     sendCommand(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED,

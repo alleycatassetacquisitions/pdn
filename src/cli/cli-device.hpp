@@ -220,8 +220,7 @@ public:
 
         GameContext gameContext = instance.gameSession->getContext();
         instance.playerRegistrationApp = new PlayerRegistrationApp(
-            instance.player, instance.pdn->getWirelessManager(),
-            gameContext.matchManager, nullptr);
+            instance.player, instance.pdn->getWirelessManager(), nullptr);
         instance.hubApp = new HubApp(gameContext);
         instance.duelApp = new DuelApp(gameContext);
         instance.shootoutApp = new ShootoutApp(gameContext);

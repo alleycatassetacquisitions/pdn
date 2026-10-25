@@ -20,7 +20,8 @@ enum PlayerRegistrationStateId {
 
 class PlayerRegistrationState : public TypedState<PDN> {
 public:
-    PlayerRegistrationState(Player* player, MatchManager* matchManager);
+    /// Digit-entry screen for the player id.
+    explicit PlayerRegistrationState(Player* player);
     ~PlayerRegistrationState();
 
     void onStateMounted(PDN* pdn) override;
@@ -32,7 +33,6 @@ private:
     bool transitionToUserFetchState = false;
     bool shouldRender = false;
     Player* player;
-    MatchManager* matchManager;
     int currentDigit = 0;
     int currentDigitIndex = 0;
     static constexpr int DIGIT_COUNT = 4;
@@ -41,7 +41,8 @@ private:
 
 class FetchUserDataState : public TypedState<PDN> {
 public:
-    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager);
+    /// Fetches the player record for the entered id over HTTP.
+    FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 
     bool transitionToConfirmOffline();
@@ -55,12 +56,10 @@ public:
     
 private:
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
     bool transitionToPlayerRegistrationState = false;
     bool transitionToConfirmOfflineState = false;
     bool transitionToWelcomeMessageState = false;
     WirelessManager* wirelessManager;
-    bool isFetchingUserData = false;
 
     Player* player;
     SimpleTimer fetchTimer;

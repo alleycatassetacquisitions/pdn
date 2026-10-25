@@ -21,6 +21,11 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(PDN* pdn) {
+    // Sleeping means dark. Win and Lose both start looping animations and
+    // neither stops one, so the invariant belongs here rather than on each
+    // edge into sleep.
+    pdn->getLightManager()->stopAnimation();
+
     pdn->getDisplay()->
         invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->

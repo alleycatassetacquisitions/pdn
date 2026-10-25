@@ -11,7 +11,8 @@
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, MatchManager* matchManager, RemoteDebugManager* remoteDebugManager);
+    /// Boot app: takes the player from id entry through to a fetched record.
+    PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 
     void populateStateMap() override;
@@ -20,5 +21,4 @@ private:
     Player* player;
     WirelessManager* wirelessManager;
     RemoteDebugManager* remoteDebugManager;
-    MatchManager* matchManager;
 };

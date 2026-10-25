@@ -86,10 +86,4 @@ namespace QuickdrawRequests {
         
         wirelessManager->queueHttpRequest(request);
     }
-
-    /**
-     * Upload match results to the server.
-     * Automatically switches to WiFi mode if needed.
-     */
-
 }

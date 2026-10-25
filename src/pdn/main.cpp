@@ -172,7 +172,7 @@ static void setup() {
     gameSession = new GameSession(player, pdn, symbolWirelessManager);
 
     GameContext gameContext = gameSession->getContext();
-    playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), gameContext.matchManager, remoteDebugManager);
+    playerRegistrationApp = new PlayerRegistrationApp(player, pdn->getWirelessManager(), remoteDebugManager);
     hubApp = new HubApp(gameContext);
     duelApp = new DuelApp(gameContext);
     shootoutApp = new ShootoutApp(gameContext);

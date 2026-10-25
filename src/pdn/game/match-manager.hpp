@@ -118,10 +118,7 @@ public:
     std::optional<Match>& getCurrentMatch() { return activeDuelState.match; }
 
     /**
-     * Clears all matches from storage. No caller since match upload was
-     * deleted: finished matches are kept on the device until they can be sent
-     * to an FDN over ESP-NOW, and that path calls this once they land. Do not
-     * mistake the store for dead weight and delete it.
+     * Empties the match store and resets its count.
      */
     void clearStorage();
 
@@ -211,6 +208,13 @@ private:
      * Updates the stored match count
      */
     void updateStoredMatchCount(uint8_t count);
+
+    /**
+     * Reads a match from storage at the specified index
+     * @param index Index of the match to read
+     * @return New Match object if successful, nullptr if invalid
+     */
+    Match* readMatchFromStorage(uint8_t index);
 
     // Returns true when `command` belongs to the currently-active match and
     // was sent by that match's opponent. All post-handshake duel commands

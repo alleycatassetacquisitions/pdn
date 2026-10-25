@@ -7,13 +7,13 @@
 
 static const char* TAG = "FetchUserDataState";
 
-FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager, MatchManager* matchManager) : TypedState<PDN>(PlayerRegistrationStateId::FETCH_USER_DATA) {
+FetchUserDataState::FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager)
+    : TypedState<PDN>(PlayerRegistrationStateId::FETCH_USER_DATA) {
     LOG_I(TAG, "Initializing FetchUserDataState");
     this->player = player;
     this->wirelessManager = wirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->matchManager = matchManager;
-}   
+}
 
 FetchUserDataState::~FetchUserDataState() {
     LOG_I(TAG, "Destroying FetchUserDataState");
@@ -25,8 +25,7 @@ FetchUserDataState::~FetchUserDataState() {
 void FetchUserDataState::onStateMounted(PDN* pdn) {
     LOG_I(TAG, "State mounted - Starting user data fetch");
     showLoadingGlyphs(pdn);
-    isFetchingUserData = true;
-    
+
     LOG_I(TAG, "Player ID for fetch: %s", player->getUserID().c_str());
 
     if(player->getUserID() == TEST_BOUNTY_ID) {
@@ -35,19 +34,16 @@ void FetchUserDataState::onStateMounted(PDN* pdn) {
         player->setFaction("Bounty");
         transitionToWelcomeMessageState = true;
         fetchTimer.invalidate();
-        isFetchingUserData = false;
     } else if(player->getUserID() == TEST_HUNTER_ID) {
         player->setIsHunter(true);
         player->setName("Nesting Bot");
         player->setFaction("Hunter");
         transitionToWelcomeMessageState = true;
         fetchTimer.invalidate();
-        isFetchingUserData = false;
     } else if(player->getUserID() == BROADCAST_WIFI) { 
         remoteDebugManager->BroadcastDebugPacket();
         transitionToPlayerRegistrationState = true;
         fetchTimer.invalidate();
-        isFetchingUserData = false;
     } else {
         fetchUserData();
     }
@@ -69,15 +65,13 @@ void FetchUserDataState::onStateLoop(PDN* pdn) {
 void FetchUserDataState::onStateDismounted(PDN* pdn) {
     LOG_I(TAG, "State dismounted");
     pdn->getDisplay()->setGlyphMode(FontMode::TEXT);
-    isFetchingUserData = false;
     transitionToConfirmOfflineState = false;
     transitionToWelcomeMessageState = false;
     transitionToPlayerRegistrationState = false;
     fetchTimer.invalidate();
-}   
+}
 
 void FetchUserDataState::fetchUserData() {
-    isFetchingUserData = true;
     fetchTimer.setTimer(USER_DATA_FETCH_TIMEOUT);
     QuickdrawRequests::getPlayer(
         wirelessManager,
@@ -97,8 +91,7 @@ void FetchUserDataState::fetchUserData() {
         [this](const WirelessErrorInfo& error) {
             LOG_E(TAG, "Failed to fetch player data: %s (code: %d), willRetry: %d", 
                 error.message.c_str(), static_cast<int>(error.code), error.willRetry);
-            if(!error.willRetry) {
-                isFetchingUserData = false;
+            if (!error.willRetry) {
                 player->setName("Unknown");
                 player->setAllegiance("None");
                 transitionToConfirmOfflineState = true;

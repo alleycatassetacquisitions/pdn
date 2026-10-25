@@ -67,10 +67,6 @@ TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
     httpServerGetPlayerReturnsDefaults(this);
 }
 
-TEST_F(MockHttpServerTestSuite, PutMatchesAccepts) {
-    httpServerPutMatchesAccepts(this);
-}
-
 TEST_F(MockHttpServerTestSuite, UnknownEndpointReturns404) {
     httpServerUnknownEndpointReturns404(this);
 }

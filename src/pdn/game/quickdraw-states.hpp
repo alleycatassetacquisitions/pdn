@@ -34,7 +34,6 @@ struct GameContext {
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager = nullptr;
     SymbolWirelessManager* symbolWirelessManager = nullptr;
-    WirelessManager* wirelessManager = nullptr;
 };
 
 enum QuickdrawStateId {
@@ -48,8 +47,9 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    // 20 was UPLOAD_MATCHES. Left as a gap: these ids are wire-visible, so
-    // closing it would shift every state after it.
+    // 20 was UPLOAD_MATCHES. Left as a gap because the CLI keeps a duplicate
+    // id-to-name switch that renumbering would silently desync; the enum
+    // already skips 9-12.
     SUPPORTER_READY = 21,
     SHOOTOUT_PROPOSAL = 22,
     SHOOTOUT_BRACKET_REVEAL = 23,
