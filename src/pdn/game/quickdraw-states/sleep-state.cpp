@@ -20,9 +20,6 @@ Sleep::~Sleep() {
 }
 
 void Sleep::onStateMounted(PDN* pdn) {
-    // Sleeping means dark, whatever ran before it.
-    pdn->getLightManager()->stopAnimation();
-
     pdn->getDisplay()->
         invalidateScreen()->
         drawImage(getImageForAllegiance(player->getAllegiance(), ImageType::LOGO_LEFT))->
@@ -43,8 +40,6 @@ void Sleep::onStateLoop(PDN* pdn) {
     if(dormantTimer.expired()) {
         transitionToAwakenSequenceState = true;
     }
-
-    // TODO: Convert this breathing effect to use the new animation system
 }
 
 void Sleep::onStateDismounted(PDN* pdn) {

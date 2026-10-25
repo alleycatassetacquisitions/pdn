@@ -29,10 +29,6 @@ inline void storageUCharRoundTripInRegisteredNamespace() {
     EXPECT_EQ(storage.readUChar(MATCHES_PREFS_NAMESPACE, "count", 0), 42);
 }
 
-// The match store is a ring: a save never fails for lack of room, the oldest
-// record is overwritten instead, and reads come back oldest-first. Before this
-// was a ring the store jammed permanently once full, and nothing noticed
-// because finalizeMatch's return is discarded at its only call site.
 inline void storageMatchRingOverwritesOldestAndNeverFills() {
     NativePrefsDriver storage("ring-storage", {MATCHES_PREFS_NAMESPACE});
     Player player;
@@ -57,7 +53,6 @@ inline void storageMatchRingOverwritesOldestAndNeverFills() {
 
     ASSERT_EQ(manager.getStoredMatchCount(), capacity);
 
-    // The oldest retained record is the first that was not overwritten.
     Match* oldest = manager.readMatchFromStorage(0);
     ASSERT_NE(oldest, nullptr);
     EXPECT_EQ(oldest->getHunterDrawTime(), 100u + overflow);

@@ -19,7 +19,7 @@ enum PlayerRegistrationStateId {
 
 class PlayerRegistrationState : public TypedState<PDN> {
 public:
-    /// Digit-entry screen for the player id.
+    /** Digit-entry screen for the player id. */
     explicit PlayerRegistrationState(Player* player);
     ~PlayerRegistrationState();
 
@@ -40,7 +40,7 @@ private:
 
 class FetchUserDataState : public TypedState<PDN> {
 public:
-    /// Fetches the player record for the entered id over HTTP.
+    /** Resolves the entered player id via test/debug shortcuts or HTTP lookup. */
     FetchUserDataState(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~FetchUserDataState();
 

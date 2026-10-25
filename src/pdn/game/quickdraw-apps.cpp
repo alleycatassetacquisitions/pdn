@@ -79,6 +79,7 @@ DuelApp::DuelApp(const GameContext& context)
 
 void DuelApp::onStateDismounted(Device* device) {
     StateMachine::onStateDismounted(device);
+    device->getLightManager()->stopAnimation();
     device->getHaptics()->off();
     context.matchManager->clearCurrentMatch();
 }

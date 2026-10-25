@@ -117,15 +117,7 @@ bool Duel::transitionToShootoutEliminated() {
 }
 
 void Duel::onStateDismounted(PDN* pdn) {
-    // The countdown animation is handed forward deliberately, unlike the input
-    // callbacks below: it holds its final frame through DuelPushed and
-    // DuelReceivedResult while the player waits on the opponent, and DuelResult
-    // stops it. The other four exits — the three shootout outcomes and an
-    // abandoned duel back to Idle — each clear or replace it on mount, so those
-    // stops are what make this safe. Do not remove them as redundant.
-    //
-    // Input goes on every exit. No successor inherits these callbacks — each
-    // registers what it wants on mount, or wants none.
+    // Leave CountdownAnimation running so the draw lights hold through DuelPushed and DuelReceivedResult.
     pdn->getPrimaryButton()->removeButtonCallbacks();
     pdn->getSecondaryButton()->removeButtonCallbacks();
 

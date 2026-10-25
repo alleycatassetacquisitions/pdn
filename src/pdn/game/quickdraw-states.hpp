@@ -7,15 +7,12 @@
 #include "state/state.hpp"
 #include "state/connect-state.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
-#include "wireless/remote-debug-manager.hpp"
 #include "game/match-manager.hpp"
-#include "device/drivers/http-client-interface.hpp"
 #include "game/quickdraw-resources.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
-#include <queue>
 #include <string>
 #include "device/remote-device-coordinator.hpp"
 #include "game/chain-duel-manager.hpp"
@@ -47,8 +44,6 @@ enum QuickdrawStateId {
     DUEL_RESULT = 17,
     WIN = 18,
     LOSE = 19,
-    // 20 was UPLOAD_MATCHES. Left as a gap because renumbering buys nothing and
-    // the CLI mirrors these values by hand; the enum already skips 9-12.
     SUPPORTER_READY = 21,
     SHOOTOUT_PROPOSAL = 22,
     SHOOTOUT_BRACKET_REVEAL = 23,
@@ -56,9 +51,6 @@ enum QuickdrawStateId {
     SHOOTOUT_ELIMINATED = 25,
     SHOOTOUT_FINAL_STANDINGS = 26,
     SHOOTOUT_ABORTED = 27,
-    // Symbol-match IDs sit after the shootout block so neither protocol's state
-    // IDs collide. Main introduced SYMBOL=22/SYMBOL_MATCHED=23
-    // in parallel with shootout taking 22-27; they were renumbered here on merge.
     SYMBOL = 28,
     SYMBOL_MATCHED = 29,
 };
@@ -77,10 +69,6 @@ private:
     bool transitionToAwakenSequenceState = false;
     SimpleTimer dormantTimer;
     Player* player;
-    bool breatheUp = true;
-    int ledBrightness = 0;
-    float pwm_val = 0.0;
-    static constexpr int smoothingPoints = 255;
     static constexpr unsigned long SLEEP_DURATION = 60000UL;
 };
 

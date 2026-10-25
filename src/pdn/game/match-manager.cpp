@@ -3,17 +3,13 @@
 #include "wireless/quickdraw-packet.hpp"
 #include "game/shootout-manager.hpp"
 #include "id-generator.hpp"
+#include <algorithm>
 #include <optional>
 #include <cstring>
 
 static constexpr const char* PREF_COUNT_KEY = "count";
 static constexpr const char* PREF_MATCH_KEY  = "match_";
-static constexpr const char* PREF_SLOT_KEY = "slot";
-// Ring size, not a ceiling: the oldest record is overwritten so a save never
-// fails. Far below the 255 an index byte allows, because the 20KB `nvs`
-// partition is shared with the crash log, whose writes report nothing when they
-// fail. A stored match is ~145 bytes of JSON; its on-flash cost is larger and
-// wants measuring, so this is the conservative side of it.
+// Sized to leave headroom in the shared 20KB `nvs` partition for `crashlog` (whose writes ignore failure).
 static constexpr uint8_t MAX_MATCHES = 32;
 
 static const char* const MATCH_MANAGER_TAG = "MATCH_MANAGER";
@@ -209,7 +205,6 @@ bool MatchManager::finalizeMatch() {
 
     std::string match_id = activeDuelState.match->getMatchId();
 
-    // Shootout matches are local-ephemeral: never written to storage.
     if (currentMatchIsShootout()) {
         clearCurrentMatch();
         return true;
@@ -263,14 +258,13 @@ bool MatchManager::setBountyDrawTime(unsigned long bounty_time_ms) {
 }
 
 Match* MatchManager::readMatchFromStorage(uint8_t index) {
-    const uint8_t retained = static_cast<uint8_t>(getStoredMatchCount());
+    const uint8_t cursor = storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
+    const uint8_t retained = std::min<uint8_t>(cursor, MAX_MATCHES);
     if (index >= retained) {
         return nullptr;
     }
 
-    // Oldest first. Until the ring wraps the slots are already in order; once it
-    // has, the next slot due to be written is the oldest one still held.
-    const uint8_t oldest = (retained == MAX_MATCHES) ? nextStorageSlot() : 0;
+    const uint8_t oldest = (cursor >= MAX_MATCHES) ? static_cast<uint8_t>((cursor - MAX_MATCHES) % MAX_MATCHES) : 0;
     const uint8_t slot = static_cast<uint8_t>((oldest + index) % MAX_MATCHES);
 
     char key[16];
@@ -288,29 +282,18 @@ Match* MatchManager::readMatchFromStorage(uint8_t index) {
 
 void MatchManager::clearStorage() {
     storage->clear(MATCHES_PREFS_NAMESPACE);
-    updateStoredMatchCount(0);
-    setNextStorageSlot(0);
     LOG_I("PDN", "Cleared match storage\n");
 }
 
-uint8_t MatchManager::nextStorageSlot() {
-    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_SLOT_KEY, 0);
-}
-
-void MatchManager::setNextStorageSlot(uint8_t slot) {
-    if (storage->writeUChar(MATCHES_PREFS_NAMESPACE, PREF_SLOT_KEY, slot) != 1) {
-        LOG_E(MATCH_MANAGER_TAG, "Failed to advance the match storage slot");
-    }
-}
-
 size_t MatchManager::getStoredMatchCount() {
-    return storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
+    return std::min<size_t>(storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0), MAX_MATCHES);
 }
 
 bool MatchManager::appendMatchToStorage(const Match* match) {
     if (!match) return false;
 
-    const uint8_t slot = nextStorageSlot();
+    const uint8_t cursor = storage->readUChar(MATCHES_PREFS_NAMESPACE, PREF_COUNT_KEY, 0);
+    const uint8_t slot = static_cast<uint8_t>(cursor % MAX_MATCHES);
     const std::string matchJson = match->toJson();
 
     char key[16];
@@ -322,12 +305,10 @@ bool MatchManager::appendMatchToStorage(const Match* match) {
         return false;
     }
 
-    setNextStorageSlot(static_cast<uint8_t>((slot + 1) % MAX_MATCHES));
-
-    const uint8_t retained = static_cast<uint8_t>(getStoredMatchCount());
-    if (retained < MAX_MATCHES) {
-        updateStoredMatchCount(static_cast<uint8_t>(retained + 1));
-    }
+    const uint8_t nextCursor = (cursor < MAX_MATCHES)
+                                   ? static_cast<uint8_t>(cursor + 1)
+                                   : static_cast<uint8_t>(MAX_MATCHES + ((slot + 1) % MAX_MATCHES));
+    updateStoredMatchCount(nextCursor);
     return true;
 }
 
@@ -493,7 +474,6 @@ void MatchManager::sendNeverPressed(unsigned long pityTime) {
 
     activeDuelState.localIsHunter ? setHunterDrawTime(pityTime) : setBountyDrawTime(pityTime);
     setNeverPressed();
-    // Pity times are synthetic but still count toward the average.
     player->addReactionTime(pityTime);
 
     sendCommand(activeDuelState.opponentMac.data(), QDCommand::NEVER_PRESSED,

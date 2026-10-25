@@ -10,8 +10,7 @@
 
 class PlayerRegistrationApp : public StateMachine {
 public:
-    /// Boot app: id entry, the record fetch, and the offline fallback that
-    /// skips it, ending at the hand-off to gameplay.
+    /** Boot-time player registration state machine; hands off to HubApp when done. */
     PlayerRegistrationApp(Player* player, WirelessManager* wirelessManager, RemoteDebugManager* remoteDebugManager);
     ~PlayerRegistrationApp();
 

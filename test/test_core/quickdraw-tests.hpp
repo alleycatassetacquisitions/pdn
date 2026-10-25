@@ -1210,10 +1210,12 @@ inline void duelAppDismountEndsTheBout(StateCleanupTests* suite) {
         .Times(testing::AnyNumber());
     EXPECT_CALL(*suite->device.mockHaptics, setIntensity(_)).Times(testing::AnyNumber());
     app.onStateMounted(&suite->device);
+    ASSERT_TRUE(suite->device.getLightManager()->isAnimating());
 
     EXPECT_CALL(*suite->device.mockHaptics, off()).Times(testing::AtLeast(1));
     app.onStateDismounted(&suite->device);
 
+    EXPECT_FALSE(suite->device.getLightManager()->isAnimating());
     EXPECT_FALSE(suite->matchManager->getCurrentMatch().has_value())
         << "a match left ready bounces the device into a phantom duel from Idle";
 }
@@ -1238,6 +1240,7 @@ inline void aDuelStateDismountLeavesTheBoutToTheApp(StateCleanupTests* suite) {
     ASSERT_TRUE(duelState.transitionToDuelPushed());
 
     duelState.onStateDismounted(&suite->device);
+    EXPECT_TRUE(suite->device.getLightManager()->isAnimating());
     EXPECT_TRUE(suite->matchManager->getCurrentMatch().has_value())
         << "the bout's own match was torn down on the way into DuelPushed";
 }

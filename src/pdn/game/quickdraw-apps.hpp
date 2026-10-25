@@ -8,13 +8,6 @@
 // it registers and knows the others only as an app id plus the QuickdrawStateId
 // of the state to enter, never as a State*.
 
-/**
- * The between-match app: Awaken -> Idle, Idle <-> SupporterReady, Sleep -> Awaken.
- * Every other app hands back here, and Idle declares every launch out of it.
- * Sleep has no inbound edge from within the hub — it is entered only by hand-off,
- * from the duel app's Win or Lose and from a finished tournament. Registration is
- * its own top-level app, not a state in this one.
- */
 class HubApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */
@@ -30,13 +23,6 @@ private:
     GameContext context;
 };
 
-/**
- * DuelCountdown -> Duel -> DuelPushed / DuelReceivedResult -> DuelResult ->
- * Win|Lose. Entered at DuelCountdown from the hub's Idle for a 1v1, and from
- * the shootout's bracket reveal or spectator for a tournament match. Leaves to
- * the hub's Idle on an abandoned duel, to the hub's Sleep from Win or Lose, and
- * to the shootout on abort or a bracket outcome.
- */
 class DuelApp : public StateMachine {
 public:
     /** Non-owning: the context's managers belong to the GameSession above it. */

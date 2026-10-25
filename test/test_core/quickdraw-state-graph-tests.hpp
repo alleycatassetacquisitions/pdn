@@ -31,10 +31,6 @@ namespace quickdraw_state_graph_expectations {
 // Registration order of the pre-split graph with its slot-0 PlayerRegistrationApp
 // dropped — that app is now mounted by the device rather than nested as a state.
 // The hub, duel, shootout and symbol maps concatenate to this.
-//
-// One deliberate divergence from the pre-split order: Sleep sat between
-// UploadMatches (since deleted) and the shootout states, and now sits in the hub
-// with the other three between-match states. Only the flat position moved.
 inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     AWAKEN_SEQUENCE,
     IDLE,
@@ -57,13 +53,6 @@ inline const std::vector<int> GAMEPLAY_REGISTRATION_ORDER = {
     SYMBOL_MATCHED,
 };
 
-// Per-state transition targets, in the order they were added. 46 edges — the
-// pre-split graph's 48 less PlayerRegistration -> AwakenSequence, which moved off
-// the app object onto the state that triggered it (see
-// registrationHandsOffFromWelcomeMessage below), and less the UploadMatches node:
-// Win -> Upload, Lose -> Upload and Upload -> Sleep became Win -> Sleep and
-// Lose -> Sleep when match upload was deleted. Those two are the only entries
-// here that are not pre-split edges; they stand in for the three that were.
 inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_EDGES = {
     {AWAKEN_SEQUENCE, {IDLE}},
     {IDLE,
@@ -95,10 +84,6 @@ inline const std::vector<std::pair<int, std::vector<int>>> PRE_SPLIT_GAMEPLAY_ED
 // state's list) -> (target app, entry state). Every other edge in the table above
 // stays inside its app. Pinned separately because the equivalence check reads
 // through a hand-off to the state it lands on and so cannot tell the two apart.
-//
-// All were intra-app edges pre-split, when the whole game was one machine —
-// except Win -> Sleep and Lose -> Sleep, which replaced a path that ran through
-// UploadMatches.
 inline const std::vector<std::pair<std::pair<int, size_t>, std::pair<int, int>>> CROSS_APP_EDGES = {
     {{IDLE, 0}, {SHOOTOUT_APP_ID, SHOOTOUT_PROPOSAL}},
     {{IDLE, 1}, {DUEL_APP_ID, DUEL_COUNTDOWN}},
