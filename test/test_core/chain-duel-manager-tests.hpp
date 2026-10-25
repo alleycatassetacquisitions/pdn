@@ -63,7 +63,6 @@ public:
         contextHandler(peerMac, bytes.data(), bytes.size(), contextCtx);
     }
 
-    /** Brings `jack` from Idle to Connected against `peerMac`. */
     void connectJackTo(NativeSerialDriver& jack, const uint8_t* peerMac,
                        const uint8_t* advertisedHead = nullptr, bool isHunter = false) {
         deliverFrame(jack, chainHelloFrame(peerMac, advertisedHead));
@@ -712,8 +711,6 @@ inline void cdmRoleAnnounceNoCascadeIfChampionUnchanged(ChainDuelManagerTests* s
     cdm.onRoleAnnounceReceived(suite->opponentMac, championMac);
 }
 
-// broadcastRoleAndChampion sends to supporter-jack direct peer with current
-// championMac.
 inline void cdmBroadcastRoleAndChampionSends(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
@@ -854,11 +851,6 @@ inline void cdmChampionChangeReachesAToldSupporter(ChainDuelManagerTests* suite)
         << "the supporter was never told the new champion, so it still follows the old one";
 }
 
-// A supporter that never learns its champion never joins the chain and never
-// confirms, so it and everything below it contribute no boost for the whole
-// round. The cascade would re-offer it — an undelivered announce leaves this
-// peer reading as untold — but a settled chain raises no chain-state events at
-// all, so the cascade never runs and the backstop is the only thing left.
 inline void cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(ChainDuelManagerTests* suite) {
     suite->player.setIsHunter(true);
     ChainDuelManager cdm(&suite->player, suite->device.wirelessManager, &suite->rdc);
@@ -1257,7 +1249,6 @@ inline void cdmChampionToSupporterClearsStaleSelfMac(ChainDuelManagerTests* suit
     ASSERT_NE(cdm.getChampionMac(), nullptr);
     EXPECT_EQ(memcmp(cdm.getChampionMac(), suite->localMac, 6), 0);
 
-    // Connect output port with a same-role (hunter) peer → device becomes supporter.
     suite->connectOutputPort(/*isHunter=*/true);
     ASSERT_TRUE(cdm.isSupporter());
 
@@ -1268,8 +1259,6 @@ inline void cdmChampionToSupporterClearsStaleSelfMac(ChainDuelManagerTests* suit
         << "Stale self-MAC was not cleared when champion was demoted to supporter";
 }
 
-// Role announce received on supporter-jack (child direction) does NOT update
-// championMac. Prevents ping-pong between same-role peers.
 inline void cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(ChainDuelManagerTests* suite) {
     suite->setupHunterChampion();
     suite->deliverPdnContext(suite->opponentMac, /*isHunter=*/true);
@@ -1282,8 +1271,6 @@ inline void cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(ChainDuelManagerT
     ASSERT_NE(cdm.getChampionMac(), nullptr);
     EXPECT_EQ(memcmp(cdm.getChampionMac(), realChampion, 6), 0);
 
-    // Now a supporter-jack peer sends an announce with a different championMac
-    // (simulating the ping-pong scenario); championMac should NOT change.
     uint8_t wrongChampion[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
     cdm.onRoleAnnounceReceived(suite->supporterMac, wrongChampion);
 
@@ -1306,8 +1293,6 @@ inline void cdmRoleAnnounceFromOppositeRoleOpponentIgnoresChampionMac(ChainDuelM
     ASSERT_NE(cdm.getChampionMac(), nullptr);
     EXPECT_EQ(memcmp(cdm.getChampionMac(), selfMacArr, 6), 0);
 
-    // Receive announce from bounty on opponent jack. Hunter champion
-    // should ignore this — opposite-role sender is a duel opponent, not a chain parent.
     uint8_t bountyChampion[6] = {0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB};
     cdm.onRoleAnnounceReceived(suite->opponentMac, bountyChampion);
 

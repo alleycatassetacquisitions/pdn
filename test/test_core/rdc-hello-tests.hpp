@@ -777,8 +777,6 @@ inline void rdcLinkDeathClearsPeerChainRole(RDCHelloTests* suite) {
     EXPECT_EQ(suite->rdc.getPeerChainRole(SerialIdentifier::OUTPUT_JACK), 0);
 }
 
-// Two fresh-seqId contexts in the same tick before the Connecting -> Connected
-// commit fire the callback once while recording the second context's fields.
 inline void rdcDuplicateContextSameTickFiresCallbackOnce(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
@@ -2592,40 +2590,39 @@ inline void rdcResendContextPushesCurrentProfile(RDCHelloTests* suite) {
     EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
 }
 
-// Idle jacks have no peer to address, while a CONNECTING jack's in-flight context
-// send must be superseded with the current profile when resendContext() runs.
+// A jack that only reached CONNECTING has no proven return path, so a
+// re-broadcast must skip it rather than racing the connect-time send it would
+// otherwise duplicate. Nothing is Connected here, so nothing goes out.
 inline void rdcResendContextSkipsUnconnectedJacks(RDCHelloTests* suite) {
     const uint8_t peer[6] = {0xA1, 0x02, 0x03, 0x04, 0x05, 0x06};
 
-    uint8_t liveRole = 0;
-    suite->rdc.setSelfProfileProvider([&liveRole]() -> PlayerProfile {
-        PlayerProfile profile{};
-        profile.userId = 4242;
-        profile.gameRole = liveRole;
-        return profile;
-    });
-
-    std::vector<std::vector<uint8_t>> contextSends;
-    captureContextSends(suite, &contextSends);
+    int contextSends = 0;
+    std::vector<uint8_t> sentPayload;
+    ON_CALL(*suite->device.mockPeerComms, sendData(_, PktType::kPdnConnectionContext, _, _))
+        .WillByDefault(testing::DoAll(
+            testing::Invoke([&](const uint8_t*, PktType, const uint8_t* data, size_t len) {
+                contextSends++;
+                sentPayload.assign(data, data + len);
+            }),
+            Return(1)));
 
     // Every jack Idle: a re-broadcast has nowhere to go.
     suite->rdc.resendContext();
-    EXPECT_EQ(contextSends.size(), 0u);
+    EXPECT_EQ(contextSends, 0);
 
-    // OUT jack CONNECTING (one HELLO, no context back): a role flip while
-    // mid-handshake supersedes the connect-time send with the new role.
+    // OUT jack CONNECTING (one HELLO, no context back). Clear the connect-time
+    // send first so the pending-collapse guard is not what suppresses the resend.
     suite->deliverHello(suite->outJack, suite->helloFrame(0xA1));
     suite->rdc.sync(&suite->device);
-    ASSERT_EQ(contextSends.size(), 1u);
-    EXPECT_EQ(profileFromContextBytes(contextSends[0]).gameRole, 0);
+    ASSERT_EQ(contextSends, 1);
+    suite->transport()->onSendResult(
+        PktType::kPdnConnectionContext, peer, sentPayload.data(), sentPayload.size(), true);
+    ASSERT_FALSE(suite->rdc.isContextSendPending(peer));
     ASSERT_EQ(suite->rdc.getHelloLinkState(SerialIdentifier::OUTPUT_JACK),
               RemoteDeviceCoordinator::HelloLinkState::CONNECTING);
 
-    liveRole = 1;
     suite->rdc.resendContext();
-    ASSERT_EQ(contextSends.size(), 2u);
-    EXPECT_EQ(profileFromContextBytes(contextSends[1]).gameRole, 1);
-    EXPECT_TRUE(suite->rdc.isContextSendPending(peer));
+    EXPECT_EQ(contextSends, 1);
 }
 
 // A Connected jack whose connect-time send is still unacked is the case that
@@ -2751,8 +2748,6 @@ inline void rdcConnectedJackUpdatesPeerContextOnResend(RDCHelloTests* suite) {
     ASSERT_EQ(outCallbacks, 1);
     ASSERT_EQ(inCallbacks, 1);
 
-    // Peer pushes an updated context on already-CONNECTED jacks (including inside the
-    // resend-throttle window on a second update). Both jacks must record the new facts.
     std::vector<uint8_t> update1 =
         pdnContextBytes(/*chainRole=*/2, /*userId=*/4242, /*seqId=*/4, /*gameRole=*/1);
     suite->transport()->deliverIncoming(

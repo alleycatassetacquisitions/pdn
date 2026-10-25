@@ -398,12 +398,9 @@ void RemoteDeviceCoordinator::resendContext() {
     size_t sentCount = 0;
     for (SerialIdentifier port : HELLO_JACKS) {
         JackHelloLink& link = helloByPort[portIndex(port)];
-        if (link.machine == nullptr) continue;
-        const int state = link.machine->currentStateId();
-        if (state != HELLO_LINK_CONNECTING && state != HELLO_LINK_CONNECTED) continue;
-        if (state == HELLO_LINK_CONNECTED) {
-            link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
-        }
+        if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
+            continue;
+        link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
         const uint8_t* mac = link.machine->peer().data();
         // A 2-node ring faces the same peer on more than one jack and one copy
         // covers them all. Every MAC covered so far is checked, not just the last
@@ -458,27 +455,20 @@ void RemoteDeviceCoordinator::applyContextToJacks(const uint8_t* fromMac, Device
     }
     if (firstConnectedLink == nullptr) return;
 
-    if (!appliedToConnectingJack &&
-        (!firstConnectedLink->contextResendThrottleTimer.isRunning() ||
-         firstConnectedLink->contextResendThrottleTimer.expired()) &&
-        !isContextSendPending(fromMac)) {
-        sendSelfContext(fromMac);
-        for (SerialIdentifier port : HELLO_JACKS) {
-            JackHelloLink& link = helloByPort[portIndex(port)];
-            if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
-                continue;
-            if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
-            link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
-        }
-    }
+    const bool resend = !appliedToConnectingJack &&
+                        (!firstConnectedLink->contextResendThrottleTimer.isRunning() ||
+                         firstConnectedLink->contextResendThrottleTimer.expired()) &&
+                        !isContextSendPending(fromMac);
+    if (resend) sendSelfContext(fromMac);
 
     ContextReceivedCallback handler = contextReceivedCallback;
-    if (!handler) return;
     for (SerialIdentifier port : HELLO_JACKS) {
-        const HelloLinkMachine* machine = helloByPort[portIndex(port)].machine;
-        if (machine == nullptr || machine->currentStateId() != HELLO_LINK_CONNECTED) continue;
-        if (memcmp(machine->peer().data(), fromMac, 6) != 0) continue;
-        handler(port, peerType, profile, len);
+        JackHelloLink& link = helloByPort[portIndex(port)];
+        if (link.machine == nullptr || link.machine->currentStateId() != HELLO_LINK_CONNECTED)
+            continue;
+        if (memcmp(link.machine->peer().data(), fromMac, 6) != 0) continue;
+        if (resend) link.contextResendThrottleTimer.setTimer(CONTEXT_EXCHANGE_TIMEOUT_MS);
+        if (handler) handler(port, peerType, profile, len);
     }
 }
 
@@ -503,7 +493,6 @@ void RemoteDeviceCoordinator::completeJackContext(SerialIdentifier jack, DeviceT
                                                   uint8_t chainRole, uint16_t peerUserId,
                                                   const uint8_t* profile, size_t len) {
     recordJackContext(jack, peerType, chainRole, peerUserId, profile, len);
-    // Guard against a second context arriving before the Connecting -> Connected commit.
     JackHelloLink& link = helloByPort[portIndex(jack)];
     if (link.machine != nullptr && link.machine->didMarkContextComplete()) return;
     if (contextReceivedCallback) contextReceivedCallback(jack, peerType, profile, len);

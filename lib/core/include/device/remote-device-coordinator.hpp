@@ -381,7 +381,7 @@ private:
     void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
-    // so the context callback fires exactly once per jack.
+    // so the context callback fires once per connect.
     void completeJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Holds a context whose jack is not yet CONNECTING; evicts oldest when full.

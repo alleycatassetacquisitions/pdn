@@ -75,9 +75,10 @@ void Player::setOnRoleChanged(RoleChangedCallback callback) {
 PlayerProfile Player::toProfile() const {
     PlayerProfile profile{};
     char* end = nullptr;
-    const bool startsWithDigit = !id.empty() && id[0] >= '0' && id[0] <= '9';
-    const unsigned long parsed = startsWithDigit ? std::strtoul(id.c_str(), &end, 10) : 0;
-    profile.userId = (startsWithDigit && end != nullptr && *end == '\0' && parsed < 0xFFFF)
+    const unsigned long parsed = std::strtoul(id.c_str(), &end, 10);
+    // A non-numeric id ("default", or a name) means registration has not
+    // completed; 0xFFFF is the unregistered player-id sentinel peers expect.
+    profile.userId = (!id.empty() && end != nullptr && *end == '\0')
                          ? static_cast<uint16_t>(parsed)
                          : 0xFFFF;
     profile.gameRole = hunter ? 1 : 0;

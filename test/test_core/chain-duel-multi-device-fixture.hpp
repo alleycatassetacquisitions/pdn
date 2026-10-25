@@ -261,46 +261,20 @@ public:
         }
     }
 
-    // Pumps one HELLO cycle while dropping the lower->upper conductor on cable
-    // (upperIdx, lowerIdx), so upperIdx's OUTPUT_JACK hears silence while
-    // lowerIdx's INPUT_JACK keeps receiving upperIdx's HELLOs and stays CONNECTED.
-    void pumpHelloCycleDroppingLowerToUpper(size_t upperIdx, size_t lowerIdx) {
+    /** Pumps one HELLO cycle, dropping one conductor on cable (upperIdx, lowerIdx). */
+    void pumpHelloCycleDropping(size_t upperIdx, size_t lowerIdx, bool dropUpperToLower = false) {
         for (auto& n : nodes)
             n->rdc->emitHello();
         for (const auto& cable : cables) {
             MultiDeviceNode& upper = *nodes[cable.first];
             MultiDeviceNode& lower = *nodes[cable.second];
-            pumpCable(upper.out, lower.in);
-            if (cable.first != upperIdx || cable.second != lowerIdx) {
-                pumpCable(lower.in, upper.out);
-            }
-        }
-        for (auto& n : nodes) {
-            n->out.clearOutput();
-            n->in.clearOutput();
-        }
-        for (auto& n : nodes)
-            n->rdc->sync(n->device.get());
-        deliverAllPackets();
-        for (auto& n : nodes) {
-            n->cdm->sync();
-            n->shootout->sync();
-        }
-    }
-
-    // Pumps one HELLO cycle while dropping the upper->lower conductor on cable
-    // (upperIdx, lowerIdx), so lowerIdx's INPUT_JACK hears silence while
-    // upperIdx's OUTPUT_JACK keeps receiving lowerIdx's HELLOs and stays CONNECTED.
-    void pumpHelloCycleDroppingUpperToLower(size_t upperIdx, size_t lowerIdx) {
-        for (auto& n : nodes)
-            n->rdc->emitHello();
-        for (const auto& cable : cables) {
-            MultiDeviceNode& upper = *nodes[cable.first];
-            MultiDeviceNode& lower = *nodes[cable.second];
-            if (cable.first != upperIdx || cable.second != lowerIdx) {
+            const bool targetCable = (cable.first == upperIdx && cable.second == lowerIdx);
+            if (!targetCable || !dropUpperToLower) {
                 pumpCable(upper.out, lower.in);
             }
-            pumpCable(lower.in, upper.out);
+            if (!targetCable || dropUpperToLower) {
+                pumpCable(lower.in, upper.out);
+            }
         }
         for (auto& n : nodes) {
             n->out.clearOutput();
@@ -1101,8 +1075,6 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     }
 }
 
-// A 120ms one-sided HELLO dropout on either conductor of the d0<->d1 cable
-// must re-converge d0 as champion and restore both supporters' confirms on heal.
 inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
@@ -1132,7 +1104,7 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
 
     for (int tick = 0; tick < 6; ++tick) {
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
-        suite->pumpHelloCycleDroppingLowerToUpper(/*upperIdx=*/1, /*lowerIdx=*/0);
+        suite->pumpHelloCycleDropping(/*upperIdx=*/1, /*lowerIdx=*/0);
     }
 
     ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
@@ -1157,13 +1129,10 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
     EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
 
-    // Opposite-conductor dropout (d1.out -> d0.in): d0's INPUT_JACK drops and wipes
-    // d0's roster and confirms while d1's OUTPUT_JACK stays CONNECTED; healing must
-    // re-cascade to d2 and restore both standing confirms on d0.
     suite->advanceClock(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     for (int tick = 0; tick < 6; ++tick) {
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
-        suite->pumpHelloCycleDroppingUpperToLower(/*upperIdx=*/1, /*lowerIdx=*/0);
+        suite->pumpHelloCycleDropping(/*upperIdx=*/1, /*lowerIdx=*/0, /*dropUpperToLower=*/true);
     }
     ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
     ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
@@ -1178,8 +1147,6 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
     EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
 }
 
-// Live role flip via setIsHunter() updates canInitiateMatch() on a CONNECTED
-// cable, and a subsequent one-sided HELLO dropout recovers it on reconnect.
 inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
     ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(2);
@@ -1201,7 +1168,7 @@ inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
     suite->advanceClock(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     for (int tick = 0; tick < 6; ++tick) {
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
-        suite->pumpHelloCycleDroppingLowerToUpper(/*upperIdx=*/1, /*lowerIdx=*/0);
+        suite->pumpHelloCycleDropping(/*upperIdx=*/1, /*lowerIdx=*/0);
     }
     ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::CONNECTED);
     ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);

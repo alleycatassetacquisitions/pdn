@@ -39,12 +39,13 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // wires it is an owner every other caller has to imitate, and one that forgets
     // gets a manager that compiles, runs, and silently never reacts.
     rdc->setChainChangeCallback([this]() { onChainStateChanged(); });
-    rdc->setOnContextReceived([this](SerialIdentifier, DeviceType, const uint8_t*, size_t) {
-        if (supporterAnnounce.has_value()) {
+    rdc->setOnContextReceived([this](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
+        if (jack == supporterJack() && supporterAnnounce.has_value()) {
             roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
             supporterAnnounce.reset();
         }
         onChainStateChanged();
+        if (jack == opponentJack()) resendConfirm();
     });
     // The ring latch moves with both cables still seated — applyUpstreamHead sets
     // and clears it off the HELLO parse, no jack edge — so a standing confirm has
@@ -312,8 +313,10 @@ void ChainDuelManager::onChainStateChanged() {
     lastSupporterChainCount = count;
 
     if (isChampion()) {
+        const bool opponentConnecting = rdc->getPeerMac(opponentJack()) != nullptr &&
+                                        !peerIsHunter(opponentJack()).has_value();
         const uint8_t* selfMac = wirelessManager->getMacAddress();
-        if (selfMac != nullptr) {
+        if (selfMac != nullptr && (!opponentConnecting || !championMac.has_value())) {
             std::array<uint8_t, 6> selfArr;
             memcpy(selfArr.data(), selfMac, 6);
             championMac = selfArr;
@@ -376,7 +379,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
     const uint8_t* announcedChampionMac) {
     const uint8_t* opponentPeer = rdc->getPeerMac(opponentJack());
     if (opponentPeer == nullptr || memcmp(opponentPeer, fromMac, 6) != 0) return;
-    if (!isSupporter()) return;
+    if (isLoop() || peerIsHunter(opponentJack()) == !player->isHunter()) return;
 
     // Wire input: the field is always present, so a sender with no champion sends
     // it zeroed, and a two-bounty ring does exactly that: both clear their champion,
@@ -386,7 +389,7 @@ void ChainDuelManager::onRoleAnnounceReceived(
         championMac.reset();
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
-        broadcastRoleAndChampion();
+        if (isSupporter()) broadcastRoleAndChampion();
         return;
     }
 
@@ -398,13 +401,15 @@ void ChainDuelManager::onRoleAnnounceReceived(
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
     }
-    if (changed || (supporterAnnounce.has_value() && supporterAnnounce->delivered)) {
+    if (!isSupporter()) return;
+    const bool cascadeInFlight = supporterAnnounce.has_value() &&
+                                 !supporterAnnounce->delivered &&
+                                 roleAnnounceChannel.isPending(supporterAnnounce->peer.data());
+    if (changed || !cascadeInFlight) {
         supporterAnnounce.reset();
         broadcastRoleAndChampion();
     }
-    // A head transfer swaps the champion without touching this device's own
-    // links, so nothing else here would tell the new champion that this
-    // supporter exists, let alone that it is already in.
+    // Upstream link or champion changes leave our own jacks untouched; re-enroll and re-confirm on every cascade.
     announceToChampion();
     resendConfirm();
 }
@@ -461,10 +466,6 @@ void ChainDuelManager::sync() {
     // supporter at a time, since a broadcast carries no per-member evidence.
     resender.sync();
 
-    // Backstop for the supporter announce. A settled chain raises no chain-state
-    // events, so one that ran out its span has no other way back — and losing it
-    // leaves the supporter without a champion. Cheap once delivered; the stamp
-    // gates it.
     if (roleAnnounceBackstopTimer.expired()) {
         roleAnnounceBackstopTimer.setTimer(ROLE_ANNOUNCE_BACKSTOP_MS);
         broadcastRoleAndChampion();

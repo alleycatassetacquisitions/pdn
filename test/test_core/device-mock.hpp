@@ -213,6 +213,7 @@ public:
         else if (id == SerialIdentifier::INPUT_JACK) inputProfile = profile;
     }
 
+    /** Returns the seeded peer profile on `id`, or nullptr if unset. */
     const uint8_t* getPeerProfile(SerialIdentifier id, size_t& length) const override {
         const std::optional<PlayerProfile>* slot = nullptr;
         if (id == SerialIdentifier::OUTPUT_JACK) slot = &outputProfile;

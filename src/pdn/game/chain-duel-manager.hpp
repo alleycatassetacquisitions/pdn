@@ -37,15 +37,7 @@ struct ChainGameEventPayload {
 
 class ChainDuelManager {
 public:
-    /**
-     * Subscribes to the coordinator's chain-change, context-received and
-     * role-change edges, and requires a live coordinator — the class
-     * dereferences it unguarded throughout. One callback exists per edge, so
-     * at most one ChainDuelManager per coordinator: a second built on the same
-     * one takes those slots over, and whichever is destroyed first empties
-     * them for both. A test does this deliberately and stays correct only
-     * because it drives no jack edge afterwards.
-     */
+    /** Requires a live rdc and owns its single-subscriber topology/context callback slots. */
     ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
     virtual ~ChainDuelManager();
@@ -113,20 +105,12 @@ public:
     /** Updates the cached champion from an opponent-jack role announce. */
     void onRoleAnnounceReceived(const uint8_t* fromMac, const uint8_t* championMac);
 
-    /** Announces this device's champion to the supporter-jack peer once CONNECTED. */
     void broadcastRoleAndChampion();
 
     void sync();
 
     static constexpr unsigned long BOOST_PER_SUPPORTER_MS = 15;
-    /**
-     * How often an undelivered supporter announce is re-offered. A settled
-     * chain raises no events, so nothing else would.
-     *
-     * Longer than the retry span on purpose: a tick landing inside that window
-     * supersedes the live entry and restarts its span, so the announce would
-     * retransmit forever instead of going quiet between offers.
-     */
+    /** Must exceed the retry span so the backstop does not supersede a live entry and reset its retry window. */
     static constexpr unsigned long ROLE_ANNOUNCE_BACKSTOP_MS = Resender::STALE_AFTER_MS;
 
     struct RetryStats {
@@ -204,15 +188,7 @@ private:
 
     std::optional<std::array<uint8_t, 6>> championMac;
 
-    // What the supporter-jack peer has been told, and whether the radio confirmed it.
-    // Keyed on the CONTENT, not just the peer: a champion change leaves the
-    // cable untouched, so a stamp holding only the MAC suppresses exactly the
-    // announce that has to go out. `delivered` is the radio's send report, not
-    // proof the peer's app took the frame — that is what the half-open gate in
-    // broadcastRoleAndChampion is for. What it proves is the negative: an announce
-    // that ran out its span was never MAC-acked, whether it was refused before it
-    // left or went out and came back SEND_FAIL. Either way it did not land, and
-    // re-offering it is the only repair there is.
+    // Tracks whether the current (peer, champion) pair was MAC-acked (SEND_SUCCESS).
     struct RoleAnnounceState {
         std::array<uint8_t, 6> peer{};
         std::array<uint8_t, 6> champion{};
