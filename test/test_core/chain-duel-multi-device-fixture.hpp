@@ -288,6 +288,33 @@ public:
         }
     }
 
+    // Pumps one HELLO cycle while dropping the upper->lower conductor on cable
+    // (upperIdx, lowerIdx), so lowerIdx's INPUT_JACK hears silence while
+    // upperIdx's OUTPUT_JACK keeps receiving lowerIdx's HELLOs and stays CONNECTED.
+    void pumpHelloCycleDroppingUpperToLower(size_t upperIdx, size_t lowerIdx) {
+        for (auto& n : nodes)
+            n->rdc->emitHello();
+        for (const auto& cable : cables) {
+            MultiDeviceNode& upper = *nodes[cable.first];
+            MultiDeviceNode& lower = *nodes[cable.second];
+            if (cable.first != upperIdx || cable.second != lowerIdx) {
+                pumpCable(upper.out, lower.in);
+            }
+            pumpCable(lower.in, upper.out);
+        }
+        for (auto& n : nodes) {
+            n->out.clearOutput();
+            n->in.clearOutput();
+        }
+        for (auto& n : nodes)
+            n->rdc->sync(n->device.get());
+        deliverAllPackets();
+        for (auto& n : nodes) {
+            n->cdm->sync();
+            n->shootout->sync();
+        }
+    }
+
     // Close a linear chain into a ring with the last cable: device 0's OUTPUT
     // into the tail's INPUT.
     void closeRing() {
@@ -1074,11 +1101,8 @@ inline void shootoutFourDeviceTwoTournamentsBackToBack(ChainDuelMultiDeviceFixtu
     }
 }
 
-// Scenario A (#239): a 120ms one-sided HELLO dropout on the d0.in -> d1.out
-// conductor drops d1's OUTPUT_JACK to IDLE while d0's INPUT_JACK stays CONNECTED.
-// d1 promotes itself to champion and cascades that to d2; when the conductor
-// heals, d1's reconnect context arriving on d0's still-CONNECTED INPUT_JACK must
-// clear d0's announce stamp and re-cascade d0 as champion across the whole chain.
+// A 120ms one-sided HELLO dropout on either conductor of the d0<->d1 cable
+// must re-converge d0 as champion and restore both supporters' confirms on heal.
 inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(3);
     suite->setAllHunters();
@@ -1106,8 +1130,6 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
     ASSERT_NE(d2.cdm->getChampionMac(), nullptr);
     ASSERT_EQ(memcmp(d2.cdm->getChampionMac(), d0.mac, 6), 0);
 
-    // Suppress HELLO from d0.in -> d1.out for 120ms (> HELLO_SILENT_LINK_MS = 100ms)
-    // while d1.out -> d0.in stays live.
     for (int tick = 0; tick < 6; ++tick) {
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
         suite->pumpHelloCycleDroppingLowerToUpper(/*upperIdx=*/1, /*lowerIdx=*/0);
@@ -1117,7 +1139,6 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
     ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
     ASSERT_TRUE(d1.cdm->isChampion());
 
-    // Conductor heals: normal two-way HELLO resumes.
     suite->settleLinks();
     suite->syncAll();
     suite->deliverAllPackets();
@@ -1135,12 +1156,30 @@ inline void cdmMultiDeviceOneSidedHelloDropoutRecoversChain(ChainDuelMultiDevice
     suite->deliverAllPackets();
     EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
     EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
+
+    // Opposite-conductor dropout (d1.out -> d0.in): d0's INPUT_JACK drops and wipes
+    // d0's roster and confirms while d1's OUTPUT_JACK stays CONNECTED; healing must
+    // re-cascade to d2 and restore both standing confirms on d0.
+    suite->advanceClock(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
+    for (int tick = 0; tick < 6; ++tick) {
+        suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
+        suite->pumpHelloCycleDroppingUpperToLower(/*upperIdx=*/1, /*lowerIdx=*/0);
+    }
+    ASSERT_EQ(d0.rdc->getPortStatus(SerialIdentifier::INPUT_JACK), PortStatus::DISCONNECTED);
+    ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::CONNECTED);
+    ASSERT_EQ(d0.cdm->getConfirmedSupporterCount(), 0u);
+
+    suite->settleLinks();
+    suite->syncAll();
+    suite->deliverAllPackets();
+
+    EXPECT_EQ(d0.cdm->getSupporterChainPeers().size(), 2u);
+    EXPECT_EQ(d0.cdm->getConfirmedSupporterCount(), 2u);
+    EXPECT_EQ(d0.cdm->getBoostMs(), 2 * ChainDuelManager::BOOST_PER_SUPPORTER_MS);
 }
 
-// Consequence B + Scenario B (#239/#249): flipping a connected peer's role via
-// setIsHunter() pushes a fresh context that updates the duel gate live, and a
-// subsequent one-sided HELLO dropout on the hunter's OUTPUT_JACK recovers
-// canInitiateMatch() once the link reconnects.
+// Live role flip via setIsHunter() updates canInitiateMatch() on a CONNECTED
+// cable, and a subsequent one-sided HELLO dropout recovers it on reconnect.
 inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
     ChainDuelMultiDeviceFixture* suite) {
     suite->spawnDevices(2);
@@ -1153,17 +1192,12 @@ inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
     MultiDeviceNode& d0 = suite->node(0);
     MultiDeviceNode& d1 = suite->node(1);
 
-    // Both hunters: d1's OUTPUT_JACK (opponentJack) faces same-role d0, so no duel.
     EXPECT_FALSE(d1.cdm->canInitiateMatch());
 
-    // d0 flips to bounty on the already-CONNECTED cable.
     d0.player->setIsHunter(false);
     suite->deliverAllPackets();
     EXPECT_TRUE(d1.cdm->canInitiateMatch());
 
-    // Advance past the resend throttle window before the one-sided 120ms HELLO
-    // dropout on d0.in -> d1.out: d1's OUTPUT_JACK drops to IDLE while d0's
-    // INPUT_JACK stays CONNECTED.
     suite->advanceClock(RemoteDeviceCoordinator::CONTEXT_EXCHANGE_TIMEOUT_MS + 1);
     for (int tick = 0; tick < 6; ++tick) {
         suite->advanceClock(RemoteDeviceCoordinator::HELLO_CADENCE_MS);
@@ -1173,7 +1207,6 @@ inline void cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(
     ASSERT_EQ(d1.rdc->getPortStatus(SerialIdentifier::OUTPUT_JACK), PortStatus::DISCONNECTED);
     EXPECT_FALSE(d1.cdm->canInitiateMatch());
 
-    // Conductor heals: d1 reconnects and canInitiateMatch() recovers without replugging.
     suite->settleLinks();
     suite->syncAll();
     suite->deliverAllPackets();

@@ -197,9 +197,7 @@ inline void playerRoleChangeFiresOnlyOnFlip(Player* player) {
     EXPECT_FALSE(player->isHunter());
 }
 
-// toProfile is what a peer decodes out of the connection context, so gameRole
-// must track the live role and an unregistered id must read as the sentinel
-// rather than as player 0.
+// Non-numeric, negative, sentinel (65535), and overflow ids map to 0xFFFF.
 inline void playerProfileCarriesRoleAndIdentity(Player* player) {
     PlayerProfile unregistered = player->toProfile();
     EXPECT_EQ(unregistered.userId, 0xFFFF);

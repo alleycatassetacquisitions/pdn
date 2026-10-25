@@ -77,8 +77,6 @@ PlayerProfile Player::toProfile() const {
     char* end = nullptr;
     const bool startsWithDigit = !id.empty() && id[0] >= '0' && id[0] <= '9';
     const unsigned long parsed = startsWithDigit ? std::strtoul(id.c_str(), &end, 10) : 0;
-    // A non-numeric id ("default", or a name) means registration has not
-    // completed; 0xFFFF is the unregistered player-id sentinel peers expect.
     profile.userId = (startsWithDigit && end != nullptr && *end == '\0' && parsed < 0xFFFF)
                          ? static_cast<uint16_t>(parsed)
                          : 0xFFFF;

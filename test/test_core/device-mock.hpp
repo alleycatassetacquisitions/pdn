@@ -209,8 +209,20 @@ public:
         setPeerDeviceType(id, DeviceType::PDN);
         PlayerProfile profile{};
         profile.gameRole = isHunter ? 1 : 0;
-        recordJackContext(id, DeviceType::PDN, /*chainRole=*/0, profile.userId,
-                          reinterpret_cast<const uint8_t*>(&profile), sizeof(profile));
+        if (id == SerialIdentifier::OUTPUT_JACK) outputProfile = profile;
+        else if (id == SerialIdentifier::INPUT_JACK) inputProfile = profile;
+    }
+
+    const uint8_t* getPeerProfile(SerialIdentifier id, size_t& length) const override {
+        const std::optional<PlayerProfile>* slot = nullptr;
+        if (id == SerialIdentifier::OUTPUT_JACK) slot = &outputProfile;
+        else if (id == SerialIdentifier::INPUT_JACK) slot = &inputProfile;
+        if (slot == nullptr || !slot->has_value()) {
+            length = 0;
+            return nullptr;
+        }
+        length = sizeof(PlayerProfile);
+        return reinterpret_cast<const uint8_t*>(&slot->value());
     }
 
     // Stubbable direct peer MACs — tests that exercise peer-MAC gating set
@@ -247,6 +259,8 @@ private:
     PortStatus inputStatus = PortStatus::DISCONNECTED;
     DeviceType outputDeviceType = DeviceType::UNKNOWN;
     DeviceType inputDeviceType = DeviceType::UNKNOWN;
+    std::optional<PlayerProfile> outputProfile;
+    std::optional<PlayerProfile> inputProfile;
     uint8_t outputPeerMac[6] = {};
     uint8_t inputPeerMac[6] = {};
     bool outputPeerSet = false;

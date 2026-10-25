@@ -38,12 +38,13 @@ struct ChainGameEventPayload {
 class ChainDuelManager {
 public:
     /**
-     * Subscribes to the coordinator's chain-change and role-change edges, and
-     * requires a live coordinator — the class dereferences it unguarded throughout.
-     * One callback exists per edge, so at most one ChainDuelManager per coordinator:
-     * a second built on the same one takes both slots over, and whichever is
-     * destroyed first empties them for both. A test does this deliberately and
-     * stays correct only because it drives no jack edge afterwards.
+     * Subscribes to the coordinator's chain-change, context-received and
+     * role-change edges, and requires a live coordinator — the class
+     * dereferences it unguarded throughout. One callback exists per edge, so
+     * at most one ChainDuelManager per coordinator: a second built on the same
+     * one takes those slots over, and whichever is destroyed first empties
+     * them for both. A test does this deliberately and stays correct only
+     * because it drives no jack edge afterwards.
      */
     ChainDuelManager(Player* player, WirelessManager* wirelessManager, RemoteDeviceCoordinator* rdc);
     /** Drops the coordinator subscriptions the constructor took, which hold `this`. */
@@ -112,10 +113,7 @@ public:
     /** Updates the cached champion from an opponent-jack role announce. */
     void onRoleAnnounceReceived(const uint8_t* fromMac, const uint8_t* championMac);
 
-    /**
-     * Announces this device's champion to the supporter-jack peer.
-     * Silent when the link is not proven yet.
-     */
+    /** Announces this device's champion to the supporter-jack peer once CONNECTED. */
     void broadcastRoleAndChampion();
 
     void sync();
@@ -160,8 +158,6 @@ private:
     // discover a supporter it shares no cable with any other way.
     void announceToChampion();
 
-    // Reads the direct peer's role from the profile the RDC recorded on `port`,
-    // or nullopt if no PDN profile is present.
     std::optional<bool> peerIsHunter(SerialIdentifier port) const;
 
     // Ceiling shared by the roll call and the supporter roster: the longest

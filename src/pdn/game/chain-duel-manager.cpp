@@ -39,12 +39,8 @@ ChainDuelManager::ChainDuelManager(Player* player, WirelessManager* wirelessMana
     // wires it is an owner every other caller has to imitate, and one that forgets
     // gets a manager that compiles, runs, and silently never reacts.
     rdc->setChainChangeCallback([this]() { onChainStateChanged(); });
-    // A context landing on a CONNECTED jack updates the peer's profile (live role
-    // flip) or means the peer restarted its link after a one-sided HELLO dropout
-    // and lost its championMac.
-    rdc->setOnContextReceived([this](SerialIdentifier jack, DeviceType, const uint8_t*, size_t) {
-        if (this->rdc->getPortStatus(jack) != PortStatus::CONNECTED) return;
-        if (jack == supporterJack() && supporterAnnounce.has_value()) {
+    rdc->setOnContextReceived([this](SerialIdentifier, DeviceType, const uint8_t*, size_t) {
+        if (supporterAnnounce.has_value()) {
             roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
             supporterAnnounce.reset();
         }
@@ -82,9 +78,7 @@ std::optional<bool> ChainDuelManager::peerIsHunter(SerialIdentifier port) const 
     size_t len = 0;
     const uint8_t* raw = rdc->getPeerProfile(port, len);
     if (raw == nullptr || len < sizeof(PlayerProfile)) return std::nullopt;
-    PlayerProfile profile{};
-    memcpy(&profile, raw, sizeof(profile));
-    return profile.gameRole != 0;
+    return reinterpret_cast<const PlayerProfile*>(raw)->gameRole != 0;
 }
 
 bool ChainDuelManager::containsMac(const MacSlots& slots, size_t count, const uint8_t* mac) {
@@ -136,10 +130,7 @@ bool ChainDuelManager::canInitiateMatch() const {
     // off one inbound serial frame and nothing proving the peer can answer, and
     // a match pushed across it strands the initiator waiting for an ack.
     if (rdc->getPortStatus(opponentJack()) != PortStatus::CONNECTED) return false;
-    if (rdc->getPeerDeviceType(opponentJack()) != DeviceType::PDN) return false;
-    std::optional<bool> opponentRole = peerIsHunter(opponentJack());
-    if (!opponentRole.has_value()) return false;
-    return *opponentRole != player->isHunter();
+    return peerIsHunter(opponentJack()) == false;
 }
 
 std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() const {
@@ -147,7 +138,7 @@ std::vector<std::array<uint8_t, 6>> ChainDuelManager::getSupporterChainPeers() c
     // A cable is the strongest evidence of membership there is, so the device on
     // our own supporter jack never has to announce itself to be counted.
     const uint8_t* directPeer = rdc->getPeerMac(supporterJack());
-    if (directPeer == nullptr) return {};
+    if (directPeer == nullptr || peerIsHunter(supporterJack()) != player->isHunter()) return {};
     std::vector<std::array<uint8_t, 6>> peers;
     std::array<uint8_t, 6> mac;
     memcpy(mac.data(), directPeer, 6);
@@ -309,7 +300,10 @@ void ChainDuelManager::onChainStateChanged() {
 
     // Losing the supporter-jack cable strands the entire chain below it, however
     // deep, so both the roll call and the roster it is scored against go with it.
-    size_t count = rdc->getPeerMac(supporterJack()) != nullptr ? 1u : 0u;
+    size_t count = (rdc->getPeerMac(supporterJack()) != nullptr &&
+                    peerIsHunter(supporterJack()) == player->isHunter())
+                       ? 1u
+                       : 0u;
     if (lastSupporterChainCount > 0 && count == 0) {
         clearSupporterConfirms();
         supporterRosterCount.store(0);
@@ -403,13 +397,16 @@ void ChainDuelManager::onRoleAnnounceReceived(
     if (changed) {
         resender.cancelAll(PktType::kChainConfirm);
         resender.cancelAll(PktType::kChainJoin);
-        broadcastRoleAndChampion();
-        // A head transfer swaps the champion without touching this device's own
-        // links, so nothing else here would tell the new champion that this
-        // supporter exists, let alone that it is already in.
-        announceToChampion();
-        resendConfirm();
     }
+    if (changed || (supporterAnnounce.has_value() && supporterAnnounce->delivered)) {
+        supporterAnnounce.reset();
+        broadcastRoleAndChampion();
+    }
+    // A head transfer swaps the champion without touching this device's own
+    // links, so nothing else here would tell the new champion that this
+    // supporter exists, let alone that it is already in.
+    announceToChampion();
+    resendConfirm();
 }
 
 void ChainDuelManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac) {
@@ -424,19 +421,13 @@ void ChainDuelManager::recordAnnounceDelivered(uint8_t seqId, const uint8_t* mac
 void ChainDuelManager::broadcastRoleAndChampion() {
     const uint8_t* supporterPeer = rdc->getPeerMac(supporterJack());
     const uint8_t* champ = getChampionMac();
-    if (supporterPeer == nullptr || champ == nullptr) {
-        if (supporterAnnounce.has_value()) {
-            roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
-            supporterAnnounce.reset();
-        }
-        return;
-    }
-
     if (supporterAnnounce.has_value() &&
-        memcmp(supporterAnnounce->peer.data(), supporterPeer, 6) != 0) {
+        (supporterPeer == nullptr || champ == nullptr ||
+         memcmp(supporterAnnounce->peer.data(), supporterPeer, 6) != 0)) {
         roleAnnounceChannel.cancel(supporterAnnounce->peer.data());
         supporterAnnounce.reset();
     }
+    if (supporterPeer == nullptr || champ == nullptr) return;
 
     RoleAnnounceState content;
     memcpy(content.peer.data(), supporterPeer, 6);

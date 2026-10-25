@@ -231,7 +231,7 @@ public:
      * rather than only forwarded on arrival, so a state mounting later still gets
      * the peer's identity instead of only whoever was mounted at the time.
      */
-    const uint8_t* getPeerProfile(SerialIdentifier jack, size_t& length) const {
+    virtual const uint8_t* getPeerProfile(SerialIdentifier jack, size_t& length) const {
         const JackHelloLink& link = helloByPort[portIndex(jack)];
         length = link.peerProfileLen;
         return link.peerProfileLen == 0 ? nullptr : link.peerProfile.data();
@@ -291,16 +291,14 @@ public:
      */
     void setChainChangeCallback(std::function<void()> callback);
 
-protected:
-    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
-                           uint16_t peerUserId, const uint8_t* profile, size_t len);
-
 private:
     static constexpr size_t NUM_PORTS = 3;
 
     size_t portIndex(SerialIdentifier port) const;
 
     void notifyChainChange();
+    void recordJackContext(SerialIdentifier jack, DeviceType peerType, uint8_t chainRole,
+                           uint16_t peerUserId, const uint8_t* profile, size_t len);
 
     SerialManager* serialManager = nullptr;
     WirelessManager* wirelessManager = nullptr;
@@ -380,8 +378,6 @@ private:
     // Cache a received peer context by MAC, then apply it to jacks (rationale in .cpp).
     void onContextReceived(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                            uint16_t peerUserId, const uint8_t* profile, size_t len);
-    // Completes every jack currently CONNECTING to `fromMac` and updates any
-    // already-CONNECTED jack facing `fromMac`.
     void applyContextToJacks(const uint8_t* fromMac, DeviceType peerType, uint8_t chainRole,
                              uint16_t peerUserId, const uint8_t* profile, size_t len);
     // Assumes `jack` is CONNECTING to this peer; both timing paths route through here,
