@@ -3,24 +3,24 @@
 - [x] 1.1 Add `node-network-event` openspec change (proposal, design, capabilities)
 - [ ] 1.2 Review specs with team before PR 1 merge
 
-## 2. Dependency: event-duel-manager
+## 2. Dependency: node-network-duel-manager
 
-- [ ] 2.1 Review and merge [`event-duel-manager`](../event-duel-manager/tasks.md) before Node gameplay PRs
+- [ ] 2.1 Review and merge [`node-network-duel-manager`](../node-network-duel-manager/tasks.md) before Node gameplay PRs
 
 ## 3. NodeNetwork shell (PR 2)
 
-- [ ] 3.1 `NodeNetwork` class + app id constant
-- [ ] 3.2 Embed `PlayerFetchApp`; shared `PlayerProvider`
-- [ ] 3.3 Wire `QuickdrawWirelessManager` → `MatchManagerV2::listenForMatchEvents` only
-- [ ] 3.4 Transition `PlayerFetchApp::readyForGameplay()` → first Node gameplay state
-- [ ] 3.5 Native or harness test for handoff predicate (if feasible)
+- [x] 3.1 `NodeNetwork` class + app id constant
+- [x] 3.2 Embed `PlayerFetchApp`; shared `PlayerProvider`
+- [x] 3.3 Wire `NodeNetworkWirelessManager` → `MatchManagerV2` only
+- [x] 3.4 Transition `PlayerFetchApp::readyForGameplay()` → first Node gameplay state
+- [x] 3.5 Native or harness test for handoff predicate (if feasible)
 
 ## 4. Duel states (PR 3)
 
 - [ ] 4.1 `node-network-states.hpp` ID block
 - [ ] 4.2 Port idle + connect/jack rules (OUTPUT initiates)
 - [ ] 4.3 Port duel countdown → result chain
-- [ ] 4.4 `NodeWin` on sync; `NodeLinkRetry` on fail (no upload transition)
+- [ ] 4.4 `NodeWin` on sync; `NodeLinkRetry` on fail (no upload transition); sleep when attempts exhausted
 - [ ] 4.5 `node-network-resources.hpp` event palette / copy
 
 ## 5. Upload + firmware (PR 4)

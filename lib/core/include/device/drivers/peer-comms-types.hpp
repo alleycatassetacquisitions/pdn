@@ -22,6 +22,7 @@ enum class PktType : uint8_t {
     kFdnConnect = 14,
     kCrashLog = 15,
     kFirmwareUpdate = 16,
+    kNodeNetworkCommand = 17,
     kNumPacketTypes  // Not a real packet type, DO NOT USE
 };
 

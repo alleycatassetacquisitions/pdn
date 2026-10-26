@@ -24,6 +24,17 @@ When sync fails, both devices SHALL enter a soft-fail UX (e.g. NodeLinkRetry) an
 - **THEN** upload state is not entered
 - **AND** no HTTP match upload is queued
 
+### Requirement: Sleep after repeated failures
+When `MatchManagerV2::hasExhaustedAttempts()` is true after a failed duel, both devices SHALL transition to the sleep state instead of returning to idle.
+
+#### Scenario: Third failure
+- **WHEN** the third consecutive failed duel with the same peer completes
+- **THEN** the device transitions to sleep
+
+#### Scenario: Success resets
+- **WHEN** a duel succeeds after two failures
+- **THEN** the device does not sleep and the failure count is reset
+
 ### Requirement: Upload uses protobuf quickdraw matches
 After sync success, NodeNetwork SHALL upload persisted records via `MatchesApi::uploadQuickdrawMatches` and the existing `QuickdrawMatchCodec` contract. Legacy JSON `MatchesApi::updateMatches` SHALL NOT be used on this path.
 

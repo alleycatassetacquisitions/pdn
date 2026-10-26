@@ -4,7 +4,7 @@ Metagame 2026 needs a **net-new firmware experience**: PIN fetch via the alleyca
 
 ## What Changes
 
-- **Depends on [`event-duel-manager`](../event-duel-manager/proposal.md)** for decomposed duel stack (`MatchManagerV2` facade, not a monolith fork of legacy `MatchManager`).
+- **Depends on [`node-network-duel-manager`](../node-network-duel-manager/proposal.md)** for `MatchManagerV2` and its session, wireless, and storage units.
 - Add **`NodeNetwork`** app: embeds **`PlayerFetchApp`** (like Quickdraw embeds registration), owns **`PlayerProvider`**, wires wireless callbacks to **`MatchManagerV2` only**.
 - Add **`node-network-states/`**: fresh port of minimal duel + upload UX from Quickdraw (not metagame cherry-pick).
 - Event build: **`main`** mounts **NodeNetwork** only; Quickdraw may remain in the link graph but is **not** loaded into the app config.
@@ -25,7 +25,7 @@ Metagame 2026 needs a **net-new firmware experience**: PIN fetch via the alleyca
 
 ### Dependencies
 
-- [`event-duel-manager`](../event-duel-manager/proposal.md) — all duel stack capabilities (`duel-session`, `duel-protocol`, `match-manager-v2` facade, etc.).
+- [`node-network-duel-manager`](../node-network-duel-manager/proposal.md): `duel-session`, `node-network-wireless`, `match-storage`, `match-manager-v2`.
 
 ### Modified Capabilities
 
