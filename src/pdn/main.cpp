@@ -21,7 +21,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 
 #include "pdn-constants.hpp"
 #include "utils/simple-timer.hpp"
-#include "game/player.hpp"
+#include "game/player-provider.hpp"
 #include "state/state-machine.hpp"
 #include "device/pdn.hpp"
 #include "game/quickdraw.hpp"
@@ -68,7 +68,7 @@ Esp32S3PrefsDriver* storageDriver = nullptr;
 
 // Core game objects (declare as pointers, construct in setup())
 Device* pdn = nullptr;
-Player* player = nullptr;
+PlayerProvider* playerProvider = nullptr;
 
 // Game instance
 Quickdraw* game = nullptr;
@@ -170,8 +170,8 @@ static void setup() {
     pdn = PDN::createPDN(pdnConfig);
     
     IdGenerator::initialize(clockDriver->milliseconds());
-    player = new Player();
-    player->setUserID(IdGenerator::getInstance().generateId());
+    playerProvider = new PlayerProvider();
+    playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
@@ -184,7 +184,7 @@ static void setup() {
     // WiFi credentials are compile-time constants from build flags
     remoteDebugManager->Initialize(WIFI_SSID, WIFI_PASSWORD, BASE_URL);
 
-    quickdrawWirelessManager->initialize(player, pdn->getWirelessManager(), 1000);
+    quickdrawWirelessManager->initialize(playerProvider->getPlayer(), pdn->getWirelessManager(), 1000);
     symbolWirelessManager->initialize(pdn->getWirelessManager(), pdn->getRemoteDeviceCoordinator());
     
     // Register ESP-NOW packet handlers
@@ -194,8 +194,8 @@ static void setup() {
     crashLogger->capture(crashedBootUptimeMs);
     crashLogger->transmitPending();
 
-    game = new Quickdraw(player, pdn, quickdrawWirelessManager, remoteDebugManager, symbolWirelessManager);
-
+    game = new Quickdraw(playerProvider, pdn, quickdrawWirelessManager, remoteDebugManager,
+                         symbolWirelessManager);
     pdn->getDisplay()->
     invalidateScreen()->
         drawImage(getImageForAllegiance(Allegiance::ALLEYCAT, ImageType::LOGO_LEFT))->

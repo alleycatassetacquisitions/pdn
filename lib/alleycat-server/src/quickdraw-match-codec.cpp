@@ -26,11 +26,11 @@ alleycat_device_QuickdrawMatch toMessage(const QuickdrawMatchRecord& record) {
     record.playerBId.format(message.player_b_id);
     record.winnerPlayerId.format(message.winner_player_id);
 
-    if (!record.playerATeamId.isNil()) {
+    if (!record.playerATeamId.isZero()) {
         record.playerATeamId.format(message.player_a_team_id);
         message.has_player_a_team_id = true;
     }
-    if (!record.playerBTeamId.isNil()) {
+    if (!record.playerBTeamId.isZero()) {
         record.playerBTeamId.format(message.player_b_team_id);
         message.has_player_b_team_id = true;
     }

@@ -60,9 +60,9 @@ inline void uuidBytesRejectsMalformedText() {
 }
 
 inline void uuidBytesReportsNil() {
-    EXPECT_TRUE(UUIDBytes().isNil());
-    EXPECT_TRUE(makeTestUuid("00000000-0000-0000-0000-000000000000").isNil());
-    EXPECT_FALSE(makeTestUuid("00000000-0000-0000-0000-000000000001").isNil());
+    EXPECT_TRUE(UUIDBytes().isZero());
+    EXPECT_TRUE(makeTestUuid("00000000-0000-0000-0000-000000000000").isZero());
+    EXPECT_FALSE(makeTestUuid("00000000-0000-0000-0000-000000000001").isZero());
 }
 
 inline void uuidBytesComparesByValue() {

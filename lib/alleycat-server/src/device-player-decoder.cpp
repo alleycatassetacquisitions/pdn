@@ -22,7 +22,7 @@ static_assert(sizeof(AffiliationMessage::affiliation_id) == UUIDBytes::SIZE,
 bool decodeDisplayName(pb_istream_t* stream, const pb_field_t* field, void** arg) {
     (void)field;
     char* name = static_cast<char*>(*arg);
-    const size_t keptLength = std::min(stream->bytes_left, DevicePlayerLimits::NAME_BUFFER_SIZE - 1);
+    const size_t keptLength = std::min(stream->bytes_left, PlayerLimits::NAME_BUFFER_SIZE - 1);
     if (!pb_read(stream, reinterpret_cast<pb_byte_t*>(name), keptLength)) {
         return false;
     }
@@ -32,13 +32,12 @@ bool decodeDisplayName(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg) {
     (void)field;
-    std::vector<DevicePlayerAffiliation>* affiliations =
-        static_cast<std::vector<DevicePlayerAffiliation>*>(*arg);
-    if (affiliations->size() >= DevicePlayerLimits::MAX_AFFILIATIONS) {
+    std::vector<Affiliation>* affiliations = static_cast<std::vector<Affiliation>*>(*arg);
+    if (affiliations->size() >= PlayerLimits::MAX_AFFILIATIONS) {
         return pb_read(stream, nullptr, stream->bytes_left);
     }
 
-    DevicePlayerAffiliation affiliation;
+    Affiliation affiliation;
     AffiliationMessage message = alleycat_device_DevicePlayerAffiliation_init_zero;
     message.category_name.funcs.decode = &decodeDisplayName;
     message.category_name.arg = affiliation.categoryName;
@@ -50,7 +49,7 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
     std::memcpy(affiliation.categoryId.bytes, message.category_id, UUIDBytes::SIZE);
     std::memcpy(affiliation.affiliationId.bytes, message.affiliation_id, UUIDBytes::SIZE);
-    if (affiliation.categoryId.isNil() || affiliation.affiliationId.isNil()) {
+    if (affiliation.categoryId.isZero() || affiliation.affiliationId.isZero()) {
         return false;
     }
     affiliations->push_back(affiliation);
@@ -61,16 +60,19 @@ bool decodeAffiliation(pb_istream_t* stream, const pb_field_t* field, void** arg
 
 namespace DevicePlayerDecoder {
 
-bool decode(const std::string& body, DevicePlayer& player) {
-    DevicePlayer decoded;
+bool decode(const std::string& body, Player& player) {
+    UUIDBytes serverId;
+    char serverName[PlayerLimits::NAME_BUFFER_SIZE] = {};
+    Team team;
+    std::vector<Affiliation> affiliations;
 
     ResponseMessage message = alleycat_device_DevicePlayerResponse_init_zero;
     message.name.funcs.decode = &decodeDisplayName;
-    message.name.arg = decoded.name;
+    message.name.arg = serverName;
     message.team_name.funcs.decode = &decodeDisplayName;
-    message.team_name.arg = decoded.teamName;
+    message.team_name.arg = team.name;
     message.affiliations.funcs.decode = &decodeAffiliation;
-    message.affiliations.arg = &decoded.affiliations;
+    message.affiliations.arg = &affiliations;
 
     pb_istream_t stream = pb_istream_from_buffer(
         reinterpret_cast<const pb_byte_t*>(body.data()), body.size());
@@ -78,14 +80,14 @@ bool decode(const std::string& body, DevicePlayer& player) {
         return false;
     }
 
-    std::memcpy(decoded.id.bytes, message.id, UUIDBytes::SIZE);
-    if (decoded.id.isNil()) {
+    std::memcpy(serverId.bytes, message.id, UUIDBytes::SIZE);
+    if (serverId.isZero()) {
         return false;
     }
     if (message.has_team_id) {
-        std::memcpy(decoded.teamId.bytes, message.team_id, UUIDBytes::SIZE);
+        std::memcpy(team.id.bytes, message.team_id, UUIDBytes::SIZE);
     }
-    player = decoded;
+    player.applyRegistrationProfile(serverId, serverName, team, affiliations);
     return true;
 }
 

@@ -5,8 +5,8 @@ alleycat.device.WriteDeviceLogRequest.device_mac          max_size:18   # "aa:bb
 alleycat.device.WriteDeviceLogRequest.software_version    max_size:16   # 8-char short commit hash + margin
 alleycat.device.WriteDeviceLogRequest.task_name           max_size:16   # TASK_NAME_LENGTH
 
-# UUIDs are 16 raw bytes; any other length fails the decode.
-# Display names run up to 255 bytes, so callbacks truncate them into DevicePlayer's buffers.
+# UUIDs are 16 raw bytes; any other non-zero length fails the decode.
+# String fields use FT_CALLBACK; decode truncates into PlayerLimits buffers (37 bytes).
 alleycat.device.DevicePlayerResponse.id                   max_size:16 fixed_length:true   # UUIDBytes::SIZE
 alleycat.device.DevicePlayerResponse.name                 type:FT_CALLBACK
 alleycat.device.DevicePlayerResponse.team_id              max_size:16 fixed_length:true

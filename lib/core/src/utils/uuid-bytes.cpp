@@ -63,7 +63,7 @@ void UUIDBytes::format(char (&text)[TEXT_BUFFER_SIZE]) const {
     text[TEXT_LENGTH] = '\0';
 }
 
-bool UUIDBytes::isNil() const {
+bool UUIDBytes::isZero() const {
     for (uint8_t byte : bytes) {
         if (byte != 0) {
             return false;

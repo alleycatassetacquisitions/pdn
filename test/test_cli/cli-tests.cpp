@@ -60,11 +60,11 @@ TEST_F(NativePeerBrokerTestSuite, DisconnectedPeerNoReceive) {
 // ============================================
 
 TEST_F(MockHttpServerTestSuite, GetPlayerReturnsCorrectData) {
-    httpServerGetPlayerReturnsCorrectData(this);
+    httpServerGetDevicePlayerByPinReturnsData(this);
 }
 
 TEST_F(MockHttpServerTestSuite, GetPlayerReturnsDefaults) {
-    httpServerGetPlayerReturnsDefaults(this);
+    httpServerGetDevicePlayerByPinReturns404(this);
 }
 
 TEST_F(MockHttpServerTestSuite, PutMatchesAccepts) {

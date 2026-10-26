@@ -25,7 +25,7 @@ struct UUIDBytes {
     void format(char (&text)[TEXT_BUFFER_SIZE]) const;
 
     /** @return true when every byte is zero. */
-    bool isNil() const;
+    bool isZero() const;
 
     /** @return true when both hold the same 16 bytes. */
     bool operator==(const UUIDBytes& other) const;

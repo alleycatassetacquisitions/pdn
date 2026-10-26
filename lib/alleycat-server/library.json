@@ -4,6 +4,9 @@
   "description": "Alleycat server API — request builders, response parsers, and protobuf encoding",
   "dependencies": [
     {
+      "name": "core"
+    },
+    {
       "name": "ArduinoJson",
       "version": "^7.4.2"
     }

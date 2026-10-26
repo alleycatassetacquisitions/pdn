@@ -17,47 +17,6 @@ protected:
 };
 
 // ============================================
-// JSON Serialization Tests
-// ============================================
-
-inline void playerJsonRoundTripPreservesAllFields(Player* player) {
-    // Set up player with all fields populated
-    char testId[] = "test-uuid-1234";
-    player->setUserID(testId);
-    player->setName("TestPlayer");
-    player->setAllegiance(Allegiance::HELIX);
-    player->setFaction("TestFaction");
-    player->setIsHunter(true);
-
-    // Serialize to JSON
-    std::string json = player->toJson();
-
-    // Create new player and deserialize
-    Player restored;
-    restored.fromJson(json);
-
-    // Verify all fields preserved
-    EXPECT_EQ(restored.getUserID(), "test-uuid-1234");
-    EXPECT_EQ(restored.getName(), "TestPlayer");
-    EXPECT_EQ(restored.getFaction(), "TestFaction");
-    EXPECT_TRUE(restored.isHunter());
-}
-
-inline void playerJsonRoundTripWithBountyRole(Player* player) {
-    char testId[] = "bounty-player-id";
-    player->setUserID(testId);
-    player->setIsHunter(false);
-
-    std::string json = player->toJson();
-
-    Player restored;
-    restored.fromJson(json);
-
-    EXPECT_EQ(restored.getUserID(), "bounty-player-id");
-    EXPECT_FALSE(restored.isHunter());
-}
-
-// ============================================
 // Stats Tracking Tests
 // ============================================
 

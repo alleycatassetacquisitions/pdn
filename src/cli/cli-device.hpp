@@ -26,7 +26,8 @@
 #include "wireless/quickdraw-wireless-manager.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-types.hpp"
-#include "apps/player-registration/player-registration.hpp"
+#include "apps/player-fetch/player-fetch.hpp"
+#include "game/player-provider.hpp"
 
 // CLI components
 #include "cli/cli-serial-broker.hpp"
@@ -96,6 +97,7 @@ struct DeviceInstance {
     
     // Game objects
     PDN* pdn = nullptr;
+    PlayerProvider* playerProvider = nullptr;
     Player* player = nullptr;
     Quickdraw* game = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager = nullptr;
@@ -167,6 +169,7 @@ public:
         playerConfig.isHunter = isHunter;
         playerConfig.allegiance = 1;  // RESISTANCE
         playerConfig.faction = isHunter ? "Guild" : "Rebels";
+        UUIDBytes::parse("7d1f0c52-3a6e-4f0b-9c1d-2e8a4b6c0d11", playerConfig.wirePlayerId);
         MockHttpServer::getInstance().configurePlayer(instance.deviceId, playerConfig);
         
         // Create driver configuration
@@ -188,15 +191,16 @@ public:
         // Create PDN
         instance.pdn = PDN::createPDN(pdnConfig);
         instance.pdn->begin();
-        
-        // Create and configure player
-        instance.player = new Player();
+
+        instance.playerProvider = new PlayerProvider();
+        instance.player = instance.playerProvider->getPlayer();
         char* idPtr = new char[5];
         strcpy(idPtr, instance.deviceId.c_str());
         instance.player->setUserID(idPtr);
         instance.player->setIsHunter(isHunter);
-        instance.player->setAllegiance(Allegiance::RESISTANCE);  // Default allegiance
-        
+        instance.player->setAllegiance(Allegiance::RESISTANCE);
+        instance.playerProvider->setRegistrationPin(instance.deviceId.c_str());
+
         // Create QuickdrawWirelessManager (required by game states even when mocking)
         instance.quickdrawWirelessManager = new QuickdrawWirelessManager();
         instance.quickdrawWirelessManager->initialize(instance.player, instance.pdn->getWirelessManager(), 1000);
@@ -224,23 +228,18 @@ public:
         );
         
         // Create game (no remote debug manager for now)
-        instance.game = new Quickdraw(
-            instance.player,
-            instance.pdn,
-            instance.quickdrawWirelessManager,
-            nullptr,
-            instance.symbolWirelessManager);
+        instance.game =
+        new Quickdraw(instance.playerProvider, instance.pdn,
+                      instance.quickdrawWirelessManager, nullptr, instance.symbolWirelessManager);
 
         // Register state machines with the device and launch Quickdraw
         AppConfig apps = {
             {StateId(QUICKDRAW_APP_ID), instance.game}
         };
         instance.pdn->loadAppConfig(apps, StateId(QUICKDRAW_APP_ID));
-        
-        // Skip entire registration flow — jump past PlayerRegistrationApp
-        // directly to the first gameplay state (AwakenSequence, index 1 in
-        // Quickdraw's state map). The player is already configured with ID,
-        // role, and allegiance from DeviceFactory.
+
+        // Skip PlayerFetchApp (index 0) to AwakenSequence (index 1). Player is preconfigured in the
+        // factory.
         instance.game->skipToState(instance.pdn, 1);
         
         // Register with SerialCableBroker for cable simulation
@@ -263,7 +262,7 @@ public:
         delete device.game;
         delete device.quickdrawWirelessManager;
         delete device.symbolWirelessManager;
-        delete device.player;
+        delete device.playerProvider;
         delete device.pdn;
         // Note: drivers are owned by DriverManager via PDN, so they're deleted when PDN is deleted
     }
