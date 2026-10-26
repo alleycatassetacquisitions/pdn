@@ -112,6 +112,36 @@ void httpServerOfflineModeSimulation(MockHttpServerTestSuite* suite) {
     suite->server_->setOffline(false);
 }
 
+void httpServerClearHistory(MockHttpServerTestSuite* suite) {
+    configurePinPlayer(suite->server_, "1111", "A");
+    configurePinPlayer(suite->server_, "2222", "B");
+    std::string response;
+    suite->server_->handleRequest("GET", "/device/players/by-pin/1111", "", response);
+    suite->server_->handleRequest("GET", "/device/players/by-pin/2222", "", response);
+
+    ASSERT_GT(suite->server_->getHistory().size(), 0);
+
+    suite->server_->clearHistory();
+    ASSERT_EQ(suite->server_->getHistory().size(), 0);
+
+    suite->server_->removePlayer("1111");
+    suite->server_->removePlayer("2222");
+}
+
+void httpServerDeviceLogsReturns204(MockHttpServerTestSuite* suite) {
+    std::string response;
+    int status = suite->server_->handleRequest("POST", "/device-logs", "payload", response);
+
+    ASSERT_EQ(status, 204);
+    ASSERT_TRUE(response.empty());
+}
+
+void httpServerDeviceLogsEmptyBodyReturns400(MockHttpServerTestSuite* suite) {
+    std::string response;
+    int status = suite->server_->handleRequest("POST", "/device-logs", "", response);
+    ASSERT_EQ(status, 400);
+}
+
 // ============================================
 // NATIVE HTTP CLIENT DRIVER TEST SUITE
 // ============================================
@@ -122,7 +152,7 @@ public:
         driver = new NativeHttpClientDriver("test_http");
         successCallbackCalled = false;
         errorCallbackCalled = false;
-        lastErrorCode = WirelessError::NONE;
+        lastErrorCode = WirelessError::TIMEOUT;
         configurePinPlayer(&cli::MockHttpServer::getInstance(), "0010", "CLI");
     }
 
