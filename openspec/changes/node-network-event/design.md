@@ -1,8 +1,8 @@
 ## Context
 
-- **Registration:** `PlayerFetchApp` + `PlayerProvider` + `PlayerV2` (merged). Protobuf lookup only.
+- **Registration:** `PlayerFetchApp` + `PlayerProvider` (owns a `Player` carrying server id, team, affiliations). Protobuf lookup only.
 - **Upload client:** `QuickdrawMatchRecord`, `QuickdrawMatchCodec`, `MatchesApi::uploadQuickdrawMatches` (merged).
-- **Radio:** Existing `QuickdrawWirelessManager` and `QuickdrawCommand` duel packets; `RemoteDeviceCoordinator` for jack/direct peer.
+- **Radio:** the NodeNetwork duel packet and `NodeNetworkWirelessManager` from `node-network-duel-manager`; `RemoteDeviceCoordinator` for jack/direct peer.
 - **Legacy:** `MatchManager` + `Match` JSON + hunter/bounty competitive `didWin()` stay on Quickdraw.
 
 ## Goals / Non-Goals
@@ -15,7 +15,7 @@
 
 **Non-Goals:**
 
-- Unifying gameplay `Player` with `PlayerV2` across Quickdraw.
+- Refactoring Quickdraw's use of `Player` or registration.
 - Server or proto changes for sync metadata on this pass.
 
 ## Decisions
@@ -35,35 +35,23 @@ NodeNetwork::populateStateMap()
 
 *Why:* Single app id for the event, shared session profile, no multi-app switch in `main`.
 
-### Event duel stack (separate change)
+### NodeNetwork duel stack (separate change)
 
-Duel logic is specified in **`openspec/changes/event-duel-manager/`** (session, sync evaluator, protocol, record queue, coordinator). NodeNetwork **consumes** `MatchManagerV2` from that change; do not re-spec the monolith here.
+Duel logic is specified in **`openspec/changes/node-network-duel-manager/`** (session, wireless, storage, `MatchManagerV2`). NodeNetwork **consumes** `MatchManagerV2` from that change.
 
 *Why:* Same boundary as standalone PlayerFetch — reviewable PR, native tests before states.
 
-### Wire mapping for QuickdrawMatchRecord
+### Record mapping
 
-| Field | Source |
-|-------|--------|
-| `matchId` | Shared UUID from duel handshake (same on both devices) |
-| `playerAId` | Initiator (`PlayerV2.id` on OUTPUT side) |
-| `playerBId` | Responder |
-| `playerATeamId` / `playerBTeamId` | Match-time team from each side’s `PlayerV2` (omit if nil) |
-| `playerADrawTimeMs` / `playerBDrawTimeMs` | Initiator / responder reaction times |
-| `winnerPlayerId` | **Initiator id** (required by proto; front end disregards for sync UX) |
-| `occurredAtUnixMs` | Wall clock when match completes (same source as legacy upload where available) |
+Owned by `node-network-duel-manager` (`duel-session`): A = initiator, B = responder, `winnerPlayerId` = initiator id, both draw times uploaded, `occurredAtUnixMs` agreed in the handshake. The front end derives sync from the draw times.
 
-Participant **A** is always initiator, **B** responder — both devices MUST use the same convention when encoding.
+### Sync failure and sleep
 
-*Why:* Server and front end already consume standard quickdraw matches; sync is derived from times on FE.
+No `finalizeMatch`, no stored record, no HTTP. States show soft-fail UX then return to idle. When `MatchManagerV2::hasExhaustedAttempts()` is true (3 failed duels with the same peer), both devices transition to the sleep state instead of idle.
 
-### Sync failure
+### Upload
 
-No `finalizeMatch`, no prefs row, no HTTP. States transition to soft-fail UX then idle.
-
-### Storage
-
-New prefs namespace or key prefix for **`QuickdrawMatchRecord`** (binary or compact encoding TBD in implementation). Reuse batch read pattern from legacy match upload states where practical.
+`NodeUploadMatches` reads pending records from `MatchManagerV2`, uploads right after each successful match, and clears on success. Typical depth is one record.
 
 ### Fresh state port
 
@@ -72,8 +60,7 @@ Implement `node-network-states/` by copying behavior from Quickdraw states, not 
 ## Risks / Trade-offs
 
 - [Two duel implementations] → Accept until post-event Quickdraw refactor.
-- [Handshake still uses legacy packet fields e.g. isHunter bit] → Map to initiator/responder locally; do not use for scoring.
-- [Clock for `occurredAtUnixMs`] → Depends on HTTP date sync elsewhere; document if zero until sync lands.
+- [Clock for `occurredAtUnixMs`] → Set from the HTTP `Date` header after a successful fetch; the initiator will not start a duel if the clock is not positive.
 
 ## Migration Plan
 
@@ -85,5 +72,4 @@ Implement `node-network-states/` by copying behavior from Quickdraw states, not 
 
 ## Open Questions
 
-- Exact prefs encoding for `QuickdrawMatchRecord` queue (binary struct vs minimal JSON) — decide in PR 1 implementation.
-- Whether `failed_attempts` is displayed on idle only or also sent later — currently **device-local only**.
+- Whether the idle screen shows the failed-attempt count before sleep, or only the soft-fail copy.

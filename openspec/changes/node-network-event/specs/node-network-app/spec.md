@@ -8,7 +8,7 @@ The firmware SHALL provide a `NodeNetwork` state machine with its own app id. It
 - **THEN** fetch states and MatchManagerV2 receive the same `PlayerProvider` instance
 
 ### Requirement: Wireless callbacks target MatchManagerV2 only
-NodeNetwork SHALL register `QuickdrawWirelessManager` packet handling to `MatchManagerV2::listenForMatchEvents` (or equivalent). It SHALL NOT register MatchManager, chain, shootout, or symbol packet handlers on the event app class.
+NodeNetwork SHALL register the NodeNetwork duel packet handler to `MatchManagerV2` through `NodeNetworkWirelessManager`. It SHALL NOT register `MatchManager`, `QuickdrawWirelessManager`, chain, shootout, or symbol packet handlers on the event app class.
 
 #### Scenario: Event app handlers
 - **WHEN** NodeNetwork is the active app
