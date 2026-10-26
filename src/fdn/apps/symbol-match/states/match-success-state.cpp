@@ -6,27 +6,27 @@
 
 static const char* TAG = "MatchSuccess";
 
-MatchSuccess::MatchSuccess(SymbolManager* symbolManager,
-                           RemoteDeviceCoordinator* remoteDeviceCoordinator,
+MatchSuccess::MatchSuccess(RemoteDeviceCoordinator* remoteDeviceCoordinator,
                            SymbolWirelessManager* symbolWirelessManager)
     : FDNConnectState(remoteDeviceCoordinator, MATCH_SUCCESS)
-    , symbolManager(symbolManager)
     , symbolWirelessManager(symbolWirelessManager) {}
 
-MatchSuccess::~MatchSuccess() {
-    symbolManager = nullptr;
-    symbolWirelessManager = nullptr;
-}
+MatchSuccess::~MatchSuccess() { symbolWirelessManager = nullptr; }
 
 void MatchSuccess::onStateMounted(FDN* fdn) {
     LOG_W(TAG, "Mounted");
-    bufferTimer.setTimer(bufferInterval);
-    renderTimer.setTimer(renderInterval);
+    codewordTimer.setTimer(CODEWORD_DURATION_MS);
 
     AnimationConfig cfg{};
     cfg.loop  = true;
     cfg.speed = 20;
     fdn->getLightManager()->startAnimation(new FDNMatchSuccessAnimation(), cfg);
+
+    Display* d = fdn->getDisplay();
+    d->invalidateScreen();
+    d->setGlyphMode(FontMode::TEXT);
+    d->drawCenteredText(FDN_CODEWORD, 38);
+    d->render();
 
     for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
         const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
@@ -38,33 +38,16 @@ void MatchSuccess::onStateMounted(FDN* fdn) {
 }
 
 void MatchSuccess::onStateLoop(FDN* fdn) {
-    if (renderTimer.expired()) {
-        renderSymbolScreen(fdn);
-        renderTimer.setTimer(renderInterval);
+    if (codewordTimer.expired()) {
+        transitionToSelectionState = true;
     }
 }
 
 void MatchSuccess::onStateDismounted(FDN* fdn) {
     LOG_W(TAG, "Dismounted");
-    bufferTimer.invalidate();
-    renderTimer.invalidate();
-    toggleBlink = true;
+    codewordTimer.invalidate();
+    transitionToSelectionState = false;
     fdn->getLightManager()->stopAnimation();
 }
 
-void MatchSuccess::renderSymbolScreen(FDN* fdn) {
-    Display* d = fdn->getDisplay();
-    d->invalidateScreen();
-    d->whiteScreen();
-    d->setGlyphMode(FontMode::SYMBOL_GLYPH);
-    if (toggleBlink) {
-        d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK), 24, 40);
-        d->renderGlyph(symbolManager->getSymbolGlyph(SerialIdentifier::INPUT_JACK_SECONDARY), 72, 40);
-    }
-    d->render();
-    toggleBlink = !toggleBlink;
-}
-
-bool MatchSuccess::transitionToMainMenu() {
-    return bufferTimer.expired();
-}
+bool MatchSuccess::transitionToSelection() { return transitionToSelectionState; }

@@ -156,7 +156,6 @@ void SymbolIdle::onStateLoop(FDN* fdn) {
 
 void SymbolIdle::onStateDismounted(FDN* fdn) {
     transitionToSelectionState = false;
-    transitionToMainMenuApp    = false;
     mountedFdn                 = nullptr;
     lastTimeRendered           = 0;
     symbolSentLeft             = false;
@@ -165,14 +164,6 @@ void SymbolIdle::onStateDismounted(FDN* fdn) {
     symbolWirelessManager->clearCallback();
     symbolManager->setMatched(SerialIdentifier::INPUT_JACK, false);
     symbolManager->setMatched(SerialIdentifier::INPUT_JACK_SECONDARY, false);
-
-    for (SerialIdentifier port : {SerialIdentifier::INPUT_JACK, SerialIdentifier::INPUT_JACK_SECONDARY}) {
-        const uint8_t* peerMac = remoteDeviceCoordinator->getPeerMac(port);
-        if (peerMac) {
-            symbolWirelessManager->setMacPeer(peerMac);
-            symbolWirelessManager->sendPacket(SMCommand::SYMBOLS_REFRESHED, SymbolId::SYMBOL_A, port);
-        }
-    }
 
     fdn->getLightManager()->stopAnimation();
     LOG_W(TAG, "Dismounted");
@@ -230,8 +221,4 @@ bool SymbolIdle::transitionToMatchSuccess() {
     return symbolManager->isMatched(SerialIdentifier::INPUT_JACK)
         && symbolManager->isMatched(SerialIdentifier::INPUT_JACK_SECONDARY)
         && symbolSentLeft && symbolSentRight;
-}
-
-bool SymbolIdle::transitionToMainMenu() {
-    return transitionToMainMenuApp;
 }

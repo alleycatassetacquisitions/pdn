@@ -194,10 +194,7 @@ static void setup() {
         fdnConnectWirelessManager, hackedPlayersManager,
         fdn->getRemoteDeviceCoordinator());
 
-    symbolMatchApp = new SymbolMatch(
-        fdn, symbolWirelessManager,
-        remotePlayerManager, hackedPlayersManager,
-        fdnConnectWirelessManager);
+    symbolMatchApp = new SymbolMatch(fdn, symbolWirelessManager);
 
     // Splash screen
     fdn->getDisplay()
