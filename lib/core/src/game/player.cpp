@@ -1,6 +1,5 @@
 #include "game/player.hpp"
 
-#include <ArduinoJson.h>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -10,6 +9,7 @@
 
 static const char TAG[] = "Player";
 
+/** These methods in this namespace are a compatibility layer only until we replace all the old player apis. */
 namespace {
 
 bool equalsIgnoreCase(const char* left, const char* right) {
@@ -72,46 +72,6 @@ Player::Player(const std::string& id, Allegiance allegiance, bool isHunter)
     : id(id)
     , allegiance(allegiance)
     , hunter(isHunter) {}
-
-std::string Player::toJson() const {
-    // Create a JSON object for player
-    JsonDocument doc;
-    JsonObject playerObj = doc.to<JsonObject>();
-    playerObj["id"] = id;
-    playerObj["name"] = name;
-    playerObj["allegiance"] = allegianceStr;
-    playerObj["faction"] = faction;
-    playerObj["hunter"] = hunter;
-
-    // Serialize the JSON object to a string
-    std::string json;
-    serializeJson(playerObj, json);
-    return json;
-}
-
-void Player::fromJson(const std::string& json) {
-    // Parse the JSON string into a JSON object
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, json);
-
-    // Check if parsing was successful
-    if (!error) {
-        // Retrieve values from the JSON object
-        id = doc["id"].as<std::string>();
-        if (doc["name"].is<const char*>()) {
-            name = doc["name"].as<std::string>();
-        }
-        if (doc["allegiance"].is<const char*>()) {
-            allegianceStr = doc["allegiance"].as<std::string>();
-        }
-        if (doc["faction"].is<const char*>()) {
-            faction = doc["faction"].as<std::string>();
-        }
-        hunter = doc["hunter"];
-    } else {
-        // Serial.println("Failed to parse JSON");
-    }
-}
 
 void Player::toggleHunter() { hunter = !hunter; }
 
@@ -186,8 +146,12 @@ void Player::setUserID(char* newId) {
     symbol.updateFromUserIdString(id);
 }
 
-void Player::applyRngSeedFromUserId() {
-    const unsigned int seed = static_cast<unsigned int>(std::strtoul(id.c_str(), nullptr, 10));
+void Player::applyRngSeedFromDecimalString(const char* decimalString) {
+    if (decimalString == nullptr || decimalString[0] == '\0') {
+        return;
+    }
+    const unsigned int seed =
+        static_cast<unsigned int>(std::strtoul(decimalString, nullptr, 10));
     std::srand(seed);
     symbol.setRandomSymbol();
 }

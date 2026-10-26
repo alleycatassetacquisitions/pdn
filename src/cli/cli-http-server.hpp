@@ -7,9 +7,7 @@
 #include <functional>
 #include <deque>
 #include <cstdio>
-#include <regex>
-
-#include "alleycat-server/device-player-response-encode.hpp"
+#include "cli/cli-device-player-response-encode.hpp"
 #include "utils/uuid-bytes.hpp"
 
 namespace cli {
@@ -72,7 +70,7 @@ public:
      * Process an HTTP request and return response.
      * 
      * @param method HTTP method (GET, POST, PUT, DELETE)
-     * @param path Request path (e.g., "/api/players/0010")
+     * @param path Request path (e.g., "/device/players/by-pin/0010")
      * @param body Request body (for POST/PUT)
      * @param responseBody Output: response body
      * @return HTTP status code (200, 404, 500, etc.)
@@ -85,10 +83,7 @@ public:
         int statusCode = 500;
         responseBody = R"({"errors":["Internal server error"]})";
         
-        // Route the request
-        if (method == "GET" && path.find("/api/players/") == 0) {
-            statusCode = handleGetPlayer(path, responseBody);
-        } else if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
+        if (method == "GET" && path.find("/device/players/by-pin/") == 0) {
             statusCode = handleGetDevicePlayerByPin(path, responseBody);
         } else if (method == "PUT" && path == "/api/matches") {
             statusCode = handlePutMatches(body, responseBody);
@@ -164,17 +159,6 @@ private:
         }
     }
     
-    /**
-     * Extract player ID from path like "/api/players/0010"
-     */
-    std::string extractPlayerId(const std::string& path) {
-        const std::string prefix = "/api/players/";
-        if (path.find(prefix) == 0) {
-            return path.substr(prefix.length());
-        }
-        return "";
-    }
-
     int handleGetDevicePlayerByPin(const std::string& path, std::string& responseBody) {
         const std::string prefix = "/device/players/by-pin/";
         if (path.find(prefix) != 0) {
@@ -191,67 +175,14 @@ private:
             responseBody = R"({"errors":["Player not configured"]})";
             return 500;
         }
-        if (!DevicePlayerResponseEncode::encodeMinimal(it->second.wirePlayerId,
-                                                       it->second.name.c_str(), responseBody)) {
+        if (!cli::DevicePlayerResponseEncode::encodeMinimal(it->second.wirePlayerId,
+                                                            it->second.name.c_str(), responseBody)) {
             responseBody = R"({"errors":["Encode failed"]})";
             return 500;
         }
         return 200;
     }
 
-    /**
-     * Handle GET /api/players/{id}
-     */
-    int handleGetPlayer(const std::string& path, std::string& responseBody) {
-        std::string playerId = extractPlayerId(path);
-        
-        if (playerId.empty()) {
-            responseBody = R"({"errors":["Invalid player ID"]})";
-            return 400;
-        }
-        
-        // Check for special test IDs
-        if (playerId == "9999") {
-            // Test bounty
-            responseBody = R"({"data":{"id":"9999","name":"TestBounty","hunter":false,"allegiance":1,"faction":"Rebels"}})";
-            return 200;
-        }
-        if (playerId == "8888") {
-            // Test hunter
-            responseBody = R"({"data":{"id":"8888","name":"TestHunter","hunter":true,"allegiance":2,"faction":"Guild"}})";
-            return 200;
-        }
-        
-        // Look up configured player
-        auto it = playerConfigs_.find(playerId);
-        if (it == playerConfigs_.end()) {
-            // Player not found - return a default based on ID
-            // For CLI, generate sensible defaults
-            bool defaultHunter = (std::stoi(playerId) % 2 == 0);  // Even IDs are hunters
-            char buf[512];
-            snprintf(buf, sizeof(buf),
-                R"({"data":{"id":"%s","name":"Player%s","hunter":%s,"allegiance":1,"faction":"Default"}})",
-                playerId.c_str(),
-                playerId.c_str(),
-                defaultHunter ? "true" : "false");
-            responseBody = buf;
-            return 200;
-        }
-        
-        // Return configured player data
-        const MockPlayerConfig& config = it->second;
-        char buf[512];
-        snprintf(buf, sizeof(buf),
-            R"({"data":{"id":"%s","name":"%s","hunter":%s,"allegiance":%d,"faction":"%s"}})",
-            config.id.c_str(),
-            config.name.c_str(),
-            config.isHunter ? "true" : "false",
-            config.allegiance,
-            config.faction.c_str());
-        responseBody = buf;
-        return 200;
-    }
-    
     /**
      * Handle PUT /api/matches
      */

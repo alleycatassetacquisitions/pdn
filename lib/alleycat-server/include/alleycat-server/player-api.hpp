@@ -4,42 +4,13 @@
 #include <string>
 
 #include "alleycat-server/device-player-decoder.hpp"
-#include "alleycat-server/player-response.hpp"
 #include "device/wireless-manager.hpp"
 #include "game/player-types.hpp"
 #include "wireless/wireless-types.hpp"
 
 namespace PlayerApi {
 
-constexpr const char GET_PLAYERS_ENDPOINT[] = "/api/players/";
 constexpr const char GET_DEVICE_PLAYERS_ENDPOINT[] = "/device/players/by-pin/";
-
-/**
- * GET /api/players/{id} — parses JSON @ref PlayerResponse on success.
- */
-inline void getPlayer(
-    WirelessManager* wirelessManager,
-    const std::string& playerId,
-    const std::function<void(const PlayerResponse&)>& onSuccess,
-    const std::function<void(const WirelessErrorInfo&)>& onError) {
-    HttpRequest request(
-        GET_PLAYERS_ENDPOINT + playerId,
-        "GET",
-        "",
-        "",
-        [onSuccess, onError](const std::string& response) {
-            PlayerResponse playerResponse;
-            if (playerResponse.parseFromJson(response)) {
-                onSuccess(playerResponse);
-            } else {
-                onError({WirelessError::INVALID_RESPONSE,
-                         "Failed to parse player response"});
-            }
-        },
-        onError);
-
-    wirelessManager->queueHttpRequest(std::move(request));
-}
 
 /**
  * GET /device/players/by-pin/{pin} — decodes protobuf into @p player's registration fields.

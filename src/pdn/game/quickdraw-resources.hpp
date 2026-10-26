@@ -221,12 +221,6 @@ inline const LEDState BOUNTY_IDLE_STATE_ALTERNATE = [](){
     return state;
 }();
 
-// Test/debug player IDs retained for legacy tooling references.
-inline const std::string TEST_BOUNTY_ID     = "9999";
-inline const std::string TEST_HUNTER_ID     = "8888";
-inline const std::string BROADCAST_WIFI     = "1111";
-inline const std::string FORCE_MATCH_UPLOAD = "6969";
-
 // Easing curve lookup tables have moved to lib/core/include/utils/easing-curves.hpp.
 #include "utils/easing-curves.hpp"
 

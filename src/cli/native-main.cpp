@@ -119,7 +119,7 @@ DeviceInstance createDeviceInstance(int deviceIndex) {
     
     // Create game
     instance.game =
-    new Quickdraw(instance.player, instance.playerProvider, instance.pdn, instance.wirelessManager,
+    new Quickdraw(instance.playerProvider, instance.pdn, instance.wirelessManager,
                   nullptr, instance.symbolWirelessManager);
 
     // Register state machines with the device and launch Quickdraw
@@ -259,7 +259,8 @@ int main(int argc, char** argv) {
     for (auto& device : devices) {
         delete device.game;
         delete device.symbolWirelessManager;
-        delete device.player;
+        delete device.playerProvider;
+        device.player = nullptr;
         delete device.pdn;
     }
     

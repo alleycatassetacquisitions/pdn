@@ -40,8 +40,6 @@ const char* PlayerProvider::getRegistrationPin() const {
     return registrationPin;
 }
 
-void PlayerProvider::applyRngSeedFromRegistrationPin() const {
-    const unsigned int seed =
-    static_cast<unsigned int>(std::strtoul(getRegistrationPin(), nullptr, 10));
-    std::srand(seed);
+void PlayerProvider::applyRngSeedFromRegistrationPin() {
+    player.applyRngSeedFromDecimalString(getRegistrationPin());
 }

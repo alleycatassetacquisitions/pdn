@@ -150,7 +150,7 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when welcome finished and Quickdraw should run AwakenSequence. */
+    /** @return true when the welcome timer expires. */
     bool transitionToAwaken() const;
 
 private:

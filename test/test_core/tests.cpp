@@ -23,7 +23,6 @@
 #include "match-manager-concurrent.hpp"
 #include "storage-tests.hpp"
 #include "crash-encoder-tests.hpp"
-#include "player-response-tests.hpp"
 #include "device-player-decoder-tests.hpp"
 #include "player-fetch-tests.hpp"
 #include "player-provider-tests.hpp"
@@ -491,14 +490,6 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, jsonRoundTripPreservesAllFields) {
-    playerJsonRoundTripPreservesAllFields(player);
-}
-
-TEST_F(PlayerTestSuite, jsonRoundTripWithBountyRole) {
-    playerJsonRoundTripWithBountyRole(player);
-}
-
 TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
     playerStatsIncrementCorrectly(player);
 }
@@ -845,22 +836,6 @@ TEST_F(CrashEncoderTestSuite, omitsMissingExceptionCause) {
 
 TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
     encoderReturnZeroWhenBufferTooSmall(this);
-}
-
-// ============================================
-// PLAYER RESPONSE (JSON) TESTS
-// ============================================
-
-TEST(PlayerResponse, parsesValidPayload) {
-    playerResponseParsesValidPayload();
-}
-
-TEST(PlayerResponse, rejectsErrorsArray) {
-    playerResponseRejectsErrorsArray();
-}
-
-TEST(PlayerResponse, rejectsMissingData) {
-    playerResponseRejectsMissingData();
 }
 
 // ============================================

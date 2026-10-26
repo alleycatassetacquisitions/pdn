@@ -28,8 +28,8 @@ public:
     /** @return the stored registration PIN, or an empty string when none is stored. */
     const char* getRegistrationPin() const;
 
-    /** Seeds `std::srand` from the stored registration PIN (decimal). */
-    void applyRngSeedFromRegistrationPin() const;
+    /** Seeds RNG on the owned player from the stored registration PIN. */
+    void applyRngSeedFromRegistrationPin();
 
 private:
     Player player;

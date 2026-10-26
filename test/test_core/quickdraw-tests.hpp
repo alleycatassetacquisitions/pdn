@@ -1719,7 +1719,7 @@ inline void quickdrawCtorDtorDoesNotLeak(QuickdrawLifecycleTests* suite) {
     for (int i = 0; i < 5; i++) {
         PlayerProvider playerProvider;
         auto* qd =
-        new Quickdraw(suite->player, &playerProvider, &suite->device, suite->qwm, nullptr, nullptr);
+        new Quickdraw(&playerProvider, &suite->device, suite->qwm, nullptr, nullptr);
         delete qd;
     }
 }

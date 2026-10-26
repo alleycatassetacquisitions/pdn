@@ -24,11 +24,6 @@ public:
 
     Player(const std::string& id, Allegiance allegiance, bool isHunter);
 
-    std::string toJson() const;
-
-    /** Deprecated method */
-    void fromJson(const std::string& json);
-
     bool isHunter() const;
 
     void setIsHunter(bool isHunter);
@@ -56,9 +51,8 @@ public:
     /** Soon to be deprecated */
     void setUserID(char* newId);
 
-    /// Reseed libc `rand` from the decimal value of `id` and re-roll the PDN symbol. Call after
-    /// the pairing code is entered (PlayerRegistrationState), so gameplay RNG matches the player.
-    void applyRngSeedFromUserId();
+    /** Reseed libc `rand` from a decimal string (e.g. registration PIN) and re-roll the symbol. */
+    void applyRngSeedFromDecimalString(const char* decimalString);
 
     std::string getUserID() const;
 

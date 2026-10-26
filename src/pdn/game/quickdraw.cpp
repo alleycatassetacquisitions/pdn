@@ -5,18 +5,18 @@
 #include <array>
 #include <cstring>
 
-Quickdraw::Quickdraw(Player* player, PlayerProvider* playerProvider, Device* pdn,
+Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
                      QuickdrawWirelessManager* quickdrawWirelessManager,
                      RemoteDebugManager* remoteDebugManager,
                      SymbolWirelessManager* symbolWirelessManager)
     : StateMachine(QUICKDRAW_APP_ID)
+    , playerProvider(playerProvider)
     , wirelessManager(pdn->getWirelessManager())
     , storageManager(pdn->getStorage())
     , peerComms(pdn->getPeerComms())
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
     , firmwareUpdateManager(pdn->getFirmwareUpdateManager()) {
-    this->player = player;
-    this->playerProvider = playerProvider;
+    this->player = playerProvider->getPlayer();
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;

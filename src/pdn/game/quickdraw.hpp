@@ -24,8 +24,7 @@ constexpr int QUICKDRAW_APP_ID = 1;
 class Quickdraw : public StateMachine {
 public:
     /** Builds the game managers and registers their packet handlers. */
-    Quickdraw(Player* player, PlayerProvider* playerProvider, Device* pdn,
-              QuickdrawWirelessManager* quickdrawWirelessManager,
+    Quickdraw(PlayerProvider* playerProvider, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager,
               RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 

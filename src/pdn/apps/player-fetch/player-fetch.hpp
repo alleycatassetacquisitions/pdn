@@ -21,7 +21,7 @@ public:
     /** Registers PlayerFetch states and transitions. */
     void populateStateMap() override;
 
-    /** True after the in-app awaken sequence completes. */
+    /** True when welcome finishes; Quickdraw transitions out of this app to AwakenSequence. */
     bool readyForGameplay();
 
 private:
