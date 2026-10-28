@@ -1486,6 +1486,9 @@ TEST_F(RDCHelloTests, resendContextSupersedesUnackedSend) {
 TEST_F(RDCHelloTests, resendContextSendsOncePerPeer) {
     rdcResendContextSendsOncePerPeer(this);
 }
+TEST_F(RDCHelloTests, connectedJackUpdatesPeerContextOnResend) {
+    rdcConnectedJackUpdatesPeerContextOnResend(this);
+}
 TEST_F(RDCHelloTests, contextCarriesOwnChainRole) {
     rdcContextCarriesOwnChainRole(this);
 }
@@ -1761,14 +1764,6 @@ TEST_F(ChainDuelManagerTests, newTerminalEventSupersedesThePrevious) {
     cdmNewTerminalEventSupersedesThePrevious(this);
 }
 
-TEST_F(ChainDuelManagerTests, opponentAnnounceRetriesUntilDelivered) {
-    cdmOpponentAnnounceRetriesUntilDelivered(this);
-}
-
-TEST_F(ChainDuelManagerTests, opponentAnnounceWaitsForConnected) {
-    cdmOpponentAnnounceWaitsForConnected(this);
-}
-
 TEST_F(ChainDuelManagerTests, reannouncesAfterSameMacReconnect) {
     cdmReannouncesAfterSameMacReconnect(this);
 }
@@ -1779,10 +1774,6 @@ TEST_F(ChainDuelManagerTests, championChangeReachesAToldSupporter) {
 
 TEST_F(ChainDuelManagerTests, undeliveredSupporterAnnounceIsRetriedByBackstop) {
     cdmUndeliveredSupporterAnnounceIsRetriedByBackstop(this);
-}
-
-TEST_F(ChainDuelManagerTests, undeliveredOpponentAnnounceIsRetriedByBackstop) {
-    cdmUndeliveredOpponentAnnounceIsRetriedByBackstop(this);
 }
 
 TEST_F(ChainDuelManagerTests, announceWaitsForConnectedSupporterJack) {
@@ -1829,10 +1820,6 @@ TEST_F(ChainDuelManagerTests, roleAnnounceFromSupporterJackIgnoresChampionMac) {
     cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, broadcastToOpponentJackPopulatesRemoteRole) {
-    cdmBroadcastToOpponentJackPopulatesRemoteRole(this);
-}
-
 TEST_F(ChainDuelManagerTests, championToSupporterClearsStaleSelfMac) {
     cdmChampionToSupporterClearsStaleSelfMac(this);
 }
@@ -1875,6 +1862,14 @@ TEST_F(ChainDuelMultiDeviceFixture, boostScalesWithChainDepth) {
 
 TEST_F(ChainDuelMultiDeviceFixture, gameEventReachesDistantSupporter) {
     cdmMultiDeviceGameEventReachesDistantSupporter(this);
+}
+
+TEST_F(ChainDuelMultiDeviceFixture, oneSidedHelloDropoutRecoversChain) {
+    cdmMultiDeviceOneSidedHelloDropoutRecoversChain(this);
+}
+
+TEST_F(ChainDuelMultiDeviceFixture, liveRoleFlipAndOneSidedDropoutRecoverDuelGate) {
+    cdmMultiDeviceLiveRoleFlipAndOneSidedDropoutRecoverDuelGate(this);
 }
 
 TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceFullTournament) {

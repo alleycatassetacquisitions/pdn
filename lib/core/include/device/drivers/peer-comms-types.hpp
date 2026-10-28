@@ -39,7 +39,7 @@ enum class PktType : uint8_t {
 // it forwards the profile to the game layer opaquely.
 struct PlayerProfile {
     uint16_t userId;   // 0xFFFF while unregistered
-    uint8_t gameRole;  // 1 = hunter, 0 = target/bounty, as in RoleAnnouncePayload
+    uint8_t gameRole;  // 1 = hunter, 0 = target/bounty
     uint8_t allegiance;
     char faction[8];
     char name[16];
@@ -96,7 +96,6 @@ struct ChainJoinPayload {
 
 struct RoleAnnouncePayload
 {
-    uint8_t role;               // 1 = hunter, 0 = target/bounty
     uint8_t championMac[6];
     uint8_t seqId;
 } __attribute__((packed));

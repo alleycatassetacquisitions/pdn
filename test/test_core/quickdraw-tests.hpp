@@ -1634,6 +1634,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
+    rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
 
     // The role cascade emits its own traffic; a catch-all keeps that off the
     // confirm counter below.
@@ -1648,7 +1649,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
     auto* session = new GameSession(suite->player, &suite->device, nullptr);
     ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
 
-    chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
+    chainDuelManager->onRoleAnnounceReceived(champion, champion);
     ASSERT_TRUE(chainDuelManager->isSupporter());
     chainDuelManager->sendConfirm();
     ASSERT_EQ(confirmsSent, 1);
@@ -1665,7 +1666,7 @@ inline void gameSessionCountdownVoidsStandingConfirm(GameSessionLifecycleTests* 
 
     // The press is spent, so the champion change must not resurrect it.
     uint8_t secondChampion[6] = {0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
-    chainDuelManager->onRoleAnnounceReceived(champion, 1, secondChampion, 2);
+    chainDuelManager->onRoleAnnounceReceived(champion, secondChampion);
     EXPECT_EQ(confirmsSent, 1);
 
     delete session;
@@ -1681,11 +1682,12 @@ inline void gameSessionCountdownArmsMountedSupporter(GameSessionLifecycleTests* 
     FakeRemoteDeviceCoordinator& rdc = suite->device.fakeRemoteDeviceCoordinator;
     rdc.setPortStatus(SerialIdentifier::OUTPUT_JACK, PortStatus::CONNECTED);
     rdc.setPeerMac(SerialIdentifier::OUTPUT_JACK, champion);
+    rdc.setPeerRole(SerialIdentifier::OUTPUT_JACK, true);
     EXPECT_CALL(*suite->device.mockPeerComms, sendData(_, _, _, _)).WillRepeatedly(Return(1));
 
     GameSession* session = new GameSession(suite->player, &suite->device, nullptr);
     ChainDuelManager* chainDuelManager = session->getContext().chainDuelManager;
-    chainDuelManager->onRoleAnnounceReceived(champion, 1, champion, 1);
+    chainDuelManager->onRoleAnnounceReceived(champion, champion);
     ASSERT_TRUE(chainDuelManager->isSupporter());
 
     HubApp* hub = new HubApp(session->getContext());
