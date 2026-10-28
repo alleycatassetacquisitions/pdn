@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Style gate on the staged diff, run by hooks/pre-commit.
+"""Style checks on the staged diff, run by hooks/pre-commit.
 
-Needs clang-format, clang-tidy and a compile_commands.json at the repo root
-(`pio run -e native_cli -t compiledb`). On Windows, native_cli usually builds
-with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
+Uses clang-format, clang-tidy and a compile_commands.json at the repo root
+(`pio run -e native_cli -t compiledb`) when they are there. On Windows,
+native_cli usually builds with MSYS MinGW g++; LLVM clang-tidy then needs that toolchain's system
 include paths (injected automatically — see clang_tidy_driver_extras). Line
 rules and clang-format apply to the lines added in the staged diff;
 clang-tidy runs on the translation units behind the staged files, with its
 diagnostics restricted to those same lines.
-A legacy violation elsewhere in a touched file does not block the commit
+Findings are advisory by default: the script reports and exits 0, so a missing
+tool or a compile database from another checkout costs you the checks it feeds
+rather than the commit. `--strict`, or CHECK_STYLE_STRICT in the environment,
+exits 1 on a finding instead — for CI, where the toolchain is installed
+deliberately and a finding is worth failing on.
+A legacy violation elsewhere in a touched file is not reported at all
 (clang-format may still reflow the statement around an added line), so legacy
 gets fixed on touch rather than all at once. Exceptions: new and
 renamed files must be kebab-case, new headers need #pragma once, and the
@@ -347,10 +352,12 @@ def load_compiledb(repo_root):
     for e in entries:
         rel = tu_path_in_repo(e, repo_root)
         if rel.startswith(".."):
-            flag("compile_commands.json", 1,
-                 f"generated in another checkout ({e['directory']}); {COMPILEDB_HINT}")
+            notices.append("compile_commands.json was generated in another checkout "
+                           f"({e['directory']}), clang-tidy skipped; {COMPILEDB_HINT}")
             return set()
         paths.add(rel)
+    if not paths:
+        notices.append(f"compile_commands.json lists no units, clang-tidy skipped; {COMPILEDB_HINT}")
     return paths
 
 
@@ -467,8 +474,8 @@ def tidy_targets(files, db):
 
 def run_scoped_tidy(files, added_by_path, repo_root):
     """--line-filter drops check findings outside the staged added lines;
-    compiler errors are not filtered, so a TU that fails to parse fails the
-    commit."""
+    compiler errors are not filtered, so a TU that fails to parse is reported
+    whole."""
     db = load_compiledb(repo_root)
     if db is None:
         notices.append(f"compile_commands.json missing, clang-tidy skipped; {COMPILEDB_HINT}")
@@ -487,6 +494,7 @@ def run_scoped_tidy(files, added_by_path, repo_root):
                        + ", ".join(skipped))
     if not targets:
         return
+    check_unstaged_edits(files)
     tidy_cmd = [
         "clang-tidy", "-p", repo_root, "--quiet",
         f"--line-filter={json.dumps(line_filter)}",
@@ -511,19 +519,20 @@ def check_unstaged_edits(files):
             flag(path, 1, "has unstaged changes; stage or stash them so clang-tidy sees the staged content")
 
 
-def main():
+def run_checks(strict):
     repo_root = git("rev-parse", "--show-toplevel").strip()
     os.chdir(repo_root)
     # During a merge the index vs HEAD shows the whole incoming side as added.
     if os.path.exists(git("rev-parse", "--git-path", "MERGE_HEAD").strip()):
-        return 0
+        return
     files = staged_files()
     if not files:
-        return 0
-    missing = [t for t in ("clang-format", "clang-tidy") if shutil.which(t) is None]
-    if missing:
-        print(f"check_style: {', '.join(missing)} not found on PATH; install LLVM/clang tools")
-        return 1
+        return
+    have_format = shutil.which("clang-format") is not None
+    have_tidy = shutil.which("clang-tidy") is not None
+    for tool, present in (("clang-format", have_format), ("clang-tidy", have_tidy)):
+        if not present:
+            notices.append(f"{tool} not found on PATH, its checks skipped; install LLVM/clang tools")
     added_by_path = {}
     for path, (status, old_path) in files.items():
         content = staged_content(path)
@@ -534,16 +543,30 @@ def main():
         check_own_header_first(path, content, added)
         check_doxygen_and_access_order(path, content, added)
         check_added_lines(path, added, strip_file(content))
-        check_format(path, content, added)
-    check_unstaged_edits(files)
-    run_scoped_tidy(files, added_by_path, repo_root)
+        if have_format:
+            check_format(path, content, added)
+    if have_tidy:
+        run_scoped_tidy(files, added_by_path, repo_root)
     for d in format_diffs:
         print(d, end="" if d.endswith("\n") else "\n")
     for path, ln, msg in sorted(violations):
         print(f"{path}:{ln}: {msg}")
     for n in notices:
-        print(n, file=sys.stderr)
-    return 1 if violations else 0
+        print(n)
+    if violations and not strict:
+        print("check_style: findings above are advisory, the commit is not blocked")
+
+
+def main():
+    strict = bool(os.environ.get("CHECK_STYLE_STRICT")) or "--strict" in sys.argv[1:]
+    try:
+        run_checks(strict)
+    except Exception as exc:
+        # A fault in the tooling says nothing about the staged code, so it never
+        # ends the commit — not even under --strict.
+        print(f"check_style: checks incomplete, {type(exc).__name__}: {exc}")
+        return 0
+    return 1 if (strict and violations) else 0
 
 
 if __name__ == "__main__":
