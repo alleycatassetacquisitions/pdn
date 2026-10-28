@@ -23,7 +23,7 @@ void RemoteDeviceCoordinator::initialize(WirelessManager* wirelessManager, Seria
     this->serialManager = serialManager;
     this->wirelessManager_ = wirelessManager;
 
-    handshakeWirelessManager.initialize(wirelessManager);
+    handshakeWirelessManager.initialize(wirelessManager, PDN->getDeviceType());
 
     inputPortHandshake = new HandshakeApp(&handshakeWirelessManager, SerialIdentifier::INPUT_JACK);
     inputPortHandshake->initialize(PDN);

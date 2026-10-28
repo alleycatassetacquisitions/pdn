@@ -1485,6 +1485,10 @@ TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) {
     hwmSendPacketFailsWithNoPeer(this);
 }
 
+TEST_F(HWMUnitTests, sendPacketIncludesDeviceType) {
+    hwmSendPacketIncludesDeviceType(this);
+}
+
 TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
     hwmClearCallbacksRemovesAll(this);
 }
