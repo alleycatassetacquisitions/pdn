@@ -22,12 +22,6 @@ SpacesBeforeTrailingComments: 2
 SortIncludes: Never
 
 ---
-# Our JSON and proto files are hand-maintained. clang-format has to accept the
-# language or it errors out, which aborts a whole git-clang-format run over one
-# staged file, and its default extensions cover both. .clang-format-ignore is no
-# substitute: under --staged the content arrives on stdin with -assume-filename,
-# where the ignore file is never read, and in working-tree mode an ignored file
-# formats to zero bytes, which git-clang-format offers back as a truncation.
 Language: Json
 DisableFormat: true
 ---
