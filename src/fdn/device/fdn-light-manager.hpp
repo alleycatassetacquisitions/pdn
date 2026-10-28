@@ -1,6 +1,7 @@
 #pragma once
 
 #include "device/light-manager.hpp"
+#include "fdn-constants.hpp"
 
 // FDN physical LED layout:
 //   DISPLAY_LIGHTS → recess strip  (22 LEDs, indices 0-21)
@@ -9,7 +10,7 @@
 // Mapping from LEDState (leftLights[9] / rightLights[9]):
 //   Fin  (GRIP_LIGHTS) 0-8  → leftLights[0-8]
 //   Recess (DISPLAY_LIGHTS) 0-8  → rightLights[0-8]
-//   Recess 9-17 are left dark (not enough LEDState entries for all 22).
+//   Recess 9-21 are held dark (not enough LEDState entries for all 22).
 //
 // For explicit half-screen effects (e.g. match-side lights) call the
 // stripSetLight() helpers below which write directly to the LightStrip.
@@ -53,6 +54,11 @@ protected:
         for (uint8_t i = 0; i < 9; ++i) {
             pdnLights.setLight(LightIdentifier::GRIP_LIGHTS,    i, state.leftLights[i]);
             pdnLights.setLight(LightIdentifier::DISPLAY_LIGHTS, i, state.rightLights[i]);
+        }
+        // Darken the unmapped recess too, so clear() also wipes direct match-side writes.
+        LEDState::SingleLEDState off;
+        for (uint8_t i = 9; i < fdnNumRecessLights; ++i) {
+            pdnLights.setLight(LightIdentifier::DISPLAY_LIGHTS, i, off);
         }
     }
 };

@@ -68,7 +68,7 @@ You can find the developer wiki [here](https://deepwiki.com/alleycatassetacquisi
    ```bash
    cp wifi_credentials.ini.example wifi_credentials.ini
    ```
-   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL. This file is excluded from version control for security.
+   Then edit `wifi_credentials.ini` with your WiFi SSID, password, and API base URL, and for an FDN, its symbol-match codeword. This file is excluded from version control for security.
 
 5. Build the project using PlatformIO:
    ```bash
