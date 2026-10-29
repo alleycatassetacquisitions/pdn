@@ -7,6 +7,8 @@
 #include "game/quickdraw-resources.hpp"
 #include "game/player-provider.hpp"
 
+#include "wireless/device-test-wireless-manager.hpp"
+
 class FirmwareUpdateManager;
 
 namespace PlayerFetchStateId {
@@ -16,9 +18,12 @@ constexpr int CHOOSE_TEAM = 2;
 constexpr int DEMO_STUB = 3;
 constexpr int WELCOME = 4;
 constexpr int FIRMWARE_UPDATE = 31;
+constexpr int DEVICE_TEST = 32;
+constexpr int DEVICE_TEST_SUBJECT = 33;
 }  // namespace PlayerFetchStateId
 
 constexpr const char DEMO_PIN[] = "0000";
+constexpr const char DEVICE_TEST_PIN[] = "2413";
 constexpr unsigned long PLAYER_FETCH_FIRMWARE_HOLD_MS = 5000;
 constexpr int USER_DATA_FETCH_TIMEOUT_MS = 10000;
 constexpr int FETCH_FAILURE_PAGE_TIMEOUT_MS = 3000;
@@ -27,7 +32,7 @@ constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 class PinEntryState : public TypedState<PDN> {
 public:
     /** Pairing-code entry for PlayerFetch. */
-    explicit PinEntryState(PlayerProvider* playerProvider);
+    PinEntryState(PlayerProvider* playerProvider, DeviceTestWirelessManager* deviceTestWirelessManager);
     /** @copydoc TypedState::~TypedState */
     ~PinEntryState() override;
 
@@ -44,11 +49,19 @@ public:
     /** @return true when secondary-button OTA hold completed on pin entry. */
     bool transitionToFirmwareUpdate() const;
 
+    /** @return true when PIN @ref DEVICE_TEST_PIN was entered. */
+    bool transitionToDeviceTest() const;
+    /** @return true when a DUT session begins on pin entry. */
+    bool transitionToDeviceTestSubject() const;
+
 private:
     bool transitionToFetchUserState = false;
     bool transitionToChooseTeamState = false;
     bool transitionToFirmwareUpdateState = false;
+    bool transitionToDeviceTestState = false;
+    bool transitionToDeviceTestSubjectState = false;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    DeviceTestWirelessManager* deviceTestWirelessManager = nullptr;
     SimpleTimer sinceMount;
     bool shouldRender = false;
     PlayerProvider* playerProvider = nullptr;

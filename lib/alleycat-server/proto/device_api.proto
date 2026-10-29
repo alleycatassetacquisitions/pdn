@@ -160,3 +160,27 @@ message QuickdrawMatch {
   // The first accepted upload supplies the timestamp and all other fields.
   optional int64 occurred_at_unix_ms = 9;
 }
+
+// Component pass/fail flags from the PDN master test workflow.
+message DeviceTestComponentResults {
+  optional bool screen = 1;
+  optional bool leds = 2;
+  optional bool primary_button = 3;
+  optional bool secondary_button = 4;
+  optional bool haptics = 5;
+  optional bool power_switch = 6;
+  optional bool input_jack = 7;
+  optional bool output_jack = 8;
+  optional bool housing = 9;
+}
+
+// POST /device-test-results, application/protobuf.
+// Records one bench test for a labeled device at an event. 204 means accepted.
+message WriteDeviceTestResultRequest {
+  optional uint32 hardware_version = 1;
+  optional string firmware_commit_hash = 2;
+  optional uint32 id_label = 3;
+  optional string device_mac = 4;
+  optional string tester_mac = 5;
+  optional DeviceTestComponentResults components = 6;
+}

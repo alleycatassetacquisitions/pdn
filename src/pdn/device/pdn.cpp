@@ -2,13 +2,13 @@
 #include "device/driver-names.hpp"
 #include "device/drivers/logger.hpp"
 #include "device/firmware-update-manager.hpp"
-
 PDN* PDN::createPDN(DriverConfig& driverConfig) {
     return new PDN(driverConfig);
 }
 
 PDN::~PDN() {
     delete firmwareUpdateManager;
+    delete deviceTestWirelessManager;
 }
 
 PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
@@ -23,11 +23,13 @@ PDN::PDN(DriverConfig& driverConfig) : Device(driverConfig) {
     if (firmwareStore != nullptr) {
         firmwareUpdateManager = new FirmwareUpdateManager(getPeerComms(), firmwareStore);
     }
+    deviceTestWirelessManager = new DeviceTestWirelessManager();
 }
 
 int PDN::begin() {
     wirelessManager->initialize();
     remoteDeviceCoordinator->initialize(wirelessManager, serialManager, this);
+    deviceTestWirelessManager->initialize(wirelessManager);
     return 1;
 }
 
@@ -68,6 +70,10 @@ RemoteDeviceCoordinator* PDN::getRemoteDeviceCoordinator() {
 
 FirmwareUpdateManager* PDN::getFirmwareUpdateManager() {
     return firmwareUpdateManager;
+}
+
+DeviceTestWirelessManager* PDN::getDeviceTestWirelessManager() {
+    return deviceTestWirelessManager;
 }
 
 void PDN::setDeviceId(const std::string& id) {

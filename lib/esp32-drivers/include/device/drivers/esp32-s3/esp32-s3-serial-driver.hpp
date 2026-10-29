@@ -91,7 +91,7 @@ public:
             int incomingChar = read();
             if (incomingChar == STRING_START) {
                 std::string receivedString = readStringUntil(STRING_TERM);
-                LOG_D(logTag, "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
+                // LOG_D(logTag, "Received: '%s' (len=%d)", receivedString.c_str(), receivedString.length());
                 if (stringCallback) {
                     stringCallback(receivedString);
                 }

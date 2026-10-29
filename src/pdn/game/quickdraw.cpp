@@ -1,4 +1,5 @@
 #include "game/quickdraw.hpp"
+#include "device/pdn.hpp"
 #include "device/drivers/peer-comms-types.hpp"
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/logger.hpp"
@@ -15,7 +16,8 @@ Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
     , storageManager(pdn->getStorage())
     , peerComms(pdn->getPeerComms())
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
-    , firmwareUpdateManager(pdn->getFirmwareUpdateManager()) {
+    , firmwareUpdateManager(pdn->getFirmwareUpdateManager())
+    , pdnDevice(static_cast<PDN*>(pdn)) {
     this->player = playerProvider->getPlayer();
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
@@ -297,8 +299,11 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
-    PlayerFetchApp* playerFetch =
-    new PlayerFetchApp(wirelessManager, firmwareUpdateManager, playerProvider);
+    PlayerFetchApp* playerFetch = new PlayerFetchApp(wirelessManager,
+                                                    firmwareUpdateManager,
+                                                    playerProvider,
+                                                    remoteDeviceCoordinator,
+                                                    pdnDevice->getDeviceTestWirelessManager());
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
 

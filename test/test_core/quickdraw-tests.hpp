@@ -152,7 +152,7 @@ inline void idleButtonCallbacksRegisteredAndRemoved(IdleStateTests* suite) {
 inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
+    PinEntryState pinEntry(&playerProvider, nullptr);
     pinEntry.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS + 1000);
 
@@ -173,7 +173,7 @@ inline void pairingCodeFirmwareHoldStartsAnUpdate(IdleStateTests* suite) {
 inline void pairingCodeFirmwareHoldCarriedInDoesNotFire(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
+    PinEntryState pinEntry(&playerProvider, nullptr);
     pinEntry.onStateMounted(&suite->device);
     suite->fakeClock->advance(PLAYER_FETCH_FIRMWARE_HOLD_MS - 500);
 
@@ -206,7 +206,7 @@ inline void pairingCodeTakesUpdatesWhileUp(IdleStateTests* suite) {
     EXPECT_EQ(store.beginWriteCalls, 0) << "nothing is taken before the screen is up";
 
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
+    PinEntryState pinEntry(&playerProvider, nullptr);
     pinEntry.onStateMounted(&suite->device);
     onFrame(nullptr, chunkZero.data(), chunkZero.size(), nullptr);
     EXPECT_EQ(store.beginWriteCalls, 1);
@@ -221,7 +221,7 @@ inline void pairingCodeLeavesTheRadioAlone(IdleStateTests* suite) {
     ON_CALL(*suite->device.mockDisplay, renderGlyph(_, _, _)).WillByDefault(Return(suite->device.mockDisplay));
     suite->device.wirelessManager->enableWifiMode();
     PlayerProvider playerProvider;
-    PinEntryState pinEntry(&playerProvider);
+    PinEntryState pinEntry(&playerProvider, nullptr);
     pinEntry.onStateMounted(&suite->device);
     EXPECT_EQ(suite->device.wirelessManager->getCurrentMode(), WirelessMode::WIFI);
     pinEntry.onStateDismounted(&suite->device);

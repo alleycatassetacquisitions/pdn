@@ -40,6 +40,8 @@ public:
     bool isPaused() const;
     bool isAnimationComplete() const;
 
+    void showSolidWhiteLeds();
+
 protected:
     // Override in subclasses to provide a device-specific LED mapping.
     // The default implementation uses PDN layout (6 grip + 13 display).

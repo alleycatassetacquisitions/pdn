@@ -115,3 +115,14 @@ void LightManager::applyLEDState(const LEDState& state) {
         this->pdnLights.setLight(LightIdentifier::DISPLAY_LIGHTS, i, displayLightArray[i]);
     }
 }
+
+void LightManager::showSolidWhiteLeds() {
+    stopAnimation();
+    LEDState allWhite;
+    for (int i = 0; i < 9; ++i) {
+        allWhite.leftLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+        allWhite.rightLights[i] = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+    }
+    allWhite.transmitLight = LEDState::SingleLEDState(LEDColor(255, 255, 255), 100);
+    applyLEDState(allWhite);
+}

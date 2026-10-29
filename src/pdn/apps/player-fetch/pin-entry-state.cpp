@@ -9,11 +9,16 @@
 
 static const char TAG[] = "PinEntryState";
 
-PinEntryState::PinEntryState(PlayerProvider* playerProvider)
+PinEntryState::PinEntryState(PlayerProvider* playerProviderIn,
+                             DeviceTestWirelessManager* deviceTestWirelessManagerIn)
     : TypedState<PDN>(PlayerFetchStateId::PIN_ENTRY)
-    , playerProvider(playerProvider) {}
+    , deviceTestWirelessManager(deviceTestWirelessManagerIn)
+    , playerProvider(playerProviderIn) {}
 
-PinEntryState::~PinEntryState() { playerProvider = nullptr; }
+PinEntryState::~PinEntryState() {
+    playerProvider = nullptr;
+    deviceTestWirelessManager = nullptr;
+}
 
 void PinEntryState::onStateMounted(PDN* pdn) {
     playerProvider->clear();
@@ -58,6 +63,8 @@ void PinEntryState::onStateMounted(PDN* pdn) {
             pinEntry->playerProvider->applyRngSeedFromRegistrationPin();
             if (std::strcmp(playerId, DEMO_PIN) == 0) {
                 pinEntry->transitionToChooseTeamState = true;
+            } else if (std::strcmp(playerId, DEVICE_TEST_PIN) == 0) {
+                pinEntry->transitionToDeviceTestState = true;
             } else {
                 pinEntry->transitionToFetchUserState = true;
             }
@@ -66,6 +73,14 @@ void PinEntryState::onStateMounted(PDN* pdn) {
         }
     },
     this, ButtonInteraction::CLICK);
+
+    if (deviceTestWirelessManager != nullptr) {
+        deviceTestWirelessManager->registerEspNowHandler();
+        deviceTestWirelessManager->setSessionBeginCallback([this](const uint8_t* fromMac) {
+            (void)fromMac;
+            transitionToDeviceTestSubjectState = true;
+        });
+    }
 }
 
 void PinEntryState::onStateLoop(PDN* pdn) {
@@ -126,6 +141,12 @@ void PinEntryState::onStateDismounted(PDN* pdn) {
     transitionToFetchUserState = false;
     transitionToChooseTeamState = false;
     transitionToFirmwareUpdateState = false;
+    transitionToDeviceTestState = false;
+    transitionToDeviceTestSubjectState = false;
+    if (deviceTestWirelessManager != nullptr) {
+        deviceTestWirelessManager->setSessionBeginCallback(nullptr);
+        deviceTestWirelessManager->unregisterEspNowHandler();
+    }
     if (firmwareUpdateManager != nullptr) {
         firmwareUpdateManager->setEligible(false);
     }
@@ -136,3 +157,7 @@ bool PinEntryState::transitionToFetchUser() const { return transitionToFetchUser
 bool PinEntryState::transitionToChooseTeam() const { return transitionToChooseTeamState; }
 
 bool PinEntryState::transitionToFirmwareUpdate() const { return transitionToFirmwareUpdateState; }
+
+bool PinEntryState::transitionToDeviceTest() const { return transitionToDeviceTestState; }
+
+bool PinEntryState::transitionToDeviceTestSubject() const { return transitionToDeviceTestSubjectState; }

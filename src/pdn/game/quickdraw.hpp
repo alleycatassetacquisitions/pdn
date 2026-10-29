@@ -16,6 +16,7 @@
 #include "wireless/symbol-wireless-manager.hpp"
 
 class FirmwareUpdateManager;
+class PDN;
 
 constexpr size_t MATCH_SIZE = sizeof(Match);
 
@@ -61,6 +62,7 @@ private:
     ChainDuelManager* chainDuelManager = nullptr;
     ShootoutManager* shootoutManager_ = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    PDN* pdnDevice = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing

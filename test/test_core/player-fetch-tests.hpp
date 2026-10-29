@@ -81,7 +81,7 @@ inline void pinEntryRoutesNonDemoPinToFetch(PlayerFetchTestSuite* suite) {
         ctx = buttonCtx;
     }));
 
-    PinEntryState pinEntry(&suite->playerProvider);
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
     const int digits[4] = {0, 0, 0, 7};
     completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
     EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), "0007");
@@ -107,7 +107,7 @@ inline void pinEntryRoutesDemoPinToChooseTeam(PlayerFetchTestSuite* suite) {
         ctx = buttonCtx;
     }));
 
-    PinEntryState pinEntry(&suite->playerProvider);
+    PinEntryState pinEntry(&suite->playerProvider, nullptr);
     const int digits[4] = {0, 0, 0, 0};
     completePinOnEntry(&suite->device, &pinEntry, primaryPress, secondaryPress, ctx, digits);
     EXPECT_STREQ(suite->playerProvider.getRegistrationPin(), DEMO_PIN);

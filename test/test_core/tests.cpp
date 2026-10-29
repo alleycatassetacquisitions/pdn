@@ -28,6 +28,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "device-test-codec-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1491,6 +1492,10 @@ TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
 
 TEST_F(HWMUnitTests, processRejectsNegativeCommand) {
     hwmProcessRejectsNegativeCommand(this);
+}
+
+TEST(DeviceTestCodecSuite, roundTripEncodesFields) {
+    deviceTestCodecRoundTripEncodesFields();
 }
 
 // ============================================
