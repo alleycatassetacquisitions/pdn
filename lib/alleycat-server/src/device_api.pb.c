@@ -27,6 +27,20 @@ PB_BIND(alleycat_device_QuickdrawMatchRejection, alleycat_device_QuickdrawMatchR
 PB_BIND(alleycat_device_QuickdrawMatch, alleycat_device_QuickdrawMatch, 2)
 
 
+PB_BIND(alleycat_device_WriteDeviceReportRequest, alleycat_device_WriteDeviceReportRequest, 2)
+
+
+PB_BIND(alleycat_device_CreateDeviceRequest, alleycat_device_CreateDeviceRequest, AUTO)
+
+
+PB_BIND(alleycat_device_CreateDeviceInspectionRequest, alleycat_device_CreateDeviceInspectionRequest, 2)
+
+
+PB_BIND(alleycat_device_PdnComponentChecks, alleycat_device_PdnComponentChecks, AUTO)
+
+
+
+
 
 
 

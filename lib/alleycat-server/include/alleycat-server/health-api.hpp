@@ -9,7 +9,7 @@ namespace HealthApi {
 
 constexpr const char GET_HEALTH_CHECK_ENDPOINT[] = "/health_check";
 
-/** GET /health_check — JSON response body passed through to @p onSuccess. */
+/** GET /health_check; the HTTP Date header on any response sets the wall clock. */
 inline void healthCheck(
     WirelessManager* wirelessManager,
     const std::function<void(const std::string&)>& onSuccess,

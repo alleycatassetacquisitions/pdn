@@ -28,12 +28,12 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
+#include "device-inventory-codec-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
 
-void setup()
-{
+void setup() {
     // should be the same value as for the `test_speed` option in "platformio.ini"
     // default value is test_speed=115200
     Serial.begin(115200);
@@ -43,8 +43,7 @@ void setup()
     // ::testing::InitGoogleMock();
 }
 
-void loop()
-{
+void loop() {
     // Run tests
     if (RUN_ALL_TESTS())
         ;
@@ -71,22 +70,23 @@ TEST_F(StateMachineTestSuite, testInitialize) {
 TEST_F(StateMachineTestSuite, initializeAddsTransitions) {
     stateMachine->initialize(&stateMachineDevice);
 
-    InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
+    InitialTestState* initial =
+    dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
     SecondTestState* second = dynamic_cast<SecondTestState*>(stateMachine->getStateFromStateMap(1));
     ThirdTestState* third = dynamic_cast<ThirdTestState*>(stateMachine->getStateFromStateMap(2));
-    TerminalTestState* terminal = dynamic_cast<TerminalTestState*>(stateMachine->getStateFromStateMap(3));
+    TerminalTestState* terminal =
+    dynamic_cast<TerminalTestState*>(stateMachine->getStateFromStateMap(3));
 
     ASSERT_NE(initial->getTransitions().size(), 0);
     ASSERT_NE(second->getTransitions().size(), 0);
     ASSERT_NE(third->getTransitions().size(), 0);
     ASSERT_NE(terminal->getTransitions().size(), 0);
-
 }
 
 TEST_F(StateMachineTestSuite, initializePopulatesStateMap) {
     stateMachine->initialize(&stateMachineDevice);
 
-    std::vector<State *> populatedStates = stateMachine->getStateMap();
+    std::vector<State*> populatedStates = stateMachine->getStateMap();
 
     ASSERT_EQ(populatedStates.size(), 4);
 }
@@ -133,10 +133,12 @@ TEST_F(StateMachineTestSuite, stateMachineTransitionsThroughAllStates) {
 TEST_F(StateMachineTestSuite, stateLifecyclesAreInvoked) {
     stateMachine->initialize(&stateMachineDevice);
 
-    InitialTestState* initial = dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
+    InitialTestState* initial =
+    dynamic_cast<InitialTestState*>(stateMachine->getStateFromStateMap(0));
     SecondTestState* second = dynamic_cast<SecondTestState*>(stateMachine->getStateFromStateMap(1));
     ThirdTestState* third = dynamic_cast<ThirdTestState*>(stateMachine->getStateFromStateMap(2));
-    TerminalTestState* terminal = dynamic_cast<TerminalTestState*>(stateMachine->getStateFromStateMap(3));
+    TerminalTestState* terminal =
+    dynamic_cast<TerminalTestState*>(stateMachine->getStateFromStateMap(3));
 
     advanceStateMachineToState(SECOND_STATE);
 
@@ -168,11 +170,11 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
     testing::InSequence sequence;
 
     EXPECT_CALL(*stateMachineDevice.mockHaptics, getIntensity())
-    .Times(numLoopsBeforeTransition*2)
+    .Times(numLoopsBeforeTransition * 2)
     .WillRepeatedly(testing::Return(0))
     .RetiresOnSaturation();
 
-    while(numLoopsBeforeTransition--) {
+    while (numLoopsBeforeTransition--) {
         stateMachine->onStateLoop(&stateMachineDevice);
         ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == TERMINAL_STATE);
     }
@@ -187,7 +189,8 @@ TEST_F(StateMachineTestSuite, stateDoesNotTransitionUntilConditionIsMet) {
     ASSERT_TRUE(stateMachine->getCurrentState()->getStateId() == SECOND_STATE);
 }
 
-TEST_F(StateMachineTestSuite, whenTwoTransitionsAreMetSimultaneouslyThenTheFirstTransitionAddedTriggersFirst) {
+TEST_F(StateMachineTestSuite,
+       whenTwoTransitionsAreMetSimultaneouslyThenTheFirstTransitionAddedTriggersFirst) {
     stateMachine->initialize(&stateMachineDevice);
 
     advanceStateMachineToState(TERMINAL_STATE);
@@ -245,9 +248,9 @@ TEST_F(StateMachineTestSuite, commitStateExecutesCorrectlyWhenNewStateIsSet) {
 TEST_F(DeviceTestSuite, loadAppConfigMountsLaunchApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     ASSERT_EQ(appOne->mountedCount, 1);
     ASSERT_EQ(appOne->loopCount, 0);
 }
@@ -257,9 +260,9 @@ TEST_F(DeviceTestSuite, loadAppConfigWithMultipleAppsOnlyMountsLaunchApp) {
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
     config[APP_THREE] = appThree;
-    
+
     device->loadAppConfig(std::move(config), APP_TWO);
-    
+
     ASSERT_EQ(appOne->mountedCount, 0);
     ASSERT_EQ(appTwo->mountedCount, 1);
     ASSERT_EQ(appThree->mountedCount, 0);
@@ -268,13 +271,13 @@ TEST_F(DeviceTestSuite, loadAppConfigWithMultipleAppsOnlyMountsLaunchApp) {
 TEST_F(DeviceTestSuite, loopCallsCurrentAppStateLoop) {
     AppConfig config;
     config[APP_ONE] = appOne;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     device->loop();
     device->loop();
     device->loop();
-    
+
     ASSERT_EQ(appOne->loopCount, 3);
 }
 
@@ -282,7 +285,7 @@ TEST_F(DeviceTestSuite, loopHandlesEmptyAppConfig) {
     // Should not crash with empty config
     device->loop();
     device->loop();
-    
+
     // No assertions needed - just checking it doesn't crash
     SUCCEED();
 }
@@ -291,12 +294,12 @@ TEST_F(DeviceTestSuite, setActiveAppSwitchesToNewApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     // Switch to app two
     device->setActiveApp(APP_TWO);
-    
+
     ASSERT_EQ(appOne->dismountedCount, 1);
     ASSERT_EQ(appTwo->mountedCount, 1);
 }
@@ -305,13 +308,13 @@ TEST_F(DeviceTestSuite, setActiveAppDismountsCurrentApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     ASSERT_EQ(appOne->dismountedCount, 0);
-    
+
     device->setActiveApp(APP_TWO);
-    
+
     ASSERT_EQ(appOne->dismountedCount, 1);
 }
 
@@ -319,10 +322,10 @@ TEST_F(DeviceTestSuite, setActiveAppMountsNewApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
     device->setActiveApp(APP_TWO);
-    
+
     ASSERT_EQ(appTwo->mountedCount, 1);
 }
 
@@ -330,70 +333,70 @@ TEST_F(DeviceTestSuite, setActiveAppRemountsPreviousApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     // Switch to app two
     device->setActiveApp(APP_TWO);
-    
+
     // Switch back to app one
     device->setActiveApp(APP_ONE);
-    
-    ASSERT_EQ(appOne->mountedCount, 2);    // Initial mount + remount on return
-    ASSERT_EQ(appOne->dismountedCount, 1); // Dismounted when switching to app two
+
+    ASSERT_EQ(appOne->mountedCount, 2);     // Initial mount + remount on return
+    ASSERT_EQ(appOne->dismountedCount, 1);  // Dismounted when switching to app two
 }
 
 TEST_F(DeviceTestSuite, setActiveAppLoopCallsNewApp) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     device->loop();
     device->loop();
-    
+
     ASSERT_EQ(appOne->loopCount, 2);
     ASSERT_EQ(appTwo->loopCount, 0);
-    
+
     device->setActiveApp(APP_TWO);
-    
+
     device->loop();
     device->loop();
     device->loop();
-    
-    ASSERT_EQ(appOne->loopCount, 2); // No more loops on app one
-    ASSERT_EQ(appTwo->loopCount, 3); // App two now getting loops
+
+    ASSERT_EQ(appOne->loopCount, 2);  // No more loops on app one
+    ASSERT_EQ(appTwo->loopCount, 3);  // App two now getting loops
 }
 
 TEST_F(DeviceTestSuite, appLifecycleSequenceCorrect) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     // Load and launch app one
     device->loadAppConfig(std::move(config), APP_ONE);
     ASSERT_EQ(appOne->mountedCount, 1);
-    
+
     // Run some loops
     device->loop();
     device->loop();
     ASSERT_EQ(appOne->loopCount, 2);
-    
+
     // Switch to app two
     device->setActiveApp(APP_TWO);
     ASSERT_EQ(appOne->dismountedCount, 1);
     ASSERT_EQ(appTwo->mountedCount, 1);
-    
+
     // Run some loops on app two
     device->loop();
     ASSERT_EQ(appTwo->loopCount, 1);
-    
+
     // Switch back to app one
     device->setActiveApp(APP_ONE);
     ASSERT_EQ(appTwo->dismountedCount, 1);
     ASSERT_EQ(appOne->mountedCount, 2);
-    
+
     // Continue loops on app one
     device->loop();
     ASSERT_EQ(appOne->loopCount, 3);
@@ -404,21 +407,21 @@ TEST_F(DeviceTestSuite, multipleAppSwitchesWorkCorrectly) {
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
     config[APP_THREE] = appThree;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     // APP_ONE -> APP_TWO
     device->setActiveApp(APP_TWO);
     ASSERT_EQ(appTwo->mountedCount, 1);
-    
+
     // APP_TWO -> APP_THREE
     device->setActiveApp(APP_THREE);
     ASSERT_EQ(appThree->mountedCount, 1);
-    
+
     // APP_THREE -> APP_ONE (remount)
     device->setActiveApp(APP_ONE);
     ASSERT_EQ(appOne->mountedCount, 2);
-    
+
     // APP_ONE -> APP_TWO (remount)
     device->setActiveApp(APP_TWO);
     ASSERT_EQ(appTwo->mountedCount, 2);
@@ -428,27 +431,27 @@ TEST_F(DeviceTestSuite, inactiveAppLoopCountUnchanged) {
     AppConfig config;
     config[APP_ONE] = appOne;
     config[APP_TWO] = appTwo;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     device->loop();
     device->loop();
     device->loop();
     int loopsBeforeSwitch = appOne->loopCount;
-    
+
     // Switch away
     device->setActiveApp(APP_TWO);
-    
+
     // Run loops on app two — app one should not receive any
     device->loop();
     device->loop();
-    
+
     ASSERT_EQ(appOne->loopCount, loopsBeforeSwitch);
-    
+
     // Switch back and continue
     device->setActiveApp(APP_ONE);
     device->loop();
-    
+
     ASSERT_EQ(appOne->loopCount, loopsBeforeSwitch + 1);
 }
 
@@ -457,15 +460,15 @@ TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {
     // driverManager.execDrivers() and the app's onStateLoop
     AppConfig config;
     config[APP_ONE] = appOne;
-    
+
     device->loadAppConfig(std::move(config), APP_ONE);
-    
+
     // Device loop should execute drivers and then app loop
     device->loop();
-    
+
     // App loop was called
     ASSERT_EQ(appOne->loopCount, 1);
-    
+
     // Note: We can't directly test execDrivers() was called since
     // it's not mockable, but this documents the expected behavior
 }
@@ -474,9 +477,7 @@ TEST_F(DeviceTestSuite, loopExecutesDriversBeforeAppLoop) {
 // SERIAL TESTS
 // ============================================
 
-TEST_F(SerialTestSuite, serialWriteAppendsStringStart) {
-    serialWriteAppendsStringStart();
-}
+TEST_F(SerialTestSuite, serialWriteAppendsStringStart) { serialWriteAppendsStringStart(); }
 
 TEST_F(SerialTestSuite, headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue) {
     headIsSetWhenPeekIsExecutedAndStringIsRemovedFromQueue();
@@ -490,13 +491,9 @@ TEST_F(SerialTestSuite, whenHeadIsEmptyReadStringStillReturnsNextString) {
 // PLAYER TESTS
 // ============================================
 
-TEST_F(PlayerTestSuite, statsIncrementCorrectly) {
-    playerStatsIncrementCorrectly(player);
-}
+TEST_F(PlayerTestSuite, statsIncrementCorrectly) { playerStatsIncrementCorrectly(player); }
 
-TEST_F(PlayerTestSuite, streakResetsOnLoss) {
-    playerStreakResetsOnLoss(player);
-}
+TEST_F(PlayerTestSuite, streakResetsOnLoss) { playerStreakResetsOnLoss(player); }
 
 TEST_F(PlayerTestSuite, allegianceFromIntSetsCorrectly) {
     playerAllegianceFromIntSetsCorrectly(player);
@@ -514,53 +511,33 @@ TEST_F(PlayerTestSuite, reactionTimeAverageCalculatesCorrectly) {
 // MATCH TESTS
 // ============================================
 
-TEST_F(MatchTestSuite, defaultConstructionIsEmpty) {
-    matchDefaultConstructionIsEmpty();
-}
+TEST_F(MatchTestSuite, defaultConstructionIsEmpty) { matchDefaultConstructionIsEmpty(); }
 
 TEST_F(MatchTestSuite, shootoutIdConversionStaysInBounds) {
     matchShootoutIdConversionStaysInBounds();
 }
 
-TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) {
-    matchDeserializeClearsPlayerIdTail();
-}
+TEST_F(MatchTestSuite, deserializeClearsPlayerIdTail) { matchDeserializeClearsPlayerIdTail(); }
 
-TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) {
-    matchShorterIdOverwriteClearsTheTail();
-}
+TEST_F(MatchTestSuite, shorterIdOverwriteClearsTheTail) { matchShorterIdOverwriteClearsTheTail(); }
 
-TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) {
-    matchJsonRoundTripPreservesAllFields();
-}
+TEST_F(MatchTestSuite, jsonRoundTripPreservesAllFields) { matchJsonRoundTripPreservesAllFields(); }
 
-TEST_F(MatchTestSuite, jsonContainsWinnerFlag) {
-    matchJsonContainsWinnerFlag();
-}
+TEST_F(MatchTestSuite, jsonContainsWinnerFlag) { matchJsonContainsWinnerFlag(); }
 
 TEST_F(MatchTestSuite, binaryRoundTripPreservesAllFields) {
     matchBinaryRoundTripPreservesAllFields();
 }
 
-TEST_F(MatchTestSuite, binarySizeIsCorrect) {
-    matchBinarySizeIsCorrect();
-}
+TEST_F(MatchTestSuite, binarySizeIsCorrect) { matchBinarySizeIsCorrect(); }
 
-TEST_F(MatchTestSuite, setupClearsDrawTimes) {
-    matchSetupClearsDrawTimes();
-}
+TEST_F(MatchTestSuite, setupClearsDrawTimes) { matchSetupClearsDrawTimes(); }
 
-TEST_F(MatchTestSuite, drawTimesSetCorrectly) {
-    matchDrawTimesSetCorrectly();
-}
+TEST_F(MatchTestSuite, drawTimesSetCorrectly) { matchDrawTimesSetCorrectly(); }
 
-TEST_F(MatchTestSuite, withZeroDrawTimes) {
-    matchWithZeroDrawTimes();
-}
+TEST_F(MatchTestSuite, withZeroDrawTimes) { matchWithZeroDrawTimes(); }
 
-TEST_F(MatchTestSuite, withLargeDrawTimes) {
-    matchWithLargeDrawTimes();
-}
+TEST_F(MatchTestSuite, withLargeDrawTimes) { matchWithLargeDrawTimes(); }
 
 // ============================================
 // UUID TESTS
@@ -570,109 +547,61 @@ TEST_F(UUIDTestSuite, stringToBytesProducesCorrectOutput) {
     uuidStringToBytesProducesCorrectOutput();
 }
 
-TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) {
-    uuidBytesToStringProducesValidFormat();
-}
+TEST_F(UUIDTestSuite, bytesToStringProducesValidFormat) { uuidBytesToStringProducesValidFormat(); }
 
-TEST_F(UUIDTestSuite, roundTripPreservesData) {
-    uuidRoundTripPreservesData();
-}
+TEST_F(UUIDTestSuite, roundTripPreservesData) { uuidRoundTripPreservesData(); }
 
-TEST_F(UUIDTestSuite, generatorProducesValidFormat) {
-    uuidGeneratorProducesValidFormat();
-}
+TEST_F(UUIDTestSuite, generatorProducesValidFormat) { uuidGeneratorProducesValidFormat(); }
 
-TEST(UUIDBytes, parsesKnownValue) {
-    uuidBytesParsesKnownValue();
-}
+TEST(UUIDBytes, parsesKnownValue) { uuidBytesParsesKnownValue(); }
 
-TEST(UUIDBytes, acceptsEitherCase) {
-    uuidBytesAcceptsEitherCase();
-}
+TEST(UUIDBytes, acceptsEitherCase) { uuidBytesAcceptsEitherCase(); }
 
-TEST(UUIDBytes, formatsLowercaseRoundTrip) {
-    uuidBytesFormatsLowercaseRoundTrip();
-}
+TEST(UUIDBytes, formatsLowercaseRoundTrip) { uuidBytesFormatsLowercaseRoundTrip(); }
 
-TEST(UUIDBytes, rejectsMalformedText) {
-    uuidBytesRejectsMalformedText();
-}
+TEST(UUIDBytes, rejectsMalformedText) { uuidBytesRejectsMalformedText(); }
 
-TEST(UUIDBytes, reportsNil) {
-    uuidBytesReportsNil();
-}
+TEST(UUIDBytes, reportsNil) { uuidBytesReportsNil(); }
 
-TEST(UUIDBytes, comparesByValue) {
-    uuidBytesComparesByValue();
-}
+TEST(UUIDBytes, comparesByValue) { uuidBytesComparesByValue(); }
 
 // ============================================
 // MAC ADDRESS TESTS
 // ============================================
 
-TEST_F(MACTestSuite, macToStringProducesCorrectFormat) {
-    macToStringProducesCorrectFormat();
-}
+TEST_F(MACTestSuite, macToStringProducesCorrectFormat) { macToStringProducesCorrectFormat(); }
 
-TEST_F(MACTestSuite, macToStringHandlesZeros) {
-    macToStringHandlesZeros();
-}
+TEST_F(MACTestSuite, macToStringHandlesZeros) { macToStringHandlesZeros(); }
 
-TEST_F(MACTestSuite, stringToMacParsesValidFormat) {
-    stringToMacParsesValidFormat();
-}
+TEST_F(MACTestSuite, stringToMacParsesValidFormat) { stringToMacParsesValidFormat(); }
 
-TEST_F(MACTestSuite, stringToMacRejectsInvalidLength) {
-    stringToMacRejectsInvalidLength();
-}
+TEST_F(MACTestSuite, stringToMacRejectsInvalidLength) { stringToMacRejectsInvalidLength(); }
 
-TEST_F(MACTestSuite, macToUInt64ProducesCorrectValue) {
-    macToUInt64ProducesCorrectValue();
-}
+TEST_F(MACTestSuite, macToUInt64ProducesCorrectValue) { macToUInt64ProducesCorrectValue(); }
 
-TEST_F(MACTestSuite, macRoundTripPreservesData) {
-    macRoundTripPreservesData();
-}
+TEST_F(MACTestSuite, macRoundTripPreservesData) { macRoundTripPreservesData(); }
 
 // ============================================
 // TIMER TESTS
 // ============================================
 
-TEST_F(TimerTestSuite, expiresAfterDuration) {
-    timerExpiresAfterDuration(fakeClock);
-}
+TEST_F(TimerTestSuite, expiresAfterDuration) { timerExpiresAfterDuration(fakeClock); }
 
-TEST_F(TimerTestSuite, doesNotExpireBeforeDuration) {
-    timerDoesNotExpireBeforeDuration(fakeClock);
-}
+TEST_F(TimerTestSuite, doesNotExpireBeforeDuration) { timerDoesNotExpireBeforeDuration(fakeClock); }
 
-TEST_F(TimerTestSuite, invalidateStopsTimer) {
-    timerInvalidateStopsTimer(fakeClock);
-}
+TEST_F(TimerTestSuite, invalidateStopsTimer) { timerInvalidateStopsTimer(fakeClock); }
 
-TEST_F(TimerTestSuite, elapsedTimeIsAccurate) {
-    timerElapsedTimeIsAccurate(fakeClock);
-}
+TEST_F(TimerTestSuite, elapsedTimeIsAccurate) { timerElapsedTimeIsAccurate(fakeClock); }
 
-TEST_F(TimerTestSuite, withNullClockHandlesGracefully) {
-    timerWithNullClockHandlesGracefully();
-}
+TEST_F(TimerTestSuite, withNullClockHandlesGracefully) { timerWithNullClockHandlesGracefully(); }
 
-TEST_F(TimerTestSuite, unaffectedByWallClockJump) {
-    timerUnaffectedByWallClockJump(fakeClock);
-}
+TEST_F(TimerTestSuite, unaffectedByWallClockJump) { timerUnaffectedByWallClockJump(fakeClock); }
 
-TEST(HttpDate, parsesValidImfFixdate) {
-    httpDateParsesValidImfFixdate();
-}
+TEST(HttpDate, parsesValidImfFixdate) { httpDateParsesValidImfFixdate(); }
 
-TEST(HttpDate, handlesLeapYearsCorrectly) {
-    httpDateHandlesLeapYearsCorrectly();
-}
+TEST(HttpDate, handlesLeapYearsCorrectly) { httpDateHandlesLeapYearsCorrectly(); }
 
-TEST(HttpDate, rejectsPre2025AndMalformedStrings) {
-    httpDateRejectsPre2025AndMalformedStrings();
-}
+TEST(HttpDate, rejectsPre2025AndMalformedStrings) { httpDateRejectsPre2025AndMalformedStrings(); }
 
 // ============================================
 // MATCH MANAGER TESTS
@@ -798,17 +727,13 @@ TEST_F(MatchManagerTestSuite, roleMismatchClearsInitiatorMatch) {
 // STORAGE / NVS NAMESPACE TESTS
 // ============================================
 
-TEST(StorageDriver, unknownNamespaceThrowsOnWrite) {
-    storageUnknownNamespaceThrowsOnWrite();
-}
+TEST(StorageDriver, unknownNamespaceThrowsOnWrite) { storageUnknownNamespaceThrowsOnWrite(); }
 
 TEST(StorageDriver, registeredNamespaceRoundTripsString) {
     storageRegisteredNamespaceRoundTripsString();
 }
 
-TEST(StorageDriver, unknownNamespaceThrowsOnRead) {
-    storageUnknownNamespaceThrowsOnRead();
-}
+TEST(StorageDriver, unknownNamespaceThrowsOnRead) { storageUnknownNamespaceThrowsOnRead(); }
 
 TEST(StorageDriver, ucharRoundTripInRegisteredNamespace) {
     storageUCharRoundTripInRegisteredNamespace();
@@ -822,13 +747,9 @@ TEST_F(CrashEncoderTestSuite, roundTripPopulatesAllFields) {
     encoderRoundTripPopulatesAllFields(this);
 }
 
-TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) {
-    encoderOmitsUnsetOptionalFields(this);
-}
+TEST_F(CrashEncoderTestSuite, omitsUnsetOptionalFields) { encoderOmitsUnsetOptionalFields(this); }
 
-TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZero) {
-    encoderKeepsExceptionCauseZero(this);
-}
+TEST_F(CrashEncoderTestSuite, keepsExceptionCauseZero) { encoderKeepsExceptionCauseZero(this); }
 
 TEST_F(CrashEncoderTestSuite, omitsMissingExceptionCause) {
     encoderOmitsMissingExceptionCause(this);
@@ -842,45 +763,27 @@ TEST_F(CrashEncoderTestSuite, returnsZeroWhenBufferTooSmall) {
 // DEVICE PLAYER (PROTOBUF) TESTS
 // ============================================
 
-TEST(DevicePlayerDecoder, decodesTeamAndAffiliations) {
-    devicePlayerDecodesTeamAndAffiliations();
-}
+TEST(DevicePlayerDecoder, decodesTeamAndAffiliations) { devicePlayerDecodesTeamAndAffiliations(); }
 
-TEST(DevicePlayerDecoder, decodesUnassignedPlayer) {
-    devicePlayerDecodesUnassignedPlayer();
-}
+TEST(DevicePlayerDecoder, decodesUnassignedPlayer) { devicePlayerDecodesUnassignedPlayer(); }
 
-TEST(DevicePlayerDecoder, decodesMaximumLengthName) {
-    devicePlayerDecodesMaximumLengthName();
-}
+TEST(DevicePlayerDecoder, decodesMaximumLengthName) { devicePlayerDecodesMaximumLengthName(); }
 
-TEST(DevicePlayerDecoder, truncatesLongDisplayNames) {
-    devicePlayerTruncatesLongDisplayNames();
-}
+TEST(DevicePlayerDecoder, truncatesLongDisplayNames) { devicePlayerTruncatesLongDisplayNames(); }
 
-TEST(DevicePlayerDecoder, decodesAbsentName) {
-    devicePlayerDecodesAbsentName();
-}
+TEST(DevicePlayerDecoder, decodesAbsentName) { devicePlayerDecodesAbsentName(); }
 
-TEST(DevicePlayerDecoder, decodesMaximumAffiliations) {
-    devicePlayerDecodesMaximumAffiliations();
-}
+TEST(DevicePlayerDecoder, decodesMaximumAffiliations) { devicePlayerDecodesMaximumAffiliations(); }
 
-TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) {
-    devicePlayerDropsAffiliationsPastLimit();
-}
+TEST(DevicePlayerDecoder, dropsAffiliationsPastLimit) { devicePlayerDropsAffiliationsPastLimit(); }
 
-TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) {
-    devicePlayerRejectsWrongLengthUuids();
-}
+TEST(DevicePlayerDecoder, rejectsWrongLengthUuids) { devicePlayerRejectsWrongLengthUuids(); }
 
 TEST(DevicePlayerDecoder, rejectsMissingRequiredUuids) {
     devicePlayerRejectsMissingRequiredUuids();
 }
 
-TEST(DevicePlayerDecoder, rejectsGarbageBody) {
-    devicePlayerRejectsGarbageBody();
-}
+TEST(DevicePlayerDecoder, rejectsGarbageBody) { devicePlayerRejectsGarbageBody(); }
 
 TEST_F(AlleycatApiTestSuite, playerApiQueuesDevicePlayerLookup) {
     playerApiQueuesDevicePlayerLookup(this);
@@ -916,8 +819,8 @@ TEST_F(PlayerFetchTestSuite, pinEntryRoutesNonDemoPinToFetch) {
     pinEntryRoutesNonDemoPinToFetch(this);
 }
 
-TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToChooseTeam) {
-    pinEntryRoutesDemoPinToChooseTeam(this);
+TEST_F(PlayerFetchTestSuite, pinEntryRoutesDemoPinToDemoModeMenu) {
+    pinEntryRoutesDemoPinToDemoModeMenu(this);
 }
 
 TEST_F(PlayerFetchTestSuite, fetchUserQueuesDevicePlayerLookup) {
@@ -932,45 +835,33 @@ TEST_F(PlayerFetchTestSuite, fetchUserFailureReturnsToPinAfterPageTimeout) {
     fetchUserFailureReturnsToPinAfterPageTimeout(this);
 }
 
-TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesDemoStub) {
-    chooseTeamConfirmReachesDemoStub(this);
+TEST_F(PlayerFetchTestSuite, chooseTeamConfirmReachesWelcome) {
+    chooseTeamConfirmReachesWelcome(this);
 }
+
+TEST_F(PlayerFetchTestSuite, demoModeMenuConfirmDeviceTest) { demoModeMenuConfirmDeviceTest(this); }
 
 // ============================================
 // QUICKDRAW MATCH UPLOAD (PROTOBUF) TESTS
 // ============================================
 
-TEST(QuickdrawMatchCodec, roundTripsAllFields) {
-    matchCodecRoundTripsAllFields();
-}
+TEST(QuickdrawMatchCodec, roundTripsAllFields) { matchCodecRoundTripsAllFields(); }
 
-TEST(QuickdrawMatchCodec, keepsZeroDrawTimePresent) {
-    matchCodecKeepsZeroDrawTimePresent();
-}
+TEST(QuickdrawMatchCodec, keepsZeroDrawTimePresent) { matchCodecKeepsZeroDrawTimePresent(); }
 
-TEST(QuickdrawMatchCodec, omitsUnassignedTeams) {
-    matchCodecOmitsUnassignedTeams();
-}
+TEST(QuickdrawMatchCodec, omitsUnassignedTeams) { matchCodecOmitsUnassignedTeams(); }
 
-TEST(QuickdrawMatchCodec, failsWhenSourceFails) {
-    matchCodecFailsWhenSourceFails();
-}
+TEST(QuickdrawMatchCodec, failsWhenSourceFails) { matchCodecFailsWhenSourceFails(); }
 
 TEST(QuickdrawMatchCodec, treatsEmptyBodyAsFullyAccepted) {
     matchCodecTreatsEmptyBodyAsFullyAccepted();
 }
 
-TEST(QuickdrawMatchCodec, decodesRejection) {
-    matchCodecDecodesRejection();
-}
+TEST(QuickdrawMatchCodec, decodesRejection) { matchCodecDecodesRejection(); }
 
-TEST(QuickdrawMatchCodec, deliversRejectionsInOrder) {
-    matchCodecDeliversRejectionsInOrder();
-}
+TEST(QuickdrawMatchCodec, deliversRejectionsInOrder) { matchCodecDeliversRejectionsInOrder(); }
 
-TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) {
-    matchCodecKeepsUnknownErrorCode();
-}
+TEST(QuickdrawMatchCodec, keepsUnknownErrorCode) { matchCodecKeepsUnknownErrorCode(); }
 
 TEST(QuickdrawMatchCodec, rejectsTooManyFieldsWithoutDelivering) {
     matchCodecRejectsTooManyFieldsWithoutDelivering();
@@ -980,17 +871,13 @@ TEST(QuickdrawMatchCodec, rejectsMalformedMatchIdWithoutDelivering) {
     matchCodecRejectsMalformedMatchIdWithoutDelivering();
 }
 
-TEST(QuickdrawMatchCodec, rejectsGarbageBody) {
-    matchCodecRejectsGarbageBody();
-}
+TEST(QuickdrawMatchCodec, rejectsGarbageBody) { matchCodecRejectsGarbageBody(); }
 
 TEST_F(AlleycatApiTestSuite, matchesApiRejectsOutOfRangeCounts) {
     matchesApiRejectsOutOfRangeCounts(this);
 }
 
-TEST_F(AlleycatApiTestSuite, matchesApiQueuesProtobufPost) {
-    matchesApiQueuesProtobufPost(this);
-}
+TEST_F(AlleycatApiTestSuite, matchesApiQueuesProtobufPost) { matchesApiQueuesProtobufPost(this); }
 
 // ============================================
 // MATCH MANAGER CONCURRENCY TESTS (TSan)
@@ -1004,45 +891,31 @@ TEST(MatchManagerConcurrent, driverExecSerializesMatchManagerAccess) {
 // INTEGRATION TESTS
 // ============================================
 
-TEST_F(DuelIntegrationTestSuite, completeDuelFlowHunterWins) {
-    completeDuelFlowHunterWins(this);
-}
+TEST_F(DuelIntegrationTestSuite, completeDuelFlowHunterWins) { completeDuelFlowHunterWins(this); }
 
-TEST_F(DuelIntegrationTestSuite, completeDuelFlowBountyWins) {
-    completeDuelFlowBountyWins(this);
-}
+TEST_F(DuelIntegrationTestSuite, completeDuelFlowBountyWins) { completeDuelFlowBountyWins(this); }
 
-TEST_F(DuelIntegrationTestSuite, matchSerializationRoundTrip) {
-    matchSerializationRoundTrip();
-}
+TEST_F(DuelIntegrationTestSuite, matchSerializationRoundTrip) { matchSerializationRoundTrip(); }
 
 TEST_F(DuelIntegrationTestSuite, playerStatsAccumulateAcrossMatches) {
     playerStatsAccumulateAcrossMatches(hunter);
 }
 
-TEST_F(DuelIntegrationTestSuite, duelWithTiedReactionTimes) {
-    duelWithTiedReactionTimes(this);
-}
+TEST_F(DuelIntegrationTestSuite, duelWithTiedReactionTimes) { duelWithTiedReactionTimes(this); }
 
-TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) {
-    duelWithOpponentTimeout(this);
-}
+TEST_F(DuelIntegrationTestSuite, duelWithOpponentTimeout) { duelWithOpponentTimeout(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - IDLE
 // ============================================
 
-TEST_F(IdleStateTests, mountRegistersButtonCallbacks) {
-    idleMountRegistersButtonCallbacks(this);
-}
+TEST_F(IdleStateTests, mountRegistersButtonCallbacks) { idleMountRegistersButtonCallbacks(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWhenDisconnected) {
     idleDoesNotTransitionWhenDisconnected(this);
 }
 
-TEST_F(IdleStateTests, stateClearsOnDismount) {
-    idleStateClearsOnDismount(this);
-}
+TEST_F(IdleStateTests, stateClearsOnDismount) { idleStateClearsOnDismount(this); }
 
 TEST_F(IdleStateTests, buttonCallbacksRegisteredAndRemoved) {
     idleButtonCallbacksRegisteredAndRemoved(this);
@@ -1052,25 +925,19 @@ TEST_F(IdleStateTests, pairingCodeFirmwareHoldStartsAnUpdate) {
     pairingCodeFirmwareHoldStartsAnUpdate(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) {
-    pairingCodeLeavesTheRadioAlone(this);
-}
+TEST_F(IdleStateTests, pairingCodeLeavesTheRadioAlone) { pairingCodeLeavesTheRadioAlone(this); }
 
 TEST_F(IdleStateTests, fetchExitPutsTheRadioBackOnEspNow) {
     fetchExitPutsTheRadioBackOnEspNow(this);
 }
 
-TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) {
-    aSeedRunTakesTheRadioForEspNow(this);
-}
+TEST_F(IdleStateTests, aSeedRunTakesTheRadioForEspNow) { aSeedRunTakesTheRadioForEspNow(this); }
 
 TEST_F(IdleStateTests, pairingCodeFirmwareHoldCarriedInDoesNotFire) {
     pairingCodeFirmwareHoldCarriedInDoesNotFire(this);
 }
 
-TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) {
-    pairingCodeTakesUpdatesWhileUp(this);
-}
+TEST_F(IdleStateTests, pairingCodeTakesUpdatesWhileUp) { pairingCodeTakesUpdatesWhileUp(this); }
 
 TEST_F(IdleStateTests, doesNotTransitionWithMatchButNotReady) {
     idleDoesNotTransitionWithMatchButNotReady(this);
@@ -1100,9 +967,7 @@ TEST_F(HandshakeStateTests, outputSendIdTransitionsOnExchangeIdAck) {
     outputSendIdTransitionsOnExchangeIdAck(this);
 }
 
-TEST_F(HandshakeStateTests, outputSendIdClearsOnDismount) {
-    outputSendIdClearsOnDismount(this);
-}
+TEST_F(HandshakeStateTests, outputSendIdClearsOnDismount) { outputSendIdClearsOnDismount(this); }
 
 TEST_F(HandshakeStateTests, inputIdleTransitionsOnExchangeId) {
     inputIdleTransitionsOnExchangeId(this);
@@ -1112,9 +977,7 @@ TEST_F(HandshakeStateTests, inputSendIdTransitionsOnExchangeIdAck) {
     inputSendIdTransitionsOnExchangeIdAck(this);
 }
 
-TEST_F(HandshakeStateTests, inputSendIdClearsOnDismount) {
-    inputSendIdClearsOnDismount(this);
-}
+TEST_F(HandshakeStateTests, inputSendIdClearsOnDismount) { inputSendIdClearsOnDismount(this); }
 
 TEST_F(HandshakeStateTests, handshakeAppOutputJackTimeoutResetsToIdle) {
     handshakeAppOutputJackTimeoutResetsToIdle(this);
@@ -1132,17 +995,11 @@ TEST_F(DuelCountdownTests, multipleEarlyPressesAccumulatePenalty) {
     countdownMultipleEarlyPressesAccumulatePenalty(this);
 }
 
-TEST_F(DuelCountdownTests, progressesThroughStages) {
-    countdownProgressesThroughStages(this);
-}
+TEST_F(DuelCountdownTests, progressesThroughStages) { countdownProgressesThroughStages(this); }
 
-TEST_F(DuelCountdownTests, battleTransitionSetsFlag) {
-    countdownBattleTransitionSetsFlag(this);
-}
+TEST_F(DuelCountdownTests, battleTransitionSetsFlag) { countdownBattleTransitionSetsFlag(this); }
 
-TEST_F(DuelCountdownTests, cleansUpOnDismount) {
-    countdownCleansUpOnDismount(this);
-}
+TEST_F(DuelCountdownTests, cleansUpOnDismount) { countdownCleansUpOnDismount(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - DUEL SCENARIOS
@@ -1165,9 +1022,7 @@ TEST_F(DuelStateTests, buttonPressBroadcastsDrawResult) {
     duelButtonPressBroadcastsDrawResult(this);
 }
 
-TEST_F(DuelStateTests, pushedWaitsForOpponentResult) {
-    duelPushedWaitsForOpponentResult(this);
-}
+TEST_F(DuelStateTests, pushedWaitsForOpponentResult) { duelPushedWaitsForOpponentResult(this); }
 
 TEST_F(DuelStateTests, pushedTransitionsOnResultReceived) {
     duelPushedTransitionsOnResultReceived(this);
@@ -1187,18 +1042,14 @@ TEST_F(DuelStateTests, buttonPressDuringGracePeriodTransitions) {
 }
 
 // Scenario 3: Neither presses (timeout)
-TEST_F(DuelStateTests, timeoutTransitionsToIdle) {
-    duelTimeoutTransitionsToIdle(this);
-}
+TEST_F(DuelStateTests, timeoutTransitionsToIdle) { duelTimeoutTransitionsToIdle(this); }
 
 // Scenario 4: DUT presses, opponent never responds
 TEST_F(DuelStateTests, pushedGracePeriodExpiresTransitions) {
     duelPushedGracePeriodExpiresTransitions(this);
 }
 
-TEST_F(DuelStateTests, opponentTimeoutMeansWin) {
-    duelOpponentTimeoutMeansWin(this);
-}
+TEST_F(DuelStateTests, opponentTimeoutMeansWin) { duelOpponentTimeoutMeansWin(this); }
 
 // Scenario 5: DUT never presses, opponent does
 TEST_F(DuelStateTests, gracePeriodExpiresSetsNeverPressed) {
@@ -1209,57 +1060,35 @@ TEST_F(DuelStateTests, gracePeriodExpiresSendsPityTime) {
     duelGracePeriodExpiresSendsPityTime(this);
 }
 
-TEST_F(DuelStateTests, neverPressedMeansLose) {
-    duelNeverPressedMeansLose(this);
-}
+TEST_F(DuelStateTests, neverPressedMeansLose) { duelNeverPressedMeansLose(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - DUEL RESULT
 // ============================================
 
-TEST_F(DuelResultTests, hunterWinsWithFasterTime) {
-    resultHunterWinsWithFasterTime(this);
-}
+TEST_F(DuelResultTests, hunterWinsWithFasterTime) { resultHunterWinsWithFasterTime(this); }
 
-TEST_F(DuelResultTests, bountyWinsWithFasterTime) {
-    resultBountyWinsWithFasterTime(this);
-}
+TEST_F(DuelResultTests, bountyWinsWithFasterTime) { resultBountyWinsWithFasterTime(this); }
 
-TEST_F(DuelResultTests, tiedTimesFavorOpponent) {
-    resultTiedTimesFavorOpponent(this);
-}
+TEST_F(DuelResultTests, tiedTimesFavorOpponent) { resultTiedTimesFavorOpponent(this); }
 
-TEST_F(DuelResultTests, opponentTimeoutMeansAutoWin) {
-    resultOpponentTimeoutMeansAutoWin(this);
-}
+TEST_F(DuelResultTests, opponentTimeoutMeansAutoWin) { resultOpponentTimeoutMeansAutoWin(this); }
 
-TEST_F(DuelResultTests, winTransitionsToWinState) {
-    resultWinTransitionsToWinState(this);
-}
+TEST_F(DuelResultTests, winTransitionsToWinState) { resultWinTransitionsToWinState(this); }
 
-TEST_F(DuelResultTests, loseTransitionsToLoseState) {
-    resultLoseTransitionsToLoseState(this);
-}
+TEST_F(DuelResultTests, loseTransitionsToLoseState) { resultLoseTransitionsToLoseState(this); }
 
-TEST_F(DuelResultTests, playerStatsUpdatedOnWin) {
-    resultPlayerStatsUpdatedOnWin(this);
-}
+TEST_F(DuelResultTests, playerStatsUpdatedOnWin) { resultPlayerStatsUpdatedOnWin(this); }
 
-TEST_F(DuelResultTests, playerStatsUpdatedOnLoss) {
-    resultPlayerStatsUpdatedOnLoss(this);
-}
+TEST_F(DuelResultTests, playerStatsUpdatedOnLoss) { resultPlayerStatsUpdatedOnLoss(this); }
 
-TEST_F(DuelResultTests, matchFinalizedOnResult) {
-    resultMatchFinalizedOnResult(this);
-}
+TEST_F(DuelResultTests, matchFinalizedOnResult) { resultMatchFinalizedOnResult(this); }
 
 // ============================================
 // QUICKDRAW STATE TESTS - STATE CLEANUP
 // ============================================
 
-TEST_F(StateCleanupTests, idleClearsButtonCallbacks) {
-    cleanupIdleClearsButtonCallbacks(this);
-}
+TEST_F(StateCleanupTests, idleClearsButtonCallbacks) { cleanupIdleClearsButtonCallbacks(this); }
 
 TEST_F(StateCleanupTests, countdownClearsButtonCallbacks) {
     cleanupCountdownClearsButtonCallbacks(this);
@@ -1273,9 +1102,7 @@ TEST_F(StateCleanupTests, duelReceivedResultClearsButtonCallbacks) {
     cleanupDuelReceivedResultClearsButtonCallbacks(this);
 }
 
-TEST_F(StateCleanupTests, duelStateInvalidatesTimer) {
-    cleanupDuelStateInvalidatesTimer(this);
-}
+TEST_F(StateCleanupTests, duelStateInvalidatesTimer) { cleanupDuelStateInvalidatesTimer(this); }
 
 TEST_F(StateCleanupTests, countdownStateInvalidatesTimer) {
     cleanupCountdownStateInvalidatesTimer(this);
@@ -1293,17 +1120,13 @@ TEST_F(StateCleanupTests, matchManagerClearsCurrentMatch) {
     cleanupMatchManagerClearsCurrentMatch(this);
 }
 
-TEST_F(StateCleanupTests, matchManagerClearsDuelState) {
-    cleanupMatchManagerClearsDuelState(this);
-}
+TEST_F(StateCleanupTests, matchManagerClearsDuelState) { cleanupMatchManagerClearsDuelState(this); }
 
 TEST_F(StateCleanupTests, duelStateClearsCallbacksWhenGoingToDuelReceivedResult) {
     cleanupDuelStateClearsCallbacksWhenGoingToDuelReceivedResult(this);
 }
 
-TEST_F(StateCleanupTests, pushedClearsMatchOnDisconnect) {
-    pushedClearsMatchOnDisconnect(this);
-}
+TEST_F(StateCleanupTests, pushedClearsMatchOnDisconnect) { pushedClearsMatchOnDisconnect(this); }
 
 TEST_F(StateCleanupTests, receivedResultClearsMatchOnDisconnect) {
     receivedResultClearsMatchOnDisconnect(this);
@@ -1329,9 +1152,7 @@ TEST_F(ConnectionSuccessfulTests, transitionsAfterThreshold) {
     connectionSuccessfulTransitionsAfterThreshold(this);
 }
 
-TEST_F(QuickdrawLifecycleTests, ctorDtorDoesNotLeak) {
-    quickdrawCtorDtorDoesNotLeak(this);
-}
+TEST_F(QuickdrawLifecycleTests, ctorDtorDoesNotLeak) { quickdrawCtorDtorDoesNotLeak(this); }
 
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - PACKET PARSING
@@ -1345,9 +1166,7 @@ TEST_F(PacketParsingTests, neverPressedParsesCorrectly) {
     packetParsingNeverPressedParsesCorrectly(this);
 }
 
-TEST_F(PacketParsingTests, rejectsMalformedPacket) {
-    packetParsingRejectsMalformedPacket(this);
-}
+TEST_F(PacketParsingTests, rejectsMalformedPacket) { packetParsingRejectsMalformedPacket(this); }
 
 TEST_F(PacketParsingTests, listenForMatchResultsSetsOpponentTimeHunter) {
     listenForMatchResultsSetsOpponentTimeHunter(this);
@@ -1369,45 +1188,31 @@ TEST_F(PacketParsingTests, listenForMatchResultsIgnoresUnexpectedCommands) {
 // QUICKDRAW INTEGRATION TESTS - CALLBACK CHAIN
 // ============================================
 
-TEST_F(CallbackChainTests, packetToStateFlag) {
-    callbackChainPacketToStateFlag(this);
-}
+TEST_F(CallbackChainTests, packetToStateFlag) { callbackChainPacketToStateFlag(this); }
 
 TEST_F(CallbackChainTests, buttonPressCalculatesTime) {
     callbackChainButtonPressCalculatesTime(this);
 }
 
-TEST_F(CallbackChainTests, buttonMasherPenalty) {
-    callbackChainButtonMasherPenalty(this);
-}
+TEST_F(CallbackChainTests, buttonMasherPenalty) { callbackChainButtonMasherPenalty(this); }
 
-TEST_F(CallbackChainTests, buttonPressBroadcasts) {
-    callbackChainButtonPressBroadcasts(this);
-}
+TEST_F(CallbackChainTests, buttonPressBroadcasts) { callbackChainButtonPressBroadcasts(this); }
 
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - STATE FLOW
 // ============================================
 
-TEST_F(StateFlowIntegrationTests, dutPressesFirstWins) {
-    stateFlowDutPressesFirstWins(this);
-}
+TEST_F(StateFlowIntegrationTests, dutPressesFirstWins) { stateFlowDutPressesFirstWins(this); }
 
-TEST_F(StateFlowIntegrationTests, dutReceivesFirstLoses) {
-    stateFlowDutReceivesFirstLoses(this);
-}
+TEST_F(StateFlowIntegrationTests, dutReceivesFirstLoses) { stateFlowDutReceivesFirstLoses(this); }
 
-TEST_F(StateFlowIntegrationTests, dutNeverPressesLoses) {
-    stateFlowDutNeverPressesLoses(this);
-}
+TEST_F(StateFlowIntegrationTests, dutNeverPressesLoses) { stateFlowDutNeverPressesLoses(this); }
 
 TEST_F(StateFlowIntegrationTests, opponentNeverRespondsWins) {
     stateFlowOpponentNeverRespondsWins(this);
 }
 
-TEST_F(StateFlowIntegrationTests, throughDuelResultToWin) {
-    stateFlowThroughDuelResultToWin(this);
-}
+TEST_F(StateFlowIntegrationTests, throughDuelResultToWin) { stateFlowThroughDuelResultToWin(this); }
 
 TEST_F(StateFlowIntegrationTests, throughDuelResultToLose) {
     stateFlowThroughDuelResultToLose(this);
@@ -1425,9 +1230,7 @@ TEST_F(TwoDeviceSimulationTests, bountyPressesFirstBothAgree) {
     twoDeviceBountyPressesFirstBothAgree(this);
 }
 
-TEST_F(TwoDeviceSimulationTests, closeRaceCorrectWinner) {
-    twoDeviceCloseRaceCorrectWinner(this);
-}
+TEST_F(TwoDeviceSimulationTests, closeRaceCorrectWinner) { twoDeviceCloseRaceCorrectWinner(this); }
 
 // ============================================
 // QUICKDRAW INTEGRATION TESTS - HANDSHAKE
@@ -1441,9 +1244,7 @@ TEST_F(HandshakeIntegrationTests, completeHunterPerspective) {
     handshakeCompleteHunterPerspective(this);
 }
 
-TEST_F(HandshakeIntegrationTests, twoDeviceFullFlow) {
-    handshakeTwoDeviceFullFlow(this);
-}
+TEST_F(HandshakeIntegrationTests, twoDeviceFullFlow) { handshakeTwoDeviceFullFlow(this); }
 
 TEST_F(HandshakeIntegrationTests, timeoutBeforeCompletion) {
     handshakeTimeoutBeforeCompletion(this);
@@ -1457,9 +1258,7 @@ TEST_F(HandshakeIntegrationTests, ignoresUnexpectedCommands) {
     handshakeIgnoresUnexpectedCommands(this);
 }
 
-TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) {
-    handshakeSetsOpponentMacAddress(this);
-}
+TEST_F(HandshakeIntegrationTests, setsOpponentMacAddress) { handshakeSetsOpponentMacAddress(this); }
 
 TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
     handshakeMatchDataPropagatedCorrectly(this);
@@ -1469,28 +1268,24 @@ TEST_F(HandshakeIntegrationTests, matchDataPropagatedCorrectly) {
 // HWM UNIT TESTS
 // ============================================
 
-TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) {
-    hwmGetMacPeerReturnsNullWhenNotSet(this);
+TEST_F(HWMUnitTests, getMacPeerReturnsNullWhenNotSet) { hwmGetMacPeerReturnsNullWhenNotSet(this); }
+
+TEST_F(HWMUnitTests, getMacPeerReturnsCorrectMac) { hwmGetMacPeerReturnsCorrectMac(this); }
+
+TEST_F(HWMUnitTests, removeMacPeerClearsEntry) { hwmRemoveMacPeerClearsEntry(this); }
+
+TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) { hwmSendPacketFailsWithNoPeer(this); }
+
+TEST_F(HWMUnitTests, clearCallbacksRemovesAll) { hwmClearCallbacksRemovesAll(this); }
+
+TEST_F(HWMUnitTests, processRejectsNegativeCommand) { hwmProcessRejectsNegativeCommand(this); }
+
+TEST(DeviceInventoryCodecSuite, roundTripEncodesFields) {
+    deviceInventoryCodecRoundTripEncodesFields();
 }
 
-TEST_F(HWMUnitTests, getMacPeerReturnsCorrectMac) {
-    hwmGetMacPeerReturnsCorrectMac(this);
-}
-
-TEST_F(HWMUnitTests, removeMacPeerClearsEntry) {
-    hwmRemoveMacPeerClearsEntry(this);
-}
-
-TEST_F(HWMUnitTests, sendPacketFailsWithNoPeer) {
-    hwmSendPacketFailsWithNoPeer(this);
-}
-
-TEST_F(HWMUnitTests, clearCallbacksRemovesAll) {
-    hwmClearCallbacksRemovesAll(this);
-}
-
-TEST_F(HWMUnitTests, processRejectsNegativeCommand) {
-    hwmProcessRejectsNegativeCommand(this);
+TEST(DeviceInventoryCodecSuite, rejectsUnsetDeviceId) {
+    deviceInventoryCodecRejectsUnsetDeviceId();
 }
 
 // ============================================
@@ -1501,25 +1296,17 @@ TEST_F(RDCTests, defaultStateIsDisconnectedOnAllPorts) {
     rdcDefaultStateIsDisconnectedOnAllPorts(this);
 }
 
-TEST_F(RDCTests, outputPortConnectionLifecycle) {
-    rdcOutputPortConnectionLifecycle(this);
-}
+TEST_F(RDCTests, outputPortConnectionLifecycle) { rdcOutputPortConnectionLifecycle(this); }
 
 TEST_F(RDCTests, connectedPortDisconnectsOnHeartbeatTimeout) {
     rdcConnectedPortDisconnectsOnHeartbeatTimeout(this);
 }
 
-TEST_F(RDCTests, chainAnnouncementFiltersSelfMac) {
-    rdcChainAnnouncementFiltersSelfMac(this);
-}
+TEST_F(RDCTests, chainAnnouncementFiltersSelfMac) { rdcChainAnnouncementFiltersSelfMac(this); }
 
-TEST_F(RDCTests, daisyChainCappedAtMaxPeers) {
-    rdcDaisyChainCappedAtMaxPeers(this);
-}
+TEST_F(RDCTests, daisyChainCappedAtMaxPeers) { rdcDaisyChainCappedAtMaxPeers(this); }
 
-TEST_F(RDCTests, disconnectWipesDaisyChainedPeers) {
-    rdcDisconnectWipesDaisyChainedPeers(this);
-}
+TEST_F(RDCTests, disconnectWipesDaisyChainedPeers) { rdcDisconnectWipesDaisyChainedPeers(this); }
 
 TEST_F(RDCTests, ignoresAnnouncementFromNonDirectPeer) {
     rdcIgnoresAnnouncementFromNonDirectPeer(this);
@@ -1533,9 +1320,7 @@ TEST_F(RDCTests, doesNotEmitWhenOtherPortDisconnected) {
     rdcDoesNotEmitWhenOtherPortDisconnected(this);
 }
 
-TEST_F(RDCTests, midChainEmitsForwardAndBackward) {
-    rdcMidChainEmitsForwardAndBackward(this);
-}
+TEST_F(RDCTests, midChainEmitsForwardAndBackward) { rdcMidChainEmitsForwardAndBackward(this); }
 
 TEST_F(RDCTests, duplicateAnnouncementDoesNotFireCallback) {
     rdcDuplicateAnnouncementDoesNotFireCallback(this);
@@ -1545,9 +1330,7 @@ TEST_F(RDCTests, directPeerRegistrationEmitsBackwardAnnouncement) {
     rdcDirectPeerRegistrationEmitsBackwardAnnouncement(this);
 }
 
-TEST_F(RDCTests, directPeerDropEmitsAnnouncement) {
-    rdcDirectPeerDropEmitsAnnouncement(this);
-}
+TEST_F(RDCTests, directPeerDropEmitsAnnouncement) { rdcDirectPeerDropEmitsAnnouncement(this); }
 
 TEST_F(RDCTests, directPeerDropFiresPeerLostCallbackWithMac) {
     rdcDirectPeerDropFiresPeerLostCallbackWithMac(this);
@@ -1577,9 +1360,7 @@ TEST_F(ChainDuelManagerTests, canInitiateMatchFalseForBounty) {
     cdmCanInitiateMatchFalseForBounty(this);
 }
 
-TEST_F(ChainDuelManagerTests, confirmLifecycle) {
-    cdmConfirmLifecycle(this);
-}
+TEST_F(ChainDuelManagerTests, confirmLifecycle) { cdmConfirmLifecycle(this); }
 
 TEST_F(ChainDuelManagerTests, onChainStateChangedClearsOnDrain) {
     cdmOnChainStateChangedClearsOnDrain(this);
@@ -1593,17 +1374,13 @@ TEST_F(ChainDuelManagerTests, isChampionFalseWithSameRoleOpponent) {
     cdmIsChampionFalseWithSameRoleOpponent(this);
 }
 
-TEST_F(ChainDuelManagerTests, isChampionFalseInRing) {
-    cdmIsChampionFalseInRing(this);
-}
+TEST_F(ChainDuelManagerTests, isChampionFalseInRing) { cdmIsChampionFalseInRing(this); }
 
 TEST_F(ChainDuelManagerTests, sendConfirmTargetsChampionMac) {
     cdmSendConfirmTargetsChampionMac(this);
 }
 
-TEST_F(ChainDuelManagerTests, sendConfirmIncrementsSeqId) {
-    cdmSendConfirmIncrementsSeqId(this);
-}
+TEST_F(ChainDuelManagerTests, sendConfirmIncrementsSeqId) { cdmSendConfirmIncrementsSeqId(this); }
 
 TEST_F(ChainDuelManagerTests, sendConfirmNoopWhenChampionMacInvalid) {
     cdmSendConfirmNoopWhenChampionMacInvalid(this);
@@ -1621,21 +1398,13 @@ TEST_F(ChainDuelManagerTests, broadcastRoleAndChampionSends) {
     cdmBroadcastRoleAndChampionSends(this);
 }
 
-TEST_F(ChainDuelManagerTests, ackClearsPending) {
-    cdmAckClearsPending(this);
-}
+TEST_F(ChainDuelManagerTests, ackClearsPending) { cdmAckClearsPending(this); }
 
-TEST_F(ChainDuelManagerTests, ackFromWrongMacIgnored) {
-    cdmAckFromWrongMacIgnored(this);
-}
+TEST_F(ChainDuelManagerTests, ackFromWrongMacIgnored) { cdmAckFromWrongMacIgnored(this); }
 
-TEST_F(ChainDuelManagerTests, retryStatsRecordsLifecycle) {
-    cdmRetryStatsRecordsLifecycle(this);
-}
+TEST_F(ChainDuelManagerTests, retryStatsRecordsLifecycle) { cdmRetryStatsRecordsLifecycle(this); }
 
-TEST_F(ChainDuelManagerTests, retransmitAbandonsAfterMax) {
-    cdmRetransmitAbandonsAfterMax(this);
-}
+TEST_F(ChainDuelManagerTests, retransmitAbandonsAfterMax) { cdmRetransmitAbandonsAfterMax(this); }
 
 TEST_F(ChainDuelManagerTests, onChainStateBecomesChampionSetsSelfMac) {
     cdmOnChainStateBecomesChampionSetsSelfMac(this);
@@ -1649,13 +1418,9 @@ TEST_F(ChainDuelManagerTests, onChainStateNewSupporterTriggersBroadcast) {
     cdmOnChainStateNewSupporterTriggersBroadcast(this);
 }
 
-TEST_F(ChainDuelManagerTests, chainDuelThreeDeviceConfirm) {
-    chainDuelThreeDeviceConfirm(this);
-}
+TEST_F(ChainDuelManagerTests, chainDuelThreeDeviceConfirm) { chainDuelThreeDeviceConfirm(this); }
 
-TEST_F(ChainDuelManagerTests, chainDuelReconfigRecovers) {
-    chainDuelReconfigRecovers(this);
-}
+TEST_F(ChainDuelManagerTests, chainDuelReconfigRecovers) { chainDuelReconfigRecovers(this); }
 
 TEST_F(ChainDuelManagerTests, roleAnnounceFromSupporterJackIgnoresChampionMac) {
     cdmRoleAnnounceFromSupporterJackIgnoresChampionMac(this);
@@ -1681,13 +1446,9 @@ TEST_F(ChainDuelManagerTests, gameEventWinIsTrackedAndRetried) {
     cdmGameEventWinIsTrackedAndRetried(this);
 }
 
-TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) {
-    cdmGameEventAckClearsPending(this);
-}
+TEST_F(ChainDuelManagerTests, gameEventAckClearsPending) { cdmGameEventAckClearsPending(this); }
 
-TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) {
-    cdmGameEventAbandonsAfterMax(this);
-}
+TEST_F(ChainDuelManagerTests, gameEventAbandonsAfterMax) { cdmGameEventAbandonsAfterMax(this); }
 
 // ============================================
 // CHAIN DUEL MULTI-DEVICE FIXTURE TESTS
@@ -1715,39 +1476,78 @@ TEST_F(ChainDuelMultiDeviceFixture, shootoutFourDeviceConsensusAndMatchStart) {
 // SHOOTOUT MANAGER TESTS
 // ============================================
 
-TEST_F(ShootoutManagerTests, coordinatorIsLowestMacAmongConfirmed) { coordinatorIsLowestMacAmongConfirmed(this); }
-TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) { bracketSizeAndByeMatchMemberCount(this); }
-TEST_F(ShootoutManagerTests, localConfirmIsRecordedAndBroadcast) { localConfirmIsRecordedAndBroadcast(this); }
-TEST_F(ShootoutManagerTests, receivingAllConfirmsAdvancesToBracketReveal) { receivingAllConfirmsAdvancesToBracketReveal(this); }
-TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) { confirmRebroadcastsEverySecondDuringProposal(this); }
-TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) { coordinatorBroadcastsBracketOnAdvance(this); }
-TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) { bracketAckClearsPendingForThatPeer(this); }
-TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) { bracketRetriesThreeTimesThenAborts(this); }
-TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) { matchStartGatedOnAllBracketAcks(this); }
-TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) { nonCoordinatorReceivingMatchStartIdentifiesRole(this); }
-TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) { winnerBroadcastsMatchResultAndAdvancesLocally(this); }
-TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) { matchResultReceivedAdvancesLocalBracket(this); }
+TEST_F(ShootoutManagerTests, coordinatorIsLowestMacAmongConfirmed) {
+    coordinatorIsLowestMacAmongConfirmed(this);
+}
+TEST_F(ShootoutManagerTests, bracketSizeAndByeMatchMemberCount) {
+    bracketSizeAndByeMatchMemberCount(this);
+}
+TEST_F(ShootoutManagerTests, localConfirmIsRecordedAndBroadcast) {
+    localConfirmIsRecordedAndBroadcast(this);
+}
+TEST_F(ShootoutManagerTests, receivingAllConfirmsAdvancesToBracketReveal) {
+    receivingAllConfirmsAdvancesToBracketReveal(this);
+}
+TEST_F(ShootoutManagerTests, confirmRebroadcastsEverySecondDuringProposal) {
+    confirmRebroadcastsEverySecondDuringProposal(this);
+}
+TEST_F(ShootoutManagerTests, coordinatorBroadcastsBracketOnAdvance) {
+    coordinatorBroadcastsBracketOnAdvance(this);
+}
+TEST_F(ShootoutManagerTests, bracketAckClearsPendingForThatPeer) {
+    bracketAckClearsPendingForThatPeer(this);
+}
+TEST_F(ShootoutManagerTests, bracketRetriesThreeTimesThenAborts) {
+    bracketRetriesThreeTimesThenAborts(this);
+}
+TEST_F(ShootoutManagerTests, matchStartGatedOnAllBracketAcks) {
+    matchStartGatedOnAllBracketAcks(this);
+}
+TEST_F(ShootoutManagerTests, nonCoordinatorReceivingMatchStartIdentifiesRole) {
+    nonCoordinatorReceivingMatchStartIdentifiesRole(this);
+}
+TEST_F(ShootoutManagerTests, winnerBroadcastsMatchResultAndAdvancesLocally) {
+    winnerBroadcastsMatchResultAndAdvancesLocally(this);
+}
+TEST_F(ShootoutManagerTests, matchResultReceivedAdvancesLocalBracket) {
+    matchResultReceivedAdvancesLocalBracket(this);
+}
 TEST_F(ShootoutManagerTests, drawWatchdogReplaysMatchStart) { drawWatchdogReplaysMatchStart(this); }
 TEST_F(ShootoutManagerTests, peerLostCoordinatorAborts) { peerLostCoordinatorAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostActiveDuelistAborts) { peerLostActiveDuelistAborts(this); }
 TEST_F(ShootoutManagerTests, peerLostSpectatorAborts) { peerLostSpectatorAborts(this); }
-TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) { finalMatchResultTriggersTournamentEnd(this); }
-TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) { startProposalClearsAllPriorTournamentState(this); }
-TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) { tournamentEndRetriesUntilAcked(this); }
+TEST_F(ShootoutManagerTests, finalMatchResultTriggersTournamentEnd) {
+    finalMatchResultTriggersTournamentEnd(this);
+}
+TEST_F(ShootoutManagerTests, startProposalClearsAllPriorTournamentState) {
+    startProposalClearsAllPriorTournamentState(this);
+}
+TEST_F(ShootoutManagerTests, tournamentEndRetriesUntilAcked) {
+    tournamentEndRetriesUntilAcked(this);
+}
 TEST_F(ShootoutManagerTests, matchResultRetriesUntilAcked) { matchResultRetriesUntilAcked(this); }
-TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) { duplicateMatchResultDoesNotDoubleAdvance(this); }
+TEST_F(ShootoutManagerTests, duplicateMatchResultDoesNotDoubleAdvance) {
+    duplicateMatchResultDoesNotDoubleAdvance(this);
+}
 TEST_F(ShootoutManagerTests, confirmRecordsPeerName) { confirmRecordsPeerName(this); }
-TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) { isHunterRestoredAfterTournament(this); }
-TEST_F(ShootoutManagerTests, localRDCDisconnectIsIdempotent) { localRDCDisconnectIsIdempotent(this); }
-TEST_F(ShootoutManagerTests, shootoutProposalDebouncesTransientLoopBreak) { shootoutProposalDebouncesTransientLoopBreak(this); }
-TEST_F(ShootoutManagerTests, shootoutBracketRevealDebouncesTransientLoopBreak) { shootoutBracketRevealDebouncesTransientLoopBreak(this); }
+TEST_F(ShootoutManagerTests, isHunterRestoredAfterTournament) {
+    isHunterRestoredAfterTournament(this);
+}
+TEST_F(ShootoutManagerTests, localRDCDisconnectIsIdempotent) {
+    localRDCDisconnectIsIdempotent(this);
+}
+TEST_F(ShootoutManagerTests, shootoutProposalDebouncesTransientLoopBreak) {
+    shootoutProposalDebouncesTransientLoopBreak(this);
+}
+TEST_F(ShootoutManagerTests, shootoutBracketRevealDebouncesTransientLoopBreak) {
+    shootoutBracketRevealDebouncesTransientLoopBreak(this);
+}
 
 // ============================================
 // MAIN
 // ============================================
 
-int main(int argc, char **argv)
-{
+int main(int argc, char** argv) {
     ::testing::InitGoogleMock(&argc, argv);
 
     IdGenerator::initialize(42);
