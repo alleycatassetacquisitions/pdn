@@ -14,18 +14,20 @@
 namespace DeviceTestStateId {
 constexpr int SELECT_HARDWARE = 0;
 constexpr int ENTER_LABEL = 1;
-constexpr int AWAIT_OUTPUT_JACK = 2;
-constexpr int REMEDIATE_INPUT_JACK = 3;
-constexpr int AWAIT_SESSION_INFO = 4;
-constexpr int SCREEN_CHECK = 5;
-constexpr int LED_CHECK = 6;
-constexpr int BUTTON_PRIMARY = 7;
-constexpr int BUTTON_SECONDARY = 8;
-constexpr int HAPTICS_CHECK = 9;
-constexpr int AWAIT_INPUT_JACK = 10;
-constexpr int POWER_SWITCH = 11;
-constexpr int HOUSING = 12;
-constexpr int REPORT = 13;
+constexpr int POWERS_ON = 2;
+constexpr int CONFIRM_POWER_FAIL = 3;
+constexpr int AWAIT_OUTPUT_JACK = 4;
+constexpr int REMEDIATE_INPUT_JACK = 5;
+constexpr int AWAIT_SESSION_INFO = 6;
+constexpr int SCREEN_CHECK = 7;
+constexpr int LED_CHECK = 8;
+constexpr int BUTTON_PRIMARY = 9;
+constexpr int BUTTON_SECONDARY = 10;
+constexpr int HAPTICS_CHECK = 11;
+constexpr int AWAIT_INPUT_JACK = 12;
+constexpr int POWER_SWITCH = 13;
+constexpr int HOUSING = 14;
+constexpr int REPORT = 15;
 }  // namespace DeviceTestStateId
 
 class DeviceTestSelectHardwareState : public TypedState<PDN> {
@@ -63,13 +65,65 @@ public:
     void onStateLoop(PDN* pdn) override;
     /** @copydoc TypedState::onStateDismounted */
     void onStateDismounted(PDN* pdn) override;
-    /** @return true when the label is complete and output jack check follows. */
-    bool transitionToAwaitOutputJack() const;
+    /** @return true when the label is complete and the power-on check follows. */
+    bool transitionToPowersOn() const;
 
 private:
     DeviceTestSession* session = nullptr;
     DigitEntry digitEntry;
+    bool transitionToPowersOnState = false;
+};
+
+class DeviceTestPowersOnState : public TypedState<PDN> {
+public:
+    /** Operator confirms the DUT powers on before any jack connection. */
+    explicit DeviceTestPowersOnState(DeviceTestSession* session);
+    /** @copydoc TypedState::~TypedState */
+    ~DeviceTestPowersOnState() override;
+
+    /** @copydoc TypedState::onStateMounted */
+    void onStateMounted(PDN* pdn) override;
+    /** @copydoc TypedState::onStateDismounted */
+    void onStateDismounted(PDN* pdn) override;
+    /** @return true when the DUT powered on and output jack check follows. */
+    bool transitionToAwaitOutputJack() const;
+    /** @return true when power-on failed and upload confirmation follows. */
+    bool transitionToConfirmPowerFail() const;
+
+private:
+    DeviceTestSession* session = nullptr;
+    DeviceTestOperatorPrompt prompt;
     bool transitionToAwaitOutputJackState = false;
+    bool transitionToConfirmPowerFailState = false;
+
+    static void onFail(void* ctx);
+    static void onPass(void* ctx);
+};
+
+class DeviceTestConfirmPowerFailState : public TypedState<PDN> {
+public:
+    /** Operator confirms uploading a failed power-on inspection. */
+    explicit DeviceTestConfirmPowerFailState(DeviceTestSession* session);
+    /** @copydoc TypedState::~TypedState */
+    ~DeviceTestConfirmPowerFailState() override;
+
+    /** @copydoc TypedState::onStateMounted */
+    void onStateMounted(PDN* pdn) override;
+    /** @copydoc TypedState::onStateDismounted */
+    void onStateDismounted(PDN* pdn) override;
+    /** @return true when the operator chose to upload. */
+    bool transitionToReport() const;
+    /** @return true when the operator returns to the start of the inspection flow. */
+    bool transitionToSelectHardware() const;
+
+private:
+    DeviceTestSession* session = nullptr;
+    DeviceTestOperatorPrompt prompt;
+    bool transitionToReportState = false;
+    bool transitionToSelectHardwareState = false;
+
+    static void onUpload(void* ctx);
+    static void onBack(void* ctx);
 };
 
 class DeviceTestAwaitOutputJackState : public ConnectState<PDN> {

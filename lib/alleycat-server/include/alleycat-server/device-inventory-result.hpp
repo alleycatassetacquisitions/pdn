@@ -17,7 +17,7 @@ struct DeviceTestComponents {
     bool housing = false;
 };
 
-/** In-memory test report; encoded by DeviceTestCodec for POST /device-reports. */
+/** Bench session report payload for POST /device-reports (DeviceInventoryCodec). */
 struct DeviceTestResult {
     /** Permanent device UUID when known; otherwise the codec derives a stable id from @p
      * macAddress. */
@@ -29,5 +29,7 @@ struct DeviceTestResult {
     char firmwareCommitHash[9] = "unknown";
     int idLabel = 0;
     char macAddress[18] = "";
+    /** Pre-jack power-on check: true = powered on, false = failed to power on. */
+    bool powersOn = false;
     DeviceTestComponents components;
 };

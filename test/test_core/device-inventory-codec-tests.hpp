@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 #include <cstring>
 
-#include "alleycat-server/device-test-codec.hpp"
+#include "alleycat-server/device-inventory-codec.hpp"
 #include "alleycat-server/device_api.pb.h"
 #include "device/drivers/platform-clock.hpp"
 #include "utils/uuid-bytes.hpp"
@@ -47,7 +47,7 @@ inline bool decodeDeviceReportPayload(const std::string& payload,
     return pb_decode(&stream, alleycat_device_WriteDeviceReportRequest_fields, &out);
 }
 
-inline void deviceTestCodecRoundTripEncodesFields() {
+inline void deviceInventoryCodecRoundTripEncodesFields() {
     FixedUnixClock clock(1792359000000LL);
     SimpleTimer::setPlatformClock(&clock);
 
@@ -68,9 +68,10 @@ inline void deviceTestCodecRoundTripEncodesFields() {
     result.components.inputJack = true;
     result.components.outputJack = true;
     result.components.housing = true;
+    result.powersOn = true;
 
     std::string payload;
-    ASSERT_TRUE(DeviceTestCodec::encodeRequest(result, payload));
+    ASSERT_TRUE(DeviceInventoryCodec::encodeRequest(result, payload));
     ASSERT_FALSE(payload.empty());
 
     alleycat_device_WriteDeviceReportRequest message;
@@ -85,6 +86,8 @@ inline void deviceTestCodecRoundTripEncodesFields() {
               alleycat_device_CreateDeviceInspectionRequest_pdn_tag);
     EXPECT_TRUE(message.inspection.has_inspected_at_unix_ms);
     EXPECT_EQ(message.inspection.inspected_at_unix_ms, 1792359000000LL);
+    EXPECT_TRUE(message.inspection.has_powers_on);
+    EXPECT_TRUE(message.inspection.powers_on);
     EXPECT_STREQ(message.inspection.firmware_commit_hash, "26a3bc12");
     EXPECT_TRUE(message.inspection.checks.pdn.has_screen);
     EXPECT_TRUE(message.inspection.checks.pdn.screen);
@@ -92,7 +95,7 @@ inline void deviceTestCodecRoundTripEncodesFields() {
     EXPECT_FALSE(message.inspection.checks.pdn.secondary_button);
 }
 
-inline void deviceTestCodecDerivesDeviceIdFromMacWhenUnset() {
+inline void deviceInventoryCodecDerivesDeviceIdFromMacWhenUnset() {
     FixedUnixClock clock(1792359000000LL);
     SimpleTimer::setPlatformClock(&clock);
 
@@ -102,13 +105,16 @@ inline void deviceTestCodecDerivesDeviceIdFromMacWhenUnset() {
     result.idLabel = 42;
     strncpy(result.firmwareCommitHash, "deadbeef", sizeof(result.firmwareCommitHash));
     strncpy(result.macAddress, "aa:bb:cc:dd:ee:ff", sizeof(result.macAddress));
+    result.powersOn = false;
 
     std::string payload;
-    ASSERT_TRUE(DeviceTestCodec::encodeRequest(result, payload));
+    ASSERT_TRUE(DeviceInventoryCodec::encodeRequest(result, payload));
 
     alleycat_device_WriteDeviceReportRequest message;
     ASSERT_TRUE(decodeDeviceReportPayload(payload, message));
     EXPECT_FALSE(isNilUuid(message.device.id));
     EXPECT_EQ(message.device.id[0], 0xaa);
     EXPECT_EQ(message.device.id[5], 0xff);
+    EXPECT_TRUE(message.inspection.has_powers_on);
+    EXPECT_FALSE(message.inspection.powers_on);
 }

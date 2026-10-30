@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-#include "device-test/device-test-result.hpp"
+#include "alleycat-server/device-inventory-result.hpp"
 #include "device/drivers/serial-wrapper.hpp"
 
 struct DeviceTestSession {

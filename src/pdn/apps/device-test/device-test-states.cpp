@@ -1,6 +1,6 @@
 #include "apps/device-test/device-test-states.hpp"
 
-#include "alleycat-server/device-test-api.hpp"
+#include "alleycat-server/device-inventory-api.hpp"
 #include "device/drivers/logger.hpp"
 #include "id-generator.hpp"
 #include "utils/simple-timer.hpp"
@@ -49,14 +49,14 @@ void logDeviceReportPayload(const DeviceTestResult& result) {
     LOG_I(
     kDeviceTestReportLogTag,
     "Report payload: idLabel=%d hw=%d mac=%s fw=%s inspectedAtMs=%lld deviceId=%s inspectionId=%s "
-    "checks screen=%d leds=%d pri=%d sec=%d haptics=%d pwr=%d in=%d out=%d housing=%d",
+    "checks screen=%d leds=%d pri=%d sec=%d haptics=%d pwr=%d in=%d out=%d housing=%d powersOn=%d",
     result.idLabel, result.hardwareVersion, result.macAddress, result.firmwareCommitHash,
     static_cast<long long>(result.inspectedAtUnixMs), deviceIdText, inspectionIdText,
     result.components.screen ? 1 : 0, result.components.leds ? 1 : 0,
     result.components.primaryButton ? 1 : 0, result.components.secondaryButton ? 1 : 0,
     result.components.haptics ? 1 : 0, result.components.powerSwitch ? 1 : 0,
     result.components.inputJack ? 1 : 0, result.components.outputJack ? 1 : 0,
-    result.components.housing ? 1 : 0);
+    result.components.housing ? 1 : 0, result.powersOn ? 1 : 0);
 }
 
 void logDeviceReportPreflight(const DeviceTestResult& result) {
@@ -91,6 +91,7 @@ DeviceTestSelectHardwareState::~DeviceTestSelectHardwareState() { session = null
 
 void DeviceTestSelectHardwareState::onStateMounted(PDN* pdn) {
     transitionToEnterLabelState = false;
+    session->result.powersOn = false;
     prompt.mount(
     pdn, "HW Version", "Mk 2", "Mk 1", this,
     [](void* ctx) {
@@ -122,7 +123,7 @@ DeviceTestEnterLabelState::DeviceTestEnterLabelState(DeviceTestSession* sessionI
 DeviceTestEnterLabelState::~DeviceTestEnterLabelState() { session = nullptr; }
 
 void DeviceTestEnterLabelState::onStateMounted(PDN* pdn) {
-    transitionToAwaitOutputJackState = false;
+    transitionToPowersOnState = false;
     digitEntry.mount(pdn, "Device ID");
 }
 
@@ -130,14 +131,80 @@ void DeviceTestEnterLabelState::onStateLoop(PDN* pdn) {
     digitEntry.loop(pdn);
     if (digitEntry.isComplete()) {
         session->result.idLabel = digitEntry.getNumericValue();
-        transitionToAwaitOutputJackState = true;
+        transitionToPowersOnState = true;
     }
 }
 
 void DeviceTestEnterLabelState::onStateDismounted(PDN* pdn) { digitEntry.dismount(pdn); }
 
-bool DeviceTestEnterLabelState::transitionToAwaitOutputJack() const {
+bool DeviceTestEnterLabelState::transitionToPowersOn() const { return transitionToPowersOnState; }
+
+// --- Powers on (pre-jack) ---
+
+DeviceTestPowersOnState::DeviceTestPowersOnState(DeviceTestSession* sessionIn)
+    : TypedState<PDN>(DeviceTestStateId::POWERS_ON)
+    , session(sessionIn) {}
+
+DeviceTestPowersOnState::~DeviceTestPowersOnState() { session = nullptr; }
+
+void DeviceTestPowersOnState::onStateMounted(PDN* pdn) {
+    transitionToAwaitOutputJackState = false;
+    transitionToConfirmPowerFailState = false;
+    prompt.mount(pdn, "Powers On", "PASS", "FAIL", this, onPass, onFail);
+}
+
+void DeviceTestPowersOnState::onStateDismounted(PDN* pdn) { prompt.dismount(pdn); }
+
+bool DeviceTestPowersOnState::transitionToAwaitOutputJack() const {
     return transitionToAwaitOutputJackState;
+}
+
+bool DeviceTestPowersOnState::transitionToConfirmPowerFail() const {
+    return transitionToConfirmPowerFailState;
+}
+
+void DeviceTestPowersOnState::onFail(void* ctx) {
+    DeviceTestPowersOnState* state = static_cast<DeviceTestPowersOnState*>(ctx);
+    state->session->result.powersOn = false;
+    state->transitionToConfirmPowerFailState = true;
+}
+
+void DeviceTestPowersOnState::onPass(void* ctx) {
+    DeviceTestPowersOnState* state = static_cast<DeviceTestPowersOnState*>(ctx);
+    state->session->result.powersOn = true;
+    state->transitionToAwaitOutputJackState = true;
+}
+
+// --- Confirm power fail upload ---
+
+DeviceTestConfirmPowerFailState::DeviceTestConfirmPowerFailState(DeviceTestSession* sessionIn)
+    : TypedState<PDN>(DeviceTestStateId::CONFIRM_POWER_FAIL)
+    , session(sessionIn) {}
+
+DeviceTestConfirmPowerFailState::~DeviceTestConfirmPowerFailState() { session = nullptr; }
+
+void DeviceTestConfirmPowerFailState::onStateMounted(PDN* pdn) {
+    transitionToReportState = false;
+    transitionToSelectHardwareState = false;
+    prompt.mount(pdn, "Power failed", "Upload", "Back", this, onUpload, onBack);
+}
+
+void DeviceTestConfirmPowerFailState::onStateDismounted(PDN* pdn) { prompt.dismount(pdn); }
+
+bool DeviceTestConfirmPowerFailState::transitionToReport() const { return transitionToReportState; }
+
+bool DeviceTestConfirmPowerFailState::transitionToSelectHardware() const {
+    return transitionToSelectHardwareState;
+}
+
+void DeviceTestConfirmPowerFailState::onUpload(void* ctx) {
+    DeviceTestConfirmPowerFailState* state = static_cast<DeviceTestConfirmPowerFailState*>(ctx);
+    state->transitionToReportState = true;
+}
+
+void DeviceTestConfirmPowerFailState::onBack(void* ctx) {
+    DeviceTestConfirmPowerFailState* state = static_cast<DeviceTestConfirmPowerFailState*>(ctx);
+    state->transitionToSelectHardwareState = true;
 }
 
 // --- Await output jack ---
@@ -209,7 +276,7 @@ void DeviceTestRemediateInputJackState::onStateMounted(PDN* pdn) {
     transitionToPowerSwitchState = false;
     session->inputJackTested = false;
     prompt.mount(
-    pdn, "Switch To Input J", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; },
+    pdn, "Add Input Jack", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; },
     [](void* ctx) {
         DeviceTestRemediateInputJackState* state =
         static_cast<DeviceTestRemediateInputJackState*>(ctx);
@@ -263,7 +330,7 @@ void DeviceTestAwaitSessionInfoState::onStateMounted(PDN* pdn) {
     session->sessionInfoReceived = false;
     beginSessionTimer.setTimer(BEGIN_SESSION_INITIAL_DELAY_MS);
 
-    prompt.mount(pdn, "Starting", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; }, onFail);
+    prompt.mount(pdn, "Beginning...", "WAIT", "FAIL", this, [](void* ctx) { (void)ctx; }, onFail);
 
     deviceTestWirelessManager->setPeerFilter([this](const uint8_t* mac) {
         if (!session->peerMacValid) {
@@ -635,7 +702,7 @@ void DeviceTestReportState::onStateMounted(PDN* pdn) {
     logDeviceReportPayload(session->result);
 
     DeviceTestResult resultCopy = session->result;
-    DeviceTestApi::uploadDeviceReport(
+    DeviceInventoryApi::uploadDeviceReport(
     wirelessManager, resultCopy,
     [this](const std::string& response) {
         LOG_I(TAG, "Upload succeeded (HTTP 2xx, response %zu bytes)", response.size());

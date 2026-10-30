@@ -1,5 +1,6 @@
-#include "alleycat-server/device-test-codec.hpp"
+#pragma once
 
+#include "alleycat-server/device-inventory-result.hpp"
 #include "alleycat-server/device_api.pb.h"
 #include "device/drivers/platform-clock.hpp"
 #include "utils/simple-timer.hpp"
@@ -8,16 +9,19 @@
 #include <pb_encode.h>
 #include <climits>
 #include <cstring>
+#include <string>
 
-namespace {
+namespace DeviceInventoryCodec {
 
-bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_t count) {
+namespace detail {
+
+inline bool appendToPayload(pb_ostream_t* stream, const pb_byte_t* buffer, size_t count) {
     std::string* payload = static_cast<std::string*>(stream->state);
     payload->append(reinterpret_cast<const char*>(buffer), count);
     return true;
 }
 
-bool isNilUuid(const uint8_t* bytes) {
+inline bool isNilUuid(const uint8_t* bytes) {
     if (bytes == nullptr) {
         return true;
     }
@@ -29,7 +33,7 @@ bool isNilUuid(const uint8_t* bytes) {
     return true;
 }
 
-uint8_t hexNibble(char character) {
+inline uint8_t hexNibble(char character) {
     if (character >= '0' && character <= '9') {
         return static_cast<uint8_t>(character - '0');
     }
@@ -42,11 +46,11 @@ uint8_t hexNibble(char character) {
     return 0;
 }
 
-void deriveDeviceIdFromMac(const char* macAddress, uint8_t (&deviceId)[UUIDBytes::SIZE]) {
-    static const uint8_t kNamespace[10] = {'p', 'd', 'n', '-', 'i', 'n', 'v', '-', 'v', '1'};
+inline void deriveDeviceIdFromMac(const char* macAddress, uint8_t (&deviceId)[UUIDBytes::SIZE]) {
+    static const uint8_t NAMESPACE[10] = {'p', 'd', 'n', '-', 'i', 'n', 'v', '-', 'v', '1'};
     memset(deviceId, 0, UUIDBytes::SIZE);
     if (macAddress == nullptr) {
-        memcpy(deviceId + 6, kNamespace, sizeof(kNamespace));
+        memcpy(deviceId + 6, NAMESPACE, sizeof(NAMESPACE));
         deviceId[0] = 1;
         return;
     }
@@ -64,18 +68,18 @@ void deriveDeviceIdFromMac(const char* macAddress, uint8_t (&deviceId)[UUIDBytes
         deviceId[macByteIndex++] = static_cast<uint8_t>((hexNibble(high) << 4) | hexNibble(low));
         ++index;
     }
-    memcpy(deviceId + 6, kNamespace, sizeof(kNamespace));
+    memcpy(deviceId + 6, NAMESPACE, sizeof(NAMESPACE));
     if (isNilUuid(deviceId)) {
         deviceId[0] = 1;
     }
 }
 
-void setOptionalBool(bool value, bool* hasField, bool* field) {
+inline void setOptionalBool(bool value, bool* hasField, bool* field) {
     *hasField = true;
     *field = value;
 }
 
-alleycat_device_PdnComponentChecks toPdnChecks(const DeviceTestComponents& components) {
+inline alleycat_device_PdnComponentChecks toPdnChecks(const DeviceTestComponents& components) {
     alleycat_device_PdnComponentChecks message{};
     setOptionalBool(components.screen, &message.has_screen, &message.screen);
     setOptionalBool(components.leds, &message.has_leds, &message.leds);
@@ -90,7 +94,8 @@ alleycat_device_PdnComponentChecks toPdnChecks(const DeviceTestComponents& compo
     return message;
 }
 
-bool toMessage(const DeviceTestResult& result, alleycat_device_WriteDeviceReportRequest& message) {
+inline bool toMessage(const DeviceTestResult& result,
+                      alleycat_device_WriteDeviceReportRequest& message) {
     memset(&message, 0, sizeof(message));
     message.has_device = true;
     message.has_inspection = true;
@@ -146,28 +151,30 @@ bool toMessage(const DeviceTestResult& result, alleycat_device_WriteDeviceReport
     strncpy(message.inspection.firmware_commit_hash, result.firmwareCommitHash,
             sizeof(message.inspection.firmware_commit_hash) - 1);
 
+    message.inspection.has_powers_on = true;
+    message.inspection.powers_on = result.powersOn;
+
     message.inspection.which_checks = alleycat_device_CreateDeviceInspectionRequest_pdn_tag;
     message.inspection.checks.pdn = toPdnChecks(result.components);
     return true;
 }
 
-}  // namespace
+}  // namespace detail
 
-namespace DeviceTestCodec {
-
-bool encodeRequest(const DeviceTestResult& result, std::string& payload) {
+/** Encodes @p result as WriteDeviceReportRequest into @p payload. */
+inline bool encodeRequest(const DeviceTestResult& result, std::string& payload) {
     payload.clear();
     alleycat_device_WriteDeviceReportRequest message{};
-    if (!toMessage(result, message)) {
+    if (!detail::toMessage(result, message)) {
         return false;
     }
 
     pb_ostream_t stream = {};
-    stream.callback = appendToPayload;
+    stream.callback = detail::appendToPayload;
     stream.state = &payload;
     stream.max_size = SIZE_MAX;
 
     return pb_encode(&stream, alleycat_device_WriteDeviceReportRequest_fields, &message);
 }
 
-}  // namespace DeviceTestCodec
+}  // namespace DeviceInventoryCodec

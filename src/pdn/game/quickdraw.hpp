@@ -50,21 +50,21 @@ private:
 
     std::vector<Match> matches;
     int numMatches = 0;
-    MatchManager* matchManager;
-    Player* player;
     PlayerProvider* playerProvider = nullptr;
     WirelessManager* wirelessManager;
     StorageInterface* storageManager;
     PeerCommsInterface* peerComms;
     RemoteDeviceCoordinator* remoteDeviceCoordinator;
+    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
+    PDN* pdnDevice = nullptr;
+    Player* player;
+    MatchManager* matchManager;
+    ChainDuelManager* chainDuelManager = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
     QuickdrawWirelessManager* quickdrawWirelessManager;
     SymbolWirelessManager* symbolWirelessManager;
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
-    ChainDuelManager* chainDuelManager = nullptr;
-    ShootoutManager* shootoutManager = nullptr;
-    FirmwareUpdateManager* firmwareUpdateManager = nullptr;
-    PDN* pdnDevice = nullptr;
 
     // Every kStatsLogIntervalMs we emit one LOG_I line with the current retry
     // counters from both RDC and CDM. Intended for venue deployment: `cat`ing

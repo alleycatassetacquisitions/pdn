@@ -51,15 +51,17 @@ bool DemoModeMenuState::transitionToChooseTeam() const { return transitionToChoo
 bool DemoModeMenuState::transitionToDeviceTest() const { return transitionToDeviceTestState; }
 
 void DemoModeMenuState::renderUi(PDN* pdn) const {
-    pdn->getDisplay()->invalidateScreen();
+    Display* display = pdn->getDisplay();
+    const int centerX = display->getWidth() / 2;
 
-    pdn->getDisplay()->setGlyphMode(FontMode::TEXT)->drawText("Demo Mode", 3, 16);
+    display->invalidateScreen();
+    display->setGlyphMode(FontMode::TEXT)->drawCenteredText("Demo Mode", 16);
 
     if (demoGameplaySelected) {
-        pdn->getDisplay()->drawButton("PLAY", 64, 36)->drawText("TEST", 25, 56);
+        display->drawButton("PLAY", centerX, 36)->drawCenteredText("TEST", 56);
     } else {
-        pdn->getDisplay()->drawText("PLAY", 25, 36)->drawButton("TEST", 64, 56);
+        display->drawCenteredText("PLAY", 36)->drawButton("TEST", centerX, 56);
     }
 
-    pdn->getDisplay()->render();
+    display->render();
 }

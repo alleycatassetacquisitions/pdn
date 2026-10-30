@@ -9,7 +9,8 @@ namespace HealthApi {
 
 constexpr const char GET_HEALTH_CHECK_ENDPOINT[] = "/health_check";
 
-/** GET /health_check — JSON response body passed through to @p onSuccess. */
+/** GET /health_check — empty 200 body; @p Esp32S3HttpClient syncs wall clock from the Date header.
+ */
 inline void healthCheck(
     WirelessManager* wirelessManager,
     const std::function<void(const std::string&)>& onSuccess,

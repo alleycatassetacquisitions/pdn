@@ -35,6 +35,9 @@ void DeviceTestApp::populateStateMap() {
     }
     DeviceTestSelectHardwareState* selectHardware = new DeviceTestSelectHardwareState(&session);
     DeviceTestEnterLabelState* enterLabel = new DeviceTestEnterLabelState(&session);
+    DeviceTestPowersOnState* powersOn = new DeviceTestPowersOnState(&session);
+    DeviceTestConfirmPowerFailState* confirmPowerFail =
+    new DeviceTestConfirmPowerFailState(&session);
     DeviceTestAwaitOutputJackState* awaitOutputJack = new DeviceTestAwaitOutputJackState(
     &session, remoteDeviceCoordinator, deviceTestWirelessManager);
     DeviceTestRemediateInputJackState* remediateInputJack = new DeviceTestRemediateInputJackState(
@@ -67,8 +70,19 @@ void DeviceTestApp::populateStateMap() {
     selectHardware->addTransition(new StateTransition(
     [selectHardware]() { return selectHardware->transitionToEnterLabel(); }, enterLabel));
 
-    enterLabel->addTransition(new StateTransition(
-    [enterLabel]() { return enterLabel->transitionToAwaitOutputJack(); }, awaitOutputJack));
+    enterLabel->addTransition(
+    new StateTransition([enterLabel]() { return enterLabel->transitionToPowersOn(); }, powersOn));
+
+    powersOn->addTransition(new StateTransition(
+    [powersOn]() { return powersOn->transitionToAwaitOutputJack(); }, awaitOutputJack));
+    powersOn->addTransition(new StateTransition(
+    [powersOn]() { return powersOn->transitionToConfirmPowerFail(); }, confirmPowerFail));
+
+    confirmPowerFail->addTransition(new StateTransition(
+    [confirmPowerFail]() { return confirmPowerFail->transitionToReport(); }, report));
+    confirmPowerFail->addTransition(new StateTransition(
+    [confirmPowerFail]() { return confirmPowerFail->transitionToSelectHardware(); },
+    selectHardware));
 
     awaitOutputJack->addTransition(new StateTransition(
     [awaitOutputJack]() { return awaitOutputJack->transitionToAwaitSessionInfo(); },
@@ -121,6 +135,8 @@ void DeviceTestApp::populateStateMap() {
 
     stateMap.push_back(selectHardware);
     stateMap.push_back(enterLabel);
+    stateMap.push_back(powersOn);
+    stateMap.push_back(confirmPowerFail);
     stateMap.push_back(awaitOutputJack);
     stateMap.push_back(remediateInputJack);
     stateMap.push_back(awaitSessionInfo);

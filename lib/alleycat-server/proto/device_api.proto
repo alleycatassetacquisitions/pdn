@@ -213,6 +213,11 @@ message CreateDeviceInspectionRequest {
     // means no components were checked. Missing or unsupported payloads are rejected.
     PdnComponentChecks pdn = 5;
   }
+  // Whether the device powered on during this inspection: true means it did,
+  // false means an attempted power-on failed, and absent means not checked.
+  // Independent of component results; never carried forward from older checks.
+  // Returned as checks.powers_on in JSON inspection responses.
+  optional bool powers_on = 6;
 }
 
 // PDN observations: true means working, false means failed, absent means not checked.

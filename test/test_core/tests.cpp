@@ -28,7 +28,7 @@
 #include "player-provider-tests.hpp"
 #include "quickdraw-match-codec-tests.hpp"
 #include "uuid-bytes-tests.hpp"
-#include "device-test-codec-tests.hpp"
+#include "device-inventory-codec-tests.hpp"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -1280,10 +1280,12 @@ TEST_F(HWMUnitTests, clearCallbacksRemovesAll) { hwmClearCallbacksRemovesAll(thi
 
 TEST_F(HWMUnitTests, processRejectsNegativeCommand) { hwmProcessRejectsNegativeCommand(this); }
 
-TEST(DeviceTestCodecSuite, roundTripEncodesFields) { deviceTestCodecRoundTripEncodesFields(); }
+TEST(DeviceInventoryCodecSuite, roundTripEncodesFields) {
+    deviceInventoryCodecRoundTripEncodesFields();
+}
 
-TEST(DeviceTestCodecSuite, derivesDeviceIdFromMacWhenUnset) {
-    deviceTestCodecDerivesDeviceIdFromMacWhenUnset();
+TEST(DeviceInventoryCodecSuite, derivesDeviceIdFromMacWhenUnset) {
+    deviceInventoryCodecDerivesDeviceIdFromMacWhenUnset();
 }
 
 // ============================================

@@ -34,6 +34,7 @@ constexpr unsigned long SPLASH_HOLD_MS = 3000;
 #include "wireless/symbol-wireless-manager.hpp"
 #include "device/drivers/peer-comms-interface.hpp"
 #include "game/quickdraw-resources.hpp"
+#include "device/server-clock-sync.hpp"
 
 // WiFi configuration - injected at compile time from wifi_credentials.ini
 // See wifi_credentials.ini.example for template
@@ -173,6 +174,7 @@ static void setup() {
     playerProvider = new PlayerProvider();
     playerProvider->getPlayer()->setUserID(IdGenerator::getInstance().generateId());
     pdn->begin();
+    queueBootServerClockSync(pdn->getWirelessManager());
     // Create wireless managers
     LOG_I("SETUP", "Creating QuickdrawWirelessManager...");
     quickdrawWirelessManager = new QuickdrawWirelessManager();
