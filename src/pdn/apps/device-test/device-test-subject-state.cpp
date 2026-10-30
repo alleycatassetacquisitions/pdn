@@ -10,8 +10,9 @@
 
 static const char TAG[] = "DeviceTestSubject";
 
-DeviceTestSubjectState::DeviceTestSubjectState(RemoteDeviceCoordinator* remoteDeviceCoordinatorIn,
-                                               DeviceTestWirelessManager* deviceTestWirelessManagerIn)
+DeviceTestSubjectState::DeviceTestSubjectState(
+RemoteDeviceCoordinator* remoteDeviceCoordinatorIn,
+DeviceTestWirelessManager* deviceTestWirelessManagerIn)
     : TypedState<PDN>(PlayerFetchStateId::DEVICE_TEST_SUBJECT)
     , remoteDeviceCoordinator(remoteDeviceCoordinatorIn)
     , deviceTestWirelessManager(deviceTestWirelessManagerIn) {}
@@ -27,22 +28,21 @@ void DeviceTestSubjectState::onStateMounted(PDN* pdn) {
     mountedPdn = pdn;
 
     pdn->getDisplay()
-        ->invalidateScreen()
-        ->setGlyphMode(FontMode::TEXT)
-        ->drawCenteredText("TEST MODE", 32)
-        ->render();
+    ->invalidateScreen()
+    ->setGlyphMode(FontMode::TEXT)
+    ->drawCenteredText("TEST MODE", 32)
+    ->render();
 
     deviceTestWirelessManager->registerEspNowHandler();
-    deviceTestWirelessManager->setPeerFilter([this](const uint8_t* mac) {
-        return remoteDeviceCoordinator->isDirectPeer(mac);
-    });
+    deviceTestWirelessManager->setPeerFilter(
+    [this](const uint8_t* mac) { return remoteDeviceCoordinator->isDirectPeer(mac); });
     deviceTestWirelessManager->setPacketReceivedCallback(
-        [this](const uint8_t* fromMac, DeviceTestCommand command, const uint8_t* payload, size_t payloadLen) {
-            onDeviceTestPacket(fromMac, command, payload, payloadLen);
-        });
+    [this](const uint8_t* fromMac, DeviceTestCommand command, const uint8_t* payload,
+           size_t payloadLen) { onDeviceTestPacket(fromMac, command, payload, payloadLen); });
 
     pdn->getPrimaryButton()->setButtonPress(onPrimaryButtonPress, this, ButtonInteraction::PRESS);
-    pdn->getSecondaryButton()->setButtonPress(onSecondaryButtonPress, this, ButtonInteraction::PRESS);
+    pdn->getSecondaryButton()->setButtonPress(onSecondaryButtonPress, this,
+                                              ButtonInteraction::PRESS);
 }
 
 void DeviceTestSubjectState::onStateLoop(PDN* pdn) {
@@ -69,14 +69,10 @@ void DeviceTestSubjectState::onStateDismounted(PDN* pdn) {
     mountedPdn = nullptr;
 }
 
-bool DeviceTestSubjectState::transitionToPinEntry() const {
-    return transitionToPinEntryState;
-}
+bool DeviceTestSubjectState::transitionToPinEntry() const { return transitionToPinEntryState; }
 
-void DeviceTestSubjectState::onDeviceTestPacket(const uint8_t* fromMac,
-                                                DeviceTestCommand command,
-                                                const uint8_t* payload,
-                                                size_t payloadLen) {
+void DeviceTestSubjectState::onDeviceTestPacket(const uint8_t* fromMac, DeviceTestCommand command,
+                                                const uint8_t* payload, size_t payloadLen) {
     (void)payload;
     (void)payloadLen;
     PDN* pdn = mountedPdn;
@@ -88,40 +84,27 @@ void DeviceTestSubjectState::onDeviceTestPacket(const uint8_t* fromMac,
         case DeviceTestCommand::BEGIN_SESSION:
             deviceTestWirelessManager->sendSessionInfo(fromMac, FIRMWARE_COMMIT_HASH);
             break;
-        case DeviceTestCommand::SHOW_SCREEN_PATTERN:
-            showScreenPattern(pdn);
-            break;
-        case DeviceTestCommand::SHOW_ALL_LEDS:
-            showAllLeds(pdn);
-            break;
-        case DeviceTestCommand::CLEAR_LEDS:
-            clearLeds(pdn);
-            break;
-        case DeviceTestCommand::TRIGGER_HAPTICS:
-            pulseHaptics(pdn);
-            break;
+        case DeviceTestCommand::SHOW_SCREEN_PATTERN: showScreenPattern(pdn); break;
+        case DeviceTestCommand::SHOW_ALL_LEDS: showAllLeds(pdn); break;
+        case DeviceTestCommand::CLEAR_LEDS: clearLeds(pdn); break;
+        case DeviceTestCommand::TRIGGER_HAPTICS: pulseHaptics(pdn); break;
         case DeviceTestCommand::END_SESSION:
             clearLeds(pdn);
             transitionToPinEntryState = true;
             break;
-        default:
-            break;
+        default: break;
     }
 }
 
 void DeviceTestSubjectState::pulseHaptics(PDN* pdn) {
     pdn->getHaptics()->setIntensity(VIBRATION_MAX);
-    hapticPulseTimer.setTimer(kHapticPulseDurationMs);
+    hapticPulseTimer.setTimer(HAPTIC_PULSE_DURATION_MS);
     hapticPulseActive = true;
 }
 
-void DeviceTestSubjectState::showAllLeds(PDN* pdn) {
-    pdn->getLightManager()->showSolidWhiteLeds();
-}
+void DeviceTestSubjectState::showAllLeds(PDN* pdn) { pdn->getLightManager()->showSolidWhiteLeds(); }
 
-void DeviceTestSubjectState::clearLeds(PDN* pdn) {
-    pdn->getLightManager()->clear();
-}
+void DeviceTestSubjectState::clearLeds(PDN* pdn) { pdn->getLightManager()->clear(); }
 
 void DeviceTestSubjectState::showScreenPattern(PDN* pdn) {
     pdn->getDisplay()->invalidateScreen()->whiteScreen()->render();
@@ -140,7 +123,8 @@ void DeviceTestSubjectState::onPrimaryButtonPress(void* ctx) {
         return;
     }
     uint8_t payload[1] = {static_cast<uint8_t>(ButtonIdentifier::PRIMARY_BUTTON)};
-    state->deviceTestWirelessManager->sendCommand(peer, DeviceTestCommand::BUTTON_EVENT, payload, sizeof(payload));
+    state->deviceTestWirelessManager->sendCommand(peer, DeviceTestCommand::BUTTON_EVENT, payload,
+                                                  sizeof(payload));
 }
 
 void DeviceTestSubjectState::onSecondaryButtonPress(void* ctx) {
@@ -156,5 +140,6 @@ void DeviceTestSubjectState::onSecondaryButtonPress(void* ctx) {
         return;
     }
     uint8_t payload[1] = {static_cast<uint8_t>(ButtonIdentifier::SECONDARY_BUTTON)};
-    state->deviceTestWirelessManager->sendCommand(peer, DeviceTestCommand::BUTTON_EVENT, payload, sizeof(payload));
+    state->deviceTestWirelessManager->sendCommand(peer, DeviceTestCommand::BUTTON_EVENT, payload,
+                                                  sizeof(payload));
 }

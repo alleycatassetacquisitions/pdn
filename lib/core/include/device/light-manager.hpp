@@ -24,7 +24,7 @@ public:
 
     // Core functionality
     void loop();
-    
+
     // Animation control
     void startAnimation(AnimationBase* animation, AnimationConfig config);
     void stopAnimation();
@@ -32,14 +32,15 @@ public:
     void resumeAnimation();
 
     void setGlobalBrightness(uint8_t brightness);
-    
+
     void clear();
-    
+
     // Animation state query
     bool isAnimating() const;
     bool isPaused() const;
     bool isAnimationComplete() const;
 
+    /** Sets every mapped LED to full-brightness white (inspection / test helper). */
     void showSolidWhiteLeds();
 
 protected:

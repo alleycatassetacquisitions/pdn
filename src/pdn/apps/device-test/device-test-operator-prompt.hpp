@@ -6,21 +6,21 @@ using OperatorPromptCallback = void (*)(void* ctx);
 
 class DeviceTestOperatorPrompt {
 public:
-    void mount(PDN* pdn,
-               const char* title,
-               const char* firstOptionLabel,
-               const char* secondOptionLabel,
-               void* ctx,
-               OperatorPromptCallback onFirstOption,
+    /** Shows a two-option PASS/FAIL prompt with button navigation. */
+    void mount(PDN* pdn, const char* title, const char* firstOptionLabel,
+               const char* secondOptionLabel, void* ctx, OperatorPromptCallback onFirstOption,
                OperatorPromptCallback onSecondOption);
+    /** Removes button callbacks registered in @ref mount. */
     void dismount(PDN* pdn);
+    /** Redraws the prompt when the selection changes. */
     void render(PDN* pdn);
 
+    /** Updates the title line without remounting. */
     void setTitle(const char* title);
 
 private:
-    static constexpr int kFirstOptionY = 36;
-    static constexpr int kSecondOptionY = 56;
+    static constexpr int FIRST_OPTION_Y = 36;
+    static constexpr int SECOND_OPTION_Y = 56;
 
     const char* titleText = "";
     const char* firstOptionText = "PASS";

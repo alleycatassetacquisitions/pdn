@@ -15,10 +15,8 @@ constexpr int PLAYER_FETCH_APP_ID = 0;
 class PlayerFetchApp : public StateMachine {
 public:
     /** @p firmwareUpdateManager may be null to skip the hold-to-update state. */
-    PlayerFetchApp(WirelessManager* wirelessManager,
-                   FirmwareUpdateManager* firmwareUpdateManager,
-                   PlayerProvider* playerProvider,
-                   RemoteDeviceCoordinator* remoteDeviceCoordinator,
+    PlayerFetchApp(WirelessManager* wirelessManager, FirmwareUpdateManager* firmwareUpdateManager,
+                   PlayerProvider* playerProvider, RemoteDeviceCoordinator* remoteDeviceCoordinator,
                    DeviceTestWirelessManager* deviceTestWirelessManager);
     /** @copydoc StateMachine::~StateMachine */
     ~PlayerFetchApp() override;

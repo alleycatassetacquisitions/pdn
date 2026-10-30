@@ -80,7 +80,8 @@ alleycat_device_PdnComponentChecks toPdnChecks(const DeviceTestComponents& compo
     setOptionalBool(components.screen, &message.has_screen, &message.screen);
     setOptionalBool(components.leds, &message.has_leds, &message.leds);
     setOptionalBool(components.primaryButton, &message.has_primary_button, &message.primary_button);
-    setOptionalBool(components.secondaryButton, &message.has_secondary_button, &message.secondary_button);
+    setOptionalBool(components.secondaryButton, &message.has_secondary_button,
+                    &message.secondary_button);
     setOptionalBool(components.haptics, &message.has_haptics, &message.haptics);
     setOptionalBool(components.powerSwitch, &message.has_power_switch, &message.power_switch);
     setOptionalBool(components.inputJack, &message.has_input_jack, &message.input_jack);
@@ -115,7 +116,8 @@ bool toMessage(const DeviceTestResult& result, alleycat_device_WriteDeviceReport
 
     if (result.macAddress[0] != '\0') {
         message.device.has_mac_address = true;
-        strncpy(message.device.mac_address, result.macAddress, sizeof(message.device.mac_address) - 1);
+        strncpy(message.device.mac_address, result.macAddress,
+                sizeof(message.device.mac_address) - 1);
     }
 
     if (result.inspectionId.isZero()) {

@@ -9,9 +9,7 @@
 
 DeviceTestWirelessManager::DeviceTestWirelessManager() {}
 
-DeviceTestWirelessManager::~DeviceTestWirelessManager() {
-    wirelessManager = nullptr;
-}
+DeviceTestWirelessManager::~DeviceTestWirelessManager() { wirelessManager = nullptr; }
 
 void DeviceTestWirelessManager::initialize(WirelessManager* wirelessManagerIn) {
     wirelessManager = wirelessManagerIn;
@@ -22,11 +20,12 @@ void DeviceTestWirelessManager::registerEspNowHandler() {
         return;
     }
     wirelessManager->setEspNowPacketHandler(
-        PktType::kDeviceTestCommand,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<DeviceTestWirelessManager*>(ctx)->processDeviceTestPacket(macAddress, data, dataLen);
-        },
-        this);
+    PktType::kDeviceTestCommand,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<DeviceTestWirelessManager*>(ctx)->processDeviceTestPacket(macAddress, data,
+                                                                              dataLen);
+    },
+    this);
     espNowHandlerRegistered = true;
 }
 
@@ -39,15 +38,16 @@ void DeviceTestWirelessManager::unregisterEspNowHandler() {
 }
 
 void DeviceTestWirelessManager::setPacketReceivedCallback(DeviceTestPacketCallback callback) {
-    packetReceivedCallback = callback;
+    packetReceivedCallback = std::move(callback);
 }
 
 void DeviceTestWirelessManager::setPeerFilter(DeviceTestPeerFilter filter) {
-    peerFilter = filter;
+    peerFilter = std::move(filter);
 }
 
-void DeviceTestWirelessManager::setSessionBeginCallback(std::function<void(const uint8_t* fromMac)> callback) {
-    sessionBeginCallback = callback;
+void DeviceTestWirelessManager::setSessionBeginCallback(
+std::function<void(const uint8_t* fromMac)> callback) {
+    sessionBeginCallback = std::move(callback);
 }
 
 void DeviceTestWirelessManager::clearCallbacks() {
@@ -56,10 +56,8 @@ void DeviceTestWirelessManager::clearCallbacks() {
     sessionBeginCallback = nullptr;
 }
 
-int DeviceTestWirelessManager::sendCommand(const uint8_t* dstMac,
-                                           DeviceTestCommand command,
-                                           const uint8_t* payload,
-                                           size_t payloadLen) {
+int DeviceTestWirelessManager::sendCommand(const uint8_t* dstMac, DeviceTestCommand command,
+                                           const uint8_t* payload, size_t payloadLen) {
     if (wirelessManager == nullptr || dstMac == nullptr) {
         return -1;
     }
@@ -78,10 +76,8 @@ int DeviceTestWirelessManager::sendCommand(const uint8_t* dstMac,
         memcpy(packet.payload, payload, payloadLen);
     }
 
-    return wirelessManager->sendEspNowData(dstMac,
-                                         PktType::kDeviceTestCommand,
-                                         reinterpret_cast<const uint8_t*>(&packet),
-                                         sizeof(packet));
+    return wirelessManager->sendEspNowData(
+    dstMac, PktType::kDeviceTestCommand, reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
 }
 
 int DeviceTestWirelessManager::sendBeginSession(const uint8_t* dstMac) {
@@ -118,11 +114,9 @@ int DeviceTestWirelessManager::sendSessionInfo(const uint8_t* dstMac, const char
 }
 
 int DeviceTestWirelessManager::processDeviceTestPacket(const uint8_t* macAddress,
-                                                     const uint8_t* data,
-                                                     size_t dataLen) {
+                                                       const uint8_t* data, size_t dataLen) {
     if (dataLen != sizeof(DeviceTestPacket)) {
-        LOG_E(TAG, "Unexpected packet len: got %u expected %u",
-              (unsigned)dataLen,
+        LOG_E(TAG, "Unexpected packet len: got %u expected %u", (unsigned)dataLen,
               (unsigned)sizeof(DeviceTestPacket));
         return -1;
     }

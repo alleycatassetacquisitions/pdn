@@ -32,7 +32,8 @@ constexpr int WELCOME_MESSAGE_TIMEOUT_MS = 5000;
 class PinEntryState : public TypedState<PDN> {
 public:
     /** Pairing-code entry for PlayerFetch. */
-    PinEntryState(PlayerProvider* playerProvider, DeviceTestWirelessManager* deviceTestWirelessManager);
+    PinEntryState(PlayerProvider* playerProvider,
+                  DeviceTestWirelessManager* deviceTestWirelessManager);
     /** @copydoc TypedState::~TypedState */
     ~PinEntryState() override;
 

@@ -133,8 +133,7 @@ inline void fetchUserStoresDevicePlayerOnSuccess(PlayerFetchTestSuite* suite) {
     fetch.onStateMounted(&suite->device);
     ASSERT_EQ(suite->queuedRequests.size(), 1u);
 
-    suite->queuedRequests[0].onSuccess(
-        encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
+    suite->queuedRequests[0].onSuccess(encodeTestPlayer(uuidWireBytes(TEST_PLAYER_ID), "Ada"));
 
     fetch.onStateLoop(&suite->device);
     EXPECT_TRUE(suite->playerProvider.hasPlayer());

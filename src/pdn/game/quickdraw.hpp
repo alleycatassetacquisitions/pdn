@@ -25,7 +25,8 @@ constexpr int QUICKDRAW_APP_ID = 1;
 class Quickdraw : public StateMachine {
 public:
     /** Builds the game managers and registers their packet handlers. */
-    Quickdraw(PlayerProvider* playerProvider, Device* pdn, QuickdrawWirelessManager* quickdrawWirelessManager,
+    Quickdraw(PlayerProvider* playerProvider, Device* pdn,
+              QuickdrawWirelessManager* quickdrawWirelessManager,
               RemoteDebugManager* remoteDebugManager, SymbolWirelessManager* symbolWirelessManager);
     ~Quickdraw();
 
@@ -41,7 +42,8 @@ public:
     void onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
     void onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen);
-    void onStateLoop(Device *PDN) override;
+    /** @copydoc StateMachine::onStateLoop */
+    void onStateLoop(Device* pdn) override;
 
 private:
     void onChainStateChanged();
@@ -60,7 +62,7 @@ private:
     RemoteDebugManager* remoteDebugManager;
     SupporterReady* supporterReadyState = nullptr;
     ChainDuelManager* chainDuelManager = nullptr;
-    ShootoutManager* shootoutManager_ = nullptr;
+    ShootoutManager* shootoutManager = nullptr;
     FirmwareUpdateManager* firmwareUpdateManager = nullptr;
     PDN* pdnDevice = nullptr;
 

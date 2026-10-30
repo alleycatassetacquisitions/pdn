@@ -17,100 +17,90 @@ Quickdraw::Quickdraw(PlayerProvider* playerProvider, Device* pdn,
     , peerComms(pdn->getPeerComms())
     , remoteDeviceCoordinator(pdn->getRemoteDeviceCoordinator())
     , firmwareUpdateManager(pdn->getFirmwareUpdateManager())
-    , pdnDevice(static_cast<PDN*>(pdn)) {
-    this->player = playerProvider->getPlayer();
+    , pdnDevice(static_cast<PDN*>(pdn))
+    , player(playerProvider->getPlayer())
+    , matchManager(new MatchManager())
+    , chainDuelManager(new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator))
+    , shootoutManager(
+      new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager)) {
     this->quickdrawWirelessManager = quickdrawWirelessManager;
     this->symbolWirelessManager = symbolWirelessManager;
     this->remoteDebugManager = remoteDebugManager;
-    this->matchManager = new MatchManager();
 
-    this->chainDuelManager = new ChainDuelManager(player, wirelessManager, remoteDeviceCoordinator);
-    this->shootoutManager_ = new ShootoutManager(player, wirelessManager, remoteDeviceCoordinator, chainDuelManager);
-    this->shootoutManager_->setMatchManager(matchManager);
-    matchManager->setShootoutManager(shootoutManager_);
+    shootoutManager->setMatchManager(matchManager);
+    matchManager->setShootoutManager(shootoutManager);
 
     matchManager->initialize(player, storageManager, quickdrawWirelessManager);
-    matchManager->setBoostProvider([this]() -> unsigned long {
-        return chainDuelManager ? chainDuelManager->getBoostMs() : 0;
-    });
+    matchManager->setBoostProvider(
+    [this]() -> unsigned long { return chainDuelManager ? chainDuelManager->getBoostMs() : 0; });
     matchManager->setRemoteDeviceCoordinator(remoteDeviceCoordinator);
 
     quickdrawWirelessManager->setPacketReceivedCallback(
-        std::bind(&MatchManager::listenForMatchEvents, matchManager, std::placeholders::_1)
-    );
+    [this](const QuickdrawCommand& command) { matchManager->listenForMatchEvents(command); });
 
     // Chain game event + confirm wireless packet handlers.
     wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEvent,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onChainGameEventPacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kChainGameEvent,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onChainGameEventPacket(macAddress, data, dataLen);
+    },
+    this);
     wirelessManager->setEspNowPacketHandler(
-        PktType::kChainGameEventAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onChainGameEventAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kChainGameEventAck,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onChainGameEventAckPacket(macAddress, data, dataLen);
+    },
+    this);
     wirelessManager->setEspNowPacketHandler(
-        PktType::kChainConfirm,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onChainConfirmPacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kChainConfirm,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onChainConfirmPacket(macAddress, data, dataLen);
+    },
+    this);
     wirelessManager->setEspNowPacketHandler(
-        PktType::kRoleAnnounce,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onRoleAnnouncePacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kRoleAnnounce,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onRoleAnnouncePacket(macAddress, data, dataLen);
+    },
+    this);
     wirelessManager->setEspNowPacketHandler(
-        PktType::kRoleAnnounceAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onRoleAnnounceAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kRoleAnnounceAck,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onRoleAnnounceAckPacket(macAddress, data, dataLen);
+    },
+    this);
     wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommand,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onShootoutCommandPacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kShootoutCommand,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onShootoutCommandPacket(macAddress, data, dataLen);
+    },
+    this);
     wirelessManager->setEspNowPacketHandler(
-        PktType::kShootoutCommandAck,
-        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-            static_cast<Quickdraw*>(ctx)->onShootoutCommandAckPacket(macAddress, data, dataLen);
-        },
-        this
-    );
+    PktType::kShootoutCommandAck,
+    [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+        static_cast<Quickdraw*>(ctx)->onShootoutCommandAckPacket(macAddress, data, dataLen);
+    },
+    this);
 
     if (symbolWirelessManager) {
         symbolWirelessManager->initialize(wirelessManager, remoteDeviceCoordinator);
         wirelessManager->setEspNowPacketHandler(
-            PktType::kSymbolMatchCommand,
-            [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
-                static_cast<SymbolWirelessManager*>(ctx)->processSymbolMatchCommand(macAddress, data, dataLen);
-            },
-            symbolWirelessManager
-        );
+        PktType::kSymbolMatchCommand,
+        [](const uint8_t* macAddress, const uint8_t* data, const size_t dataLen, void* ctx) {
+            static_cast<SymbolWirelessManager*>(ctx)->processSymbolMatchCommand(macAddress, data,
+                                                                                dataLen);
+        },
+        symbolWirelessManager);
     }
 
     // Clear boost/confirmed-supporters when the supporter chain drains to
     // empty while a duel is still running. Without this, a champion keeps
     // a boost from supporters that have since unplugged.
-    remoteDeviceCoordinator->setChainChangeCallback([this]() {
-        onChainStateChanged();
-    });
+    remoteDeviceCoordinator->setChainChangeCallback([this]() { onChainStateChanged(); });
 
     remoteDeviceCoordinator->setPeerLostCallback([this](const uint8_t* lostMac) {
-        if (shootoutManager_ && shootoutManager_->active()) {
-            shootoutManager_->onLocalRDCDisconnect(lostMac);
+        if (shootoutManager && shootoutManager->active()) {
+            shootoutManager->onLocalRDCDisconnect(lostMac);
         }
     });
 }
@@ -126,17 +116,18 @@ void Quickdraw::onChainStateChanged() {
 void Quickdraw::onRoleAnnouncePacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
     if (dataLen != sizeof(RoleAnnouncePayload) || !chainDuelManager) return;
     const RoleAnnouncePayload* payload = reinterpret_cast<const RoleAnnouncePayload*>(data);
-    chainDuelManager->onRoleAnnounceReceived(
-        fromMac, payload->role, payload->championMac, payload->seqId);
+    chainDuelManager->onRoleAnnounceReceived(fromMac, payload->role, payload->championMac,
+                                             payload->seqId);
 }
 
-void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+void Quickdraw::onRoleAnnounceAckPacket(const uint8_t* fromMac, const uint8_t* data,
+                                        size_t dataLen) {
     if (dataLen != sizeof(RoleAnnounceAckPayload) || !chainDuelManager) return;
     const RoleAnnounceAckPayload* payload = reinterpret_cast<const RoleAnnounceAckPayload*>(data);
     chainDuelManager->onRoleAnnounceAckReceived(fromMac, payload->seqId);
 }
 
-void Quickdraw::onStateLoop(Device *PDN) {
+void Quickdraw::onStateLoop(Device* pdn) {
     if (chainDuelManager) chainDuelManager->sync();
 
     if (chainDuelManager) {
@@ -147,18 +138,19 @@ void Quickdraw::onStateLoop(Device *PDN) {
         }
     }
 
-    StateMachine::onStateLoop(PDN);
+    StateMachine::onStateLoop(pdn);
 }
 
-void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* data,
+                                       size_t dataLen) {
     if (dataLen != sizeof(ChainGameEventPayload)) return;
     if (!chainDuelManager || !chainDuelManager->isKnownGameEventSender(fromMac)) return;
 
     const ChainGameEventPayload* payload = reinterpret_cast<const ChainGameEventPayload*>(data);
 
     // Out-of-state events dropped silently; champion's retry machine bounds traffic cost.
-    if (supporterReadyState != nullptr && currentState != nullptr
-        && currentState->getStateId() == SUPPORTER_READY) {
+    if (supporterReadyState != nullptr && currentState != nullptr &&
+        currentState->getStateId() == SUPPORTER_READY) {
         supporterReadyState->onChainGameEventReceived(payload->event_type, fromMac);
     }
 
@@ -171,9 +163,11 @@ void Quickdraw::onChainGameEventPacket(const uint8_t* fromMac, const uint8_t* da
     }
 }
 
-void Quickdraw::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
+void Quickdraw::onChainGameEventAckPacket(const uint8_t* fromMac, const uint8_t* data,
+                                          size_t dataLen) {
     if (dataLen != sizeof(ChainGameEventAckPayload) || !chainDuelManager) return;
-    const ChainGameEventAckPayload* payload = reinterpret_cast<const ChainGameEventAckPayload*>(data);
+    const ChainGameEventAckPayload* payload =
+    reinterpret_cast<const ChainGameEventAckPayload*>(data);
     chainDuelManager->onChainGameEventAckReceived(fromMac, payload->seqId);
 }
 
@@ -184,8 +178,9 @@ void Quickdraw::onChainConfirmPacket(const uint8_t* fromMac, const uint8_t* data
     chainDuelManager->onConfirmReceived(fromMac, payload->originatorMac, payload->seqId);
 }
 
-void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager_ || dataLen < 2) return;
+void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* data,
+                                        size_t dataLen) {
+    if (!shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
@@ -195,8 +190,9 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
         case ShootoutCmd::CONFIRM: {
             if (payloadLen < 6) break;
             const char* name = (payloadLen >= 6 + ShootoutManager::kNameLength)
-                ? reinterpret_cast<const char*>(payload + 6) : nullptr;
-            shootoutManager_->onConfirmReceived(payload, name);
+                               ? reinterpret_cast<const char*>(payload + 6)
+                               : nullptr;
+            shootoutManager->onConfirmReceived(payload, name);
             break;
         }
         case ShootoutCmd::BRACKET: {
@@ -211,49 +207,46 @@ void Quickdraw::onShootoutCommandPacket(const uint8_t* fromMac, const uint8_t* d
                 memcpy(mac.data(), payload + 1 + 6 * i, 6);
                 bracket.push_back(mac);
             }
-            shootoutManager_->onBracketReceived(bracket, seqId);
+            shootoutManager->onBracketReceived(bracket, seqId);
             break;
         }
         case ShootoutCmd::MATCH_START:
             if (payloadLen >= 13)
-                shootoutManager_->onMatchStartReceived(payload, payload + 6, payload[12], seqId);
+                shootoutManager->onMatchStartReceived(payload, payload + 6, payload[12], seqId);
             break;
         case ShootoutCmd::MATCH_RESULT:
             if (payloadLen >= 13)
-                shootoutManager_->onMatchResultReceived(payload, payload + 6, payload[12], seqId, fromMac);
+                shootoutManager->onMatchResultReceived(payload, payload + 6, payload[12], seqId,
+                                                       fromMac);
             break;
         case ShootoutCmd::TOURNAMENT_END:
-            if (payloadLen >= 6) shootoutManager_->onTournamentEndReceived(payload, seqId);
+            if (payloadLen >= 6) shootoutManager->onTournamentEndReceived(payload, seqId);
             break;
         case ShootoutCmd::PEER_LOST:
-            if (payloadLen >= 6) shootoutManager_->onPeerLostReceived(payload);
+            if (payloadLen >= 6) shootoutManager->onPeerLostReceived(payload);
             break;
-        case ShootoutCmd::ABORT:
-            shootoutManager_->onAbortReceived();
-            break;
+        case ShootoutCmd::ABORT: shootoutManager->onAbortReceived(); break;
     }
 }
 
-void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data, size_t dataLen) {
-    if (!shootoutManager_ || dataLen < 2) return;
+void Quickdraw::onShootoutCommandAckPacket(const uint8_t* fromMac, const uint8_t* data,
+                                           size_t dataLen) {
+    if (!shootoutManager || dataLen < 2) return;
     if (data[0] > static_cast<uint8_t>(ShootoutCmd::ABORT)) return;
     ShootoutCmd cmd = static_cast<ShootoutCmd>(data[0]);
     uint8_t seqId = data[1];
     switch (cmd) {
-        case ShootoutCmd::BRACKET:
-            shootoutManager_->onBracketAckReceived(fromMac, seqId);
-            break;
+        case ShootoutCmd::BRACKET: shootoutManager->onBracketAckReceived(fromMac, seqId); break;
         case ShootoutCmd::MATCH_START:
-            shootoutManager_->onMatchStartAckReceived(fromMac, seqId);
+            shootoutManager->onMatchStartAckReceived(fromMac, seqId);
             break;
         case ShootoutCmd::MATCH_RESULT:
-            shootoutManager_->onMatchResultAckReceived(fromMac, seqId);
+            shootoutManager->onMatchResultAckReceived(fromMac, seqId);
             break;
         case ShootoutCmd::TOURNAMENT_END:
-            shootoutManager_->onTournamentEndAckReceived(fromMac, seqId);
+            shootoutManager->onTournamentEndAckReceived(fromMac, seqId);
             break;
-        default:
-            break;
+        default: break;
     }
 }
 
@@ -269,8 +262,8 @@ Quickdraw::~Quickdraw() {
     symbolWirelessManager = nullptr;
     delete chainDuelManager;
     chainDuelManager = nullptr;
-    delete shootoutManager_;
-    shootoutManager_ = nullptr;
+    delete shootoutManager;
+    shootoutManager = nullptr;
     firmwareUpdateManager = nullptr;
     storageManager = nullptr;
     peerComms = nullptr;
@@ -279,30 +272,34 @@ Quickdraw::~Quickdraw() {
 
 void Quickdraw::populateStateMap() {
 
-    PlayerFetchApp* playerFetch = new PlayerFetchApp(wirelessManager,
-                                                    firmwareUpdateManager,
-                                                    playerProvider,
-                                                    remoteDeviceCoordinator,
-                                                    pdnDevice->getDeviceTestWirelessManager());
+    PlayerFetchApp* playerFetch =
+    new PlayerFetchApp(wirelessManager, firmwareUpdateManager, playerProvider,
+                       remoteDeviceCoordinator, pdnDevice->getDeviceTestWirelessManager());
     AwakenSequence* awakenSequence = new AwakenSequence(player);
     Idle* idle = new Idle(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
 
-    DuelCountdown* duelCountdown = new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
-    Duel* duel = new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager, shootoutManager_);
+    DuelCountdown* duelCountdown =
+    new DuelCountdown(player, matchManager, remoteDeviceCoordinator, chainDuelManager);
+    Duel* duel =
+    new Duel(player, matchManager, remoteDeviceCoordinator, chainDuelManager, shootoutManager);
     DuelPushed* duelPushed = new DuelPushed(player, matchManager, remoteDeviceCoordinator);
-    DuelReceivedResult* duelReceivedResult = new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator);
-    DuelResult* duelResult = new DuelResult(player, matchManager, quickdrawWirelessManager, shootoutManager_);
-    SupporterReady* supporterReady = new SupporterReady(player, remoteDeviceCoordinator, chainDuelManager);
+    DuelReceivedResult* duelReceivedResult =
+    new DuelReceivedResult(player, matchManager, remoteDeviceCoordinator);
+    DuelResult* duelResult =
+    new DuelResult(player, matchManager, quickdrawWirelessManager, shootoutManager);
+    SupporterReady* supporterReady =
+    new SupporterReady(player, remoteDeviceCoordinator, chainDuelManager);
     this->supporterReadyState = supporterReady;
 
     Win* win = new Win(player, chainDuelManager, matchManager);
     Lose* lose = new Lose(player, chainDuelManager, matchManager);
 
     Sleep* sleep = new Sleep(player);
-    UploadMatchesState* uploadMatches = new UploadMatchesState(player, wirelessManager, matchManager);
+    UploadMatchesState* uploadMatches =
+    new UploadMatchesState(player, wirelessManager, matchManager);
 
     // Shootout tournament states (auto-triggered by loop closure from Idle).
-    ShootoutManager* sht = shootoutManager_;
+    ShootoutManager* sht = shootoutManager;
     auto* shProposal = new ShootoutProposal(sht, chainDuelManager);
     auto* shBracketReveal = new ShootoutBracketReveal(sht, chainDuelManager);
     auto* shSpectator = new ShootoutSpectator(sht);
@@ -310,14 +307,16 @@ void Quickdraw::populateStateMap() {
     auto* shFinalStandings = new ShootoutFinalStandings(sht, chainDuelManager);
     auto* shAborted = new ShootoutAborted(sht);
 
-    SymbolState* symbol = new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
-    SymbolMatched* symbolMatched = new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolState* symbol =
+    new SymbolState(player, matchManager, remoteDeviceCoordinator, symbolWirelessManager);
+    SymbolMatched* symbolMatched =
+    new SymbolMatched(player, remoteDeviceCoordinator, symbolWirelessManager);
 
-    playerFetch->addTransition(
-    new StateTransition(std::bind(&PlayerFetchApp::readyForGameplay, playerFetch), awakenSequence));
+    playerFetch->addTransition(new StateTransition(
+    [playerFetch]() { return playerFetch->readyForGameplay(); }, awakenSequence));
 
     awakenSequence->addTransition(
-    new StateTransition(std::bind(&AwakenSequence::transitionToIdle, awakenSequence), idle));
+    new StateTransition([awakenSequence]() { return awakenSequence->transitionToIdle(); }, idle));
 
     // Auto-trigger Shootout when the chain closes into a loop. Priority over
     // DuelCountdown/SupporterReady: in a closed ring, adjacent H-B pairs
@@ -325,29 +324,24 @@ void Quickdraw::populateStateMap() {
     // (tournament) would be silently demoted to a 1v1 duel.
     {
         ChainDuelManager* cdm = chainDuelManager;
-        ShootoutManager* shMgr = shootoutManager_;
-        idle->addTransition(
-            new StateTransition(
-                [cdm, shMgr]() {
-                    bool loop = cdm && cdm->isLoop();
-                    bool shActive = shMgr && shMgr->active();
-                    return loop && shMgr && !shActive;
-                },
-                shProposal));
+        ShootoutManager* shMgr = shootoutManager;
+        idle->addTransition(new StateTransition(
+        [cdm, shMgr]() {
+            bool loop = cdm && cdm->isLoop();
+            bool shActive = shMgr && shMgr->active();
+            return loop && shMgr && !shActive;
+        },
+        shProposal));
     }
 
     idle->addTransition(
-        new StateTransition(
-            std::bind(&Idle::transitionToDuelCountdown, idle),
-            duelCountdown));
+    new StateTransition([idle]() { return idle->transitionToDuelCountdown(); }, duelCountdown));
 
     idle->addTransition(
-        new StateTransition(
-            std::bind(&Idle::transitionToSupporterReady, idle),
-            supporterReady));
+    new StateTransition([idle]() { return idle->transitionToSupporterReady(); }, supporterReady));
 
     {
-        ShootoutManager* shMgr = shootoutManager_;
+        ShootoutManager* shMgr = shootoutManager;
         auto phaseIsAborted = [shMgr]() {
             return shMgr && shMgr->getPhase() == ShootoutManager::Phase::ABORTED;
         };
@@ -360,180 +354,116 @@ void Quickdraw::populateStateMap() {
     }
 
     supporterReady->addTransition(
-        new StateTransition(
-            std::bind(&SupporterReady::transitionToIdle, supporterReady),
-            idle));
+    new StateTransition([supporterReady]() { return supporterReady->transitionToIdle(); }, idle));
 
     // --- Duel flow ---
     duelCountdown->addTransition(
-        new StateTransition(
-            std::bind(&DuelCountdown::shallWeBattle, duelCountdown),
-            duel));
+    new StateTransition([duelCountdown]() { return duelCountdown->shallWeBattle(); }, duel));
 
     {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelCountdown->addTransition(
-            new StateTransition(
-                [duelCountdown, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelCountdown->disconnectedBackToIdle();
-                },
-                idle));
+        ShootoutManager* shMgr = shootoutManager;
+        duelCountdown->addTransition(new StateTransition(
+        [duelCountdown, shMgr]() {
+            if (shMgr && shMgr->active()) return false;
+            return duelCountdown->disconnectedBackToIdle();
+        },
+        idle));
     }
 
     duel->addTransition(
-        new StateTransition(
-            std::bind(&Duel::transitionToShootoutSpectator, duel),
-            shSpectator));
+    new StateTransition([duel]() { return duel->transitionToShootoutSpectator(); }, shSpectator));
 
     duel->addTransition(
-        new StateTransition(
-            std::bind(&Duel::transitionToShootoutEliminated, duel),
-            shEliminated));
+    new StateTransition([duel]() { return duel->transitionToShootoutEliminated(); }, shEliminated));
+
+    duel->addTransition(new StateTransition([duel]() { return duel->transitionToIdle(); }, idle));
+
+    duel->addTransition(new StateTransition(
+    [duel]() { return duel->transitionToDuelReceivedResult(); }, duelReceivedResult));
 
     duel->addTransition(
-        new StateTransition(
-            std::bind(&Duel::transitionToIdle, duel),
-            idle));
-
-    duel->addTransition(
-        new StateTransition(
-            std::bind(&Duel::transitionToDuelReceivedResult, duel),
-            duelReceivedResult));
-
-    duel->addTransition(
-        new StateTransition(
-            std::bind(&Duel::transitionToDuelPushed, duel),
-            duelPushed));
+    new StateTransition([duel]() { return duel->transitionToDuelPushed(); }, duelPushed));
 
     {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelPushed->addTransition(
-            new StateTransition(
-                [duelPushed, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelPushed->disconnectedBackToIdle();
-                },
-                idle));
+        ShootoutManager* shMgr = shootoutManager;
+        duelPushed->addTransition(new StateTransition(
+        [duelPushed, shMgr]() {
+            if (shMgr && shMgr->active()) return false;
+            return duelPushed->disconnectedBackToIdle();
+        },
+        idle));
     }
 
-    duelPushed->addTransition(
-        new StateTransition(
-            std::bind(&DuelPushed::transitionToDuelResult, duelPushed),
-            duelResult));
+    duelPushed->addTransition(new StateTransition(
+    [duelPushed]() { return duelPushed->transitionToDuelResult(); }, duelResult));
 
     {
-        ShootoutManager* shMgr = shootoutManager_;
-        duelReceivedResult->addTransition(
-            new StateTransition(
-                [duelReceivedResult, shMgr]() {
-                    if (shMgr && shMgr->active()) return false;
-                    return duelReceivedResult->disconnectedBackToIdle();
-                },
-                idle));
+        ShootoutManager* shMgr = shootoutManager;
+        duelReceivedResult->addTransition(new StateTransition(
+        [duelReceivedResult, shMgr]() {
+            if (shMgr && shMgr->active()) return false;
+            return duelReceivedResult->disconnectedBackToIdle();
+        },
+        idle));
     }
 
-    duelReceivedResult->addTransition(
-        new StateTransition(
-            std::bind(&DuelReceivedResult::transitionToDuelResult, duelReceivedResult),
-            duelResult));
+    duelReceivedResult->addTransition(new StateTransition(
+    [duelReceivedResult]() { return duelReceivedResult->transitionToDuelResult(); }, duelResult));
 
     duelResult->addTransition(
-        new StateTransition(
-            std::bind(&DuelResult::transitionToWin, duelResult),
-            win));
+    new StateTransition([duelResult]() { return duelResult->transitionToWin(); }, win));
 
     duelResult->addTransition(
-        new StateTransition(
-            std::bind(&DuelResult::transitionToLose, duelResult),
-            lose));
+    new StateTransition([duelResult]() { return duelResult->transitionToLose(); }, lose));
 
-    duelResult->addTransition(
-        new StateTransition(
-            std::bind(&DuelResult::transitionToShootoutSpectator, duelResult),
-            shSpectator));
+    duelResult->addTransition(new StateTransition(
+    [duelResult]() { return duelResult->transitionToShootoutSpectator(); }, shSpectator));
 
-    duelResult->addTransition(
-        new StateTransition(
-            std::bind(&DuelResult::transitionToShootoutEliminated, duelResult),
-            shEliminated));
+    duelResult->addTransition(new StateTransition(
+    [duelResult]() { return duelResult->transitionToShootoutEliminated(); }, shEliminated));
 
     // --- Post-game flow ---
-    win->addTransition(
-        new StateTransition(
-            std::bind(&Win::resetGame, win),
-            uploadMatches));
+    win->addTransition(new StateTransition([win]() { return win->resetGame(); }, uploadMatches));
 
-    lose->addTransition(
-        new StateTransition(
-            std::bind(&Lose::resetGame, lose),
-            uploadMatches));
+    lose->addTransition(new StateTransition([lose]() { return lose->resetGame(); }, uploadMatches));
 
     uploadMatches->addTransition(
-        new StateTransition(
-            std::bind(&UploadMatchesState::transitionToSleep, uploadMatches),
-            sleep));
+    new StateTransition([uploadMatches]() { return uploadMatches->transitionToSleep(); }, sleep));
 
     sleep->addTransition(
-    new StateTransition(std::bind(&Sleep::transitionToAwakenSequence, sleep), awakenSequence));
+    new StateTransition([sleep]() { return sleep->transitionToAwakenSequence(); }, awakenSequence));
 
     // --- Shootout transitions ---
+    shProposal->addTransition(new StateTransition(
+    [shProposal]() { return shProposal->transitionToBracketReveal(); }, shBracketReveal));
     shProposal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutProposal::transitionToBracketReveal, shProposal),
-            shBracketReveal));
+    new StateTransition([shProposal]() { return shProposal->transitionToAborted(); }, shAborted));
     shProposal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutProposal::transitionToAborted, shProposal),
-            shAborted));
-    shProposal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutProposal::transitionToIdle, shProposal),
-            idle));
+    new StateTransition([shProposal]() { return shProposal->transitionToIdle(); }, idle));
 
+    shBracketReveal->addTransition(new StateTransition(
+    [shBracketReveal]() { return shBracketReveal->transitionToDuelCountdown(); }, duelCountdown));
+    shBracketReveal->addTransition(new StateTransition(
+    [shBracketReveal]() { return shBracketReveal->transitionToSpectator(); }, shSpectator));
+    shBracketReveal->addTransition(new StateTransition(
+    [shBracketReveal]() { return shBracketReveal->transitionToAborted(); }, shAborted));
     shBracketReveal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutBracketReveal::transitionToDuelCountdown, shBracketReveal),
-            duelCountdown));
-    shBracketReveal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutBracketReveal::transitionToSpectator, shBracketReveal),
-            shSpectator));
-    shBracketReveal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutBracketReveal::transitionToAborted, shBracketReveal),
-            shAborted));
-    shBracketReveal->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutBracketReveal::transitionToIdle, shBracketReveal),
-            idle));
+    new StateTransition([shBracketReveal]() { return shBracketReveal->transitionToIdle(); }, idle));
 
+    shSpectator->addTransition(new StateTransition(
+    [shSpectator]() { return shSpectator->transitionToDuelCountdown(); }, duelCountdown));
+    shSpectator->addTransition(new StateTransition(
+    [shSpectator]() { return shSpectator->transitionToFinalStandings(); }, shFinalStandings));
     shSpectator->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutSpectator::transitionToDuelCountdown, shSpectator),
-            duelCountdown));
-    shSpectator->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutSpectator::transitionToFinalStandings, shSpectator),
-            shFinalStandings));
-    shSpectator->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutSpectator::transitionToAborted, shSpectator),
-            shAborted));
+    new StateTransition([shSpectator]() { return shSpectator->transitionToAborted(); }, shAborted));
 
-    shEliminated->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutEliminated::transitionToFinalStandings, shEliminated),
-            shFinalStandings));
-    shEliminated->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutEliminated::transitionToAborted, shEliminated),
-            shAborted));
+    shEliminated->addTransition(new StateTransition(
+    [shEliminated]() { return shEliminated->transitionToFinalStandings(); }, shFinalStandings));
+    shEliminated->addTransition(new StateTransition(
+    [shEliminated]() { return shEliminated->transitionToAborted(); }, shAborted));
 
     shAborted->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutAborted::transitionToIdle, shAborted),
-            idle));
+    new StateTransition([shAborted]() { return shAborted->transitionToIdle(); }, idle));
 
     // Cable-event reset after TOURNAMENT_END: when the physical ring opens,
     // route through Sleep so the cooldown period elapses before the next
@@ -541,36 +471,24 @@ void Quickdraw::populateStateMap() {
     // (still advertising the old ring) feed back into CDM::isLoop on the
     // same loop tick as unplug, triggering a phantom Proposal with no peers
     // left to confirm.
-    shFinalStandings->addTransition(
-        new StateTransition(
-            std::bind(&ShootoutFinalStandings::transitionToSleep, shFinalStandings),
-            sleep));
+    shFinalStandings->addTransition(new StateTransition(
+    [shFinalStandings]() { return shFinalStandings->transitionToSleep(); }, sleep));
 
     // --- Symbol-match transitions ---
     idle->addTransition(
-        new StateTransition(
-            std::bind(&Idle::transitionToSymbol, idle),
-            symbol));
+    new StateTransition([idle]() { return idle->transitionToSymbol(); }, symbol));
 
     symbol->addTransition(
-        new StateTransition(
-            std::bind(&SymbolState::transitionToIdle, symbol),
-            idle));
+    new StateTransition([symbol]() { return symbol->transitionToIdle(); }, idle));
 
     symbol->addTransition(
-        new StateTransition(
-            std::bind(&SymbolState::transitionToSymbolMatched, symbol),
-            symbolMatched));
+    new StateTransition([symbol]() { return symbol->transitionToSymbolMatched(); }, symbolMatched));
 
     symbolMatched->addTransition(
-        new StateTransition(
-            std::bind(&SymbolMatched::transitionToSymbol, symbolMatched),
-            symbol));
+    new StateTransition([symbolMatched]() { return symbolMatched->transitionToSymbol(); }, symbol));
 
     symbolMatched->addTransition(
-        new StateTransition(
-            std::bind(&SymbolMatched::transitionToIdle, symbolMatched),
-            idle));
+    new StateTransition([symbolMatched]() { return symbolMatched->transitionToIdle(); }, idle));
 
     // State map - order matters: first entry is the initial state
     stateMap.push_back(playerFetch);

@@ -19,7 +19,8 @@ struct DeviceTestComponents {
 
 /** In-memory test report; encoded by DeviceTestCodec for POST /device-reports. */
 struct DeviceTestResult {
-    /** Permanent device UUID when known; otherwise the codec derives a stable id from @p macAddress. */
+    /** Permanent device UUID when known; otherwise the codec derives a stable id from @p
+     * macAddress. */
     UUIDBytes deviceId;
     /** One UUID per bench check; retain for upload retries. */
     UUIDBytes inspectionId;

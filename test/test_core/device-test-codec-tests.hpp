@@ -14,10 +14,14 @@ namespace {
 
 class FixedUnixClock : public PlatformClock {
 public:
-    explicit FixedUnixClock(int64_t unixMs) : unixMs(unixMs) {}
+    /** Returns @p unixMs from @ref unixMilliseconds. */
+    explicit FixedUnixClock(int64_t unixMs)
+        : unixMs(unixMs) {}
 
+    /** @copydoc PlatformClock::milliseconds */
     unsigned long milliseconds() override { return 0; }
 
+    /** @copydoc PlatformClock::unixMilliseconds */
     int64_t unixMilliseconds() override { return unixMs; }
 
 private:
@@ -39,7 +43,7 @@ inline bool decodeDeviceReportPayload(const std::string& payload,
                                       alleycat_device_WriteDeviceReportRequest& out) {
     memset(&out, 0, sizeof(out));
     pb_istream_t stream =
-        pb_istream_from_buffer(reinterpret_cast<const pb_byte_t*>(payload.data()), payload.size());
+    pb_istream_from_buffer(reinterpret_cast<const pb_byte_t*>(payload.data()), payload.size());
     return pb_decode(&stream, alleycat_device_WriteDeviceReportRequest_fields, &out);
 }
 
@@ -77,7 +81,8 @@ inline void deviceTestCodecRoundTripEncodesFields() {
     EXPECT_EQ(message.device.hardware_version, 2u);
     EXPECT_EQ(message.device.device_kind, alleycat_device_DeviceKind_DEVICE_KIND_PDN);
     EXPECT_STREQ(message.device.mac_address, "aa:bb:cc:dd:ee:ff");
-    EXPECT_EQ(message.inspection.which_checks, alleycat_device_CreateDeviceInspectionRequest_pdn_tag);
+    EXPECT_EQ(message.inspection.which_checks,
+              alleycat_device_CreateDeviceInspectionRequest_pdn_tag);
     EXPECT_TRUE(message.inspection.has_inspected_at_unix_ms);
     EXPECT_EQ(message.inspection.inspected_at_unix_ms, 1792359000000LL);
     EXPECT_STREQ(message.inspection.firmware_commit_hash, "26a3bc12");

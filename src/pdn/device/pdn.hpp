@@ -10,7 +10,6 @@
 class PDN : public Device {
 
 public:
-
     static PDN* createPDN(DriverConfig& driverConfig);
 
     ~PDN() override;
@@ -30,6 +29,7 @@ public:
     RemoteDeviceCoordinator* getRemoteDeviceCoordinator() override;
     /** Null unless a firmware store driver is registered. */
     FirmwareUpdateManager* getFirmwareUpdateManager() override;
+    /** ESP-NOW handler for operator/device-test packets; always non-null on PDN. */
     DeviceTestWirelessManager* getDeviceTestWirelessManager();
 
 protected:
@@ -37,7 +37,8 @@ protected:
 
     // No-arg constructor for test subclasses that override all virtual getters.
     // Skips driver initialization — do not call in production code.
-    PDN() : Device(DriverConfig{}) {
+    PDN()
+        : Device(DriverConfig{}) {
         lightManager = nullptr;
         serialManager = nullptr;
         wirelessManager = nullptr;

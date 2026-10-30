@@ -9,7 +9,7 @@ void DigitEntry::reset() {
     currentDigitIndex = 0;
     complete = false;
     shouldRender = true;
-    for (int i = 0; i < kDigitCount; i++) {
+    for (int i = 0; i < DIGIT_COUNT; i++) {
         inputId[i] = 0;
     }
 }
@@ -20,31 +20,29 @@ void DigitEntry::mount(PDN* pdn, const char* title) {
     render(pdn);
 
     pdn->getPrimaryButton()->setButtonPress(
-        [](void* ctx) {
-            DigitEntry* entry = static_cast<DigitEntry*>(ctx);
-            entry->currentDigit++;
-            if (entry->currentDigit > 9) {
-                entry->currentDigit = 0;
-            }
-            entry->shouldRender = true;
-        },
-        this,
-        ButtonInteraction::CLICK);
+    [](void* ctx) {
+        DigitEntry* entry = static_cast<DigitEntry*>(ctx);
+        entry->currentDigit++;
+        if (entry->currentDigit > 9) {
+            entry->currentDigit = 0;
+        }
+        entry->shouldRender = true;
+    },
+    this, ButtonInteraction::CLICK);
 
     pdn->getSecondaryButton()->setButtonPress(
-        [](void* ctx) {
-            DigitEntry* entry = static_cast<DigitEntry*>(ctx);
-            entry->inputId[entry->currentDigitIndex] = entry->currentDigit;
-            entry->currentDigitIndex++;
-            entry->currentDigit = 0;
-            if (entry->currentDigitIndex >= kDigitCount) {
-                entry->complete = true;
-            } else {
-                entry->shouldRender = true;
-            }
-        },
-        this,
-        ButtonInteraction::CLICK);
+    [](void* ctx) {
+        DigitEntry* entry = static_cast<DigitEntry*>(ctx);
+        entry->inputId[entry->currentDigitIndex] = entry->currentDigit;
+        entry->currentDigitIndex++;
+        entry->currentDigit = 0;
+        if (entry->currentDigitIndex >= DIGIT_COUNT) {
+            entry->complete = true;
+        } else {
+            entry->shouldRender = true;
+        }
+    },
+    this, ButtonInteraction::CLICK);
 }
 
 void DigitEntry::dismount(PDN* pdn) {
@@ -59,9 +57,7 @@ void DigitEntry::loop(PDN* pdn) {
     }
 }
 
-bool DigitEntry::isComplete() const {
-    return complete;
-}
+bool DigitEntry::isComplete() const { return complete; }
 
 void DigitEntry::getPinString(char* out, size_t outSize) const {
     if (out == nullptr || outSize < 5) {
@@ -79,11 +75,11 @@ void DigitEntry::render(PDN* pdn) {
     display->invalidateScreen()->setGlyphMode(FontMode::TEXT)->drawText(titleText, 8, 16);
     display->setGlyphMode(FontMode::NUMBER_GLYPH);
 
-    const int xPositions[kDigitCount] = {20, 44, 68, 92};
+    const int xPositions[DIGIT_COUNT] = {20, 44, 68, 92};
     for (int i = 0; i < currentDigitIndex; i++) {
         display->renderGlyph(digitGlyphs[inputId[i]], xPositions[i], 40);
     }
-    if (currentDigitIndex < kDigitCount) {
+    if (currentDigitIndex < DIGIT_COUNT) {
         display->renderGlyph(digitGlyphs[currentDigit], xPositions[currentDigitIndex], 40);
     }
     display->render();

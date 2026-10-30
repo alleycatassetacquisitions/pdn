@@ -29,24 +29,23 @@ void PlayerFetchApp::populateStateMap() {
     ChooseTeamState* chooseTeam = new ChooseTeamState(playerProvider);
     DemoStubState* demoStub = new DemoStubState();
     PlayerFetchWelcome* welcome = new PlayerFetchWelcome(playerProvider);
-    DeviceTestApp* deviceTestApp = new DeviceTestApp(remoteDeviceCoordinator,
-                                                    deviceTestWirelessManager,
-                                                    wirelessManager,
-                                                    PlayerFetchStateId::DEVICE_TEST);
+    DeviceTestApp* deviceTestApp =
+    new DeviceTestApp(remoteDeviceCoordinator, deviceTestWirelessManager, wirelessManager,
+                      PlayerFetchStateId::DEVICE_TEST);
     DeviceTestSubjectState* deviceTestSubject =
-        new DeviceTestSubjectState(remoteDeviceCoordinator, deviceTestWirelessManager);
+    new DeviceTestSubjectState(remoteDeviceCoordinator, deviceTestWirelessManager);
 
     pinEntry->addTransition(
     new StateTransition([pinEntry]() { return pinEntry->transitionToFetchUser(); }, fetchUser));
     pinEntry->addTransition(
     new StateTransition([pinEntry]() { return pinEntry->transitionToChooseTeam(); }, chooseTeam));
-    pinEntry->addTransition(
-    new StateTransition([pinEntry]() { return pinEntry->transitionToDeviceTest(); }, deviceTestApp));
-    pinEntry->addTransition(
-    new StateTransition([pinEntry]() { return pinEntry->transitionToDeviceTestSubject(); }, deviceTestSubject));
+    pinEntry->addTransition(new StateTransition(
+    [pinEntry]() { return pinEntry->transitionToDeviceTest(); }, deviceTestApp));
+    pinEntry->addTransition(new StateTransition(
+    [pinEntry]() { return pinEntry->transitionToDeviceTestSubject(); }, deviceTestSubject));
 
-    deviceTestSubject->addTransition(
-        new StateTransition([deviceTestSubject]() { return deviceTestSubject->transitionToPinEntry(); }, pinEntry));
+    deviceTestSubject->addTransition(new StateTransition(
+    [deviceTestSubject]() { return deviceTestSubject->transitionToPinEntry(); }, pinEntry));
 
     fetchUser->addTransition(
     new StateTransition([fetchUser]() { return fetchUser->transitionToWelcome(); }, welcome));

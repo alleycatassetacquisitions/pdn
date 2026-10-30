@@ -160,4 +160,6 @@ bool PinEntryState::transitionToFirmwareUpdate() const { return transitionToFirm
 
 bool PinEntryState::transitionToDeviceTest() const { return transitionToDeviceTestState; }
 
-bool PinEntryState::transitionToDeviceTestSubject() const { return transitionToDeviceTestSubjectState; }
+bool PinEntryState::transitionToDeviceTestSubject() const {
+    return transitionToDeviceTestSubjectState;
+}

@@ -24,11 +24,8 @@ void DeviceTestOperatorPrompt::setTitle(const char* title) {
     }
 }
 
-void DeviceTestOperatorPrompt::mount(PDN* pdn,
-                                     const char* title,
-                                     const char* firstOptionLabel,
-                                     const char* secondOptionLabel,
-                                     void* ctx,
+void DeviceTestOperatorPrompt::mount(PDN* pdn, const char* title, const char* firstOptionLabel,
+                                     const char* secondOptionLabel, void* ctx,
                                      OperatorPromptCallback onFirstOption,
                                      OperatorPromptCallback onSecondOption) {
     titleText = title;
@@ -43,27 +40,25 @@ void DeviceTestOperatorPrompt::mount(PDN* pdn,
     render(pdn);
 
     pdn->getPrimaryButton()->setButtonPress(
-        [](void* ctxIn) {
-            DeviceTestOperatorPrompt* prompt = static_cast<DeviceTestOperatorPrompt*>(ctxIn);
-            prompt->firstOptionSelected = !prompt->firstOptionSelected;
-            prompt->render(prompt->mountedPdn);
-        },
-        this,
-        ButtonInteraction::CLICK);
+    [](void* ctxIn) {
+        DeviceTestOperatorPrompt* prompt = static_cast<DeviceTestOperatorPrompt*>(ctxIn);
+        prompt->firstOptionSelected = !prompt->firstOptionSelected;
+        prompt->render(prompt->mountedPdn);
+    },
+    this, ButtonInteraction::CLICK);
 
     pdn->getSecondaryButton()->setButtonPress(
-        [](void* ctxIn) {
-            DeviceTestOperatorPrompt* prompt = static_cast<DeviceTestOperatorPrompt*>(ctxIn);
-            if (prompt->firstOptionSelected) {
-                if (prompt->firstOptionCallback != nullptr) {
-                    prompt->firstOptionCallback(prompt->callbackCtx);
-                }
-            } else if (prompt->secondOptionCallback != nullptr) {
-                prompt->secondOptionCallback(prompt->callbackCtx);
+    [](void* ctxIn) {
+        DeviceTestOperatorPrompt* prompt = static_cast<DeviceTestOperatorPrompt*>(ctxIn);
+        if (prompt->firstOptionSelected) {
+            if (prompt->firstOptionCallback != nullptr) {
+                prompt->firstOptionCallback(prompt->callbackCtx);
             }
-        },
-        this,
-        ButtonInteraction::CLICK);
+        } else if (prompt->secondOptionCallback != nullptr) {
+            prompt->secondOptionCallback(prompt->callbackCtx);
+        }
+    },
+    this, ButtonInteraction::CLICK);
 }
 
 void DeviceTestOperatorPrompt::dismount(PDN* pdn) {
@@ -79,7 +74,7 @@ void DeviceTestOperatorPrompt::dismount(PDN* pdn) {
 void DeviceTestOperatorPrompt::render(PDN* pdn) {
     Display* display = pdn->getDisplay();
     display->invalidateScreen()->setGlyphMode(FontMode::TEXT)->drawCenteredText(titleText, 16);
-    drawOption(display, firstOptionText, kFirstOptionY, firstOptionSelected);
-    drawOption(display, secondOptionText, kSecondOptionY, !firstOptionSelected);
+    drawOption(display, firstOptionText, FIRST_OPTION_Y, firstOptionSelected);
+    drawOption(display, secondOptionText, SECOND_OPTION_Y, !firstOptionSelected);
     display->render();
 }

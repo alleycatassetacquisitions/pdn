@@ -1,10 +1,9 @@
 #include "device/light-manager.hpp"
-#include <algorithm> // For std::min
+#include <algorithm>  // For std::min
 
 LightManager::LightManager(LightStrip& pdnLights)
     : pdnLights(pdnLights)
-    , currentAnimation(nullptr) {
-}
+    , currentAnimation(nullptr) {}
 
 LightManager::~LightManager() {
     if (currentAnimation) {
@@ -16,7 +15,7 @@ void LightManager::loop() {
     if (currentAnimation && !currentAnimation->isPaused()) {
         // Get the next frame from the animation
         LEDState state = currentAnimation->animate();
-        
+
         // Apply the state to the physical LEDs
         applyLEDState(state);
     }
@@ -53,9 +52,7 @@ void LightManager::resumeAnimation() {
     }
 }
 
-void LightManager::clear() {
-    applyLEDState(LEDState());
-}
+void LightManager::clear() { applyLEDState(LEDState()); }
 
 void LightManager::setGlobalBrightness(uint8_t brightness) {
     pdnLights.setGlobalBrightness(brightness);
@@ -65,9 +62,7 @@ bool LightManager::isAnimating() const {
     return currentAnimation != nullptr && !currentAnimation->isComplete();
 }
 
-bool LightManager::isPaused() const {
-    return currentAnimation && currentAnimation->isPaused();
-}
+bool LightManager::isPaused() const { return currentAnimation && currentAnimation->isPaused(); }
 
 bool LightManager::isAnimationComplete() const {
     return currentAnimation ? currentAnimation->isComplete() : true;
@@ -104,12 +99,12 @@ void LightManager::applyLEDState(const LEDState& state) {
     // Extract the grip and display lights from the LEDState
     mapStateToGripLights(state);
     mapStateToDisplayLights(state);
-    
+
     // Apply the grip lights
     for (int i = 0; i < 6; i++) {
         this->pdnLights.setLight(LightIdentifier::GRIP_LIGHTS, i, gripLightArray[i]);
     }
-    
+
     // Apply the display lights
     for (int i = 0; i < 13; i++) {
         this->pdnLights.setLight(LightIdentifier::DISPLAY_LIGHTS, i, displayLightArray[i]);
