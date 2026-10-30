@@ -147,6 +147,10 @@ TEST_F(NativePeerCommsDriverTestSuite, TracksHistory) {
     peerCommsTracksHistory(this);
 }
 
+TEST(NativePeerCommsDriverHistory, RecordsReceivedPacketOnDrain) {
+    peerCommsRecordsReceivedPacketOnDrain();
+}
+
 TEST_F(NativePeerCommsDriverTestSuite, StateString) {
     peerCommsStateString(this);
 }

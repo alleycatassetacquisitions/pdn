@@ -155,6 +155,27 @@ void peerCommsTracksHistory(NativePeerCommsDriverTestSuite* suite) {
     ASSERT_EQ(history[0].packetType, PktType::kQuickdrawCommand);
 }
 
+// Test: A received packet enters the history when exec() drains it
+void peerCommsRecordsReceivedPacketOnDrain() {
+    NativePeerCommsDriver driver("TestPeerComms");
+    driver.initialize();
+    driver.connect();
+    uint8_t srcMac[6] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+    uint8_t data[] = {0x01, 0x02, 0x03};
+
+    driver.receivePacket(srcMac, PktType::kQuickdrawCommand, data, sizeof(data));
+    ASSERT_TRUE(driver.getPacketHistory().empty());
+
+    driver.exec();
+
+    const std::deque<PacketHistoryEntry>& history = driver.getPacketHistory();
+    ASSERT_EQ(history.size(), 1);
+    ASSERT_FALSE(history[0].isSent);
+    ASSERT_EQ(history[0].packetType, PktType::kQuickdrawCommand);
+    ASSERT_EQ(history[0].srcMac, "01:02:03:04:05:06");
+    ASSERT_EQ(history[0].length, sizeof(data));
+}
+
 // Test: State string returns correct values
 void peerCommsStateString(NativePeerCommsDriverTestSuite* suite) {
     ASSERT_EQ(suite->driver_->getStateString(), "CONNECTED");

@@ -44,6 +44,14 @@ public:
 
         while (!pending.empty()) {
             auto& pkt = pending.front();
+            PacketHistoryEntry entry;
+            entry.isSent = false;
+            entry.srcMac = macToString(pkt.srcMac);
+            entry.dstMac = getMacString();
+            entry.packetType = pkt.type;
+            entry.length = pkt.data.size();
+            addToHistory(entry);
+
             auto it = handlers_.find(pkt.type);
             if (it != handlers_.end()) {
                 it->second.callback(pkt.srcMac, pkt.data.data(),
@@ -153,14 +161,6 @@ public:
         if (peerCommsState_ != PeerCommsState::CONNECTED) {
             return;
         }
-
-        PacketHistoryEntry entry;
-        entry.isSent = false;
-        entry.srcMac = macToString(srcMac);
-        entry.dstMac = getMacString();
-        entry.packetType = packetType;
-        entry.length = length;
-        addToHistory(entry);
 
         DeferredPacket pkt;
         pkt.type = packetType;
